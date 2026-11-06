@@ -71,6 +71,7 @@ from evo_agents.hub import (
     tables_settings,
     tables_signals,
     tables_systems,
+    tables_traces,
     tables_triage,
     tables_workers,
 )
@@ -784,6 +785,7 @@ account_pools, account_pool_members = tables_account_pools.account_pool_tables(m
 guard_terms, guard_targets = tables_guard.guard_tables(metadata)  # the private names and published repos (0192)
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
 chat_bridges, chat_bridge_codes, chat_bridge_messages = bridge_tables(metadata)  # 0165
+system_traces, system_spans, agent_ask_briefs = tables_traces.trace_tables(metadata)  # traces of systems (0218)
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
 retired_project_plugins = tables_plugins.retired_table(metadata)  # canvas, srs and tasks before 0147

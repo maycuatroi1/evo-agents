@@ -53,6 +53,7 @@ from evo_agents.hub.server import (
     invites,
     projects,
     security,
+    system_trace_views,
     tokens,
     user_emails,
     web_auth,
@@ -402,6 +403,7 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         run_events.RunStreams(app.state.listener),
         chat_events.ChatStreams(app.state.listener),
     )
+    app.state.trace_streams = system_trace_views.TraceStreams(app.state.listener)  # the live traces of systems
 
     from evo_agents.hub.server import (
         attachments,
@@ -602,6 +604,8 @@ def _include_member_routes(app: FastAPI) -> None:
         rate_limits.worker_router,
         worker_autonomy.worker_router,
         agent_profiles.router,
+        system_trace_views.stream_router,  # before its router, whose /traces/{id} would take /traces/stream
+        system_trace_views.router,  # the traces of agent systems (0218)
         agent_systems.router,  # the agent systems of a project (0217)
         agent_accounts.router,
         account_pools.router,

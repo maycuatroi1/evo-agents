@@ -35,7 +35,7 @@ from dataclasses import dataclass, replace
 from sqlalchemy import func, insert, literal, null, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_bridge_events, chats, profiles, runs, tables
+from evo_agents.hub import chat_bridge_events, chats, profiles, runs, system_context, tables
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
@@ -49,6 +49,7 @@ from evo_agents.hub.server import (
     run_access_rules,
     run_autonomy,
     system_store,
+    system_traces,
 )
 from evo_agents.hub.server.chat_access import ChatAccess, LabelProject, agent_projects, label_reader
 from evo_agents.hub.server.chat_notices import notice_mention
@@ -355,6 +356,7 @@ async def _go_on(conn: AsyncConnection, previous, hand: Hand) -> int:
     failed = f" (failed: {previous.failure_cause})" if previous.state == "failed" else ""
     shown = f"goes on in the session of run #{previous.id}{failed}, as {hand.author} wrote in the thread"
     await write_event(conn, new_id, {"text": shown, "resume_of_run_id": previous.id})
+    await system_traces.join(conn, new_id, previous_id=previous.id)
     await notify_queued(conn, new_id)
     return new_id
 
@@ -403,18 +405,25 @@ async def go_on_parked(
     await write_event(
         conn, new_id, {"text": f"goes on in the session of run #{parked_id}, {why}", "resume_of_run_id": parked_id}
     )
+    await system_traces.join(conn, new_id, previous_id=parked_id)
     await notify_queued(conn, new_id)
     return new_id
 
 
-async def _pinned(conn: AsyncConnection, profile: Profile) -> tuple[int, dict]:
-    """The version of ``profile`` a chat run of it takes, with that version's permissions: the one the agent system
-    whose entry agent it is pins (``system_store.entry_pin``), its version now otherwise."""
-    pin = await system_store.entry_pin(conn, profile.id)
-    body = None if pin is None or pin[1] == profile.version else await version_rules(conn, profile.id, pin[1])
+async def _pinned(conn: AsyncConnection, profile: Profile, message_id: int | None = None) -> tuple[int, dict]:
+    """The version of ``profile`` a chat run of it, woken by message ``message_id``, takes, with that version's
+    permissions: the one the agent system it runs in pins (``system_traces.pinned_for``: the system of the trace of
+    the run that wrote the message, else the one whose entry agent it is, else one of its chat or project that has
+    it), its version now otherwise."""
+    held = await system_traces.pinned_for(conn, profile.id, profile.handle, profile.project_id, message_id)
+    version = None if held is None else system_traces.pinned_version(held.spec, profile.handle)
+    if version is None:
+        pin = await system_store.entry_pin(conn, profile.id)
+        version = None if pin is None else pin[1]
+    body = None if version is None or version == profile.version else await version_rules(conn, profile.id, version)
     if body is None:
         return profile.version, profile.permissions
-    return pin[1], body.get("permissions") or profile.permissions
+    return version, body.get("permissions") or profile.permissions
 
 
 async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
@@ -437,7 +446,7 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
             if harness in await repo_origins(conn, profile.project_id, hand.owner_id, [harness]):
                 names.append(harness)
         names = [name for name in names if name == harness]
-    version, permissions = await _pinned(conn, profile)
+    version, permissions = await _pinned(conn, profile, hand.message_id)
     allow = profiles.allowed(permissions, "model")
     model = allow[0] if allow else None
     owner, project = hand.owner_id, profile.project_id
@@ -471,6 +480,7 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
     repos = [{"repo": name, "branch": branch} for name in names] or null()  # SQL NULL, not a JSON null
     r = tables.runs
     await conn.execute(update(r).values(branch=branch, repos=repos).where(r.c.id == run_id))
+    await system_traces.join(conn, run_id)
     await notify_queued(conn, run_id)
     return run_id
 
@@ -676,7 +686,7 @@ async def post_agent(
             mention["refusal"] = AGENT_REPLY_REFUSAL
             continue
         asked = replace(hand, message_id=message_id, root_id=root_id or message_id)
-        mention["run_id"], mention["refusal"] = await _hand_on(conn, asked, mention["profile_id"])
+        mention["run_id"], mention["refusal"] = await _hand_on(conn, asked, mention["profile_id"], run_id)
     await insert_mentions(conn, message_id, kept)
     await link_message(conn, run_id, message_id, output_ids or [])
     for user_id in dict.fromkeys(people):
@@ -684,13 +694,40 @@ async def post_agent(
     return message_id, kept
 
 
-async def _hand_on(conn: AsyncConnection, hand: Hand, profile_id: int) -> tuple[int | None, str | None]:
-    """An agent's mention of the agent ``profile_id``: the work for the origin of the chain one hop further, never
-    to the agent's own profile (``hand.profile``)."""
+async def _hand_on(
+    conn: AsyncConnection, hand: Hand, profile_id: int, run_id: int | None = None
+) -> tuple[int | None, str | None]:
+    """An agent's mention of the agent ``profile_id``, by run ``run_id``: the work for the origin of the chain one hop
+    further, never to the agent's own profile (``hand.profile``). In a trace of an agent system, a mention past the
+    trace's budget is refused (``system_traces.budget_problem``), and one the spec has no interacts edge for runs as
+    before and is recorded off design, with no reason (``system_traces.record_tool``)."""
     problem = rules.hop_problem(hand.hop, profile_id == hand.profile.id)
     if problem is not None:
         return None, problem
-    return await hand_work(conn, replace(hand, profile=await by_id(conn, profile_id)))
+    target = await by_id(conn, profile_id)
+    found = None if run_id is None else await system_traces.of_run(conn, run_id)
+    over = await system_traces.budget_problem(conn, found)
+    if over is not None:
+        await system_traces.record_tool(
+            conn, found, system_context.TOOL_MENTION, to_handle=target.handle, status="refused", reason=over
+        )
+        return None, over
+    child, why = await hand_work(conn, replace(hand, profile=target))
+    if found is not None and found.trace_id is not None:
+        to_node = system_context.node_of(found.spec, target.handle)
+        off = not system_context.on_design(found.spec, found.node, to_node)
+        await system_traces.record_tool(
+            conn,
+            found,
+            system_context.TOOL_MENTION,
+            to_handle=target.handle,
+            status="ok" if child is not None else "refused",
+            off_design=off,
+            reason=why,
+            message_id=hand.message_id,
+            attributes={} if child is None else {"evo.child_run_id": child},
+        )
+    return child, why
 
 
 async def _principal(conn: AsyncConnection, user_id: int):
@@ -755,6 +792,8 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
     reply in the thread when it failed, and when it ended done with messages of its inbox untaken, the run that goes on
     in its session with them (its id), titled by the first of them. A run another agent's run asked that ended, and
     goes on in no run, answers that run's wait (``agent_asks.answer_asker``)."""
+    if new in runs.TERMINAL_STATES:
+        await system_traces.end_run(conn, run_id, new)
     if old == "parked" and new == "done":  # it waited for an answer and a new run goes on in its session (go_on_parked)
         return None
     found = await chat_run(conn, run_id)
@@ -798,6 +837,7 @@ async def _go_on_untaken(conn: AsyncConnection, run_id: int, found: ChatRun) -> 
     i = tables.run_inbox
     await conn.execute(update(i).values(run_id=new_id).where(i.c.id.in_([row.id for row in untaken])))
     await write_event(conn, new_id, {"text": f"goes on in the session of run #{run_id} with its messages untaken"})
+    await system_traces.join(conn, new_id, previous_id=run_id)
     await notify_queued(conn, new_id)
     log.info("chat run goes on with its inbox", extra={"run_id": new_id, "resume_of": run_id})
     return new_id
@@ -896,6 +936,7 @@ async def chat_prompt(
     listing, harness = None, None
     if runs.LAZY_CHAT_REPOS in features:
         listing, harness = await _listing(conn, run_id, profile, repos, [trigger["body"], *in_thread])
+    system, brief = await _system_parts(conn, run_id)
     return rules.build_chat_prompt(
         agent={
             "handle": profile.handle,
@@ -915,7 +956,20 @@ async def chat_prompt(
         ships=ships,
         label=_lowered(projects, profile.project),
         cdn=not any(p.restricted for p in projects),  # as ChatAccess.restricted reads it, now
+        system=system,
+        brief=brief,
     )
+
+
+async def _system_parts(conn: AsyncConnection, run_id: int) -> tuple[list[str], list[str]]:
+    """(the System section, the brief block) of the prompt of chat run ``run_id``: its place in the agent system it
+    runs in (``system_context.system_lines``), and the brief of the ask that made its session
+    (``system_context.brief_lines``); [] for each it lacks."""
+    found = await system_traces.of_run(conn, run_id)
+    place = None if found is None else system_context.place_of(found.system.slug, found.spec, found.handle)
+    briefed = await system_traces.brief_of(conn, run_id)
+    brief = [] if briefed is None else system_context.brief_lines(*briefed)
+    return ([] if place is None else system_context.system_lines(place)), brief
 
 
 def _lowered(projects: Sequence[LabelProject], project: str) -> dict | None:

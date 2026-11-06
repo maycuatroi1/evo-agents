@@ -5,12 +5,12 @@ hub-cli-v1. ``commands`` is generated from the argparse definitions: for every `
 plan step"``) and every command the agent of a run uses (``evo-agents worker step|ask|notify|plan`` of a plan run,
 ``evo-agents worker finding|propose|playbook ...`` of a review run, ``evo-agents worker put`` of an author run,
 ``evo-agents worker chat post|react|create|mention`` of a run in group chats, ``evo-agents worker triage
-rerun|plan|invite|cancel|merge-check`` of a triage thread, ``evo-agents worker curator answer|merge`` of a proposal's thread,
-``evo-agents worker repo open|agent ask|agent read`` of a chat run and ``evo-agents worker output|backup``
-of any run, keyed ``"worker step"``, AGENT_COMMANDS), its positional arguments and options, and for a command with
-``--json`` the keys of what it prints, declared next to the flag with ``json_option``. ``openapi`` is the API's
-OpenAPI document, the one ``evo-agents hub openapi`` prints, so ``print`` needs the hub-server extra. evo-cli checks
-the argv it builds and the keys it reads against this document, and agent-skills the agent's commands its skills
+rerun|plan|invite|cancel|merge-check`` of a triage thread, ``evo-agents worker curator answer|merge`` of a proposal's
+thread, ``evo-agents worker repo open|agent ask|agent forward|agent read`` of a chat run and ``evo-agents worker
+output|backup`` of any run, keyed ``"worker step"``, AGENT_COMMANDS), its positional arguments and options, and for a
+command with ``--json`` the keys of what it prints, declared next to the flag with ``json_option``. ``openapi`` is the
+API's OpenAPI document, the one ``evo-agents hub openapi`` prints, so ``print`` needs the hub-server extra. evo-cli
+checks the argv it builds and the keys it reads against this document, and agent-skills the agent's commands its skills
 name; tests/hub/golden/cli-contract.json is the copy the tests compare with, so a change to either part shows up as a
 diff there.
 
@@ -51,6 +51,7 @@ AGENT_COMMANDS += ("playbook add", "playbook helpful", "playbook harmful", "play
 AGENT_COMMANDS += ("probe add",)  # a review run's probe of a merged change
 AGENT_COMMANDS += ("repo open",)  # a chat run's agent opens a repo of its project
 AGENT_COMMANDS += ("agent ask",)  # a chat run's agent asks an agent of another project
+AGENT_COMMANDS += ("agent forward",)  # and forwards the answer of a run of its trace verbatim
 AGENT_COMMANDS += ("agent read",)  # and reads another project's knowledge graph and memories
 AGENT_COMMANDS += ("output",)  # any run's agent sends files to the run's outputs
 AGENT_COMMANDS += ("backup",)  # any run's agent records a backup before it deletes data (floor S2)

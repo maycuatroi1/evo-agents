@@ -9022,6 +9022,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/systems/{slug}/traces/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Traces
+         * @description The traces of the system as they move: a ``trace`` event (``TraceSummary``) for each trace the caller may read
+         *     whose last_at passed, at once for those after ``after`` (none by default), then each time a span is written. An
+         *     ``end`` event once the caller may no longer read the system's project.
+         */
+        get: operations["stream_traces_v1_projects__project__systems__slug__traces_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Traces
+         * @description The traces of the system the caller may read, the newest first.
+         */
+        get: operations["list_traces_v1_projects__project__systems__slug__traces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * System Metrics
+         * @description The numbers of each node and edge of the system over its last traces: count, errors, off-design crossings,
+         *     median and last seconds, tokens and cost.
+         */
+        get: operations["system_metrics_v1_projects__project__systems__slug__metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/traces/{trace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Trace
+         * @description One trace: its spans in the order written, with their runs' numbers, and the metrics of its nodes and edges.
+         */
+        get: operations["show_trace_v1_projects__project__systems__slug__traces__trace_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/systems": {
         parameters: {
             query?: never;
@@ -10306,6 +10389,28 @@ export interface paths {
          * @description Ask agent ``handle`` of another project, in a chat run this worker holds (see the module's docstring).
          */
         post: operations["ask_v1_worker_runs__run_id__agent_asks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/agent/forwards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Forward Answer
+         * @description Forward the last answer of run ``body.run_id``, a run of the same trace of an agent system, verbatim into the
+         *     thread of a chat run this worker holds (``forward``). A refusal is answered (201, ``refusal``) and said in the
+         *     thread.
+         */
+        post: operations["forward_answer_v1_worker_runs__run_id__agent_forwards_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13907,6 +14012,36 @@ export interface components {
              * @description what it is asked, at most 16384 bytes of UTF-8
              */
             body: string;
+            /**
+             * Goal
+             * @description the brief: what the agent asked should reach
+             */
+            goal?: string | null;
+            /**
+             * Output
+             * @description the brief: what its answer should hold
+             */
+            output?: string | null;
+            /**
+             * Bounds
+             * @description the brief: what it should not do or touch
+             */
+            bounds?: string | null;
+            /**
+             * Done When
+             * @description the brief: when its work is finished
+             */
+            done_when?: string | null;
+            /**
+             * Refs
+             * @description the brief: refs it starts from (repo:path, a run, an output, a URL)
+             */
+            refs?: string[];
+            /**
+             * Reason
+             * @description why an agent of a system asks an agent off its interacts edges; without it such an ask is refused
+             */
+            reason?: string | null;
         };
         /** AgentAsked */
         AgentAsked: {
@@ -14052,6 +14187,27 @@ export interface components {
              * @description 409 unless the profile is at this version now
              */
             if_version?: number | null;
+        };
+        /** AgentForwardIn */
+        AgentForwardIn: {
+            /**
+             * Run Id
+             * @description the run whose last answer is forwarded: a run of the same trace
+             */
+            run_id: number;
+        };
+        /** AgentForwarded */
+        AgentForwarded: {
+            /**
+             * Message Id
+             * @description the message forwarded into the run's thread; null when refused
+             */
+            message_id: number | null;
+            /**
+             * Refusal
+             * @description why the hub forwarded nothing, as the thread says too
+             */
+            refusal: string | null;
         };
         /** AgentHanded */
         AgentHanded: {
@@ -22718,6 +22874,11 @@ export interface components {
              * @description the interactive answer (an output a message of the chat carries) a person sent it from; null when sent otherwise
              */
             from_answer?: number | null;
+            /**
+             * Forwarded By
+             * @description the @handle of the agent that forwarded it verbatim from the run of its author (evo-agents worker agent forward); null when its author's run wrote it
+             */
+            forwarded_by?: string | null;
         };
         /** GroupSample */
         GroupSample: {
@@ -27950,6 +28111,23 @@ export interface components {
              * @description files uploaded for this message (POST .../attachments), at most 10; with one or more, the text may be empty
              */
             attachment_ids?: number[];
+        };
+        /** Metrics */
+        Metrics: {
+            /**
+             * Nodes
+             * @description per node: count, errors, off_design, p50_seconds, last_seconds, tokens, usd
+             */
+            nodes: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Edges
+             * @description per edge (from_node, to_node): the same numbers
+             */
+            edges: {
+                [key: string]: unknown;
+            }[];
         };
         /** MissingBlobs */
         MissingBlobs: {
@@ -40663,6 +40841,118 @@ export interface components {
              */
             url: string | null;
         };
+        /** SpanOut */
+        SpanOut: {
+            /** Id */
+            id: number;
+            /**
+             * Parent Id
+             * @description the span it runs under; null for the first span of the trace
+             */
+            parent_id: number | null;
+            /**
+             * Name
+             * @description invoke_agent (a turn of an agent) or execute_tool (an ask, a mention, a forward, a kg query)
+             */
+            name: string;
+            /**
+             * Tool
+             * @description the tool of an execute_tool span: agent_ask, chat_mention, agent_forward, kg_*
+             */
+            tool: string | null;
+            /**
+             * Agent
+             * @description the handle of the agent
+             */
+            agent: string;
+            /**
+             * Node
+             * @description its node in the spec; @handle for an external agent the spec lacks
+             */
+            node: string | null;
+            /**
+             * From Node
+             * @description the node it came from: the edge it crossed
+             */
+            from_node: string | null;
+            /**
+             * To Node
+             * @description the node an ask, a mention or a forward went to
+             */
+            to_node: string | null;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * Project
+             * @description the project of its run
+             */
+            project: string | null;
+            /** Runtime */
+            runtime: string | null;
+            /**
+             * Status
+             * @description running, ok, error or refused
+             */
+            status: string;
+            /**
+             * Off Design
+             * @description the edge it crossed is not an interacts edge of the spec
+             */
+            off_design: boolean;
+            /**
+             * Reason
+             * @description why: the reason an off-edge ask gave, or why the hub refused
+             */
+            reason: string | null;
+            /**
+             * Message Id
+             * @description the chat message it rests on, which the chat's routes show
+             */
+            message_id: number | null;
+            /**
+             * Attributes
+             * @description OpenTelemetry GenAI attributes (gen_ai.*) and the hub's (evo.*)
+             */
+            attributes: {
+                [key: string]: unknown;
+            };
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Ended At */
+            ended_at: string | null;
+            /**
+             * Seconds
+             * @description how long it ran; null while it runs
+             */
+            seconds: number | null;
+            /**
+             * Input Tokens
+             * @default 0
+             */
+            input_tokens: number;
+            /**
+             * Output Tokens
+             * @default 0
+             */
+            output_tokens: number;
+            /**
+             * Usd
+             * @description what its run cost, reported else estimated; 0 for a tool span
+             * @default 0
+             */
+            usd: number;
+            /** Model */
+            model?: string | null;
+            /**
+             * Content Withheld
+             * @description its run is of a project the reader holds no grant on: reason, message and evo.* are left out
+             * @default false
+             */
+            content_withheld: boolean;
+        };
         /** SpentTokens */
         SpentTokens: {
             /**
@@ -43774,6 +44064,111 @@ export interface components {
              * @description from each call to its result, added up; calls that never ended count none
              */
             duration_ms: number;
+        };
+        /** TraceOut */
+        TraceOut: {
+            /** Id */
+            id: number;
+            /**
+             * System
+             * @description the slug of the system
+             */
+            system: string;
+            /**
+             * Revision
+             * @description the revision of its spec the trace ran under
+             */
+            revision: number;
+            /** Chat Id */
+            chat_id: number | null;
+            /**
+             * Message Id
+             * @description the person's message that opened it
+             */
+            message_id: number | null;
+            /**
+             * Opened By
+             * @description the login of who wrote that message
+             */
+            opened_by: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Last At
+             * Format: date-time
+             */
+            last_at: string;
+            /**
+             * Runs
+             * @description its invoke_agent spans
+             */
+            runs: number;
+            /**
+             * Off Design
+             * @description its spans that crossed an edge the spec lacks
+             */
+            off_design: number;
+            /** Errors */
+            errors: number;
+            /** Usd */
+            usd: number;
+            /** Spans */
+            spans: components["schemas"]["SpanOut"][];
+            metrics: components["schemas"]["Metrics"];
+        };
+        /** TraceSummary */
+        TraceSummary: {
+            /** Id */
+            id: number;
+            /**
+             * System
+             * @description the slug of the system
+             */
+            system: string;
+            /**
+             * Revision
+             * @description the revision of its spec the trace ran under
+             */
+            revision: number;
+            /** Chat Id */
+            chat_id: number | null;
+            /**
+             * Message Id
+             * @description the person's message that opened it
+             */
+            message_id: number | null;
+            /**
+             * Opened By
+             * @description the login of who wrote that message
+             */
+            opened_by: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Last At
+             * Format: date-time
+             */
+            last_at: string;
+            /**
+             * Runs
+             * @description its invoke_agent spans
+             */
+            runs: number;
+            /**
+             * Off Design
+             * @description its spans that crossed an edge the spec lacks
+             */
+            off_design: number;
+            /** Errors */
+            errors: number;
+            /** Usd */
+            usd: number;
         };
         /** TranscriptFile */
         TranscriptFile: {
@@ -80080,6 +80475,253 @@ export interface operations {
             };
         };
     };
+    stream_traces_v1_projects__project__systems__slug__traces_stream_get: {
+        parameters: {
+            query?: {
+                /** @description traces that moved after this time come first */
+                after?: string | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_traces_v1_projects__project__systems__slug__traces_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description only traces older than this id */
+                before?: number | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceSummary"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    system_metrics_v1_projects__project__systems__slug__metrics_get: {
+        parameters: {
+            query?: {
+                /** @description over the last N traces the caller may read */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Metrics"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_trace_v1_projects__project__systems__slug__traces__trace_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+                trace_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_systems_v1_projects__project__systems_get: {
         parameters: {
             query?: never;
@@ -85769,6 +86411,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentAsked"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    forward_answer_v1_worker_runs__run_id__agent_forwards_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentForwardIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentForwarded"];
                 };
             };
             /** @description Unauthorized */

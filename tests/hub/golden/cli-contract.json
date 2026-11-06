@@ -5049,7 +5049,8 @@
           "attachments",
           "via",
           "bridged_to",
-          "from_answer"
+          "from_answer",
+          "forwarded_by"
         ],
         "schema": "GroupMessage"
       }
@@ -5125,7 +5126,8 @@
           "attachments",
           "via",
           "bridged_to",
-          "from_answer"
+          "from_answer",
+          "forwarded_by"
         ],
         "schema": "GroupMessage"
       }
@@ -26105,7 +26107,70 @@
           "repeatable": false
         }
       ],
-      "options": [],
+      "options": [
+        {
+          "flags": [
+            "--goal"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--output"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--bounds"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--done-when"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--ref"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker agent forward": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
       "json": null
     },
     "worker agent read": {
@@ -80124,6 +80189,445 @@
           }
         }
       },
+      "/v1/projects/{project}/systems/{slug}/traces/stream": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Stream Traces",
+          "description": "The traces of the system as they move: a ``trace`` event (``TraceSummary``) for each trace the caller may read\nwhose last_at passed, at once for those after ``after`` (none by default), then each time a span is written. An\n``end`` event once the caller may no longer read the system's project.",
+          "operationId": "stream_traces_v1_projects__project__systems__slug__traces_stream_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "after",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "traces that moved after this time come first",
+                "title": "After"
+              },
+              "description": "traces that moved after this time come first"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "text/event-stream": {
+                  "itemSchema": {
+                    "type": "object",
+                    "properties": {
+                      "data": {
+                        "type": "string"
+                      },
+                      "event": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "retry": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/systems/{slug}/traces": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "List Traces",
+          "description": "The traces of the system the caller may read, the newest first.",
+          "operationId": "list_traces_v1_projects__project__systems__slug__traces_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "before",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only traces older than this id",
+                "title": "Before"
+              },
+              "description": "only traces older than this id"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/TraceSummary"
+                    },
+                    "title": "Response List Traces V1 Projects  Project  Systems  Slug  Traces Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/systems/{slug}/metrics": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "System Metrics",
+          "description": "The numbers of each node and edge of the system over its last traces: count, errors, off-design crossings,\nmedian and last seconds, tokens and cost.",
+          "operationId": "system_metrics_v1_projects__project__systems__slug__metrics_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "description": "over the last N traces the caller may read",
+                "default": 50,
+                "title": "Limit"
+              },
+              "description": "over the last N traces the caller may read"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Metrics"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/systems/{slug}/traces/{trace_id}": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Show Trace",
+          "description": "One trace: its spans in the order written, with their runs' numbers, and the metrics of its nodes and edges.",
+          "operationId": "show_trace_v1_projects__project__systems__slug__traces__trace_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "trace_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Trace Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TraceOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/systems": {
         "get": {
           "tags": [
@@ -88321,6 +88825,91 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/AgentAsked"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/agent/forwards": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Forward Answer",
+          "description": "Forward the last answer of run ``body.run_id``, a run of the same trace of an agent system, verbatim into the\nthread of a chat run this worker holds (``forward``). A refusal is answered (201, ``refusal``) and said in the\nthread.",
+          "operationId": "forward_answer_v1_worker_runs__run_id__agent_forwards_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentForwardIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentForwarded"
                   }
                 }
               }
@@ -104813,6 +105402,80 @@
               "minLength": 1,
               "title": "Body",
               "description": "what it is asked, at most 16384 bytes of UTF-8"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal",
+              "description": "the brief: what the agent asked should reach"
+            },
+            "output": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Output",
+              "description": "the brief: what its answer should hold"
+            },
+            "bounds": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bounds",
+              "description": "the brief: what it should not do or touch"
+            },
+            "done_when": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Done When",
+              "description": "the brief: when its work is finished"
+            },
+            "refs": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 10,
+              "title": "Refs",
+              "description": "the brief: refs it starts from (repo:path, a run, an output, a URL)"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why an agent of a system asks an agent off its interacts edges; without it such an ask is refused"
             }
           },
           "type": "object",
@@ -105209,6 +105872,55 @@
           "type": "object",
           "title": "AgentEdit",
           "description": "What to change; a field left out stays as it is."
+        },
+        "AgentForwardIn": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "exclusiveMinimum": 0.0,
+              "title": "Run Id",
+              "description": "the run whose last answer is forwarded: a run of the same trace"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id"
+          ],
+          "title": "AgentForwardIn"
+        },
+        "AgentForwarded": {
+          "properties": {
+            "message_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message Id",
+              "description": "the message forwarded into the run's thread; null when refused"
+            },
+            "refusal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refusal",
+              "description": "why the hub forwarded nothing, as the thread says too"
+            }
+          },
+          "type": "object",
+          "required": [
+            "message_id",
+            "refusal"
+          ],
+          "title": "AgentForwarded"
         },
         "AgentHanded": {
           "properties": {
@@ -124861,6 +125573,18 @@
               ],
               "title": "From Answer",
               "description": "the interactive answer (an output a message of the chat carries) a person sent it from; null when sent otherwise"
+            },
+            "forwarded_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Forwarded By",
+              "description": "the @handle of the agent that forwarded it verbatim from the run of its author (evo-agents worker agent forward); null when its author's run wrote it"
             }
           },
           "type": "object",
@@ -137258,6 +137982,34 @@
             "text"
           ],
           "title": "MessageIn"
+        },
+        "Metrics": {
+          "properties": {
+            "nodes": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Nodes",
+              "description": "per node: count, errors, off_design, p50_seconds, last_seconds, tokens, usd"
+            },
+            "edges": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Edges",
+              "description": "per edge (from_node, to_node): the same numbers"
+            }
+          },
+          "type": "object",
+          "required": [
+            "nodes",
+            "edges"
+          ],
+          "title": "Metrics"
         },
         "MissingBlobs": {
           "properties": {
@@ -166033,6 +166785,243 @@
           ],
           "title": "SourceRead"
         },
+        "SpanOut": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "parent_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Id",
+              "description": "the span it runs under; null for the first span of the trace"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "invoke_agent (a turn of an agent) or execute_tool (an ask, a mention, a forward, a kg query)"
+            },
+            "tool": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tool",
+              "description": "the tool of an execute_tool span: agent_ask, chat_mention, agent_forward, kg_*"
+            },
+            "agent": {
+              "type": "string",
+              "title": "Agent",
+              "description": "the handle of the agent"
+            },
+            "node": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node",
+              "description": "its node in the spec; @handle for an external agent the spec lacks"
+            },
+            "from_node": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Node",
+              "description": "the node it came from: the edge it crossed"
+            },
+            "to_node": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Node",
+              "description": "the node an ask, a mention or a forward went to"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "the project of its run"
+            },
+            "runtime": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status",
+              "description": "running, ok, error or refused"
+            },
+            "off_design": {
+              "type": "boolean",
+              "title": "Off Design",
+              "description": "the edge it crossed is not an interacts edge of the spec"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why: the reason an off-edge ask gave, or why the hub refused"
+            },
+            "message_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message Id",
+              "description": "the chat message it rests on, which the chat's routes show"
+            },
+            "attributes": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Attributes",
+              "description": "OpenTelemetry GenAI attributes (gen_ai.*) and the hub's (evo.*)"
+            },
+            "started_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Started At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Seconds",
+              "description": "how long it ran; null while it runs"
+            },
+            "input_tokens": {
+              "type": "integer",
+              "title": "Input Tokens",
+              "default": 0
+            },
+            "output_tokens": {
+              "type": "integer",
+              "title": "Output Tokens",
+              "default": 0
+            },
+            "usd": {
+              "type": "number",
+              "title": "Usd",
+              "description": "what its run cost, reported else estimated; 0 for a tool span",
+              "default": 0
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "content_withheld": {
+              "type": "boolean",
+              "title": "Content Withheld",
+              "description": "its run is of a project the reader holds no grant on: reason, message and evo.* are left out",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "parent_id",
+            "name",
+            "tool",
+            "agent",
+            "node",
+            "from_node",
+            "to_node",
+            "run_id",
+            "project",
+            "runtime",
+            "status",
+            "off_design",
+            "reason",
+            "message_id",
+            "attributes",
+            "started_at",
+            "ended_at",
+            "seconds"
+          ],
+          "title": "SpanOut"
+        },
         "SpentTokens": {
           "properties": {
             "input": {
@@ -173664,6 +174653,212 @@
             "duration_ms"
           ],
           "title": "ToolStat"
+        },
+        "TraceOut": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "system": {
+              "type": "string",
+              "title": "System",
+              "description": "the slug of the system"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision",
+              "description": "the revision of its spec the trace ran under"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id"
+            },
+            "message_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message Id",
+              "description": "the person's message that opened it"
+            },
+            "opened_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opened By",
+              "description": "the login of who wrote that message"
+            },
+            "started_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Started At"
+            },
+            "last_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Last At"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs",
+              "description": "its invoke_agent spans"
+            },
+            "off_design": {
+              "type": "integer",
+              "title": "Off Design",
+              "description": "its spans that crossed an edge the spec lacks"
+            },
+            "errors": {
+              "type": "integer",
+              "title": "Errors"
+            },
+            "usd": {
+              "type": "number",
+              "title": "Usd"
+            },
+            "spans": {
+              "items": {
+                "$ref": "#/components/schemas/SpanOut"
+              },
+              "type": "array",
+              "title": "Spans"
+            },
+            "metrics": {
+              "$ref": "#/components/schemas/Metrics"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "system",
+            "revision",
+            "chat_id",
+            "message_id",
+            "opened_by",
+            "started_at",
+            "last_at",
+            "runs",
+            "off_design",
+            "errors",
+            "usd",
+            "spans",
+            "metrics"
+          ],
+          "title": "TraceOut"
+        },
+        "TraceSummary": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "system": {
+              "type": "string",
+              "title": "System",
+              "description": "the slug of the system"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision",
+              "description": "the revision of its spec the trace ran under"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id"
+            },
+            "message_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message Id",
+              "description": "the person's message that opened it"
+            },
+            "opened_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Opened By",
+              "description": "the login of who wrote that message"
+            },
+            "started_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Started At"
+            },
+            "last_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Last At"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs",
+              "description": "its invoke_agent spans"
+            },
+            "off_design": {
+              "type": "integer",
+              "title": "Off Design",
+              "description": "its spans that crossed an edge the spec lacks"
+            },
+            "errors": {
+              "type": "integer",
+              "title": "Errors"
+            },
+            "usd": {
+              "type": "number",
+              "title": "Usd"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "system",
+            "revision",
+            "chat_id",
+            "message_id",
+            "opened_by",
+            "started_at",
+            "last_at",
+            "runs",
+            "off_design",
+            "errors",
+            "usd"
+          ],
+          "title": "TraceSummary"
         },
         "TranscriptFile": {
           "properties": {

@@ -893,6 +893,37 @@ answer goes to the run's inbox and the agent goes on in the same session. After 
 the run, and the answer or a reply then queues a chat run on the same worker that resumes the session, the worktrees
 and the branch. A chat run that asks nothing ends after its turn.
 
+### Handing work to another agent
+
+`evo-agents worker agent ask HANDLE TEXT` hands work to another agent and waits for its answer (`docs/hub.md`, Agents
+across projects). A brief makes the handoff clear; each field is optional, and an ask with none works as before:
+
+| Flag | Body field | What |
+| --- | --- | --- |
+| `--goal TEXT` | `goal` | what the agent asked should reach |
+| `--output TEXT` | `output` | what its answer should hold |
+| `--bounds TEXT` | `bounds` | what it should not do or touch |
+| `--done-when TEXT` | `done_when` | when its work is finished |
+| `--ref REF` (repeat) | `refs` | where it starts from: repo:path, a run, a URL |
+| `--reason TEXT` | `reason` | why an agent of a system asks off its `interacts` edges |
+
+The brief heads the prompt of the run asked ("# Your brief from @handle (run #N)") and follows the question in the
+direct chat. The trace's span keeps which fields came (`evo.brief_fields`). The System section of a system agent's
+prompt tells it to give at least `--goal`, `--output` and `--done-when`. An agent of a system that asks an agent off
+its `interacts` edges without `--reason` is refused, and the refusal names the agents its edges lead to.
+
+```sh
+evo-agents worker agent ask fixer "The wait helper retries forever on a closed socket." \
+  --goal "a wait helper that gives up after 30 s" --output "the commit and the test you ran" \
+  --done-when "tests/test_wait.py passes ten times in a row" --ref evo-agents:evo_agents/wait.py
+```
+
+`evo-agents worker agent forward --run RUN` (`POST /v1/worker/runs/{id}/agent/forwards`, `{run_id}`) posts the last
+answer of run RUN verbatim into this chat run's thread, with the files and interactive answers it carries. The message
+shows as written by RUN's agent and forwarded by this run's (`forwarded_by` in the chat API). Only a run of the same
+trace of an agent system that has ended can be forwarded. Otherwise the hub refuses (201, `refusal`), says so in the
+thread, and the command exits 1.
+
 ### Failure triage
 
 When a run of kind step, plan or author fails, the hub opens a thread in the chat "Triage: PROJECT", one chat for the

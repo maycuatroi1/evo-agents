@@ -61,6 +61,16 @@ list them; without evo-kg, evo-hub serves them from the hub's graph.
   In other worker runs, a background command keeps the session for at most 30 minutes after your turn ends.
 - Never wait with a foreground `sleep N` followed by `hub run show`: the harness refuses a foreground sleep.
 
+## Handing work to another agent
+
+- In a chat run, `evo-agents worker agent ask HANDLE TEXT` hands work to another agent and waits for its answer. Give
+  a brief: `--goal`, `--output` and `--done-when` at least, `--bounds` and `--ref REF` (repeatable) when they help.
+  The brief heads the prompt of the run asked.
+- As an agent of an agent system, ask along your `interacts` edges (your prompt's System section lists them). An ask
+  off them needs `--reason WHY`, or the hub refuses it.
+- `evo-agents worker agent forward --run RUN` posts the last answer of run RUN of your trace verbatim into your
+  thread, once that run has ended, instead of retyping it.
+
 ## Asking the person
 
 - A question with 2 to 6 natural options is a decision: `ask_member` in a session of a hub project, `evo-agents worker

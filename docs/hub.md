@@ -722,7 +722,7 @@ An edge has `from`, `to`, a `kind` and a `description`; its kind fixes the kinds
 
 The agent the entry interacts with is the system's entry agent: at most one per system, and a profile is the entry
 agent of at most one system (a partial unique index holds it). `limits` holds the budgets of the system:
-`trace_usd` (2 by default), `trace_runs` (12) and `daily_usd` (5). The hub only stores them so far.
+`trace_usd` (2 by default), `trace_runs` (12) and `daily_usd` (5). A trace keeps to the first two (Budget of a trace).
 
 The hub checks a spec before it stores it. Errors are an unknown key, an edge whose ends do not fit its kind, a node or
 an edge that is not there, a second entry, curator or orchestrator, and a profile or a named graph the project does
@@ -771,6 +771,62 @@ edges:
 - {from: in, to: triage, kind: interacts, description: every question}
 - {from: triage, to: docs, kind: uses_kg, description: product docs}
 ```
+
+### What an agent of a system knows
+
+The prompt of a chat run of a system's agent has a System section (`evo_agents/hub/system_context.py`), after the
+rules and within its own budget of 4 KiB (`system_context.SYSTEM_BYTES`): the system's name and purpose, the agents
+it hands work to along its `interacts` edges and who hands it work, each with its @handle and the edge's description,
+the graphs of its `uses_kg` edges, and the Orchestrator it escalates to. The `kg_*` tools of such a run read those
+graphs when the call names no graph (`system:<slug>`, their union); an agent with a `uses_kg` edge to `default` reads
+the project's default as before. A run finds its system through its trace, then as the entry agent of a system, then
+through the latest trace of its chat; a profile in several systems takes the system of the running chat.
+
+### Traces
+
+A person's message that wakes a system's entry agent opens a trace, in any chat, a Home direct chat included
+(`evo_agents/hub/server/system_traces.py`, tables `system_traces`, `system_spans` and `agent_ask_briefs` of migration
+0218, `evo_agents/hub/tables_traces.py`). Every run the entry agent's run hands work to, by an ask or a mention, and
+every run those hand on, joins it: the hub follows `runs.spawned_by_run_id` and the run of the message that woke each
+run. A run that goes on in its session (a parked run resumed, an inbox untaken) gets a span of its own marked
+`evo.resume_of_run_id`; it counts on its node and crosses no edge.
+
+Each span is named as OpenTelemetry GenAI names them: `invoke_agent` for a turn of an agent, `execute_tool` for an
+ask (`agent_ask`), a mention (`chat_mention`), a forward (`agent_forward`) or a knowledge graph query (`kg_*`). Its
+attributes are `gen_ai.*` (`gen_ai.operation.name`, `gen_ai.agent.name`, `gen_ai.conversation.id`,
+`gen_ai.tool.name`, `gen_ai.data_source.id`) and `evo.*` (`evo.child_run_id`, `evo.brief_fields`,
+`evo.forwarded_run_id`). A span holds no content: it names the message (`message_id`) and the run, and the API reads
+time, state, runtime, tokens and cost from the run when it is asked.
+
+How to read a trace: the first `invoke_agent` span comes from node `entry` (`from_node`) and has no parent. Each
+`execute_tool` span runs under the turn that called it and names the node it went to (`to_node`); the `invoke_agent`
+span of the run it handed runs under that turn too, with `from_node` the asking node. `status` is `running`, `ok`,
+`error` or `refused`; a refused span says why in `reason`.
+
+`off_design` marks an edge the spec lacks: an ask or a mention from one node to another with no `interacts` edge
+between them, and every span of an agent the spec does not name, which shows as an external node `@handle`. An ask off
+the asker's edges is refused unless it gives `--reason`, which the span keeps; a mention off the edges still runs and
+is recorded off design with no reason. Only the agents of a system meet this rule. The metrics count, per node and per
+edge, the spans, the errors, the spans off design, the p50 and last seconds, the tokens and the cost.
+
+A trace follows its chat's audience: a member of the system's project reads it when they may read the chat. A span
+of a run of another project shows its node, edge, state and `gen_ai.*` attributes to everyone who reads the trace,
+and its message, reason and other attributes only to those with a grant on that project (`content_withheld`).
+
+| Route | What | Who |
+| --- | --- | --- |
+| `GET /v1/projects/{p}/systems/{slug}/traces` (`?limit=50&before=ID`) | the traces, the newest first | a member who reads the chat |
+| `GET .../systems/{slug}/traces/{id}` | a trace, its spans and metrics | the same |
+| `GET .../systems/{slug}/metrics` (`?limit=50`) | metrics of the latest traces | the same |
+| `GET .../systems/{slug}/traces/stream` (`?after=TIME`) | SSE: a `trace` event each time a trace moves, `end` when access ends | the same |
+
+The stream wakes on the hub's one LISTEN (channel `evo_system_traces`, the system's id).
+
+### Budget of a trace
+
+`limits.trace_runs` (12) and `limits.trace_usd` (2) cap a trace: its runs, counted through `spawned_by_run_id`, and
+their cost. Past either, the next ask or mention of the trace is refused with the limit it passed, and a `refused`
+span says so.
 
 ## Group chats
 

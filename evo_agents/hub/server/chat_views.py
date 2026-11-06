@@ -162,6 +162,11 @@ class GroupMessage(BaseModel):
         description="the interactive answer (an output a message of the chat carries) a person sent it from; null "
         "when sent otherwise",
     )
+    forwarded_by: str | None = Field(
+        None,
+        description="the @handle of the agent that forwarded it verbatim from the run of its author "
+        "(evo-agents worker agent forward); null when its author's run wrote it",
+    )
 
 
 class Chat(BaseModel):
@@ -523,6 +528,7 @@ async def messages_view(
     files = await _outputs(conn, shown)
     attached = await attachment_store.of_messages(conn, ids)
     bridged = await _bridged(conn, ids)
+    forwarders = await _forwarders(conn, shown)
     return [
         GroupMessage(
             id=row.id,
@@ -543,9 +549,28 @@ async def messages_view(
             via=row.via,
             bridged_to=bridged.get(row.id, []),
             from_answer=row.from_output_id,
+            forwarded_by=forwarders.get(row.id),
         )
         for row in shown
     ]
+
+
+async def _forwarders(conn: AsyncConnection, rows) -> dict[int, str]:
+    """The handle of the agent whose run posted each message of ``rows`` an other agent wrote (a forward), by id."""
+    runs = {row.id: row.run_id for row in rows if row.run_id is not None and row.author_profile_id is not None}
+    if not runs:
+        return {}
+    r, p = tables.runs, tables.agent_profiles
+    query = (
+        select(r.c.id, r.c.profile_id, p.c.handle)
+        .join(p, p.c.id == r.c.profile_id)
+        .where(one_of(r.c.id, sorted(set(runs.values()))))
+    )
+    by_run = {row.id: (row.profile_id, row.handle) for row in await conn.execute(query)}
+    authors = {row.id: row.author_profile_id for row in rows}
+    return {
+        message: by_run[run][1] for message, run in runs.items() if run in by_run and by_run[run][0] != authors[message]
+    }
 
 
 async def _outputs(conn: AsyncConnection, rows) -> dict[int, list[RunOutput]]:

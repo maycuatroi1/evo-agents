@@ -34,7 +34,7 @@ from uuid import UUID
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import UUID4, BaseModel, Field, field_validator, model_validator
-from sqlalchemy import exists, func, insert, select, update
+from sqlalchemy import exists, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -370,6 +370,11 @@ async def _link(conn: AsyncConnection, column: str, target_id: int, output_ids: 
     await conn.execute(pg_insert(k).values(rows).on_conflict_do_nothing(index_elements=key))
 
 
+async def link_outputs(conn: AsyncConnection, message_id: int, output_ids: list[int]) -> None:
+    """Have message ``message_id`` carry outputs ``output_ids`` too, as a forward of a message that carries them."""
+    await _link(conn, "chat_message_id", message_id, output_ids)
+
+
 async def link_decision(conn: AsyncConnection, run_id: int, decision_id: int, output_ids: list[int]) -> None:
     """Have decision ``decision_id`` of run ``run_id`` carry its outputs ``output_ids``; 422 for one of another run.
     They go with the question, out of the run's notice of files no channel has tried yet."""
@@ -413,6 +418,7 @@ async def attach_leftovers(conn: AsyncConnection, run_id: int) -> None:
         select(cm.c.id, cm.c.chat_id)
         .join_from(cm, r, r.c.chat_id == cm.c.chat_id)
         .where(r.c.id == run_id, cm.c.run_id == run_id)
+        .where(or_(cm.c.author_profile_id.is_(None), cm.c.author_profile_id == r.c.profile_id))  # not a forward
         .order_by(cm.c.seq.desc())
         .limit(1)
     )
