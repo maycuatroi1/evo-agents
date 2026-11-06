@@ -2511,6 +2511,30 @@
       "gone": "Nút, cạnh hoặc quyết định không có trong đồ thị bạn xem được.",
       "stale": "Ai đó vừa quyết định trước bạn. Hãy tải lại các quyết định rồi thử lại.",
       "invalid": "Hub đã từ chối quyết định này."
+    },
+    "graphs": {
+      "label": "Graph",
+      "default": "default (mọi nguồn)",
+      "manage": "Graph có tên",
+      "title": "Graph có tên",
+      "description": "Một graph có tên là một tập nguồn của project này. Chọn một graph thì tìm kiếm chỉ trả kết quả từ các nguồn đó; graph vẫn được build một lần cho mọi nguồn.",
+      "name": "Tên",
+      "namePlaceholder": "billing",
+      "purpose": "Dùng để làm gì",
+      "sources": "Nguồn",
+      "noSources": "Bản build mới nhất chưa đọc nguồn nào.",
+      "notBuilt": "không có trong bản build mới nhất",
+      "new": "Graph có tên mới",
+      "create": "Tạo",
+      "save": "Lưu",
+      "delete": "Xóa",
+      "created": "Đã tạo graph {name}",
+      "saved": "Đã lưu graph {name}",
+      "deleted": "Đã xóa graph {name}",
+      "forbidden": "Cần quyền writer trên project này để đổi các graph có tên.",
+      "gone": "Graph đó không còn: ai đó đã xóa hoặc đổi tên nó.",
+      "taken": "Project đã có graph trùng tên.",
+      "invalid": "Tên gồm a-z, 0-9, '.', '_' hoặc '-', và không phải 'default'."
     }
   },
   "workers": {

@@ -2511,6 +2511,30 @@
       "gone": "The node, edge or decision is not in the graph you can see.",
       "stale": "Someone decided in the meantime. Reload the decisions and try again.",
       "invalid": "The hub refused this decision."
+    },
+    "graphs": {
+      "label": "Graph",
+      "default": "default (every source)",
+      "manage": "Named graphs",
+      "title": "Named graphs",
+      "description": "A named graph is a set of this project's sources. Picking one narrows the search to its sources; the graph is built once for every source.",
+      "name": "Name",
+      "namePlaceholder": "billing",
+      "purpose": "What it is for",
+      "sources": "Sources",
+      "noSources": "The newest build read no source yet.",
+      "notBuilt": "not in the newest build",
+      "new": "New named graph",
+      "create": "Create",
+      "save": "Save",
+      "delete": "Delete",
+      "created": "Created graph {name}",
+      "saved": "Saved graph {name}",
+      "deleted": "Deleted graph {name}",
+      "forbidden": "Changing the named graphs needs the writer role on this project.",
+      "gone": "That graph is gone: someone deleted or renamed it.",
+      "taken": "The project has a graph of that name already.",
+      "invalid": "A name is a-z, 0-9, '.', '_' or '-', and not 'default'."
     }
   },
   "workers": {

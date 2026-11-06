@@ -1057,7 +1057,9 @@ The agent of a chat run reads the knowledge graph and the memories of another pr
 `kg-context`, `memory-search` or `memory-get`, which calls `POST /v1/worker/runs/{id}/agent/reads` with the worker's
 token (`evo_agents/hub/server/agent_reads.py`). The evo-hub MCP tools keep reading the run's own project only: a run's
 token reaches no other project, and widening it would widen every tool. Only a chat run reads this way (422 for
-another kind), and never its own project (422, with a pointer to the evo-hub tools).
+another kind), and never its own project (422, with a pointer to the evo-hub tools). `--graph NAME` (`graph` of the
+body) narrows `kg-search` and `kg-context` to a named graph of PROJECT (`docs/kg.md`, Named graphs); the check below
+still applies to what it returns.
 
 The hub reads as the person at the origin of the chain, with that person's grant on PROJECT, through PROJECT's own hub
 sink, as the evo-hub tools of a session of that project would. A person with no grant there gets 404, as for a project

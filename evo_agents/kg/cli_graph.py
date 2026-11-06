@@ -288,6 +288,8 @@ def cmd_query(args) -> int:
     if args.text is not None:
         first = {"kg_node": "id", "kg_impact": "id", "kg_path": "from", "kg_more": "handle"}
         params.setdefault(first.get(args.tool, "query"), args.text)
+    if getattr(args, "graph", None):  # a named graph of the project on the hub (docs/kg.md, Named graphs)
+        params["graph"] = args.graph
     result = session.call(args.tool, params)
     if args.json:
         print(json.dumps(result.get("structuredContent", result), ensure_ascii=False, indent=2))
@@ -624,6 +626,12 @@ def register(ksub, with_project) -> None:
     query.add_argument("text", nargs="?", help="query, node id (kg_path: from) or handle")
     query.add_argument("--arg", action="append", help="extra tool argument key=value (JSON values allowed)")
     query.add_argument("--sink", default="cli", help="sink whose clearance applies (default: cli)")
+    query.add_argument(
+        "--graph",
+        metavar="NAME",
+        help="only the sources of this named graph of the project (`hub kg graph list`; needs the hub); "
+        "default: every source",
+    )
     query.add_argument(
         "--backend",
         choices=["auto", "local", "hub"],

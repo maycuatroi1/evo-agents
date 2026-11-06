@@ -11220,6 +11220,202 @@
         ]
       }
     },
+    "hub kg graph create": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--description"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "graph"
+        ]
+      }
+    },
+    "hub kg graph delete": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "deleted"
+        ],
+        "schema": "NamedGraphDeleted"
+      }
+    },
+    "hub kg graph list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "graphs",
+          "sources",
+          "can_change"
+        ],
+        "schema": "NamedGraphsOut"
+      }
+    },
+    "hub kg graph update": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--rename"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--description"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--add"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--remove"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "graph"
+        ]
+      }
+    },
     "hub kg health": {
       "positionals": [],
       "options": [
@@ -25651,6 +25847,14 @@
         },
         {
           "flags": [
+            "--graph"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -33828,7 +34032,7 @@
             "kg"
           ],
           "summary": "Search Nodes",
-          "description": "Visible nodes matching ``q``, best first, as kg_search finds them.",
+          "description": "Visible nodes matching ``q``, best first, as kg_search finds them; of the named graph ``graph`` only when\ngiven (``evo_agents.hub.server.kg_graphs``).",
           "operationId": "search_nodes_v1_kg__project__nodes_get",
           "parameters": [
             {
@@ -33887,6 +34091,26 @@
                 "default": 25,
                 "title": "Limit"
               }
+            },
+            {
+              "name": "graph",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 63
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a named graph of the project: only its sources' nodes",
+                "title": "Graph"
+              },
+              "description": "a named graph of the project: only its sources' nodes"
             }
           ],
           "responses": {
@@ -35832,6 +36056,380 @@
                 }
               },
               "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/graphs": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "List Graphs",
+          "description": "``default`` and the named graphs of the project, with the sources its newest build read.",
+          "operationId": "list_graphs_v1_kg__project__graphs_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NamedGraphsOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Create Graph",
+          "description": "Add a named graph of some of the project's sources.",
+          "operationId": "create_graph_v1_kg__project__graphs_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NamedGraphCreate"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NamedGraphOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/graphs/{name}": {
+        "patch": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Update Graph",
+          "description": "Rename a named graph, set its description or sources, give it sources or strip it of some.",
+          "operationId": "update_graph_v1_kg__project__graphs__name__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "title": "Name"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NamedGraphUpdate"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NamedGraphOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Delete Graph",
+          "description": "Take a named graph away; the project's build and its sources stay.",
+          "operationId": "delete_graph_v1_kg__project__graphs__name__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "title": "Name"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/NamedGraphDeleted"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
             },
             "422": {
               "content": {
@@ -116216,6 +116814,20 @@
               "title": "Limit",
               "description": "kg_search, memory_search",
               "default": 10
+            },
+            "graph": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 63,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Graph",
+              "description": "kg_search, kg_context: a named graph of the project read, only its sources' nodes and edges"
             }
           },
           "type": "object",
@@ -135956,6 +136568,250 @@
           ],
           "title": "NameReport"
         },
+        "NamedGraphCreate": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 63,
+              "minLength": 1,
+              "title": "Name",
+              "description": "a-z, 0-9, '.', '_', '-'; not 'default'"
+            },
+            "sources": {
+              "items": {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[^\\x00-\\x1f\\x7f/]+$"
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Sources"
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 500,
+              "title": "Description",
+              "default": ""
+            }
+          },
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "title": "NamedGraphCreate"
+        },
+        "NamedGraphDeleted": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "deleted": {
+              "type": "string",
+              "title": "Deleted"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "deleted"
+          ],
+          "title": "NamedGraphDeleted"
+        },
+        "NamedGraphOut": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description"
+            },
+            "sources": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Sources",
+              "description": "the sources it holds; empty for default, which holds every source"
+            },
+            "default": {
+              "type": "boolean",
+              "title": "Default",
+              "description": "the implicit graph of every source of the project"
+            },
+            "missing": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Missing",
+              "description": "sources it names that the newest build did not read: nothing of them shows"
+            },
+            "created_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created By"
+            },
+            "updated_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated By"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            },
+            "updated_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "description",
+            "sources",
+            "default"
+          ],
+          "title": "NamedGraphOut"
+        },
+        "NamedGraphUpdate": {
+          "properties": {
+            "rename": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 63,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rename",
+              "description": "its new name"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "sources": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "pattern": "^[^\\x00-\\x1f\\x7f/]+$"
+                  },
+                  "type": "array",
+                  "maxItems": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sources",
+              "description": "its sources, all of them, in place of what it holds"
+            },
+            "add": {
+              "items": {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[^\\x00-\\x1f\\x7f/]+$"
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Add",
+              "description": "sources it gets"
+            },
+            "remove": {
+              "items": {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1,
+                "pattern": "^[^\\x00-\\x1f\\x7f/]+$"
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Remove",
+              "description": "sources it loses"
+            }
+          },
+          "type": "object",
+          "title": "NamedGraphUpdate"
+        },
+        "NamedGraphsOut": {
+          "properties": {
+            "graphs": {
+              "items": {
+                "$ref": "#/components/schemas/NamedGraphOut"
+              },
+              "type": "array",
+              "title": "Graphs",
+              "description": "default first, then the named graphs by name"
+            },
+            "sources": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Sources",
+              "description": "the sources the newest build of the project read"
+            },
+            "can_change": {
+              "type": "boolean",
+              "title": "Can Change"
+            }
+          },
+          "type": "object",
+          "required": [
+            "graphs",
+            "sources",
+            "can_change"
+          ],
+          "title": "NamedGraphsOut"
+        },
         "NamedGroup": {
           "properties": {
             "key": {
@@ -136577,6 +137433,18 @@
               },
               "type": "array",
               "title": "Results"
+            },
+            "named_graph": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Named Graph",
+              "description": "the named graph the search was limited to; null for every source"
             }
           },
           "type": "object",

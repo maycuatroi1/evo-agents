@@ -4,6 +4,7 @@ it reads, opened read-only as that audience (``evo_agents.kg.serve``)."""
 from __future__ import annotations
 
 from evo_agents.kg.explore import Explorer
+from evo_agents.kg.graph_scope import DEFAULT_GRAPH, GraphScope
 from evo_agents.kg.policy import Label, audience_below
 from evo_agents.kg.project import Project
 from evo_agents.kg.refs import stored
@@ -41,6 +42,10 @@ class SessionView:
         # kg_search orders files by the learned model (evo_agents.kg.rank): None as the setting says, True or False always
         self.rank: bool | None = None
         self.explorer: Explorer | None = None  # kg_search explores (``evo_agents.kg.explore``): agents on the hub only
+        # the named graphs this session knows, name to sources (``evo_agents.kg.graph_scope``): none on this machine,
+        # those the hub resolved for the call on the hub; ``scope`` is the one the current call reads, None for all
+        self.named_graphs: dict[str, frozenset[str]] = {}
+        self.scope: GraphScope | None = None
         if project is not None and error is None:
             policy = project.policy
             if sink == "cli" and "cli" not in policy.sinks:
@@ -66,8 +71,38 @@ class SessionView:
         return level <= clearance[0] and location <= clearance[1] and audience_below(audience, self.audience)
 
     def seen(self, x: dict) -> bool:
-        """``visible``, and not deprecated by a decision (``evo_agents.kg.pipeline.curation``) unless asked for."""
-        return self.visible(x["label"]) and (self.deprecated or "deprecated" not in (x.get("props") or {}))
+        """``visible``, and not deprecated by a decision (``evo_agents.kg.pipeline.curation``) unless asked for, and
+        of the named graph the call reads (``scoped``)."""
+        return (
+            self.visible(x["label"])
+            and (self.deprecated or "deprecated" not in (x.get("props") or {}))
+            and self.scoped(x)
+        )
+
+    def scoped(self, x: dict) -> bool:
+        """Whether a node or an edge row is of the named graph the call reads; any one without a named graph."""
+        return self.scope is None or self.scope.holds(x)
+
+    def shows(self, node: dict) -> bool:
+        """``visible`` for a node row, and of the named graph the call reads."""
+        return self.visible(node["label"]) and self.scoped(node)
+
+    def named_scope(self, graph) -> GraphScope | None:
+        """The scope of the named graph a call passes as ``graph``: None for none or ``default`` (every source).
+        Raises ToolError for a name the session does not know."""
+        if graph is None or (isinstance(graph, str) and graph.strip() in ("", DEFAULT_GRAPH)):
+            return None
+        name = graph.strip() if isinstance(graph, str) else graph
+        if isinstance(name, str) and name in self.named_graphs:
+            return GraphScope(name, self.named_graphs[name])
+        raise ToolError(self.unknown_graph(str(graph)))
+
+    def unknown_graph(self, name: str) -> str:
+        """The error of a call naming a graph the session does not know."""
+        return (
+            f"no knowledge graph named {name!r} here: named graphs are kept on the hub (`evo-agents hub kg graph "
+            f"list`); {DEFAULT_GRAPH!r} reads every source"
+        )
 
     def describe(self, label: tuple) -> str:
         assert self.policy is not None, ANSWERS_NOTHING
@@ -95,6 +130,9 @@ class SessionView:
         within = top is not None and top[0] <= clearance[0] and top[1] <= clearance[1]
         self.sees_all = within and audience_below(store.top_audience(b), self.audience)
         store.ceiling = None if self.sees_all else clearance  # edges above it are left out before the limit
+        if self.scope is not None:  # a named graph leaves out nodes the label lets through: read further, as then
+            self.scope.bind(store, b)
+            self.sees_all = False
         return store, b
 
     def _graph(self) -> tuple[Store, int]:
@@ -124,4 +162,4 @@ class SessionView:
         if n is None:
             alias = store.alias_of(node_id, b)
             n = store.node(alias, b) if alias else None
-        return n if n is not None and self.visible(n["label"]) else None
+        return n if n is not None and self.shows(n) else None

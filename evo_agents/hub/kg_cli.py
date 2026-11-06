@@ -592,6 +592,10 @@ def register_kg(hsub) -> None:
 
     kg_entity_map_cli.register(ksub)
 
+    from evo_agents.hub import kg_graphs_cli
+
+    kg_graphs_cli.register(ksub)
+
 
 # The hub backend of kg serve and kg query
 

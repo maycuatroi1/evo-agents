@@ -84,6 +84,7 @@ class Session(SearchTools, WalkTools, ImpactTools):
             if name in SIGNATURES:
                 args = arguments(name, args, *SIGNATURES[name])
             self.deprecated = bool(args.pop("deprecated", False))
+            self.scope = self.named_scope(args.pop("graph", None))  # a named graph narrows, never widens
             text, data = handler(**args)
         except (ToolError, UnknownArgument) as exc:
             return error_result(str(exc))
@@ -95,6 +96,7 @@ class Session(SearchTools, WalkTools, ImpactTools):
             for store in self._opened:
                 store.close()
             self._opened = None
+            self.scope = None
         return self._envelope(text, data)
 
     def _envelope(self, text: str, data: dict) -> dict:
@@ -128,13 +130,14 @@ class Session(SearchTools, WalkTools, ImpactTools):
     # -- tools ----------------------------------------------------------------------------------
 
     def _evidence(self, store: Store, elem: str, b: int, links: Links) -> list[dict]:
+        """Where ``elem`` was read or derived from: items the reader sees, of the named graph the call reads."""
         out = []
         for w in store.where(elem, b)[:10]:
             unit = store.unit(w["unit"], b)
             if not unit:
                 continue
             item = store.node(unit["item"], b)
-            if item is None or not self.visible(item["label"]):
+            if item is None or not self.shows(item):
                 continue
             self._saw(item["label"])
             out.append(
@@ -153,7 +156,7 @@ class Session(SearchTools, WalkTools, ImpactTools):
                     unit = store.unit(u, b)
                     if unit:
                         item = store.node(unit["item"], b)
-                        if item and self.visible(item["label"]):
+                        if item and self.shows(item):
                             self._saw(item["label"])
                             out.append(
                                 {

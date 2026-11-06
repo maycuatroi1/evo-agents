@@ -36,6 +36,7 @@ from evo_agents.hub import kg_decisions, kg_entity_graph, kg_map, kg_review
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession, open_graph
 from evo_agents.kg import freshness
+from evo_agents.kg.graph_scope import GraphScope
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.serve_walk import HUB_DEGREE, SEED_EDGES, STATUS_RANK
@@ -77,11 +78,18 @@ class WebSession(HubSession):
         except ToolError as exc:
             raise GraphProblem(str(exc)) from None
 
-    def search(self, query: str, kinds: list[str] | None = None, limit: int = 10) -> dict:
-        """kg_search: visible nodes matching ``query``, ``kinds`` only when given."""
+    def search(
+        self, query: str, kinds: list[str] | None = None, limit: int = 10, scope: GraphScope | None = None
+    ) -> dict:
+        """kg_search: visible nodes matching ``query``, ``kinds`` only when given, of the named graph ``scope`` only
+        when given (``evo_agents.kg.graph_scope``)."""
         if self.error:
             return {"results": []}
-        return self._data(self.tool_kg_search, query=query, kinds=kinds or None, limit=limit)
+        self.scope = scope
+        try:
+            return self._data(self.tool_kg_search, query=query, kinds=kinds or None, limit=limit)
+        finally:
+            self.scope = None
 
     def node(self, node_id: str) -> dict:
         """kg_node: the node (by id or alias), its evidence and its visible edges. Raises NotVisible."""

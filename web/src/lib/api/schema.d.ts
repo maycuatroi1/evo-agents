@@ -1331,7 +1331,8 @@ export interface paths {
         };
         /**
          * Search Nodes
-         * @description Visible nodes matching ``q``, best first, as kg_search finds them.
+         * @description Visible nodes matching ``q``, best first, as kg_search finds them; of the named graph ``graph`` only when
+         *     given (``evo_agents.hub.server.kg_graphs``).
          */
         get: operations["search_nodes_v1_kg__project__nodes_get"];
         put?: never;
@@ -1650,6 +1651,54 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/graphs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Graphs
+         * @description ``default`` and the named graphs of the project, with the sources its newest build read.
+         */
+        get: operations["list_graphs_v1_kg__project__graphs_get"];
+        put?: never;
+        /**
+         * Create Graph
+         * @description Add a named graph of some of the project's sources.
+         */
+        post: operations["create_graph_v1_kg__project__graphs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/graphs/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Graph
+         * @description Take a named graph away; the project's build and its sources stay.
+         */
+        delete: operations["delete_graph_v1_kg__project__graphs__name__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Graph
+         * @description Rename a named graph, set its description or sources, give it sources or strip it of some.
+         */
+        patch: operations["update_graph_v1_kg__project__graphs__name__patch"];
         trace?: never;
     };
     "/v1/kg/{project}/entities/setup": {
@@ -19403,6 +19452,11 @@ export interface components {
              * @default 10
              */
             limit: number;
+            /**
+             * Graph
+             * @description kg_search, kg_context: a named graph of the project read, only its sources' nodes and edges
+             */
+            graph?: string | null;
         };
         /** Csrf */
         Csrf: {
@@ -27878,6 +27932,98 @@ export interface components {
              */
             same_as?: string | null;
         };
+        /** NamedGraphCreate */
+        NamedGraphCreate: {
+            /**
+             * Name
+             * @description a-z, 0-9, '.', '_', '-'; not 'default'
+             */
+            name: string;
+            /** Sources */
+            sources?: string[];
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+        };
+        /** NamedGraphDeleted */
+        NamedGraphDeleted: {
+            /** Project */
+            project: string;
+            /** Deleted */
+            deleted: string;
+        };
+        /** NamedGraphOut */
+        NamedGraphOut: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Sources
+             * @description the sources it holds; empty for default, which holds every source
+             */
+            sources: string[];
+            /**
+             * Default
+             * @description the implicit graph of every source of the project
+             */
+            default: boolean;
+            /**
+             * Missing
+             * @description sources it names that the newest build did not read: nothing of them shows
+             */
+            missing?: string[];
+            /** Created By */
+            created_by?: string | null;
+            /** Updated By */
+            updated_by?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** NamedGraphUpdate */
+        NamedGraphUpdate: {
+            /**
+             * Rename
+             * @description its new name
+             */
+            rename?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Sources
+             * @description its sources, all of them, in place of what it holds
+             */
+            sources?: string[] | null;
+            /**
+             * Add
+             * @description sources it gets
+             */
+            add?: string[];
+            /**
+             * Remove
+             * @description sources it loses
+             */
+            remove?: string[];
+        };
+        /** NamedGraphsOut */
+        NamedGraphsOut: {
+            /**
+             * Graphs
+             * @description default first, then the named graphs by name
+             */
+            graphs: components["schemas"]["NamedGraphOut"][];
+            /**
+             * Sources
+             * @description the sources the newest build of the project read
+             */
+            sources: string[];
+            /** Can Change */
+            can_change: boolean;
+        };
         /** NamedGroup */
         NamedGroup: {
             /** Key */
@@ -28178,6 +28324,11 @@ export interface components {
             kinds: string[];
             /** Results */
             results: components["schemas"]["KgNode"][];
+            /**
+             * Named Graph
+             * @description the named graph the search was limited to; null for every source
+             */
+            named_graph?: string | null;
         };
         /** NoticeIn */
         NoticeIn: {
@@ -49520,6 +49671,8 @@ export interface operations {
                 /** @description only nodes of these kinds */
                 kind?: string[] | null;
                 limit?: number;
+                /** @description a named graph of the project: only its sources' nodes */
+                graph?: string | null;
             };
             header?: never;
             path: {
@@ -50866,6 +51019,284 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_graphs_v1_kg__project__graphs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedGraphsOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_graph_v1_kg__project__graphs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NamedGraphCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedGraphOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_graph_v1_kg__project__graphs__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedGraphDeleted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_graph_v1_kg__project__graphs__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NamedGraphUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NamedGraphOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

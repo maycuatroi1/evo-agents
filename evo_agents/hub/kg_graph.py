@@ -504,11 +504,13 @@ def answer(
     explore: bool = False,
     tuning: kg_settings.Tuning | None = None,
     whole: bool = False,
+    named_graphs: dict[str, frozenset[str]] | None = None,
 ) -> dict:
     """One kg_* call on the newest graph of ``project`` that can be read; ``explore``: a kg_search of an agent's, which
     may explore the ranking (``evo_agents.kg.explore``). Blocking: run it in a thread, which also keeps the SQLite
     connection in the thread that made it. ``tuning`` is what the project's search is tuned by (its kg_settings);
-    ``whole``: the data alone, uncut (``WholeSession``)."""
+    ``whole``: the data alone, uncut (``WholeSession``); ``named_graphs``: the named graph the call's ``graph`` names,
+    to its sources, as the database holds it (``evo_agents.kg.graph_scope``)."""
     path, graph = cache.acquire(store, project, graphs)
     try:
         opened = open_graph(path, project, graph)
@@ -517,6 +519,7 @@ def answer(
         try:
             session = (WholeSession if whole else HubSession)(project, policy, ceiling, sink, opened, graph, graphs[0])
             session.explorer = Explorer() if explore else None
+            session.named_graphs = dict(named_graphs or {})
             return handles.call(session, owner, tool, arguments)
         finally:
             opened.close()

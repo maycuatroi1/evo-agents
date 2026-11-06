@@ -839,6 +839,7 @@ kg_decisions, kg_decision_events = tables_kg.decision_tables(metadata)  # 0142
 kg_query_labels = tables_kg.query_labels(metadata)  # each kg_search and what the agent opened after it (0178)
 kg_eval_sets = tables_kg.eval_sets(metadata)  # each version of a project's retrieval question set (0179)
 kg_semantic = tables_kg.semantic_settings(metadata)  # whether a project's graph is searched by meaning too (0181)
+kg_named_graphs = tables_kg.named_graphs(metadata)  # the named graphs of a project, sets of its sources (0216)
 kg_settings, kg_settings_changes = tables_kg.kg_settings_tables(
     metadata
 )  # a project's KG settings and their changes (0196)
