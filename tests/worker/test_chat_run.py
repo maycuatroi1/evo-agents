@@ -716,4 +716,7 @@ def test_the_prompt_of_a_chat_run_says_when_and_how_to_answer_interactive_and_wh
     assert chat_runs.INTERACTIVE_CDN_RULE in open_chat and chat_runs.INTERACTIVE_NO_CDN_RULE not in open_chat
     assert all(host in open_chat for host in CDN_HOSTS) and "pinning the library's exact version" in open_chat
     assert chat_runs.INTERACTIVE_NO_CDN_RULE in restricted and not any(host in restricted for host in CDN_HOSTS)
+    helper = "/v1/plugin-ui/kit/1/evo-answer.js"
+    assert helper in open_chat and "window.evoAnswer" in open_chat and helper not in restricted
+    assert "parent.postMessage(" in restricted and "parent.postMessage(" not in open_chat
     assert prompt() == restricted, "no CDN unless the hub says the chat is not restricted"

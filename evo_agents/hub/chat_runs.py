@@ -134,23 +134,30 @@ INTERACTIVE_RULE = (
     f"with `{POST_COMMAND} TEXT --attach answer.html --interactive`: the chat shows it under TEXT in a sandboxed frame "
     "with no origin, which reads no cookie and reaches no server, so put its data in the page and never fetch. TEXT "
     "must stand alone, with the answer and its main figures: Telegram, notices and the mobile app show TEXT and no "
-    f"frame. The page talks to the chat by the bridge {ANSWER_BRIDGE}: it posts "
-    f'`parent.postMessage({{bridge: "{ANSWER_BRIDGE}", id, method, params}}, "*")` and gets back '
-    "`{bridge, id, result}` or `{bridge, id, error}`. Methods: `context` (result {theme: light or dark, locale}), "
-    f"`resize` ({{height}} in px, after each change of layout), `sendPrompt` ({{text}}, 1 to {MAX_ANSWER_PROMPT_CHARS} "
-    "characters: asks you a follow-up in this thread, so put the values the reader chose in it) and `openLink` "
-    "({url}, https only, opens a new tab). Use the hub's colour tokens and fonts, both themes, a width of 375 px and "
-    "the keyboard; check the bounds of every number and say which figures are assumptions. The skill "
-    "evo-hub:interactive-answers has the long form."
+    f"frame. The page talks to the chat by the bridge {ANSWER_BRIDGE}, whose methods are `context` (result "
+    "{bridge, theme: light or dark, locale}), `resize` ({height} in px after each change of layout; result {height}), "
+    f"`sendPrompt` ({{text}}, 1 to {MAX_ANSWER_PROMPT_CHARS} characters: asks you a follow-up in this thread, so put "
+    "the values the reader chose in it; result {message_id}) and `openLink` ({url}, https only, opens a new tab; "
+    "result {opened: true}). Use the hub's colour tokens and fonts, both themes, a width of 375 px and the keyboard; "
+    "check the bounds of every number and say which figures are assumptions. The skill evo-hub:interactive-answers "
+    "has the long form."
 )
 INTERACTIVE_CDN_RULE = (
-    "  In this chat the page may load scripts, styles, fonts and images from "
+    "  In this chat the page may load scripts, styles, fonts and images from the hub itself and from "
     + ", ".join(CDN_HOSTS)
-    + " only, each URL pinning the library's exact version (as https://esm.sh/chart.js@4.4.1); nothing else loads."
+    + " only, each CDN URL pinning the library's exact version (as https://esm.sh/chart.js@4.4.1); nothing else "
+    "loads. Load the hub's tokens and bridge helper with "
+    '`<link rel="stylesheet" href="/v1/plugin-ui/kit/1/evo-ui.css">` and '
+    '`<script src="/v1/plugin-ui/kit/1/evo-answer.js"></script>`, then call '
+    "`window.evoAnswer`: `ready` (a promise of the context), `sendPrompt(text)`, `openLink(url)`, `resize(height?)`, `onTheme(fn)` and "
+    "`call(method, params)`, each a promise of the result; the helper sets the theme and the language on <html> and "
+    "keeps the frame's height."
 )
 INTERACTIVE_NO_CDN_RULE = (
-    "  This chat is restricted: the page loads nothing from outside, no CDN either, so inline what it needs or answer "
-    "in text."
+    "  This chat is restricted: the page loads nothing from outside, neither a CDN nor the hub's helper and tokens, so "
+    "inline what it needs or answer in text. Call the bridge yourself: post "
+    f'`parent.postMessage({{bridge: "{ANSWER_BRIDGE}", id, method, params}}, "*")` and take, from `parent` only, '
+    "`{bridge, id, result}` or `{bridge, id, error: {code, message}}`."
 )
 
 

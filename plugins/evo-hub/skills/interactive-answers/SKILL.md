@@ -39,26 +39,56 @@ A file that is not HTML, or is over the limit, is refused with the reason. Fix i
 
 ## Libraries
 
-- **A chat that is not restricted**: scripts, styles, fonts and images may come from `https://esm.sh`,
-  `https://cdn.jsdelivr.net` and `https://cdnjs.cloudflare.com`, nowhere else. Pin the exact version in every URL
-  (`https://esm.sh/chart.js@4.4.1`, `https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm`), never `latest` or a bare name.
-  Load only what the page uses.
-- **A restricted chat** (your prompt says so): nothing loads from outside, so write plain SVG, canvas and DOM, or
-  answer in text.
+- **A chat that is not restricted**: scripts, styles, fonts and images may come from the hub itself (its helper and
+  tokens, below) and from `https://esm.sh`, `https://cdn.jsdelivr.net` and `https://cdnjs.cloudflare.com`, nowhere
+  else. Pin the exact version in every CDN URL (`https://esm.sh/chart.js@4.4.1`,
+  `https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm`), never `latest` or a bare name. Load only what the page uses.
+- **A restricted chat** (your prompt says so): nothing loads from outside, not even the hub's helper and tokens, so
+  write plain SVG, canvas and DOM, or answer in text.
 
 Prefer a small library over a framework: a chart, a diagram or a table needs no React.
 
 ## The bridge evo-answer/1
 
-The page talks to the chat by `postMessage` on `parent`. A request is `{bridge: "evo-answer/1", id, method, params}`;
-the answer is `{bridge, id, result}` or `{bridge, id, error: {code, message}}`. Four methods:
+The page talks to the chat by `postMessage` on `parent`. Four methods:
 
-| Method | params | What it does |
-| --- | --- | --- |
-| `context` | none | result `{theme: "light" or "dark", locale}` |
-| `resize` | `{height}` in px | asks for that height, within bounds; send it after each change of layout |
-| `sendPrompt` | `{text}`, 1 to 4000 characters after trimming | posts the reader's follow-up in this thread, which starts your next turn |
-| `openLink` | `{url}`, https only | opens it in a new tab |
+| Method | params | Result | What it does |
+| --- | --- | --- | --- |
+| `context` | none | `{bridge, theme: "light" or "dark", locale}` | the viewer's theme and language |
+| `resize` | `{height}` in px | `{height}`, the height kept (120 to 1600) | sizes the frame; send it after each change of layout |
+| `sendPrompt` | `{text}`, 1 to 4000 characters after trimming | `{message_id}` | posts the reader's follow-up in this thread, which starts your next turn |
+| `openLink` | `{url}`, https only | `{opened: true}` | opens it in a new tab |
+
+An error carries `{code, message}` and, for `rate_limited` (429) and `hub_refused`, `status`. The web also posts
+`{bridge, event: "theme", theme}` when the viewer switches theme.
+
+### In a chat that is not restricted: the hub's helper
+
+Load the hub's tokens and helper from the hub itself (`'self'` is allowed there):
+
+```html
+<link rel="stylesheet" href="/v1/plugin-ui/kit/1/evo-ui.css">
+<script src="/v1/plugin-ui/kit/1/evo-answer.js"></script>
+```
+
+The helper gives `window.evoAnswer`: `ready` (a promise of the context), `sendPrompt(text)`, `openLink(url)`,
+`resize(height?)`, `onTheme(listener)` (returns how to stop) and `call(method, params)`, each a promise of the result
+that rejects with an `Error` carrying `code` (and `status`). It puts the theme on `<html>` as class `dark`, which
+`evo-ui.css` reads, sets `<html lang>`, and keeps the frame's height to the page's own; `<html data-evo-resize="off">`
+turns that off, and you call `resize` yourself.
+
+```html
+<script>
+  evoAnswer.ready.then(({ theme, locale }) => draw(theme, locale));
+  evoAnswer.onTheme((theme) => draw(theme));
+</script>
+```
+
+### In a restricted chat: post the messages yourself
+
+There the answer is served without `'self'`, so neither `evo-ui.css` nor `evo-answer.js` loads. Post the requests
+yourself: a request is `{bridge: "evo-answer/1", id, method, params}`, the answer `{bridge, id, result}` or
+`{bridge, id, error}`, and only messages from `parent` count. Copy the tokens below into the page.
 
 ```html
 <script>
@@ -67,7 +97,9 @@ the answer is `{bridge, id, result}` or `{bridge, id, error: {code, message}}`. 
   const waiting = new Map();
   addEventListener("message", (event) => {
     const m = event.data;
-    if (event.source !== parent || !m || m.bridge !== BRIDGE || !waiting.has(m.id)) return;
+    if (event.source !== parent || !m || m.bridge !== BRIDGE) return;
+    if (m.event === "theme") return document.documentElement.classList.toggle("dark", m.theme === "dark");
+    if (!waiting.has(m.id)) return;
     const { resolve, reject } = waiting.get(m.id);
     waiting.delete(m.id);
     m.error ? reject(m.error) : resolve(m.result);
@@ -91,8 +123,8 @@ the answer is `{bridge, id, result}` or `{bridge, id, error: {code, message}}`. 
 A follow-up button carries what the reader chose, so your next turn knows it without asking:
 
 ```js
-ask.onclick = () =>
-  call("sendPrompt", { text: `Compare plan ${plan.value} at ${users.value} users over ${months.value} months` });
+const text = `Compare plan ${plan.value} at ${users.value} users over ${months.value} months`;
+ask.onclick = () => evoAnswer.sendPrompt(text); // restricted chat: call("sendPrompt", { text })
 ```
 
 Disable the button while its call is pending, and show the error when one comes back (a person may send at most 6
@@ -101,7 +133,8 @@ such messages a minute).
 ## Look like the hub
 
 Use the hub's tokens and its font, IBM Plex Sans (`ui-sans-serif, system-ui, sans-serif` after it), and follow the
-theme `context` gives, defaulting to light:
+theme `context` gives, defaulting to light. In a chat that is not restricted, `evo-ui.css` brings them; in a restricted
+one, copy them:
 
 ```css
 :root {
@@ -156,6 +189,6 @@ colour alone.
 
 ## Before you send
 
-- The page opens with no network but the pinned CDN URLs, and with none at all in a restricted chat.
+- The page opens with no network but the hub's kit and the pinned CDN URLs, and with none at all in a restricted chat.
 - Both themes, 375 px, keyboard only.
 - TEXT answers the question without the frame.

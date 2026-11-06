@@ -1616,8 +1616,9 @@ message, in a sandboxed frame. It is an output of the run like any other (Output
   agent answering in a chat can reuse: answer with a page when a comparison, figures, a diagram of a mechanism or a
   calculator helps more than text, and in text when the question has a direct answer; send it with `--interactive`;
   the bridge and how to call it; never fetch; the text stands alone. Then, from whether the chat is restricted when the
-  worker claims the run, `INTERACTIVE_CDN_RULE` (the CDN hosts, each URL pinning its version) or
-  `INTERACTIVE_NO_CDN_RULE` (nothing loads from outside). The skill `interactive-answers` of the evo-hub plugin has the
+  worker claims the run, `INTERACTIVE_CDN_RULE` (the CDN hosts, each URL pinning its version, and the hub's helper
+  `evo-answer.js` with `evo-ui.css`) or `INTERACTIVE_NO_CDN_RULE` (nothing loads from outside, so the page posts the
+  messages of `evo-answer/1` itself). The skill `interactive-answers` of the evo-hub plugin has the
   long form: the hub's colour tokens and font, both themes, 375 px, keyboard and focus, the bounds of numbers and which
   ones are assumptions, follow-up buttons that carry what the reader chose.
 
