@@ -20,7 +20,7 @@ import typing
 
 import pytest
 
-from evo_agents.hub import diff_signs, judge, verify_words
+from evo_agents.hub import diff_signs, judge, proofs, verify_words
 from evo_agents.hub.access import ProjectRules
 
 REPO = "evo-agents"
@@ -85,6 +85,37 @@ def test_an_accepted_proposal_becomes_a_curator_plan_on_a_branch_of_its_own():
     assert judge.plan_checks(body) == {"1": ("pytest -q", '["no sleep"]'), "2": (None, "null")}
     long = judge.curator_plan_id(12345, "x" * 300)
     assert len(long) <= judge.MAX_PLAN_ID_CHARS and long.startswith("curator-12345-x")
+
+
+def test_a_curator_plan_names_criteria_as_proofs_do_and_runs_verify_at_the_repo_root():
+    # run 1937: a draft with A1 and text, and a verify written from a harness, gave a plan no proof could name
+    draft = {
+        "id": "shared-names",
+        "acceptance": [{"id": "A1", "text": "a name many nodes share gets no lift"}, {"id": "a2", "criterion": "kept"}],
+        "steps": [
+            {"id": 1, "verify": "cd evo-agents && uv run pytest -q tests/kg", "acceptance": ["A1", "a2", "no sleep"]},
+            {"id": 2, "verify": "cd ./evo-agents; pytest -q", "acceptance": "A2"},
+            {"id": 3, "verify": "cd other-repo && pytest -q"},
+            {"id": 4, "verify": "cd evo-agents &&  "},
+        ],
+    }
+    body = judge.curator_plan(
+        draft, plan_id="curator-63-x", repo=REPO, branch="curator/63-x", proposal_id=63, project=REPO
+    )
+    assert body["acceptance"] == [
+        {"id": "a1", "criterion": "a name many nodes share gets no lift"},
+        {"id": "a2", "criterion": "kept"},
+    ]
+    steps = body["steps"]
+    assert [step.get("verify") for step in steps] == [
+        "uv run pytest -q tests/kg",
+        "pytest -q",
+        "cd other-repo && pytest -q",  # another repo's cd is the draft's own
+        "cd evo-agents &&  ",  # nothing would be left to run: kept, as the Judge refuses it
+    ]
+    assert steps[0]["acceptance"] == ["a1", "a2", "no sleep"] and steps[1]["acceptance"] == "A2"
+    assert draft["acceptance"][0] == {"id": "A1", "text": "a name many nodes share gets no lift"}  # draft unchanged
+    assert proofs.criteria(body, steps[0]) == [("a1", "a name many nodes share gets no lift"), ("a2", "kept")]
 
 
 def test_the_forge_of_an_origin():
