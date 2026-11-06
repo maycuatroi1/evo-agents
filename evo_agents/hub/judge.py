@@ -208,7 +208,9 @@ def curator_plan(draft: dict, *, plan_id: str, repo: str, branch: str, proposal_
     body["id"] = plan_id
     note = (
         f"Made by the Curator of project {project} from proposal #{proposal_id}: it works on {branch} of {repo} "
-        "alone, through a pull request, never on a default branch."
+        "alone, through a pull request, never on a default branch. When the change should not land (what a step "
+        "measured says so, or its owner's decision says drop), end it with `evo-agents worker curator drop --reason "
+        "TEXT --note TEXT` instead of a commit that reverts it: the hub closes the change and opens no pull request."
     )
     context = body.get("context")
     body["context"] = note + (f"\n\n{context}" if isinstance(context, str) and context.strip() else "")

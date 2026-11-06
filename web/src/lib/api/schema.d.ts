@@ -4966,6 +4966,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/curator/drop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Drop Change
+         * @description Close the change whose plan the plan run this worker holds builds, before its pull request opens, saying why,
+         *     for the member who dispatched the run, an admin of the project; with ``note``, what the run measured, kept in the
+         *     ledger line.
+         */
+        post: operations["drop_change_v1_worker_runs__run_id__curator_drop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/curator/proposals/{proposal_id}/ledger": {
         parameters: {
             query?: never;
@@ -17297,6 +17319,19 @@ export interface components {
              * @description why it is closed: its reason and ledger say it
              */
             reason: string;
+        };
+        /** ChangeDrop */
+        ChangeDrop: {
+            /**
+             * Reason
+             * @description why its Builder drops the change, in one line: its reason says it
+             */
+            reason: string;
+            /**
+             * Note
+             * @description what the Builder measured or found, kept whole in the ledger line (details.note) of the drop
+             */
+            note?: string | null;
         };
         /** ChangeList */
         ChangeList: {
@@ -62938,6 +62973,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drop_change_v1_worker_runs__run_id__curator_drop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeDrop"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Change"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

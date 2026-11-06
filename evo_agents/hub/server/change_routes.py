@@ -1,6 +1,6 @@
 """The routes of the Curator's changes (``evo_agents.hub.server.changes`` describes the design): what a judge run
-reads and the verdict it posts, with the run's own key, the list of a project's changes, and an admin's close of a
-change left open with no pull request."""
+reads and the verdict it posts, with the run's own key, the list of a project's changes, an admin's close of a change
+left open with no pull request, and the drop of a change by its own Builder before its pull request opens."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.change_views import (
     Change,
     ChangeClose,
+    ChangeDrop,
     ChangeList,
     JudgeInputs,
     JudgeKey,
@@ -44,7 +45,7 @@ from evo_agents.hub.server.protection import (
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, RunId
 from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
 
 log = logging.getLogger(__name__)
 
@@ -321,4 +322,63 @@ async def close_change(
         )
         view = await change_view(conn, change_id)
     log.info("curator change closed by hand", extra={"change_id": change_id, "login": user.login})
+    return view
+
+
+# Dropped by its Builder
+
+DROPPABLE = ("planned", "pr_pending")  # a change its Builder may drop: no pull request yet, no Judge
+
+
+@worker_router.post(
+    "/runs/{run_id}/curator/drop", response_model=Change, responses={**REFUSALS, 422: {"model": ErrorBody}}
+)
+async def drop_change(request: Request, run_id: RunId, body: ChangeDrop, user: CurrentUser) -> Change:
+    """Close the change whose plan the plan run this worker holds builds, before its pull request opens, saying why,
+    for the member who dispatched the run, an admin of the project; with ``note``, what the run measured, kept in the
+    ledger line."""
+    from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
+
+    why = reason_line(body.reason)
+    if why is None:
+        raise HTTPException(422, "say why the change is dropped: the reason is empty")
+    note = (body.note or "").strip() or None
+    async with request.app.state.engine.begin() as conn:
+        _, row = await held_plan_run(conn, user, run_id, lock=True)
+        change = await change_of_plan(conn, row.project_id, row.plan_id, lock=True)
+        if change is None:
+            raise HTTPException(
+                404,
+                f"run {run_id} runs plan {row.plan_id}, which is no plan of the Curator: only the Builder of a "
+                "Curator's change drops it",
+            )
+        owner = Principal(row.dispatched_by, row.login, False, user.token_id, MACHINE, "")
+        access = await project_access(conn, owner, row.name)
+        if not has_role(access.role, "admin"):
+            raise HTTPException(
+                403,
+                f"dropping change #{change.id} closes it for {row.login}, who dispatched run {run_id}, and closing a "
+                f"change of project {access.name} needs the admin role on it; {row.login} holds {access.role}",
+            )
+        if change.state not in DROPPABLE or change.pr_number is not None:
+            pull = f" with pull request {change.pr_url or change.pr_number}" if change.pr_number is not None else ""
+            raise HTTPException(
+                409,
+                f"change #{change.id} is {change.state}{pull}: its Builder drops it only while it is planned or waits "
+                "for its pull request; nothing changed",
+            )
+        extra = {"actor": "agent", "run_id": run_id, "actor_id": row.dispatched_by, "login": row.login, "note": note}
+        await set_change(conn, change.id, state="closed", reason=why, builder_run_id=run_id, ledger_extra=extra)
+        text = f"Run {run_id} dropped the Curator's change #{change.id} for {row.login}: {why}."
+        await write_event(conn, run_id, {"text": text, "change_id": change.id})
+        await audit.record(
+            conn,
+            actor_id=row.dispatched_by,
+            token_id=user.token_id,
+            action=CLOSE,
+            target=f"{access.name} change:{change.id} proposal:{change.proposal_id} run:{run_id}",
+            project_id=access.project_id,
+        )
+        view = await change_view(conn, change.id)
+    log.info("curator change dropped by its builder", extra={"change_id": change.id, "run_id": run_id})
     return view

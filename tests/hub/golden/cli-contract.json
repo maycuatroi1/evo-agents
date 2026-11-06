@@ -25868,6 +25868,28 @@
       ],
       "json": null
     },
+    "worker curator drop": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "worker curator merge": {
       "positionals": [
         {
@@ -53825,6 +53847,101 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/curator/drop": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Drop Change",
+          "description": "Close the change whose plan the plan run this worker holds builds, before its pull request opens, saying why,\nfor the member who dispatched the run, an admin of the project; with ``note``, what the run measured, kept in the\nledger line.",
+          "operationId": "drop_change_v1_worker_runs__run_id__curator_drop_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeDrop"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Change"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -111408,6 +111525,35 @@
             "reason"
           ],
           "title": "ChangeClose"
+        },
+        "ChangeDrop": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why its Builder drops the change, in one line: its reason says it"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "what the Builder measured or found, kept whole in the ledger line (details.note) of the drop"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "ChangeDrop"
         },
         "ChangeList": {
           "properties": {

@@ -58,10 +58,13 @@ and their routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect
    in a thread of the project's triage chat (The agent answers, below).
 5. **The Builder.** On a later pass of the night shift, a plan run of that plan works on the branch
    `curator/<proposal>-<slug>`, never on a default branch. Until it can, the change keeps why it waits, which the
-   proposal's page and the morning brief show.
+   proposal's page and the morning brief show. A Builder whose measurements, or its owner's answer to a decision it
+   asked, say the change should not land ends it with `evo-agents worker curator drop`, not with a commit that reverts
+   it (Who closes a change, below).
 6. **The pull request and the Judge.** The hub opens the pull request (on GitLab the push opens the merge request),
    reads its diff for signs of score hacking, and queues a judge run that runs the plan's verify and the project's
-   hidden checks and never reads the Builder's transcript.
+   hidden checks and never reads the Builder's transcript. A branch whose commits change no file gets neither: the
+   hub closes its change, "its branch changes nothing".
 7. **The replays.** A change of a skill, an AGENTS.md or a CLAUDE.md is replayed on tasks of the project's own history:
    an agent does a past step again from the code before it, once with the default branch's harness and once with the
    change's, and the step's verify says which did it (Replays, below). The Judge reads none of it.
@@ -885,6 +888,30 @@ was failed by the Judge's detector, so the agent cannot merge it: its owner deci
 audit row `curator.merge` with `via=@<agent> in chat run <id>`, the ledger line `merged` with `details.agent` and
 `details.chat_run`, the owner's notice `merge_default_branch`, and a `Decision:` line in the thread; the morning brief
 lists it. The hub's own merge of a change no agent touched stays as it was.
+
+## Who closes a change
+
+A change ends `merged` or `closed`. Four hands close one, each on its own kind of change:
+
+| Who | Which change | How |
+| --- | --- | --- |
+| an admin of the project | one left `open` with no pull request (its proposal named no repo, say) | `evo-agents hub curator change close ID --reason TEXT` (POST `.../curator/changes/{id}/close`) |
+| whoever closes its pull request | one with a pull request | closing the pull request on GitHub without a merge; the hub reads it again within the hour and closes the change |
+| the hub | one waiting for its pull request whose branch has commits of its own that change no file | at the pass of `curator.changes` that would open the pull request: GitHub's comparison of the default branch with the branch lists no file, so the hub opens no pull request, queues no Judge and closes the change, "its branch changes nothing" |
+| its Builder | its own, while `planned` or `pr_pending` with no pull request, for the member who dispatched the run, an admin of the project | `evo-agents worker curator drop --reason TEXT [--note TEXT]` inside the plan run (POST `/v1/worker/runs/{id}/curator/drop`) |
+
+The Builder's drop is how a decision answered "drop" ends a change: the agent runs it, ends its run as it would, and
+the hub queues no other Builder for the change, opens no pull request and queues no Judge. The reason, one line,
+becomes the change's; the note keeps what the run measured (a kg eval on tune and holdout, say) whole in the ledger
+line `closed`, under `details.note`, with the Builder's run. A plan run adds nothing to the finding its proposal cites:
+a finding is the review run's record, written once with its evidence, and its status comes from its proposals and
+their changes, so the measurements of the Builder live in the ledger of the proposal (GET
+`.../curator/proposals/{id}/ledger`), next to its other lines. The proposal stays `accepted`: a closed change is not a
+rejected proposal. A change with a pull request is never dropped this way (409): close its pull request on GitHub.
+
+Each close adds the ledger line `closed`: `user` for an admin or a closed pull request, `curator` for the hub's close
+of a branch that changes nothing (and the audit row `curator.empty`), `agent` with the run for a Builder's drop (and
+the audit row `curator.close`, `run:<id>` in its target).
 
 ## The brief, the ledger and the circuit breaker
 

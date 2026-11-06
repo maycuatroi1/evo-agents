@@ -46,6 +46,7 @@ AGENT_COMMANDS = ("step", "ask", "wait", "notify", "plan", "finding", "propose",
 AGENT_COMMANDS += ("chat post", "chat react", "chat create", "chat mention", "chat read")
 AGENT_COMMANDS += ("triage rerun", "triage plan", "triage invite", "triage cancel", "triage merge-check")
 AGENT_COMMANDS += ("curator answer", "curator merge")  # the agent of a proposal's thread, for the owner
+AGENT_COMMANDS += ("curator drop",)  # the Builder of a Curator's change ends it before its pull request
 AGENT_COMMANDS += ("playbook add", "playbook helpful", "playbook harmful", "playbook retire")  # a review run's, too
 AGENT_COMMANDS += ("probe add",)  # a review run's probe of a merged change
 AGENT_COMMANDS += ("repo open",)  # a chat run's agent opens a repo of its project

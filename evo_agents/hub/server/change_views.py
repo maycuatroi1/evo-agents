@@ -71,6 +71,20 @@ class ChangeClose(BaseModel):
     reason: str = Field(min_length=1, max_length=2000, description="why it is closed: its reason and ledger say it")
 
 
+MAX_DROP_NOTE = 8000  # characters of what a Builder that drops its change measured, kept in the ledger line
+
+
+class ChangeDrop(BaseModel):
+    reason: str = Field(
+        min_length=1, max_length=2000, description="why its Builder drops the change, in one line: its reason says it"
+    )
+    note: str | None = Field(
+        default=None,
+        max_length=MAX_DROP_NOTE,
+        description="what the Builder measured or found, kept whole in the ledger line (details.note) of the drop",
+    )
+
+
 class JudgeInputs(BaseModel):
     """What a judge run reads: the change, the proposal, the plan's verify commands, the charter's protected paths,
     and the project's hidden checks, which no other run reads."""

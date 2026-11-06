@@ -950,10 +950,13 @@ one command each, for the owner, inside a frame the hub checks on each call (`ev
 | --- | --- | --- |
 | `evo-agents worker curator answer PROPOSAL accept\|reject\|defer --note TEXT [--days N]` | `POST /v1/worker/runs/{id}/curator/answer` | answer the proposal of the thread for the person who dispatched the chat run, as their answer on the web does: 200 with the proposal and the `Decision:` line's `message_id`; accepting a tier the charter's `planned_tiers` names makes the Curator's plan. 403 for another proposal than the thread's or a dispatcher who is no admin of the project, 404 for a run that is not a chat run in a proposal's thread, 409 for a proposal neither open nor deferred or a charter whose `answer_by` is `owner` again, 422 for `--days` without defer |
 | `evo-agents worker curator merge CHANGE` | `POST /v1/worker/runs/{id}/curator/merge` | merge the pull request of a change of the thread's proposal the hub left open, for the same person, with the workers' App at the head the Judge passed: 200 with the change, merged, and the `Decision:` line's `message_id`. 403 for a change of another proposal or a dispatcher who is no admin, 404 for no such change in the project, 409 with the reason for anything the merge does not allow (the change not open, its Judge not passed, the head moved, a sign other than a protected path, the pull request not open into the default branch or not mergeable, CI, the night shift paused, K5, a charter whose `answer_by` is `owner` again), 503 while GitHub does not answer |
+| `evo-agents worker curator drop --reason TEXT [--note TEXT]` | `POST /v1/worker/runs/{id}/curator/drop` | inside the Builder of a Curator's change (a plan run of the Curator's plan), close that change before its pull request opens, for the person who dispatched the run: 200 with the change, `closed`, its reason the one given; the note, what the run measured, is kept whole in the ledger line of the drop (`details.note`). The run goes on and ends as it would; the hub queues no other Builder, opens no pull request and queues no Judge for the change. 403 for a dispatcher who is no admin of the project, 404 for a run that is not a plan run of a Curator's plan, 409 for a change neither `planned` nor `pr_pending` or with a pull request already (closed on GitHub, the hub settles it when it reads it again), 422 for an empty reason |
 
 Each answer writes the audit row `curator.proposal`, and each merge the audit row `curator.merge`, with the ledger line
 naming the agent and the chat run; each posts the `Decision:` line in the thread, in the agent's name, and shows in the
-next morning brief.
+next morning brief. The third command, `drop`, is not the thread's: the agent of the Builder of a change runs it,
+in a plan run, when a step's measurements or its owner's decision say the change should not land; it writes the audit
+row `curator.close` with the run, and the ledger line `closed` names the Builder's run.
 
 ## Task runs
 
