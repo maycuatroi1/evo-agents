@@ -1311,6 +1311,7 @@ evo-agents hub run plan rollout --as-me                       # its agent calls 
 evo-agents hub run list --state running --state review        # newest first, with the runs in each state
 evo-agents hub run show 41
 evo-agents hub run logs 41 --follow                           # the live log, until the run ends
+evo-agents hub run watch 41 42 --plan rollout:7               # wait until a run, a decision or step 7 changes
 evo-agents hub run send 41 "also run ruff before you commit"
 evo-agents hub run takeover 41                                # a person drives the agent in a terminal on the worker
 evo-agents hub run handback 41                                # the agent goes on headless in the same session
@@ -1406,6 +1407,17 @@ on that bring nothing, not even the hub's ping, the command gives up and names t
 since. `--json` prints what the hub answered, with the keys the command line contract declares; for `logs` that is
 every event read as one object, so it does not go with `--follow`. `send`, `cancel`, `approve`, `takeover`,
 `handback` and `rerun` belong to the member who dispatched the run: another member gets 403.
+
+`run watch [RUN ...] [--plan PLAN[:STEP,...]]` waits until something an agent waiting on the hub needs to see has
+changed against its first look, prints what changed and exits 0: a run named is in another state (with `--state`,
+only once it is in one of those), a decision of the project opened or closed (a run's own wait, category `wait`,
+aside; `--no-decisions` leaves decisions out), or a step of a plan watched turned blocked or descoped, a step named
+after `PLAN:` has another status, or every step of the plan is closed. It looks every `--every` seconds (60, at least
+15), reading each run, the project's open decisions and each plan; a look the hub could not answer for a moment (a
+redeploy, 5xx, 429) is skipped with one note on stderr. After `--for` minutes (360) with no change it exits 3, and
+when every run named has ended at the first look and no plan is watched it exits 0 at once. It is for an agent of an
+interactive session, started in the background so that its exit wakes the agent; a plan run on a worker waits with
+`evo-agents worker wait`, and its wait guard refuses `run watch` as it refuses `run logs --follow`.
 
 `run credentials` lists the leases the run got (`GET /v1/projects/{project}/runs/{id}/credentials`): for each, the
 secret's name or `github-app:<account>`, its provider, its target (the variable it set, or the origins it answered

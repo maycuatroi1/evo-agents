@@ -14,7 +14,8 @@ worker could not self-update while it was held.
 - the Monitor tool, a watch of a command's output, whatever it watches;
 - a Bash command, in the foreground or the background, that sleeps SLEEP_LIMIT seconds or more at once, holds a loop
   (``while``, ``until``, ``for``) that sleeps LOOP_SLEEP seconds or more, or runs a command that blocks until something
-  elsewhere ends (WATCHERS: ``gh run watch``, ``gh pr checks --watch``, ``watch``, ``evo-agents hub run logs --follow``).
+  elsewhere ends (WATCHERS: ``gh run watch``, ``gh pr checks --watch``, ``watch``, ``evo-agents hub run logs --follow``,
+  ``evo-agents hub run watch``).
 
 It refuses too, through ``evo_agents.worker.broad_tests``, a Bash command that runs a broad test selection (the whole
 suite, a directory, more than ``broad_tests.MAX_FILES`` files, or a ``timeout`` over ``broad_tests.MAX_SECONDS``).
@@ -101,6 +102,8 @@ def _watcher(words: list[str]) -> bool:
             return True
         return rest[:2] == ["pr", "checks"] and "--watch" in rest
     if name in EVO_PROGRAMS:
+        if rest[:3] == ["hub", "run", "watch"]:
+            return True
         return rest[:3] == ["hub", "run", "logs"] and any(word in ("-f", "--follow") for word in rest[3:])
     return False
 
