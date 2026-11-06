@@ -125,7 +125,11 @@ On the hub, the build container has no `claude`. A hub build calls nothing: it d
 review run, which runs on the project's default agent pool, then asks it to run `evo-agents hub kg entities --project
 P`. That command reads the requests (`GET /v1/kg/P/entities/requests`, the writer role), asks Claude Code for each on
 the run's login (the lease of the pool's account, never a personal key), and posts the answers in batches
-(`POST /v1/kg/P/entities/answers`, a run's token only). The hub keeps the answers to its requests and queues a build,
+(`POST /v1/kg/P/entities/answers`, a run's token only). Claude Code keeps `CLAUDE_CODE_OAUTH_TOKEN` out of the shell of
+its tools, so when the agent runs the command the login is not in its environment: the command asks the run's socket
+for it once (`op env`, as `evo-agents worker env --run "$EVO_RUN_ID"` does) and hands that one variable to the `claude`
+it starts (`claude_code.run_login`). A run dispatched by hand needs the run's hub token too: a step, plan or author run
+with `--as-me` (a chat run has none). The hub keeps the answers to its requests and queues a build,
 which reads them as answers of the step (`answered_elsewhere`) and memoizes them. A login or a limit stops the command
 at that item: it posts what it has and exits 3, and the next night goes on.
 

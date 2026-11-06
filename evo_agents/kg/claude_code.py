@@ -13,7 +13,9 @@ where ``usage`` holds the tokens in (cache reads and writes included) and out an
 (``total_cost_usd``; without it the step prices the tokens with the mapping's ``price``). ANTHROPIC_API_KEY and
 ANTHROPIC_AUTH_TOKEN are taken out of Claude Code's environment, so the call runs on the login: the member's
 ``claude login`` on a machine, the lease of the pool's account (CLAUDE_CODE_OAUTH_TOKEN) in a run of the project's
-default agent. No value of the environment is ever printed.
+default agent. Claude Code keeps that variable out of the shell of its tools, so in a run (EVO_RUN_ID) whose
+environment lacks it, the call takes it from the run's socket (``run_login``). No value of the environment is ever
+printed.
 
 When Claude Code says the login is missing or refused, or that a usage or rate limit was reached, the command exits
 STOP_EXIT with ``{"stop": "login" | "rate_limit", "error"}``: the step stops at that item and leaves the rest to a later
@@ -38,6 +40,8 @@ COMMAND = ("evo-agents", "kg", "claude-entities")
 MODULE = "evo_agents.kg.claude_code"
 BINARY_ENV = "EVO_KG_CLAUDE"  # the claude executable, when it is not ``claude`` on PATH
 KEY_VARIABLES = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")  # never reach Claude Code: the login decides
+LOGIN_VARIABLE = "CLAUDE_CODE_OAUTH_TOKEN"  # the lease of the pool's account in a run
+RUN_VARIABLE = "EVO_RUN_ID"  # set by the worker in a run's environment
 STOP_EXIT = 75  # EX_TEMPFAIL: the step stops at this item, a later build goes on
 TIMEOUT = 280  # seconds; the step gives a command 300
 ERROR_CHARS = 200
@@ -94,8 +98,31 @@ def _masked(text: str) -> str:
     return SECRET.sub("[masked]", str(text))[:ERROR_CHARS]
 
 
+def run_login(env: Mapping[str, str]) -> dict[str, str]:
+    """The login of the run this process belongs to, when ``env`` lacks it: Claude Code keeps CLAUDE_CODE_OAUTH_TOKEN
+    out of the shell of its tools, so ``evo-agents hub kg entities`` run by a run's agent would start ``claude``
+    logged out. The run's socket gives it back (``op env``, as ``evo-agents worker env --run N`` does), and only that
+    variable is taken. {} outside a run, with the variable set already, or when the socket answers nothing."""
+    raw = str(env.get(RUN_VARIABLE) or "").strip()
+    if env.get(LOGIN_VARIABLE) or not raw.isdigit():
+        return {}
+    try:
+        from evo_agents.worker import credential_commands
+
+        leases = credential_commands.lease_env(int(raw), environ=env) or {}
+    except (AttributeError, OSError):  # no AF_UNIX socket on this platform, or no worker home to read
+        return {}
+    value = leases.get(LOGIN_VARIABLE)
+    return {LOGIN_VARIABLE: value} if isinstance(value, str) and value else {}
+
+
+def with_run_login(env: Mapping[str, str]) -> dict[str, str]:
+    """``env`` with the run's login added when it lacks one (``run_login``)."""
+    return {**env, **run_login(env)}
+
+
 def _environment(env: Mapping[str, str]) -> dict[str, str]:
-    return {k: v for k, v in env.items() if k not in KEY_VARIABLES}
+    return {k: v for k, v in with_run_login(env).items() if k not in KEY_VARIABLES}
 
 
 def argv(claude: str, model: str, system: str = SYSTEM_PROMPT) -> list[str]:

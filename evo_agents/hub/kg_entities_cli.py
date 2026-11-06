@@ -2,8 +2,8 @@
 left to a machine that has Claude Code (``evo_agents.hub.kg_entity_relay``).
 
 It reads the requests (GET /v1/kg/P/entities/requests), asks Claude Code for each one on this machine's login
-(``evo_agents.kg.claude_code.answer``: in a run, the lease of the pool's account; API keys are taken out of its
-environment), and posts the answers in batches (POST /v1/kg/P/entities/answers), which the hub keeps and follows with
+(``evo_agents.kg.claude_code.answer``: in a run, the lease of the pool's account, asked of the run's socket once when
+the agent's shell lacks it; API keys are taken out of its environment), and posts the answers in batches (POST /v1/kg/P/entities/answers), which the hub keeps and follows with
 a build. The hub takes answers from a run's token only. A login refused or a limit reached stops it at that item:
 what it has is posted, the rest waits for the next run, and it exits 3. ``--limit`` caps the calls of one run. It
 prints counts, never a text or a credential.
@@ -11,6 +11,7 @@ prints counts, never a text or a credential.
 
 from __future__ import annotations
 
+import os
 import sys
 from urllib.parse import quote
 
@@ -69,7 +70,8 @@ def cmd_entities(args) -> int:
     if not claude_code.available():
         print("error: claude is not installed here: run this inside a run of the project's agent pool", file=sys.stderr)
         return 1
-    done = answer_all(hub, args.project, args.limit)
+    env = claude_code.with_run_login(os.environ)  # one ask of the run's socket, not one a request
+    done = answer_all(hub, args.project, args.limit, answer=lambda request: claude_code.answer(request, env=env))
     if args.json:
         print_json(done)
     else:
