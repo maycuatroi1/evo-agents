@@ -10,7 +10,8 @@ the latest ``limit`` before ``before`` (a seq), oldest first, or those of one th
 id).
 
 POST .../messages sends a message of at most ``chats.MAX_MESSAGE_BYTES``; ``reply_to`` puts it in the thread of the
-message it answers. The hub reads its mentions once (``chats.mention_names``) and keeps them with it: a name resolves
+message it answers, and ``from_answer`` in the thread of the interactive answer it is sent from, to the agent that wrote
+the answer (``chat_answers``). The hub reads its mentions once (``chats.mention_names``) and keeps them with it: a name resolves
 among the chat's members only, a person by login, an agent by handle, a project's name to its default agent. A person
 mentioned gets the notice chat_mention. An agent mentioned that is not in the chat, or was deleted, reaches no one:
 the mention keeps why, and the hub answers in the message's thread, naming it. An agent mentioned gets the work: a
@@ -44,7 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import chats, profiles, tables
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server import attachment_store, audit
+from evo_agents.hub.server import attachment_store, audit, chat_answers
 from evo_agents.hub.server.chat_access import (
     ChatAccess,
     chat_access,
@@ -126,6 +127,16 @@ class ChatMessageIn(BaseModel):
     body: str = Field(description=f"at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8; empty only with attachment_ids")
     reply_to: int | None = Field(None, ge=1, le=MAX_ID, description="the message it answers: it goes in its thread")
     attachment_ids: AttachmentIds = Field(default_factory=list)
+    from_answer: int | None = Field(
+        None,
+        ge=1,
+        le=MAX_ID,
+        description=(
+            "the output id of the interactive answer it is sent from: it goes in the thread of the message that "
+            f"carries the answer, to the agent that wrote it; 1 to {chats.MAX_ANSWER_PROMPT_CHARS} characters of "
+            f"text, at most {chats.ANSWER_PROMPTS} of a person in {chats.ANSWER_WINDOW} seconds (429)"
+        ),
+    )
 
     @model_validator(mode="after")
     def _bounded(self):
@@ -133,6 +144,8 @@ class ChatMessageIn(BaseModel):
             raise ValueError("a message has some text")
         if len(self.body.encode()) > chats.MAX_MESSAGE_BYTES:
             raise ValueError(f"a message is at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8")
+        if self.from_answer is not None and not 1 <= len(self.body.strip()) <= chats.MAX_ANSWER_PROMPT_CHARS:
+            raise ValueError(f"a message from an interactive answer is 1 to {chats.MAX_ANSWER_PROMPT_CHARS} characters")
         return self
 
 
@@ -358,13 +371,29 @@ async def deliver_message(
     if body.reply_to is not None:
         answered = await visible_message(conn, chat, body.reply_to)
         root = answered.thread_root_id or answered.id
+    answer = None
+    if body.from_answer is not None:  # a question asked from an interactive answer (``chat_answers``)
+        answer = await chat_answers.answer_of(conn, chat, body.from_answer)
+        root = chat_answers.thread_of(answer, root, body.reply_to)
+        await chat_answers.refuse_too_many(conn, user.user_id)
     names = chats.mention_names(body.body)
     kept, people, _ = await resolve_mentions(conn, chat, user, names)
     files = await attachment_store.take(conn, body.attachment_ids, user.user_id, chat_id=chat.chat_id)
     message_id, seq = await insert_message(
-        conn, chat, body.body, thread_root_id=root, author_user_id=user.user_id, via=via, via_bridge=via_bridge
+        conn,
+        chat,
+        body.body,
+        thread_root_id=root,
+        author_user_id=user.user_id,
+        via=via,
+        via_bridge=via_bridge,
+        from_output_id=body.from_answer,
     )
     await attachment_store.hold_in_chat(conn, message_id, files)  # before hand_mentions, whose inboxes carry them
+    if answer is not None:
+        mention = await chat_answers.answer_mention(conn, chat, answer)
+        if not any(found["profile_id"] == mention["profile_id"] for found in kept):
+            kept.append(mention)
     if chat.kind == chats.DIRECT:
         kept += await _direct_agent(conn, chat, user, root, kept)
     elif chat.kind == chats.SETTLE:

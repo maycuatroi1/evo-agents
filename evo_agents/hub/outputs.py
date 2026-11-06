@@ -40,6 +40,7 @@ MAX_ATTACHED = 20  # outputs one question or chat message names
 MAX_NAME_CHARS = 255
 MAX_CAPTION_CHARS = 2000
 MAX_TOOL_CALL_CHARS = 200
+MAX_INTERACTIVE_BYTES = 1 * MiB  # of an interactive answer: its HTML, CSS and script, libraries come from CDN_HOSTS
 DOWNLOAD_NAME_CHARS = 200  # of the ASCII name a download is offered under (evo_agents.hub.blobs.ATTACHMENT_NAME)
 
 MEDIA_TYPE = re.compile(r"[a-z0-9][a-z0-9!#$&^_.+-]{0,126}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}")
@@ -80,6 +81,28 @@ HTML_POLICY = "; ".join(  # a page of its own, as a plugin's page is (evo_agents
         "style-src 'unsafe-inline'",
         "img-src data: blob:",
         "font-src data:",
+        "media-src data: blob:",
+        "connect-src 'none'",
+        "form-action 'none'",
+        "base-uri 'none'",
+        "object-src 'none'",
+        "frame-src 'none'",
+        "worker-src 'none'",
+        "frame-ancestors 'self'",
+        "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads",
+    )
+)
+# An interactive answer in a chat that is not restricted: HTML_POLICY with scripts, styles, fonts and images of the hub's
+# own origin and of a fixed list of CDNs, which serve versioned packages; it still connects nowhere and posts no form.
+CDN_HOSTS = ("https://esm.sh", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com")
+_CDN = " ".join(CDN_HOSTS)
+INTERACTIVE_POLICY = "; ".join(
+    (
+        "default-src 'none'",
+        f"script-src 'self' 'unsafe-inline' 'unsafe-eval' {_CDN}",
+        f"style-src 'self' 'unsafe-inline' {_CDN}",
+        f"img-src 'self' data: blob: {_CDN}",
+        f"font-src 'self' data: {_CDN}",
         "media-src data: blob:",
         "connect-src 'none'",
         "form-action 'none'",
@@ -205,11 +228,28 @@ def served_type(media_type: str) -> str:
     return media_type
 
 
-def content_policy(media_type: str) -> str:
-    """The Content-Security-Policy of an answer of an output's bytes of ``media_type``."""
+def interactive_problem(media_type: str, size: int) -> str | None:
+    """Why a file of ``media_type`` and ``size`` bytes cannot be an interactive answer; None when it can."""
+    if viewer(media_type) != "html":
+        return f"an interactive answer is an HTML file (.html), not {media_type}"
+    if size > MAX_INTERACTIVE_BYTES:
+        return f"an interactive answer is at most {MAX_INTERACTIVE_BYTES} bytes, and this one has {size}"
+    return None
+
+
+def check_interactive(media_type: str, size: int) -> None:
+    """ValueError naming why a file of ``media_type`` and ``size`` bytes cannot be an interactive answer."""
+    problem = interactive_problem(media_type, size)
+    if problem is not None:
+        raise ValueError(problem)
+
+
+def content_policy(media_type: str, *, interactive: bool = False) -> str:
+    """The Content-Security-Policy of an answer of an output's bytes of ``media_type``; ``interactive`` for an
+    interactive answer served in a chat that is not restricted (INTERACTIVE_POLICY), which only the chat's route asks."""
     shown = viewer(media_type)
     if shown == "html":
-        return HTML_POLICY
+        return INTERACTIVE_POLICY if interactive else HTML_POLICY
     if shown == "pdf":
         return PDF_POLICY
     return OPAQUE_POLICY

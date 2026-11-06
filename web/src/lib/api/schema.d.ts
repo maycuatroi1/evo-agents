@@ -4608,7 +4608,8 @@ export interface paths {
         };
         /**
          * Chat Content
-         * @description The bytes of an output a message of the chat carries, for a member who reads that message.
+         * @description The bytes of an output a message of the chat carries, for a member who reads that message; an interactive answer
+         *     loads libraries from the CDNs of INTERACTIVE_POLICY unless the chat is restricted.
          */
         get: operations["chat_content_v1_chats__chat_id__outputs__output_id__content_get"];
         put?: never;
@@ -17982,7 +17983,7 @@ export interface components {
              * Via
              * @description how it reached a member; null: it reached none
              */
-            via: ("login" | "handle" | "project" | "thread" | "direct" | "settle") | null;
+            via: ("login" | "handle" | "project" | "thread" | "direct" | "settle" | "answer") | null;
             /**
              * Login
              * @description the person it reached
@@ -18056,6 +18057,11 @@ export interface components {
              * @description files uploaded for this message (POST .../attachments), at most 10; with one or more, the text may be empty
              */
             attachment_ids?: number[];
+            /**
+             * From Answer
+             * @description the output id of the interactive answer it is sent from: it goes in the thread of the message that carries the answer, to the agent that wrote it; 1 to 4000 characters of text, at most 6 of a person in 60 seconds (429)
+             */
+            from_answer?: number | null;
         };
         /** ChatPage */
         ChatPage: {
@@ -19329,6 +19335,12 @@ export interface components {
              * @default false
              */
             merge_result: boolean;
+            /**
+             * Signs Passed
+             * @description a Judge of the merge queue: an admin passed gate 3 (score hacking) at the head it judges, so it weighs the signs of score hacking against the plan instead of failing the change unjudged
+             * @default false
+             */
+            signs_passed: boolean;
             /**
              * Judge Key
              * @description a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps it in memory alone, never in a file, an environment or a log line
@@ -22339,6 +22351,11 @@ export interface components {
              * @description the bridges it went out on, to their groups, oldest first
              */
             bridged_to?: components["schemas"]["BridgedTo"][];
+            /**
+             * From Answer
+             * @description the interactive answer (an output a message of the chat carries) a person sent it from; null when sent otherwise
+             */
+            from_answer?: number | null;
         };
         /** GroupSample */
         GroupSample: {
@@ -27502,6 +27519,12 @@ export interface components {
              * @description a merge check's: the paths where merging the base into the head conflicts; null when it merged
              */
             conflicts?: string[] | null;
+            /**
+             * Signs Weighed
+             * @description the Judge weighed the signs of score hacking against the plan (judge.WEIGH_SIGNS) instead of the signs failing the change unjudged: a merge check's Judge, or the queue's when its claim said signs_passed
+             * @default false
+             */
+            signs_weighed: boolean;
         };
         /** MergedAnswer */
         MergedAnswer: {
@@ -29370,6 +29393,12 @@ export interface components {
              * @description the upload of its bytes (POST .../output-uploads); null when the project holds them already
              */
             upload_id?: string | null;
+            /**
+             * Interactive
+             * @description an interactive answer: an HTML file of at most 1048576 bytes, which the web shows inside the chat message that carries it; a file sent again marked keeps the mark
+             * @default false
+             */
+            interactive: boolean;
         };
         /** OutputLink */
         OutputLink: {
@@ -37738,6 +37767,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Interactive
+             * @description an interactive answer its agent marked: HTML the web shows inside the chat message that carries it
+             * @default false
+             */
+            interactive: boolean;
             /**
              * Url
              * @description where this hub answers its bytes to the reader of what listed it; ?download=true for a download

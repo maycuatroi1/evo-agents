@@ -1555,6 +1555,43 @@ its own name through a presigned GET (`GET .../outputs/{oid}/link`), checked aga
 that name with other bytes rather than over it. hub-cli-v1 gained that command, `outputs` in `hub decision show|list`
 and in the `--json` of `hub chat send|react`.
 
+## Interactive answers
+
+An agent in a chat may answer with a small page it writes (HTML, CSS and script), which the web shows inside the
+message, in a sandboxed frame. It is an output of the run like any other (Outputs of runs), marked interactive.
+
+- **Marking.** `evo-agents worker output --interactive answer.html` marks the file, and so does
+  `evo-agents worker chat post TEXT --attach answer.html --interactive` for the files of `--attach`. The worker checks it before it sends anything, and the hub checks it again
+  as it records the output (`outputs.check_interactive`, which `OutputIn` applies to whatever records outputs): an
+  HTML file (`text/html`, `application/xhtml+xml`) of at most 1 MiB (`outputs.MAX_INTERACTIVE_BYTES`). A file of
+  another type, or a larger one, is refused with why (`error:` and exit 1 on the worker, 422 on the hub). The same
+  file sent again marked takes the mark; sent again unmarked, it keeps it. The message's text must stand alone:
+  Telegram, a bridged group, a notice and the mobile app get the text and no frame.
+- **API.** `RunOutput.interactive` (boolean) is on every output an answer lists, so on the `outputs` of a
+  `GroupMessage` and in the `--json` of `evo-agents hub chat show|send|react`. The worker sends `interactive: true`
+  on an item of `POST /v1/worker/runs/{id}/outputs`. Schema 0213 holds the mark (`run_outputs.interactive`).
+- **Serving.** `/v1/chats/{id}/outputs/{oid}/content` serves an interactive answer, in a chat that is not restricted
+  (`ChatAccess.restricted`, read as it serves), under `outputs.INTERACTIVE_POLICY`: scripts, styles, fonts and images
+  from `'self'`, `https://esm.sh`, `https://cdn.jsdelivr.net` and `https://cdnjs.cloudflare.com` (`outputs.CDN_HOSTS`),
+  with `connect-src 'none'`, `form-action 'none'` and a `sandbox` without `allow-same-origin`, so the page runs with
+  an opaque origin, reads no cookie and calls nothing. In a restricted chat, and on every other route (a run's, a
+  question's), it gets `HTML_POLICY`, which names no CDN, as any HTML output does. Its answers carry `Cache-Control:
+  private, no-cache`, so a chat that becomes restricted takes the CDNs back on the next load. A library loads from a
+  URL that pins its version.
+- **The bridge `evo-answer/1`.** The web talks with the frame by `postMessage`, taking messages only from that frame's
+  window, with four methods: `context` (the theme and the language), `resize` (the height the page asks, within
+  bounds), `sendPrompt({ text })` and `openLink({ url })`, which opens an https URL in a new tab with noopener and
+  noreferrer.
+- **Asking from an answer.** `sendPrompt` posts the viewer's message: `POST /v1/chats/{id}/messages` with
+  `from_answer`, the answer's output id, and 1 to 4000 characters of text after trimming
+  (`chats.MAX_ANSWER_PROMPT_CHARS`). The hub checks that a message of this chat carries the answer and that the sender
+  reads that message (404 otherwise), puts the message in that message's thread (422 for a `reply_to` in another), and
+  hands it to the agent whose profile wrote the answer as a mention `via` `answer`: the next turn of the sender's
+  session with that agent in the thread, by the rules of any chat run, wherever that profile's runs go. An agent no
+  longer in the chat, or deleted, is refused in the thread as a mention of it is. The message keeps its source
+  (`GroupMessage.from_answer`, `chat_messages.from_output_id`). A person sends at most 6 such messages in 60 seconds
+  (`chats.ANSWER_PROMPTS`, `chats.ANSWER_WINDOW`); the next is 429 with `Retry-After`. The web holds the same limit.
+
 ## Attachments of messages
 
 An attachment is a file a person attaches to a message (`evo_agents.hub.attachments`): to a run's agent (`POST

@@ -6,7 +6,8 @@ or has refused it, while the run runs and when it ends:
 ```
 runs/<run>/outputs/          0700
   queue/<ns>-<id>.json       0600  an item, in the order put: a file to send ({"file", "name", "media_type",
-                                   "caption", "source", "tool_call_id", "wait"}), or a scan ({"scan": true})
+                                   "caption", "source", "tool_call_id", "wait", "interactive"}), or a scan
+                                   ({"scan": true})
   files/<id>                 0600  the bytes of a file as they were when it was put here
   answers/<id>.json          0600  what became of an item a command waits on: {"output_id": N} or {"error": TEXT}
 ```
@@ -86,14 +87,18 @@ class OutputQueue:
         caption: str | None = None,
         source: str = outputs.SENT,
         wait: bool = False,
+        interactive: bool = False,
     ) -> str:
-        """A copy of the file at ``path``, to send as an output of ``source``; its item's id."""
+        """A copy of the file at ``path``, to send as an output of ``source``, an interactive answer when
+        ``interactive``; its item's id."""
         self._ready()
         item_id = secrets.token_hex(8)
         target = os.open(self.files / item_id, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, FILE_MODE)
         with open(path, "rb") as original, open(target, "wb") as copy:
             shutil.copyfileobj(original, copy, COPY_CHUNK)
         entry = {"file": item_id, "name": name, "media_type": media_type, "caption": caption, "source": source}
+        if interactive:
+            entry["interactive"] = True
         return self._put({**entry, "wait": wait})
 
     def put_bytes(self, data: bytes, **entry) -> str:

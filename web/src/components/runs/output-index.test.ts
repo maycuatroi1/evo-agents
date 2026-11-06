@@ -18,6 +18,7 @@ function output(id: number, extra: Partial<RunOutput> = {}): RunOutput {
     sha256: sha(String(id % 10)),
     caption: null,
     tool_call_id: null,
+    interactive: false,
     created_at: "2026-10-21T10:00:10Z",
     url: `/v1/projects/p/runs/7/outputs/${id}/content`,
     ...extra,

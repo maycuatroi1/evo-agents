@@ -13,6 +13,10 @@ then is no refusal: the worker sends the files once it does. Then it puts a copy
 outputs the hub recorded, whose ids the question or the message names (``output_ids``). ``request_scan`` has the
 daemon look at the run's .evo-run/outputs/ (``worker step``). A failure is one ``error:`` line on stderr and exit
 status 1; the check with the hub needs the worker extra, and without it the files go unchecked.
+
+``--interactive`` of ``output`` and of ``chat post`` (with ``--attach``) marks each file an interactive answer, which
+the web shows inside the chat message that carries it: an HTML file of at most ``outputs.MAX_INTERACTIVE_BYTES``
+(``outputs.interactive_problem``), else one ``error:`` line naming why, and nothing is sent. The hub checks it again.
 """
 
 from __future__ import annotations
@@ -58,9 +62,9 @@ def output_command(func):
     return run
 
 
-def checked_files(paths: list[str], most: int) -> list[File]:
+def checked_files(paths: list[str], most: int, *, interactive: bool = False) -> list[File]:
     """The files of ``paths``, at most ``most`` of them, each a regular file of at most MAX_FILE_BYTES with a name the
-    hub takes; WorkerStateError naming the first that is not."""
+    hub takes, and an interactive answer when ``interactive``; WorkerStateError naming the first that is not."""
     if not paths or len(paths) > most:
         raise WorkerStateError(f"give 1 to {most} files")
     found = []
@@ -78,7 +82,11 @@ def checked_files(paths: list[str], most: int) -> list[File]:
             name = outputs.check_name(path.name)
         except ValueError as exc:
             raise WorkerStateError(f"{raw}: {exc}") from None
-        found.append(File(path, name, outputs.guess_media_type(name), size))
+        media_type = outputs.guess_media_type(name)
+        problem = outputs.interactive_problem(media_type, size) if interactive else None
+        if problem is not None:
+            raise WorkerStateError(f"{raw} cannot be an interactive answer: {problem}")
+        found.append(File(path, name, media_type, size))
     return found
 
 
@@ -134,14 +142,16 @@ def request_scan(home: WorkerHome, run_id: int) -> None:
 def cmd_output(args) -> int:
     run_id, home, _ = running_run("output")
     caption = _caption(args.caption)
-    files = checked_files(args.files, outputs.MAX_BATCH)
+    interactive = bool(getattr(args, "interactive", False))
+    files = checked_files(args.files, outputs.MAX_BATCH, interactive=interactive)
     check_room(home, run_id, files)
     queue = OutputQueue(home, run_id)
     for file in files:
-        queue.put_file(file.path, name=file.name, media_type=file.media_type, caption=caption)
+        queue.put_file(file.path, name=file.name, media_type=file.media_type, caption=caption, interactive=interactive)
     names = ", ".join(file.name for file in files)
+    kind = "interactive answer(s)" if interactive else "file(s)"
     print(
-        f"Sending {len(files)} file(s) to the outputs of run #{run_id} on the hub: {names}. The worker uploads them "
+        f"Sending {len(files)} {kind} to the outputs of run #{run_id} on the hub: {names}. The worker uploads them "
         "in the background; the run's page shows them once the hub has them."
     )
     return 0
@@ -154,15 +164,21 @@ def _caption(value: str | None) -> str | None:
         raise WorkerStateError(str(exc)) from None
 
 
-def attached(home: WorkerHome, run_id: int, paths: list[str] | None) -> dict:
-    """``{"output_ids": [...]}`` of the files of ``paths``, once the worker sent them as outputs of the run; ``{}``
-    for none. WorkerStateError when one is refused, or not sent within ATTACH_WAIT seconds."""
+def attached(home: WorkerHome, run_id: int, paths: list[str] | None, *, interactive: bool = False) -> dict:
+    """``{"output_ids": [...]}`` of the files of ``paths``, once the worker sent them as outputs of the run, each an
+    interactive answer when ``interactive``; ``{}`` for none. WorkerStateError when one is refused, or not sent within
+    ATTACH_WAIT seconds."""
     if not paths:
+        if interactive:
+            raise WorkerStateError("--interactive marks the files of --attach: give the HTML file with --attach")
         return {}
-    files = checked_files(paths, outputs.MAX_ATTACHED)
+    files = checked_files(paths, outputs.MAX_ATTACHED, interactive=interactive)
     check_room(home, run_id, files)
     queue = OutputQueue(home, run_id)
-    waiting = {queue.put_file(f.path, name=f.name, media_type=f.media_type, wait=True): f for f in files}
+    waiting = {
+        queue.put_file(f.path, name=f.name, media_type=f.media_type, wait=True, interactive=interactive): f
+        for f in files
+    }
     found: dict[str, int] = {}
     deadline = time.monotonic() + ATTACH_WAIT
     while len(found) < len(waiting):
@@ -193,6 +209,17 @@ def attach_option(parser, what: str) -> None:
     )
 
 
+def interactive_option(parser, what: str) -> None:
+    """``--interactive`` on ``parser``: ``what`` is an interactive answer."""
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help=f"mark {what} an interactive answer, shown inside the chat message that carries it: an HTML file of at "
+        f"most {outputs.MAX_INTERACTIVE_BYTES} bytes, which may load libraries from esm.sh, cdn.jsdelivr.net and "
+        "cdnjs.cloudflare.com in a chat that is not restricted",
+    )
+
+
 def register_output(wsub) -> None:
     """``evo-agents worker output``, under the parser ``wsub`` of ``evo-agents worker``."""
     output = wsub.add_parser(
@@ -204,4 +231,5 @@ def register_output(wsub) -> None:
     output.add_argument(
         "--caption", metavar="TEXT", help=f"what the files show, at most {outputs.MAX_CAPTION_CHARS} characters"
     )
+    interactive_option(output, "each file")
     output.set_defaults(func=cmd_output)

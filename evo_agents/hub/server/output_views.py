@@ -40,6 +40,10 @@ class RunOutput(BaseModel):
     caption: str | None
     tool_call_id: str | None = Field(description="the tool call of the run's trace it came from, when one")
     created_at: datetime
+    interactive: bool = Field(
+        False,
+        description="an interactive answer its agent marked: HTML the web shows inside the chat message that carries it",
+    )
     url: str = Field(
         description="where this hub answers its bytes to the reader of what listed it; ?download=true for a download"
     )
@@ -59,6 +63,7 @@ def columns():
         o.c.caption,
         o.c.tool_call_id,
         o.c.created_at,
+        o.c.interactive,
     )
 
 

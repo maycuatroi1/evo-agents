@@ -16,6 +16,11 @@ get an opaque origin and reach nothing), ``Cross-Origin-Resource-Policy: same-or
 safe name (an attachment with ``download=true``, and always for a type no viewer of the web shows), its SHA-256 as
 ETag (304 for If-None-Match), and serves one byte range of a Range header (206, or 416 for one outside the file), so a
 video seeks. The bytes stream from the blob store as it reads them; a store that does not answer is 503.
+
+The chat's route serves an interactive answer (``outputs.check_interactive``) under ``outputs.INTERACTIVE_POLICY``
+when the chat is not restricted (``ChatAccess.restricted``, read as it serves), and under HTML_POLICY when it is; every
+other route serves it under HTML_POLICY. Its answers are kept no longer than a revalidation (NO_CACHE), so a chat
+that became restricted takes back the CDNs at once.
 """
 
 from __future__ import annotations
@@ -51,6 +56,7 @@ Download = Annotated[bool, Query(description="answer it as an attachment, which 
 RangeHeader = Annotated[str | None, Header(alias="Range", description="one byte range, bytes=first-last")]
 IfNoneMatch = Annotated[str | None, Header(description="the ETag of the bytes the browser holds")]
 CACHE = "private, max-age=3600"
+NO_CACHE = "private, no-cache"  # an interactive answer's policy follows the chat's restriction as it is now
 CONTENT = {
     200: {"content": {"application/octet-stream": {}}, "description": "the output's bytes, in its own media type"},
     206: {"content": {"application/octet-stream": {}}, "description": "the byte range asked for"},
@@ -90,23 +96,27 @@ def _matches(if_none_match: str | None, etag: str) -> bool:
     return "*" in tags or etag in tags
 
 
-def _headers(row, download: bool) -> dict[str, str]:
+def _headers(row, download: bool, cdn: bool) -> dict[str, str]:
     attachment = download or not outputs.inline(row.media_type)
+    interactive = bool(getattr(row, "interactive", False))  # an attachment (``attachments``) is never one
     return {
-        "Content-Security-Policy": outputs.content_policy(row.media_type),
+        "Content-Security-Policy": outputs.content_policy(row.media_type, interactive=cdn and interactive),
         "X-Content-Type-Options": "nosniff",
         "Cross-Origin-Resource-Policy": "same-origin",
         "Referrer-Policy": "no-referrer",
         "Content-Disposition": outputs.content_disposition(row.name, attachment),
-        "Cache-Control": CACHE,
+        "Cache-Control": NO_CACHE if interactive else CACHE,
         "ETag": f'"{row.sha256}"',
         "Accept-Ranges": "bytes",
     }
 
 
-async def serve(request: Request, row, download: bool, asked: str | None, if_none_match: str | None) -> Response:
-    """The answer of output ``row``'s bytes (see the module), for a caller who may read them."""
-    headers = _headers(row, download)
+async def serve(
+    request: Request, row, download: bool, asked: str | None, if_none_match: str | None, *, cdn: bool = False
+) -> Response:
+    """The answer of output ``row``'s bytes (see the module), for a caller who may read them; ``cdn`` serves an
+    interactive answer under INTERACTIVE_POLICY, which only the chat's route asks, for a chat that is not restricted."""
+    headers = _headers(row, download, cdn)
     if _matches(if_none_match, headers["ETag"]):
         return Response(status_code=304, headers=headers)
     span = outputs.parse_range(asked, row.size)
@@ -198,15 +208,16 @@ async def chat_content(
     range_: RangeHeader = None,
     if_none_match: IfNoneMatch = None,
 ) -> Response:
-    """The bytes of an output a message of the chat carries, for a member who reads that message."""
+    """The bytes of an output a message of the chat carries, for a member who reads that message; an interactive answer
+    loads libraries from the CDNs of INTERACTIVE_POLICY unless the chat is restricted."""
     k, cm = tables.run_output_links, tables.chat_messages
     labels = select(cm.c.label).join_from(k, cm, cm.c.id == k.c.chat_message_id)
     labels = labels.where(k.c.output_id == output_id, cm.c.chat_id == chat_id)
     async with request.app.state.engine.begin() as conn:
-        await chat_access(conn, user, chat_id)
+        chat = await chat_access(conn, user, chat_id)
         found = list((await conn.execute(labels)).scalars())
         reader = await label_reader(conn, user.user_id, found)
         if not any(reader.sees(label) for label in found):
             raise _no_output(output_id)
         row = await _output(conn, output_id)
-    return await serve(request, row, download, range_, if_none_match)
+    return await serve(request, row, download, range_, if_none_match, cdn=not chat.restricted)
