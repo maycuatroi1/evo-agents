@@ -335,6 +335,8 @@ class Outputs:
         found = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data), "source": entry.get("source")}
         found.update(name=entry.get("name"), media_type=media_type)
         found.update({key: entry[key] for key in ("caption", "tool_call_id") if entry.get(key)})
+        if entry.get("interactive") is True:  # sent only when set: a hub before interactive answers takes the rest
+            found["interactive"] = True
         return found, data
 
     async def _send_all(self, files: list[Item]) -> bool:

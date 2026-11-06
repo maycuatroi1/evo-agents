@@ -79,6 +79,7 @@ MESSAGE_KEYS = (
     "attachments",
     "via",
     "bridged_to",
+    "from_answer",
 )
 PAGE_KEYS = ("chat", "messages", "more")
 

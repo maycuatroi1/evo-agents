@@ -29,6 +29,7 @@ notice, an agent none, and no run.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 from sqlalchemy import func, insert, literal, null, or_, select, update
@@ -48,7 +49,7 @@ from evo_agents.hub.server import (
     run_access_rules,
     run_autonomy,
 )
-from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_reader
+from evo_agents.hub.server.chat_access import ChatAccess, LabelProject, agent_projects, label_reader
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_route import Route, origin, route_of
 from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction, wake
@@ -841,7 +842,8 @@ async def chat_prompt(
     shows the messages that start no thread, or in a direct chat the latest turns (``chat_runs.snapshot``). On a daemon
     that lists ``runs.LAZY_CHAT_REPOS`` among its ``features``, every repo of the project, those the message that woke
     it or a message of the thread the prompt shows names before the others not open (``_listing``). With ``ships``, its
-    principal's card leaves merging to the agent, and its rules say so."""
+    principal's card leaves merging to the agent, and its rules say so. Its rules let an interactive answer load
+    libraries from the CDNs only while the chat is not restricted, as it is at the claim."""
     from evo_agents.hub.server.chat_views import message_select, profiles_by_id
 
     found = await chat_run(conn, run_id)
@@ -878,6 +880,7 @@ async def chat_prompt(
         direct=direct,
     )
     people, agents = await _member_names(conn, found.chat_id)
+    projects = await agent_projects(conn, found.chat_id)
     listing, harness = None, None
     if runs.LAZY_CHAT_REPOS in features:
         listing, harness = await _listing(conn, run_id, profile, repos, [trigger["body"], *in_thread])
@@ -898,13 +901,15 @@ async def chat_prompt(
         listing=listing,
         harness=harness,
         ships=ships,
-        label=await _lowered(conn, found.chat_id, profile.project),
+        label=_lowered(projects, profile.project),
+        cdn=not any(p.restricted for p in projects),  # as ChatAccess.restricted reads it, now
     )
 
 
-async def _lowered(conn: AsyncConnection, chat_id: int, project: str) -> dict | None:
-    """{level, default} when chat ``chat_id`` was set below the default level of ``project``; None otherwise."""
-    found = next((p for p in await agent_projects(conn, chat_id) if p.name == project), None)
+def _lowered(projects: Sequence[LabelProject], project: str) -> dict | None:
+    """{level, default} when the chat, of the agents' ``projects`` (``agent_projects``), was set below the default
+    level of ``project``; None otherwise."""
+    found = next((p for p in projects if p.name == project), None)
     if found is None or not found.lowered:
         return None
     return {"level": found.label["level"], "default": found.default_level}

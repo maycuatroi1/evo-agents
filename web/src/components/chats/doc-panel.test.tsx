@@ -40,6 +40,7 @@ function output(id: number, name: string, mediaType = "text/markdown"): RunOutpu
     sha256: "a".repeat(64),
     caption: null,
     tool_call_id: null,
+    interactive: false,
     created_at: "2026-10-14T08:02:00Z",
     url: `/outputs/${id}`,
   };

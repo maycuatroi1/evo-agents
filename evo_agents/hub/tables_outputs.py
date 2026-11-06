@@ -3,8 +3,8 @@ attributes (``tables.run_outputs``, ``tables.run_output_links``): queries name t
 
 run_outputs holds each file a run's agent made that the hub keeps (``evo_agents.hub.outputs``): its run and the run's
 project, which holds its bytes as a blob (``blobs``, kind run-output); its source (sent, tool or outputs), name, media
-type, size, SHA-256 and caption; the tool call of the run's trace it came from, when it came from one; and when the hub
-recorded it. A run holds one output per SHA-256. run_output_links ties an output to a question of its run (a decision)
+type, size, SHA-256 and caption; the tool call of the run's trace it came from, when it came from one; when the hub
+recorded it; and, since 0213, whether its agent marked it an interactive answer (``outputs.check_interactive``). A run holds one output per SHA-256. run_output_links ties an output to a question of its run (a decision)
 or to a chat message its run's agent wrote, one of the two per row, so the question and the message carry it.
 ``projects.output_tool_images`` is a project's switch of the images its machines take out of tools' results: off, the
 hub refuses outputs of source tool and the machines send none.
@@ -30,6 +30,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     column,
+    false,
     func,
     true,
 )
@@ -66,6 +67,7 @@ def output_tables(metadata: MetaData, projects: Table) -> tuple[Table, Table]:
         Column("caption", Text),
         Column("tool_call_id", Text),
         _stamp("created_at"),
+        Column("interactive", Boolean, nullable=False, server_default=false()),  # 0213: an interactive answer
         _fk("run_outputs", "run_id", "runs.id", ondelete="CASCADE"),
         _fk("run_outputs", "project_id", "projects.id", ondelete="CASCADE"),
         PrimaryKeyConstraint("id", name="run_outputs_pkey"),

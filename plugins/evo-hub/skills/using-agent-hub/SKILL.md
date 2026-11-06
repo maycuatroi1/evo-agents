@@ -1,6 +1,6 @@
 ---
 name: using-agent-hub
-description: Team hub (MCP server evo-hub). Before relying on what you remember about a project or a person, search its memories with memory_search and read them with memory_get; read plans with plan_show and mark steps with plan_step. To wait for a hub run, follow its live stream in the background with evo-agents hub run logs RUN --follow. In a harness naming hub.project, plans/*.yaml are read-only copies.
+description: Team hub (MCP server evo-hub). Before relying on what you remember about a project or a person, search its memories with memory_search and read them with memory_get; read plans with plan_show and mark steps with plan_step. To wait for hub runs, decisions or plan steps, run evo-agents hub run watch RUN... [--plan PLAN:STEP] in the background. In a harness naming hub.project, plans/*.yaml are read-only copies.
 ---
 
 # Using the agent hub
@@ -51,9 +51,14 @@ list them; without evo-kg, evo-hub serves them from the hub's graph.
 
 - `evo-agents hub run show RUN` gives a run's state, step, worker, commit and verify results; `evo-agents hub run
   logs RUN` prints its events so far; `evo-agents hub run logs RUN --follow` reads its live stream until the run ends.
-- To wait for a run you started or watch, start `evo-agents hub run logs RUN --follow` as a background command (Bash
-  with `run_in_background`, or Monitor) and go on; you are woken when it ends. Then read the outcome with `hub run
-  show RUN`. In a worker run, a background command keeps the session for at most 30 minutes after your turn ends.
+- To wait for runs you started or watch, start `evo-agents hub run watch RUN [RUN ...]` as a background command
+  (Bash with `run_in_background`) and go on. It exits, and wakes you, as soon as one of the runs is in another state
+  or a decision of the project opens or closes; add `--plan PLAN:STEP` to wake on that step's status too (a step
+  turning blocked or descoped always does), `--state done --state failed` to wake only on those states, `--for MIN`
+  for how long (360 by default; exit 3 when nothing changed). Read what it printed, act, and start it again if you
+  still wait. `evo-agents hub run logs RUN --follow` instead streams one run's events until it ends.
+- In a worker's plan run, wait with `evo-agents worker wait`: its hook refuses `run watch` and `run logs --follow`.
+  In other worker runs, a background command keeps the session for at most 30 minutes after your turn ends.
 - Never wait with a foreground `sleep N` followed by `hub run show`: the harness refuses a foreground sleep.
 
 ## Asking the person

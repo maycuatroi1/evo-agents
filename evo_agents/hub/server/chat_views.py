@@ -157,6 +157,11 @@ class GroupMessage(BaseModel):
     bridged_to: list[BridgedTo] = Field(
         default_factory=list, description="the bridges it went out on, to their groups, oldest first"
     )
+    from_answer: int | None = Field(
+        None,
+        description="the interactive answer (an output a message of the chat carries) a person sent it from; null "
+        "when sent otherwise",
+    )
 
 
 class Chat(BaseModel):
@@ -424,6 +429,7 @@ def message_select():
         cm.c.label,
         cm.c.created_at,
         cm.c.via,
+        cm.c.from_output_id,
     ).select_from(cm.outerjoin(u, u.c.id == cm.c.author_user_id))
 
 
@@ -536,6 +542,7 @@ async def messages_view(
             attachments=linked(attached.get(row.id, []), f"/v1/chats/{row.chat_id}"),
             via=row.via,
             bridged_to=bridged.get(row.id, []),
+            from_answer=row.from_output_id,
         )
         for row in shown
     ]

@@ -4011,6 +4011,14 @@
       "quoteEarlier": "Trả lời một tin trước đó",
       "quoteEarlierLabel": "Mở thread của tin trước đó mà tin này trả lời"
     },
+    "answer": {
+      "frameTitle": "Câu trả lời tương tác: {name}",
+      "caption": "Câu trả lời tương tác: {name}",
+      "loading": "Đang nạp câu trả lời tương tác",
+      "failed": "Không nạp được câu trả lời tương tác này.",
+      "retry": "Thử lại",
+      "promptFailed": "Chưa gửi được câu hỏi từ câu trả lời"
+    },
     "reactions": {
       "you": "bạn",
       "andMore": "{names} và {count} người khác",

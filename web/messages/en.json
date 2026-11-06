@@ -4011,6 +4011,14 @@
       "quoteEarlier": "In reply to an earlier message",
       "quoteEarlierLabel": "Open the thread of the earlier message this answers"
     },
+    "answer": {
+      "frameTitle": "Interactive answer: {name}",
+      "caption": "Interactive answer: {name}",
+      "loading": "Loading the interactive answer",
+      "failed": "This interactive answer could not load.",
+      "retry": "Try again",
+      "promptFailed": "The question from the answer was not sent"
+    },
     "reactions": {
       "you": "you",
       "andMore": "{names} and {count} more",

@@ -7,7 +7,8 @@ your request with the create-exec-plan skill on the pool of its agent (POST /v1/
 ``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of the project. ``list`` and ``show`` read runs
 of every kind, the chat runs of group chats among them. ``logs`` prints a run's events page by page (GET
 .../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's server-sent events (GET .../runs/{id}/stream)
-until the hub sends ``end``. ``send`` leaves a message for the run's agent, files too with ``--attach``
+until the hub sends ``end``; ``watch`` waits until a run's state, an open decision or a plan's step changes
+(``run_cli_watch``). ``send`` leaves a message for the run's agent, files too with ``--attach``
 (``run_cli_send``), and ``cancel``, ``approve``, ``takeover``, ``handback``, ``rerun`` and ``access`` are the owner's
 controls (``access`` in ``run_cli_access``); ``outputs`` lists the files its agent made (``run_cli_outputs``).
 ``credentials`` lists the run's leases of its owner's secrets and the hub's GitHub App, the owner only, never a
@@ -72,6 +73,7 @@ from evo_agents.hub.run_cli_options import (
 from evo_agents.hub.run_cli_outputs import register_outputs
 from evo_agents.hub.run_cli_send import register_send
 from evo_agents.hub.run_cli_spend import spend_lines, usd
+from evo_agents.hub.run_cli_watch import register_watch
 from evo_agents.hub.run_cli_workers import worker_id as _worker_id
 from evo_agents.hub.runs import (
     EVENT_KINDS,
@@ -986,6 +988,7 @@ def register_runs(hsub) -> None:
     _register_author(rsub)
     _register_list_and_show(rsub)
     _register_logs(rsub)
+    register_watch(rsub, _project_option)
     register_send(rsub, _run_argument, project_of_args)
     _register_chat_and_credentials(rsub)
     register_candidates(rsub, _run_argument, project_of_args)

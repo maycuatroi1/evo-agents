@@ -24,6 +24,11 @@ at most MAX_EMOJI_KINDS different ones. An agent's reactions are set by rule, ne
 the one a run of the agent puts on the message that started it as the run moves (eyes when a worker claims it, a check
 mark when it is done, a cross when it failed or was cancelled), and the check mark or the cross takes the eyes off.
 
+An agent may answer with an interactive answer, an HTML output it marked (``evo_agents.hub.outputs``), which the web
+shows inside the message. A person's message sent from one (``from_answer``) goes in the thread of the message that
+carries it, to the agent that wrote it, as a mention ``via`` ANSWER: 1 to MAX_ANSWER_PROMPT_CHARS characters of text,
+at most ANSWER_PROMPTS of a person in ANSWER_WINDOW seconds.
+
 Standard library only: the command line imports this module on a core install.
 """
 
@@ -38,6 +43,8 @@ MAX_PEOPLE = 50  # people in one chat, its creator included
 MAX_AGENTS = 10  # agents in one chat
 MAX_MENTIONS = 20  # names of one message the hub reads; the ones after are text
 MAX_EMOJI_KINDS = 20  # different emoji on one message
+MAX_ANSWER_PROMPT_CHARS = 4000  # of a message a person sends from an interactive answer, trimmed
+ANSWER_PROMPTS, ANSWER_WINDOW = 6, 60  # messages a person sends from interactive answers in that many seconds
 MAX_EMOJI_CHARS = 16  # code points of one emoji: a ZWJ family with skin tones fits
 MAX_NAME_CHARS = 100  # of a mentioned name: a handle's bound
 
@@ -46,12 +53,12 @@ EYES, CHECK, CROSS = "\U0001f440", "✅", "❌"
 # off when it puts CHECK or CROSS. A run that is lost and tried again keeps its EYES.
 STATUS_REACTIONS = {"leased": EYES, "done": CHECK, "failed": CROSS, "cancelled": CROSS}
 
-GROUP, DIRECT, SETTLE = "group", "direct", "settle"
+GROUP, DIRECT, SETTLE, ANSWER = "group", "direct", "settle", "answer"
 CHAT_KINDS = (GROUP, DIRECT, SETTLE)
 ATTENDED = (DIRECT, SETTLE)  # the kinds that name an agent (chats.direct_profile_id) each message of a person wakes
 # How a mention reached its member; thread: no @, a chat of one person; direct: no @ of the agent, a direct chat;
-# settle: no @ of the agent, a settle chat
-VIA = ("login", "handle", "project", "thread", DIRECT, SETTLE)
+# settle: no @ of the agent, a settle chat; answer: sent from an interactive answer of the agent
+VIA = ("login", "handle", "project", "thread", DIRECT, SETTLE, ANSWER)
 IMAGE_CHANGED = "image_changed"  # a member set the chat's image or took it off
 MESSAGE_CHANGED = "message_changed"  # a message reads otherwise now: outputs of its run went under it (0089)
 EVENT_KINDS = (

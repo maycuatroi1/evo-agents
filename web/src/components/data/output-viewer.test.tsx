@@ -25,6 +25,7 @@ function output(id: number, extra: Partial<RunOutput>): RunOutput {
     sha256: String(id).repeat(64).slice(0, 64),
     caption: null,
     tool_call_id: null,
+    interactive: false,
     created_at: "2026-10-21T10:00:00Z",
     url: `/v1/projects/northwind/runs/3/outputs/${id}/content`,
     ...extra,

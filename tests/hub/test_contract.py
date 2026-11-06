@@ -339,7 +339,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     assert ask["--attach"]["repeatable"] and not ask["--attach"]["required"]
     output = printed["worker output"]
     assert [(p["name"], p["repeatable"]) for p in output["positionals"]] == [("files", True)]
-    assert [o["flags"] for o in output["options"]] == [["--caption"]] and output["json"] is None
+    assert [o["flags"] for o in output["options"]] == [["--caption"], ["--interactive"]] and output["json"] is None
     assert ask["--category"]["choices"] == [
         "deploy",
         "delete_data",

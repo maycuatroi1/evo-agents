@@ -24,6 +24,8 @@ export type OutputFile = {
   source?: RunOutput["source"];
   caption?: string;
   tool_call_id?: string;
+  /** An interactive answer (`worker output --interactive`): HTML the chat shows inside the message. */
+  interactive?: boolean;
 };
 
 export const sha256 = (data: Buffer) => createHash("sha256").update(data).digest("hex");
@@ -57,6 +59,7 @@ async function send(token: string, base: string, files: OutputFile[], worker: bo
     caption: file.caption ?? null,
     tool_call_id: file.tool_call_id ?? null,
     upload_id: tickets.get(sha256(file.data))?.upload_id ?? null,
+    ...(file.interactive ? { interactive: true } : {}),
   }));
   const recorded = (await post(token, `${base}/outputs`, { outputs }, worker)) as components["schemas"]["RecordedOutputs"];
   return recorded.outputs;

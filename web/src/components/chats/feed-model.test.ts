@@ -58,7 +58,7 @@ describe("a chat's feed", () => {
 
   it("replaces a message held with what a message_changed event carries, the files of its run under it", () => {
     const start = feedOf(page([message(1, 1, { reply_count: 2, run_id: 9, author: REVIEWER })], 2));
-    const file = { id: 5, run_id: 9, source: "sent", name: "chart.png", media_type: "image/png", viewer: "image", size: 10, sha256: "c".repeat(64), caption: null, tool_call_id: null, created_at: "2026-10-14T09:00:00Z", url: "/v1/chats/1/outputs/5/content" } as const;
+    const file = { id: 5, run_id: 9, source: "sent", name: "chart.png", media_type: "image/png", viewer: "image", size: 10, sha256: "c".repeat(64), caption: null, tool_call_id: null, interactive: false, created_at: "2026-10-14T09:00:00Z", url: "/v1/chats/1/outputs/5/content" } as const;
     const changed = message(1, 1, { reply_count: 2, run_id: 9, author: REVIEWER, outputs: [file] });
     const { feed } = applyEvents(start, [event(3, { kind: "message_changed", message: changed }), event(4, { kind: "message_changed", message: message(8, 8) })], "octo");
     expect(feed.entries.get(1)?.message.outputs?.map((item) => item.id)).toEqual([5]);
