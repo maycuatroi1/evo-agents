@@ -347,7 +347,7 @@ class WorkerHub:
         """What the agent of run ``run_id`` does in group chats (``evo_agents.hub.server.chat_agents``): ``route``
         is chat/messages, chat/reactions, chat/mentions, chats, chat/pulls for the daemon's push of a chat run, or
         chat/repos for a repo the daemon opens in a chat run for its agent, or agent/asks for a chat run's agent asking an
-        agent of another project (``agent_asks``)."""
+        agent of another project (``agent_asks``), or agent/reads for its reads of another project (``agent_reads``)."""
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/{route}", body)
 
     async def release_branch(self, run_id: int, body: dict) -> dict:

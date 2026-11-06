@@ -10154,6 +10154,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/agent/reads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read
+         * @description Read the knowledge graph or the memories of another project, in a chat run this worker holds, within what the
+         *     hub sink of the run's project lets in (see the module's docstring).
+         */
+        post: operations["read_v1_worker_runs__run_id__agent_reads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/chat/read": {
         parameters: {
             query?: never;
@@ -19242,6 +19263,68 @@ export interface components {
              */
             happened_at: string;
         };
+        /** CrossRead */
+        CrossRead: {
+            /** Project */
+            project: string;
+            /** Tool */
+            tool: string;
+            /**
+             * Text
+             * @description what the agent reads: the items the check lets in, then the line on the rest
+             */
+            text: string;
+            /**
+             * Shown
+             * @description items shown
+             */
+            shown: number;
+            /**
+             * Withheld
+             * @description items the person may read that the run's project does not let in
+             */
+            withheld: number;
+            /**
+             * Why
+             * @description how many items were left out and why; null when none was
+             */
+            why: string | null;
+        };
+        /** CrossReadIn */
+        CrossReadIn: {
+            /**
+             * Project
+             * @description the project read, another than the run's
+             */
+            project: string;
+            /**
+             * Tool
+             * @description what is read, as the evo-hub tool of the same name reads it
+             * @enum {string}
+             */
+            tool: "kg_search" | "kg_context" | "memory_search" | "memory_get";
+            /**
+             * Query
+             * @description kg_search, kg_context, memory_search
+             */
+            query?: string | null;
+            /**
+             * Ids
+             * @description kg_context: node ids
+             */
+            ids?: string[];
+            /**
+             * Memory Id
+             * @description memory_get
+             */
+            memory_id?: number | null;
+            /**
+             * Limit
+             * @description kg_search, memory_search
+             * @default 10
+             */
+            limit: number;
+        };
         /** Csrf */
         Csrf: {
             /** Csrf */
@@ -19380,6 +19463,12 @@ export interface components {
              * @default false
              */
             merge_result: boolean;
+            /**
+             * Signs Passed
+             * @description a Judge of the merge queue: an admin passed gate 3 (score hacking) at the head it judges, so it weighs the signs of score hacking against the plan instead of failing the change unjudged
+             * @default false
+             */
+            signs_passed: boolean;
             /**
              * Judge Key
              * @description a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps it in memory alone, never in a file, an environment or a log line
@@ -27553,6 +27642,12 @@ export interface components {
              * @description a merge check's: the paths where merging the base into the head conflicts; null when it merged
              */
             conflicts?: string[] | null;
+            /**
+             * Signs Weighed
+             * @description the Judge weighed the signs of score hacking against the plan (judge.WEIGH_SIGNS) instead of the signs failing the change unjudged: a merge check's Judge, or the queue's when its claim said signs_passed
+             * @default false
+             */
+            signs_weighed: boolean;
         };
         /** MergedAnswer */
         MergedAnswer: {
@@ -84397,6 +84492,86 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_v1_worker_runs__run_id__agent_reads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrossReadIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrossRead"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

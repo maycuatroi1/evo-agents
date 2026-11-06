@@ -1047,6 +1047,45 @@ The prompt of a chat run names the command, the hop the run is at and its limits
 Schema 0214 adds `runs.spawned_by_run_id` (a run) and `runs.spawned_wait_id` (a decision), both null for any other run
 and set to null when what they name is deleted; the run API returns `spawned_by_run_id`. Going back drops both.
 
+### Reading another project, and what may enter a run
+
+The agent of a chat run reads the knowledge graph and the memories of another project with
+`evo-agents worker agent read PROJECT TOOL [TEXT]` (`evo_agents/worker/agent_read_cli.py`), TOOL being `kg-search`,
+`kg-context`, `memory-search` or `memory-get`, which calls `POST /v1/worker/runs/{id}/agent/reads` with the worker's
+token (`evo_agents/hub/server/agent_reads.py`). The evo-hub MCP tools keep reading the run's own project only: a run's
+token reaches no other project, and widening it would widen every tool. Only a chat run reads this way (422 for
+another kind), and never its own project (422, with a pointer to the evo-hub tools).
+
+The hub reads as the person at the origin of the chain, with that person's grant on PROJECT, through PROJECT's own hub
+sink, as the evo-hub tools of a session of that project would. A person with no grant there gets 404, as for a project
+that does not exist. A project that declares no hub sink has nothing on the hub to read.
+
+Then comes the one check of what another project may put into a run (`evo_agents/hub/server/cross_labels.py`): an
+item of project Q enters a run of project P only when the hub sink of P clears the item's label. The two projects have
+ladders of their own, so the check goes by names. A level of Q passes when P's ladder has the same name at or below
+what P's hub sink clears, and every lower level of Q passes too; locations go the same way. The result is one ceiling
+on Q's ladder, so the knowledge graph reads with it as with any clearance. A name P's ladder lacks stops the ceiling
+below it (fail closed). An item that names other projects, or whose label cannot be read, never passes, and a run of a
+project without a usable hub sink takes nothing from another project.
+
+What fails the check is left out whole, never shown in part, and the answer says how many items were left out and why,
+for example "1 item of what you may read was left out, since level customer of project lumen-kb is above what hub sink
+'hub' of project northwind clears (internal/any)." The JSON answer carries `shown`, `withheld` and `why`. To count what
+it leaves out of the knowledge graph, the hub reads twice: once whole within the person's clearance, then within the
+ceiling, which is what the agent gets. Text past the graph's size limit is cut, with a note to ask more narrowly, since
+the `kg_more` handle belongs to the hub's own session. `memory-get` of a personal memory, or of one of another project,
+answers 404. What the agent is shown is noted in the run's audience (`run_audience`), as for the evo-hub tools.
+
+The answer of an agent of another project, asked with `agent ask`, passes the same check before it enters the asking
+run (`agent_asks.withheld_answer`, called first in `agent_asks.delegated_answer`). Its label is the label of the run
+asked: its plan's label, else its project's default label (`kg_labels.run_label`). When the hub sink of the asking
+run's project does not clear it, the wait is answered with the run's end and why its answer was withheld, with no
+text, refs, branch or failure reason, and the thread says "@kb-bot ended run #N done; its answer was withheld from this
+run: WHY". An ask within one project skips the check.
+
+The prompt of a chat run names the read command and says the hub may leave items out, so the agent says so and never
+guesses at them (`chat_runs.reading_rule`). No schema change.
+
 ## Plans and their copies in git
 
 A harness hands its plans to the hub by naming the project in `harness.yaml`:

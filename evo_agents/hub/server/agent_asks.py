@@ -39,8 +39,8 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
-from evo_agents.hub import chats, runs, tables
-from evo_agents.hub.server import agent_tasking, audit, run_waits
+from evo_agents.hub import chats, kg_labels, runs, tables
+from evo_agents.hub.server import agent_tasking, audit, cross_labels, run_waits
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_agents import REFUSALS, AgentRun, Handle, agent_run
@@ -50,6 +50,7 @@ from evo_agents.hub.server.chat_store import insert_message
 from evo_agents.hub.server.decisions import OptionIn, store_decision
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.profile_store import Profile, by_handle
+from evo_agents.hub.server.projects import access_of
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
 from evo_agents.hub.server.security import CurrentUser
@@ -250,12 +251,36 @@ class Answer:
     thread: str
 
 
+async def withheld_answer(conn: AsyncConnection, run_id: int, wait_id: int) -> str | None:
+    """Why what run ``run_id`` says may not enter the run whose wait ``wait_id`` it answers; None when it may. The check
+    of every read across projects (``cross_labels``): the hub sink of the asking run's project must let in the label of
+    the run asked (its plan's, else its project's default label, ``kg_labels.run_label``). Within one project, nothing
+    crosses."""
+    r, d, p = tables.runs, tables.decisions, tables.projects
+    asked = select(p.c.name).join_from(r, p, p.c.id == r.c.project_id).where(r.c.id == run_id)
+    asking = select(p.c.name).join_from(d, p, p.c.id == d.c.project_id).where(d.c.id == wait_id)
+    source, target = (await conn.execute(asked)).scalar_one(), (await conn.execute(asking)).scalar_one()
+    if source == target:
+        return None
+    target_access, source_access = await access_of(conn, None, target), await access_of(conn, None, source)
+    assert target_access is not None and source_access is not None  # both hold a run
+    gate = cross_labels.gate(target_access.rules, source_access.rules)
+    return gate.why(await kg_labels.run_label(conn, run_id))
+
+
 async def delegated_answer(conn: AsyncConnection, run_id: int, state: str, wait_id: int, handle: str) -> Answer:
     """What the asking run gets, and its thread shows, when run ``run_id`` of agent ``handle`` it asked ended in
     ``state``: its answer and the refs of its work, or why it gave none. The one place where text crosses from the
-    project asked to the asking run's."""
+    project asked to the asking run's, so the one that checks it (``withheld_answer``): an answer the asking run's
+    project does not let in is left out whole, its refs and its failure too, and both say why."""
     r = tables.runs
     row = (await conn.execute(select(r.c.error, r.c.failure_cause).where(r.c.id == run_id))).one()
+    why = await withheld_answer(conn, run_id, wait_id)
+    if why is not None:
+        said = f"run #{run_id} of @{handle}, which you asked, ended {state}, and the hub withheld what it said: {why}"
+        agent = f"Decision #{wait_id} (wait) woke: {said}. Say so in your reply; asking again gets the same."
+        thread = f"@{handle} ended run #{run_id} {state}; its answer was withheld from this run: {why}"
+        return Answer(runs.clip(agent, runs.MAX_ANSWER_BYTES), runs.clip(thread, ANSWER_IN_THREAD))
     if state != "done":
         why = row.error or row.failure_cause or "its worker gave no reason"
         said = f"run #{run_id} of @{handle}, which you asked, ended {state}: {why}"

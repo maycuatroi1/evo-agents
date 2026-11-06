@@ -52,8 +52,11 @@ def _ask(args) -> int:
 
 
 def register_agent(wsub) -> None:
-    """``evo-agents worker agent ask``, under the parser ``wsub`` of ``evo-agents worker``."""
-    agent = wsub.add_parser("agent", help="inside a chat run: ask an agent of another project")
+    """``evo-agents worker agent ask`` and ``agent read`` (``agent_read_cli``), under the parser ``wsub`` of
+    ``evo-agents worker``."""
+    from evo_agents.worker.agent_read_cli import register_read
+
+    agent = wsub.add_parser("agent", help="inside a chat run: ask an agent of another project, or read that project")
     asub = agent.add_subparsers(dest="agent_command", required=True)
     ask = asub.add_parser(
         "ask",
@@ -65,3 +68,4 @@ def register_agent(wsub) -> None:
     ask.add_argument("handle", metavar="HANDLE", help="the agent asked, @ left out or not")
     ask.add_argument("text", metavar="TEXT", help="what you ask, all the agent needs, at most 16 KiB (- for stdin)")
     ask.set_defaults(func=cmd_agent_ask)
+    register_read(asub)

@@ -25501,6 +25501,75 @@
       "options": [],
       "json": null
     },
+    "worker agent read": {
+      "positionals": [
+        {
+          "name": "project",
+          "metavar": "PROJECT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "tool",
+          "metavar": "TOOL",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "kg-search",
+            "kg-context",
+            "memory-search",
+            "memory-get"
+          ]
+        },
+        {
+          "name": "text",
+          "metavar": "TEXT",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--id"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 10
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "tool",
+          "text",
+          "shown",
+          "withheld",
+          "why"
+        ]
+      }
+    },
     "worker ask": {
       "positionals": [],
       "options": [
@@ -86693,6 +86762,111 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/agent/reads": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Read",
+          "description": "Read the knowledge graph or the memories of another project, in a chat run this worker holds, within what the\nhub sink of the run's project lets in (see the module's docstring).",
+          "operationId": "read_v1_worker_runs__run_id__agent_reads_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrossReadIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CrossRead"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/chat/read": {
         "post": {
           "tags": [
@@ -115634,6 +115808,126 @@
             "happened_at"
           ],
           "title": "CrmTouchpoint"
+        },
+        "CrossRead": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "tool": {
+              "type": "string",
+              "title": "Tool"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text",
+              "description": "what the agent reads: the items the check lets in, then the line on the rest"
+            },
+            "shown": {
+              "type": "integer",
+              "title": "Shown",
+              "description": "items shown"
+            },
+            "withheld": {
+              "type": "integer",
+              "title": "Withheld",
+              "description": "items the person may read that the run's project does not let in"
+            },
+            "why": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Why",
+              "description": "how many items were left out and why; null when none was"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "tool",
+            "text",
+            "shown",
+            "withheld",
+            "why"
+          ],
+          "title": "CrossRead"
+        },
+        "CrossReadIn": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Project",
+              "description": "the project read, another than the run's"
+            },
+            "tool": {
+              "type": "string",
+              "enum": [
+                "kg_search",
+                "kg_context",
+                "memory_search",
+                "memory_get"
+              ],
+              "title": "Tool",
+              "description": "what is read, as the evo-hub tool of the same name reads it"
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query",
+              "description": "kg_search, kg_context, memory_search"
+            },
+            "ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Ids",
+              "description": "kg_context: node ids"
+            },
+            "memory_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Memory Id",
+              "description": "memory_get"
+            },
+            "limit": {
+              "type": "integer",
+              "maximum": 20.0,
+              "minimum": 1.0,
+              "title": "Limit",
+              "description": "kg_search, memory_search",
+              "default": 10
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "tool"
+          ],
+          "title": "CrossReadIn"
         },
         "Csrf": {
           "properties": {

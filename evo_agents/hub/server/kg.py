@@ -58,6 +58,7 @@ import logging
 import os
 import tempfile
 import uuid
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -705,11 +706,15 @@ async def tool_result(
     *,
     audience: frozenset | None = None,
     explore: bool = False,
+    narrow: Callable[[Label | None], Label | None] | None = None,
+    whole: bool = False,
 ) -> dict:
     """One kg_* tool of ``evo-agents kg serve`` for ``user``, answered from the project's latest successful build
     through ``sink``, holding ``user``'s audience as the database says now, or ``audience`` when given, exploring the
     ranking when ``explore`` (``evo_agents.kg.explore``): the MCP tool result, an error included. ``state`` is the app's. Raises HTTPException: 404 for a project the caller cannot see,
-    403 without a grant on it, 503 when no graph can be fetched, 502 for an artifact whose bytes are not the build's."""
+    403 without a grant on it, 503 when no graph can be fetched, 502 for an artifact whose bytes are not the build's.
+    A read across projects (``agent_reads``) passes ``narrow``, which lowers the ceiling to what the run's project
+    lets in (``cross_labels``), and ``whole`` for the data alone, uncut and not reranked (``kg_graph.WholeSession``)."""
     async with state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         member(access)
@@ -726,6 +731,8 @@ async def tool_result(
     rules = access.rules
     assert audience is not None  # read above, as there are graphs
     ceiling = rules.ceiling(access.max_level, read_sink(access, sink), audience)
+    if narrow is not None:
+        ceiling = narrow(ceiling)
     try:
         result = await asyncio.to_thread(
             answer,
@@ -742,6 +749,7 @@ async def tool_result(
             arguments,
             explore,
             tuning,
+            whole,
         )
     except GraphOutdated as exc:
         await rebuild_outdated(state, access.project_id, project)
@@ -751,6 +759,8 @@ async def tool_result(
     except ArtifactMismatch as exc:
         log.error("kg graph artifact refused", extra={"project": project, "build_id": graphs[0].build_id})
         raise HTTPException(502, str(exc)) from None
+    if whole:
+        return result
     if tool == "kg_search" and isinstance(arguments.get("query"), str):
         result = await rankers.rerank_kg(state, access, arguments["query"], result)  # plugins' rankers (their point)
     shown = run_audience.revealed(result) if user.scope is not None else frozenset()

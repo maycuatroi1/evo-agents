@@ -481,6 +481,14 @@ class Handles:
         return result
 
 
+class WholeSession(HubSession):
+    """A HubSession whose answer is the tool's data whole, never cut for kg_more, and no text: what a read across
+    projects counts before it reads again within the clearance it may show (``server.agent_reads``)."""
+
+    def _envelope(self, text: str, data: dict) -> dict:
+        return {"structuredContent": data}
+
+
 def answer(
     cache: GraphCache,
     store: BlobStore | None,
@@ -495,17 +503,19 @@ def answer(
     arguments: dict,
     explore: bool = False,
     tuning: kg_settings.Tuning | None = None,
+    whole: bool = False,
 ) -> dict:
     """One kg_* call on the newest graph of ``project`` that can be read; ``explore``: a kg_search of an agent's, which
     may explore the ranking (``evo_agents.kg.explore``). Blocking: run it in a thread, which also keeps the SQLite
-    connection in the thread that made it. ``tuning`` is what the project's search is tuned by (its kg_settings)."""
+    connection in the thread that made it. ``tuning`` is what the project's search is tuned by (its kg_settings);
+    ``whole``: the data alone, uncut (``WholeSession``)."""
     path, graph = cache.acquire(store, project, graphs)
     try:
         opened = open_graph(path, project, graph)
         if tuning is not None:
             opened.tuning = tuning
         try:
-            session = HubSession(project, policy, ceiling, sink, opened, graph, graphs[0])
+            session = (WholeSession if whole else HubSession)(project, policy, ceiling, sink, opened, graph, graphs[0])
             session.explorer = Explorer() if explore else None
             return handles.call(session, owner, tool, arguments)
         finally:

@@ -56,7 +56,8 @@ run alone, with the worker's token: ``post`` writes in the thread (or in a chat 
 emoji, ``create`` makes a chat with the run's agent and the person at the origin of the chain, and ``mention`` hands
 work to another agent of the chat. That run is dispatched by the person at the origin of the chain, at one hop more
 than the run that asked (a person's mention is hop 1), within MAX_HOPS, never to the agent's own profile. The agent of
-a chat run asks an agent of another project with ASK_COMMAND (``delegation_rule``), within the same hops. Each run
+a chat run asks an agent of another project with ASK_COMMAND (``delegation_rule``), within the same hops, and reads
+that project's knowledge graph and memories with READ_COMMAND (``reading_rule``). Each run
 gets TIME_CAP_SECONDS of agent time as its cap, and no cost cap. An ``@`` in the agent's reply or in ``post`` hands work
 to nobody.
 """
@@ -118,6 +119,7 @@ REACT_COMMAND = "evo-agents worker chat react"
 MENTION_COMMAND = "evo-agents worker chat mention"
 CREATE_COMMAND = "evo-agents worker chat create"
 ASK_COMMAND = "evo-agents worker agent ask"  # the agent of a chat run asks an agent of another project
+READ_COMMAND = "evo-agents worker agent read"  # and reads another project's knowledge graph and memories
 COMMANDS = ("post", "react", "create", "mention", "read")  # under `evo-agents worker chat`
 COMMAND_KINDS = ("step", "plan", "author", "chat")  # the kinds of run whose agent uses them
 
@@ -228,6 +230,20 @@ def delegation_rule(login: str, hop: int) -> str:
         "what: this run waits, holding no worker, and goes on in this session with the answer (what it found, its "
         "outputs, its branch, the knowledge graph nodes it rests on), or with why it failed. For an agent of this chat, "
         f"use `{MENTION_COMMAND}` instead."
+    )
+
+
+def reading_rule(login: str) -> str:
+    """The rule of a chat run's prompt on reading another project (``READ_COMMAND``, ``server.agent_reads``): how,
+    within what, and when it beats asking that project's agent."""
+    return (
+        f"- Another project's knowledge: `{READ_COMMAND} PROJECT kg-search TEXT` (also kg-context TEXT or --id ID, "
+        "memory-search TEXT, memory-get ID) reads the knowledge graph or the memories of a project "
+        f"{login} reads, as the evo-hub tools read this one; `evo-agents hub project list` names those projects. The "
+        "hub leaves out what this project's hub sink does not clear and says how many items it left out and why: "
+        "never guess what was left out, and say in your reply that some was. Read first when a fact, a file or a "
+        "decision of that project answers the question; ask its agent when the work needs its code or more than a "
+        "lookup."
     )
 
 
@@ -382,6 +398,7 @@ def _rules(
         f"{login}. `{MENTION_COMMAND} HANDLE TEXT` hands work to another agent of this chat: its run goes on for "
         f"{login}, at hop {hop + 1} of at most {MAX_HOPS}, never to yourself (@{handle}). An @ in your reply or in "
         f"`post` hands work to nobody. `{POST_COMMAND} TEXT --attach FILE` puts a file you made under the message.",
+        reading_rule(login),
         delegation_rule(login, hop),
         OUTPUTS_RULE + " A file you send so goes under your next message in this thread. To change a document of "
         "the chat (a Markdown file someone attached or sent), send the changed file under the same name: the chat "
