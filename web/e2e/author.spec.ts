@@ -345,7 +345,7 @@ test("the author pages fit from 375 to 1440 px without scrolling sideways, and a
     for (const [path, ready] of [
       // On a phone the run's page shows the trace's latest rows; its Chat is on the session's screen.
       [runPath(project, run.id), width < 768 ? "run-trace-preview" : "run-chat-agent"],
-      ["/", "author-waiting-item"],
+      ["/today", "author-waiting-item"],
       [`/p/${project}/plans`, "plans-table-active"],
     ] as const) {
       await open(page, path);

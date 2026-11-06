@@ -45,6 +45,11 @@ def _body(args) -> dict:
     return body
 
 
+def read_json(answer: dict) -> dict:
+    """What ``--json`` prints of the hub's answer: its READ_KEYS, each null when the hub left it out."""
+    return {key: answer.get(key) for key in READ_KEYS}
+
+
 def _read(args) -> int:
     from evo_agents.worker import chat_cli
 
@@ -59,7 +64,7 @@ def _read(args) -> int:
     run = chat_cli.AgentRun(run_id, kind, home.load_config(), home.load_token())
     answer = chat_cli.call(run, ROUTE, _body(args))
     if args.json:
-        print(json.dumps({key: answer.get(key) for key in READ_KEYS}, ensure_ascii=False))
+        print(json.dumps(read_json(answer), ensure_ascii=False))
     else:
         print(answer.get("text") or "")
     return 0

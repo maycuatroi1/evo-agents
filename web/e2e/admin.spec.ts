@@ -132,6 +132,7 @@ test.describe("members and grants", () => {
     await admin.registerProject(project);
     const account = newAccount("grantee");
     const member = await memberBrowser(browser, account, uiLocale);
+    await member.page.goto("/today"); // Home is a chat with an agent; Today lists the projects
     await expect(member.page.getByTestId("state-empty")).toContainText("Bạn chưa được cấp dự án nào");
 
     await signInAs(ADMIN_ACCOUNT);
