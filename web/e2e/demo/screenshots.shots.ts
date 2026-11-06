@@ -113,9 +113,9 @@ const SCREENS: Screen[] = [
     },
   },
   {
-    name: "home",
+    name: "today",
     go: async (page) => {
-      await open(page, "/");
+      await open(page, "/today");
       await expect(main(page).getByTestId("needs-you-item")).toHaveCount(1);
       await expect(main(page).getByTestId("in-flight-item").first()).toBeVisible();
     },

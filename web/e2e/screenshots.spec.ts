@@ -38,13 +38,14 @@ test.describe("screenshots", () => {
         await admin.grant(name, account.login, role, level);
       }
       await signInAs(account);
+      await page.goto("/today");
       await expect(page.locator("#main").getByTestId("home-projects")).toBeVisible();
       await page.screenshot({ path: path.join(dir!, `shell-home-${scheme}.png`) });
       await page.goto(`/p/${main}`);
       await expect(page.getByTestId("label-ladder")).toBeVisible();
       await page.screenshot({ path: path.join(dir!, `shell-project-${scheme}.png`), fullPage: true });
       await page.setViewportSize({ width: 375, height: 812 });
-      await page.goto("/");
+      await page.goto("/today");
       await expect(page.locator("#main").getByTestId("home-projects")).toBeVisible();
       await page.screenshot({ path: path.join(dir!, `shell-home-mobile-${scheme}.png`) });
       await signOut(page);
@@ -78,14 +79,14 @@ test.describe("screenshots", () => {
         [375, "home-mobile"],
       ] as const) {
         await page.setViewportSize({ width, height: 900 });
-        await open(page, "/");
+        await open(page, "/today");
         await expect(page.locator("#main").getByTestId("needs-you-item")).toHaveCount(1);
         await expect(page.locator("#main").getByTestId("fleet-worker")).toHaveCount(2);
         await expect(page.locator("#main").getByTestId("sparkline-chart")).toBeVisible();
         await page.screenshot({ path: path.join(dir!, `${name}-${scheme}.png`), fullPage: true });
       }
       await page.setViewportSize({ width: 1440, height: 900 });
-      await open(page, "/");
+      await open(page, "/today");
       await page.getByTestId("project-switcher").click();
       await expect(page.getByTestId("project-switcher-menu").locator("[data-project]")).toHaveCount(2);
       await page.screenshot({ path: path.join(dir!, `home-switcher-${scheme}.png`) });

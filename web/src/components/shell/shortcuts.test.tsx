@@ -104,14 +104,14 @@ afterEach(() => {
 });
 
 describe("go to sequences", () => {
-  it("G then H, I or W goes to Home, Inbox or Workers", async () => {
+  it("G then H, I or W goes to Today, Inbox or Workers", async () => {
     const user = setup();
     await user.keyboard("gi");
     expect(nav.push).toHaveBeenLastCalledWith("/inbox");
     await user.keyboard("gw");
     expect(nav.push).toHaveBeenLastCalledWith("/workers");
     await user.keyboard("gh");
-    expect(nav.push).toHaveBeenLastCalledWith("/");
+    expect(nav.push).toHaveBeenLastCalledWith("/today");
     expect(nav.push).toHaveBeenCalledTimes(3);
   });
 

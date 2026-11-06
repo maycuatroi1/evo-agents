@@ -25,7 +25,8 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 
 | Page | What it shows | Route |
 | --- | --- | --- |
-| Home, `/` | Today first: one sentence of what waits and what changed, the things that changed since you last looked, each a link, and a caught-up line, the seen mark moved only once the end of the list was on screen (`docs/notifications.md`, Today and its summary push); then what waits on you (Needs you: the questions asked of you), what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it; the author runs that wait for your reply in their chat (one that waits on a decision of its own stands in Needs you through the decision alone, not again there), and a decision of an author run without a plan named "Author run #N" with the run's title, never a link to a plan | `GET /v1/me/today`, `POST /v1/me/today/seen`, `GET /v1/me/overview` |
+| Home, `/` | A chat with one of the agents you may give work to, over every project of your grants: the one you wrote to last first, its starters around the composer until your direct chat with it has a message, then that chat ("Chat home", below) | `GET /v1/me/chat-agents`, `PUT /v1/chats/direct/{handle}`, the routes of a chat |
+| Today, `/today` | Today first: one sentence of what waits and what changed, the things that changed since you last looked, each a link, and a caught-up line, the seen mark moved only once the end of the list was on screen (`docs/notifications.md`, Today and its summary push); then what waits on you (Needs you: the questions asked of you), what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it; the author runs that wait for your reply in their chat (one that waits on a decision of its own stands in Needs you through the decision alone, not again there), and a decision of an author run without a plan named "Author run #N" with the run's title, never a link to a plan | `GET /v1/me/today`, `POST /v1/me/today/seen`, `GET /v1/me/overview` |
 | Notification settings, `/settings/notifications` (the user menu) | push on this browser, turned on from one button, with the steps to add the web to the Home Screen on an iPhone or iPad first; your push devices, each with a test push and Remove; the tier of each kind of notification; quiet hours and their time zone; the time of the summary push; Hide details on the lock screen (`docs/notifications.md`, Push to devices). The web's service worker, `/sw.js`, which shows the pushes, loads without a session | `GET /v1/push/config`, `GET` and `PUT /v1/me/notification-settings`, `/v1/me/push/devices` |
 | Monitor, `/monitor` | every run in flight over the projects of your grants, and a grid of live tiles that shares out the window (up to nine within it, then four columns that scroll): each tile a run's state, worker, time, plan steps and the tail of its trace, for viewing only; `?runs=project:id,...` names the tiles, ended runs included, and without it the grid follows every run in flight | `GET /v1/me/overview`, `.../runs/{id}`, `.../stream?after=` (200 events before `last_seq`), `.../events?after=` while a stream fails |
 | a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported; for an author run a Chat tab first among them (`?tab=chat`): the agent's and the owner's messages, whose turn it is, a reply box, End chat and a link to the plan it wrote or revises, and each decision the agent asked as a DecisionCard right after the agent's message that ended the turn which asked it, in the order asked: the owner picks an option with the mouse (the recommended one chosen already), adds words if they like and sends each card, an answered card folds to its answer (which the chat does not repeat as a message), the label of whose turn it is says how many decisions wait, another member reads the cards without a form, and "Asked you" in the Trace opens the card in this tab; for a plan run with a session for each step a Step sessions card, each step's agent session with its id to copy, the largest context it read and its cache reads; from 1280 px the session and the side column scroll on their own; a repo links to its forge page from the project's origin, and on GitHub or GitLab its branch and commit too | `.../runs/{id}`, `.../events`, `.../stream`, `.../chat`, `.../messages`, `.../finish`, `GET /v1/projects/{project}` |
@@ -40,7 +41,7 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 
 Cmd K or Ctrl K, or the top bar's search field, opens a command palette: runs, plans, workers and pages to jump to,
 and the actions the visitor's grants allow (Run plan, New plan, Revise with agent, Dispatch a step, Rerun, Register
-worker), never one that deletes, cancels, drains or revokes. `?` opens the list of keyboard shortcuts: G then H, I, P, R or W goes to Home,
+worker), never one that deletes, cancels, drains or revokes. `?` opens the list of keyboard shortcuts: G then H, I, P, R or W goes to Today,
 Inbox, Plans, Runs or Workers, D opens Dispatch for a writer, / focuses the page's search. A switch in that dialog turns
 the single keys off on the browser. Every page takes the full width beside the sidebar, less a 24 px gutter (16 px
 under 768 px). Under 768 px tables become lists whose rows open their page, filters move into
@@ -120,7 +121,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read`, `GET` and `PUT /v1/me/notification-settings` (the notices you turned off, the tier of each kind, quiet hours, time zone, the time of the summary push, Hide details) |
 | push | `GET /v1/push/config`, public: the VAPID key a browser subscribes with and which senders are on; `GET` and `POST /v1/me/push/devices`, `DELETE /v1/me/push/devices/{id}`, `POST /v1/me/push/devices/{id}/test`: your push devices, a browser's Web Push subscription, an APNs or an FCM token (`docs/notifications.md`, Push to devices) |
-| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `PUT` and `DELETE .../label`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
+| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/people`, `PUT /v1/chats/direct/{handle}`, `GET /v1/me/chat-agents`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `PUT` and `DELETE .../label`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/waiting`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides, or a writer for a problem or an opportunity (`docs/plugins.md`, section Builder) |
@@ -495,7 +496,8 @@ without a grant gets the project's 404.
 A profile has a handle, unique on the hub (deleted profiles' included) and never a project's name, written
 `[a-z0-9-]`; a name shown for it (1 to 80 characters); a description (at most 1000); instructions, added to the system
 prompt of its runs (at most 8000); a colour (`#rrggbb`, one picked by the handle when none is given); an avatar or
-none; and eight axes of permissions. The handle never changes. Every edit that changes something, the avatar
+none; starters, at most 4 questions of one line and at most 120 characters each, which the chat home offers before a
+first message to the agent (`starters`, since migration 0215); and eight axes of permissions. The handle never changes. Every edit that changes something, the avatar
 included, raises its version and keeps the profile as that version had it, which `GET .../agents/{handle}/versions`
 lists. A deleted profile takes no new run. Field names follow an A2A Agent Card where they can: `name`,
 `description`, and `icon_url` for the avatar.
@@ -503,7 +505,7 @@ lists. A deleted profile takes no new run. Field names follow an A2A Agent Card 
 Every project has a default profile, `@<project>`, whose handle is the project's name: the registration of a project
 creates it, and migration 0030 created one for every project before it. It allows everything and has no instructions,
 always (422 otherwise), so a run whose dispatch names no profile, which goes under it, runs as runs ran before
-profiles; its name, description, colour and avatar may change, and it is never deleted. A project cannot be registered
+profiles; its name, description, colour, starters and avatar may change, and it is never deleted. A project cannot be registered
 under the handle of another project's agent (409), since `@<name>` would name both.
 
 Each axis is `{"mode": "all"}` (the default) or `{"mode": "allowlist", "allow": [...]}`. An allowlist never grows by
@@ -907,6 +909,7 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | `GET /v1/chats` | `hub chat list` | anyone: their chats |
 | `POST /v1/chats` (`title`, `people`, `agents`) | `hub chat create TITLE [--member LOGIN] [--agent HANDLE]` | anyone |
 | `PUT /v1/chats/direct/{handle}`: their direct chat with the agent | | anyone (making one: writer on its project) |
+| `GET /v1/me/chat-agents`: the agents they may chat with, each with its starters, their direct chat with it and when they last wrote there; an agent deleted or without a pool of its own is left out | | anyone: the agents of the projects they may give work to, by the rules of a mention (`agent_tasking`) |
 | `GET /v1/chats/people` (`agents`, repeated): whom they may add, each with why they could not be in a chat with those agents | | anyone: the people they share a project or a chat with |
 | `GET /v1/chats/{id}` | | a member |
 | `PUT` and `DELETE .../people/{login}` | | a member adds; the person or the creator removes |
@@ -999,6 +1002,115 @@ project, only while the charter still says `agent` and the proposal is open or d
 hub leaves open for its owner is told in the thread, and the agent merges it through `POST
 /v1/worker/runs/{id}/curator/merge` at the head the Judge passed, only when every sign of its files is one of a
 protected path and the rest of the hub's merge allows it, K5 of the chat run's principal included.
+
+## Agents across projects
+
+The agent of a chat run asks an agent of another project for work or knowledge of that project with
+`evo-agents worker agent ask HANDLE TEXT` (`evo_agents/worker/agent_ask_cli.py`), which calls
+`POST /v1/worker/runs/{id}/agent/asks` with the worker's token (`evo_agents/hub/server/agent_asks.py`). Only a chat run
+asks: a run of another kind gets 422. `worker chat mention` stays as it was, for an agent of the same chat.
+
+The hub refuses, with why, writes nothing else and says the refusal in the asking run's thread (201, `refusal` set,
+exit status 1 on the command line), when:
+
+- the person at the origin of the chain holds no grant on the target's project, or no agent has that handle: "no agent
+  @x that LOGIN can see";
+- the ask would go past hop 3 (`chat_runs.MAX_HOPS`), or the agent asks itself (`chat_runs.hop_problem`);
+- that person may not give the agent work, by the rule a mention keeps: writer on the agent's project, admin for an
+  agent type that takes work from the admins alone (`agent_tasking.task_refusal`);
+- the agent was deleted or has no pool of its own (`agent_tasking.work_home`).
+
+Who may give an agent work, and whether it takes work at all, is one module, `evo_agents/hub/server/agent_tasking.py`:
+a mention in a chat (`chat_runs.hand_work`), an ask and the list of agents a person may chat with call the same
+functions, so they never disagree.
+
+Otherwise the hub opens the origin person's direct chat with the agent asked and posts the question there as a message
+of the asking agent, which starts a thread. The run it hands is a chat run of the agent asked, on its pool,
+dispatched by the origin person, one hop further, with `runs.spawned_by_run_id` naming the asking run. Its rights are
+those of the run before it at most: it acts within the asking run's principal and autonomy snapshot
+(`run_autonomy.of_message`), so each run of a chain holds the intersection of the rights of the runs above it. It opens
+none of the asking project's repos.
+
+The asking run gets a wait (a decision of category `wait`, as `worker wait` asks, which notifies nobody), named in
+`runs.spawned_wait_id` of the run asked. The command notes the wait and tells the agent to end its turn: the run waits,
+and the reaper parks it, so it holds no worker. When the run asked ends, the hub answers the wait
+(`agent_asks.answer_asker`, from `chat_runs.chat_run_moved`) and the asking run resumes in its session with a message
+that names the decision. A run that ends `done` sends the last message of its agent in its thread, its outputs, its
+branch and repos; the question asks the agent to name in that message the knowledge graph nodes its answer rests on. A
+run that fails, is cancelled or is lost sends why. A run asked that goes on in a new run (a parked run resumed, an
+inbox untaken) carries both columns, so the run that really ends answers. A wait already answered, by its time (7
+days) or by a person's Go on now or Stop waiting, is left as it is.
+
+The asking run's thread shows each part as a message of the hub: "@reviewer asked @kb-bot of project lumen-kb (run
+#N): TEXT" when the ask is taken, "@kb-bot: WHY" when it is refused, then "@kb-bot answered (run #N): ..." or "@kb-bot
+gave no answer: run #N ended failed: WHY". The thread shows at most 2 KiB of the answer
+(`agent_asks.ANSWER_IN_THREAD`); the agent gets it whole, within the size of a decision's answer.
+
+The prompt of a chat run names the command, the hop the run is at and its limits (`chat_runs.delegation_rule`).
+Schema 0214 adds `runs.spawned_by_run_id` (a run) and `runs.spawned_wait_id` (a decision), both null for any other run
+and set to null when what they name is deleted; the run API returns `spawned_by_run_id`. Going back drops both.
+
+### Reading another project, and what may enter a run
+
+The agent of a chat run reads the knowledge graph and the memories of another project with
+`evo-agents worker agent read PROJECT TOOL [TEXT]` (`evo_agents/worker/agent_read_cli.py`), TOOL being `kg-search`,
+`kg-context`, `memory-search` or `memory-get`, which calls `POST /v1/worker/runs/{id}/agent/reads` with the worker's
+token (`evo_agents/hub/server/agent_reads.py`). The evo-hub MCP tools keep reading the run's own project only: a run's
+token reaches no other project, and widening it would widen every tool. Only a chat run reads this way (422 for
+another kind), and never its own project (422, with a pointer to the evo-hub tools).
+
+The hub reads as the person at the origin of the chain, with that person's grant on PROJECT, through PROJECT's own hub
+sink, as the evo-hub tools of a session of that project would. A person with no grant there gets 404, as for a project
+that does not exist. A project that declares no hub sink has nothing on the hub to read.
+
+Then comes the one check of what another project may put into a run (`evo_agents/hub/server/cross_labels.py`): an
+item of project Q enters a run of project P only when the hub sink of P clears the item's label. The two projects have
+ladders of their own, so the check goes by names. A level of Q passes when P's ladder has the same name at or below
+what P's hub sink clears, and every lower level of Q passes too; locations go the same way. The result is one ceiling
+on Q's ladder, so the knowledge graph reads with it as with any clearance. A name P's ladder lacks stops the ceiling
+below it (fail closed). An item that names other projects, or whose label cannot be read, never passes, and a run of a
+project without a usable hub sink takes nothing from another project.
+
+What fails the check is left out whole, never shown in part, and the answer says how many items were left out and why,
+for example "1 item of what you may read was left out, since level customer of project lumen-kb is above what hub sink
+'hub' of project northwind clears (internal/any)." The JSON answer carries `shown`, `withheld` and `why`. To count what
+it leaves out of the knowledge graph, the hub reads twice: once whole within the person's clearance, then within the
+ceiling, which is what the agent gets. Text past the graph's size limit is cut, with a note to ask more narrowly, since
+the `kg_more` handle belongs to the hub's own session. `memory-get` of a personal memory, or of one of another project,
+answers 404. What the agent is shown is noted in the run's audience (`run_audience`), as for the evo-hub tools.
+
+The answer of an agent of another project, asked with `agent ask`, passes the same check before it enters the asking
+run (`agent_asks.withheld_answer`, called first in `agent_asks.delegated_answer`). Its label is the label of the run
+asked: its plan's label, else its project's default label (`kg_labels.run_label`). When the hub sink of the asking
+run's project does not clear it, the wait is answered with the run's end and why its answer was withheld, with no
+text, refs, branch or failure reason, and the thread says "@kb-bot ended run #N done; its answer was withheld from this
+run: WHY". An ask within one project skips the check.
+
+The prompt of a chat run names the read command and says the hub may leave items out, so the agent says so and never
+guesses at them (`chat_runs.reading_rule`). No schema change.
+
+## Chat home
+
+Home (`/`) is a chat with an agent, for every member. The agent picker at the top lists the agents the visitor may give
+work to across the projects of their grants, from `GET /v1/me/chat-agents`: an agent of a project where they are a
+writer (an admin, for an agent type that takes work from the admins alone), that has a worker pool of its own. The
+list puts the agent they wrote to last first, and Home opens on it; `?agent=HANDLE` names another, and a pick writes it
+there, so a reload keeps it.
+
+Until the visitor's direct chat with the agent has a message, the frame shows the agent's start: its face, name,
+project and what it does, the composer in the middle, and the agent's starters under it. A starter puts its words in
+the box and the focus there; nothing is sent until the visitor sends. Looking at an agent opens nothing: the first
+message opens the direct chat (`PUT /v1/chats/direct/{handle}`, as on Chats) and sends. From then on Home shows that
+chat with the components of a chat's own page: messages, live, their threads, their outputs and interactive answers,
+and the composer. A question one agent asks another with `worker agent ask` shows in the asking run's thread as "@a
+asked @b ..." and then "@b answered ..." ("Agents across projects", above).
+
+With no agent to chat with, Home says why (no agent on a project they may give work to, or none with a worker pool) and
+leads to the Projects card of Today (`/today#projects`). With chats off for the hub it says so and leads to Today.
+
+Today, Needs you, the runs in flight and the fleet moved to `/today`, which has its own sidebar entry. G then H, the
+command palette and the push of Today's summary (`docs/notifications.md`) lead there. The mobile app and
+`GET /v1/me/today` did not change. The web's parts are in `web/DESIGN.md`, Chat home.
 
 ## Plans and their copies in git
 

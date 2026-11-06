@@ -2216,6 +2216,7 @@
           "color",
           "icon_url",
           "avatar_sha256",
+          "starters",
           "is_default",
           "permissions",
           "restricted",
@@ -2352,6 +2353,7 @@
           "color",
           "icon_url",
           "avatar_sha256",
+          "starters",
           "is_default",
           "permissions",
           "restricted",
@@ -2406,6 +2408,7 @@
           "color",
           "icon_url",
           "avatar_sha256",
+          "starters",
           "is_default",
           "permissions",
           "restricted",
@@ -2584,6 +2587,7 @@
           "color",
           "icon_url",
           "avatar_sha256",
+          "starters",
           "is_default",
           "permissions",
           "restricted",
@@ -2638,6 +2642,7 @@
           "color",
           "icon_url",
           "avatar_sha256",
+          "starters",
           "is_default",
           "permissions",
           "restricted",
@@ -2692,6 +2697,7 @@
           "color",
           "icon_url",
           "avatar_sha256",
+          "starters",
           "is_default",
           "permissions",
           "restricted",
@@ -3470,7 +3476,8 @@
           "as_owner",
           "as_owner_since",
           "model_used",
-          "routing"
+          "routing",
+          "spawned_by_run_id"
         ],
         "schema": "Run"
       }
@@ -20140,7 +20147,8 @@
           "as_owner",
           "as_owner_since",
           "model_used",
-          "routing"
+          "routing",
+          "spawned_by_run_id"
         ],
         "schema": "Run"
       }
@@ -20258,7 +20266,8 @@
           "as_owner",
           "as_owner_since",
           "model_used",
-          "routing"
+          "routing",
+          "spawned_by_run_id"
         ],
         "schema": "Run"
       }
@@ -20435,7 +20444,8 @@
           "as_owner",
           "as_owner_since",
           "model_used",
-          "routing"
+          "routing",
+          "spawned_by_run_id"
         ],
         "schema": "Run"
       }
@@ -20553,7 +20563,8 @@
           "as_owner",
           "as_owner_since",
           "model_used",
-          "routing"
+          "routing",
+          "spawned_by_run_id"
         ],
         "schema": "Run"
       }
@@ -20906,7 +20917,8 @@
           "as_owner",
           "as_owner_since",
           "model_used",
-          "routing"
+          "routing",
+          "spawned_by_run_id"
         ],
         "schema": "Run"
       }
@@ -21024,7 +21036,8 @@
           "as_owner",
           "as_owner_since",
           "model_used",
-          "routing"
+          "routing",
+          "spawned_by_run_id"
         ],
         "schema": "Run"
       }
@@ -21142,7 +21155,8 @@
           "as_owner",
           "as_owner_since",
           "model_used",
-          "routing"
+          "routing",
+          "spawned_by_run_id"
         ],
         "schema": "Run"
       }
@@ -21634,7 +21648,8 @@
           "as_owner",
           "as_owner_since",
           "model_used",
-          "routing"
+          "routing",
+          "spawned_by_run_id"
         ],
         "schema": "Run"
       }
@@ -21776,7 +21791,8 @@
           "as_owner",
           "as_owner_since",
           "model_used",
-          "routing"
+          "routing",
+          "spawned_by_run_id"
         ],
         "schema": "Run"
       }
@@ -21952,7 +21968,8 @@
           "as_owner",
           "as_owner_since",
           "model_used",
-          "routing"
+          "routing",
+          "spawned_by_run_id"
         ],
         "schema": "Run"
       }
@@ -22070,7 +22087,8 @@
           "as_owner",
           "as_owner_since",
           "model_used",
-          "routing"
+          "routing",
+          "spawned_by_run_id"
         ],
         "schema": "Run"
       }
@@ -25562,6 +25580,95 @@
         }
       ],
       "json": null
+    },
+    "worker agent ask": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "text",
+          "metavar": "TEXT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [],
+      "json": null
+    },
+    "worker agent read": {
+      "positionals": [
+        {
+          "name": "project",
+          "metavar": "PROJECT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "tool",
+          "metavar": "TOOL",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "kg-search",
+            "kg-context",
+            "memory-search",
+            "memory-get"
+          ]
+        },
+        {
+          "name": "text",
+          "metavar": "TEXT",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--id"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 10
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "tool",
+          "text",
+          "shown",
+          "withheld",
+          "why"
+        ]
+      }
     },
     "worker ask": {
       "positionals": [],
@@ -84880,6 +84987,42 @@
           }
         }
       },
+      "/v1/me/chat-agents": {
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "List Chat Agents",
+          "description": "The agents you may chat with on any project you hold a grant on, the ones you wrote to last first.",
+          "operationId": "list_chat_agents_v1_me_chat_agents_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/ChatHomeAgent"
+                    },
+                    "type": "array",
+                    "title": "Response List Chat Agents V1 Me Chat Agents Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/chats/{chat_id}/people/{login}": {
         "put": {
           "tags": [
@@ -86682,6 +86825,196 @@
                 }
               },
               "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/agent/asks": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Ask",
+          "description": "Ask agent ``handle`` of another project, in a chat run this worker holds (see the module's docstring).",
+          "operationId": "ask_v1_worker_runs__run_id__agent_asks_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAskIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentAsked"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/agent/reads": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Read",
+          "description": "Read the knowledge graph or the memories of another project, in a chat run this worker holds, within what the\nhub sink of the run's project lets in (see the module's docstring).",
+          "operationId": "read_v1_worker_runs__run_id__agent_reads_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrossReadIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CrossRead"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "502": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Bad Gateway"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
             }
           }
         }
@@ -102246,6 +102579,14 @@
               ],
               "title": "Avatar Sha256"
             },
+            "starters": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Starters",
+              "description": "questions the chat home offers before a first message, in order"
+            },
             "is_default": {
               "type": "boolean",
               "title": "Is Default",
@@ -102336,6 +102677,7 @@
             "color",
             "icon_url",
             "avatar_sha256",
+            "starters",
             "is_default",
             "permissions",
             "restricted",
@@ -102994,6 +103336,75 @@
           ],
           "title": "AgentAccountWritten"
         },
+        "AgentAskIn": {
+          "properties": {
+            "handle": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Handle",
+              "description": "the agent asked, of another project, @ left out"
+            },
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Body",
+              "description": "what it is asked, at most 16384 bytes of UTF-8"
+            }
+          },
+          "type": "object",
+          "required": [
+            "handle",
+            "body"
+          ],
+          "title": "AgentAskIn"
+        },
+        "AgentAsked": {
+          "properties": {
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of the agent asked; null when the hub refused"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "the wait of the asking run its answer wakes; null when refused"
+            },
+            "refusal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refusal",
+              "description": "why the hub handed no work, as the thread says too"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "decision_id",
+            "refusal"
+          ],
+          "title": "AgentAsked"
+        },
         "AgentAxis": {
           "properties": {
             "mode": {
@@ -103150,6 +103561,18 @@
               "title": "Color",
               "description": "default: one picked by the handle"
             },
+            "starters": {
+              "items": {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+              },
+              "type": "array",
+              "maxItems": 4,
+              "title": "Starters",
+              "description": "questions the chat home offers before a first message to the agent, in order; one line each"
+            },
             "permissions": {
               "$ref": "#/components/schemas/AgentPermissions"
             },
@@ -103223,6 +103646,26 @@
                 }
               ],
               "title": "Color"
+            },
+            "starters": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 120,
+                    "minLength": 1,
+                    "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                  },
+                  "type": "array",
+                  "maxItems": 4,
+                  "description": "questions the chat home offers before a first message to the agent, in order; one line each"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starters",
+              "description": "the starters whole, in order; [] for none"
             },
             "permissions": {
               "anyOf": [
@@ -112858,6 +113301,94 @@
           ],
           "title": "ChatEvents"
         },
+        "ChatHomeAgent": {
+          "properties": {
+            "handle": {
+              "type": "string",
+              "title": "Handle"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description"
+            },
+            "color": {
+              "type": "string",
+              "title": "Color"
+            },
+            "icon_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Icon Url",
+              "description": "GET of the avatar on this hub; null: draw the initial on the colour"
+            },
+            "starters": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Starters",
+              "description": "questions to offer before a first message, in order"
+            },
+            "is_default": {
+              "type": "boolean",
+              "title": "Is Default",
+              "description": "the project's default agent, @<project>"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id",
+              "description": "your direct chat with the agent; null until one is opened"
+            },
+            "last_chatted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Chatted At",
+              "description": "when you last wrote in your direct chat with the agent; null when you never did"
+            }
+          },
+          "type": "object",
+          "required": [
+            "handle",
+            "project",
+            "name",
+            "description",
+            "color",
+            "icon_url",
+            "starters",
+            "is_default",
+            "chat_id",
+            "last_chatted_at"
+          ],
+          "title": "ChatHomeAgent"
+        },
         "ChatImageChange": {
           "properties": {
             "image_url": {
@@ -115573,6 +116104,126 @@
             "happened_at"
           ],
           "title": "CrmTouchpoint"
+        },
+        "CrossRead": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "tool": {
+              "type": "string",
+              "title": "Tool"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text",
+              "description": "what the agent reads: the items the check lets in, then the line on the rest"
+            },
+            "shown": {
+              "type": "integer",
+              "title": "Shown",
+              "description": "items shown"
+            },
+            "withheld": {
+              "type": "integer",
+              "title": "Withheld",
+              "description": "items the person may read that the run's project does not let in"
+            },
+            "why": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Why",
+              "description": "how many items were left out and why; null when none was"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "tool",
+            "text",
+            "shown",
+            "withheld",
+            "why"
+          ],
+          "title": "CrossRead"
+        },
+        "CrossReadIn": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Project",
+              "description": "the project read, another than the run's"
+            },
+            "tool": {
+              "type": "string",
+              "enum": [
+                "kg_search",
+                "kg_context",
+                "memory_search",
+                "memory_get"
+              ],
+              "title": "Tool",
+              "description": "what is read, as the evo-hub tool of the same name reads it"
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query",
+              "description": "kg_search, kg_context, memory_search"
+            },
+            "ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 20,
+              "title": "Ids",
+              "description": "kg_context: node ids"
+            },
+            "memory_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Memory Id",
+              "description": "memory_get"
+            },
+            "limit": {
+              "type": "integer",
+              "maximum": 20.0,
+              "minimum": 1.0,
+              "title": "Limit",
+              "description": "kg_search, memory_search",
+              "default": 10
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "tool"
+          ],
+          "title": "CrossReadIn"
         },
         "Csrf": {
           "properties": {
@@ -156017,6 +156668,18 @@
               ],
               "title": "Resume Of Run Id",
               "description": "the parked plan run this one goes on from, in its session"
+            },
+            "spawned_by_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Spawned By Run Id",
+              "description": "the chat run whose agent asked the agent of this one, of another project (worker agent ask); null for a run no agent asked that way"
             },
             "state": {
               "type": "string",

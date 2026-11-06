@@ -118,7 +118,8 @@ test.describe("shell", () => {
     await signInAs(account);
     expect(await pickerProjects(page)).toEqual([first, second].sort());
 
-    // Home's Projects card lists the same projects, with roles.
+    // Today's Projects card lists the same projects, with roles.
+    await open(page, "/today");
     const cards = page.locator("#main").getByTestId("home-projects").getByTestId("home-project");
     await expect(cards).toHaveCount(2);
     expect(await cards.evaluateAll((rows) => rows.map((row) => row.getAttribute("data-project")))).toEqual([first, second].sort());
@@ -152,6 +153,9 @@ test.describe("shell", () => {
     const account = newAccount("nogrants");
     await signInAs(account);
     expect(await pickerProjects(page)).toEqual([]);
+    // Home is the chat home, with no agent to chat with; Today's Projects card says there is no project.
+    await expect(page.getByTestId("chat-home-none")).toBeVisible();
+    await open(page, "/today");
     await expect(page.getByTestId("state-empty")).toContainText("Bạn chưa được cấp dự án nào");
     await expect(page.getByTestId("state-empty")).toContainText(account.login);
   });
@@ -223,6 +227,7 @@ test.describe("shell", () => {
     // One list gives both the count and the order, so a new nav item cannot leave one of them behind.
     const expected = [
       "nav-home",
+      "nav-today",
       "nav-inbox",
       "nav-monitor",
       "nav-chats",
@@ -258,7 +263,7 @@ test.describe("shell", () => {
     const order = await links.evaluateAll((items) => items.map((link) => link.getAttribute("data-testid")));
     expect(order).toEqual(expected);
     // The areas opened less often sit in closed folds: the sidebar shows the daily ones and a row per fold.
-    await expect(sidebar.getByRole("link")).toHaveCount(15);
+    await expect(sidebar.getByRole("link")).toHaveCount(16);
     const folds = sidebar.locator('[data-testid^="nav-group-"]');
     expect(await folds.evaluateAll((items) => items.map((fold) => fold.getAttribute("data-testid")))).toEqual([
       "nav-group-delivery",

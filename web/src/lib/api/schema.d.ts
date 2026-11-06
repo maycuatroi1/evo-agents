@@ -9825,6 +9825,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/chat-agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Chat Agents
+         * @description The agents you may chat with on any project you hold a grant on, the ones you wrote to last first.
+         */
+        get: operations["list_chat_agents_v1_me_chat_agents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats/{chat_id}/people/{login}": {
         parameters: {
             query?: never;
@@ -10129,6 +10149,47 @@ export interface paths {
          *     repos on the run's branch (see the module's docstring).
          */
         post: operations["open_repo_v1_worker_runs__run_id__chat_repos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/agent/asks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask
+         * @description Ask agent ``handle`` of another project, in a chat run this worker holds (see the module's docstring).
+         */
+        post: operations["ask_v1_worker_runs__run_id__agent_asks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/agent/reads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read
+         * @description Read the knowledge graph or the memories of another project, in a chat run this worker holds, within what the
+         *     hub sink of the run's project lets in (see the module's docstring).
+         */
+        post: operations["read_v1_worker_runs__run_id__agent_reads_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13384,6 +13445,11 @@ export interface components {
             /** Avatar Sha256 */
             avatar_sha256: string | null;
             /**
+             * Starters
+             * @description questions the chat home offers before a first message, in order
+             */
+            starters: string[];
+            /**
              * Is Default
              * @description the project's default profile, @<project>: every permission
              */
@@ -13686,6 +13752,37 @@ export interface components {
              */
             created: boolean;
         };
+        /** AgentAskIn */
+        AgentAskIn: {
+            /**
+             * Handle
+             * @description the agent asked, of another project, @ left out
+             */
+            handle: string;
+            /**
+             * Body
+             * @description what it is asked, at most 16384 bytes of UTF-8
+             */
+            body: string;
+        };
+        /** AgentAsked */
+        AgentAsked: {
+            /**
+             * Run Id
+             * @description the run of the agent asked; null when the hub refused
+             */
+            run_id: number | null;
+            /**
+             * Decision Id
+             * @description the wait of the asking run its answer wakes; null when refused
+             */
+            decision_id: number | null;
+            /**
+             * Refusal
+             * @description why the hub handed no work, as the thread says too
+             */
+            refusal: string | null;
+        };
         /**
          * AgentAxis
          * @description One axis of a profile's permissions: every value (all), or those of ``allow`` alone (allowlist).
@@ -13763,6 +13860,11 @@ export interface components {
              * @description default: one picked by the handle
              */
             color?: string | null;
+            /**
+             * Starters
+             * @description questions the chat home offers before a first message to the agent, in order; one line each
+             */
+            starters?: string[];
             permissions?: components["schemas"]["AgentPermissions"];
             /**
              * Packs
@@ -13783,6 +13885,11 @@ export interface components {
             instructions?: string | null;
             /** Color */
             color?: string | null;
+            /**
+             * Starters
+             * @description the starters whole, in order; [] for none
+             */
+            starters?: string[] | null;
             /** @description the eight axes whole; an axis left out allows all */
             permissions?: components["schemas"]["AgentPermissions"] | null;
             /**
@@ -17911,6 +18018,44 @@ export interface components {
              */
             progress?: components["schemas"]["ChatProgress"][] | null;
         };
+        /** ChatHomeAgent */
+        ChatHomeAgent: {
+            /** Handle */
+            handle: string;
+            /** Project */
+            project: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Color */
+            color: string;
+            /**
+             * Icon Url
+             * @description GET of the avatar on this hub; null: draw the initial on the colour
+             */
+            icon_url: string | null;
+            /**
+             * Starters
+             * @description questions to offer before a first message, in order
+             */
+            starters: string[];
+            /**
+             * Is Default
+             * @description the project's default agent, @<project>
+             */
+            is_default: boolean;
+            /**
+             * Chat Id
+             * @description your direct chat with the agent; null until one is opened
+             */
+            chat_id: number | null;
+            /**
+             * Last Chatted At
+             * @description when you last wrote in your direct chat with the agent; null when you never did
+             */
+            last_chatted_at: string | null;
+        };
         /** ChatImageChange */
         ChatImageChange: {
             /**
@@ -19196,6 +19341,68 @@ export interface components {
              * Format: date-time
              */
             happened_at: string;
+        };
+        /** CrossRead */
+        CrossRead: {
+            /** Project */
+            project: string;
+            /** Tool */
+            tool: string;
+            /**
+             * Text
+             * @description what the agent reads: the items the check lets in, then the line on the rest
+             */
+            text: string;
+            /**
+             * Shown
+             * @description items shown
+             */
+            shown: number;
+            /**
+             * Withheld
+             * @description items the person may read that the run's project does not let in
+             */
+            withheld: number;
+            /**
+             * Why
+             * @description how many items were left out and why; null when none was
+             */
+            why: string | null;
+        };
+        /** CrossReadIn */
+        CrossReadIn: {
+            /**
+             * Project
+             * @description the project read, another than the run's
+             */
+            project: string;
+            /**
+             * Tool
+             * @description what is read, as the evo-hub tool of the same name reads it
+             * @enum {string}
+             */
+            tool: "kg_search" | "kg_context" | "memory_search" | "memory_get";
+            /**
+             * Query
+             * @description kg_search, kg_context, memory_search
+             */
+            query?: string | null;
+            /**
+             * Ids
+             * @description kg_context: node ids
+             */
+            ids?: string[];
+            /**
+             * Memory Id
+             * @description memory_get
+             */
+            memory_id?: number | null;
+            /**
+             * Limit
+             * @description kg_search, memory_search
+             * @default 10
+             */
+            limit: number;
         };
         /** Csrf */
         Csrf: {
@@ -36758,6 +36965,11 @@ export interface components {
              * @description the parked plan run this one goes on from, in its session
              */
             resume_of_run_id: number | null;
+            /**
+             * Spawned By Run Id
+             * @description the chat run whose agent asked the agent of this one, of another project (worker agent ask); null for a run no agent asked that way
+             */
+            spawned_by_run_id?: number | null;
             /**
              * State
              * @description idle and ended are a local run's alone: the turn ended and the person has the word; the session is over, or went silent for a day
@@ -83028,6 +83240,35 @@ export interface operations {
             };
         };
     };
+    list_chat_agents_v1_me_chat_agents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatHomeAgent"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     add_person_v1_chats__chat_id__people__login__put: {
         parameters: {
             query?: never;
@@ -84314,6 +84555,148 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    ask_v1_worker_runs__run_id__agent_asks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAsked"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_v1_worker_runs__run_id__agent_reads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrossReadIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrossRead"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

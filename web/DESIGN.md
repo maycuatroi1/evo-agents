@@ -268,7 +268,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Skills | `Sparkles` |
 | Inbox; the bell in the top bar | `Inbox`; `Bell` |
 | Monitor, the runs watched live | `MonitorPlay` |
-| Home; a project's overview | `LayoutDashboard`; `FolderKanban` |
+| Home (the chat home); Today; a project's overview | `MessageCircle`; `LayoutDashboard`; `FolderKanban` |
 | My memories; administration | `Brain`; `Shield` |
 | The hub's branding; its features, on or off | `Palette`; `ToggleRight` |
 | Plugins, the store and a project's; a plugin enabled in a project; disabled there; a task run, a task a plugin handed an agent type | `Puzzle`; `Plug`; `Unplug`; `Puzzle` |
@@ -536,7 +536,7 @@ Shared pieces built on them:
   corners, never round. `NAME_LINK` is the name in a table's first column or a list's primary cell: text colour,
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
-  "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox, Monitor, Chats and the
+  "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Today, Inbox, Monitor, Chats and the
   current project's Knowledge graph (a project area marked `top`, the core of a project one click from anywhere), the
   current project (Overview, Decisions, Plans, Runs, then the folds Delivery: Merge queue, Releases; Improvement: Goals,
   Signals, Loop, Insights, Curator; Knowledge: Agents, Memories, Skills, Browser; Apps: the pages its
@@ -607,7 +607,7 @@ Shared pieces built on them:
   shows that key after its meta (G I on Inbox, G P and G R on the page's project's Plans and Runs, D on Dispatch a
   step there), and once something typed names it, a Help group offers Keyboard shortcuts.
 - `components/shell/shortcuts.tsx`: the registry of every key the web answers to (`SHORTCUTS`) and the shell's own
-  keys. G then H, I, P, R or W within a second goes to Home, Inbox, the Plans and Runs of the project the sidebar
+  keys. G then H, I, P, R or W within a second goes to Today (`/today`), Inbox, the Plans and Runs of the project the sidebar
   shows (`useSelectedProject`; with none to open, a note says so), and Workers; after 400 ms
   without a second key a hint at the foot of the screen names them (for the eye, `aria-hidden`; under 768 px none).
   D opens Dispatch on a project's pages for a writer: the page's own where it registers one (`useDispatchShortcut`:
@@ -661,7 +661,30 @@ Shared pieces built on them:
   label is the link, described by the figure and its line, with a cover over the cell, a chevron after the label and
   the cell on `accent` under the pointer; `display` sets the figure as it reads ("1.2 GB", "1,234") where the bare value
   would not.
-- `components/home/today-card.tsx`, Today, Home's first card (docs/notifications.md, Today): one read of
+- Chat home (`/`, `components/chats/chat-home.tsx`; docs/hub.md, Chat home): Home for every member is a chat with an
+  agent. It reads `GET /v1/me/chat-agents` (prefetched on the server when chats are on) and opens on the agent the
+  visitor wrote to last, or the one `?agent=HANDLE` names; a pick rewrites `?agent=` without a history entry. The page
+  is as tall as a chat's own page, so the composer stays in sight. With no agent, an EmptyState (`Bot`) says an agent
+  shows once it is on a project the visitor may give work to and has a worker pool, with Open your projects (to the
+  Projects card, `/today#projects`) and Go to Today; with chats off for the hub, another (`MessageSquareOff`) leads to
+  Today. Each state carries the page's h1 "Home" for screen readers. Its parts, reusable by any page that puts a chat
+  with an agent in a frame of its own:
+  - `chats/agent-chat.tsx`, `AgentChat`: the frame. The picker bar over the agent's start until the direct chat has a
+    message, then `ChatView` itself, with its threads, outputs and interactive answers, and `useUnder` and
+    `agentPanels` as on a chat's page. `ChatView` loads on demand (`next/dynamic`), so a page on the start screen does
+    not carry it. Looking at an agent opens no chat: the first message opens the direct chat
+    (`PUT /v1/chats/direct/{handle}`), sends, reads the chat's page again and shows the chat.
+  - `chats/agent-picker.tsx`, `AgentPicker`: a ghost button, 44 px tall, with the agent's face, name and "@handle,
+    project" in mono and `ChevronsUpDown`, opening a DropdownMenu of radio items (face, name, handle and project), in
+    the hub's order; its label names the agent and its project.
+  - `chats/chat-start.tsx`, `ChatStart`: the agent's face at `xl`, the h1 "Chat with NAME" in 24 px, "@handle,
+    project" and what it does, centred in the frame, then the composer (a `card` box with a 3-row textarea, the hint
+    and Send with `ArrowUp`; Enter sends as in a chat, blank and over-long messages refused under the box), then the
+    starters under a "Try asking" h2 (`Sparkles`): 44 px chips on `card`, two columns from 640 px. A starter fills the
+    box and moves the focus there; it sends nothing.
+  `e2e/home-chat.spec.ts` checks the pick, the start, the first send, an interactive answer on Home, the state with no
+  agent, and axe at 1440 and 375 px in light and dark.
+- `components/home/today-card.tsx`, Today, the first card of the Today page (docs/notifications.md, Today): one read of
   `GET /v1/me/today` a visit, prefetched on the server with the overview and kept while the page is open (no polling,
   no refetch on focus), so what it lists stays under the visitor's eyes. A 48 px head (the h2, the window in
   `fg-subtle`: "Since you last looked", "Last 24 hours" or "Last 7 days", and Notifications on the right, to
@@ -672,9 +695,9 @@ Shared pieces built on them:
   screen with the page visible (an IntersectionObserver), the card posts `seen_until` to `POST /v1/me/today/seen`, once
   a reading, so the mark never passes an item the page did not show; a failed write is tried when the line shows
   again. A failed read stays in the card with Try again.
-- `components/home`, Home (`/`), the kit's MissionControl: Today first, then one read of `GET /v1/me/overview` (prefetched on the
+- `components/home`, Today (`/today`; Home until the chat home took `/`), the kit's MissionControl: Today first, then one read of `GET /v1/me/overview` (prefetched on the
   server with the workers list, then asked every 5 seconds while a run is in flight or a decision is open and every 30
-  otherwise; the page's LiveIndicator query) and the workers list for the Fleet card. The page head is "Home"; under
+  otherwise; the page's LiveIndicator query) and the workers list for the Fleet card. The page head is "Today"; under
   it the MetricStrip of five cells: Waiting on you (`attention`, the oldest of the visitor's open decisions named),
   Running (`running` with the live dot, the run and its worker), Queued (the run that waited longest), Done in 7 days
   with the sparkline of `done_by_day` (UTC days, every value in its label) and Failed in 7 days with "and N lost" and
@@ -2072,7 +2095,7 @@ so the server renders a page the same way for everyone who has not picked a lang
   brand cobalt) with a 2 px offset on every focusable element.
 - A skip link to `#main`, one `<main>`, a labelled `<nav>` and breadcrumb, an `h1` on every page.
 - Keys (`components/shell/shortcuts.tsx` lists them all, and `?` shows them): Cmd K or Ctrl K opens the command
-  palette, `/` focuses the page's search, G then H, I, P, R, C or W goes to Home, Inbox, Plans, Runs, the Curator or
+  palette, `/` focuses the page's search, G then H, I, P, R, C or W goes to Today, Inbox, Plans, Runs, the Curator or
   Workers, D
   opens Dispatch on a writer's project page, `?` lists the keys, Cmd or Ctrl with Enter sends an answer or a message,
   Enter sends a chat's message and Shift with Enter adds a line to it, J and K move between the Inbox's rows, Ctrl or
@@ -2092,7 +2115,7 @@ so the server renders a page the same way for everyone who has not picked a lang
 2. Make the route a server component that calls `prefetch` and wraps a client component in
    `HydrationBoundary` from `src/lib/api/hydration-boundary.tsx` (ESLint refuses TanStack's own: the shell reads
    some of the page's queries before the page renders, and TanStack's would hold those back, so the server would
-   send a skeleton; `e2e/server-render.spec.ts` checks Home, Workers and Runs); the client component reads with
+   send a skeleton; `e2e/server-render.spec.ts` checks Today, Workers and Runs); the client component reads with
    `useHubQuery` and renders through `QueryView`.
 3. Add the sidebar entry to `PROJECT_NAV` or `HUB_NAV` in `components/shell/nav.ts` (with the `group` of the fold it
    belongs in, next to that fold's other items, unless visitors open it every day), and its label under

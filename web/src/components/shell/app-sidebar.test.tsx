@@ -113,12 +113,13 @@ beforeEach(() => {
 });
 
 describe("AppSidebar", () => {
-  it("lists Home and Inbox, the project's areas and the hub's in the kit's order", async () => {
+  it("lists Home, Today and Inbox, the project's areas and the hub's in the kit's order", async () => {
     setup();
     const navigation = screen.getByRole("navigation", { name: "Điều hướng chính" });
     const links = within(navigation).getAllByRole("link", { hidden: true });
     expect(links.map((link) => link.getAttribute("data-testid"))).toEqual([
       "nav-home",
+      "nav-today",
       "nav-inbox",
       "nav-monitor",
       "nav-chats",
@@ -163,6 +164,7 @@ describe("AppSidebar", () => {
     const navigation = screen.getByRole("navigation", { name: "Điều hướng chính" });
     expect(within(navigation).getAllByRole("link").map((link) => link.getAttribute("data-testid"))).toEqual([
       "nav-home",
+      "nav-today",
       "nav-inbox",
       "nav-monitor",
       "nav-chats",

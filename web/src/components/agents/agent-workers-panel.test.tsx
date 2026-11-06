@@ -49,6 +49,7 @@ const AGENT: Agent = {
   color: "#2563eb",
   icon_url: null,
   avatar_sha256: null,
+  starters: [],
   is_default: false,
   home_pool: null,
   account_pool: null,

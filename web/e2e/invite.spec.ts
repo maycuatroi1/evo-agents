@@ -211,5 +211,8 @@ test("a hub admin makes a link that shows once, finds it in the list and revokes
 
 test("a member without a grant is told an admin may send an invite link", async ({ page, signInAs }) => {
   await signInAs(newAccount("nogrant"));
+  // Home, the chat home, has no agent to offer; Today's Projects card says how a project comes.
+  await expect(page.locator("#main").getByTestId("chat-home-none")).toBeVisible();
+  await page.goto("/today");
   await expect(page.locator("#main").getByTestId("state-empty")).toContainText("or sends you an invite link");
 });

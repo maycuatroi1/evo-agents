@@ -32,6 +32,7 @@ describe("nav", () => {
   it("lists the groups in the kit's order, counting the inbox's decisions, the runs at work, unread chats and the project's active runs", () => {
     expect(HOME_NAV.map((item) => [item.label, item.href, item.count ?? null])).toEqual([
       ["home", "/", null],
+      ["today", "/today", null],
       ["inbox", "/inbox", "openDecisions"],
       ["monitor", "/monitor", "runningRuns"],
       ["chats", "/chats", "unreadChats"],

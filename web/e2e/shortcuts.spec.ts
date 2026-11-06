@@ -33,7 +33,7 @@ async function heading(page: Page) {
   await expect(main(page).getByRole("heading", { level: 1 })).toBeVisible();
 }
 
-test("G then a letter goes to Home, Inbox, Plans, Runs and Workers, and the sidebar shows the keys", async ({ page, member }) => {
+test("G then a letter goes to Today, Inbox, Plans, Runs and Workers, and the sidebar shows the keys", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await open(page, `/p/${project}`);
@@ -52,10 +52,10 @@ test("G then a letter goes to Home, Inbox, Plans, Runs and Workers, and the side
   await expect(page).toHaveURL(/\/workers$/);
   await heading(page);
   await goTo(page, "h");
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/today$/);
   await heading(page);
 
-  // On Home the member's only project is the one G P opens.
+  // On Today the member's only project is the one G P opens.
   await goTo(page, "p");
   await expect(page).toHaveURL(new RegExp(`/p/${project}/plans$`));
   await heading(page);

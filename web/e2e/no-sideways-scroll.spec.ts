@@ -311,7 +311,7 @@ test("home never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page,
   const [failing] = await dispatch(me, project, ["2"]);
   await claimRun(step);
   await reportState(step, failing.id, { state: "failed", error: `${LONG}${LONG}${LONG}` });
-  await noSidewaysScroll(page, WIDTHS, [{ path: "/", ready: shown("needs-you-item") }]);
+  await noSidewaysScroll(page, WIDTHS, [{ path: "/today", ready: shown("needs-you-item") }]);
 });
 
 for (const width of WIDTHS) {

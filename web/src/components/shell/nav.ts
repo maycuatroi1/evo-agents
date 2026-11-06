@@ -19,6 +19,7 @@ import {
   ListChecks,
   LockKeyhole,
   type LucideIcon,
+  MessageCircle,
   MessagesSquare,
   MonitorPlay,
   MoonStar,
@@ -43,16 +44,17 @@ import { browserApi } from "@/lib/api/browser";
 import { type FeatureId, featureOn, featuresQuery } from "@/lib/hub-settings";
 
 /**
- * The sidebar's links, in the kit's AppShell order: Home, Inbox, Monitor and Chats; the current project's areas, then
- * the pages its enabled plugins add (shell/plugin-nav.tsx) before its Plugins; the hub-wide areas (org chart, workers,
- * memories, skills, then secrets, accounts and administration). A step that adds a project area adds one entry to
- * PROJECT_NAV, a hub-wide area one entry to HUB_NAV, and one label under `nav` in messages/vi.json and
- * messages/en.json. Icons follow the Iconography table of web/DESIGN.md. An item that names a `feature` leaves the
- * sidebar and the palette while a hub admin has that feature off, for the hub or for the project shown.
+ * The sidebar's links, in the kit's AppShell order: Home (the chat home), Today, Inbox, Monitor and Chats; the current
+ * project's areas, then the pages its enabled plugins add (shell/plugin-nav.tsx) before its Plugins; the hub-wide
+ * areas (org chart, workers, memories, skills, then secrets, accounts and administration). A step that adds a project
+ * area adds one entry to PROJECT_NAV, a hub-wide area one entry to HUB_NAV, and one label under `nav` in
+ * messages/vi.json and messages/en.json. Icons follow the Iconography table of web/DESIGN.md. An item that names a
+ * `feature` leaves the sidebar and the palette while a hub admin has that feature off, for the hub or for the project
+ * shown.
  *
- * A project area marked `top` sits in the first group, after Home, Inbox, Monitor and Chats, for the project shown: the
- * knowledge graph, the core of a project, one click from anywhere. The palette and the breadcrumb still name it as the
- * project's area it is.
+ * A project area marked `top` sits in the first group, after Home, Today, Inbox, Monitor and Chats, for the project
+ * shown: the knowledge graph, the core of a project, one click from anywhere. The palette and the breadcrumb still name
+ * it as the project's area it is.
  *
  * An item that names a `group` sits in that fold of the sidebar (NAV_GROUPS) instead of on its own row, so the
  * sidebar keeps to the places a visitor opens every day: the fold opens on a click, by itself when the page shown is
@@ -61,6 +63,7 @@ import { type FeatureId, featureOn, featuresQuery } from "@/lib/hub-settings";
  */
 export type NavLabel =
   | "home"
+  | "today"
   | "inbox"
   | "monitor"
   | "overview"
@@ -145,7 +148,8 @@ export type HubNavItem = {
  * watch live.
  */
 export const HOME_NAV: readonly HubNavItem[] = [
-  { label: "home", icon: LayoutDashboard, href: "/" },
+  { label: "home", icon: MessageCircle, href: "/" },
+  { label: "today", icon: LayoutDashboard, href: "/today" },
   { label: "inbox", icon: Inbox, href: "/inbox", count: "openDecisions" },
   { label: "monitor", icon: MonitorPlay, href: "/monitor", count: "runningRuns", feature: "monitor" },
   { label: "chats", icon: MessagesSquare, href: "/chats", count: "unreadChats", feature: "chats" },

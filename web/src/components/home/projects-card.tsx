@@ -106,6 +106,7 @@ export function Projects({ projects }: { projects: OverviewProject[] }) {
         </Link>
       }
       testId="home-projects"
+      id="projects"
     >
       <ul>
         {projects.map((project) => (

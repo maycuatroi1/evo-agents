@@ -8,6 +8,8 @@ import type { ApiSource } from "@/lib/queries";
 
 type Chat = components["schemas"]["Chat"];
 type ChatSummary = components["schemas"]["ChatSummary"];
+/** An agent the visitor may chat with, as the chat home lists it (GET /v1/me/chat-agents). */
+export type ChatHomeAgent = components["schemas"]["ChatHomeAgent"];
 
 /**
  * What other pages need of group chats (the sidebar's unread count, the breadcrumb's chat title, a chat run's link
@@ -20,6 +22,7 @@ export const chatKeys = {
   one: (id: number) => ["chats", "one", id] as const,
   page: (id: number) => ["chats", "one", id, "page"] as const,
   people: (agents: readonly string[]) => ["chats", "people", ...agents] as const,
+  agents: ["chats", "home-agents"] as const,
 };
 
 /** How often the list is read while a Chats page shows it, and while only the sidebar counts its unread messages. */
@@ -30,6 +33,16 @@ export const chatsQuery = (api: ApiSource) =>
   queryOptions({
     queryKey: chatKeys.list,
     queryFn: ({ signal }): Promise<ChatSummary[]> => call(api().GET("/v1/chats", { signal })),
+  });
+
+/**
+ * The agents the visitor may chat with, over every project of their grants (GET /v1/me/chat-agents): the ones they
+ * wrote to last first, each with its starters and the visitor's direct chat with it, when there is one.
+ */
+export const chatAgentsQuery = (api: ApiSource) =>
+  queryOptions({
+    queryKey: chatKeys.agents,
+    queryFn: ({ signal }): Promise<ChatHomeAgent[]> => call(api().GET("/v1/me/chat-agents", { signal })),
   });
 
 /** The chat with its people and agents. */

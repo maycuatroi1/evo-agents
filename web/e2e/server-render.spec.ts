@@ -24,18 +24,18 @@ function holds(page: string, pattern: string | RegExp): boolean {
   return typeof pattern === "string" ? page.includes(pattern) : pattern.test(page);
 }
 
-test("Home, Workers and a project's Runs arrive from the server with their data", async ({ page, member }) => {
+test("Today, Workers and a project's Runs arrive from the server with their data", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedRunPlan(me, project);
   const live = await liveWorker(me, project, uniqueName("ssr"));
   const [run] = await dispatch(me, project, ["2"]);
 
-  // Home: the overview (the metric strip and the Projects card) and the workers list (the Fleet card).
-  const home = await html(page.request, "/");
-  expect.soft(holds(home, new RegExp(`data-testid="home-project"[^>]*data-project="${project}"`)), "Home's Projects card").toBe(true);
-  expect.soft(holds(home, new RegExp(`data-testid="fleet-worker"[^>]*data-worker-id="${live.worker.id}"`)), "Home's Fleet card").toBe(true);
-  expect.soft(holds(home, 'data-testid="home-metrics"'), "Home's metric strip").toBe(true);
+  // Today: the overview (the metric strip and the Projects card) and the workers list (the Fleet card).
+  const home = await html(page.request, "/today");
+  expect.soft(holds(home, new RegExp(`data-testid="home-project"[^>]*data-project="${project}"`)), "Today's Projects card").toBe(true);
+  expect.soft(holds(home, new RegExp(`data-testid="fleet-worker"[^>]*data-worker-id="${live.worker.id}"`)), "Today's Fleet card").toBe(true);
+  expect.soft(holds(home, 'data-testid="home-metrics"'), "Today's metric strip").toBe(true);
 
   // Workers: the list the sidebar's fleet line also reads.
   const workers = await html(page.request, "/workers");

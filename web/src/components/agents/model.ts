@@ -1,11 +1,11 @@
 import { type Agent, type AgentCreate, type AgentEdit, type AgentPermissions, AXES, type Axis, axisRule } from "@/lib/agents";
-import { COLOR, HANDLE, MAX_ALLOW, MAX_DESCRIPTION_CHARS, MAX_HANDLE_CHARS, MAX_INSTRUCTIONS_CHARS, MAX_NAME_CHARS, MAX_PACKS, normalizedItem, validItem } from "@/lib/agent-rules";
+import { COLOR, HANDLE, MAX_ALLOW, MAX_DESCRIPTION_CHARS, MAX_HANDLE_CHARS, MAX_INSTRUCTIONS_CHARS, MAX_NAME_CHARS, MAX_PACKS, MAX_STARTER_CHARS, MAX_STARTERS, normalizedItem, validItem } from "@/lib/agent-rules";
 
 /**
  * The agent form's state and the checks it repeats from the API (`agent_profiles.AgentCreate` and `AgentEdit`), so
  * nothing goes out while a field is wrong: a handle of lowercase letters, digits and hyphens that is no project's
  * name, a name of one line, the lengths, the colour, and allowlists of at most MAX_ALLOW items of the shape each axis
- * takes, and at most MAX_PACKS agent packs. The hub checks again and has the last word (a handle taken by another
+ * takes, at most MAX_PACKS agent packs, and at most MAX_STARTERS starters of one line each. The hub checks again and has the last word (a handle taken by another
  * project's agent is its 409, a pack whose plugin was turned off its 422).
  */
 export type AxisDraft = { mode: "all" | "allowlist"; allow: string[] };
@@ -21,6 +21,8 @@ export type AgentDraft = {
   permissions: Record<Axis, AxisDraft>;
   /** In the order the agent attaches them, each pack once. */
   packs: PackPin[];
+  /** The starters the chat home offers, one a line; blank lines are dropped. */
+  starters: string;
 };
 
 export type FieldProblem = "blank" | "pattern" | "long" | "line" | "project";
@@ -31,6 +33,7 @@ export type DraftProblems = {
   instructions?: FieldProblem;
   color?: FieldProblem;
   packs?: "tooMany";
+  starters?: "tooMany" | "long";
   axes: Partial<Record<Axis, "tooMany" | "item">>;
 };
 
@@ -43,7 +46,7 @@ function allAxes(): Record<Axis, AxisDraft> {
 }
 
 export function emptyDraft(): AgentDraft {
-  return { handle: "", name: "", description: "", instructions: "", color: null, permissions: allAxes(), packs: [] };
+  return { handle: "", name: "", description: "", instructions: "", color: null, permissions: allAxes(), packs: [], starters: "" };
 }
 
 export function draftOf(agent: Agent): AgentDraft {
@@ -61,7 +64,20 @@ export function draftOf(agent: Agent): AgentDraft {
     color: agent.color,
     permissions,
     packs: (agent.packs ?? []).map(({ plugin, name, version }) => ({ plugin, name, version })),
+    starters: (agent.starters ?? []).join("\n"),
   };
+}
+
+/** The starters of a draft as the API takes them: one a line, trimmed, blank lines dropped. */
+export function startersOf(text: string): string[] {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function sameStarters(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((line, index) => line === b[index]);
 }
 
 /** `<plugin>/<name>`, how the hub names a pack. */
@@ -109,6 +125,9 @@ export function draftProblems(draft: AgentDraft, { creating, projects }: { creat
   if (chars(draft.instructions) > MAX_INSTRUCTIONS_CHARS) problems.instructions = "long";
   if (draft.color !== null && !COLOR.test(draft.color)) problems.color = "pattern";
   if (draft.packs.length > MAX_PACKS) problems.packs = "tooMany";
+  const starters = startersOf(draft.starters);
+  if (starters.length > MAX_STARTERS) problems.starters = "tooMany";
+  else if (starters.some((line) => chars(line) > MAX_STARTER_CHARS)) problems.starters = "long";
   for (const axis of AXES) {
     const rule = draft.permissions[axis];
     if (rule.mode !== "allowlist") continue;
@@ -152,6 +171,7 @@ export function createBody(draft: AgentDraft): AgentCreate {
     ...(draft.color ? { color: draft.color } : {}),
     permissions: permissionsBody(draft.permissions),
     ...(draft.packs.length ? { packs: draft.packs.map((pin) => ({ ...pin })) } : {}),
+    ...(startersOf(draft.starters).length ? { starters: startersOf(draft.starters) } : {}),
   };
 }
 
@@ -169,6 +189,8 @@ export function editBody(draft: AgentDraft, agent: Agent): AgentEdit | null {
   const description = draft.description.trim();
   if (description !== before.description.trim()) body.description = description;
   if (draft.color && draft.color !== before.color) body.color = draft.color;
+  const starters = startersOf(draft.starters);
+  if (!sameStarters(starters, startersOf(before.starters))) body.starters = starters;
   if (!agent.is_default) {
     const instructions = draft.instructions.trim();
     if (instructions !== before.instructions.trim()) body.instructions = instructions;
@@ -179,7 +201,7 @@ export function editBody(draft: AgentDraft, agent: Agent): AgentEdit | null {
 }
 
 /** What a version changed against the one before it, by the snapshot the hub keeps of each (`AgentVersion.body`). */
-export type VersionChange = "name" | "description" | "instructions" | "color" | "avatar" | Axis | "packs";
+export type VersionChange = "name" | "description" | "instructions" | "color" | "avatar" | "starters" | Axis | "packs";
 
 const SNAPSHOT_FIELDS = [
   ["name", "name"],
@@ -199,9 +221,12 @@ function axisOf(body: Record<string, unknown>, axis: Axis): string {
 
 /** The packs of a snapshot, compared whole; a version from before the packs has none. */
 const packsOf = (body: Record<string, unknown>) => JSON.stringify(Array.isArray(body.packs) ? body.packs : []);
+/** The starters of a snapshot, compared whole; a version from before the starters has none. */
+const startersIn = (body: Record<string, unknown>) => JSON.stringify(Array.isArray(body.starters) ? body.starters : []);
 
 export function versionChanges(newer: Record<string, unknown>, older: Record<string, unknown>): VersionChange[] {
   const changes: VersionChange[] = SNAPSHOT_FIELDS.filter(([key]) => (newer[key] ?? null) !== (older[key] ?? null)).map(([, change]) => change);
   const packs: VersionChange[] = packsOf(newer) === packsOf(older) ? [] : ["packs"];
+  if (startersIn(newer) !== startersIn(older)) changes.push("starters");
   return [...changes, ...AXES.filter((axis) => axisOf(newer, axis) !== axisOf(older, axis)), ...packs];
 }

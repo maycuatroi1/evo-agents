@@ -20,6 +20,9 @@ export const MAX_HANDLE_CHARS = 100;
 export const MAX_NAME_CHARS = 80;
 export const MAX_DESCRIPTION_CHARS = 1000;
 export const MAX_INSTRUCTIONS_CHARS = 8000;
+/** `profiles.MAX_STARTERS` and `MAX_STARTER_CHARS`: the questions the chat home offers, one line each. */
+export const MAX_STARTERS = 4;
+export const MAX_STARTER_CHARS = 120;
 export const MAX_ALLOW = 200;
 export const MAX_MODEL_CHARS = 200;
 /** `profiles.MAX_PACKS`: the agent packs one profile attaches. */

@@ -34,6 +34,9 @@ its container provider the environment (``evo_agents.worker.environments``). A w
 profile limits tool, skill or model, or adds instructions. Every edit of a profile raises its version; a run records
 the profile and version it was dispatched under, and the hub applies that version's rules to it.
 
+A profile may hold up to MAX_STARTERS starters, each of at most MAX_STARTER_CHARS characters: questions the chat home
+of the web offers a person who has not written to the agent yet. The default profile may have some too.
+
 A profile may also attach agent packs of plugins (``evo_agents.plugins.agent_packs``), at most MAX_PACKS, each pinned at
 a version of its plugin: ``{"plugin", "name", "version"}``. A pack it attaches counts as named on its skill and tool
 axes: the skills of the pack pass the skill axis and its MCP servers the tool axis (``mcp:<server>``), since pinning
@@ -62,6 +65,8 @@ HANDLE = re.compile(HANDLE_PATTERN[1:-1])
 MAX_NAME_CHARS = 80
 MAX_DESCRIPTION_CHARS = 1000
 MAX_INSTRUCTIONS_CHARS = 8000
+MAX_STARTERS = 4  # the starters of a profile: questions the chat home offers before a first message (since 0215)
+MAX_STARTER_CHARS = 120
 MAX_ALLOW = 200  # items in one allowlist
 MAX_PACKS = 16  # agent packs one profile attaches; the check agent_profiles_packs_check of schema 0041 holds it too
 COLOR_PATTERN = r"^#[0-9a-f]{6}$"

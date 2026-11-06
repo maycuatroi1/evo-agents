@@ -586,6 +586,18 @@ run_events = Table(
 )
 
 decisions, run_inbox = tables_decisions.decision_tables(metadata)  # decisions and the inbox of runs (0010, 0014)
+# A chat run another agent's run asked for (0214, ``server.agent_asks``): that run, and the wait it parks on, which
+# the end of this run answers. decisions.run_id points at runs, so the second key is made apart from the tables.
+runs.append_column(Column("spawned_by_run_id", BigInteger))
+runs.append_column(Column("spawned_wait_id", BigInteger))
+runs.append_constraint(
+    ForeignKeyConstraint(["spawned_by_run_id"], ["runs.id"], ondelete="SET NULL", name="runs_spawned_by_run_id_fkey")
+)
+runs.append_constraint(
+    ForeignKeyConstraint(
+        ["spawned_wait_id"], ["decisions.id"], ondelete="SET NULL", name="runs_spawned_wait_id_fkey", use_alter=True
+    )
+)
 notifications, notification_channels, notification_deliveries = tables_decisions.notification_tables(metadata)
 secrets, secret_bindings, credential_leases = tables_credentials.credential_tables(metadata)  # 0011
 

@@ -8,7 +8,7 @@ import { type NavLabel } from "./nav";
 
 export type ShortcutId =
   | "palette" | "search" | "help" | "sidebar" | "close"
-  | "goHome" | "goInbox" | "goPlans" | "goRuns" | "goCurator" | "goWorkers"
+  | "goToday" | "goInbox" | "goPlans" | "goRuns" | "goCurator" | "goWorkers"
   | "dispatch" | "send" | "chatSend" | "chatLine" | "nextItem" | "previousItem";
 
 type ShortcutGroup = "general" | "goto" | "actions";
@@ -36,7 +36,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: "chatLine", group: "actions", keys: [["shift", "enter"]], single: false, where: "chat" },
   { id: "nextItem", group: "actions", keys: [["j"]], single: true, where: "inbox" },
   { id: "previousItem", group: "actions", keys: [["k"]], single: true, where: "inbox" },
-  { id: "goHome", group: "goto", keys: [["g"], ["h"]], single: true },
+  { id: "goToday", group: "goto", keys: [["g"], ["h"]], single: true },
   { id: "goInbox", group: "goto", keys: [["g"], ["i"]], single: true },
   { id: "goPlans", group: "goto", keys: [["g"], ["p"]], single: true, where: "project" },
   { id: "goRuns", group: "goto", keys: [["g"], ["r"]], single: true, where: "project" },
@@ -69,7 +69,7 @@ export type GoKey = "h" | "i" | "p" | "r" | "c" | "w";
 
 /** Where each second key goes: a hub page, or a page of the project shown (or the visitor's only project). */
 export const GO: Record<GoKey, { id: ShortcutId; label: NavLabel } & ({ href: Route } | { segment: string })> = {
-  h: { id: "goHome", label: "home", href: "/" },
+  h: { id: "goToday", label: "today", href: "/today" },
   i: { id: "goInbox", label: "inbox", href: "/inbox" },
   p: { id: "goPlans", label: "plans", segment: "plans" },
   r: { id: "goRuns", label: "runs", segment: "runs" },

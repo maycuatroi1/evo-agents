@@ -301,8 +301,8 @@ test("leaving the page closes every stream", async ({ page, member }) => {
   await open(page, "/monitor");
   await expect(tileOf(page, a.id).getByTestId("tile-stream")).toHaveAttribute("data-status", "live");
   await expect(tileOf(page, b.id).getByTestId("tile-stream")).toHaveAttribute("data-status", "live");
-  await page.getByTestId("nav-home").click();
-  await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Home");
+  await page.getByTestId("nav-today").click();
+  await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Today");
   await expect.poll(() => [first.closed.length, second.closed.length]).toEqual([1, 1]);
 });
 
@@ -375,16 +375,17 @@ test("the sidebar, Home's In flight and a project's Runs lead to the Monitor", a
   await seedMonitorPlan(me, project);
   await runningRuns(me, project, ["1"]);
 
-  // Home's In flight card links to it.
-  await open(page, "/");
+  // Today's In flight card links to it.
+  await open(page, "/today");
   await main(page).getByRole("region", { name: "In flight" }).getByRole("link", { name: "Watch on Monitor" }).click();
   await page.waitForURL(/\/monitor$/);
   await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Monitor");
 
-  // The sidebar's first group: Home, Inbox, then Monitor with the runs at work.
+  // The sidebar's first group: Home, Today, Inbox, then Monitor with the runs at work.
   const links = page.getByRole("navigation", { name: "Main navigation" }).getByRole("link");
-  expect((await links.evaluateAll((items) => items.map((item) => item.getAttribute("data-testid")))).slice(0, 3)).toEqual([
+  expect((await links.evaluateAll((items) => items.map((item) => item.getAttribute("data-testid")))).slice(0, 4)).toEqual([
     "nav-home",
+    "nav-today",
     "nav-inbox",
     "nav-monitor",
   ]);

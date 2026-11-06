@@ -31,6 +31,7 @@ from evo_agents.hub.contract import check_command, commands, contract_parsers, f
 from evo_agents.hub.mirror import ExportResult
 from evo_agents.hub.plan_cli import ImportResult
 from evo_agents.hub.registry import PullResult
+from evo_agents.worker import agent_read_cli
 from tests.hub import pg
 from tests.hub.contract_keys import assert_json_keys
 
@@ -62,6 +63,7 @@ BUILT_HERE = {
     "hub send": lambda: local_send.send_json("demo", 7, "session", [], []),
     "hub market seller-key": lambda: cli_market.seller_key_json("seller.key", "ed25519:0", "AA=="),
     "hub inbox": lambda: cli_inbox.inbox_json([]),
+    "worker agent read": lambda: agent_read_cli.read_json({}),
 }
 
 
@@ -278,6 +280,8 @@ def test_the_chat_label_command_sets_or_unsets_a_chats_level_and_chat_show_print
 def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     printed = commands()
     assert sorted(key for key in printed if not key.startswith("hub ")) == [
+        "worker agent ask",
+        "worker agent read",
         "worker ask",
         "worker backup",
         "worker chat create",

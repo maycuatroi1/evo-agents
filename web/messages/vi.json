@@ -205,6 +205,7 @@
   "nav": {
     "label": "Điều hướng chính",
     "home": "Trang chủ",
+    "today": "Hôm nay",
     "newProject": "Dự án mới từ dữ liệu",
     "hub": "Hub",
     "project": "Dự án",
@@ -363,7 +364,7 @@
       "help": "Xem các phím tắt",
       "sidebar": "Ẩn hoặc hiện thanh bên",
       "close": "Đóng hộp thoại hoặc menu",
-      "goHome": "Trang chủ",
+      "goToday": "Hôm nay",
       "goInbox": "Inbox",
       "goPlans": "Plans",
       "goRuns": "Run",
@@ -520,7 +521,7 @@
     }
   },
   "home": {
-    "title": "Trang chủ",
+    "title": "Hôm nay",
     "metrics": {
       "label": "Công việc của bạn ở mọi dự án",
       "waiting": "Chờ bạn",
@@ -664,6 +665,36 @@
           "report": "{count, plural, other {# báo cáo về việc của bạn}}"
         }
       }
+    }
+  },
+  "chatHome": {
+    "title": "Trang chủ",
+    "todayLink": "Hôm nay",
+    "picker": {
+      "label": "Đang chat với {name} của {project}. Chọn agent khác",
+      "heading": "{count, plural, other {# agent bạn chat được}}"
+    },
+    "start": {
+      "title": "Chat với {name}",
+      "label": "Tin nhắn đầu tiên của bạn tới {name}",
+      "placeholder": "Hỏi {name} bất cứ điều gì",
+      "hint": "Tin nhắn này mở direct chat của bạn với {name}: mọi tin đều tới agent, và agent trả lời ngay dưới tin của bạn.",
+      "send": "Gửi",
+      "sending": "Đang gửi…",
+      "blank": "Hãy viết tin nhắn trước.",
+      "long": "Một tin nhắn dài tối đa {max} byte.",
+      "starters": "Thử hỏi"
+    },
+    "none": {
+      "title": "Chưa có agent nào để chat",
+      "body": "Agent hiện ở đây khi nó thuộc một dự án bạn được giao việc và có worker pool để chạy. Mở các dự án của bạn để thiết lập, hoặc nhờ admin dự án.",
+      "projects": "Mở các dự án của bạn",
+      "today": "Tới Hôm nay"
+    },
+    "off": {
+      "title": "Hub này đã tắt chat",
+      "body": "Admin hub đã tắt chat nên ở đây không có agent nào để chat. Hôm nay cho thấy việc cần bạn ở mọi dự án.",
+      "today": "Tới Hôm nay"
     }
   },
   "project": {
@@ -3632,6 +3663,12 @@
       "nameHint": "Tên agent hiện trong run và chat.",
       "description": "Mô tả",
       "descriptionHint": "Agent dùng để làm gì.",
+      "starters": "Câu gợi ý",
+      "startersHint": "Các câu hỏi màn chat gợi ý trước tin nhắn đầu tiên gửi agent, mỗi dòng một câu: tối đa {max} câu, mỗi câu tối đa {chars} ký tự.",
+      "startersProblems": {
+        "tooMany": "Tối đa {max} câu gợi ý.",
+        "long": "Mỗi câu gợi ý tối đa {max} ký tự."
+      },
       "optional": "(không bắt buộc)",
       "chars": "{count} trên {max} ký tự.",
       "instructions": "Chỉ dẫn",
@@ -3820,7 +3857,8 @@
           "model": "model",
           "runtime": "runtime",
           "environment": "môi trường",
-          "packs": "các gói agent"
+          "packs": "các gói agent",
+          "starters": "câu gợi ý"
         }
       },
       "delete": {

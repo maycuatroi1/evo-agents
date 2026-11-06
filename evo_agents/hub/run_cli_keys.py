@@ -73,3 +73,4 @@ RUN_KEYS += ("spend",)  # what it spent itself, by model, from its usage reports
 RUN_KEYS += ("plan_progress",)  # a plan run's steps done of its plan; null for any other kind
 RUN_KEYS += ("as_owner", "as_owner_since")  # its owner lets it call the hub as them, since then (server/run_access.py)
 RUN_KEYS += ("model_used", "routing")  # the model its runtime used, and what the model routing did (null: none)
+RUN_KEYS += ("spawned_by_run_id",)  # the chat run whose agent asked for this one (worker agent ask); null otherwise

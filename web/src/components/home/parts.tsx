@@ -35,16 +35,19 @@ export function HomeCard({
   action,
   children,
   testId,
+  id,
 }: {
   title: string;
   count?: { value: number; tone: "attention" | "running" | "neutral"; words: string } | null;
   action?: ReactNode;
   children: ReactNode;
   testId: string;
+  /** The card's anchor, for a link to it from another page. */
+  id?: string;
 }) {
   const headingId = useId();
   return (
-    <section aria-labelledby={headingId} className="@container min-w-0 rounded-md border bg-card shadow-raised" data-testid={testId}>
+    <section id={id} aria-labelledby={headingId} className="@container min-w-0 scroll-mt-20 rounded-md border bg-card shadow-raised" data-testid={testId}>
       <div className="flex min-h-12 flex-wrap items-center gap-x-2 gap-y-1 border-b px-4 py-2">
         <h2 id={headingId} className="text-[15px] leading-[22px] font-semibold">
           {title}
