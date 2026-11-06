@@ -1412,6 +1412,171 @@ def test_close_an_admin_closes_a_change_left_open_with_no_pull_request(world, tm
     assert refused.status_code == 409 and "close that on GitHub" in refused.text
 
 
+# A branch that changes nothing, and a change its own Builder drops
+
+
+def ledger_lines(world, proposal_id: int) -> list[dict]:
+    response = world.client.get(path("proposals", str(proposal_id), "ledger"), headers=world.headers["owner"])
+    assert response.status_code == 200, response.text
+    return response.json()["lines"]
+
+
+def events_text(world, run_id: int) -> str:
+    response = world.client.get(f"/v1/projects/{PROJECT}/runs/{run_id}/events", headers=world.headers["owner"])
+    assert response.status_code == 200, response.text
+    return response.text
+
+
+def audit_targets(world, action: str) -> list[str]:
+    return [row[0] for row in sql(world.db, select(tables.audit.c.target).where(tables.audit.c.action == action))]
+
+
+def test_changes_a_branch_that_changes_nothing_gets_no_pull_request_nor_judge_and_its_change_closes(world):
+    proposal = accepted(world)
+    builder_id = builder(world, files=[])  # a Builder that reverted its own work: commits of its own, no file
+    assert moved_on(world) == {"nothing": 1}
+    change = one_change(world)
+    assert (change["state"], change["pr_number"], change["base_branch"]) == ("closed", None, "main")
+    assert change["reason"] == (
+        f"its branch changes nothing: GitHub finds no file {BRANCH} changes against main, so the hub opened no pull "
+        "request and queued no Judge"
+    )
+    assert calls(world.github, "POST", "/pulls") == []
+    assert len([r for r in world.github.requests if r.method == "GET" and "/compare/" in r.path]) == 1
+    assert fire(world.client, NIGHT).get("judge", 0) == 0
+    assert moved_on(world) == {}  # a closed change is due no more
+    line = ledger_lines(world, proposal["id"])[-1]
+    assert (line["action"], line["actor"], line["run_id"]) == ("closed", "curator", None)
+    assert line["what"] == f"The hub closed change #{change['id']}: {change['reason']}"
+    assert audit_targets(world, "curator.empty") == [
+        f"{PROJECT}/{PLAN_ID} change:{change['id']} branch={BRANCH} base=main"
+    ]
+    assert f"The hub closed the Curator's change #{change['id']}: its branch changes nothing" in events_text(
+        world, builder_id
+    )
+
+
+def test_changes_a_comparison_that_says_nothing_of_the_files_still_opens_the_pull_request(world, monkeypatch):
+    from evo_agents.hub.server import pulls
+
+    async def unknown(*args, **kwargs):  # GitHub refused the comparison, or named no files
+        return {"ahead_by": None, "files": None}
+
+    monkeypatch.setattr(pulls, "compare_files", unknown)
+    accepted(world)
+    builder(world, files=CLEAN)
+    assert moved_on(world) == {"opened": 1}
+    assert one_change(world)["state"] == "judge_pending"
+
+
+def running_builder(world) -> int:
+    """The Builder of the planned change, queued by the night shift, claimed and running; its run's id."""
+    assert protect(world).json()["protected"] is True
+    assert fire(world.client, NIGHT)["builder"] == 1
+    spec = claim(world.client, world.worker)
+    assert spec["kind"] == "plan" and spec["plan_id"] == PLAN_ID and spec["curator"]["role"] == "builder"
+    moved(world.client, world.worker, spec["id"], "running")
+    return spec["id"]
+
+
+def drop(world, run_id: int, **body):
+    return world.client.post(f"/v1/worker/runs/{run_id}/curator/drop", json=body, headers=world.worker["headers"])
+
+
+DROPPED = "the owner answered drop on decision 4: holdout hit@5 fell"
+MEASURED = "kg eval, 50 questions each:\n- tune hit@5 0.71 -> 0.72\n- holdout hit@5 0.62 -> 0.58"
+
+
+def test_drop_the_builder_closes_its_own_change_with_why_and_what_it_measured(world):
+    proposal = accepted(world)
+    run_id = running_builder(world)
+    response = drop(world, run_id, reason=DROPPED, note=MEASURED)
+    assert response.status_code == 200, response.text
+    change = response.json()
+    assert (change["state"], change["reason"], change["builder_run_id"], change["pr_number"]) == (
+        "closed",
+        DROPPED,
+        run_id,
+        None,
+    )
+    line = ledger_lines(world, proposal["id"])[-1]
+    assert (line["action"], line["actor"], line["run_id"], line["details"]) == (
+        "closed",
+        "agent",
+        run_id,
+        {"note": MEASURED},
+    )
+    assert line["what"] == f"Builder run #{run_id} dropped change #{change['id']} for owner: {DROPPED}"
+    assert audit_targets(world, "curator.close") == [
+        f"{PROJECT} change:{change['id']} proposal:{proposal['id']} run:{run_id}"
+    ]
+    assert f"dropped the Curator's change #{change['id']} for owner" in events_text(world, run_id)
+    again = drop(world, run_id, reason=DROPPED)
+    assert again.status_code == 409 and f"change #{change['id']} is closed" in again.json()["message"]
+
+    # the run ends as it would; the change stays closed: no pull request, no Judge, no other Builder
+    verify = [{"command": VERIFY, "exit_code": 0}]
+    reported(world.client, world.worker, run_id, 1, "done", repo="evo-agents", verify=verify, commit_sha=HEAD)
+    moved(world.client, world.worker, run_id, "verifying", "done")
+    world.github.push(MINE, "evo-agents", BRANCH, HEAD, files=CLEAN)
+    assert one_change(world)["state"] == "closed"
+    assert moved_on(world) == {}
+    assert calls(world.github, "POST", "/pulls") == []
+    fired = fire(world.client, NIGHT)
+    assert (fired.get("builder", 0), fired.get("judge", 0)) == (0, 0)
+
+
+def test_drop_refusals_say_why_and_change_nothing(world):
+    accepted(world)
+    run_id = running_builder(world)
+    empty = drop(world, run_id, reason="   ")
+    assert empty.status_code == 422 and "the reason is empty" in empty.json()["message"]
+    assert drop(world, run_id, reason="").status_code == 422
+    assert drop(world, run_id, reason=DROPPED, note="x" * 8001).status_code == 422
+    not_held = drop(world, run_id + 100, reason=DROPPED)
+    assert not_held.status_code == 404
+    grant(world.client, world.headers, "owner", "writer")
+    writer = drop(world, run_id, reason=DROPPED)
+    assert writer.status_code == 403 and "holds writer" in writer.json()["message"]
+    grant(world.client, world.headers, "owner", "admin")
+    c = tables.curator_changes
+    sql(world.db, update(c).values(state="pr_pending", pr_number=3, pr_url="https://github.com/o/r/pull/3"))
+    opened = drop(world, run_id, reason=DROPPED)
+    assert opened.status_code == 409 and "with pull request https://github.com/o/r/pull/3" in opened.json()["message"]
+    assert one_change(world)["state"] == "pr_pending"
+    assert audit_targets(world, "curator.close") == []
+
+
+def test_drop_a_plan_run_of_no_curators_plan_is_refused(world):
+    accepted(world)
+    run_id = running_builder(world)
+    sql(world.db, update(tables.curator_changes).values(plan_id=None, state="open"))
+    refused = drop(world, run_id, reason=DROPPED)
+    assert refused.status_code == 404 and "no plan of the Curator" in refused.json()["message"]
+
+
+def test_worker_curator_drop_sends_the_reason_and_note_and_prints_one_line(monkeypatch, capsys):
+    from evo_agents.worker import curator_cli
+
+    sent = []
+    home = SimpleNamespace(load_config=lambda: "config", load_token=lambda: "token")
+
+    def call(run, route, body):
+        sent.append((run.run_id, run.kind, route, body))
+        return {"id": 19, "state": "closed", "reason": DROPPED}
+
+    monkeypatch.setattr(curator_cli, "running_run", lambda command: (2277, home, {"kind": "plan"}))
+    monkeypatch.setattr(curator_cli, "call", call)
+    monkeypatch.setattr("sys.stdin", __import__("io").StringIO(MEASURED))
+    assert curator_cli.cmd_drop(SimpleNamespace(reason=DROPPED, note="-")) == 0
+    assert sent == [(2277, "plan", "curator/drop", {"reason": DROPPED, "note": MEASURED})]
+    assert capsys.readouterr().out.strip() == f"Change #19 is closed: {DROPPED}"
+    monkeypatch.setattr(curator_cli, "running_run", lambda command: (8, home, {"kind": "chat"}))
+    assert curator_cli.cmd_drop(SimpleNamespace(reason=DROPPED, note=None)) == 1
+    assert "is for the Builder of a Curator's change" in capsys.readouterr().err
+    assert len(sent) == 1
+
+
 def test_curator_plan_schema_0017_goes_down_to_0016_and_up_again(world):
     through_the_judge(world)
     db = world.db

@@ -30,7 +30,10 @@ When the Builder ends done with every step of the plan done (``builder_ended``),
 request (``pr_pending``) on GitHub, or for its Judge (``judge_pending``) on GitLab, where the push opened the merge
 request; judged there, it stays open for its owner, or goes to the merge queue when the project's autonomy policy has
 its repo in mode auto (``merge_gate.curator_judged``; the hub's worker reaches the queue's job through this module).
-The job ``curator.changes`` (``advance``), one pass at a time, opens the pull request with the workers' App, reads its
+The job ``curator.changes`` (``advance``), one pass at a time, compares the change's branch with the default branch
+first (``pulls.compare_files``): a branch with commits of its own that change no file (a Builder that reverted its own
+work) gets no pull request and no Judge, and its change is ``closed`` with the reason "its branch changes nothing"
+(``_changes_nothing``, the audit row EMPTY). Otherwise it opens the pull request with the workers' App, reads its
 files and runs ``diff_signs.hack_signs`` on them: a sign fails the change at once and puts its proposal at tier 3. Those
 files also give the proposal its tier again (``change_tiers.retier``: ``tiers.tier_of`` over the paths the pull request
 really changes, what the knowledge graph says of them and, for kind kg_source, what it does to knowledge.yaml key by
@@ -72,7 +75,11 @@ GET /v1/projects/{p}/curator/changes (reader) lists the project's changes the ca
 plan when it has one, through the project's hub sink), newest first, each with its reason. POST
 .../curator/changes/{id}/close (admin), with a reason, closes a change left ``open`` with no pull request, such as one
 whose proposal named no repo: the reason becomes the change's, and its proposal's ledger gets the line. A change with a
-pull request closes when its pull request does.
+pull request closes when its pull request does. POST /v1/worker/runs/{id}/curator/drop (``change_routes.drop_change``, behind
+``evo-agents worker curator drop``) is the Builder's own way out: the plan run of a change's plan closes that change
+while it is ``planned`` or ``pr_pending`` with no pull request, for the member who dispatched the run, an admin of the
+project, with a reason and what it measured as a note, so a change its measurements or its owner's decision say not
+to land ends without a commit that reverts it.
 """
 
 from __future__ import annotations
@@ -109,6 +116,8 @@ CI_WAIT = timedelta(hours=6)  # CI still running this long after the verdict lea
 NIGHT_SHIFT = "night_shift"
 PAUSED = "the night shift of the project is paused: the hub merges nothing while it is"
 MOVED = "moved"  # the outcome of a change closed, merged or judged again while a pass of curator.changes read it
+NOTHING = "nothing"  # the outcome of a change whose branch changes no file: closed, with no pull request
+EMPTY = "curator.empty"  # the hub closed a change whose branch changes nothing: "<project>/<plan> change:<id> ..."
 
 
 # The job
@@ -239,6 +248,9 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
         base = found.get("default_branch")
         if not isinstance(base, str) or not base:
             raise GitHubRefused(f"GitHub names no default branch of {target.owner}/{target.name}")
+        compared = await pulls.compare_files(app, token, target.owner, target.name, base, change.branch)
+        if compared["ahead_by"] and compared["files"] == 0:  # commits of its own, and no file they change
+            return {"pull": None, "base": base}
         made = await pulls.open_pull(
             app,
             token,
@@ -260,6 +272,8 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
         async with engine.begin() as conn:
             await set_change(conn, change.id, reason=reason_line(f"the pull request could not be opened: {exc}"))
         return "refused"
+    if found["pull"] is None:
+        return await _changes_nothing(engine, change, project, found["base"])
     made = found["pull"]
     number = made.get("number")
     if not judge.is_sha((made.get("head") or {}).get("sha")) or type(number) is not int:
@@ -273,6 +287,36 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
     signs = _signs_of(diff, change, charter, body, cut)
     facts = await change_tiers.pull_facts(engine, app, change, target, diff_signs.changed_paths(diff), made, reader)
     return await _pull_opened(engine, change, project, made, found["base"], signs, facts, charter)
+
+
+async def _changes_nothing(engine: AsyncEngine, change, project: str, base: str) -> str:
+    """Close ``change``, whose branch has commits of its own that change no file against ``base`` (a Builder that
+    reverted its own work, say): no pull request and no Judge for an empty diff. NOTHING, or MOVED for a change no
+    longer waiting for its pull request."""
+    why = (
+        f"its branch changes nothing: GitHub finds no file {change.branch} changes against {base}, so the hub "
+        "opened no pull request and queued no Judge"
+    )
+    async with engine.begin() as conn:
+        locked = await change_of_plan(conn, change.project_id, change.plan_id, lock=True)
+        if locked is None or locked.state != "pr_pending":
+            return MOVED
+        await set_change(
+            conn, change.id, state="closed", base_branch=base, reason=why, ledger_extra={"actor": "curator"}
+        )
+        if change.builder_run_id is not None:
+            text = f"The hub closed the Curator's change #{change.id}: {why}."
+            await write_event(conn, change.builder_run_id, {"text": text, "change_id": change.id})
+        await audit.record(
+            conn,
+            actor_id=None,
+            token_id=None,
+            action=EMPTY,
+            target=f"{project}/{change.plan_id} change:{change.id} branch={change.branch} base={base}",
+            project_id=change.project_id,
+        )
+    log.info("curator change changes nothing", extra={"change_id": change.id, "branch": change.branch})
+    return NOTHING
 
 
 async def _files_of(app: GitHubApp, token: str, target: Target, number: int, expected) -> tuple[list[dict], str | None]:

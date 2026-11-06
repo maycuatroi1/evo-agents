@@ -4,7 +4,7 @@ Curator's App (evo-agents-curator). ``evo_agents.hub.server.changes`` decides wh
 
 Each call asks the App's installation on the repo for a token of that repo alone, with the permissions the call needs
 and no more (SERVER_PERMISSIONS: open a pull request with pull_requests write and contents read, so the token sees the
-head and base branches of a private repo; read one, its files and its CI with pull_requests, checks and statuses read;
+head and base branches of a private repo and compares them first (``compare_files``); read one, its files and its CI with pull_requests, checks and statuses read;
 list the pull requests of a branch with pull_requests read alone (``pulls``, the Loop's ``github_merges``);
 write the Judge's check run with checks write; comment on a pull request with pull_requests write (``comment_pull``,
 the merge check's comment, ``evo_agents.hub.server.merge_comments``); merge with contents and pull_requests write; read a branch, a tree and
@@ -250,6 +250,25 @@ async def compare(app: GitHubApp, token: str, owner: str, repo: str, base: str, 
         "behind_by": behind if type(behind) is int else None,
         "oldest": oldest if isinstance(oldest, str) else None,
         "merge_base": merge_base if isinstance(merge_base, str) else None,
+    }
+
+
+async def compare_files(app: GitHubApp, token: str, owner: str, repo: str, base: str, head: str) -> dict:
+    """What branch or commit ``head`` of owner/repo changes against ``base``, as GitHub compares base...head (the
+    diff a pull request of ``head`` into ``base`` shows): the commits ``head`` has that ``base`` lacks (``ahead_by``)
+    and how many files the comparison changes (``files``, which GitHub lists whole on the first page of commits, at
+    most 300 of them). None for either one GitHub does not say, both for a comparison GitHub refuses (a branch it
+    does not see yet, say), which the caller then knows nothing of."""
+    doing = f"comparing {head} with {base} on {owner}/{repo}"
+    path = _path("repos", owner, repo, "compare", f"{base}...{head}")
+    response = await _api(app, token, "GET", path, doing, params={"per_page": 1, "page": 1})
+    if response.status_code != 200:
+        return {"ahead_by": None, "files": None}
+    data = app._json(response, doing)
+    ahead, files = data.get("ahead_by"), data.get("files")
+    return {
+        "ahead_by": ahead if type(ahead) is int else None,
+        "files": len(files) if isinstance(files, list) else None,
     }
 
 

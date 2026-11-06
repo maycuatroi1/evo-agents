@@ -1791,7 +1791,10 @@ shift passes over keeps why as its reason, written when it changes and cleared w
 (`GET .../curator/changes`, `hub curator changes`, the morning brief). The Builder's GitHub token is the Curator's
 App's (`docs/credentials.md`); the Builder and the Judge of a change never run at once.
 
-When the Builder ends done with every step of its plan done, the job `curator.changes` opens its pull request on
+When the Builder ends done with every step of its plan done, the job `curator.changes` first compares its branch
+with the default branch on GitHub (`pulls.compare_files`): a branch with commits of its own that change no file (a
+Builder that reverted its own work) gets no pull request and no Judge, and its change is `closed` with the reason "its
+branch changes nothing" (audit row `curator.empty`, ledger line `closed` by the hub). Otherwise it opens its pull request on
 GitHub with the workers' App (on GitLab the push opened the merge request) and reads its files for the signs of score
 hacking (`diff_signs.hack_signs`): an assertion removed, a skip or xfail added, a threshold of a test changed, a plan's
 verify or a file it runs changed, CI or the configuration of lint and tests changed, a lint warning silenced, `__eq__`

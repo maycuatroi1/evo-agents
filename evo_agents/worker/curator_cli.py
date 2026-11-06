@@ -10,18 +10,26 @@ decides).
   it, its head did not move, every sign of its files is one of a protected path, it is open into the default branch
   and mergeable, K5 lets it and the night shift is not paused.
 
-It reads the run from EVO_RUN_ID like ``worker chat`` (``chat_cli``) and is for a chat run only. The hub refuses what is
-outside the frame (another proposal than the thread's, an owner who is no admin, a proposal answered already, a change
-the merge does not allow), with the reason, and the command prints it on stderr and exits 1. A success is one line, and
-the hub posts the ``Decision:`` line in the thread. TEXT ``-`` reads stdin. No ``--json``: this module may not import the
-hub's contract.
+- ``drop --reason TEXT [--note TEXT]``: inside the Builder of a Curator's change (a plan run of the Curator's plan),
+  close that change before its pull request opens, for the member who dispatched the run, an admin of the project:
+  the way to end a change its measurements or its owner's decision say not to land, instead of a commit that reverts
+  it. The reason, one line, becomes the change's; the note (``-`` reads stdin), what the run measured, is kept whole
+  in the ledger line of the drop (POST /v1/worker/runs/{id}/curator/drop, ``change_routes.drop_change``).
+
+It reads the run from EVO_RUN_ID like ``worker chat`` (``chat_cli``); ``answer`` and ``merge`` are for a chat run only,
+``drop`` for a plan run only. The hub refuses what is outside the frame (another proposal than the thread's, an owner
+who is no admin, a proposal answered already, a change the merge does not allow, a plan run of no Curator's plan, a
+change with a pull request already), with the reason, and the command prints it on stderr and exits 1. A success is
+one line; for ``answer`` and ``merge`` the hub posts the ``Decision:`` line in the thread. TEXT ``-`` reads stdin. No
+``--json``: this module may not import the hub's contract.
 """
 
 from __future__ import annotations
 
 import sys
 
-from evo_agents.worker.chat_cli import agent_run, call, chat_command
+from evo_agents.worker.chat_cli import AgentRun, agent_run, call, chat_command, running_run
+from evo_agents.worker.home import WorkerStateError
 
 ACTIONS = ("accept", "reject", "defer")  # review.ANSWERS, which the hub checks
 
@@ -58,11 +66,29 @@ def cmd_merge(args) -> int:
     return 0
 
 
+@chat_command
+def cmd_drop(args) -> int:
+    run_id, home, record = running_run("curator drop")
+    kind = record.get("kind") or "step"
+    if kind != "plan":
+        raise WorkerStateError(
+            f"run {run_id} is a {kind} run: `evo-agents worker curator drop` is for the Builder of a Curator's "
+            "change, a plan run of the Curator's plan"
+        )
+    body = {"reason": args.reason}
+    if args.note is not None:
+        body["note"] = _text(args.note)
+    change = call(AgentRun(run_id, kind, home.load_config(), home.load_token()), "curator/drop", body)
+    print(f"Change #{change['id']} is {change['state']}: {change['reason']}")
+    return 0
+
+
 def register_curator(wsub) -> None:
     """``evo-agents worker curator`` and its commands, under the parser ``wsub`` of ``evo-agents worker``."""
     curator = wsub.add_parser(
         "curator",
-        help="inside a proposal's thread: answer the Curator's proposal, or merge its change, for its owner",
+        help="inside a proposal's thread: answer the Curator's proposal, or merge its change, for its owner; "
+        "inside a Curator's Builder: drop its change",
     )
     csub = curator.add_subparsers(dest="curator_command", required=True)
     answer = csub.add_parser("answer", help="accept, reject or defer the proposal of the thread for its owner")
@@ -76,3 +102,12 @@ def register_curator(wsub) -> None:
     )
     merge.add_argument("change", type=int, metavar="CHANGE", help="the change's id, as the thread names it")
     merge.set_defaults(func=cmd_merge)
+    drop = csub.add_parser(
+        "drop",
+        help="inside the Builder of a Curator's change: close the change before its pull request opens, saying why",
+    )
+    drop.add_argument("--reason", required=True, metavar="TEXT", help="why the change is dropped, in one line")
+    drop.add_argument(
+        "--note", metavar="TEXT", help="what the run measured, kept whole in the ledger line of the drop (- for stdin)"
+    )
+    drop.set_defaults(func=cmd_drop)

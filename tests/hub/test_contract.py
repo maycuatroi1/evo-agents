@@ -286,6 +286,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker chat react",
         "worker chat read",
         "worker curator answer",
+        "worker curator drop",
         "worker curator merge",
         "worker finding",
         "worker notify",

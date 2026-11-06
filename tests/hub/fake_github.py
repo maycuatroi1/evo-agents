@@ -27,7 +27,7 @@ repo and holds the permission each needs, as GitHub does: GET /repos/{o}/{r}; GE
 GET .../branches/{branch}, GET .../git/trees/{sha} and GET .../compare/{base}...{head} over the commits ``commit`` made
 on the default branch (its tree whole, or cut for a commit of ``cut_trees``; a comparison of two of them, its commits
 oldest first, paged, with its merge base; and of a branch's head ``push`` set, whose merge base is the default branch's
-head at the push); GET .../git/trees/{sha} and GET .../git/blobs/{sha} of a commit ``snapshot`` wrote, its files' bytes
+head at the push, with the files ``push`` set when it set them); GET .../git/trees/{sha} and GET .../git/blobs/{sha} of a commit ``snapshot`` wrote, its files' bytes
 and modes, which the merge commit of a pull request of that head holds too; GET .../contents/{path}?ref= of the files
 ``put_file`` wrote; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files`` set;
 GET filters on head, state and base) and GET .../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and
@@ -64,7 +64,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
 DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 APP_PERMISSIONS = {"contents": "write", "metadata": "read"}  # what the fake's App holds on an installation by default
@@ -862,19 +862,23 @@ class FakeGitHub:
             _, _, refused = need("contents", "read")
             if refused:
                 return refused
-            base, _, head = rest[1].partition("...")
+            base, _, head = (unquote(part) for part in rest[1].partition("..."))  # a branch's / sent as %2F
             shas = [sha for sha, _ in repo.history]
+            named = head  # a branch ``push`` set lists the files its pull request changes
             base = repo.heads.get(base, base) if base not in shas and base not in repo.merge_bases else base
             head = repo.heads.get(head, head) if head not in shas and head not in repo.merge_bases else head
             if head in repo.merge_bases and head not in shas:  # a pushed branch over the default branch
                 merge_base = {"sha": repo.merge_bases[head]}
-                return 200, {
+                found = {
                     "status": "ahead",
                     "ahead_by": 1,
                     "behind_by": 0,
                     "commits": [],
                     "merge_base_commit": merge_base,
                 }
+                if named in repo.files:
+                    found["files"] = list(repo.files[named])
+                return 200, found
             if base not in shas or head not in shas:
                 return 404, {"message": "Not Found"}
             low, high = shas.index(base), shas.index(head)
