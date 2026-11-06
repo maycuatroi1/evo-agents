@@ -121,7 +121,7 @@ LENSES: dict[str, str] = {
     "(evo_agents.hub.server.kg_entity_map_run), never a night's turn",
 }
 WHOLE_RUN_LENSES = ("kg_entity_map",)  # lenses whose run works to its cap, not stopping well before it
-ON_DEMAND_LENSES = ("kg_init", "kg_questions", "kg_entity_map")  # the lenses a run asks for, left out of the nights' turns
+ON_DEMAND_LENSES = ("kg_init", "kg_questions", "kg_entity_map")  # lenses a run asks for, not in the nights' turns
 LENSES_PER_NIGHT = 3  # the charter's review.lenses, by default
 REVIEW_DAYS = 7  # the days of sessions and runs the night's figures cover, by default
 Severity = Literal["low", "medium", "high"]

@@ -65,7 +65,7 @@ HUB_RELATIONS = {
     "evidences": ("*", "Problem"),  # a line of evidence of the hub to the problem it shows hurts
     "answers": ("Opportunity", "Problem"),  # an opportunity of the hub to a problem of its own project it answers
     "refers_to": ("*", "*"),  # an entity a model stated to the one Symbol or File its name names (kg.entity_links)
-    "implemented_by": ("*", "*"),  # an entity an agent mapped to a Directory, File or Symbol that implements it (kg.entity_map)
+    "implemented_by": ("*", "*"),  # an entity an agent mapped to the Directory, File or Symbol implementing it
     "synonym_of": ("*", "*"),  # two entities of one kind whose names are near in meaning (kg.entity_links)
     "merged_from": ("*", "*"),  # an entity to the document whose entity a model merged into it (kg.entity_merge)
 }
