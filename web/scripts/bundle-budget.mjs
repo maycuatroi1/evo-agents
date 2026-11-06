@@ -8,16 +8,17 @@
 // bundle-budget.json holds one budget per route, in kB (1 kB = 1000 bytes). The script fails when a route is over its
 // budget, when the build has a route the file lacks, or when the file lists a route the build does not have. It also
 // fails when the file raises a budget or adds a route compared with the file on the base ref (origin/main by default)
-// and that entry does not say why in its own "reason".
+// and that entry does not say why in its own "reason". The routes of the tests' fixtures (a `page.fixture.tsx` under
+// src/app, in a build with EVO_WEB_FIXTURES=1 only, the one Playwright serves) have no budget and are left out.
 //
 //   node scripts/bundle-budget.mjs                  measure .next, check the budgets and the base ref's file
 //   node scripts/bundle-budget.mjs --base <ref>     the same, against <ref>; fails when <ref> cannot be read
 //   node scripts/bundle-budget.mjs --chunks <route> the route's chunks, largest first
 //   node scripts/bundle-budget.mjs --write          set every budget to what the build measures (keeps the reasons)
 //
-// Run it after `pnpm build`. CI runs it in the first web-e2e shard, on the build Playwright served.
+// Run it after `pnpm build`. CI runs it in the web-check job, on a production build without the fixtures.
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
@@ -69,6 +70,26 @@ export function measureRoutes(webDir) {
       return { route: row.route, bytes: chunks.reduce((sum, chunk) => sum + chunk.bytes, 0), chunks };
     })
     .sort((a, b) => b.bytes - a.bytes || a.route.localeCompare(b.route));
+}
+
+/**
+ * The routes of the tests' fixtures in `webDir`: each `page.fixture.tsx` under src/app, its route groups and slots
+ * dropped. next.config.ts builds them only with EVO_WEB_FIXTURES=1 (Playwright's build); a production build has none,
+ * so they carry no budget.
+ */
+export function fixtureRoutes(webDir) {
+  const appDir = path.join(webDir, "src", "app");
+  if (!existsSync(appDir)) return new Set();
+  const routes = new Set();
+  for (const file of readdirSync(appDir, { recursive: true })) {
+    if (path.basename(file) !== "page.fixture.tsx") continue;
+    const segments = path
+      .dirname(file)
+      .split(path.sep)
+      .filter((segment) => segment !== "." && !/^\(.*\)$/.test(segment) && !segment.startsWith("@"));
+    routes.add(`/${segments.join("/")}`);
+  }
+  return routes;
 }
 
 /** The budget file's routes, or throws with the reason the file is unusable. */
@@ -232,15 +253,21 @@ export function main(argv, { webDir, out = console.log, err = console.error } = 
     return 2;
   }
   try {
-    const measured = measureRoutes(webDir);
+    const built = measureRoutes(webDir);
     if (args.chunks !== undefined) {
-      const row = measured.find((candidate) => candidate.route === args.chunks);
+      const row = built.find((candidate) => candidate.route === args.chunks);
       if (!row) {
-        err(`bundle-budget: no route ${args.chunks} in the build; routes: ${measured.map((r) => r.route).join(", ")}`);
+        err(`bundle-budget: no route ${args.chunks} in the build; routes: ${built.map((r) => r.route).join(", ")}`);
         return 2;
       }
       out(formatChunks(row));
       return 0;
+    }
+    const fixtures = fixtureRoutes(webDir);
+    const measured = built.filter((row) => !fixtures.has(row.route));
+    const skipped = built.filter((row) => fixtures.has(row.route)).map((row) => row.route);
+    if (skipped.length) {
+      out(`bundle-budget: left out the tests' fixture routes (an EVO_WEB_FIXTURES=1 build): ${skipped.join(", ")}`);
     }
     const budgetPath = path.join(webDir, BUDGET_FILE);
     const budgets = existsSync(budgetPath) ? parseBudgets(readFileSync(budgetPath, "utf8"), BUDGET_FILE) : {};
