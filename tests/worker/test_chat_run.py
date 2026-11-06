@@ -36,6 +36,7 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 
 from evo_agents.cli import main as cli_main
 from evo_agents.hub import author, chat_runs, runs
+from evo_agents.hub.outputs import CDN_HOSTS
 from evo_agents.worker import gitops
 from tests.worker.test_plan_runs import (
     PLAN,
@@ -669,3 +670,50 @@ def test_the_agent_of_a_chat_run_in_a_chat_whose_label_is_lowered_gets_its_level
         assert start["prompt"] == prompt
 
     with_daemon(machine, body)
+
+
+def test_the_prompt_of_a_chat_run_says_when_and_how_to_answer_interactive_and_whether_cdns_load():
+    """Criterion a5 of chat-interactive-answers: the rules say when a page beats text, how to send it, the bridge,
+    that the text stands alone, and, by whether the chat is restricted, whether libraries load from the CDNs, pinned."""
+    trigger = {
+        "id": 5,
+        "author": "owner",
+        "body": "@reviewer compare the two plans",
+        "created_at": "2026-11-07T09:00:00Z",
+    }
+
+    def prompt(**extra) -> str:
+        return chat_runs.build_chat_prompt(
+            agent={"handle": "reviewer", "name": "Reviewer", "project": PROJECT, "description": "Reviews diffs."},
+            chat={"id": 7, "title": "Northwind plans", "people": ["owner"], "agents": ["reviewer"]},
+            trigger=trigger,
+            login="owner",
+            hop=1,
+            branch="chat/1",
+            blocks=[],
+            **extra,
+        )
+
+    rule = chat_runs.INTERACTIVE_RULE
+    for part in (
+        "comparison",
+        "answer a direct question in text alone",
+        f"{chat_runs.POST_COMMAND} TEXT --attach answer.html --interactive",
+        "never fetch",
+        "TEXT must stand alone",
+        "Telegram",
+        chat_runs.ANSWER_BRIDGE,
+        "`context`",
+        "`resize`",
+        "`sendPrompt`",
+        "`openLink`",
+        "evo-hub:interactive-answers",
+    ):
+        assert part in rule, part
+    open_chat, restricted = prompt(cdn=True), prompt(cdn=False)
+    for text in (open_chat, restricted):
+        assert rule in text and len(text.encode()) <= runs.MAX_PROMPT_BYTES
+    assert chat_runs.INTERACTIVE_CDN_RULE in open_chat and chat_runs.INTERACTIVE_NO_CDN_RULE not in open_chat
+    assert all(host in open_chat for host in CDN_HOSTS) and "pinning the library's exact version" in open_chat
+    assert chat_runs.INTERACTIVE_NO_CDN_RULE in restricted and not any(host in restricted for host in CDN_HOSTS)
+    assert prompt() == restricted, "no CDN unless the hub says the chat is not restricted"

@@ -19,7 +19,7 @@ if not pg.DSN:
 
 from fastapi.testclient import TestClient
 
-from evo_agents.hub import chats, outputs
+from evo_agents.hub import chat_runs, chats, outputs
 from evo_agents.hub.server.app import create_app
 from evo_agents.worker.home import WorkerStateError
 from evo_agents.worker.output_cli import checked_files
@@ -196,3 +196,22 @@ def test_follow_up_rate_limited(client, hub):
     assert asked(client, hub["other"], chat["id"], chart["id"]).status_code == 201
     plain = client.post(f"/v1/chats/{chat['id']}/messages", json={"body": "written by hand"}, headers=hub["owner"])
     assert plain.status_code == 201, plain.text
+
+
+def test_claimed_prompt_lets_cdns_load_only_in_unrestricted_chat(client, hub):
+    """Criterion a5: the prompt the worker claims says, from whether the chat is restricted now, whether an
+    interactive answer may load libraries from the CDNs."""
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"], people=[OTHER])
+    _, spec = started(client, hub, worker, chat)
+    assert chat_runs.INTERACTIVE_RULE in spec["prompt"]
+    assert chat_runs.INTERACTIVE_CDN_RULE in spec["prompt"]
+    assert chat_runs.INTERACTIVE_NO_CDN_RULE not in spec["prompt"]
+    ended(client, worker, spec["id"])
+    body = {**credentials_api.registration(credentials_api.DISPATCHED), "sinks": CUSTOMER_SINKS}
+    assert client.put(f"/v1/projects/{PROJECT}", json=body, headers=hub["admin"]).status_code == 200
+    assert client.get(f"/v1/chats/{chat['id']}", headers=hub["owner"]).json()["restricted"] is True
+    _, restricted = started(client, hub, worker, chat, "@reviewer compare the two plans")
+    assert chat_runs.INTERACTIVE_RULE in restricted["prompt"]
+    assert chat_runs.INTERACTIVE_NO_CDN_RULE in restricted["prompt"]
+    assert not any(host in restricted["prompt"] for host in outputs.CDN_HOSTS)

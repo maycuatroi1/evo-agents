@@ -1591,6 +1591,14 @@ message, in a sandboxed frame. It is an output of the run like any other (Output
   longer in the chat, or deleted, is refused in the thread as a mention of it is. The message keeps its source
   (`GroupMessage.from_answer`, `chat_messages.from_output_id`). A person sends at most 6 such messages in 60 seconds
   (`chats.ANSWER_PROMPTS`, `chats.ANSWER_WINDOW`); the next is 429 with `Retry-After`. The web holds the same limit.
+- **Telling the agent.** The prompt of a chat run carries `chat_runs.INTERACTIVE_RULE`, one text that any prompt of an
+  agent answering in a chat can reuse: answer with a page when a comparison, figures, a diagram of a mechanism or a
+  calculator helps more than text, and in text when the question has a direct answer; send it with `--interactive`;
+  the bridge and how to call it; never fetch; the text stands alone. Then, from whether the chat is restricted when the
+  worker claims the run, `INTERACTIVE_CDN_RULE` (the CDN hosts, each URL pinning its version) or
+  `INTERACTIVE_NO_CDN_RULE` (nothing loads from outside). The skill `interactive-answers` of the evo-hub plugin has the
+  long form: the hub's colour tokens and font, both themes, 375 px, keyboard and focus, the bounds of numbers and which
+  ones are assumptions, follow-up buttons that carry what the reader chose.
 
 ## Attachments of messages
 
