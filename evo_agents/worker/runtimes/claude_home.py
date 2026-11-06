@@ -450,6 +450,31 @@ def prepare(
     return f"a copy of {source}" + (", refreshed first: its access token expired within the hour" if refreshed else "")
 
 
+def carry_session(directory: Path, owner_env: Mapping[str, str], session_id: str) -> Path | None:
+    """Copy the transcript of session ``session_id`` from the owner's config dir into ``directory`` when only the
+    owner's has it: a session a run began before its runs had a config dir of their own (or with
+    ``keeps_owner_home``), which ``claude --resume`` in ``directory`` would not find ("No conversation found"). The
+    transcript ``projects/<cwd>/<id>.jsonl`` and its directory of subagent transcripts go to the same place under
+    ``directory``; the copy found there, or None when neither dir has the session."""
+    name = f"{session_id}.jsonl"
+    mine = directory / "projects"
+    if mine.is_dir():
+        for found in mine.glob(f"*/{name}"):
+            return found
+    owner = owner_dir(owner_env) / "projects"
+    if not owner.is_dir() or owner.resolve() == mine.resolve():
+        return None
+    for found in owner.glob(f"*/{name}"):
+        target = mine / found.parent.name
+        target.mkdir(mode=0o700, parents=True, exist_ok=True)
+        shutil.copy2(found, target / name)
+        sub = found.parent / session_id
+        if sub.is_dir():
+            shutil.copytree(sub, target / session_id, dirs_exist_ok=True)
+        return target / name
+    return None
+
+
 def note(directory: Path, login: str, owner_setup: bool = False) -> str:
     """What the run's log says once of the agent's config dir."""
     if owner_setup:
