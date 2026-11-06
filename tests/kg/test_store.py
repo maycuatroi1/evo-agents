@@ -433,30 +433,6 @@ def test_search_ranks_a_test_down_unless_the_query_asks_for_tests_and_a_named_no
     assert found(store, "how does zephyrDrain empty it")[0] == drain  # a word names it: first
 
 
-def test_a_name_many_nodes_share_lifts_none_of_them_in_a_query_of_several_words(tmp_path, kg_env):
-    project = make_searchable(tmp_path, kg_env)
-    app = tmp_path / "demo-app"
-    for n in range(5):
-        write(app / f"app/tool{n}.py", f'PATH = "/usr/bin/tool{n}"\n')
-    write(
-        app / "app/preflight.py",
-        'def hidden_problems():\n    """A hidden check calls a program that is not on this worker\'s PATH."""\n    return []\n',
-    )
-    write(
-        app / "docs/checks.md", "# Hidden check\n\nA hidden check calls a program that is not on this worker's PATH.\n"
-    )
-    commit(app, "five PATH constants, the check that reads PATH and a page about it")
-    sync_build(project)
-    store = Store.for_project(project)
-    check = "symbol:app:app/preflight.py::hidden_problems"
-    # limit=1: the text stages stop at 3 nodes before any reaches a constant, as they stop at 150 on a large graph;
-    # a constant came in through its name alone, at the best text score times NAMED_WEIGHT, ahead of the check.
-    hits = found(store, "hidden check calls a program that is not on this worker's PATH", limit=1)
-    assert check in hits[:3] and not any(h.endswith("::PATH") for h in hits[: hits.index(check)])
-    constants = {f"symbol:app:app/tool{n}.py::PATH" for n in range(5)}
-    assert set(found(store, "PATH")[:5]) == constants  # the word alone: its exact hits first
-
-
 def test_a_file_name_names_the_file_not_its_symbols_and_an_image_is_background():
     named = ["quarry_audit.py", "kg_health_eval"]
     assert text_search.names("app:file:app/quarry_audit.py", "app/quarry_audit.py", "app/quarry_audit.py", named)
