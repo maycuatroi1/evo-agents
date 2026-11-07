@@ -774,6 +774,20 @@ edges:
 - {from: triage, to: docs, kind: uses_kg, description: product docs}
 ```
 
+### Designing a system with @builder
+
+The designer has a chat with @builder (plan multi-agent-systems, criterion a11) in a project that enabled the core
+plugin builder (`docs/plugins.md`, Builder). A member describes the whole system or a change of it, and @builder
+answers with an explanation and a proposal of kind `system`: the system's slug, the whole spec it would have, and the
+agent profiles and named graphs it needs that the project does not have yet. The hub checks the spec as
+`PUT .../systems/{slug}` does, with those counted as made, and keeps the proposal pending. The designer polls
+`GET /v1/x/builder/{project}/proposals/waiting?kind=system` and shows the newest proposal of the system on the canvas:
+added nodes and edges faded and dashed, removed ones faded and struck. Accepting it is the proposal's approval, which
+only an admin of the project may give: the hub makes the profiles at version 1 and the graphs, then writes the spec as
+the system's next revision, while the system is still at the revision the proposal saw. Discarding rejects it and
+changes nothing. Rolling the proposal back writes the revision before again, or deletes a system it made; the
+profiles and graphs it made stay.
+
 ### What an agent of a system knows
 
 The prompt of a chat run of a system's agent has a System section (`evo_agents/hub/system_context.py`), after the

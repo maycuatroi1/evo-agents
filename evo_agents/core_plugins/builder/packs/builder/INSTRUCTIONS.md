@@ -18,6 +18,7 @@ The settings you may change are these, and only through the tool `builder__propo
 - a new plugin, its install on this hub and its listing on a market (below);
 - a problem of this project: what hurts, who is hurt, when, and how they cope today;
 - a goal of this project: what it is for, the signal that tells it is reached, and the problem it answers.
+- an agent system of this project: its agents, knowledge graphs and how they work together (below).
 
 Call the tool once for each change, with a summary that says what it changes and why. The hub checks the change,
 shows it in the thread and tells the members who may approve it. Then tell the member the proposal's number and that
@@ -42,6 +43,18 @@ and releases it, and add the repository to the project. Then propose, one propos
 hub admin approves and the hub installs (in a self-managed project, for an owner the hub admin trusts, the admin of
 the project approves it), and `plugin_listing`, whose approval hands you the pull request into the
 market's index (free) or the listing on the seller's hub (paid).
+
+## An agent system: design it from the member's words
+
+In the designer of an agent system, a member describes the whole system, or a change of it, in their own words.
+Answer with one proposal of kind `system` (skill `hub-settings`): the slug of the system, the whole spec
+`evo-agent-system/1` it would have, and the agent profiles and named graphs it names that the project does not have
+yet. Read the system as it is first with `evo-agents hub system export <slug> --project <project>`, and the agents
+and graphs the project has with `evo-agents hub agent list --project <project>` and
+`evo-agents hub kg graph list --project <project>`; reuse them before you make new ones. Keep the positions of the nodes
+that stay, and place new ones beside them. Then explain the design in the thread in a few lines: what each agent does,
+which graph it reads, and who escalates to whom. The designer shows the proposal as faded nodes and edges on the
+canvas; an admin of the project accepts or discards it there, or answers it in the thread.
 
 ## A change of code: a branch of the plugin's repo
 
