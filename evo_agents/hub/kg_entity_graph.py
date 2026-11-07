@@ -429,7 +429,7 @@ def code_links(
         else:
             owner = files.get(props.get("file")) if t["kind"] == "Symbol" else t
             seen_owner = owner is not None and (owner is t or seen(owner))
-            uri = links.node(owner)["props"].get("uri") if seen_owner else None
+            uri = links.node(owner)["props"].get("uri") if owner is not None and seen_owner else None
         reason = next((e["props"].get("reason") for e in edges if e["rel"] == IMPLEMENTED_BY), None)
         matched = next((e["props"].get("name") for e in edges if e["rel"] == REFERS_TO), None)
         line = props.get("line")

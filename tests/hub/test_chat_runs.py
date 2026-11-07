@@ -560,6 +560,21 @@ def test_an_agent_mention_hands_work_one_hop_further_for_the_origin(client, hub,
     assert unknown["refusal"] == "no agent @nobody in this chat"
 
 
+def test_an_agent_mention_that_hands_work_and_names_someone_after_it_is_stored(client, hub, hub_db):
+    # Since PR #525 post_agent reused the name of the agents a session asked for the work it handed on, so a mention
+    # after the one it handed work to raised TypeError and the message was lost.
+    worker = chat_worker(client, hub["owner"], "studio", slots=3)
+    chat_worker(client, hub["owner"], "fixer-node", pool="fixer")
+    chat = created(client, hub["owner"], people=[OTHER], agents=["reviewer", "fixer"])
+    _, spec = started(client, hub, worker, chat)
+    body = f"fix the retry loop, then tell @{OTHER}"
+    handed = in_chats(client, worker, spec["id"], "chat/mentions", {"handle": "fixer", "body": body})
+    assert handed.status_code == 201, handed.text
+    answer = handed.json()
+    assert answer["refusal"] is None and answer["run_id"] is not None
+    assert answer["message"]["body"] == f"@fixer {body}"
+
+
 def test_a_chat_has_no_budget_and_its_runs_go_on_whatever_they_cost_under_a_time_cap(client, hub, hub_db):
     worker = chat_worker(client, hub["owner"], "studio", slots=3)
     chat_worker(client, hub["owner"], "fixer-node", pool="fixer")

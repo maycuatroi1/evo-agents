@@ -205,7 +205,7 @@ class Reader:
 def weight(e: dict, walk: Walk) -> float:
     """An edge's weight in the walk: its relation's, times its status's, times its confidence unless it was read from
     a source; 0 under ``walk.conf_floor``."""
-    status = e.get("status")
+    status = e.get("status") or ""  # an edge with no status weighs 0 (STATUS_WEIGHTS)
     conf = 1.0 if status in SURE else float(e.get("conf") or 0.0)
     if conf < walk.conf_floor:
         return 0.0

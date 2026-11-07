@@ -38,7 +38,7 @@ from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
 
-TOOLS = ("kg_search", "kg_context", "memory_search", "memory_get")
+Tool = Literal["kg_search", "kg_context", "memory_search", "memory_get"]
 MAX_LIMIT = 20
 MAX_IDS = 20
 CUT = re.compile(r"\n\[truncated: \d+ more characters; call kg_more with handle \w+\]$")
@@ -49,7 +49,7 @@ worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], respons
 
 class CrossReadIn(BaseModel):
     project: str = Field(pattern=PROJECT_NAME, description="the project read, another than the run's")
-    tool: Literal[TOOLS] = Field(description="what is read, as the evo-hub tool of the same name reads it")
+    tool: Tool = Field(description="what is read, as the evo-hub tool of the same name reads it")
     query: str | None = Field(None, min_length=1, max_length=500, description="kg_search, kg_context, memory_search")
     ids: list[str] = Field(default_factory=list, max_length=MAX_IDS, description="kg_context: node ids")
     memory_id: int | None = Field(None, ge=1, description="memory_get")

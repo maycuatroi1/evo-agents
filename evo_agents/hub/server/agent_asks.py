@@ -237,6 +237,7 @@ async def ask_agent(
     the hub runtime's ask and escalate tools (``hub_tools``) share it."""
     run_id = run.run_id
     chat = await chat_run(conn, run_id)
+    assert chat is not None  # every chat run starts from a chat message (hand_work)
     said = await mask_values(conn, sealer, run.profile.id, body.body)
     said = await mask_run(conn, sealer, run_id, said)
     target = await by_handle(conn, body.handle)
@@ -248,6 +249,7 @@ async def ask_agent(
         refusal, off = await _system_refusal(conn, found, target, body.reason)
     brief = body.brief()
     if refusal is None:
+        assert target is not None  # _refusal refuses a handle no agent has
         text = question_text(run, run.profile.project, target, said, brief)
         child, message_id, refusal = await _hand(conn, run, target, text)
     if refusal is None:
@@ -323,7 +325,7 @@ async def _refs(conn: AsyncConnection, run_id: int, wait_id: int) -> list[str]:
     refs = []
     if made:
         refs.append("Outputs: " + ", ".join(f"{item.name} (#{item.id})" for item in made))
-    repos = [entry.get("repo") for entry in row.repos or [] if isinstance(entry, dict) and entry.get("repo")]
+    repos = [entry["repo"] for entry in row.repos or [] if isinstance(entry, dict) and entry.get("repo")]
     if row.branch and repos:
         commit = f" at {row.commit_sha[:12]}" if row.commit_sha else ""
         refs.append(f"Branch: {row.branch} of {', '.join(repos)}{commit}")

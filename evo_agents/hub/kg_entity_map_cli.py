@@ -54,6 +54,14 @@ def _line(run: dict) -> str:
     return f"#{run['id']} {run['via']} {run['state']}{review}, {run['maps']} maps posted{error}"
 
 
+def _ask(hub, method: str, path: str, body: dict | None = None) -> dict:
+    """The hub's answer to ``path``: every route of this command answers a JSON object."""
+    found = hub.call(method, path, body)
+    if not isinstance(found, dict):
+        sys.exit(f"the hub answered {method} {path} with no JSON object")
+    return found
+
+
 def _map(path: str) -> dict:
     try:
         found = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -91,7 +99,7 @@ def cmd_entity_map(args) -> int:
     if args.post:
         return _post(hub, args)
     if args.outline:
-        found = hub.call("GET", f"{_path(args.project)}/outline")
+        found = _ask(hub, "GET", f"{_path(args.project)}/outline")
         if args.json:
             print_json(found)
             return 0
@@ -100,7 +108,7 @@ def cmd_entity_map(args) -> int:
             print(f"  {d['repo']}:{d['path']} {d['files']} files, {d['symbols']} symbols")
         return 0
     if args.changed:
-        found = hub.call("GET", f"{_path(args.project)}/changed?limit={args.limit or 500}")
+        found = _ask(hub, "GET", f"{_path(args.project)}/changed?limit={args.limit or 500}")
         if args.json:
             print_json(found)
             return 0
@@ -111,13 +119,13 @@ def cmd_entity_map(args) -> int:
                 print(f"  {key} {item['id']}")
         return 0
     if args.run:
-        found = hub.call("POST", f"{_path(args.project)}/run", {})
+        found = _ask(hub, "POST", f"{_path(args.project)}/run", {})
         if args.json:
             print_json(found)
             return 0
         print(f"entity map run of project {args.project}: {_line(found)}")
         return 0
-    found = hub.call("GET", f"{_path(args.project)}/runs?limit={min(args.limit or 10, 50)}")
+    found = _ask(hub, "GET", f"{_path(args.project)}/runs?limit={min(args.limit or 10, 50)}")
     if args.json:
         print_json(found)
         return 0

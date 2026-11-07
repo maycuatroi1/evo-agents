@@ -5,7 +5,8 @@ hub's worker, the worker daemon and the tests share them; ``evo_agents.hub.judge
 
 ``hack_signs`` reads a diff, file by file, for what a change does to pass its checks rather than to do its work
 (SIGN_KINDS): an assertion removed (an assertion of a test file is compared with what that same file adds, never with
-another file's, and one put under a guard that never runs counts as removed), a skip or an xfail added (aliased or
+another file's, one put under a guard that never runs counts as removed, and one written again with only its message
+changed does not), a skip or an xfail added (aliased or
 imported on its own included), a test removed (one renamed, its definition the same but for its name, is not), a
 number changed on an assertion's line of a test, an expected value of a test changed on a line of its own, a golden or
 snapshot file of the tests changed, an assertion's failure caught, a file the plan's verify runs or a plan's copy
@@ -20,6 +21,7 @@ it. What a verify command runs is read from its shell words (``evo_agents.hub.ve
 
 from __future__ import annotations
 
+import ast
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -397,9 +399,28 @@ def _masked(text: str) -> str:
     return NUMBER.sub("#", " ".join(text.split()))
 
 
+def _without_message(flat: str) -> str:
+    """``assert test, "message"`` as ``assert test``: a message of a literal string only says why the assertion failed,
+    so a rewrite may change it. Any other message is kept, since it runs when the test fails (``os._exit(0)``)."""
+    try:
+        body = ast.parse(flat).body
+    except SyntaxError:  # a line of a longer statement
+        return flat
+    node = body[0] if len(body) == 1 else None
+    if (
+        not isinstance(node, ast.Assert)
+        or not isinstance(node.msg, ast.Constant)
+        or not isinstance(node.msg.value, str)
+    ):
+        return flat
+    test = ast.get_source_segment(flat, node.test)
+    return f"assert {test}" if test else flat
+
+
 def _assertion_shape(text: str) -> tuple[str, str, frozenset[str]] | None:
-    """(operator, expected side, tokens of the subject) of a Python ``assert subject OP expected`` line, else None."""
-    match = PY_COMPARISON.match(" ".join(text.split()))
+    """(operator, expected side, tokens of the subject) of a Python ``assert subject OP expected`` line, its message of
+    a literal string left out, else None."""
+    match = PY_COMPARISON.match(_without_message(" ".join(text.split())))
     if not match:
         return None
     subject, op, expected = match.group("subject", "op", "expected")

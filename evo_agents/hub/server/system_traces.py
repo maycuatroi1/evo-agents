@@ -386,6 +386,33 @@ async def record_tool(
     return span_id
 
 
+async def record_mention(
+    conn: AsyncConnection,
+    found: Membership | None,
+    to_handle: str,
+    child: int | None,
+    why: str | None,
+    message_id: int | None,
+) -> None:
+    """The mention span of a mention of agent ``to_handle`` by the run of ``found`` that handed run ``child`` (None,
+    refused with ``why``): off design when the spec has no interacts edge for it, with no reason; nothing for a run in
+    no trace."""
+    if found is None or found.trace_id is None:
+        return
+    off = not system_context.on_design(found.spec, found.node, system_context.node_of(found.spec, to_handle))
+    await record_tool(
+        conn,
+        found,
+        system_context.TOOL_MENTION,
+        to_handle=to_handle,
+        status="ok" if child is not None else "refused",
+        off_design=off,
+        reason=why,
+        message_id=message_id,
+        attributes={} if child is None else {"evo.child_run_id": child},
+    )
+
+
 # The budget
 
 
@@ -453,6 +480,17 @@ async def brief_of(conn: AsyncConnection, run_id: int) -> tuple[dict, str | None
 
 
 # The default knowledge graph
+
+
+async def prompt_parts(conn: AsyncConnection, run_id: int) -> tuple[list[str], list[str]]:
+    """(the System section, the brief block) of the prompt of chat run ``run_id``: its place in the agent system it
+    runs in (``system_context.system_lines``), and the brief of the ask that made its session
+    (``system_context.brief_lines``); [] for each it lacks."""
+    found = await of_run(conn, run_id)
+    place = None if found is None else system_context.place_of(found.system.slug, found.spec, found.handle)
+    briefed = await brief_of(conn, run_id)
+    brief = [] if briefed is None else system_context.brief_lines(*briefed)
+    return ([] if place is None else system_context.system_lines(place)), brief
 
 
 async def default_graph(conn: AsyncConnection, run_id: int, project_id: int) -> tuple[str, frozenset[str]] | None:

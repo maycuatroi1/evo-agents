@@ -46,6 +46,10 @@ ENGINE = "graspologic-native"
 SEED = 7
 RESOLUTION = 1.0
 MAX_CLUSTER_SIZE = 150
+# graspologic-native 1.3.1's own defaults, passed since its stub declares them required
+RANDOMNESS = 0.001
+ITERATIONS = 1
+USE_MODULARITY = True
 HUB_SHARE = 0.005  # the share of the most connected projected nodes left out of the clustering
 LABEL_WORDS = 5
 JACCARD = 0.5
@@ -187,6 +191,9 @@ def compute(graph: Graph, policy: Policy, warm: Clusters | None = None) -> Clust
         edges=edges,
         starting_communities=starting,
         resolution=RESOLUTION,
+        randomness=RANDOMNESS,
+        iterations=ITERATIONS,
+        use_modularity=USE_MODULARITY,
         max_cluster_size=MAX_CLUSTER_SIZE,
         seed=SEED,
     )
