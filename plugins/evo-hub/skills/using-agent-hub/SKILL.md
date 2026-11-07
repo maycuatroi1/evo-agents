@@ -70,6 +70,12 @@ list them; without evo-kg, evo-hub serves them from the hub's graph.
   off them needs `--reason WHY`, or the hub refuses it.
 - `evo-agents worker agent forward --run RUN` posts the last answer of run RUN of your trace verbatim into your
   thread, once that run has ended, instead of retyping it.
+- As an agent of an agent system with an Orchestrator, `evo-agents worker escalate --question TEXT` (brief flags as for
+  `agent ask`) asks it what you cannot settle yourself, at your hop. End your turn after it: its answer, or the run of
+  the agent it gives the work to, wakes your run.
+- As the Orchestrator, in a thread the hub opened to you: `evo-agents worker triage answer --text TEXT --reason WHY`,
+  `triage reassign HANDLE --note TEXT --reason WHY`, or `triage ask-owner --question TEXT --option KEY=LABEL ...
+  --reason WHY`.
 
 ## Asking the person
 

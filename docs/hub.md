@@ -724,6 +724,7 @@ An edge has `from`, `to`, a `kind` and a `description`; its kind fixes the kinds
 The agent the entry interacts with is the system's entry agent: at most one per system, and a profile is the entry
 agent of at most one system (a partial unique index holds it). `limits` holds the budgets of the system:
 `trace_usd` (2 by default), `trace_runs` (12) and `daily_usd` (5). A trace keeps to the first two (Budget of a trace).
+`idle_minutes_hub` (10) and `idle_minutes_worker` (30), from 1 to 1440, are the idle limits of The Orchestrator.
 
 The hub checks a spec before it stores it. Errors are an unknown key, an edge whose ends do not fit its kind, a node or
 an edge that is not there, a second entry, curator or orchestrator, and a profile or a named graph the project does
@@ -869,7 +870,8 @@ The tools do what the worker's commands do, through the same code:
 | `interactive_answer` | `evo-agents worker chat post --interactive`, with the same size limit, CSP and bridge |
 | `agent_ask` | `evo-agents worker agent ask`, with the same brief, friction off the edges and trace budget |
 | `agent_forward` | `evo-agents worker agent forward` |
-| `escalate` | an ask of the Orchestrator the agent's `escalates` edge names |
+| `escalate` | `evo-agents worker escalate` |
+| `orchestrator_answer`, `orchestrator_reassign`, `orchestrator_ask_owner` | `evo-agents worker triage answer`, `triage reassign`, `triage ask-owner` |
 | `memory_write` | a memory of the project, under the rules of `memory_write` |
 
 A tool that is refused answers the model with the reason, and the turn goes on. Repos, branches, pull requests and
@@ -889,6 +891,48 @@ service and no setting. The `worker` service gets the gateway settings (`EVO_HUB
 ```sh
 evo-agents hub agent edit lumen-helper --project northwind --runs-on hub --allow model:openrouter/auto
 ```
+
+### The Orchestrator
+
+An agent with an `orchestrates` edge from the system's Orchestrator has the Orchestrator for its triage, in place of
+the project's triage chat (`evo_agents/hub/server/orchestrator.py`). The hub opens a thread to the Orchestrator in the
+system's ops chat, "Ops: SLUG" (`agent_systems.ops_chat_id`, migration 0221). It makes that chat the first time, with
+the system's creator in it, and puts the Orchestrator and the person at the origin of the work in it. The thread's
+first message is the hub's. It names the rule, the agent, its run and trace, and the spans that show it, then mentions
+the Orchestrator, which starts its chat run for the person at the origin at the hop of the work. The message carries
+the run it is about, so the Orchestrator's run joins that trace under the run's span. `orchestrator_threads` keeps
+each thread: its system, trace, agent, rule, evidence spans, chat and first message, the Orchestrator's run, the wait
+of an escalation, the hop and the outcome.
+
+A thread opens when:
+
+| Rule | When | Once per |
+| --- | --- | --- |
+| `failed` | a chat run (a turn) or a run of kind step, plan or author of the agent fails | run |
+| `stale` | a run of the agent stops moving while its worker heartbeats (Runs that stop moving; the project needs `triage_enabled` for this check) | run |
+| `escalate` | the agent runs `evo-agents worker escalate` or the tool `escalate` (`docs/workers.md`, Escalation) | escalation |
+| `loop` | the agent receives the same work for the third time in one trace: the same `goal` of a brief, or the same text once lower case, numbers and punctuation are dropped | agent and trace |
+| `idle` | an open trace with a run that should move (queued, leased, running or verifying) writes no span for `limits.idle_minutes_hub` minutes (10) when all its open runs are on the hub runtime, else `limits.idle_minutes_worker` (30) | trace |
+| `rounds` | a turn of the hub runtime uses its 8 rounds of tools without a final answer | run |
+| `budget` | the trace refuses an ask or a mention for its budget (Budget of a trace) | trace |
+
+The rules call no model. Loop and budget are checked when a span is written, rounds when the turn ends, and idle by
+the reaper on each pass (`run_reaper`). A run that waits for an answer (parked or waiting) is not idle. Each check
+runs in a savepoint: a thread that cannot open is logged and undoes nothing.
+
+A thread for a run of kind step, plan or author is a triage thread too (`run_triage`), so the Orchestrator has the
+frame of What a triage agent may do on its own there, whether or not the project has `triage_enabled`. In any thread
+it has three more actions (`orchestrator_actions.py`; `docs/workers.md`, Failure triage):
+
+- answer: an escalation's wait wakes with the answer; a thread with no wait hands it to the agent it is about.
+- reassign: the work goes to another agent node of the system at the hop of the work, with the escalation's wait.
+- ask-owner: a decision of category `triage` for the person at the origin of the work.
+
+Each posts a `Decision:` line in the thread and writes the audit row `orchestrator.answer`, `orchestrator.reassign` or
+`orchestrator.ask_owner`, whose target names the system, the thread, the rule, the agent and the Orchestrator's run.
+Answer and reassign close the thread. An escalation adds no hop, the trace's budget does not refuse it, and the work
+the Orchestrator reassigns keeps its hop: the hop limit of 3 stays as it is. An agent with no `orchestrates` edge
+keeps the triage it had; one with only an `escalates` edge escalates to that Orchestrator and has no other thread.
 
 ## Group chats
 

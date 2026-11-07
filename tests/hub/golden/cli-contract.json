@@ -26692,6 +26692,60 @@
       "options": [],
       "json": null
     },
+    "worker escalate": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--question"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--goal"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--output"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--bounds"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--done-when"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--ref"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        }
+      ],
+      "json": null
+    },
     "worker finding": {
       "positionals": [],
       "options": [
@@ -27361,6 +27415,66 @@
       ],
       "json": null
     },
+    "worker triage answer": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--text"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker triage ask-owner": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--question"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--option"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--context"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "worker triage cancel": {
       "positionals": [],
       "options": [
@@ -27504,6 +27618,36 @@
           ],
           "value": null,
           "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker triage reassign": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
           "repeatable": false
         }
       ],
@@ -89565,6 +89709,376 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/triage/answer": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Answer Route",
+          "description": "Answer the thread this Orchestrator's chat run is in (see the module's docstring).",
+          "operationId": "answer_route_v1_worker_runs__run_id__triage_answer_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrchestratorAnswerIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrchestratorActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/triage/reassign": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Reassign Route",
+          "description": "Give the work of the thread this Orchestrator's chat run is in to another agent of the system.",
+          "operationId": "reassign_route_v1_worker_runs__run_id__triage_reassign_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrchestratorReassignIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrchestratorActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/triage/ask-owner": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Ask Owner Route",
+          "description": "Ask the person at the origin of the thread's work a decision, as this Orchestrator's chat run.",
+          "operationId": "ask_owner_route_v1_worker_runs__run_id__triage_ask_owner_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrchestratorAskOwnerIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OrchestratorActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/escalate": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Escalate",
+          "description": "Escalate a question to the Orchestrator of this chat run's system; the run parks on the wait the answer wakes.",
+          "operationId": "escalate_v1_worker_runs__run_id__escalate_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EscalateIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Escalated"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/curator/answer": {
         "post": {
           "tags": [
@@ -123621,6 +124135,142 @@
           ],
           "title": "ErrorText"
         },
+        "EscalateIn": {
+          "properties": {
+            "question": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Question",
+              "description": "what the agent asks its Orchestrator, at most 16384 bytes"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal",
+              "description": "the brief: the goal"
+            },
+            "output": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Output",
+              "description": "the brief: what the answer should hold"
+            },
+            "bounds": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bounds",
+              "description": "the brief: what not to do or touch"
+            },
+            "done_when": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Done When",
+              "description": "the brief: when the work is finished"
+            },
+            "refs": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 10,
+              "title": "Refs",
+              "description": "the brief: refs it starts from"
+            }
+          },
+          "type": "object",
+          "required": [
+            "question"
+          ],
+          "title": "EscalateIn"
+        },
+        "Escalated": {
+          "properties": {
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the Orchestrator's run; null when the hub refused"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "the wait of the asking run its answer wakes; null when refused"
+            },
+            "thread_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Id",
+              "description": "the thread in the ops chat of the system; null when refused"
+            },
+            "refusal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refusal",
+              "description": "why the hub handed no work, as the thread says too"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "decision_id",
+            "thread_id",
+            "refusal"
+          ],
+          "title": "Escalated"
+        },
         "EvalSetBody": {
           "properties": {
             "set": {
@@ -141746,6 +142396,149 @@
             "label"
           ],
           "title": "OptionIn"
+        },
+        "OrchestratorActed": {
+          "properties": {
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the Decision: line the hub posted in the thread, in the Orchestrator's name"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run the answer woke or the work went to; null for ask-owner"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "the decision asked of the owner; null for answer and reassign"
+            }
+          },
+          "type": "object",
+          "required": [
+            "message_id",
+            "run_id",
+            "decision_id"
+          ],
+          "title": "OrchestratorActed"
+        },
+        "OrchestratorAnswerIn": {
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "title": "Text",
+              "description": "the answer: it wakes the asking run, or goes to the agent of the thread"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "text",
+            "reason"
+          ],
+          "title": "OrchestratorAnswerIn"
+        },
+        "OrchestratorAskOwnerIn": {
+          "properties": {
+            "question": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Question"
+            },
+            "context": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Context"
+            },
+            "options": {
+              "items": {
+                "$ref": "#/components/schemas/OptionIn"
+              },
+              "type": "array",
+              "maxItems": 6,
+              "minItems": 2,
+              "title": "Options"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "question",
+            "options",
+            "reason"
+          ],
+          "title": "OrchestratorAskOwnerIn"
+        },
+        "OrchestratorReassignIn": {
+          "properties": {
+            "handle": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Handle",
+              "description": "an agent node of the system"
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "title": "Note",
+              "description": "the work as that agent should read it: it sees nothing of the thread"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "handle",
+            "note",
+            "reason"
+          ],
+          "title": "OrchestratorReassignIn"
         },
         "Order": {
           "properties": {

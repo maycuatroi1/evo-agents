@@ -10,7 +10,10 @@ row.
 - ``agent_ask``: ask an agent of another project, with the brief template, the friction and the trace budget of
   ``evo-agents worker agent ask`` (``agent_asks.ask_agent``); the run then parks until the answer wakes it.
 - ``agent_forward``: post the answer of a run it asked verbatim (``agent_asks.forward``).
-- ``escalate``: ask the Orchestrator its system names on its escalates edge, as ``agent_ask`` does.
+- ``escalate``: ask the Orchestrator of its system (``orchestrator.escalate``): a thread in the system's ops chat at
+  the hop of the run, and a wait the Orchestrator's answer wakes; the run then parks as for ``agent_ask``.
+- ``orchestrator_answer``, ``orchestrator_reassign``, ``orchestrator_ask_owner``: the Orchestrator's actions in a
+  thread the hub opened to it (``orchestrator_actions``), as ``evo-agents worker triage answer|reassign|ask-owner``.
 - ``memory_write``: a memory of the project, under the rules of ``memories.put``.
 
 A tool that is refused answers the model with why, as the worker's command prints it; nothing raises past ``call``.
@@ -36,7 +39,15 @@ from evo_agents.hub.kg_graph import GraphCache, Handles
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.memory_files import memory_type
 from evo_agents.hub.memory_places import HARNESS
-from evo_agents.hub.server import agent_asks, chat_agents, kg, memories, output_store, system_traces
+from evo_agents.hub.server import (
+    agent_asks,
+    chat_agents,
+    kg,
+    memories,
+    orchestrator,
+    orchestrator_actions,
+    output_store,
+)
 from evo_agents.hub.server.blobs import put_bytes
 from evo_agents.hub.server.mcp_run import hub_principal
 from evo_agents.hub.server.output_store import OutputIn
@@ -45,7 +56,6 @@ from evo_agents.hub.server.security import WORKER
 
 log = logging.getLogger(__name__)
 
-TOOL_ESCALATE = "agent_escalate"  # the span tool of an escalation to the Orchestrator
 MAX_RESULT_CHARS = 12_000  # what one tool's result hands back to the model
 INTERACTIVE_NAME = "answer.html"
 _GRAPHS: dict[Path, object] = {}  # the cache of built graphs of each data directory, as the app holds one
@@ -98,8 +108,43 @@ TOOLS = [
     _function(
         "escalate",
         "Hand the question to the Orchestrator of this agent's system; its answer wakes this run in a later turn.",
-        {"body": _TEXT, **_BRIEF},
-        ["body"],
+        {"question": _TEXT, **_BRIEF},
+        ["question"],
+    ),
+    _function(
+        "orchestrator_answer",
+        "As the Orchestrator, in a thread the hub opened to you: answer it (wakes the agent that escalated).",
+        {"text": _TEXT, "reason": _TEXT},
+        ["text", "reason"],
+    ),
+    _function(
+        "orchestrator_reassign",
+        "As the Orchestrator, in a thread the hub opened to you: give its work to another agent node of the system.",
+        {
+            "handle": _TEXT,
+            "note": {"type": "string", "description": "the work, as that agent reads it"},
+            "reason": _TEXT,
+        },
+        ["handle", "note", "reason"],
+    ),
+    _function(
+        "orchestrator_ask_owner",
+        "As the Orchestrator, in a thread the hub opened to you: ask the person at the origin of the work a decision.",
+        {
+            "question": _TEXT,
+            "context": _TEXT,
+            "options": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {"key": _TEXT, "label": _TEXT, "description": _TEXT},
+                    "required": ["key", "label"],
+                },
+                "description": "2 to 6 options",
+            },
+            "reason": _TEXT,
+        },
+        ["question", "options", "reason"],
     ),
     _function(
         "memory_write",
@@ -216,12 +261,47 @@ async def agent_ask(turn: Turn, arguments: dict) -> str:
 
 
 async def escalate(turn: Turn, arguments: dict) -> str:
-    async with turn.engine.connect() as conn:
-        found = await system_traces.of_run(conn, turn.run_id)
-    target = None if found is None else system_context.orchestrator_of(found.spec, found.handle)
-    if target is None:
-        return "refused: this agent's system names no Orchestrator it escalates to"
-    return await _ask(turn, _ask_body(arguments, target[0]), TOOL_ESCALATE)
+    fields = ("question", *system_context.BRIEF_FIELDS, "refs")
+    body = orchestrator.EscalateIn(**{key: arguments[key] for key in fields if arguments.get(key)})
+    async with turn.engine.begin() as conn:
+        run = await _agent_run(conn, turn)
+        row = await held_row(conn, turn.run_id, None, lock=True, kinds=("chat",))
+        escalated = await orchestrator.escalate(conn, turn.sealer, run, body, row)
+    if escalated.refusal is not None:
+        return f"refused: {escalated.refusal}"
+    turn.asked.append(escalated.run_id)
+    return (
+        f"escalated to the Orchestrator in run #{escalated.run_id}: end your turn now with a short reply that says so; "
+        "its answer wakes this run in a new turn"
+    )
+
+
+async def orchestrator_answer(turn: Turn, arguments: dict) -> str:
+    body = orchestrator_actions.OrchestratorAnswerIn(**arguments)
+    async with turn.engine.begin() as conn:
+        acted = await orchestrator_actions.answer(conn, turn.sealer, await _agent_run(conn, turn), body)
+    return f"answered (run #{acted.run_id}); Decision line #{acted.message_id}"
+
+
+async def orchestrator_reassign(turn: Turn, arguments: dict) -> str:
+    body = orchestrator_actions.OrchestratorReassignIn(
+        **{**arguments, "handle": str(arguments.get("handle") or "").lstrip("@")}
+    )
+    async with turn.engine.begin() as conn:
+        acted = await orchestrator_actions.reassign(conn, turn.sealer, await _agent_run(conn, turn), body)
+    return f"gave the work to run #{acted.run_id}; Decision line #{acted.message_id}"
+
+
+async def orchestrator_ask_owner(turn: Turn, arguments: dict) -> str:
+    body = orchestrator_actions.OrchestratorAskOwnerIn(**arguments)
+    async with turn.engine.begin() as conn:
+        run = await _agent_run(conn, turn)
+        row = await held_row(conn, turn.run_id, None, lock=True, kinds=("chat",))
+        acted = await orchestrator_actions.ask_owner(conn, run, body, row)
+    return (
+        f"asked the owner decision #{acted.decision_id}: end your turn now with a short reply that says so; the "
+        "answer wakes this run in a new turn"
+    )
 
 
 async def agent_forward(turn: Turn, arguments: dict) -> str:
@@ -262,6 +342,9 @@ HANDLERS = {
     "agent_ask": agent_ask,
     "agent_forward": agent_forward,
     "escalate": escalate,
+    "orchestrator_answer": orchestrator_answer,
+    "orchestrator_reassign": orchestrator_reassign,
+    "orchestrator_ask_owner": orchestrator_ask_owner,
     "memory_write": memory_write,
 }
 

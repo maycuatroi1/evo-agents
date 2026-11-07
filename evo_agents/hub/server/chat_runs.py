@@ -809,6 +809,9 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
     if new == "failed":
         why = found.error or "its worker gave no reason"
         await hub_reply(conn, found.chat_id, found.root_id, f"Run #{run_id} of @{profile.handle} failed: {why}")
+        from evo_agents.hub.server.orchestrator import on_turn_failed  # it hands work through this module
+
+        await on_turn_failed(conn, run_id)
     went_on = await _go_on_untaken(conn, run_id, found) if new == "done" else None
     if profile is not None and went_on is None:
         from evo_agents.hub.server.agent_asks import answer_asker  # its route hands work through this module

@@ -119,6 +119,9 @@ RUN_TRIAGE_RERUN = "run.triage_rerun"  # the agent of a triage thread ran a fail
 RUN_TRIAGE_INVITE = "run.triage_invite"  # ... or invited the agent of another project the error names into the thread
 RUN_TRIAGE_PLAN_EDIT = "run.triage_plan_edit"  # ... or edited verify or what of a pending step, as the owner
 RUN_TRIAGE_CANCEL = "run.triage_cancel"  # ... or asked the worker of a stale run to stop it, for its owner
+ORCHESTRATOR_ANSWER = "orchestrator.answer"  # the Orchestrator of a system answered a thread the hub opened to it
+ORCHESTRATOR_REASSIGN = "orchestrator.reassign"  # ... or gave its work to another agent of the system
+ORCHESTRATOR_ASK_OWNER = "orchestrator.ask_owner"  # ... or asked the person at the origin of the work a decision
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
 # The dispatcher of a run or an admin of its project deleted an output of it (evo_agents.hub.server.run_outputs): the

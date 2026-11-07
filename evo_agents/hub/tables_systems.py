@@ -3,7 +3,8 @@ attributes (``tables.agent_systems``, ``tables.agent_system_revisions``): querie
 
 agent_systems holds each agent system of a project as it is now (``evo_agents.hub.system_spec``): its slug (unique in
 the project), name, spec, revision, the profile that is its entry agent (NULL for none; a profile is the entry agent of
-at most one system, which ``agent_systems_entry_profile_key`` holds), who made it and changed it last, and when.
+at most one system, which ``agent_systems_entry_profile_key`` holds), who made it and changed it last, and when, and
+its ops chat (``ops_chat_id``, 0221), where the hub opens the threads to its Orchestrator.
 agent_system_revisions holds the spec as each revision had it, written in the transaction that made the revision; a
 system's revisions go with it when it is deleted.
 """
@@ -50,6 +51,7 @@ def system_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("entry_profile_id", BigInteger),
         Column("created_by", BigInteger),
         Column("updated_by", BigInteger),
+        Column("ops_chat_id", BigInteger),  # the chat of the threads to its Orchestrator (0221)
         _stamp("created_at"),
         _stamp("updated_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
@@ -58,6 +60,7 @@ def system_tables(metadata: MetaData) -> tuple[Table, Table]:
         ),
         ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_created_by_fkey"),
         ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_updated_by_fkey"),
+        ForeignKeyConstraint(["ops_chat_id"], ["chats.id"], ondelete="SET NULL", name=f"{name}_ops_chat_id_fkey"),
         PrimaryKeyConstraint("id", name=f"{name}_pkey"),
         UniqueConstraint("project_id", "slug", name=f"{name}_project_id_slug_key"),
         CheckConstraint(f"slug ~ '{SLUG_PATTERN}'", name=f"{name}_slug_check"),

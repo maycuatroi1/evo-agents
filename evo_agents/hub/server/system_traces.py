@@ -294,6 +294,10 @@ async def join(conn: AsyncConnection, run_id: int, *, previous_id: int | None = 
     await conn.execute(update(t).values(last_at=func.now()).where(t.c.id == trace_id))
     await notify(conn, held.id)
     log.info("run joined a trace", extra={"run_id": run_id, "trace_id": trace_id, "off_design": off})
+    if RESUME not in attributes:
+        from evo_agents.hub.server import orchestrator  # it opens threads through chat_runs, which joins runs here
+
+        await orchestrator.check_loop(conn, run_id)
     return trace_id
 
 
@@ -375,6 +379,10 @@ async def record_tool(
     span_id = (await conn.execute(insert(s).values(**values).returning(s.c.id))).scalar_one()
     await conn.execute(update(t).values(last_at=func.now()).where(t.c.id == membership.trace_id))
     await notify(conn, membership.system.id)
+    if status == "refused" and (reason or "").startswith(system_context.BUDGET_REFUSAL):
+        from evo_agents.hub.server import orchestrator  # it opens threads through chat_runs, which joins runs here
+
+        await orchestrator.on_budget(conn, membership, span_id, reason)
     return span_id
 
 
@@ -419,6 +427,10 @@ async def save_brief(conn: AsyncConnection, run_id: int, asked_by: int, brief: d
     await conn.execute(
         statement.on_conflict_do_update(index_elements=[b.c.run_id], set_={"brief": found, "asked_by_run_id": asked_by})
     )
+    if found.get("goal"):
+        from evo_agents.hub.server import orchestrator  # it opens threads through chat_runs, which joins runs here
+
+        await orchestrator.check_loop(conn, run_id)
 
 
 async def brief_of(conn: AsyncConnection, run_id: int) -> tuple[dict, str | None, int | None] | None:

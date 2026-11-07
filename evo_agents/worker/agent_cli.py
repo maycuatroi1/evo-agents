@@ -22,6 +22,7 @@ from evo_agents.worker import (
     chat_cli,
     cli_support,
     curator_cli,
+    escalate_cli,
     merge_check_cli,
     output_cli,
     playbook_cli,
@@ -73,6 +74,7 @@ AGENT_PARSERS += (probe_cli.register_probe,)  # a review run's probe of a merged
 AGENT_PARSERS += (merge_check_cli.register_merge_check,)  # a plan run's pull request judged at its head
 AGENT_PARSERS += (curator_cli.register_curator,)  # a proposal's thread answers the proposal
 AGENT_PARSERS += (agent_ask_cli.register_agent,)  # a chat run asks an agent of another project
+AGENT_PARSERS += (escalate_cli.register_escalate,)  # an agent of an agent system asks its Orchestrator
 
 
 @dataclass

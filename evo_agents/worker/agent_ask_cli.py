@@ -39,7 +39,7 @@ def cmd_agent_ask(args) -> int:
     return chat_command(_ask)(args)
 
 
-def _chat_run(command: str, what: str):
+def chat_run(command: str, what: str):
     from evo_agents.worker import chat_cli
 
     run_id, home, record = chat_cli.running_run(command)
@@ -66,7 +66,7 @@ def ask_payload(args, handle: str, body: str) -> dict:
 def _ask(args) -> int:
     from evo_agents.worker import agent_cli, chat_cli
 
-    run_id, home, run = _chat_run(COMMAND, "asks an agent of another project")
+    run_id, home, run = chat_run(COMMAND, "asks an agent of another project")
     handle = args.handle.removeprefix("@").lower()
     answer = chat_cli.call(run, ROUTE, ask_payload(args, handle, chat_cli.text_of(args.text)))
     if answer.get("refusal"):
@@ -91,7 +91,7 @@ def cmd_agent_forward(args) -> int:
 def _forward(args) -> int:
     from evo_agents.worker import chat_cli
 
-    _, _, run = _chat_run(FORWARD_COMMAND, "forwards an answer")
+    _, _, run = chat_run(FORWARD_COMMAND, "forwards an answer")
     answer = chat_cli.call(run, FORWARD_ROUTE, {"run_id": args.run})
     if answer.get("refusal"):
         print(f"error: run #{args.run} was not forwarded: {answer['refusal']}", file=sys.stderr)

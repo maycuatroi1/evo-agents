@@ -72,7 +72,13 @@ def test_a_spec_of_every_node_and_edge_kind_has_no_problem_and_gets_the_default_
     assert problems == []
     assert {n["kind"] for n in found["nodes"]} == set(system_spec.NODE_KINDS)
     assert {e["kind"] for e in found["edges"]} == set(system_spec.EDGE_KINDS)
-    assert found["limits"] == {"trace_usd": 2.0, "trace_runs": 12, "daily_usd": 5.0}
+    assert found["limits"] == {
+        "trace_usd": 2.0,
+        "trace_runs": 12,
+        "daily_usd": 5.0,
+        "idle_minutes_hub": 10,
+        "idle_minutes_worker": 30,
+    }
     assert system_spec.entry_agent(found) == "lumen-triage"
 
 
@@ -120,7 +126,13 @@ def test_the_entry_interacts_with_one_agent_and_none_is_a_warning():
 
 def test_limits_take_numbers_in_their_bounds():
     found, problems = system_spec.check({**SPEC, "limits": {"trace_usd": 1.5, "trace_runs": 20}})
-    assert problems == [] and found["limits"] == {"trace_usd": 1.5, "trace_runs": 20, "daily_usd": 5.0}
+    assert problems == [] and found["limits"] == {
+        "trace_usd": 1.5,
+        "trace_runs": 20,
+        "daily_usd": 5.0,
+        "idle_minutes_hub": 10,
+        "idle_minutes_worker": 30,
+    }
     assert errors_of({**SPEC, "limits": {"trace_runs": 0, "daily_usd": "5"}}) == [
         ("limits.trace_runs", None, None),
         ("limits.daily_usd", None, None),

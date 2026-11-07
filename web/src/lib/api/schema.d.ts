@@ -10545,6 +10545,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/triage/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Route
+         * @description Answer the thread this Orchestrator's chat run is in (see the module's docstring).
+         */
+        post: operations["answer_route_v1_worker_runs__run_id__triage_answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/triage/reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reassign Route
+         * @description Give the work of the thread this Orchestrator's chat run is in to another agent of the system.
+         */
+        post: operations["reassign_route_v1_worker_runs__run_id__triage_reassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/triage/ask-owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Owner Route
+         * @description Ask the person at the origin of the thread's work a decision, as this Orchestrator's chat run.
+         */
+        post: operations["ask_owner_route_v1_worker_runs__run_id__triage_ask_owner_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/escalate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Escalate
+         * @description Escalate a question to the Orchestrator of this chat run's system; the run parks on the wait the answer wakes.
+         */
+        post: operations["escalate_v1_worker_runs__run_id__escalate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/curator/answer": {
         parameters: {
             query?: never;
@@ -21960,6 +22040,62 @@ export interface components {
              */
             n: number;
         };
+        /** EscalateIn */
+        EscalateIn: {
+            /**
+             * Question
+             * @description what the agent asks its Orchestrator, at most 16384 bytes
+             */
+            question: string;
+            /**
+             * Goal
+             * @description the brief: the goal
+             */
+            goal?: string | null;
+            /**
+             * Output
+             * @description the brief: what the answer should hold
+             */
+            output?: string | null;
+            /**
+             * Bounds
+             * @description the brief: what not to do or touch
+             */
+            bounds?: string | null;
+            /**
+             * Done When
+             * @description the brief: when the work is finished
+             */
+            done_when?: string | null;
+            /**
+             * Refs
+             * @description the brief: refs it starts from
+             */
+            refs?: string[];
+        };
+        /** Escalated */
+        Escalated: {
+            /**
+             * Run Id
+             * @description the Orchestrator's run; null when the hub refused
+             */
+            run_id: number | null;
+            /**
+             * Decision Id
+             * @description the wait of the asking run its answer wakes; null when refused
+             */
+            decision_id: number | null;
+            /**
+             * Thread Id
+             * @description the thread in the ops chat of the system; null when refused
+             */
+            thread_id: number | null;
+            /**
+             * Refusal
+             * @description why the hub handed no work, as the thread says too
+             */
+            refusal: string | null;
+        };
         /** EvalSetBody */
         EvalSetBody: {
             /**
@@ -29670,6 +29806,69 @@ export interface components {
              * @description true when the option says not yet: choosing it leaves the decision open and the run waiting, and no answer goes to the agent
              */
             waits?: boolean | null;
+        };
+        /** OrchestratorActed */
+        OrchestratorActed: {
+            /**
+             * Message Id
+             * @description the Decision: line the hub posted in the thread, in the Orchestrator's name
+             */
+            message_id: number;
+            /**
+             * Run Id
+             * @description the run the answer woke or the work went to; null for ask-owner
+             */
+            run_id: number | null;
+            /**
+             * Decision Id
+             * @description the decision asked of the owner; null for answer and reassign
+             */
+            decision_id: number | null;
+        };
+        /** OrchestratorAnswerIn */
+        OrchestratorAnswerIn: {
+            /**
+             * Text
+             * @description the answer: it wakes the asking run, or goes to the agent of the thread
+             */
+            text: string;
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** OrchestratorAskOwnerIn */
+        OrchestratorAskOwnerIn: {
+            /** Question */
+            question: string;
+            /** Context */
+            context?: string | null;
+            /** Options */
+            options: components["schemas"]["OptionIn"][];
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** OrchestratorReassignIn */
+        OrchestratorReassignIn: {
+            /**
+             * Handle
+             * @description an agent node of the system
+             */
+            handle: string;
+            /**
+             * Note
+             * @description the work as that agent should read it: it sees nothing of the thread
+             */
+            note: string;
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
         };
         /** Order */
         Order: {
@@ -87016,6 +87215,281 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_route_v1_worker_runs__run_id__triage_answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrchestratorAnswerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrchestratorActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reassign_route_v1_worker_runs__run_id__triage_reassign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrchestratorReassignIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrchestratorActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    ask_owner_route_v1_worker_runs__run_id__triage_ask_owner_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrchestratorAskOwnerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrchestratorActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    escalate_v1_worker_runs__run_id__escalate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EscalateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Escalated"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

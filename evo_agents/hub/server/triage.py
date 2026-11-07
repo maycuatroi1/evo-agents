@@ -118,6 +118,9 @@ async def on_failed(conn: AsyncConnection, found: RunStep) -> Thread | None:
     caller sends the notice a failure always had."""
     if found.kind not in KINDS or found.project_id is None:
         return None
+    led = await _orchestrated(conn, found, stale=False)
+    if led is not None:
+        return led
     try:
         async with conn.begin_nested():
             return await open_thread(conn, found)
@@ -127,6 +130,18 @@ async def on_failed(conn: AsyncConnection, found: RunStep) -> Thread | None:
             extra={"run_id": found.run_id, "error": f"{type(exc).__name__}: {exc}"},
         )
         return None
+
+
+async def _orchestrated(conn: AsyncConnection, found: RunStep, *, stale: bool) -> Thread | None:
+    """The thread the Orchestrator of the agent of run ``found`` gets of it in its system's ops chat, in place of the
+    project's triage chat (``orchestrator.on_run``); None for a run with a thread already, or of an agent no
+    Orchestrator orchestrates."""
+    from evo_agents.hub.server import orchestrator  # it opens its chat through this module
+
+    if await thread_of(conn, found.run_id) is not None:
+        return None
+    opened = await orchestrator.on_run(conn, found, _head(found, False, stale=stale), stale=stale)
+    return None if opened is None else _thread(opened.chat_id, opened.root_id)
 
 
 async def _due(conn: AsyncConnection, project_id: int) -> bool:
@@ -264,6 +279,9 @@ async def _joined(
         chat = await label_now(conn, chat)
     await put_person(conn, member, chat, owner.user_id, owner.login)
     return await chat_access(conn, owner, row)
+
+
+as_member = _as_member  # the ops chat of an agent system takes its threads the same way (``orchestrator``)
 
 
 def _lock(project_id: int):
@@ -707,6 +725,9 @@ async def on_stale(conn: AsyncConnection, found: RunStep) -> Thread | None:
     """The thread stale run ``found`` has, opened now unless it cannot be; in a savepoint, as ``on_failed``."""
     if found.kind not in KINDS or found.project_id is None:
         return None
+    led = await _orchestrated(conn, found, stale=True)
+    if led is not None:
+        return led
     try:
         async with conn.begin_nested():
             return await open_thread(conn, found, stale=True)

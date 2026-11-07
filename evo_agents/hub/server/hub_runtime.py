@@ -35,7 +35,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import runs, system_context, system_spec, tables
-from evo_agents.hub.server import gateway_accounts, gateway_sync, hub_tools, system_traces
+from evo_agents.hub.server import gateway_accounts, gateway_sync, hub_tools, orchestrator, system_traces
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
 from evo_agents.hub.server.chat_runs import agent_reply, chat_prompt
 from evo_agents.hub.server.gateway_client import GatewayClient, GatewayError, GatewayOff
@@ -324,6 +324,7 @@ class _Loop:
     tokens: dict
     reply: str | None = None
     rounds: int = 0
+    exhausted: bool = False  # the rounds or the time ran out before a final answer
 
 
 async def _rounds(client, key: str, held: Held, turn: hub_tools.Turn, messages: list[dict]) -> _Loop:
@@ -350,6 +351,7 @@ async def _rounds(client, key: str, held: Held, turn: hub_tools.Turn, messages: 
             result = await hub_tools.call(turn, function.get("name") or "", function.get("arguments") or "{}")
             messages.append({"role": "tool", "tool_call_id": call.get("id"), "content": result})
         await _between(turn.engine, held.run_id, messages, None)
+    found.exhausted = found.reply is None
     found.reply = found.reply or f"I stopped after {found.rounds} round(s) of this turn without a final answer."
     return found
 
@@ -408,6 +410,8 @@ async def _converse(engine, config, blobs, sealer, held: Held, client: GatewayCl
     try:
         found = await _rounds(client, key.value.get_secret_value(), held, turn, await _prompt(engine, held))
         cost = await _spent(engine, client, held, key.id, found)
+        if found.exhausted:  # the rule rounds: the Orchestrator of its agent, if any, is told
+            await orchestrator.on_rounds(engine, held.run_id, found.rounds)
     finally:
         try:
             await client.revoke_key(key.id)

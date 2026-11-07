@@ -62,6 +62,10 @@ LIMITS = {  # name: (default, lowest, highest); the budgets the hub holds a trac
     "trace_usd": (2.0, 0.01, 100.0),  # the cost of one trace, worker runs of its tree included
     "trace_runs": (12, 1, 200),  # the runs of one trace
     "daily_usd": (5.0, 0.01, 1000.0),  # what the hub runtime of the system spends in a day
+    # the minutes with no new span after which an open trace is idle and its Orchestrator is told
+    # (triage_rules.IDLE_MINUTES), for runs of the hub runtime and for runs on a worker
+    "idle_minutes_hub": (10, 1, 1440),
+    "idle_minutes_worker": (30, 1, 1440),
 }
 TOP_KEYS = ("schema", "slug", "name", "purpose", "limits", "nodes", "edges")
 NODE_KEYS = ("id", "kind", "label", "position", "profile", "version", "graph")

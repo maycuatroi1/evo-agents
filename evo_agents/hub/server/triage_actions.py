@@ -44,7 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, runs, tables, triage_rules
 from evo_agents.hub.plans import MAX_VALUE_CHARS, PlanProblem, step_index
-from evo_agents.hub.server import audit, chat_agents
+from evo_agents.hub.server import audit, chat_agents, orchestrator
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_members import put_agent
@@ -227,7 +227,8 @@ async def _frame(conn: AsyncConnection, user: Principal, run_id: int) -> Frame:
     ).one()
     if failed.project_id != agent.project_id:
         raise HTTPException(409, f"run {failed.id} is in another project than the agent of chat run {run_id}")
-    if not failed.triage_enabled:
+    led = await orchestrator.thread_at(conn, found.chat_id, found.root_id) is not None  # its system's Orchestrator's
+    if not failed.triage_enabled and not led:
         raise HTTPException(409, f"triage is off for project {failed.project}: ask the owner in the thread")
     stale = thread.cause == STALE_CAUSE
     if failed.state != "failed" and not (stale and failed.state in (*runs.HELD_STATES, "cancelled")):

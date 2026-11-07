@@ -162,3 +162,73 @@ def edit_problems(old: dict, new: dict, repos: set[str]) -> list[str]:
             continue
         problems += _step_problems(before, after, repos)
     return problems
+
+
+# The Orchestrator of an agent system (``evo_agents.hub.server.orchestrator``): the rules of progress the hub checks on
+# a trace with no model call, and the frame of the three actions the Orchestrator adds to those above. A rule that
+# matches opens a thread to the Orchestrator of the agent it is about, once (its key), naming the rule and the spans
+# that show it.
+
+FAILED, STALE, ESCALATE = "failed", "stale", "escalate"  # what an agent's run or turn did
+LOOP, IDLE, ROUNDS, BUDGET = "loop", "idle", "rounds", "budget"  # the rules of progress on a trace
+ORCHESTRATOR_RULES = (FAILED, STALE, ESCALATE, LOOP, IDLE, ROUNDS, BUDGET)
+LOOP_COUNT = 3  # an agent that receives the same work this many times in one trace is in a loop
+IDLE_MINUTES = {"hub": 10, "worker": 30}  # a trace with no new span this long is idle, by the runtime of its runs
+IDLE_LIMITS = {"hub": "idle_minutes_hub", "worker": "idle_minutes_worker"}  # their names in the spec's limits
+ORCHESTRATOR_ACTIONS = ("answer", "reassign", "ask_owner")  # what the Orchestrator does beyond the triage frame
+
+RULE_TEXT = {
+    FAILED: "a run or a turn of the agent failed",
+    STALE: "a run of the agent stopped moving while its worker heartbeats (triage.STALE_MINUTES)",
+    ESCALATE: "the agent escalated a question",
+    LOOP: f"the agent received the same work {LOOP_COUNT} times in this trace (same goal or same normalized text)",
+    IDLE: "the trace is open and wrote no span for longer than its idle limit",
+    ROUNDS: "a turn of the agent used all its tool rounds without a final answer",
+    BUDGET: "the trace reached its budget (limits.trace_runs or limits.trace_usd)",
+}
+
+_RUN_REF = re.compile(r"#\d+|\b\d+\b")
+_NOT_WORD = re.compile(r"[^\w@]+")
+
+
+def normalized(text: str | None) -> str:
+    """``text`` as the loop rule compares it: lower case, numbers (run and message ids, counts) and punctuation
+    dropped, white space collapsed."""
+    found = _RUN_REF.sub(" ", (text or "").lower())
+    return " ".join(_NOT_WORD.sub(" ", found).split())
+
+
+def loop_of(items: list[tuple[int, str | None, str | None]]) -> list[int]:
+    """The spans of a loop in ``items``, the work an agent received in one trace, oldest first, each (span id, its
+    text, its goal): the spans whose goal or normalized text is the last item's, when there are at least LOOP_COUNT of
+    them; none otherwise."""
+    if not items:
+        return []
+    _, text, goal = items[-1]
+    want_text, want_goal = normalized(text), normalized(goal)
+    same = [
+        span
+        for span, its_text, its_goal in items
+        if (want_text and normalized(its_text) == want_text) or (want_goal and normalized(its_goal) == want_goal)
+    ]
+    return same if len(same) >= LOOP_COUNT else []
+
+
+def idle_minutes(limits: dict | None, runtime: str) -> int:
+    """The minutes with no span after which a trace whose open runs are of ``runtime`` (``hub``, else a worker's) is
+    idle: the spec's limit, else IDLE_MINUTES."""
+    kind = "hub" if runtime == "hub" else "worker"
+    value = (limits or {}).get(IDLE_LIMITS[kind])
+    return int(value) if isinstance(value, int) and not isinstance(value, bool) and value > 0 else IDLE_MINUTES[kind]
+
+
+def reassign_problem(target_kind: str | None, target: str, subject: str | None) -> str | None:
+    """Why the Orchestrator may not give the work of a thread to agent ``target`` (its node's kind, None when the
+    system lacks it); None when it may: an agent node of the same system, other than the Orchestrator."""
+    if target_kind is None:
+        return f"@{target} is no agent of this system: give the work to an agent node of its spec"
+    if target_kind != "agent":
+        return f"@{target} is the system's {target_kind}, not an agent node: give the work to an agent"
+    if subject is not None and target == subject:
+        return f"@{target} is the agent this thread is about: answer it instead (`triage answer`)"
+    return None

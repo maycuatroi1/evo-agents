@@ -42,6 +42,8 @@ INVOKE, TOOL = SPAN_NAMES
 TOOL_ASK = "agent_ask"
 TOOL_MENTION = "chat_mention"
 TOOL_FORWARD = "agent_forward"
+TOOL_ESCALATE = "agent_escalate"  # an escalation to the Orchestrator (``orchestrator.escalate``)
+TOOL_REASSIGN = "orchestrator_reassign"  # the Orchestrator gives the work of a thread to another agent
 TOOLS = (TOOL_ASK, TOOL_MENTION, TOOL_FORWARD)  # and kg_search, kg_context ... for a query of a knowledge graph
 ATTRIBUTES = (  # the OpenTelemetry GenAI attributes a span carries
     "gen_ai.operation.name",
@@ -105,10 +107,17 @@ def edge_targets(spec: dict, handle: str) -> list[str]:
 
 
 def on_design(spec: dict, from_node: str | None, to_node: str | None) -> bool:
-    """Whether the spec has an interacts edge from node ``from_node`` to node ``to_node``."""
+    """Whether the spec has an interacts edge from node ``from_node`` to node ``to_node``, or an edge of the
+    Orchestrator between them: an escalates edge from the agent, or its orchestrates edge in either direction (the
+    Orchestrator gives work to an agent it orchestrates, and is called for that agent)."""
     if from_node is None or to_node is None:
         return False
-    return bool(_edges(spec, "interacts", start=from_node, end=to_node))
+    return bool(
+        _edges(spec, "interacts", start=from_node, end=to_node)
+        or _edges(spec, "escalates", start=from_node, end=to_node)
+        or _edges(spec, "orchestrates", start=from_node, end=to_node)
+        or _edges(spec, "orchestrates", start=to_node, end=from_node)
+    )
 
 
 def kg_graphs(spec: dict, handle: str) -> list[str]:
@@ -128,6 +137,33 @@ def orchestrator_of(spec: dict, handle: str) -> tuple[str, str] | None:
         if target:
             return target, edge.get("description") or ""
     return None
+
+
+def lead_of(spec: dict, handle: str) -> str | None:
+    """The handle of the Orchestrator that orchestrates agent ``handle`` (an orchestrates edge to its node); None for
+    an agent no Orchestrator orchestrates, which keeps the triage of its project."""
+    nodes, node = _nodes(spec), node_of(spec, handle)
+    for edge in _edges(spec, "orchestrates", end=node) if node else ():
+        lead = nodes.get(edge["from"], {})
+        if lead.get("kind") == "orchestrator" and lead.get("profile"):
+            return lead["profile"]
+    return None
+
+
+def escalation_target(spec: dict, handle: str) -> str | None:
+    """The Orchestrator agent ``handle`` escalates to: the one that orchestrates it, else the one of its escalates
+    edge; None for none."""
+    lead = lead_of(spec, handle)
+    if lead is not None:
+        return lead
+    found = orchestrator_of(spec, handle)
+    return None if found is None else found[0]
+
+
+def node_kind(spec: dict, handle: str) -> str | None:
+    """The kind of the node of agent ``handle`` (agent or orchestrator); None when the spec lacks it."""
+    node = node_of(spec, handle)
+    return None if node is None else _nodes(spec)[node]["kind"]
 
 
 def limits_of(spec: dict) -> tuple[float, int]:
@@ -259,6 +295,9 @@ def off_edge_refusal(handle: str, target: str, targets: list[str]) -> str:
         f"@{target} is off the interacts edges of @{handle} in its agent system, which lead to {named}. Ask one of "
         f"them, or ask @{target} again with `--reason WHY`: the hub then runs it and records it as off design."
     )
+
+
+BUDGET_REFUSAL = "the trace reached its budget"  # how each refusal of ``budget_problem`` starts
 
 
 def budget_problem(spec: dict, runs: int, usd: float) -> str | None:

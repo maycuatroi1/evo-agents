@@ -1,6 +1,7 @@
-"""``evo-agents worker triage rerun|plan|invite|cancel|merge-check``: what the agent of a triage thread does on its own for
-a failed run (``evo_agents.hub.server.triage_actions``; ``evo_agents.hub.triage_rules`` is the frame the hub enforces),
-or for a merge check the hub holds (``evo_agents.hub.server.merge_holds``).
+"""``evo-agents worker triage rerun|plan|invite|cancel|merge-check|answer|reassign|ask-owner``: what the agent of a
+triage thread does on its own for a failed run (``evo_agents.hub.server.triage_actions``; ``evo_agents.hub.triage_rules``
+is the frame the hub enforces), for a merge check the hub holds (``evo_agents.hub.server.merge_holds``), or the
+Orchestrator of an agent system in a thread the hub opened to it (``evo_agents.hub.server.orchestrator_actions``).
 
 - ``rerun --reason TEXT [--runtime NAME] [--account NAME] [--confirm-cause]``: run the failed run of
   the thread again for its owner, with a runtime or account that is a fit candidate.
@@ -20,6 +21,11 @@ or for a merge check the hub holds (``evo_agents.hub.server.merge_holds``).
 - ``merge-check rejudge|return --reason TEXT``: in the thread of a merge check the hub holds because its own machinery
   failed it, judge the check again once the system is fixed (its verdict wakes the plan run), or hand the failure back
   to the plan run when the pull request caused it after all.
+
+- ``answer --text TEXT --reason TEXT``, ``reassign HANDLE --note TEXT --reason TEXT``, ``ask-owner --question TEXT
+  --option KEY=LABEL[:DESCRIPTION] ... --reason TEXT [--context TEXT]``: the Orchestrator answers the thread (an
+  escalation's wait wakes with the text; with no wait the text goes to the agent of the thread), gives its work to
+  another agent node of the system at the hop of the work, or asks the person at the origin a decision.
 
 All read the run from EVO_RUN_ID like ``worker chat`` (``chat_cli``) and are for a chat run only. The hub refuses
 what is outside the frame, with the reason, and the command prints it on stderr and exits 1. Each success is one line
@@ -139,6 +145,72 @@ def cmd_merge_check(args) -> int:
     return 0
 
 
+@chat_command
+def cmd_answer(args) -> int:
+    run = agent_run("triage answer")
+    answer = call(run, "triage/answer", {"text": _text(args.text), "reason": _text(args.reason)})
+    print(f"Answered: run #{answer['run_id']} has the answer; the Decision line is message #{answer['message_id']}.")
+    return 0
+
+
+@chat_command
+def cmd_reassign(args) -> int:
+    run = agent_run("triage reassign")
+    body = {"handle": args.handle.lstrip("@"), "note": _text(args.note), "reason": _text(args.reason)}
+    answer = call(run, "triage/reassign", body)
+    print(
+        f"Gave the work to @{body['handle']} in run #{answer['run_id']}; the Decision line is message "
+        f"#{answer['message_id']}."
+    )
+    return 0
+
+
+@chat_command
+def cmd_ask_owner(args) -> int:
+    from evo_agents.worker import agent_cli
+    from evo_agents.worker.agent_input import decision_option
+    from evo_agents.worker.home import WorkerHome
+
+    run = agent_run("triage ask-owner")
+    body = {
+        "question": _text(args.question),
+        "options": [decision_option(text) for text in args.option],
+        "reason": _text(args.reason),
+        **({"context": _text(args.context)} if args.context else {}),
+    }
+    answer = call(run, "triage/ask-owner", body)
+    decision_id = agent_cli.note_decision(WorkerHome(), run.run_id, answer.get("decision_id"))
+    print(
+        f"Asked the owner decision #{decision_id}; the Decision line is message #{answer['message_id']}. End your turn: "
+        "the answer comes back in this session."
+    )
+    return 0
+
+
+def _register_orchestrator(tsub) -> None:
+    answer = tsub.add_parser(
+        "answer", help="as the Orchestrator: answer the thread (wakes the agent that escalated, or tells the agent)"
+    )
+    answer.add_argument("--text", required=True, metavar="TEXT", help="the answer (- for stdin)")
+    answer.add_argument("--reason", required=True, metavar="TEXT", help="why, for the Decision line")
+    answer.set_defaults(func=cmd_answer)
+    reassign = tsub.add_parser(
+        "reassign", help="as the Orchestrator: give the thread's work to another agent node of the system"
+    )
+    reassign.add_argument("handle", metavar="HANDLE", help="an agent node of the system, @ left out or not")
+    reassign.add_argument("--note", required=True, metavar="TEXT", help="the work as that agent reads it (- for stdin)")
+    reassign.add_argument("--reason", required=True, metavar="TEXT", help="why, for the Decision line")
+    reassign.set_defaults(func=cmd_reassign)
+    ask = tsub.add_parser("ask-owner", help="as the Orchestrator: ask the person at the origin of the work a decision")
+    ask.add_argument("--question", required=True, metavar="TEXT", help="the question (- for stdin)")
+    ask.add_argument(
+        "--option", action="append", required=True, metavar="KEY=LABEL[:DESCRIPTION]", help="2 to 6 options; repeat"
+    )
+    ask.add_argument("--context", metavar="TEXT", help="markdown the person reads with the question")
+    ask.add_argument("--reason", required=True, metavar="TEXT", help="why, for the Decision line")
+    ask.set_defaults(func=cmd_ask_owner)
+
+
 def _frame_options(parser) -> None:
     parser.add_argument("--reason", required=True, metavar="TEXT", help="why, for the Decision line (- for stdin)")
     parser.add_argument("--runtime", metavar="NAME", help="rerun with this runtime, one the worker has")
@@ -202,3 +274,4 @@ def register_triage(wsub) -> None:
     )
     check.add_argument("--reason", required=True, metavar="TEXT", help="why, for the Decision line (- for stdin)")
     check.set_defaults(func=cmd_merge_check)
+    _register_orchestrator(tsub)

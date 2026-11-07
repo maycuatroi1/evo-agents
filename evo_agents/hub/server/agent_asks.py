@@ -185,7 +185,7 @@ async def _hand(
     return child, message_id, None
 
 
-async def _open_wait(conn: AsyncConnection, row, run: AgentRun, target: Profile, child: int) -> int:
+async def open_wait(conn: AsyncConnection, row, run: AgentRun, target: Profile, child: int) -> int:
     """The wait of the asking run (``row``, as ``held_plan_run`` reads it) that the end of run ``child`` answers; its
     id."""
     wake_at = datetime.now(UTC) + run_waits.MAX_WAIT
@@ -251,7 +251,7 @@ async def ask_agent(
         text = question_text(run, run.profile.project, target, said, brief)
         child, message_id, refusal = await _hand(conn, run, target, text)
     if refusal is None:
-        decision_id = await _open_wait(conn, row, run, target, child)
+        decision_id = await open_wait(conn, row, run, target, child)
         await system_traces.save_brief(conn, child, run_id, brief)
         if off:
             await system_traces.mark_reason(conn, child, (body.reason or "").strip())

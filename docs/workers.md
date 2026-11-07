@@ -924,6 +924,25 @@ shows as written by RUN's agent and forwarded by this run's (`forwarded_by` in t
 trace of an agent system that has ended can be forwarded. Otherwise the hub refuses (201, `refusal`), says so in the
 thread, and the command exits 1.
 
+### Escalation
+
+An agent of an agent system asks the system's Orchestrator with `evo-agents worker escalate --question TEXT`
+(`POST /v1/worker/runs/{id}/escalate`, body `{question, goal, output, bounds, done_when, refs}`). The Orchestrator is
+the one with an `orchestrates` edge to the agent's node, else the one its `escalates` edge leads to. The hub opens a
+thread to it in the system's ops chat ("Ops: SLUG", `docs/hub.md`, The Orchestrator) and hands it the question at
+the hop of the asking run: an escalation adds no hop, and the trace's budget does not refuse it. It opens a wait of
+the asking run, which the command notes as `worker wait` does. End the turn after it: the run parks and holds no
+worker. The Orchestrator's answer wakes it in the same session, or the end of the run of the agent the Orchestrator
+gives the work to. The brief flags (`--goal`, `--output`, `--bounds`, `--done-when`, `--ref`) are those of
+`agent ask` and head the thread. A refusal (the system names no Orchestrator for the agent, or the Orchestrator takes
+no work) comes back as `refusal` with 201, the thread of the asking run says it, and the command exits 1. A run of the
+hub runtime has the tool `escalate` for the same.
+
+```sh
+evo-agents worker escalate --question "The refund is 240 USD, over my limit of 100. Approve or route it?" \
+  --goal "a decision on refund R-17" --done-when "approved, refused, or given to an agent who may approve it"
+```
+
 ### Failure triage
 
 When a run of kind step, plan or author fails, the hub opens a thread in the chat "Triage: PROJECT", one chat for the
@@ -968,6 +987,21 @@ Each success posts a line that starts with `Decision:` in the thread, in the age
 undo it, and writes an audit row (`run.triage_rerun`, `run.triage_plan_edit`, `run.triage_invite`,
 `run.triage_cancel`) that names the failed run, the agent and
 the chat run. The agent acts as the owner only: another member's chat run is refused (403).
+
+An agent of an agent system that the system's Orchestrator orchestrates has the Orchestrator for its triage: its
+failed or stale runs, its failed turns, its escalations and the rules of progress (`docs/hub.md`, The Orchestrator)
+open a thread in the system's ops chat, and the Orchestrator's chat run there has the commands above (for a run of
+kind step, plan or author, with no need of `triage_enabled`) and three more. Each is the Orchestrator's alone (403 for
+another agent, 404 for a chat run in no such thread), posts a `Decision:` line in the thread and writes an audit row:
+
+| Command | Route | What |
+| --- | --- | --- |
+| `evo-agents worker triage answer --text TEXT --reason TEXT` | `POST .../triage/answer` | answer the thread: an escalation's wait wakes with the text; a thread with no wait hands the text to the agent it is about, at the hop of the work. 200 with the `run_id` that has the answer and the `Decision:` line's `message_id`; 409 when the asking run takes no answer now, or for a thread already closed. Audit `orchestrator.answer` |
+| `evo-agents worker triage reassign HANDLE --note TEXT --reason TEXT` | `POST .../triage/reassign` | give the work to another agent node of the system, never the Orchestrator and never the agent the thread is about (409), at the hop of the work; an escalation's wait goes with it, so that agent's run answers the asking run when it ends. 200 with the new `run_id`. Audit `orchestrator.reassign` |
+| `evo-agents worker triage ask-owner --question TEXT --option KEY=LABEL[:DESCRIPTION] ... --reason TEXT [--context TEXT]` | `POST .../triage/ask-owner` | ask the person at the origin of the work a decision of category `triage` with 2 to 6 options; the Orchestrator's run waits for the answer, and the thread stays open for the answer or reassign that follows. 200 with `decision_id`. Audit `orchestrator.ask_owner` |
+
+Answer and reassign close the thread. The hub runtime's tools `orchestrator_answer`, `orchestrator_reassign` and
+`orchestrator_ask_owner` do the same for an Orchestrator that runs on the hub.
 
 ### Curator proposals the agent answers
 

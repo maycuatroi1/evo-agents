@@ -175,6 +175,7 @@ TABLES |= {"kg_entity_map_runs"}  # migration 0212
 TABLES |= {"kg_named_graphs"}  # migration 0216
 TABLES |= {"agent_systems", "agent_system_revisions"}  # migration 0217
 TABLES |= {"system_traces", "system_spans", "agent_ask_briefs"}  # migration 0218
+TABLES |= {"orchestrator_threads"}  # migration 0221
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -265,8 +266,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_thirty_three_tables(hub_db):
-    assert len(TABLES) == 233  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_thirty_four_tables(hub_db):
+    assert len(TABLES) == 234  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)

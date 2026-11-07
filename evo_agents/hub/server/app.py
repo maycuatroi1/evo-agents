@@ -567,6 +567,7 @@ def _include_member_routes(app: FastAPI) -> None:
         model_catalog,
         opportunities,
         opportunity_evidence,
+        orchestrator_actions,
         plugin_cli,
         plugin_host,
         plugin_notify,
@@ -641,6 +642,7 @@ def _include_member_routes(app: FastAPI) -> None:
         agent_reads.worker_router,  # and reads another project's knowledge graph and memories
         chat_read.worker_router,
         triage_actions.worker_router,
+        orchestrator_actions.worker_router,  # the Orchestrator of a system acts in its threads; agents escalate
         curator_threads.worker_router,  # the agent of a proposal's thread answers it
         market_install.github_router,  # before plugins.router, whose routes take /v1/plugins/{name}
         plugins.router,
