@@ -184,7 +184,16 @@ async def _insert_event(conn: AsyncConnection, run_id: int, seq: int, kind: str,
 
 
 async def notify_queued(conn: AsyncConnection, run_id: int) -> None:
-    """Wake the claims waiting on RUNS_CHANNEL once the caller's transaction commits."""
+    """Wake the claims waiting on RUNS_CHANNEL once the caller's transaction commits; a run of the hub runtime, which
+    no worker claims, gets the job that takes its turn instead (``hub_runtime``), queued in the same transaction."""
+    r = tables.runs
+    runtime = (await conn.execute(select(r.c.requested_runtime).where(r.c.id == run_id))).scalar_one_or_none()
+    if runtime == runs.HUB_RUNTIME:
+        from evo_agents.hub import jobs  # procrastinate is read only when a hub run queues
+
+        queue = jobs.JobQueue.in_transaction()
+        await queue.defer(jobs.HUB_TURN, queueing_lock=f"hub-turn:{run_id}", connection=conn, run_id=run_id)
+        return
     await conn.execute(select(func.pg_notify(RUNS_CHANNEL, str(run_id))))
 
 

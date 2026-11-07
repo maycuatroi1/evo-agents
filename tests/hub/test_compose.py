@@ -158,8 +158,9 @@ def test_compose_gives_api_and_worker_the_block_each_line_as_name_colon_dash_def
     data = compose()
     services, block = data["services"], passed_by_compose()
     assert services["api"]["environment"] == block, "api must take <<: [*hub-environment, *gateway-environment]"
-    assert services["worker"]["environment"] == data[BLOCK], "worker must take environment: *hub-environment"
-    assert not set(data[GATEWAY_BLOCK]) & set(data[BLOCK]), f"{GATEWAY_BLOCK} is the api's alone"
+    assert services["worker"]["environment"] == block, "worker must take <<: [*hub-environment, *gateway-environment]"
+    assert services["worker-kg"]["environment"] == data[BLOCK], "worker-kg must take environment: *hub-environment"
+    assert not set(data[GATEWAY_BLOCK]) & set(data[BLOCK]), f"{GATEWAY_BLOCK} is the api's and the worker's alone"
     malformed = [f"  {name}: {value}" for name, value in block.items() if default_of(name, value) is None]
     assert not malformed, (
         f"each line of {BLOCK} is NAME: ${{NAME:-default}}, the default empty unless it equals the hub's own, so "
@@ -190,7 +191,7 @@ def test_compose_defaults_are_the_hub_config_defaults():
 GATEWAY_VARIABLES = {"EVO_HUB_GATEWAY_URL", "EVO_HUB_GATEWAY_SECRET"}
 
 
-def test_gateway_compose_variables_reach_the_api_alone_and_default_to_off():
+def test_gateway_compose_variables_reach_the_api_and_worker_alone_and_default_to_off():
     data = compose()
     assert set(data[GATEWAY_BLOCK]) == GATEWAY_VARIABLES == set(config.GATEWAY_VARIABLES)
     assert all(default_of(name, value) == "" for name, value in data[GATEWAY_BLOCK].items()), (
@@ -199,7 +200,9 @@ def test_gateway_compose_variables_reach_the_api_alone_and_default_to_off():
     assert GATEWAY_VARIABLES <= listed_in_env_example()
     for name, service in data["services"].items():
         environment = set(service.get("environment") or {})
-        expected = {"api": GATEWAY_VARIABLES, "gateway": {"EVO_HUB_GATEWAY_SECRET"}}.get(name, set())
+        # the worker runs the turns of the agents on the hub (hub.hub_turn), through the gateway
+        expected = {"api": GATEWAY_VARIABLES, "worker": GATEWAY_VARIABLES, "gateway": {"EVO_HUB_GATEWAY_SECRET"}}
+        expected = expected.get(name, set())
         assert environment & GATEWAY_VARIABLES == expected, f"{name} must not hold the gateway's credential"
     assert config.load_config({"EVO_HUB_DSN": DSN}).gateway_missing() == ["EVO_HUB_GATEWAY_SECRET"]
     on = config.load_config({"EVO_HUB_DSN": DSN, "EVO_HUB_GATEWAY_SECRET": "s" * 32})
@@ -222,7 +225,7 @@ def test_gateway_compose_runs_the_pinned_image_on_its_own_network_without_a_port
     on_gateway = sorted(
         name for name, service in data["services"].items() if "gateway" in (service.get("networks") or {})
     )
-    assert on_gateway == ["api", "gateway"], "only the api reaches the gateway"
+    assert on_gateway == ["api", "gateway", "worker"], "only the api and the worker reach the gateway"
     assert (
         gateway["environment"]["REQUIRE_API_KEY"] == "true" and gateway["environment"]["ENABLE_REQUEST_LOGS"] == "false"
     )
@@ -351,5 +354,7 @@ def test_compose_runs_the_kg_builds_on_two_workers_of_their_own_and_the_rest_on_
     assert kg["command"][:-2] == worker["command"][:-2], "the same worker, another queue"
     assert kg["environment"] == data[BLOCK] and kg["volumes"] == worker["volumes"], "the same environment and cache"
     assert kg["deploy"]["replicas"] == 2
-    for key in ("image", "build", "cpus", "mem_limit", "healthcheck", "stop_grace_period", "depends_on", "networks"):
+    for key in ("image", "build", "cpus", "mem_limit", "healthcheck", "stop_grace_period", "depends_on"):
         assert kg[key] == worker[key], key
+    assert kg["networks"] == {"default": {}, "platform": {}}, "a build calls no model: not on the gateway's network"
+    assert worker["networks"] == {**kg["networks"], "gateway": {}}

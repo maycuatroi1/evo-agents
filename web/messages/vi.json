@@ -6967,7 +6967,8 @@
       "market_install_request": "Một dự án xin cài plugin từ market",
       "market_license_expiring": "Giấy phép của một plugin trả phí sắp hết hạn",
       "kg_optimize": "Báo cáo của một lượt tối ưu KG",
-      "kg_pipeline": "Knowledge graph của một lượt tải lên đã sẵn sàng hoặc thất bại"
+      "kg_pipeline": "Knowledge graph của một lượt tải lên đã sẵn sàng hoặc thất bại",
+      "system_daily_cap": "Một hệ thống agent đã chạm mức chi tiêu trong ngày"
     },
     "item": {
       "unread": "Chưa đọc",

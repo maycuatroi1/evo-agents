@@ -437,7 +437,8 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
     listed = await project_repos(conn, profile.project_id)
     checkouts, features = (None, ()) if worker is None else (worker.checkouts, worker.features)
     names = [name for name in listed if f"{profile.project}/{name}" in (checkouts or {})]
-    if worker is None:
+    on_hub = profile.runs_on == runs.HUB_RUNTIME  # a job of the hub takes its turns, with no checkout (hub_runtime)
+    if worker is None and not on_hub:
         harness = await project_harness(conn, profile.project_id)
         names = [harness] if harness is not None else []
     elif runs.LAZY_CHAT_REPOS in (features or ()):
@@ -451,7 +452,7 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
     model = allow[0] if allow else None
     owner, project = hand.owner_id, profile.project_id
     asker = gateway_accounts.Asker(0, owner, owner, project, profile.id, project, agent_owned=not profile.is_default)
-    title = rules.turn_title(profile.handle, hand.chat.title, hand.body)
+    title, runtime = rules.turn_title(profile.handle, hand.chat.title, hand.body), runs.HUB_RUNTIME if on_hub else "any"
     values = {
         "kind": "chat",
         "project_id": profile.project_id,
@@ -459,10 +460,10 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
         "dispatched_by": hand.owner_id,
         "dispatched_via": hand.run_via,
         "pinned_worker_id": None if worker is None else worker.id,
-        "requested_runtime": "any",
-        "runtime": "any",
+        "requested_runtime": runtime,
+        "runtime": runtime,
         "model": model,
-        "gateway_provider": await gateway_accounts.prefix_for(conn, asker, "any", model),
+        "gateway_provider": await gateway_accounts.prefix_for(conn, asker, runtime, model),
         "mode": "headless",
         "approval": "auto",
         "timeout_s": rules.TIMEOUT_MIN * 60,
@@ -535,7 +536,7 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
         refusal = await _run_as_refusal(conn, hand) or await _seat_refusal(conn, hand.route.user_id, hand.route.login)
         if refusal is not None:
             return None, refusal
-    if (why := pool_accounts.needs_pool(hand.profile, hand.profile.project)) is not None:
+    if (why := pool_accounts.chat_needs_pool(hand.profile, hand.profile.project)) is not None:
         return None, why
     session = await _session(conn, hand)
     if session is not None and session.state in runs.MESSAGE_STATES:

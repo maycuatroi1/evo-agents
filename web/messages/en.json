@@ -6967,7 +6967,8 @@
       "market_install_request": "A project asks for a plugin of the market",
       "market_license_expiring": "The licence of a paid plugin ends soon",
       "kg_optimize": "The report of a KG optimize run",
-      "kg_pipeline": "The knowledge graph of an upload is ready or failed"
+      "kg_pipeline": "The knowledge graph of an upload is ready or failed",
+      "system_daily_cap": "An agent system reached its daily spending cap"
     },
     "item": {
       "unread": "Unread",

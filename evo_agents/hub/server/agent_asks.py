@@ -185,9 +185,9 @@ async def _hand(
     return child, message_id, None
 
 
-async def _open_wait(conn: AsyncConnection, user, run: AgentRun, target: Profile, child: int) -> int:
-    """The wait of the asking run that the end of run ``child`` answers; its id."""
-    _, row = await held_plan_run(conn, user, run.run_id, lock=True, kinds=("chat",))
+async def _open_wait(conn: AsyncConnection, row, run: AgentRun, target: Profile, child: int) -> int:
+    """The wait of the asking run (``row``, as ``held_plan_run`` reads it) that the end of run ``child`` answers; its
+    id."""
     wake_at = datetime.now(UTC) + run_waits.MAX_WAIT
     what = f"@{target.handle} of project {target.project} (run #{child})"
     ask = run_waits.WaitAsk(
@@ -224,51 +224,63 @@ async def ask(request: Request, run_id: RunId, body: AgentAskIn, user: CurrentUs
         run = await agent_run(conn, user, run_id)
         if run.kind != "chat":
             raise HTTPException(422, f"run {run_id} is a {run.kind} run: only a chat run's agent asks another agent")
-        chat = await chat_run(conn, run_id)
-        said = await mask_values(conn, request.app.state.sealer, run.profile.id, body.body)
-        said = await mask_run(conn, request.app.state.sealer, run_id, said)
-        target = await by_handle(conn, body.handle)
-        refusal = await _refusal(conn, run, target, body.handle)
-        child = decision_id = message_id = None
-        found = await system_traces.of_run(conn, run_id)
-        off = False
-        if refusal is None:
-            refusal, off = await _system_refusal(conn, found, target, body.reason)
-        brief = body.brief()
-        if refusal is None:
-            text = question_text(run, run.profile.project, target, said, brief)
-            child, message_id, refusal = await _hand(conn, run, target, text)
-        if refusal is None:
-            decision_id = await _open_wait(conn, user, run, target, child)
-            await system_traces.save_brief(conn, child, run_id, brief)
-            if off:
-                await system_traces.mark_reason(conn, child, (body.reason or "").strip())
-            shown = f"@{run.profile.handle} asked @{target.handle} of project {target.project} (run #{child}): {said}"
-            await audit.record(
-                conn,
-                actor_id=run.principal.user_id,
-                token_id=run.principal.token_id,
-                action=audit.CHAT_MESSAGE,
-                target=f"message:{message_id} run:{run_id} asked:{child}",
-            )
-        else:
-            shown = f"@{body.handle}: {refusal}"
-        if found is not None:
-            await system_traces.record_tool(
-                conn,
-                found,
-                system_context.TOOL_ASK,
-                to_handle=target.handle if target is not None else body.handle,
-                status="ok" if refusal is None else "refused",
-                off_design=off,
-                reason=(body.reason or "").strip() or (refusal if refusal is not None else None),
-                message_id=message_id,
-                attributes={
-                    "evo.brief_fields": system_context.brief_present(brief),
-                    **({"evo.child_run_id": child} if child is not None else {}),
-                },
-            )
-        await hub_reply(conn, chat.chat_id, chat.root_id, shown)
+        _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=("chat",))
+        asked = await ask_agent(conn, request.app.state.sealer, run, body, row)
+    return asked
+
+
+async def ask_agent(
+    conn: AsyncConnection, sealer, run: AgentRun, body: AgentAskIn, row, *, tool: str = system_context.TOOL_ASK
+) -> AgentAsked:
+    """Ask agent ``body.handle`` as the agent of chat run ``run`` (its locked ``row``, as ``held_plan_run`` reads it),
+    with the friction and the trace budget of its agent system, recorded as span tool ``tool``; the route above and
+    the hub runtime's ask and escalate tools (``hub_tools``) share it."""
+    run_id = run.run_id
+    chat = await chat_run(conn, run_id)
+    said = await mask_values(conn, sealer, run.profile.id, body.body)
+    said = await mask_run(conn, sealer, run_id, said)
+    target = await by_handle(conn, body.handle)
+    refusal = await _refusal(conn, run, target, body.handle)
+    child = decision_id = message_id = None
+    found = await system_traces.of_run(conn, run_id)
+    off = False
+    if refusal is None:
+        refusal, off = await _system_refusal(conn, found, target, body.reason)
+    brief = body.brief()
+    if refusal is None:
+        text = question_text(run, run.profile.project, target, said, brief)
+        child, message_id, refusal = await _hand(conn, run, target, text)
+    if refusal is None:
+        decision_id = await _open_wait(conn, row, run, target, child)
+        await system_traces.save_brief(conn, child, run_id, brief)
+        if off:
+            await system_traces.mark_reason(conn, child, (body.reason or "").strip())
+        shown = f"@{run.profile.handle} asked @{target.handle} of project {target.project} (run #{child}): {said}"
+        await audit.record(
+            conn,
+            actor_id=run.principal.user_id,
+            token_id=run.principal.token_id,
+            action=audit.CHAT_MESSAGE,
+            target=f"message:{message_id} run:{run_id} asked:{child}",
+        )
+    else:
+        shown = f"@{body.handle}: {refusal}"
+    if found is not None:
+        await system_traces.record_tool(
+            conn,
+            found,
+            tool,
+            to_handle=target.handle if target is not None else body.handle,
+            status="ok" if refusal is None else "refused",
+            off_design=off,
+            reason=(body.reason or "").strip() or (refusal if refusal is not None else None),
+            message_id=message_id,
+            attributes={
+                "evo.brief_fields": system_context.brief_present(brief),
+                **({"evo.child_run_id": child} if child is not None else {}),
+            },
+        )
+    await hub_reply(conn, chat.chat_id, chat.root_id, shown)
     log.info("agent asked", extra={"run_id": run_id, "handle": body.handle, "made": child, "refused": bool(refusal)})
     return AgentAsked(run_id=child, decision_id=decision_id, refusal=refusal)
 

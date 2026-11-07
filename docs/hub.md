@@ -498,7 +498,8 @@ A profile has a handle, unique on the hub (deleted profiles' included) and never
 prompt of its runs (at most 8000); a colour (`#rrggbb`, one picked by the handle when none is given); an avatar or
 none; starters, at most 4 questions of one line and at most 120 characters each, which the chat home offers before a
 first message to the agent (`starters`, since migration 0215); where its runs run, `runs_on`, `worker` (the default)
-or `hub` (since migration 0217; the hub stores it and runs nothing on it yet: `--runs-on` of `hub agent create|edit`);
+or `hub` (since migration 0217, `--runs-on` of `hub agent create|edit`; a job of the hub takes the chat turns of an
+agent that runs on the hub, Hub runtime);
 and eight axes of permissions. The handle never changes. Every edit that changes something, the avatar
 included, raises its version and keeps the profile as that version had it, which `GET .../agents/{handle}/versions`
 lists. A deleted profile takes no new run. Field names follow an A2A Agent Card where they can: `name`,
@@ -827,6 +828,67 @@ The stream wakes on the hub's one LISTEN (channel `evo_system_traces`, the syste
 `limits.trace_runs` (12) and `limits.trace_usd` (2) cap a trace: its runs, counted through `spawned_by_run_id`, and
 their cost. Past either, the next ask or mention of the trace is refused with the limit it passed, and a `refused`
 span says so.
+
+### Hub runtime
+
+An agent whose profile has `runs_on: hub` needs no worker and no pool: the hub answers for it in chat through its
+model gateway (Model gateway). The code is `evo_agents/hub/server/hub_runtime.py` and `hub_tools.py`.
+
+A mention, a reply in its thread, an ask or an escalation queues a chat run of runtime `hub`, as it would queue one
+for a worker. In the same transaction the hub defers the job `hub.hub_turn`, which the procrastinate worker of the hub
+runs (the `worker` service of the compose file). The job holds the run as a worker would: queued, leased, running. So
+asks, mentions, parking and waking, `spawned_by_run_id`, cost, the run lists and triage work as they do for worker
+runs. A run of the hub runtime appears with runtime `hub` and no worker. When the job dies, the lease reaper ends the
+run once its lease runs out, 180 seconds plus 120.
+
+One turn goes like this:
+
+1. The model is the run's model: the first model of the profile's model axis, which `chat_runs` picks when the run
+   queues. The turn reaches it through the provider accounts the run may use (the account pool of the agent, as for
+   a run on the gateway). The hub makes a gateway key for the turn alone, bound to those accounts' connections, and
+   revokes it when the turn ends.
+2. The prompt is the one a worker's chat run gets: the same rules, the snapshot of the chat and the System section.
+   The profile's instructions and a short "On the hub" section come before it, and the messages of the run's inbox
+   come after it.
+3. The model calls tools for at most 8 rounds and 180 seconds. A message that reaches the inbox meanwhile joins
+   before the next round.
+4. The model's last answer without a tool call is the agent's reply in the thread, masked as a worker's reply is
+   (`mask_values`, then the run's leased values).
+5. The turn's tokens and the key's cost, as the gateway counts it, go to `run_spend`, to `runs.usage` (under
+   `gateway`, with `total_cost_usd`) and to the attributes of the run's `invoke_agent` span: `gen_ai.request.model`,
+   `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` and `evo.cost_usd`.
+6. A run that asked an agent parks until the answer wakes it in a new run. Any other run ends done. A follow-up in
+   the thread wakes the agent in a new run of the same session, as for a worker.
+
+The tools do what the worker's commands do, through the same code:
+
+| Tool | Worker command it stands for |
+| --- | --- |
+| `kg_search` | the `kg_search` MCP tool, through the agent sink |
+| `chat_post` | `evo-agents worker chat post` |
+| `interactive_answer` | `evo-agents worker chat post --interactive`, with the same size limit, CSP and bridge |
+| `agent_ask` | `evo-agents worker agent ask`, with the same brief, friction off the edges and trace budget |
+| `agent_forward` | `evo-agents worker agent forward` |
+| `escalate` | an ask of the Orchestrator the agent's `escalates` edge names |
+| `memory_write` | a memory of the project, under the rules of `memory_write` |
+
+A tool that is refused answers the model with the reason, and the turn goes on. Repos, branches, pull requests and
+shell commands are not on the hub, so the agent says what it cannot do.
+
+`limits.daily_usd` of a system (5 USD by default) caps what its hub agents spend in a day (UTC). The hub sums
+`run_spend` of the runs of runtime `hub` queued today with a span in the system's traces. Once the sum reaches the
+limit, the system's hub agents take no turn: each one replies why and its run ends. The owner of the system (who
+created it) gets the notice `system_daily_cap` once a day. Worker runs do not count toward the limit and are not
+stopped by it.
+
+Without a gateway (no `EVO_HUB_GATEWAY_SECRET`), the agent replies that the hub runtime is not configured and its
+run ends done. Without a provider account the run may use, the agent says why. The hub runtime adds no compose
+service and no setting. The `worker` service gets the gateway settings (`EVO_HUB_GATEWAY_URL`,
+`EVO_HUB_GATEWAY_SECRET`) and joins the `gateway` network, since its jobs call the gateway.
+
+```sh
+evo-agents hub agent edit lumen-helper --project northwind --runs-on hub --allow model:openrouter/auto
+```
 
 ## Group chats
 

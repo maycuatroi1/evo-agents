@@ -25,6 +25,7 @@ and once it ended, under its last one (``attach_leftovers``), whose chat gets a 
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -41,7 +42,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import blob_gc, chats, outputs, runs, tables
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server import output_notices, output_views
-from evo_agents.hub.server.blobs import Mismatch, Sha256, UploadItem, Uploads, commit_uploads, issue_uploads
+from evo_agents.hub.server.blobs import (
+    Mismatch,
+    Sha256,
+    UploadItem,
+    Uploads,
+    commit_uploads,
+    issue_uploads,
+    put_bytes,
+)
 from evo_agents.hub.server.chat_store import write_event as write_chat_event
 from evo_agents.hub.server.errors import error_response
 from evo_agents.hub.server.output_views import RunOutput
@@ -336,6 +345,33 @@ async def record(request: Request, user: Principal, reach: Reach, batch: OutputB
     by_id = {output.id: output for output in rows}
     log.info("run outputs recorded", extra={"run_id": target.run_id, "outputs": len(ids), "added": added})
     return RecordedOutputs(outputs=[by_id[output_id] for output_id in ids], added=added)
+
+
+async def record_held(conn: AsyncConnection, store, target: Target, user_id: int, item: OutputIn, data: bytes) -> int:
+    """Record ``item``, whose bytes ``data`` the caller put in ``store`` already, as an output of run ``target`` (its
+    row locked), held by its project as ``record`` holds an upload: the hub runtime's interactive answer
+    (``hub_tools``), which no worker uploads. ValueError when the run's limits refuse it; the output's id."""
+    await blob_gc.lock_shared(conn)
+    if await blob_gc.revive(conn, [item.sha256]):
+        await asyncio.to_thread(put_bytes, store, item.sha256, data, replace=True)
+    b = tables.blobs
+    held = {"project_id": target.project_id, "sha256": item.sha256, "size": len(data), "kind": outputs.KIND}
+    await conn.execute(pg_insert(b).values(**held, created_by=user_id).on_conflict_do_nothing())
+    count, size = await usage(conn, target.run_id)
+    if (
+        item.size > outputs.MAX_FILE_BYTES
+        or count >= outputs.MAX_RUN_OUTPUTS
+        or size + item.size > outputs.MAX_RUN_BYTES
+    ):
+        raise ValueError(
+            f"run {target.run_id} holds {count} outputs of {size} bytes, and a run holds at most "
+            f"{outputs.MAX_RUN_OUTPUTS} of {outputs.MAX_RUN_BYTES} bytes, a file at most {outputs.MAX_FILE_BYTES}"
+        )
+    ids, touched = await _write(conn, target, [item])
+    if touched:
+        await _note(conn, target, [item], ids, touched)
+        await output_notices.outputs_recorded(conn, target.run_id, touched)
+    return ids[0]
 
 
 # Questions and chat messages

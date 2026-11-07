@@ -269,6 +269,10 @@ RUNTIMES: tuple[str, ...] = get_args(Runtime)  # the runtimes of the core; a plu
 # takes a run of a runtime registered in its project (evo_agents.hub.server.runs.service.plugin_runtimes), not every
 # name of this shape; schema 0039 holds runs to it.
 RUNTIME_NAME = "^(" + "|".join(("any", *RUNTIMES)) + r"|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$"
+# The runtime of a chat run of an agent that runs on the hub (profile runs_on hub): a job of the hub's queue takes each
+# turn through the hub's gateway, with no worker (``evo_agents.hub.server.hub_runtime``). No dispatch names it; schema
+# 0219 lets a run of it go past queued without a worker.
+HUB_RUNTIME = "hub"
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
 MAX_EVIDENCE_BYTES = 16 * 1024  # runs.evidence, as schema 0009 bounds it
@@ -431,6 +435,7 @@ NOTICE_KINDS = (
     "agent_pool_empty",  # a run of an agent in pool mode queued with no node of its pool ready (``agent_placement``)
     "srs_adopt",  # a plan holds use cases of an SRS goal's backlog out of the Loop's builds (``server.loop.notices``)
     "kg_pipeline",  # the flow after a kg upload ended ready or failed, to its sender and admins (``server.kg_pipeline``)
+    "system_daily_cap",  # a system's hub agents reached limits.daily_usd today, to its owner (``server.hub_runtime``)
 )
 # The notices that only report what went as it should (plan hub-attention-runtime, criterion a4): a push or merge into a
 # default branch, a plan finished, a run's files. Stored read, delivered on the web alone (no channel, no device), and

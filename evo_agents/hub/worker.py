@@ -22,6 +22,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.reap_pool_nodes``, hourly: each worker pool node offline longer than its pool's ``reap_after_days`` is
   revoked as its owner's revoke would, with the hub as actor (``evo_agents.hub.server.worker_reaper``); workers
   outside a pool are left alone.
+- ``hub.hub_turn``: one turn of a chat run of an agent that runs on the hub (runtime ``hub``), deferred by the api
+  when the run queues: the model answers through the hub's gateway with the tools of the hub runtime, bounded in
+  rounds and time (``evo_agents.hub.server.hub_runtime``).
 - ``hub.prune_jobs``, daily: finished jobs older than JOB_RETENTION, failed ones included.
 - ``hub.kg_build``: one build of a project's knowledge graph (``evo_agents.hub.kg_build``), deferred by the api
   under the project's kg lock.
@@ -306,6 +309,14 @@ async def reap_pool_nodes(context: JobContext, timestamp: int | None = None) -> 
 
     found = hub(context)
     return await reap(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
+
+
+@queue.task(name=jobs.HUB_TURN, pass_context=True)
+async def hub_turn(context: JobContext, run_id: int) -> dict:
+    from evo_agents.hub.server.hub_runtime import take_turn
+
+    found = hub(context)
+    return await take_turn(found.engine, found.config, found.blobs, found.sealer, run_id)
 
 
 @queue.task(name=jobs.KG_BUILD, queue=jobs.KG_QUEUE, pass_context=True)

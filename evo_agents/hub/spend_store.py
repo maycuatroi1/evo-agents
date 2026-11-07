@@ -10,6 +10,8 @@ runs no record reached yet, oldest first, so a run's earlier runs of its session
 A local run whose machine sent no usage reports gets its rows from the transcripts the hub holds of its session
 (``evo_agents.hub.local_spend``, through ``write``), which ``record`` leaves alone.
 
+A turn of the hub runtime writes its row from its gateway key's usage (``write_figures``).
+
 ``spend_of`` reads the rows of some runs back as ``run_spend.summary`` adds them up, for Run's ``spend``.
 """
 
@@ -111,6 +113,20 @@ async def write(conn: AsyncConnection, run_id: int, reports: list[run_spend.Repo
         await conn.execute(insert(s), [_row(run_id, item) for item in spent])
     await conn.execute(update(r).values(spend_at=func.now()).where(r.c.id == run_id))
     return spent
+
+
+async def write_figures(
+    conn: AsyncConnection, run_id: int, session: str, model: str, tokens: dict[str, int], cost_usd: float | None
+) -> None:
+    """Replace the rows of run ``run_id`` with the one of a turn of the hub runtime (``hub_runtime``), whose gateway
+    key counted ``tokens`` (by ``run_spend.FIGURES`` key) and ``cost_usd`` for ``model``, and stamp its ``spend_at``,
+    in the caller's transaction. No worker reports such a run's usage, so ``record`` never reaches it once stamped."""
+    r, s = tables.runs, tables.run_spend
+    figures = {column: int(tokens.get(key, 0)) for key, column in TOKEN_COLUMNS.items()}
+    row = {"run_id": run_id, "session": session, "model": model, **figures, "reported_usd": cost_usd}
+    await conn.execute(delete(s).where(s.c.run_id == run_id))
+    await conn.execute(insert(s).values(**row, estimated_usd=None, reports=1, ends={}))
+    await conn.execute(update(r).values(spend_at=func.now()).where(r.c.id == run_id))
 
 
 async def record_safely(conn: AsyncConnection, run_id: int) -> None:
