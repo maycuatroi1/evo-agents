@@ -644,6 +644,7 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
         "probe": None,  # a probe run's alone
         "probe_key": None,
         "merge_result": False,  # a merge check's alone
+        "signs_passed": False,  # a merge queue Judge's alone
     }
     lease = next(
         item for item in leased(world.client, world.worker, spec["id"])["leases"] if item["provider"] == "github-app"

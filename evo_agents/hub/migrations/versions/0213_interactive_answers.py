@@ -49,7 +49,7 @@ def upgrade() -> None:
         "chat_messages_from_answer_idx",
         "chat_messages",
         ["author_user_id", "created_at"],
-        postgresql_where=sa.text("from_output_id IS NOT NULL"),
+        postgresql_where=col("from_output_id").is_not(None),
     )
     op.drop_constraint("chat_mentions_via_check", "chat_mentions", type_="check")
     _create_via(VIA)
