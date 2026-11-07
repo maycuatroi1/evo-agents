@@ -35,6 +35,8 @@ def test_the_lens_is_on_demand_with_its_kind_of_tier_1_and_migration_0220_holds_
     assert "agent_system" in review_model.LENSES and "agent_system" in review_model.ON_DEMAND_LENSES
     assert "agent_system" not in review_model.lenses_for(date(2026, 10, 8), len(review_model.LENSES))
     assert tiers.CHANGE_KINDS["agent_config"][0] == 1
+    pytest.importorskip("alembic", reason="the migrations need the hub-server extra, evo-ak[hub-server]")
+    pytest.importorskip("sqlalchemy", reason="the migrations need the hub-server extra, evo-ak[hub-server]")
     migration = import_module("evo_agents.hub.migrations.versions.0220_curator_agent_system")
     assert sorted(migration.LENSES) == sorted(review_model.LENSES)
     assert sorted(migration.CHANGE_KINDS) == sorted(tiers.CHANGE_KINDS)
@@ -48,7 +50,13 @@ def test_span_evidence_parses_and_reads_back():
             review_model.parse_evidence(wrong)
 
 
+def _hub_server():
+    pytest.importorskip("fastapi", reason="the hub server needs the hub-server extra, evo-ak[hub-server]")
+    pytest.importorskip("sqlalchemy", reason="the hub server needs the hub-server extra, evo-ak[hub-server]")
+
+
 def _system_curation():
+    _hub_server()
     from evo_agents.hub.server import app  # noqa: F401 (the server's modules import in its order)
 
     return import_module("evo_agents.hub.server.system_curation")
@@ -92,6 +100,7 @@ def test_a_proposal_carries_a_system_change_only_with_the_lens_and_the_kind():
 
 
 def test_a_kg_span_keeps_the_count_a_result_says_it_read():
+    _hub_server()
     from evo_agents.hub.server import app  # noqa: F401
     from evo_agents.hub.server.system_traces import results_read
 

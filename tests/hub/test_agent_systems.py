@@ -20,6 +20,8 @@ from functools import partial
 
 import pytest
 
+pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub import cli_agents, cli_systems, system_spec, tables_kg, tables_systems
 from evo_agents.hub.client import HubError
 from tests.hub import pg

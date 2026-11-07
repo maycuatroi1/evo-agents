@@ -10,6 +10,10 @@ from __future__ import annotations
 
 import argparse
 
+import pytest
+
+pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub import system_context, tables_orchestrator, triage_rules
 from evo_agents.worker import escalate_cli, triage_cli
 

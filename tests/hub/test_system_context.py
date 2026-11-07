@@ -4,6 +4,10 @@ budget that holds them all (criterion a4 of plan multi-agent-systems)."""
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub import chat_runs, system_context, system_spec, tables_traces
 from evo_agents.hub.chat_runs import MAX_PROMPT_BYTES
 
