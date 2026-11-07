@@ -246,13 +246,15 @@ async def ask_agent(
     found = await system_traces.of_run(conn, run_id)
     off = False
     if refusal is None:
+        assert target is not None  # _refusal refuses a handle no agent has
         refusal, off = await _system_refusal(conn, found, target, body.reason)
     brief = body.brief()
     if refusal is None:
-        assert target is not None  # _refusal refuses a handle no agent has
+        assert target is not None
         text = question_text(run, run.profile.project, target, said, brief)
         child, message_id, refusal = await _hand(conn, run, target, text)
     if refusal is None:
+        assert target is not None and child is not None  # _hand made the run or gave its refusal
         decision_id = await open_wait(conn, row, run, target, child)
         await system_traces.save_brief(conn, child, run_id, brief)
         if off:
@@ -450,6 +452,7 @@ async def forward(conn: AsyncConnection, run: AgentRun, child_id: int) -> tuple[
     included), in the thread of chat run ``run``: its author is the child's agent and its run ``run``'s, so the chat
     shows who forwarded it (``GroupMessage.forwarded_by``). (the message, None), or (None, why not)."""
     chat = await chat_run(conn, run.run_id)
+    assert chat is not None  # the run of an agent that forwards is a chat run (hand_work)
     found = await system_traces.of_run(conn, run.run_id)
     refusal = await _forward_refusal(conn, found, child_id)
     reply = None

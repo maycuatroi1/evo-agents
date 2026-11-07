@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
@@ -126,7 +126,7 @@ class SystemConflict(ErrorBody):
     current: SystemOut | None = Field(None, description="the system as the hub holds it")
 
 
-WRITE_REFUSALS = {
+WRITE_REFUSALS: dict[int | str, dict[str, Any]] = {
     403: {"model": ErrorBody},
     404: {"model": ErrorBody},
     409: {"model": SystemConflict},
@@ -383,6 +383,7 @@ async def put_system(request: Request, project: ProjectName, slug: Slug, body: S
                 return SystemWritten(**out.model_dump(), created=False, changed=False)
             revision = await write_spec(conn, user, access, slug, spec, held, refs)
             written = await system_store.one(conn, access.project_id, slug)
+            assert written is not None  # write_spec wrote it in this transaction
             refs = await system_store.refs(conn, access.project_id)
             out = _out(access, written, written.spec, written.revision, refs)
     except Refused as exc:

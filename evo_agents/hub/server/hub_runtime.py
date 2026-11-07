@@ -261,6 +261,7 @@ async def _connections(client: GatewayClient, engine: AsyncEngine, held: Held) -
         return [], f"its model {held.model or '(none)'} is not one the hub's gateway serves (the profile's model axis)"
     async with engine.connect() as conn:
         profile = await by_id(conn, held.profile_id)
+        assert profile is not None  # _hold holds a run of an agent alone
         rules = await version_rules(conn, held.profile_id, held.profile_version) if held.profile_version else None
         permissions = (rules or {}).get("permissions") or profile.permissions
         asker = gateway_accounts.Asker(
@@ -289,6 +290,7 @@ async def _prompt(engine: AsyncEngine, held: Held) -> list[dict]:
     """The first messages of the turn: the profile's instructions, then the worker's prompt and the inbox's."""
     async with engine.begin() as conn:
         profile = await by_id(conn, held.profile_id)
+        assert profile is not None  # _hold holds a run of an agent alone
         text = await chat_prompt(conn, held.run_id, held.branch, held.repos)
         inbox = await _take_inbox(conn, held.run_id)
     system = "\n\n".join(part for part in (profile.instructions.strip(), ON_HUB) if part)
@@ -433,7 +435,9 @@ async def take_turn(engine: AsyncEngine, config, blobs, sealer, run_id: int, *, 
     try:
         if client is None:
             async with engine.connect() as conn:
-                handle = (await by_id(conn, held.profile_id)).handle
+                profile = await by_id(conn, held.profile_id)
+            assert profile is not None  # _hold holds a run of an agent alone
+            handle = profile.handle
             return {"run_id": run_id, "state": await _end(engine, run_id, OFF.format(handle=handle))}
         async with engine.begin() as conn:
             capped = await daily_problem(conn, run_id)

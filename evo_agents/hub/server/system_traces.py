@@ -199,7 +199,9 @@ def pinned_version(spec: dict, handle: str) -> int | None:
 # Joining a trace
 
 
-async def _open(conn: AsyncConnection, held: SystemRef, chat_id: int | None, message_id: int, user_id: int) -> int:
+async def _open(
+    conn: AsyncConnection, held: SystemRef, chat_id: int | None, message_id: int | None, user_id: int
+) -> int:
     t = tables.system_traces
     values = {
         "project_id": held.project_id,
@@ -379,7 +381,7 @@ async def record_tool(
     span_id = (await conn.execute(insert(s).values(**values).returning(s.c.id))).scalar_one()
     await conn.execute(update(t).values(last_at=func.now()).where(t.c.id == membership.trace_id))
     await notify(conn, membership.system.id)
-    if status == "refused" and (reason or "").startswith(system_context.BUDGET_REFUSAL):
+    if status == "refused" and reason is not None and reason.startswith(system_context.BUDGET_REFUSAL):
         from evo_agents.hub.server import orchestrator  # it opens threads through chat_runs, which joins runs here
 
         await orchestrator.on_budget(conn, membership, span_id, reason)

@@ -420,7 +420,9 @@ async def _pinned(conn: AsyncConnection, profile: Profile, message_id: int | Non
     if version is None:
         pin = await system_store.entry_pin(conn, profile.id)
         version = None if pin is None else pin[1]
-    body = None if version is None or version == profile.version else await version_rules(conn, profile.id, version)
+    if version is None or version == profile.version:
+        return profile.version, profile.permissions
+    body = await version_rules(conn, profile.id, version)
     if body is None:
         return profile.version, profile.permissions
     return version, body.get("permissions") or profile.permissions
@@ -733,9 +735,10 @@ async def _hand_on(
     if problem is not None:
         return None, problem
     target = await by_id(conn, profile_id)
+    assert target is not None  # a mention names a profile the chat resolved (resolve_mentions)
     found = None if run_id is None else await system_traces.of_run(conn, run_id)
     over = await system_traces.budget_problem(conn, found)
-    if over is not None:
+    if over is not None and found is not None:  # budget_problem answers None for a run in no trace
         await system_traces.record_tool(
             conn, found, system_context.TOOL_MENTION, to_handle=target.handle, status="refused", reason=over
         )

@@ -267,10 +267,14 @@ async def _decide(conn: AsyncConnection, access: ProjectAccess, user: Principal,
     )
     if taken is not None:
         raise HTTPException(409, f"decision {taken} of project {access.name} already says that: nothing was written")
-    rev = await conn.scalar(select(func.coalesce(func.max(e.c.rev), 0)).where(e.c.project_id == access.project_id))
-    number = await conn.scalar(
-        select(func.coalesce(func.max(d.c.number), 0) + 1).where(d.c.project_id == access.project_id)
-    )
+    rev = (
+        await conn.execute(select(func.coalesce(func.max(e.c.rev), 0)).where(e.c.project_id == access.project_id))
+    ).scalar_one()
+    number = (
+        await conn.execute(
+            select(func.coalesce(func.max(d.c.number), 0) + 1).where(d.c.project_id == access.project_id)
+        )
+    ).scalar_one()
     values = {"project_id": access.project_id, "number": number, "state": "active", **subject}
     decision_id = (await conn.execute(d.insert().values(**values).returning(d.c.id))).scalar_one()
     event = {"project_id": access.project_id, "rev": rev + 1, "decision_id": decision_id, "action": "decide"}

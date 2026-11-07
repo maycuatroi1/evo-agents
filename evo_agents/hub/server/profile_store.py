@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 from sqlalchemy import Select, insert, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -56,7 +57,7 @@ class Profile:
     permissions: dict
     packs: list  # the agent packs it attaches, each {"plugin", "name", "version"} (agent_packs)
     starters: list  # the questions the chat home offers, at most profiles.MAX_STARTERS (since 0215)
-    runs_on: str  # where its runs run: worker or hub (profiles.RUNS_ON, since 0217)
+    runs_on: Literal["worker", "hub"]  # where its runs run: worker or hub (profiles.RUNS_ON, since 0217)
     home_pool: str | None  # the name of its own pool (``agent-<handle>``); None for an agent deleted before 0189
     account_pool_id: int | None  # its account pool (``account_pools``); None until an admin attaches one
     account_pool: str | None  # that pool's name

@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 from urllib.parse import quote
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
+from evo_agents.hub.cli_client import call_object, client_command, print_json, signed_in, table
 from evo_agents.hub.contract import json_option, returns_object
 
 GRAPH_KEYS = ("project", "graph")
@@ -35,7 +35,7 @@ def _graph_line(graph: dict) -> str:
 @client_command
 def cmd_graph_list(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("GET", _base(args.project))
+    found = call_object(hub, "GET", _base(args.project))
     out = {"project": args.project, **{k: found[k] for k in LIST_KEYS if k != "project"}}
     if args.json:
         print_json(out)
@@ -58,7 +58,7 @@ def cmd_graph_list(args) -> int:
 def cmd_graph_create(args) -> int:
     hub, _ = signed_in()
     body = {"name": args.name, "sources": list(args.source or []), "description": args.description or ""}
-    found = hub.call("POST", _base(args.project), body)
+    found = call_object(hub, "POST", _base(args.project), body)
     if args.json:
         print_json(graph_json(args.project, found))
         return 0
@@ -79,7 +79,7 @@ def cmd_graph_update(args) -> int:
         print("error: say what changes: --rename, --description, --source, --add or --remove", file=sys.stderr)
         return 2
     hub, _ = signed_in()
-    found = hub.call("PATCH", f"{_base(args.project)}/{quote(args.name, safe='')}", body)
+    found = call_object(hub, "PATCH", f"{_base(args.project)}/{quote(args.name, safe='')}", body)
     if args.json:
         print_json(graph_json(args.project, found))
         return 0
@@ -90,7 +90,7 @@ def cmd_graph_update(args) -> int:
 @client_command
 def cmd_graph_delete(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("DELETE", f"{_base(args.project)}/{quote(args.name, safe='')}")
+    found = call_object(hub, "DELETE", f"{_base(args.project)}/{quote(args.name, safe='')}")
     if args.json:
         print_json(found)
         return 0

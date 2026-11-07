@@ -283,6 +283,7 @@ async def resolve(
                 raise _refused(where, f"run {item.run_id} has {row.event_seq} events, so none with seq {item.seq}")
             found.append({**stored, "resolved": "run_event"})
         elif item.kind == "span":
+            assert item.span_id is not None  # the model asks a span reference for its span_id
             system = await system_curation.span_system(conn, run.project_id, item.span_id)
             if system is None:
                 raise _refused(where, f"no trace of an agent system of project {run.project} has span {item.span_id}")

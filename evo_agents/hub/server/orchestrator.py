@@ -36,6 +36,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import partial
+from typing import cast
 
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_, exists, func, insert, select, update
@@ -94,7 +95,8 @@ class Origin:
 async def _person(conn: AsyncConnection, user_id: int) -> Principal:
     u = tables.users
     login = (await conn.execute(select(u.c.login).where(u.c.id == user_id))).scalar_one()
-    return Principal(user_id, login, False, None, MACHINE, "")
+    # no token (None), as the hub's other machine principals: Principal types token_id int
+    return Principal(user_id, login, False, cast(int, None), MACHINE, "")
 
 
 async def origin_of(conn: AsyncConnection, run_id: int) -> Origin:
@@ -294,7 +296,7 @@ async def on_turn_failed(conn: AsyncConnection, run_id: int) -> Opened | None:
     async def make() -> Opened | None:
         found = await system_traces.of_run(conn, run_id)
         lead = subject_lead(found)
-        if lead is None:
+        if found is None or lead is None:
             return None
         r = tables.runs
         error = (await conn.execute(select(r.c.error).where(r.c.id == run_id))).scalar_one()
@@ -317,7 +319,7 @@ async def on_run(conn: AsyncConnection, found: RunStep, lines: list[str], *, sta
     async def make() -> Opened | None:
         member = await system_traces.of_run(conn, found.run_id)
         lead = subject_lead(member)
-        if lead is None:
+        if member is None or lead is None:
             return None
         key = f"{rule}:run:{found.run_id}"
         opened = await open_thread(
@@ -368,7 +370,7 @@ async def check_loop(conn: AsyncConnection, run_id: int) -> Opened | None:
     async def make() -> Opened | None:
         found = await system_traces.of_run(conn, run_id)
         lead = subject_lead(found)
-        if lead is None or found.trace_id is None:
+        if found is None or lead is None or found.trace_id is None:
             return None
         spans = triage_rules.loop_of(await _received(conn, found.trace_id, found.handle))
         if not spans:
@@ -384,7 +386,7 @@ async def on_budget(conn: AsyncConnection, found: system_traces.Membership, span
     """The budget thread of the trace of ``found``, whose ask or mention span ``span_id`` was refused for ``reason``,
     the trace's budget; once a trace."""
     lead = subject_lead(found)
-    if lead is None or found.trace_id is None:
+    if found is None or lead is None or found.trace_id is None:
         return
     key = f"{triage_rules.BUDGET}:trace:{found.trace_id}"
     ask = Ask(found, lead, triage_rules.BUDGET, [f"Refused: {reason}"], key=key, evidence=(span_id,))
@@ -398,7 +400,7 @@ async def on_rounds(engine: AsyncEngine, run_id: int, rounds: int) -> Opened | N
         async def make() -> Opened | None:
             found = await system_traces.of_run(conn, run_id)
             lead = subject_lead(found)
-            if lead is None:
+            if found is None or lead is None:
                 return None
             line = f"The turn used its {rounds} rounds of tools and gave no final answer."
             key = f"{triage_rules.ROUNDS}:run:{run_id}"
@@ -442,7 +444,7 @@ async def _idle_thread(conn: AsyncConnection, trace_id: int, quiet: timedelta) -
     for span in spans:
         found = None if span.run_id is None else await system_traces.of_run(conn, span.run_id)
         lead = subject_lead(found)
-        if lead is None:
+        if found is None or lead is None:
             continue
         minutes = triage_rules.idle_minutes((found.spec or {}).get("limits"), runtime)
         if quiet < timedelta(minutes=minutes):
@@ -526,6 +528,7 @@ async def _escalated(conn: AsyncConnection, run: AgentRun, row, found, lead: str
         await nested.rollback()
         return None, None, (opened.refusal if opened else None) or f"@{lead} is no agent the hub can hand work to"
     target = await by_handle(conn, lead)
+    assert target is not None  # open_thread handed the work to this agent
     wait_id = await open_wait(conn, row, run, target, opened.run_id)
     t = tables.orchestrator_threads
     await conn.execute(update(t).values(wait_id=wait_id).where(t.c.id == opened.thread_id))
@@ -544,6 +547,7 @@ async def escalate(conn: AsyncConnection, sealer, run: AgentRun, body: EscalateI
     Orchestrator's answer, or the end of the run it gives the work to, answers; the run parks on it and holds no
     worker. No hop is added and no budget refuses it. The worker's route and the hub runtime's tool share it."""
     chat = await chat_run(conn, run.run_id)
+    assert chat is not None  # only a chat run escalates (hand_work)
     said = await mask_values(conn, sealer, run.profile.id, body.question)
     said = await mask_run(conn, sealer, run.run_id, said)
     found = await system_traces.of_run(conn, run.run_id)

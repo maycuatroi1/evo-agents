@@ -5,6 +5,7 @@ turn (``hub_runtime``) holds a run of no worker, and its tools act as the same p
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import cast
 
 from fastapi import HTTPException
 from sqlalchemy import and_, case, select
@@ -84,7 +85,8 @@ async def hub_principal(conn: AsyncConnection, run_id: int, kind: str) -> Princi
     if row is None or row.state not in HELD_STATES:
         raise HTTPException(403, f"the hub runtime does not hold run {run_id} now")
     scope, owner = _scoped(row, run_id)
-    return Principal(**owner, admin=False, token_id=None, kind=kind, token_hash="", scope=scope)
+    # no token (None), as the hub's other machine principals: Principal types token_id int
+    return Principal(**owner, admin=False, token_id=cast(int, None), kind=kind, token_hash="", scope=scope)
 
 
 def _scoped(row, run_id: int) -> tuple[RunScope, dict]:

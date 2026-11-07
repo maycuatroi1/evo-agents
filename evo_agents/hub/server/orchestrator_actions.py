@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -89,7 +89,7 @@ class Frame:
     """What an action acts on: the Orchestrator's run, the thread's row, its lead and its system's spec."""
 
     run: AgentRun
-    thread: object  # the row of orchestrator_threads, locked
+    thread: Any  # the row of orchestrator_threads, locked
     lead: str
     spec: dict
 
@@ -112,6 +112,7 @@ async def frame_of(conn: AsyncConnection, run: AgentRun) -> Frame:
         )
     if thread.outcome in CLOSING:
         raise HTTPException(409, f"thread #{thread.id} is closed: its Orchestrator chose {thread.outcome} already")
+    assert member is not None  # a lead is read off a member alone
     return Frame(run, thread, lead, member.spec)
 
 
@@ -327,7 +328,7 @@ async def ask_owner_route(
 
 
 @worker_router.post(
-    "/runs/{run_id}/escalate", status_code=201, response_model=orchestrator.Escalated, responses=REFUSALS
+    "/runs/{run_id}/escalate", status_code=201, response_model=orchestrator.Escalated, responses={**REFUSALS}
 )
 async def escalate(
     request: Request, run_id: RunId, body: orchestrator.EscalateIn, user: CurrentUser

@@ -21,7 +21,7 @@ from urllib.parse import quote
 
 from evo_agents.hub import system_spec
 from evo_agents.hub.cli_agents import PROJECT_HELP, project_of
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli_client import call_object, client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import EXIT_FAILED, EXIT_USAGE, HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 
@@ -137,7 +137,7 @@ def cmd_list(args) -> int:
 def cmd_show(args) -> int:
     hub, _ = signed_in()
     path = _path(project_of(args), args.slug) + (f"?revision={args.revision}" if args.revision else "")
-    found = hub.call("GET", path)
+    found = call_object(hub, "GET", path)
     if args.json:
         print_json(found)
         return 0
@@ -150,7 +150,7 @@ def cmd_export(args) -> int:
     hub, _ = signed_in()
     project = project_of(args)
     path = _path(project, args.slug) + (f"?revision={args.revision}" if args.revision else "")
-    found = hub.call("GET", path)
+    found = call_object(hub, "GET", path)
     head = (
         f"# agent system {found['slug']} of project {project}, revision {found['revision']}\n"
         f"# if_revision: {found['latest_revision']}\n"
@@ -187,7 +187,7 @@ def cmd_put(args) -> int:
     body = {"spec": {k: v for k, v in spec.items() if k != "slug"}, "if_revision": if_revision}
     hub, _ = signed_in()
     try:
-        found = hub.call("PUT", _path(project_of(args), slug), body)
+        found = call_object(hub, "PUT", _path(project_of(args), slug), body)
     except HubError as exc:
         if exc.status == 422 and isinstance(exc.payload, dict) and exc.payload.get("detail"):
             print(f"error: {exc}", file=sys.stderr)
@@ -213,7 +213,7 @@ def cmd_validate(args) -> int:
         return _usage(str(exc))
     hub, _ = signed_in()
     body = {"spec": {k: v for k, v in spec.items() if k != "slug"}, "slug": _slug_of(args, spec)}
-    found = hub.call("POST", _path(project_of(args)) + "/validate", body)
+    found = call_object(hub, "POST", _path(project_of(args)) + "/validate", body)
     if args.json:
         print_json(found)
     else:
@@ -225,7 +225,7 @@ def cmd_validate(args) -> int:
 @client_command
 def cmd_delete(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("DELETE", _path(project_of(args), args.slug))
+    found = call_object(hub, "DELETE", _path(project_of(args), args.slug))
     if args.json:
         print_json(found)
         return 0

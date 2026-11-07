@@ -222,7 +222,7 @@ def _node(c: _Checker, given, index: int) -> dict | None:
     if kind not in NODE_KINDS:
         c.add(f"{path}.kind", f"is one of {', '.join(NODE_KINDS)}", node=node_id)
         return None
-    found = {"id": node_id, "kind": kind}
+    found: dict[str, object] = {"id": node_id, "kind": kind}
     label = c.text(given.get("label"), f"{path}.label", MAX_LABEL_CHARS, node=node_id)
     if label:
         found["label"] = label

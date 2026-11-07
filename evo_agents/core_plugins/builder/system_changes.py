@@ -120,7 +120,9 @@ def parts(change: Change) -> tuple[dict, list[AgentCreate], list[dict]]:
 
 def _named(spec: dict) -> tuple[set[str], set[str]]:
     """The handles and the graphs the nodes of ``spec`` name."""
-    nodes = spec.get("nodes") if isinstance(spec.get("nodes"), list) else []
+    nodes = spec.get("nodes")
+    if not isinstance(nodes, list):
+        nodes = []
     handles = {n.get("profile") for n in nodes if isinstance(n, dict) and n.get("kind") in system_spec.PINNED_KINDS}
     graphs = {n.get("graph") for n in nodes if isinstance(n, dict) and n.get("kind") == "kg"}
     return {h for h in handles if isinstance(h, str)}, {g for g in graphs if isinstance(g, str)}
@@ -240,7 +242,9 @@ async def _roll_back(w: Writing) -> int:
 
 def described(change: Change, target: Target) -> str:
     """What a system proposal changes on the canvas, in a sentence for its thread."""
-    spec = change.sets.get("spec") if isinstance(change.sets.get("spec"), dict) else {}
+    spec = change.sets.get("spec")
+    if not isinstance(spec, dict):
+        spec = {}
     before = target.held.get("spec") or {}
 
     def nodes(of: dict) -> set[str]:

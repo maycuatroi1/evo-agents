@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterable
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
@@ -47,7 +47,7 @@ SHOWN_ATTRIBUTES = ("gen_ai.",)  # the attributes a reader without a grant on a 
 
 Slug = Annotated[str, Path(min_length=1, max_length=63, pattern=system_spec.SLUG_PATTERN)]
 TraceId = Annotated[int, Path(ge=1, le=MAX_ID)]
-READ_REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
+READ_REFUSALS: dict[int | str, dict[str, Any]] = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 
 router = APIRouter(
     prefix="/v1/projects", tags=["systems"], dependencies=[route_autonomy.K12], responses={401: {"model": ErrorBody}}

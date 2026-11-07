@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
@@ -233,7 +233,8 @@ async def held_run(conn: AsyncConnection, run_id: int, worker_id: int | None, to
     found = await chat_run(conn, run_id) if row.kind == "chat" else None
     if found is not None:  # the origin of the chain, also when the run went to the workers of its type's run_as
         person, login = found.dispatcher_id, found.dispatcher
-    principal = Principal(person, login, False, token_id, kind, "")
+    # no token (None), as the hub's other machine principals: Principal types token_id int
+    principal = Principal(person, login, False, cast(int, token_id), kind, "")
     return AgentRun(
         run_id,
         row.kind,

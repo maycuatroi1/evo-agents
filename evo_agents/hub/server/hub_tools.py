@@ -28,6 +28,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -54,11 +55,18 @@ from evo_agents.hub.server.output_store import OutputIn
 from evo_agents.hub.server.runs.service.plan_runs import held_row
 from evo_agents.hub.server.security import WORKER
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
+    from evo_agents.hub.blobs import BlobStore
+    from evo_agents.hub.config import HubConfig
+
 log = logging.getLogger(__name__)
 
 MAX_RESULT_CHARS = 12_000  # what one tool's result hands back to the model
 INTERACTIVE_NAME = "answer.html"
-_GRAPHS: dict[Path, object] = {}  # the cache of built graphs of each data directory, as the app holds one
+# the cache of built graphs of each data directory, as the app holds one
+_GRAPHS: dict[Path, tuple[GraphCache, Handles]] = {}
 
 
 def _function(name: str, description: str, properties: dict, required: list[str]) -> dict:
@@ -160,10 +168,10 @@ NAMES = tuple(tool["function"]["name"] for tool in TOOLS)
 class Turn:
     """What the tools of one turn of chat run ``run_id`` of ``project`` reach."""
 
-    engine: object
-    config: object
-    blobs: object
-    sealer: object
+    engine: AsyncEngine
+    config: HubConfig
+    blobs: BlobStore
+    sealer: Any  # a Sealer, None without EVO_HUB_SECRETS_KEY (app.state.sealer)
     run_id: int
     project: str
     asked: list[int] = field(default_factory=list)  # the runs it asked or escalated to this turn
@@ -205,7 +213,9 @@ async def kg_search(turn: Turn, arguments: dict) -> str:
 
 
 async def chat_post(turn: Turn, arguments: dict) -> str:
-    body = chat_agents.AgentMessageIn(body=arguments.get("body") or "", reply_to=arguments.get("reply_to"))
+    body = chat_agents.AgentMessageIn(
+        body=arguments.get("body") or "", chat_id=None, reply_to=arguments.get("reply_to")
+    )
     async with turn.engine.begin() as conn:
         run = await _agent_run(conn, turn)
         chat, message_id = await chat_agents.agent_message(conn, turn.sealer, run, body)
@@ -223,6 +233,8 @@ async def interactive_answer(turn: Turn, arguments: dict) -> str:
         media_type="text/html",
         caption=arguments.get("caption") or None,
         interactive=True,
+        tool_call_id=None,
+        upload_id=None,
     )
     await asyncio.to_thread(put_bytes, turn.blobs, sha, data)
     async with turn.engine.begin() as conn:
@@ -230,7 +242,7 @@ async def interactive_answer(turn: Turn, arguments: dict) -> str:
         target = await output_store.target_of(conn, turn.run_id, turn.project)
         output_id = await output_store.record_held(conn, turn.blobs, target, run.principal.user_id, item, data)
         text = arguments.get("body") or arguments.get("caption") or "An interactive answer."
-        body = chat_agents.AgentMessageIn(body=text, output_ids=[output_id])
+        body = chat_agents.AgentMessageIn(body=text, chat_id=None, reply_to=None, output_ids=[output_id])
         _, message_id = await chat_agents.agent_message(conn, turn.sealer, run, body)
     return f"sent the interactive answer as output #{output_id} in message #{message_id}"
 
@@ -247,6 +259,7 @@ async def _ask(turn: Turn, body: agent_asks.AgentAskIn, tool: str) -> str:
         asked = await agent_asks.ask_agent(conn, turn.sealer, run, body, row, tool=tool)
     if asked.refusal is not None:
         return f"refused: {asked.refusal}"
+    assert asked.run_id is not None  # ask_agent made the run or gave its refusal
     turn.asked.append(asked.run_id)
     return (
         f"asked @{body.handle} in run #{asked.run_id}: end your turn now with a short reply that says so; its answer "
@@ -269,6 +282,7 @@ async def escalate(turn: Turn, arguments: dict) -> str:
         escalated = await orchestrator.escalate(conn, turn.sealer, run, body, row)
     if escalated.refusal is not None:
         return f"refused: {escalated.refusal}"
+    assert escalated.run_id is not None  # escalate made the run or gave its refusal
     turn.asked.append(escalated.run_id)
     return (
         f"escalated to the Orchestrator in run #{escalated.run_id}: end your turn now with a short reply that says so; "
@@ -326,6 +340,10 @@ async def memory_write(turn: Turn, arguments: dict) -> str:
         name=arguments.get("name") or "",
         type=memory_type(text),
         body=text,
+        label=None,
+        if_revision=None,
+        audience=None,
+        agent=None,
     )
     async with turn.engine.connect() as conn:
         user = await hub_principal(conn, turn.run_id, WORKER)
