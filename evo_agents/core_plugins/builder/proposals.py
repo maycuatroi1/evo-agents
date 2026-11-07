@@ -35,6 +35,11 @@ A proposal is a change of one setting the hub versions, as the hub's own routes 
   status, close_reason); its version is the goal's revision, 0 for a new one, whose code the hub picks when it is
   proposed and keeps in the target. An admin of the project decides it, and the hub writes the next revision as the
   goal's route does (``goals.write``); rolling back a new goal closes it (dropped).
+- ``system``: an agent system of the project (``evo_agents.hub.system_spec``, plan multi-agent-systems, criterion
+  a11), new or one that exists (``target.system``, its slug): the spec it would have, whole, and the agent profiles
+  and named graphs it needs that the project lacks; its version is the system's revision, 0 for a new one. An admin
+  of the project decides it; approving makes the profiles and graphs, then writes the spec as the next revision.
+  Rolling back writes the revision before again, or deletes a new system. The logic is ``builder.system_changes``.
 - ``plugin``, ``plugin_install``, ``plugin_listing``: an action, not a setting (plan plugin-market, criterion a8): a
   plugin a member asked @builder to make for an industry, installing its release on the hub (a hub admin decides it),
   and listing it on a market. Approving one does it once, as version 1, and it never rolls back: a plugin or a listing
@@ -43,7 +48,8 @@ A proposal is a change of one setting the hub versions, as the hub's own routes 
 
 What each kind does (where its change applies, how it is checked, applied and rolled back) is its ``kinds.Kind``,
 which ``KINDS`` maps it to: ``setting_changes`` for branding, features, plugin_config, agent and policy,
-``problem_changes``, ``goal_changes``, ``opportunity_changes`` and ``plugin_changes`` for the others.
+``problem_changes``, ``goal_changes``, ``opportunity_changes``, ``system_changes`` and ``plugin_changes`` for the
+others.
 
 Proposing checks the change against the setting as it is now, as its route would, and keeps the setting's version
 (``base_version``): nothing is written to the setting. Approving applies the change as the setting's next version
@@ -75,6 +81,7 @@ from evo_agents.core_plugins.builder import (
     plugin_changes,
     problem_changes,
     setting_changes,
+    system_changes,
 )
 from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
 from evo_agents.core_plugins.builder.kinds import (
@@ -89,12 +96,13 @@ from evo_agents.core_plugins.builder.kinds import (
     PLUGIN_LISTING,
     POLICY,
     PROBLEM,
+    SYSTEM,
     Change,
     Kind,
     Target,
     Writing,
 )
-from evo_agents.hub import chats, goals, tables
+from evo_agents.hub import chats, goals, system_spec, tables
 from evo_agents.hub import problems as problem_model
 from evo_agents.hub.access import has_role
 from evo_agents.hub.self_managed import SelfManaged, state_of
@@ -123,6 +131,7 @@ TARGET_KEYS = {  # kind -> (the keys its target needs, those it may have)
     PLUGIN: ((), ()),
     PLUGIN_INSTALL: ((), ()),
     PLUGIN_LISTING: ((), ()),
+    SYSTEM: (("system",), ()),
 }
 MAX_ERROR_CHARS = 2000
 MAX_SHOWN_BYTES = 3000  # of the values a proposal sets, in its message in the thread
@@ -139,8 +148,8 @@ class BuilderProposal(BaseModel):
     kind: Literal[PROPOSAL_KINDS]
     target: dict[str, str] = Field(
         description="layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, "
-        "which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for "
-        "policy and the actions plugin, plugin_install and plugin_listing, whose fields are in change.set"
+        "which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one), system (system: its slug); "
+        "nothing for policy and the actions plugin, plugin_install and plugin_listing, whose fields are in change.set"
     )
     change: dict[str, Any] = Field(
         description="set: field -> value; unset: the fields it clears; a key of the policy by its dotted path"
@@ -337,6 +346,8 @@ def change_of(arguments: Mapping) -> Change:
         problems.append("target.problem is a problem's code (P-<number>)")
     if kind == OPPORTUNITY:
         problems.extend(opportunity_changes.target_problems(target))
+    if kind == SYSTEM and "system" in target and (why := system_spec.check_slug(target["system"])) is not None:
+        problems.append(f"target.system: {why}")
     lines, said = _evidence_of(kind, arguments.get("evidence"))
     problems.extend(said)
     if kind in ACTIONS:
@@ -367,6 +378,7 @@ KINDS: dict[str, Kind] = {  # kind -> where its change applies, how it is checke
     PROBLEM: problem_changes.KIND,
     GOAL: goal_changes.KIND,
     OPPORTUNITY: opportunity_changes.KIND,
+    SYSTEM: system_changes.KIND,
     **dict.fromkeys(ACTIONS, plugin_changes.KIND),
 }
 
@@ -554,6 +566,8 @@ def thread_text(proposal_id: int, change: Change, target: Target, approver: str)
     sets = ", ".join(sorted(change.sets)) or "nothing"
     unsets = ", ".join(change.unset) or "nothing"
     lines = f" It adds {len(change.evidence)} lines of evidence." if change.evidence else ""
+    if change.kind == SYSTEM:
+        lines = f" {system_changes.described(change, target)} The designer shows it on the canvas."
     if change.kind in ACTIONS:
         return (
             f"Proposal {proposal_id} of @builder: {change.summary}\n\n"

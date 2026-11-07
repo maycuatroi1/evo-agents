@@ -35,7 +35,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.builder.errors import NOTHING, ProposalError
-from evo_agents.core_plugins.builder.kinds import Change, Kind, Target, Writing
+from evo_agents.core_plugins.builder.kinds import PLUGIN, PLUGIN_INSTALL, PLUGIN_LISTING, Change, Kind, Target, Writing
 from evo_agents.hub import tables
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.self_managed import ProjectScope, own_signer
@@ -46,10 +46,8 @@ from evo_agents.hub.server.chats import resolve_mentions
 from evo_agents.hub.server.market_install import GitHubInstallIn, MarketInstalled
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
-from evo_agents.hub.tables_settings import PROPOSAL_KINDS
 from evo_agents.plugins.market import DEFAULT_SOURCE
 
-PLUGIN, PLUGIN_INSTALL, PLUGIN_LISTING = PROPOSAL_KINDS[-3:]
 ACTIONS = (PLUGIN, PLUGIN_INSTALL, PLUGIN_LISTING)
 RUNS = (PLUGIN, PLUGIN_LISTING)  # approving one hands @builder a task in its thread
 DONE = 1  # the applied version of an action

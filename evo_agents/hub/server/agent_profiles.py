@@ -377,9 +377,12 @@ async def _refuse_project_name(conn: AsyncConnection, handle: str) -> None:
         )
 
 
-@router.post("/{project}/agents", status_code=201, response_model=Agent, responses=WRITE_REFUSALS)
-async def create_agent(request: Request, project: ProjectName, body: AgentCreate, user: CurrentUser) -> Agent:
-    """Create an agent profile of the project, at version 1."""
+async def create_profile(
+    conn: AsyncConnection, user, access: ProjectAccess, body: AgentCreate, hub_version: str
+) -> Profile:
+    """Create agent profile ``body`` of the project of ``access`` at version 1 as ``user``, with its pool and its audit
+    row, in the caller's transaction; the caller checked that ``user`` may (the admin role on the project). 409 when
+    the handle is taken or names a project."""
     ap = tables.agent_profiles
     values = {
         "handle": body.handle,
@@ -393,30 +396,33 @@ async def create_agent(request: Request, project: ProjectName, body: AgentCreate
         "is_default": False,
         "permissions": body.permissions.stored(),
     }
+    await _refuse_project_name(conn, body.handle)
+    values["packs"] = await pinned(conn, access.project_id, access.name, body.packs, hub_version)
+    statement = (
+        pg_insert(ap)
+        .values(project_id=access.project_id, created_by=user.user_id, **values)
+        .on_conflict_do_nothing(index_elements=[ap.c.handle])
+        .returning(ap.c.id)
+    )
+    profile_id = (await conn.execute(statement)).scalar_one_or_none()
+    if profile_id is None:
+        raise HTTPException(
+            409, f"@{body.handle} is taken by another agent, deleted ones included: pick another handle"
+        )
+    await write_version(conn, profile_id, 1, values, user.user_id)
+    await create_pool(conn, profile_id, body.handle, access.project_id, user.user_id)
+    created = await _profile(conn, access, body.handle)
+    await _record(conn, user, access, audit.AGENT_CREATE, _target(created))
+    return created
+
+
+@router.post("/{project}/agents", status_code=201, response_model=Agent, responses=WRITE_REFUSALS)
+async def create_agent(request: Request, project: ProjectName, body: AgentCreate, user: CurrentUser) -> Agent:
+    """Create an agent profile of the project, at version 1."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _admin(access, "creating")
-        await _refuse_project_name(conn, body.handle)
-        values["packs"] = await pinned(conn, access.project_id, project, body.packs, request.app.state.hub_version)
-        statement = (
-            pg_insert(ap)
-            .values(
-                project_id=access.project_id,
-                created_by=user.user_id,
-                **values,
-            )
-            .on_conflict_do_nothing(index_elements=[ap.c.handle])
-            .returning(ap.c.id)
-        )
-        profile_id = (await conn.execute(statement)).scalar_one_or_none()
-        if profile_id is None:
-            raise HTTPException(
-                409, f"@{body.handle} is taken by another agent, deleted ones included: pick another handle"
-            )
-        await write_version(conn, profile_id, 1, values, user.user_id)
-        await create_pool(conn, profile_id, body.handle, access.project_id, user.user_id)
-        created = await _profile(conn, access, body.handle)
-        await _record(conn, user, access, audit.AGENT_CREATE, _target(created))
+        created = await create_profile(conn, user, access, body, request.app.state.hub_version)
     log.info("agent created", extra={"project": project, "handle": body.handle, "login": user.login})
     return agent_view(created)
 

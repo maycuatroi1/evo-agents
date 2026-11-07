@@ -16,6 +16,7 @@ import { useTranslations } from "next-intl";
 
 import type { EdgeKind, NodeKind, SpecNode, SystemProblem } from "@/lib/systems";
 import type { NodeState } from "@/lib/systems-observe";
+import type { Ghost } from "@/lib/system-diff";
 import { NODE_HEIGHT, NODE_WIDTH } from "@/lib/systems-layout";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +24,8 @@ import { cn } from "@/lib/utils";
  * The boxes and lines of the designer's canvas. A box says what the node is (its kind's icon and word), its name and
  * what it names (the profile and its pinned version, or the graph); its border turns red for an error and amber for a
  * warning the hub found, and a pin older than the profile's latest version offers Upgrade. While a line is dragged,
- * the boxes it may end at show the kind of edge it would make; the others fade.
+ * the boxes it may end at show the kind of edge it would make; the others fade. Drawing a proposal of @builder, what it
+ * adds is faded with a dashed border and line, what it drops fainter still, and what it changes is dashed.
  *
  * In Observe mode a box says its state (idle, working, waiting, failed) where the problems would be, and its numbers
  * under its name; a line says how much work crossed it, lights while work goes through it, and one the design lacks
@@ -48,6 +50,8 @@ export type SystemNodeData = {
   onUpgrade: (id: string, version: number) => void;
   /** Observe mode: the state of the node now, its numbers in words, and whether the design lacks it. */
   observed?: { state: NodeState; numbers: string; ghost: boolean };
+  /** What a proposal of @builder does to the node, when the canvas draws one. */
+  ghost?: Ghost;
 };
 export type SystemFlowNode = Node<SystemNodeData, "system">;
 
@@ -61,6 +65,8 @@ export type SystemEdgeData = {
   onSelect: () => void;
   /** Observe mode: how much work crossed it, whether work goes through it now, and whether the design lacks it. */
   observed?: { count: number; lit: boolean; offDesign: boolean };
+  /** What a proposal of @builder does to the edge, when the canvas draws one. */
+  ghost?: Ghost;
 };
 export type SystemFlowEdge = Edge<SystemEdgeData, "system">;
 
@@ -92,7 +98,7 @@ function NodeStateBadge({ state }: { state: NodeState }) {
 
 export function SystemNode({ data }: NodeProps<SystemFlowNode>) {
   const t = useTranslations("systems.designer");
-  const { node, title, level, newer, missing, selected, drop, canChange, observed } = data;
+  const { node, title, level, newer, missing, selected, drop, canChange, observed, ghost = null } = data;
   const Icon = KIND_ICONS[node.kind];
   const detail =
     node.kind === "kg"
@@ -122,6 +128,10 @@ export function SystemNode({ data }: NodeProps<SystemFlowNode>) {
         selected && "ring-2 ring-brand",
         drop === "none" && "opacity-40",
         drop !== null && drop !== "none" && "border-brand bg-brand-soft",
+        ghost !== null && "border-dashed",
+        ghost === "added" && "border-brand opacity-60",
+        ghost === "removed" && "opacity-35",
+        ghost === "changed" && "border-brand",
       )}
       data-testid="system-node"
       data-node={node.id}
@@ -129,6 +139,7 @@ export function SystemNode({ data }: NodeProps<SystemFlowNode>) {
       data-level={level ?? ""}
       data-selected={selected ? "true" : "false"}
       data-drop={drop ?? ""}
+      data-ghost={ghost ?? ""}
     >
       <Handle type="target" position={Position.Left} className={HANDLE} isConnectable={canChange} />
       <div className="flex min-w-0 items-center gap-2">
@@ -144,7 +155,7 @@ export function SystemNode({ data }: NodeProps<SystemFlowNode>) {
           )
         ) : null}
       </div>
-      <span className="truncate text-sm font-medium text-foreground" title={title}>
+      <span className={cn("truncate text-sm font-medium text-foreground", ghost === "removed" && "line-through")} title={title}>
         {title}
       </span>
       {observed ? (
@@ -189,21 +200,32 @@ export function SystemEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosit
   const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   if (!data) return null;
   const seen = data.observed;
+  const ghost = data.ghost ?? null;
   const colour = seen?.offDesign
     ? "var(--attention)"
     : seen?.lit
       ? "var(--running)"
-      : data.level === "error"
-        ? "var(--danger)"
-        : data.level === "warning"
-          ? "var(--attention)"
-          : data.selected
-            ? "var(--brand)"
-            : "var(--neutral-solid)";
+      : ghost === "added" || ghost === "changed"
+        ? "var(--brand)"
+        : data.level === "error"
+          ? "var(--danger)"
+          : data.level === "warning"
+            ? "var(--attention)"
+            : data.selected
+              ? "var(--brand)"
+              : "var(--neutral-solid)";
   const width = seen?.lit ? 2.5 : data.selected ? 2 : 1.5;
+  const dash = seen?.offDesign ? "5 4" : seen?.lit ? "8 6" : ghost !== null ? "4 4" : DASH[data.kind];
   return (
     <>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} interactionWidth={16} className={cn(seen?.lit && "system-edge-lit")} style={{ stroke: colour, strokeWidth: width, strokeDasharray: seen?.offDesign ? "5 4" : seen?.lit ? "8 6" : DASH[data.kind] }} />
+      <BaseEdge
+        id={id}
+        path={path}
+        markerEnd={markerEnd}
+        interactionWidth={16}
+        className={cn(seen?.lit && "system-edge-lit")}
+        style={{ stroke: colour, strokeWidth: width, strokeDasharray: dash, opacity: ghost === "added" ? 0.6 : ghost === "removed" ? 0.35 : undefined }}
+      />
       <EdgeLabelRenderer>
         <button
           type="button"
@@ -216,6 +238,9 @@ export function SystemEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosit
             data.selected && "border-brand text-foreground",
             seen?.offDesign && "border-dashed border-attention text-attention",
             seen?.lit && !seen.offDesign && "border-running text-running",
+            ghost !== null && "border-dashed",
+            ghost === "added" && "border-brand opacity-60",
+            ghost === "removed" && "line-through opacity-35",
           )}
           style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           title={data.description || undefined}
@@ -226,6 +251,7 @@ export function SystemEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosit
           data-count={seen ? seen.count : undefined}
           data-lit={seen ? String(seen.lit) : undefined}
           data-off-design={seen ? String(seen.offDesign) : undefined}
+          data-ghost={ghost ?? ""}
         >
           {seen?.offDesign ? t("offDesignEdge") : t(`edgeKinds.${data.kind}`)}
           {seen ? (

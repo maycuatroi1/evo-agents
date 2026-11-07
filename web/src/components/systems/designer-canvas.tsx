@@ -15,6 +15,7 @@ import {
 import { useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
 
+import type { SpecDiff } from "@/lib/system-diff";
 import { type Join, joins, outdated, type PlacedProblems, type Position, worst } from "@/lib/systems";
 import { NODE_HEIGHT, NODE_WIDTH } from "@/lib/systems-layout";
 
@@ -46,14 +47,17 @@ type Props = {
   /** A join made by a drag, to add to the draft. */
   onJoin: (join: Join) => void;
   onUpgrade: (id: string, version: number) => void;
+  /** A proposal of @builder to draw instead of the draft: read-only, what it adds or drops faded and dashed. */
+  preview?: SpecDiff | null;
 };
 
 /**
  * The canvas of the designer, drawn by React Flow from the draft: a drag moves a box (one undo step when it ends), a
  * drag from a box's handle to another box joins them with the one edge their kinds take, a click selects a box or an
- * edge's label, a click on the empty canvas clears the selection.
+ * edge's label, a click on the empty canvas clears the selection. With a `preview`, it draws the proposal instead and
+ * takes no change.
  */
-export function DesignerCanvas({ designer, placed, canChange, onJoin, onUpgrade }: Props) {
+export function DesignerCanvas({ designer, placed: drafted, canChange: mayChange, onJoin, onUpgrade, preview = null }: Props) {
   const t = useTranslations("systems.designer");
   const flow = useReactFlow<SystemFlowNode, SystemFlowEdge>();
   const { spec, selection, latest, select, change } = designer;
@@ -61,10 +65,14 @@ export function DesignerCanvas({ designer, placed, canChange, onJoin, onUpgrade 
   const [from, setFrom] = useState<string | null>(null);
   const handles = useMemo(() => new Set(designer.agents.filter((agent) => agent.deleted_at === null).map((agent) => agent.handle)), [designer.agents]);
   const known = designer.agents.length > 0;
+  const canChange = mayChange && preview === null;
+  const placed = useMemo<PlacedProblems>(() => (preview ? { system: [], nodes: new Map(), edges: new Map() } : drafted), [preview, drafted]);
+  const shownNodes = useMemo(() => preview?.nodes ?? spec.nodes.map((node) => ({ node, ghost: null })), [preview, spec.nodes]);
+  const shownEdges = useMemo(() => preview?.edges ?? spec.edges.map((edge) => ({ edge, ghost: null })), [preview, spec.edges]);
 
   const nodes = useMemo<SystemFlowNode[]>(
     () =>
-      spec.nodes.map((node) => {
+      shownNodes.map(({ node, ghost }) => {
         const problems = placed.nodes.get(node.id) ?? [];
         const title = node.label || (node.kind === "kg" ? (node.graph ?? "default") : node.profile ? `@${node.profile}` : t(`kinds.${node.kind}`));
         const drop = from === null ? null : from === node.id ? null : (joinOf(joins(spec, from, node.id), from)?.kind ?? "none");
@@ -77,7 +85,7 @@ export function DesignerCanvas({ designer, placed, canChange, onJoin, onUpgrade 
           handles: NODE_HANDLES,
           draggable: canChange,
           connectable: canChange,
-          selected: selection !== null && "node" in selection && selection.node === node.id,
+          selected: preview === null && selection !== null && "node" in selection && selection.node === node.id,
           ariaLabel: t("nodeLabel", { kind: t(`kinds.${node.kind}`), name: title, problems: problems.length }),
           data: {
             node,
@@ -85,22 +93,24 @@ export function DesignerCanvas({ designer, placed, canChange, onJoin, onUpgrade 
             level: worst(problems),
             problems,
             newer: outdated(node, latest),
-            missing: known && Boolean(node.profile) && !handles.has(node.profile ?? ""),
-            selected: selection !== null && "node" in selection && selection.node === node.id,
+            // A proposal names the profiles it makes: none of its nodes is missing one yet.
+            missing: preview === null && known && Boolean(node.profile) && !handles.has(node.profile ?? ""),
+            selected: preview === null && selection !== null && "node" in selection && selection.node === node.id,
             drop,
             canChange,
             onUpgrade,
+            ghost,
           },
         };
       }),
-    [spec, placed, moving, from, selection, latest, handles, known, canChange, onUpgrade, t],
+    [shownNodes, preview, spec, placed, moving, from, selection, latest, handles, known, canChange, onUpgrade, t],
   );
 
   const edges = useMemo<SystemFlowEdge[]>(
     () =>
-      spec.edges.map((edge, index) => {
+      shownEdges.map(({ edge, ghost }, index) => {
         const problems = placed.edges.get(index) ?? [];
-        const selected = selection !== null && "edge" in selection && selection.edge === index;
+        const selected = preview === null && selection !== null && "edge" in selection && selection.edge === index;
         return {
           id: `e${index}`,
           type: "system",
@@ -115,11 +125,12 @@ export function DesignerCanvas({ designer, placed, canChange, onJoin, onUpgrade 
             level: worst(problems),
             selected,
             label: t("edgeLabel", { kind: t(`edgeKinds.${edge.kind}`), from: edge.from, to: edge.to, problems: problems.length }),
-            onSelect: () => select({ edge: index }),
+            onSelect: () => (preview === null ? select({ edge: index }) : undefined),
+            ghost,
           },
         };
       }),
-    [spec.edges, placed, selection, select, t],
+    [shownEdges, preview, placed, selection, select, t],
   );
 
   const onNodesChange = useCallback((changes: NodeChange<SystemFlowNode>[]) => {
@@ -169,8 +180,8 @@ export function DesignerCanvas({ designer, placed, canChange, onJoin, onUpgrade 
       zoomOnDoubleClick={false}
       onNodesChange={onNodesChange}
       onNodeDragStop={commitMove}
-      onNodeClick={(_, node) => select({ node: node.id })}
-      onEdgeClick={(_, edge) => select({ edge: Number(edge.id.slice(1)) })}
+      onNodeClick={(_, node) => (preview === null ? select({ node: node.id }) : undefined)}
+      onEdgeClick={(_, edge) => (preview === null ? select({ edge: Number(edge.id.slice(1)) }) : undefined)}
       onPaneClick={() => select(null)}
       isValidConnection={(connection) => joins(spec, connection.source, connection.target).length > 0}
       onConnectStart={(_, params) => setFrom(params.nodeId)}

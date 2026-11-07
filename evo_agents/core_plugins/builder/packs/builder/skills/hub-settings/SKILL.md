@@ -1,6 +1,6 @@
 ---
 name: hub-settings
-description: Propose a change of the hub's branding, a layer of features, a layer of a plugin's config, an agent profile, the autonomy policy, a problem or a goal of the project, or a new plugin, its install or its listing, with the tool builder__propose, which an admin (a writer, for a problem) approves before the hub applies it.
+description: Propose a change of the hub's branding, a layer of features, a layer of a plugin's config, an agent profile, the autonomy policy, a problem or a goal of the project, an agent system, or a new plugin, its install or its listing, with the tool builder__propose, which an admin (a writer, for a problem) approves before the hub applies it.
 ---
 
 # Proposing a change of a setting
@@ -9,7 +9,7 @@ The tool `builder__propose` takes one change:
 
 ```json
 {
-  "kind": "branding | features | plugin_config | agent | policy | problem | goal | plugin | plugin_install | plugin_listing",
+  "kind": "branding | features | plugin_config | agent | policy | problem | goal | system | plugin | plugin_install | plugin_listing",
   "summary": "what it changes and why, 1 to 500 characters",
   "target": {},
   "set": {"field": "new value"},
@@ -32,6 +32,7 @@ the thread with its number and tells the members who may approve it. It applies 
 | `policy` | `{}` | a key of the autonomy policy by its dotted path | an admin of the project |
 | `problem` | `{"problem": "P-<number>"}`, or `{}` for a new problem | `statement`, `who`, `when`, `workaround`, `metric`, `rank`, `owner`, `status`, `close_reason` | a writer of the project |
 | `goal` | `{"goal": "G-<number>"}`, or `{}` for a new goal | `statement`, `metric`, `deadline`, `canvas`, `problem`, `rank`, `owner`, `status`, `close_reason` | an admin of the project |
+| `system` | `{"system": "<slug>"}`, new or one that exists | `spec`; `agents`, `graphs` when it needs new ones | an admin of the project |
 | `plugin` | `{}` | `name`, `industry`, `need`, `owner`, `visibility`, `price`; `repo`, `categories` optional | an admin of the project |
 | `plugin_install` | `{}` | `repo`; `tag`, `signer` optional | a hub admin; the admin of the project, in a self-managed project when `repo`'s owner is one it trusts |
 | `plugin_listing` | `{}` | `repo`, `tag`, `price`, `industries`; `categories`, `seller`, `index` optional | an admin of the project |
@@ -72,6 +73,19 @@ the thread with its number and tells the members who may approve it. It applies 
   says it in the thread. `problem` is the code of the problem of the project the goal answers, open or solved, at most
   one. You may unset `metric`, `deadline`, `canvas`, `problem` and `close_reason`. A goal has no budget.
   `evo-agents hub goal list --project <project>` prints the goals now.
+- **system.** An agent system of the project (plan multi-agent-systems): `spec` is the whole spec it would have, the
+  YAML of `evo-agents hub system export <slug> --project <project>` as JSON, without `slug`: `schema`
+  (`evo-agent-system/1`), `name`, `purpose`, `limits`, `nodes` and `edges`. A node is `{"id", "kind", "label",
+  "position": {"x", "y"}}` with `profile` (a handle) for `agent` and `orchestrator`, `graph` for `kg`; kinds `entry`
+  (exactly one), `agent`, `kg`, `curator`, `orchestrator`. An edge is `{"from", "to", "kind", "description"}`:
+  `interacts` (entry or agent to agent), `uses_kg` (agent to kg), `optimizes` (curator to agent or kg),
+  `orchestrates` (orchestrator to agent), `escalates` (agent to orchestrator). Leave `version` out to pin the latest.
+  `agents` lists the profiles the spec names that no agent of the hub has yet, each `{"handle", "name",
+  "description", "instructions", "runs_on"}`; `graphs` the named graphs it names that the project lacks, each
+  `{"name", "description", "sources"}`. The hub checks the spec as `evo-agents hub system validate` does, counting
+  those as made, and refuses a handle another agent of the hub holds. Approved, the hub makes the agents at version 1
+  and the graphs, then writes the spec as the system's next revision. Rolling back writes the revision before again,
+  or deletes a system the proposal made; the agents and graphs it made stay. A system proposal unsets nothing.
 
 - **plugin, plugin_install, plugin_listing.** Actions, not settings: approving one does it once, and it never rolls
   back; none unsets a field. `plugin` is a new plugin a member asked for: `name` its id (lower case letters, digits

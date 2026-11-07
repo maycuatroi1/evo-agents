@@ -192,7 +192,7 @@ def _problems(problems: list[system_spec.Problem]) -> list[ProblemOut]:
     return [ProblemOut(**p.as_dict()) for p in problems]
 
 
-def _checked(spec, refs: system_store.Refs, slug: str | None) -> tuple[dict, list[system_spec.Problem]]:
+def checked(spec, refs: system_store.Refs, slug: str | None) -> tuple[dict, list[system_spec.Problem]]:
     """``spec`` checked and pinned, and what is wrong in it against the project; ``slug`` the system it replaces."""
     found, problems = system_spec.check(spec)
     if system_spec.errors(problems):
@@ -223,7 +223,7 @@ def _out(access: ProjectAccess, held: system_store.System, spec: dict, revision:
     )
 
 
-async def _record(conn, user, access: ProjectAccess, action: str, slug: str, revision: int) -> None:
+async def record(conn, user, access: ProjectAccess, action: str, slug: str, revision: int) -> None:
     await audit.record(
         conn,
         actor_id=user.user_id,
@@ -232,6 +232,20 @@ async def _record(conn, user, access: ProjectAccess, action: str, slug: str, rev
         target=f"{access.name} system={slug} revision={revision}",
         project_id=access.project_id,
     )
+
+
+async def write_spec(
+    conn, user, access: ProjectAccess, slug: str, spec: dict, held: system_store.System | None, refs
+) -> int:
+    """Store ``spec``, checked and pinned (``checked``) with no error, as the next revision of system ``slug`` (the
+    first when ``held`` is None), with its entry agent and the audit row; the revision. The caller checked that
+    ``user`` may (the admin role on the project) and that ``held`` is what the system is at now."""
+    entry = system_spec.entry_agent(spec)
+    entry_id = refs.ids.get(entry) if entry else None
+    revision = await system_store.write(conn, access.project_id, slug, spec, entry_id, user.user_id, held)
+    action = audit.SYSTEM_CREATE if held is None else audit.SYSTEM_UPDATE
+    await record(conn, user, access, action, slug, revision)
+    return revision
 
 
 # Reading
@@ -274,7 +288,7 @@ async def validate_system(request: Request, project: ProjectName, body: SystemCh
         access = await project_access(conn, user, project)
         _reader(access)
         refs = await system_store.refs(conn, access.project_id)
-    spec, problems = _checked(body.spec, refs, body.slug)
+    spec, problems = checked(body.spec, refs, body.slug)
     return SystemChecked(valid=not system_spec.errors(problems), spec=spec, problems=_problems(problems))
 
 
@@ -359,7 +373,7 @@ async def put_system(request: Request, project: ProjectName, slug: Slug, body: S
                 if held is None:
                     raise HTTPException(404, f"project {access.name} has no agent system {slug} to replace")
                 raise _stale(access, held, body.if_revision, refs)
-            spec, problems = _checked(spec_in, refs, slug)
+            spec, problems = checked(spec_in, refs, slug)
             if errors := system_spec.errors(problems):
                 detail = [p.as_dict() for p in errors]
                 count = f"{len(errors)} error{'s' if len(errors) != 1 else ''}"
@@ -367,11 +381,7 @@ async def put_system(request: Request, project: ProjectName, slug: Slug, body: S
             if held is not None and held.spec == spec:
                 out = _out(access, held, held.spec, held.revision, refs)
                 return SystemWritten(**out.model_dump(), created=False, changed=False)
-            entry = system_spec.entry_agent(spec)
-            entry_id = refs.ids.get(entry) if entry else None
-            revision = await system_store.write(conn, access.project_id, slug, spec, entry_id, user.user_id, held)
-            action = audit.SYSTEM_CREATE if held is None else audit.SYSTEM_UPDATE
-            await _record(conn, user, access, action, slug, revision)
+            revision = await write_spec(conn, user, access, slug, spec, held, refs)
             written = await system_store.one(conn, access.project_id, slug)
             refs = await system_store.refs(conn, access.project_id)
             out = _out(access, written, written.spec, written.revision, refs)
@@ -395,5 +405,5 @@ async def delete_system(request: Request, project: ProjectName, slug: Slug, user
         if held is None:
             raise _not_found(access, slug)
         await system_store.remove(conn, held.id)
-        await _record(conn, user, access, audit.SYSTEM_DELETE, slug, held.revision)
+        await record(conn, user, access, audit.SYSTEM_DELETE, slug, held.revision)
     return SystemDeleted(project=project, deleted=slug)

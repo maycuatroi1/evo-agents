@@ -11,7 +11,7 @@ alone (``mentioned_by: admin``): a writer who mentions @builder gets the hub's r
 Three routes for a change:
 
 - A declarative one (the branding of the hub, a layer of features, a layer of a plugin's config in the project, an
-  agent profile, the autonomy policy, a problem or a goal of the project) is a proposal: the agent calls the tool
+  agent profile, the autonomy policy, a problem, a goal or an agent system of the project) is a proposal: the agent calls the tool
   ``builder__propose`` of the hub's /mcp, which checks the change, keeps it pending in builder_proposals, shows it in
   the thread and tells the members who may approve it (a writer of the project for a problem, an admin otherwise).
   They approve or reject it in the thread (``approve 12``, ``reject 12``), from the Inbox, or with the routes under
@@ -48,6 +48,7 @@ KINDS = (
     "plugin",
     "plugin_install",
     "plugin_listing",
+    "system",
 )  # tables_settings.PROPOSAL_KINDS
 # The vocabulary of a line of evidence, copies of evo_agents.hub.problems (this package is read for its manifest alone;
 # tests.hub.test_builder keeps them equal).
@@ -105,7 +106,11 @@ PROPOSE_SCHEMA = {
             "plugin_install: set repo (OWNER/REPO) and optional tag and signer; a hub admin approves, and the hub "
             "trusts the signer and installs the release. plugin_listing: set repo, tag, price, industries, and "
             "optional categories, seller and index (OWNER/REPO of the market); approving hands you the pull request "
-            "into the index (free) or the listing on the seller's hub (paid)",
+            "into the index (free) or the listing on the seller's hub (paid). system: an agent system of the project "
+            "(target.system, its slug, new or one that exists), which an admin approves: set spec (the whole spec "
+            "evo-agent-system/1 it would have), and agents (the profiles it names that the project lacks: handle, name, "
+            "description, instructions, runs_on) and graphs (the named graphs it names that the project lacks: name, "
+            "description, sources) when it needs them; approving makes them and writes the spec as the next revision",
         },
         "summary": {
             "type": "string",
@@ -138,6 +143,11 @@ PROPOSE_SCHEMA = {
                     "type": "string",
                     "pattern": "^O-[1-9][0-9]{0,8}$",
                     "description": "opportunity: the opportunity's code (O-<number>); left out for a new one",
+                },
+                "system": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                    "description": "system: the agent system's slug, a new one's or one that exists",
                 },
             },
         },
