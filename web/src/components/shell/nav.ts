@@ -37,6 +37,7 @@ import {
   Telescope,
   TrendingUp,
   UserRoundCog,
+  Workflow,
 } from "lucide-react";
 import type { Route } from "next";
 
@@ -81,6 +82,7 @@ export type NavLabel =
   | "releases"
   | "browser"
   | "agents"
+  | "systems"
   | "chats"
   | "org"
   | "memories"
@@ -171,6 +173,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "insights", icon: ChartColumn, segment: "insights", group: "improvement" },
   { label: "curator", icon: MoonStar, segment: "curator", feature: "curator", group: "improvement" },
   { label: "agents", icon: Bot, segment: "agents", group: "knowledge" },
+  { label: "systems", icon: Workflow, segment: "systems", group: "knowledge" },
   { label: "memories", icon: BookOpen, segment: "memories", group: "knowledge" },
   { label: "skills", icon: Sparkles, segment: "skills", group: "knowledge" },
   { label: "browser", icon: Globe, segment: "browser", group: "knowledge" },

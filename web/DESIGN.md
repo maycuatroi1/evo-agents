@@ -257,6 +257,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | A line of service credentials that opens into its variables; ssh and other accounts without a logo of their own | `ChevronRight`; `KeyRound` |
 | Knowledge graph | `Network` |
 | Agents, a project's agent profiles; New agent | `Bot`; `Plus` |
+| Systems, a project's agent systems; the designer's Test | `Workflow`; `FlaskConical` |
 | Chats, a group chat; New chat; Chat with an agent (its direct chat) | `MessagesSquare`; `Plus`; `MessagesSquare` |
 | A chat's thread, Reply in thread; Add a reaction; a chat's members | `MessageSquareReply`; `SmilePlus`; `Users` |
 | Reply in a direct chat, the composer's Replying to; what an answer answers (its quote) | `Reply`; `CornerDownRight` |
@@ -539,7 +540,7 @@ Shared pieces built on them:
   "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Today, Inbox, Monitor, Chats and the
   current project's Knowledge graph (a project area marked `top`, the core of a project one click from anywhere), the
   current project (Overview, Decisions, Plans, Runs, then the folds Delivery: Merge queue, Releases; Improvement: Goals,
-  Signals, Loop, Insights, Curator; Knowledge: Agents, Memories, Skills, Browser; Apps: the pages its
+  Signals, Loop, Insights, Curator; Knowledge: Agents, Systems, Memories, Skills, Browser; Apps: the pages its
   enabled plugins add and Plugins, section Plugins below), the hub (Workers, Org chart, My memories, Shared skills, then
   the fold Settings: Secrets, Accounts, Administration for a hub admin), and at the foot the fleet line and the account.
   A fold (`NAV_GROUPS`) keeps the areas opened less often under one row, so the sidebar fits a laptop screen: the
@@ -1006,6 +1007,24 @@ Shared pieces built on them:
   under the list. The form repeats the hub's checks and shows them once Save was tried; an edit sends
   only what changed with `if_version`, and Save stays off until something did. The project's default agent shows only
   its name, description, colour and avatar, with a note that it keeps every permission and no instructions.
+- `components/systems`, a project's agent systems (`/p/{project}/systems` and `/p/{project}/systems/{slug}`, after
+  Agents in the sidebar's Knowledge fold; docs/hub.md, Agent systems). The list is one `DataCard` table: the name with
+  its slug, the entry agent, the nodes and edges, the revision, when it last changed; an admin gets New system (a
+  name and the slug made of it). A system's page is its designer, drawn with `@xyflow/react` and loaded on demand
+  (`designer-lazy.tsx`): a toolbar (Add, the palette of entry, agent, knowledge graph, curator and orchestrator, one
+  each of those a system holds once; Undo, Redo, Auto layout with dagre; the save state; Test; Save), the canvas, and a
+  24 rem side panel from `lg` (under the canvas below it) for the node or edge selected. A node is a card with its
+  kind's icon, its name and its pin (`@handle vN`); a pin behind its profile shows Upgrade, a problem the hub finds
+  shows on the node or edge it names in `danger` or `attention`, and the system's own problems sit over the canvas.
+  Dragging from a handle marks the nodes an edge of some kind fits with that kind and draws only those; the panel's
+  Connect to does the same without a mouse. The panel edits a node's label, its graphs, its edges and, for an agent,
+  its config (name, description, instructions, runs on, model, skill, tool, starters), which saves a new version of
+  the profile and pins it; an edge's panel edits its description. The hub checks the draft a moment after each change
+  (POST validate); Save writes the next revision against the one the designer opened on, and a revision saved
+  meanwhile shows a banner with Load latest and Keep mine. Test opens the entry agent's chat in a sheet, the chat
+  home's frame with its interactive answers, and View trace shows the trace the message opened. Feature folders do not
+  import one another, so the route hands the designer the config form, New agent and the chat
+  (`app/(app)/p/[project]/systems/[slug]/designer-slots.tsx`).
 - `components/chats`, group chats (`/chats` and `/chats/{id}`, in the sidebar's first group after Monitor; docs/hub.md, Group
   chats): people and the agents of projects in one conversation. One frame for the list and a chat
   (`app/(app)/chats/layout.tsx`, `chats-shell.tsx`), so the list keeps its place from chat to chat: from 1024 px one
