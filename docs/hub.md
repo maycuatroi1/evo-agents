@@ -803,7 +803,9 @@ time, state, runtime, tokens and cost from the run when it is asked.
 How to read a trace: the first `invoke_agent` span comes from node `entry` (`from_node`) and has no parent. Each
 `execute_tool` span runs under the turn that called it and names the node it went to (`to_node`); the `invoke_agent`
 span of the run it handed runs under that turn too, with `from_node` the asking node. `status` is `running`, `ok`,
-`error` or `refused`; a refused span says why in `reason`.
+`error` or `refused`; a refused span says why in `reason`. `run_state` is the state of the span's run now (`running`,
+`waiting`, `parked`, `done`...), null for a tool span: the web's Observe mode tells a working node from a waiting one by
+it.
 
 `off_design` marks an edge the spec lacks: an ask or a mention from one node to another with no `interacts` edge
 between them, and every span of an agent the spec does not name, which shows as an external node `@handle`. An ask off

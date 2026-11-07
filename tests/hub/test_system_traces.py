@@ -139,6 +139,10 @@ def test_a_persons_message_to_the_entry_agent_opens_a_trace_its_runs_join_and_of
     shown = client.get(f"{traces_path()}/{trace_id}", headers=hub["owner"]).json()
     assert [s["name"] for s in shown["spans"]].count("invoke_agent") == 3
     assert {s["tool"] for s in shown["spans"] if s["name"] == "execute_tool"} == {"chat_mention"}
+    # the state of each span's run now, for Observe's working and waiting nodes; none for a tool span
+    states = {s["run_id"]: s["run_state"] for s in shown["spans"] if s["name"] == "invoke_agent"}
+    assert states == {parent: "done", child: "running", back["run_id"]: "queued"}
+    assert {s["run_state"] for s in shown["spans"] if s["name"] == "execute_tool"} == {None}
     edges = {(e["from_node"], e["to_node"]): e for e in shown["metrics"]["edges"]}
     assert edges[("in", "review")]["count"] == 1 and edges[("review", "fix")]["off_design"] == 0
     assert edges[("fix", "review")]["off_design"] == 1

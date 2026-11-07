@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { StatePanel } from "@/components/states/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { SystemOut } from "@/lib/systems";
 import { cn } from "@/lib/utils";
 
 import { DESIGNER_FRAME, type DesignerProps } from "./designer-frame";
@@ -34,5 +35,11 @@ function DesignerLoadError() {
  */
 export const SystemDesigner = dynamic<DesignerProps>(
   () => import("./designer").then((module) => module.default).catch(() => DesignerLoadError),
+  { ssr: false, loading: DesignerSkeleton },
+);
+
+/** Observe mode, loaded on demand like the designer: it draws the same canvas with React Flow. */
+export const SystemObserver = dynamic<{ project: string; system: SystemOut }>(
+  () => import("./observer").then((module) => module.default).catch(() => DesignerLoadError),
   { ssr: false, loading: DesignerSkeleton },
 );

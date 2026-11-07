@@ -1024,7 +1024,18 @@ Shared pieces built on them:
   meanwhile shows a banner with Load latest and Keep mine. Test opens the entry agent's chat in a sheet, the chat
   home's frame with its interactive answers, and View trace shows the trace the message opened. Feature folders do not
   import one another, so the route hands the designer the config form, New agent and the chat
-  (`app/(app)/p/[project]/systems/[slug]/designer-slots.tsx`).
+  (`app/(app)/p/[project]/systems/[slug]/designer-slots.tsx`). Tabs over the page switch between Design and Observe
+  (`?mode=observe`; the designer stays mounted once opened, so an unsaved draft survives). Observe draws the saved
+  revision read-only (`observer.tsx`, `observe-canvas.tsx`, the logic in `lib/systems-observe.ts`): each node shows
+  its state (idle, working, waiting, failed, from the runs of the five newest traces) and its numbers (runs, p50, cost
+  over the last 50 traces; queries for a graph, traces for the entry); an edge shows how often work crossed it and is
+  drawn in `running` with a moving dash while a crossing is recent; a crossing the design lacks is a dashed
+  `attention` edge, to a dashed node outside the design when it reached one. Selecting a node shows its numbers in
+  full above the recent traces in the side panel. The trace stream (`use-trace-stream.ts`) keeps both current while
+  the tab is in view and closes while it is hidden; nothing says it is live, only a line when it fails or ends. A
+  trace's page (`/p/{project}/systems/{slug}/traces/{id}`, `trace-page.tsx`) gives its totals, a table by agent (runs,
+  messages, tool calls, kg queries, cost) and the waterfall of its spans in the order of their tree, each with its
+  run's link or its message's in the chat; a refused or off-design span is marked in `danger` or `attention`.
 - `components/chats`, group chats (`/chats` and `/chats/{id}`, in the sidebar's first group after Monitor; docs/hub.md, Group
   chats): people and the agents of projects in one conversation. One frame for the list and a chat
   (`app/(app)/chats/layout.tsx`, `chats-shell.tsx`), so the list keeps its place from chat to chat: from 1024 px one

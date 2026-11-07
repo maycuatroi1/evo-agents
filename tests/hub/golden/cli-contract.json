@@ -167928,6 +167928,18 @@
               ],
               "title": "Model"
             },
+            "run_state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run State",
+              "description": "the state of its run now (running, waiting, parked, done, failed...); null for a tool span"
+            },
             "content_withheld": {
               "type": "boolean",
               "title": "Content Withheld",

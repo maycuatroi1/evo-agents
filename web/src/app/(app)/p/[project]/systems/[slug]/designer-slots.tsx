@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 
 import type { AgentPanelProps, DesignerSlots, NewAgentProps, TestChatProps } from "@/components/systems/slots";
-import { SystemPage } from "@/components/systems/system-page";
+import { type SystemMode, SystemPage } from "@/components/systems/system-page";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
@@ -46,6 +46,6 @@ const SLOTS: DesignerSlots = { AgentPanel, NewAgent, TestChat };
  * The page of one agent system with what its designer borrows from other areas: the Agents config form and New agent
  * dialog, and the chat with an agent. Feature folders do not import one another, so the route joins them here.
  */
-export function SystemRoute({ project, slug, initialError }: { project: string; slug: string; initialError: ApiErrorInfo | null }) {
-  return <SystemPage project={project} slug={slug} initialError={initialError} slots={SLOTS} />;
+export function SystemRoute({ project, slug, mode, initialError }: { project: string; slug: string; mode: SystemMode; initialError: ApiErrorInfo | null }) {
+  return <SystemPage project={project} slug={slug} mode={mode} initialError={initialError} slots={SLOTS} />;
 }

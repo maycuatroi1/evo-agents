@@ -2,7 +2,7 @@
 
 - GET /v1/projects/{p}/systems/{slug}/traces: its traces, the newest first, that the caller may read.
 - GET .../systems/{slug}/traces/{id}: one trace, its spans in the order written, each with the tokens, cost, state
-  and model of its run (run_spend), and the metrics of its nodes and edges.
+  model and state of its run (run_spend, runs), and the metrics of its nodes and edges.
 - GET .../systems/{slug}/metrics[?limit=N]: the metrics of each node and edge over its last N traces the caller may
   read.
 - GET .../systems/{slug}/traces/stream: server-sent ``trace`` events (a ``TraceSummary``) each time a trace of the
@@ -95,6 +95,9 @@ class SpanOut(BaseModel):
     output_tokens: int = 0
     usd: float = Field(0, description="what its run cost, reported else estimated; 0 for a tool span")
     model: str | None = None
+    run_state: str | None = Field(
+        None, description="the state of its run now (running, waiting, parked, done, failed...); null for a tool span"
+    )
     content_withheld: bool = Field(
         False,
         description="its run is of a project the reader holds no grant on: reason, message and evo.* are left out",
@@ -228,6 +231,7 @@ def _span_out(row, numbers: dict, own_project: int, granted: set[int]) -> SpanOu
         output_tokens=run.get("output_tokens", 0),
         usd=run.get("usd", 0.0),
         model=run.get("model"),
+        run_state=run.get("state"),
         content_withheld=withheld,
     )
 

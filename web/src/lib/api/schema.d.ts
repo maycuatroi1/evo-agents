@@ -41181,6 +41181,11 @@ export interface components {
             /** Model */
             model?: string | null;
             /**
+             * Run State
+             * @description the state of its run now (running, waiting, parked, done, failed...); null for a tool span
+             */
+            run_state?: string | null;
+            /**
              * Content Withheld
              * @description its run is of a project the reader holds no grant on: reason, message and evo.* are left out
              * @default false

@@ -4076,7 +4076,9 @@
       "closePanel": "Close panel",
       "loadFailed": "The designer did not load",
       "loadFailedHint": "A network error stopped it. Reload the page to try again.",
-      "reload": "Reload"
+      "reload": "Reload",
+      "notInDesign": "Not in the design",
+      "offDesignEdge": "Off design"
     },
     "add": {
       "existing": "Profile",
@@ -4143,6 +4145,90 @@
       "seconds": "{seconds} s",
       "offDesign": "off design",
       "run": "Run {id}"
+    },
+    "modes": {
+      "label": "Mode",
+      "design": "Design",
+      "observe": "Observe"
+    },
+    "observe": {
+      "states": {
+        "idle": "Idle",
+        "working": "Working",
+        "waiting": "Waiting",
+        "failed": "Failed"
+      },
+      "traces": "{count, plural, =0 {No traces yet} one {# trace} other {# traces}}",
+      "queries": "{count, plural, =0 {No queries yet} one {# query} other {# queries}}",
+      "noRuns": "No runs yet",
+      "numbers": "{runs, plural, one {# run} other {# runs}}, p50 {seconds} s, {usd}",
+      "nodeLabel": "{kind} {name}: {state}, {numbers}",
+      "ghostLabel": "Agent {name}, outside the design",
+      "edgeLabel": "{kind} from {from} to {to}: {count, plural, one {# crossing} other {# crossings}}",
+      "offDesignLabel": "Off design from {from} to {to}: {count, plural, one {# crossing} other {# crossings}}",
+      "a11yNode": "Select a box to see its numbers.",
+      "canvas": "What goes through the agent system",
+      "panel": "Numbers and traces",
+      "observing": "Revision {revision} as it runs: each box's state and numbers, and what crossed each edge.",
+      "streamFailing": "Live updates stopped; trying again.",
+      "streamEnded": "Live updates ended: you may no longer read this project.",
+      "recentTraces": "Recent traces",
+      "tracesFailed": "The traces did not load.",
+      "noTraces": "No traces yet. A message to the entry agent opens one.",
+      "traceTitle": "Trace {id}",
+      "traceRuns": "{runs, plural, one {# run} other {# runs}}",
+      "traceErrors": "{count, plural, one {# error} other {# errors}}",
+      "traceOff": "{count} off design",
+      "seconds": "{seconds} s",
+      "closeDetail": "Close the numbers",
+      "detail": {
+        "state": "State",
+        "runs": "Runs",
+        "errors": "Errors",
+        "offDesign": "Off design",
+        "p50": "Median time",
+        "tokens": "Tokens",
+        "usd": "Cost",
+        "scope": "Over the system's last 50 traces you may read."
+      }
+    },
+    "traceView": {
+      "metaTitle": "Trace {id} of {slug} in {project}",
+      "back": "Observe {slug}",
+      "title": "Trace {id}",
+      "revision": "Revision {revision}",
+      "opened": "Opened by @{who}, {when}",
+      "summary": "{runs, plural, one {# run} other {# runs}}, {errors, plural, one {# error} other {# errors}}, {off} off design, {tokens} tokens, {usd}",
+      "failedTitle": "Trace {id} did not load",
+      "failed": "Try again in a moment.",
+      "agents": "By agent",
+      "columns": {
+        "agent": "Agent",
+        "runs": "Runs",
+        "messages": "Messages",
+        "tools": "Tool calls",
+        "queries": "KG queries",
+        "cost": "Cost"
+      },
+      "errorCount": "{count, plural, one {# failed} other {# failed}}",
+      "waterfall": "Waterfall",
+      "empty": "No runs yet.",
+      "kgQuery": "{tool} on {graph}",
+      "toolTo": "{tool} to {to}",
+      "status": {
+        "running": "Running",
+        "ok": "Done",
+        "error": "Failed",
+        "refused": "Refused"
+      },
+      "seconds": "{seconds} s",
+      "tokens": "{input} in, {output} out",
+      "results": "{count, plural, =0 {no results} one {# result} other {# results}}",
+      "asNode": "as {node}",
+      "offDesign": "off design",
+      "withheld": "Its content stays in {project}.",
+      "run": "Run {id}",
+      "message": "Message"
     }
   },
   "chats": {

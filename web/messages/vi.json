@@ -4076,7 +4076,9 @@
       "closePanel": "Đóng bảng",
       "loadFailed": "Trình thiết kế chưa tải được",
       "loadFailedHint": "Lỗi mạng đã chặn nó. Tải lại trang để thử lại.",
-      "reload": "Tải lại"
+      "reload": "Tải lại",
+      "notInDesign": "Không có trong thiết kế",
+      "offDesignEdge": "Ngoài thiết kế"
     },
     "add": {
       "existing": "Hồ sơ",
@@ -4143,6 +4145,90 @@
       "seconds": "{seconds} giây",
       "offDesign": "ngoài thiết kế",
       "run": "Lượt chạy {id}"
+    },
+    "modes": {
+      "label": "Chế độ",
+      "design": "Thiết kế",
+      "observe": "Quan sát"
+    },
+    "observe": {
+      "states": {
+        "idle": "Rảnh",
+        "working": "Đang làm",
+        "waiting": "Đang chờ",
+        "failed": "Lỗi"
+      },
+      "traces": "{count, plural, =0 {Chưa có trace} other {# trace}}",
+      "queries": "{count, plural, =0 {Chưa có truy vấn} other {# truy vấn}}",
+      "noRuns": "Chưa có lượt chạy",
+      "numbers": "{runs} lượt chạy, p50 {seconds} s, {usd}",
+      "nodeLabel": "{kind} {name}: {state}, {numbers}",
+      "ghostLabel": "Agent {name}, ngoài thiết kế",
+      "edgeLabel": "{kind} từ {from} tới {to}: {count} lượt đi qua",
+      "offDesignLabel": "Ngoài thiết kế từ {from} tới {to}: {count} lượt đi qua",
+      "a11yNode": "Chọn một ô để xem số liệu của nó.",
+      "canvas": "Việc đi qua hệ thống agent",
+      "panel": "Số liệu và trace",
+      "observing": "Bản {revision} khi chạy: trạng thái và số liệu của từng ô, và việc đi qua từng cạnh.",
+      "streamFailing": "Cập nhật trực tiếp đã dừng; đang thử lại.",
+      "streamEnded": "Cập nhật trực tiếp đã kết thúc: bạn không còn quyền đọc dự án này.",
+      "recentTraces": "Trace gần đây",
+      "tracesFailed": "Không tải được trace.",
+      "noTraces": "Chưa có trace. Một tin nhắn tới agent đầu vào sẽ mở một trace.",
+      "traceTitle": "Trace {id}",
+      "traceRuns": "{runs} lượt chạy",
+      "traceErrors": "{count} lỗi",
+      "traceOff": "{count} ngoài thiết kế",
+      "seconds": "{seconds} s",
+      "closeDetail": "Đóng số liệu",
+      "detail": {
+        "state": "Trạng thái",
+        "runs": "Lượt chạy",
+        "errors": "Lỗi",
+        "offDesign": "Ngoài thiết kế",
+        "p50": "Thời gian trung vị",
+        "tokens": "Token",
+        "usd": "Chi phí",
+        "scope": "Tính trên 50 trace gần nhất của hệ thống mà bạn được đọc."
+      }
+    },
+    "traceView": {
+      "metaTitle": "Trace {id} của {slug} trong {project}",
+      "back": "Quan sát {slug}",
+      "title": "Trace {id}",
+      "revision": "Bản {revision}",
+      "opened": "Mở bởi @{who}, {when}",
+      "summary": "{runs} lượt chạy, {errors} lỗi, {off} ngoài thiết kế, {tokens} token, {usd}",
+      "failedTitle": "Không tải được trace {id}",
+      "failed": "Thử lại sau giây lát.",
+      "agents": "Theo agent",
+      "columns": {
+        "agent": "Agent",
+        "runs": "Lượt chạy",
+        "messages": "Tin nhắn",
+        "tools": "Gọi tool",
+        "queries": "Truy vấn KG",
+        "cost": "Chi phí"
+      },
+      "errorCount": "{count} lỗi",
+      "waterfall": "Waterfall",
+      "empty": "Chưa có lượt chạy.",
+      "kgQuery": "{tool} trên {graph}",
+      "toolTo": "{tool} tới {to}",
+      "status": {
+        "running": "Đang chạy",
+        "ok": "Xong",
+        "error": "Lỗi",
+        "refused": "Bị từ chối"
+      },
+      "seconds": "{seconds} s",
+      "tokens": "{input} vào, {output} ra",
+      "results": "{count, plural, =0 {không có kết quả} other {# kết quả}}",
+      "asNode": "là {node}",
+      "offDesign": "ngoài thiết kế",
+      "withheld": "Nội dung của nó ở lại trong {project}.",
+      "run": "Lượt chạy {id}",
+      "message": "Tin nhắn"
     }
   },
   "chats": {

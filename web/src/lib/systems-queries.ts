@@ -19,7 +19,11 @@ export const systemKeys = {
   one: (project: string, slug: string) => ["projects", project, "systems", "one", slug] as const,
   traces: (project: string, slug: string) => ["projects", project, "systems", "one", slug, "traces"] as const,
   trace: (project: string, slug: string, id: number) => ["projects", project, "systems", "one", slug, "traces", id] as const,
+  metrics: (project: string, slug: string) => ["projects", project, "systems", "one", slug, "metrics"] as const,
 };
+
+/** The recent traces a system's pages hold: the test sheet's and Observe's list. */
+export const TRACE_LIST_LIMIT = 20;
 
 export const REVISION_CONFLICT = "revision_conflict";
 
@@ -40,7 +44,7 @@ export const systemQuery = (api: ApiSource, project: string, slug: string) =>
   });
 
 /** The latest traces of a system, the newest first. */
-export const systemTracesQuery = (api: ApiSource, project: string, slug: string, limit = 20) =>
+export const systemTracesQuery = (api: ApiSource, project: string, slug: string, limit = TRACE_LIST_LIMIT) =>
   queryOptions({
     queryKey: systemKeys.traces(project, slug),
     queryFn: ({ signal }) =>
@@ -62,12 +66,36 @@ export const systemTraceQuery = (api: ApiSource, project: string, slug: string, 
       ),
   });
 
+/** The numbers of each node and edge of a system over its last traces. */
+export const systemMetricsQuery = (api: ApiSource, project: string, slug: string) =>
+  queryOptions({
+    queryKey: systemKeys.metrics(project, slug),
+    queryFn: ({ signal }) =>
+      call(api().GET("/v1/projects/{project}/systems/{slug}/metrics", { params: { path: { project, slug } }, signal })),
+  });
+
+/** The stream of a system's traces as they move, from `after` (an ISO time the hub wrote) or from now. */
+export function systemTraceStreamPath(project: string, slug: string, after: string | null): string {
+  const path = `/v1/projects/${encodeURIComponent(project)}/systems/${encodeURIComponent(slug)}/traces/stream`;
+  return after ? `${path}?after=${encodeURIComponent(after)}` : path;
+}
+
 export function systemsHref(project: string): Route {
   return `/p/${encodeURIComponent(project)}/systems` as Route;
 }
 
 export function systemHref(project: string, slug: string): Route {
   return `${systemsHref(project)}/${encodeURIComponent(slug)}` as Route;
+}
+
+/** The system's page in Observe mode. */
+export function systemObserveHref(project: string, slug: string): Route {
+  return `${systemHref(project, slug)}?mode=observe` as Route;
+}
+
+/** The page of one trace of a system, with its waterfall. */
+export function systemTraceHref(project: string, slug: string, id: number): Route {
+  return `${systemHref(project, slug)}/traces/${id}` as Route;
 }
 
 /** What the hub finds in a draft, without writing it: the problems as a save would meet them. */

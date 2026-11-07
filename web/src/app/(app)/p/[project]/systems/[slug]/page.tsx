@@ -13,7 +13,7 @@ import { systemQuery } from "@/lib/systems-queries";
 
 import { SystemRoute } from "./designer-slots";
 
-type Props = { params: Promise<{ project: string; slug: string }> };
+type Props = { params: Promise<{ project: string; slug: string }>; searchParams: Promise<{ mode?: string | string[] }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const t = await getTranslations("systems");
@@ -22,11 +22,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /**
- * One agent system of a project: its designer, read by every member and changed by its admins. The system and the
- * project's agents (for the pins a node could move to) load with the page.
+ * One agent system of a project: its designer, read by every member and changed by its admins, and its Observe mode
+ * (`?mode=observe`: the saved revision with the work going through it, and its recent traces). The system and the
+ * project's agents (for the pins a node could move to) load with the page; what Observe reads loads in the browser.
  */
-export default async function ProjectSystemPage({ params }: Props) {
+export default async function ProjectSystemPage({ params, searchParams }: Props) {
   const { project: rawProject, slug: rawSlug } = await params;
+  const mode = (await searchParams).mode === "observe" ? "observe" : "design";
   const project = decodeURIComponent(rawProject);
   const slug = decodeURIComponent(rawSlug);
   const t = await getTranslations("states");
@@ -42,7 +44,7 @@ export default async function ProjectSystemPage({ params }: Props) {
   const [error] = await Promise.all([prefetch(client, systemQuery(() => api, project, slug)), prefetch(client, agentsQuery(() => api, project))]);
   return (
     <HydrationBoundary state={dehydrate(client)}>
-      <SystemRoute project={project} slug={slug} initialError={error} />
+      <SystemRoute project={project} slug={slug} mode={mode} initialError={error} />
     </HydrationBoundary>
   );
 }

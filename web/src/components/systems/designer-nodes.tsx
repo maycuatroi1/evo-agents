@@ -15,6 +15,7 @@ import { ArrowUpCircle, Bot, Brain, CircleAlert, Database, LogIn, type LucideIco
 import { useTranslations } from "next-intl";
 
 import type { EdgeKind, NodeKind, SpecNode, SystemProblem } from "@/lib/systems";
+import type { NodeState } from "@/lib/systems-observe";
 import { NODE_HEIGHT, NODE_WIDTH } from "@/lib/systems-layout";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,10 @@ import { cn } from "@/lib/utils";
  * what it names (the profile and its pinned version, or the graph); its border turns red for an error and amber for a
  * warning the hub found, and a pin older than the profile's latest version offers Upgrade. While a line is dragged,
  * the boxes it may end at show the kind of edge it would make; the others fade.
+ *
+ * In Observe mode a box says its state (idle, working, waiting, failed) where the problems would be, and its numbers
+ * under its name; a line says how much work crossed it, lights while work goes through it, and one the design lacks
+ * is dashed in the warning colour.
  */
 
 export const KIND_ICONS: Record<NodeKind, LucideIcon> = { entry: LogIn, agent: Bot, kg: Database, curator: Brain, orchestrator: Network };
@@ -41,6 +46,8 @@ export type SystemNodeData = {
   drop: EdgeKind | "none" | null;
   canChange: boolean;
   onUpgrade: (id: string, version: number) => void;
+  /** Observe mode: the state of the node now, its numbers in words, and whether the design lacks it. */
+  observed?: { state: NodeState; numbers: string; ghost: boolean };
 };
 export type SystemFlowNode = Node<SystemNodeData, "system">;
 
@@ -52,6 +59,8 @@ export type SystemEdgeData = {
   /** The words of the edge for a screen reader: its kind, its ends and its problems. */
   label: string;
   onSelect: () => void;
+  /** Observe mode: how much work crossed it, whether work goes through it now, and whether the design lacks it. */
+  observed?: { count: number; lit: boolean; offDesign: boolean };
 };
 export type SystemFlowEdge = Edge<SystemEdgeData, "system">;
 
@@ -63,9 +72,27 @@ export const NODE_HANDLES = [
   { type: "source" as const, position: Position.Right, x: NODE_WIDTH, y: NODE_HEIGHT / 2, width: 1, height: 1 },
 ];
 
+const STATE_TONE: Record<NodeState, string> = {
+  idle: "bg-neutral-solid",
+  working: "bg-running motion-safe:animate-pulse",
+  waiting: "bg-attention",
+  failed: "bg-danger",
+};
+
+/** The state of a node in Observe mode: a dot in its tone and the word. */
+function NodeStateBadge({ state }: { state: NodeState }) {
+  const t = useTranslations("systems.observe");
+  return (
+    <span className={cn("ml-auto inline-flex shrink-0 items-center gap-1 text-[11px] font-medium", state === "failed" ? "text-danger" : state === "waiting" ? "text-attention" : state === "working" ? "text-running" : "text-muted-foreground")} data-testid="system-node-state" data-state={state}>
+      <span className={cn("size-2 rounded-full", STATE_TONE[state])} aria-hidden="true" />
+      {t(`states.${state}`)}
+    </span>
+  );
+}
+
 export function SystemNode({ data }: NodeProps<SystemFlowNode>) {
   const t = useTranslations("systems.designer");
-  const { node, title, level, newer, missing, selected, drop, canChange } = data;
+  const { node, title, level, newer, missing, selected, drop, canChange, observed } = data;
   const Icon = KIND_ICONS[node.kind];
   const detail =
     node.kind === "kg"
@@ -79,7 +106,19 @@ export function SystemNode({ data }: NodeProps<SystemFlowNode>) {
     <div
       className={cn(
         "relative flex h-full w-full flex-col justify-center gap-1 rounded-md border bg-card px-3 py-2 shadow-raised transition-[opacity,border-color,box-shadow] duration-fast ease-standard",
-        level === "error" ? "border-danger" : level === "warning" ? "border-attention" : "border-border-strong",
+        observed
+          ? observed.ghost
+            ? "border-dashed border-attention"
+            : observed.state === "failed"
+              ? "border-danger"
+              : observed.state === "working"
+                ? "border-running"
+                : "border-border-strong"
+          : level === "error"
+            ? "border-danger"
+            : level === "warning"
+              ? "border-attention"
+              : "border-border-strong",
         selected && "ring-2 ring-brand",
         drop === "none" && "opacity-40",
         drop !== null && drop !== "none" && "border-brand bg-brand-soft",
@@ -95,7 +134,9 @@ export function SystemNode({ data }: NodeProps<SystemFlowNode>) {
       <div className="flex min-w-0 items-center gap-2">
         <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="shrink-0 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{t(`kinds.${node.kind}`)}</span>
-        {level ? (
+        {observed ? (
+          <NodeStateBadge state={observed.state} />
+        ) : level ? (
           level === "error" ? (
             <CircleAlert className="ml-auto size-4 shrink-0 text-danger" aria-label={t("hasErrors")} />
           ) : (
@@ -106,7 +147,12 @@ export function SystemNode({ data }: NodeProps<SystemFlowNode>) {
       <span className="truncate text-sm font-medium text-foreground" title={title}>
         {title}
       </span>
-      <div className="flex min-w-0 items-center gap-2">
+      {observed ? (
+        <span className="truncate text-xs text-muted-foreground tabular-nums" data-testid="system-node-numbers">
+          {observed.ghost ? t("notInDesign") : observed.numbers}
+        </span>
+      ) : null}
+      <div className={cn("flex min-w-0 items-center gap-2", observed && "hidden")}>
         <span className={cn("truncate font-mono text-xs", missing ? "text-danger" : "text-muted-foreground")}>{missing ? t("missing") : detail}</span>
         {newer !== null && canChange ? (
           <button
@@ -142,10 +188,22 @@ export function SystemEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosit
   const t = useTranslations("systems.designer");
   const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   if (!data) return null;
-  const colour = data.level === "error" ? "var(--danger)" : data.level === "warning" ? "var(--attention)" : data.selected ? "var(--brand)" : "var(--neutral-solid)";
+  const seen = data.observed;
+  const colour = seen?.offDesign
+    ? "var(--attention)"
+    : seen?.lit
+      ? "var(--running)"
+      : data.level === "error"
+        ? "var(--danger)"
+        : data.level === "warning"
+          ? "var(--attention)"
+          : data.selected
+            ? "var(--brand)"
+            : "var(--neutral-solid)";
+  const width = seen?.lit ? 2.5 : data.selected ? 2 : 1.5;
   return (
     <>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} interactionWidth={16} style={{ stroke: colour, strokeWidth: data.selected ? 2 : 1.5, strokeDasharray: DASH[data.kind] }} />
+      <BaseEdge id={id} path={path} markerEnd={markerEnd} interactionWidth={16} className={cn(seen?.lit && "system-edge-lit")} style={{ stroke: colour, strokeWidth: width, strokeDasharray: seen?.offDesign ? "5 4" : seen?.lit ? "8 6" : DASH[data.kind] }} />
       <EdgeLabelRenderer>
         <button
           type="button"
@@ -156,6 +214,8 @@ export function SystemEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosit
             data.level === "error" && "border-danger text-danger",
             data.level === "warning" && "border-attention text-attention",
             data.selected && "border-brand text-foreground",
+            seen?.offDesign && "border-dashed border-attention text-attention",
+            seen?.lit && !seen.offDesign && "border-running text-running",
           )}
           style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           title={data.description || undefined}
@@ -163,9 +223,18 @@ export function SystemEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosit
           data-edge={id}
           data-kind={data.kind}
           data-level={data.level ?? ""}
+          data-count={seen ? seen.count : undefined}
+          data-lit={seen ? String(seen.lit) : undefined}
+          data-off-design={seen ? String(seen.offDesign) : undefined}
         >
-          {t(`edgeKinds.${data.kind}`)}
-          {data.description ? <span className="font-normal">: {data.description}</span> : null}
+          {seen?.offDesign ? t("offDesignEdge") : t(`edgeKinds.${data.kind}`)}
+          {seen ? (
+            <span className="ml-1 rounded-sm bg-muted px-1 font-semibold text-foreground tabular-nums" data-testid="system-edge-count">
+              {seen.count}
+            </span>
+          ) : data.description ? (
+            <span className="font-normal">: {data.description}</span>
+          ) : null}
         </button>
       </EdgeLabelRenderer>
     </>

@@ -421,6 +421,17 @@
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+/* Observe mode: an edge work goes through now flows toward its end. */
+@media (prefers-reduced-motion: no-preference) {
+  .system-graph .system-edge-lit {
+    animation: system-edge-flow 0.8s linear infinite;
+  }
+}
+@keyframes system-edge-flow {
+  to {
+    stroke-dashoffset: -14;
+  }
+}
 .plan-graph .react-flow__attribution,
 .system-graph .react-flow__attribution {
   background: color-mix(in oklab, var(--card) 80%, transparent);
