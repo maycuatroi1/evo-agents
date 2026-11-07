@@ -181,6 +181,25 @@ def test_hack_an_assertion_rewritten_on_the_same_subject_is_no_sign():
     assert kinds(signs_of(two_for_one)) == ["assert_removed", "assert_removed"]
 
 
+def test_hack_an_assertion_whose_message_alone_changed_is_no_sign():
+    # Release run #2451: a test's assertion kept its comparison and only reworded why it fails.
+    reworded = file_diff(
+        "tests/kg/test_entities_claude_code.py",
+        '-    assert asked == [], "a shell with the login, or no run, asks no socket"',
+        "+    assert asked == [], 'a shell with the login, no run, or no lookup asks no socket'",
+    )
+    assert signs_of(reworded) == []
+    dropped = file_diff("tests/test_queue.py", '-    assert out == 1, "why"', "+    assert out == 1")
+    assert signs_of(dropped) == []
+    for added in (
+        "+    assert out == 1, os._exit(0)",
+        '+    assert out == 1, f"{os._exit(0)}"',
+        "+    assert out, 'why'",
+    ):
+        found = signs_of(file_diff("tests/test_queue.py", '-    assert out == 1, "why"', added))
+        assert "assert_removed" in kinds(found), added  # a message that runs code, or another comparison
+
+
 @pytest.mark.parametrize(
     "added",
     [
