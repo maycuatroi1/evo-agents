@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { X } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -8,10 +9,14 @@ import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "r
 import { notify } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
 import type { Agent } from "@/lib/agents";
-import { freeId, type Join, type NodeKind, placeFor, placeProblems, type Spec, type SpecNode, withoutNode } from "@/lib/systems";
+import { browserApi } from "@/lib/api/browser";
+import { specDiff } from "@/lib/system-diff";
+import { proposalFor, systemProposalsQuery } from "@/lib/system-proposals";
+import { freeId, type Join, type NodeKind, placeFor, placeProblems, type Spec, type SpecNode, specOf, withoutNode } from "@/lib/systems";
 import { laidOut } from "@/lib/systems-layout";
 
 import { type Adding, AddNodeDialog } from "./add-node-dialog";
+import { BuilderPanel } from "./builder-panel";
 import { ConflictBanner } from "./conflict-banner";
 import { DesignerCanvas } from "./designer-canvas";
 import { DESIGNER_FRAME, type DesignerProps } from "./designer-frame";
@@ -43,6 +48,17 @@ function Designer({ project, system, slots }: DesignerProps) {
   const canChange = system.can_change;
   const [adding, setAdding] = useState<Adding>(null);
   const [testing, setTesting] = useState(false);
+  const [building, setBuilding] = useState(false);
+  const [showing, setShowing] = useState(true);
+  // While the Builder panel is open, the newest proposal of @builder for this system, drawn over the saved revision.
+  const proposals = useQuery({ ...systemProposalsQuery(browserApi, project), enabled: building, refetchInterval: building ? 3000 : false });
+  const proposal = useMemo(() => (building ? proposalFor(proposals.data, system.slug) : null), [building, proposals.data, system.slug]);
+  const diff = useMemo(() => (proposal ? specDiff(specOf(system.spec), proposal.spec) : null), [proposal, system.spec]);
+  const preview = showing ? diff : null;
+  const previewId = preview ? proposal?.id : undefined;
+  useEffect(() => {
+    if (previewId !== undefined) requestAnimationFrame(() => void flow.fitView({ padding: 0.2, maxZoom: 1, duration: 200 }));
+  }, [previewId, flow]);
   const placed = useMemo(() => placeProblems(designer.problems), [designer.problems]);
   const errors = designer.problems.filter((problem) => problem.level === "error").length;
 
@@ -127,18 +143,31 @@ function Designer({ project, system, slots }: DesignerProps) {
       <ConflictBanner designer={designer} />
       {/* The frame takes the keys of the designer: undo, redo, save and delete. */}
       <div className={DESIGNER_FRAME} onKeyDown={onKeyDown} data-testid="system-designer" data-revision={designer.revision}>
-        <DesignerToolbar designer={designer} canChange={canChange} errors={errors} onAdd={addKind} onLayout={layout} onTest={() => setTesting(true)} testBlocked={testBlocked} />
+        <DesignerToolbar designer={designer} canChange={canChange} errors={errors} onAdd={addKind} onLayout={layout} onTest={() => setTesting(true)} testBlocked={testBlocked} onBuilder={() => setBuilding(!building)} building={building} />
         {placed.system.length ? <ProblemList problems={placed.system} className="border-b px-3 py-2" /> : null}
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-          <div className="system-graph relative min-h-[320px] min-w-0 flex-1 bg-background" data-testid="system-canvas">
-            <DesignerCanvas designer={designer} placed={placed} canChange={canChange} onJoin={onJoin} onUpgrade={onUpgrade} />
-            {spec.nodes.length <= 1 && canChange ? (
+          <div className="system-graph relative min-h-[320px] min-w-0 flex-1 bg-background" data-testid="system-canvas" data-preview={preview ? "true" : "false"}>
+            <DesignerCanvas designer={designer} placed={placed} canChange={canChange} onJoin={onJoin} onUpgrade={onUpgrade} preview={preview} />
+            {spec.nodes.length <= 1 && canChange && !preview ? (
               <p className="pointer-events-none absolute inset-x-0 bottom-4 mx-auto w-fit max-w-[90%] rounded-md border bg-card px-3 py-2 text-center text-[13px] text-pretty text-muted-foreground shadow-raised">
                 {t("emptyHint")}
               </p>
             ) : null}
           </div>
-          {node || edge ? (
+          {building ? (
+            <BuilderPanel
+              project={project}
+              slug={system.slug}
+              revision={system.revision}
+              canChange={canChange}
+              proposal={proposal}
+              diff={diff}
+              showing={showing}
+              onShowingChange={setShowing}
+              onClose={() => setBuilding(false)}
+              slots={slots}
+            />
+          ) : node || edge ? (
             <aside className="relative flex min-h-0 flex-col overflow-y-auto border-t bg-card p-4 max-lg:max-h-[55%] lg:w-[24rem] lg:border-t-0 lg:border-l" aria-label={t("panel")} data-testid="system-panel">
               <Button type="button" variant="ghost" size="icon-sm" className="absolute top-3 right-3" aria-label={t("closePanel")} onClick={() => select(null)}>
                 <X aria-hidden="true" />

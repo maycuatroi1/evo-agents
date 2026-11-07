@@ -1,6 +1,6 @@
 "use client";
 
-import { FlaskConical, LayoutGrid, Plus, Redo2, Save, Undo2 } from "lucide-react";
+import { FlaskConical, LayoutGrid, Plus, Redo2, Save, Sparkles, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,9 @@ type Props = {
   onTest: () => void;
   /** Why Test cannot start, or null when it can. */
   testBlocked: string | null;
+  /** Opens or closes the Builder panel, the chat with @builder; no button without it. */
+  onBuilder?: () => void;
+  building?: boolean;
 };
 
 function IconButton({ label, onClick, disabled, testId, children }: { label: string; onClick: () => void; disabled: boolean; testId: string; children: React.ReactNode }) {
@@ -45,7 +48,7 @@ function IconButton({ label, onClick, disabled, testId, children }: { label: str
  * The bar above the canvas: Add (the palette of node kinds; one entry, curator and orchestrator a system), undo and
  * redo, auto layout, then what the draft is (saved at revision N, unsaved changes, the errors to fix), Test and Save.
  */
-export function DesignerToolbar({ designer, canChange, errors, onAdd, onLayout, onTest, testBlocked }: Props) {
+export function DesignerToolbar({ designer, canChange, errors, onAdd, onLayout, onTest, testBlocked, onBuilder, building = false }: Props) {
   const t = useTranslations("systems.designer");
   const { spec, dirty, save, revision, checking } = designer;
   const saving = save.status === "saving";
@@ -100,6 +103,12 @@ export function DesignerToolbar({ designer, canChange, errors, onAdd, onLayout, 
           <FlaskConical aria-hidden="true" />
           {t("test")}
         </Button>
+        {onBuilder ? (
+          <Button type="button" variant={building ? "secondary" : "outline"} size="sm" onClick={onBuilder} aria-pressed={building} data-testid="system-builder">
+            <Sparkles aria-hidden="true" />
+            {t("builder")}
+          </Button>
+        ) : null}
         {canChange ? (
           <Button type="button" size="sm" busy={saving} onClick={() => void designer.saveDraft()} disabled={!dirty || errors > 0 || designer.conflict !== null} data-testid="system-save">
             <Save aria-hidden="true" />

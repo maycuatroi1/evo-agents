@@ -16059,10 +16059,10 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "branding" | "features" | "plugin_config" | "agent" | "policy" | "problem" | "goal" | "opportunity" | "plugin" | "plugin_install" | "plugin_listing";
+            kind: "branding" | "features" | "plugin_config" | "agent" | "policy" | "problem" | "goal" | "opportunity" | "plugin" | "plugin_install" | "plugin_listing" | "system";
             /**
              * Target
-             * @description layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy and the actions plugin, plugin_install and plugin_listing, whose fields are in change.set
+             * @description layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one), system (system: its slug); nothing for policy and the actions plugin, plugin_install and plugin_listing, whose fields are in change.set
              */
             target: {
                 [key: string]: string;
@@ -68408,7 +68408,7 @@ export interface operations {
     waiting_proposals_v1_x_builder__project__proposals_waiting_get: {
         parameters: {
             query?: {
-                kind?: ("branding" | "features" | "plugin_config" | "agent" | "policy" | "problem" | "goal" | "opportunity" | "plugin" | "plugin_install" | "plugin_listing") | null;
+                kind?: ("branding" | "features" | "plugin_config" | "agent" | "policy" | "problem" | "goal" | "opportunity" | "plugin" | "plugin_install" | "plugin_listing" | "system") | null;
             };
             header?: never;
             path: {

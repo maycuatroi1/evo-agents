@@ -61170,7 +61170,8 @@
                       "opportunity",
                       "plugin",
                       "plugin_install",
-                      "plugin_listing"
+                      "plugin_listing",
+                      "system"
                     ],
                     "type": "string"
                   },
@@ -110535,7 +110536,8 @@
                 "opportunity",
                 "plugin",
                 "plugin_install",
-                "plugin_listing"
+                "plugin_listing",
+                "system"
               ],
               "title": "Kind"
             },
@@ -110545,7 +110547,7 @@
               },
               "type": "object",
               "title": "Target",
-              "description": "layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one); nothing for policy and the actions plugin, plugin_install and plugin_listing, whose fields are in change.set"
+              "description": "layer (features), plugin and agent (plugin_config), agent (agent), problem (problem: its code, which the hub picks for a new one), goal (goal: its code, which the hub picks for a new one), system (system: its slug); nothing for policy and the actions plugin, plugin_install and plugin_listing, whose fields are in change.set"
             },
             "change": {
               "additionalProperties": true,
