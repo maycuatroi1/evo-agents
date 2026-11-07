@@ -116,6 +116,47 @@ def _code(raw, where: str, rejected: list) -> list[dict]:
     return found[:MAX_CODE]
 
 
+def _entity(e, where: str, rejected: list) -> dict | None:
+    """The entity ``e`` cut to what the build reads; None, with the reason in ``rejected``, when it has no name."""
+    name = _text(e.get("name"), MAX_NAME) if isinstance(e, dict) else None
+    if name is None or not links.key(name):
+        rejected.append({"entry": where, "reason": "an entity needs a name"})
+        return None
+    kept = {"kind": _text(e.get("kind"), 80) or OTHER, "name": name, "conf": _unit(e.get("conf"), DEFAULT_CONF)}
+    for key, limit in (("type", 80), ("description", MAX_DESCRIPTION)):
+        if _text(e.get(key), limit):
+            kept[key] = _text(e.get(key), limit)
+    aliases = e.get("aliases") if isinstance(e.get("aliases"), list) else []
+    own = links.key(name)
+    kept["aliases"] = sorted(
+        {a.strip()[:MAX_NAME] for a in aliases if isinstance(a, str) and links.key(a) not in ("", own)}
+    )[:MAX_ALIASES]
+    kept["mentions"] = _mentions(e.get("mentions"), where, rejected)
+    kept["code"] = _code(e.get("code"), where, rejected)
+    return kept
+
+
+def _relation(r, where: str, rejected: list) -> dict | None:
+    """The relation ``r`` cut to what the build reads; None, with the reason in ``rejected``, without its two ends."""
+    src = _text(r.get("src"), MAX_NAME) if isinstance(r, dict) else None
+    dst = _text(r.get("dst"), MAX_NAME) if isinstance(r, dict) else None
+    if src is None or dst is None:
+        rejected.append({"entry": where, "reason": "a relation names its two entities, src and dst"})
+        return None
+    kept = {"src": src, "dst": dst}
+    for key, limit in (("keywords", 200), ("description", MAX_DESCRIPTION)):
+        words = r.get(key)
+        words = ", ".join(w for w in words if isinstance(w, str)) if isinstance(words, list) else words
+        if _text(words, limit):
+            kept[key] = _text(words, limit)
+    try:
+        kept["strength"] = min(max(float(r.get("strength")), 0.0), 10.0)
+    except (TypeError, ValueError):
+        kept["strength"] = 1.0
+    kept["mentions"] = _mentions(r.get("mentions"), where, rejected)
+    return kept
+
+
 def parse(data) -> tuple[dict, list[dict]]:
     """(the map ``data`` holds, its values cut to what the build reads; the entries rejected, each ``{"entry",
     "reason"}``). ``data`` is the object or its JSON bytes. EntityMapError when it is not a map of FORMAT."""
@@ -134,45 +175,9 @@ def parse(data) -> tuple[dict, list[dict]]:
     if len(raw_entities) > MAX_ENTITIES or len(raw_relations) > MAX_RELATIONS:
         raise EntityMapError(f"a map holds at most {MAX_ENTITIES} entities and {MAX_RELATIONS} relations: post parts")
     rejected: list[dict] = []
-    entities = []
-    for i, e in enumerate(raw_entities):
-        where = f"entities[{i}]"
-        name = _text(e.get("name"), MAX_NAME) if isinstance(e, dict) else None
-        if name is None or not links.key(name):
-            rejected.append({"entry": where, "reason": "an entity needs a name"})
-            continue
-        kept = {"kind": _text(e.get("kind"), 80) or OTHER, "name": name, "conf": _unit(e.get("conf"), DEFAULT_CONF)}
-        for key, limit in (("type", 80), ("description", MAX_DESCRIPTION)):
-            if _text(e.get(key), limit):
-                kept[key] = _text(e.get(key), limit)
-        aliases = e.get("aliases") if isinstance(e.get("aliases"), list) else []
-        own = links.key(name)
-        kept["aliases"] = sorted(
-            {a.strip()[:MAX_NAME] for a in aliases if isinstance(a, str) and links.key(a) not in ("", own)}
-        )[:MAX_ALIASES]
-        kept["mentions"] = _mentions(e.get("mentions"), where, rejected)
-        kept["code"] = _code(e.get("code"), where, rejected)
-        entities.append(kept)
-    relations = []
-    for i, r in enumerate(raw_relations):
-        where = f"relations[{i}]"
-        src = _text(r.get("src"), MAX_NAME) if isinstance(r, dict) else None
-        dst = _text(r.get("dst"), MAX_NAME) if isinstance(r, dict) else None
-        if src is None or dst is None:
-            rejected.append({"entry": where, "reason": "a relation names its two entities, src and dst"})
-            continue
-        kept = {"src": src, "dst": dst}
-        for key, limit in (("keywords", 200), ("description", MAX_DESCRIPTION)):
-            words = r.get(key)
-            words = ", ".join(w for w in words if isinstance(w, str)) if isinstance(words, list) else words
-            if _text(words, limit):
-                kept[key] = _text(words, limit)
-        try:
-            kept["strength"] = min(max(float(r.get("strength")), 0.0), 10.0)
-        except (TypeError, ValueError):
-            kept["strength"] = 1.0
-        kept["mentions"] = _mentions(r.get("mentions"), where, rejected)
-        relations.append(kept)
+    entities = [_entity(e, f"entities[{i}]", rejected) for i, e in enumerate(raw_entities)]
+    relations = [_relation(r, f"relations[{i}]", rejected) for i, r in enumerate(raw_relations)]
+    entities, relations = [e for e in entities if e is not None], [r for r in relations if r is not None]
     found = {"format": FORMAT, "model": _text(data.get("model"), 120), "entities": entities, "relations": relations}
     run = data.get("run")
     found["run"] = run if isinstance(run, int) and not isinstance(run, bool) else None
@@ -298,12 +303,38 @@ def run(maps: list[dict], records, unit_labels: dict, first: dict[str, list[dict
     """The facts of ``maps`` by item and the coverage of the step. ``records`` the corpus state, ``unit_labels`` the
     label of each unit, ``first`` the map stage's facts by item (the nodes a map may cite), ``node_kinds`` the kinds an
     entity may be (the strategy's that the ontology holds)."""
-    from evo_agents.kg import refs
-    from evo_agents.kg.pipeline.stages import edge, item_unit, node
-
     index = node_index(first)
     hashes = {rec.item_id: rec.record.get("hash") for rec in records}
     cov = _coverage(maps)
+    checked = _checked(maps, index, cov)
+    stated, said = _stated(checked, index, unit_labels, node_kinds)
+    groups = links.group(stated)
+    out: dict[str, list[dict]] = defaultdict(list)
+    cited: set[str] = set()
+    units_of, levels = _entity_facts(said, groups, index, hashes, cov, out, cited)
+    relations = _relation_facts(checked, groups, node_kinds, index, units_of, out, cited)
+    named, ambiguous = _name_links(groups, first, checked, units_of, out)
+    citable = sorted(item for nid, (kind, item) in index.items() if nid == item and kind in MENTION_KINDS)
+    uncited = [i for i in citable if i not in cited]
+    cov.update(
+        nodes=len(groups.name),
+        distinct=len(groups.name),
+        merged=groups.merged,
+        edges=len(relations),
+        relations=len(relations),
+        code_links={k: levels.get(k, 0) for k in CODE_KINDS},
+        name_links=named,
+        code_ambiguous=ambiguous,
+        cited_items=len([i for i in citable if i in cited]),
+        uncited_items=len(uncited),
+        uncited_samples=uncited[:SAMPLES],
+    )
+    return dict(out), cov
+
+
+def _checked(maps: list[dict], index: dict[str, tuple[str, str]], cov: dict) -> list[dict]:
+    """``maps`` with only what cites nodes of ``index`` (``check``), counting what was dropped in ``cov``."""
+    from evo_agents.kg import refs
 
     def lookup(ref: str):
         for candidate in refs.stored(ref):
@@ -317,6 +348,13 @@ def run(maps: list[dict], records, unit_labels: dict, first: dict[str, list[dict
         checked.append(kept)
         cov["rejected"] += len(rejected)
         cov["rejected_samples"].extend(rejected[: SAMPLES - len(cov["rejected_samples"])])
+    return checked
+
+
+def _stated(checked: list[dict], index, unit_labels: dict, node_kinds: list[str]) -> tuple[list, list]:
+    """(the entities of ``checked`` as ``links.Stated``; each with its map, kind, own type and items)."""
+    from evo_agents.kg.pipeline.stages import item_unit
+
     stated, said = [], []
     for m in checked:
         for e in m["entities"]:
@@ -327,12 +365,16 @@ def run(maps: list[dict], records, unit_labels: dict, first: dict[str, list[dict
             rank = min((_rank(unit_labels[item_unit(i)]) for i in items), default=())
             stated.append(links.Stated(kind, e["name"], tuple(e["aliases"]), e["conf"], items[0], rank))
             said.append((m, e, kind, own_type, items))
-    groups = links.group(stated)
-    code_index, code_names = links.code_index(first)
-    out: dict[str, list[dict]] = defaultdict(list)
+    return stated, said
+
+
+def _entity_facts(said: list, groups, index, hashes: dict, cov: dict, out: dict, cited: set) -> tuple[dict, dict]:
+    """The node of each entity, its mentions and its code links into ``out``; (the units of each (map, entity id),
+    the code links by level)."""
+    from evo_agents.kg.pipeline.stages import edge, item_unit, node
+
     units_of: dict[tuple[int, str], list[str]] = {}  # (map, entity id) -> the units of its node
     levels: dict[str, int] = defaultdict(int)
-    cited: set[str] = set()
     for m, e, kind, own_type, items in said:
         nid = groups.id_of(kind, e["name"])
         units = [item_unit(i) for i in items]
@@ -350,15 +392,7 @@ def run(maps: list[dict], records, unit_labels: dict, first: dict[str, list[dict
         for x in e["mentions"]:
             item = index[x["node"]][1]
             cited.add(item)
-            p = {**evidence, **({"evidence": x["quote"]} if x.get("quote") else {})}
-            if x.get("line"):
-                p["line"] = x["line"]
-            if x.get("hash") and hashes.get(item) and x["hash"] != hashes[item]:
-                p["stale"] = True
-                cov["stale"] += 1
-                if item not in cov["stale_items"] and len(cov["stale_items"]) < SAMPLES:
-                    cov["stale_items"].append(item)
-            cov["mentions"] += 1
+            p = _mention_props(x, item, evidence, hashes, cov)
             out[item].append(
                 edge(x["node"], "mentions", nid, [item_unit(item)], props=p, status=STATUS, conf=e["conf"])
             )
@@ -366,6 +400,27 @@ def run(maps: list[dict], records, unit_labels: dict, first: dict[str, list[dict
             levels[c["level"]] += 1
             p = {**evidence, "reason": c["reason"], "conf": c["conf"], "level": c["level"]}
             out[anchor].append(edge(nid, IMPLEMENTED_BY, c["node"], units, props=p, status=STATUS, conf=c["conf"]))
+    return units_of, levels
+
+
+def _mention_props(x: dict, item: str, evidence: dict, hashes: dict, cov: dict) -> dict:
+    """The props of a mention edge; one cut from an older text of ``item`` is stale, and counted in ``cov``."""
+    p = {**evidence, **({"evidence": x["quote"]} if x.get("quote") else {})}
+    if x.get("line"):
+        p["line"] = x["line"]
+    if x.get("hash") and hashes.get(item) and x["hash"] != hashes[item]:
+        p["stale"] = True
+        cov["stale"] += 1
+        if item not in cov["stale_items"] and len(cov["stale_items"]) < SAMPLES:
+            cov["stale_items"].append(item)
+    cov["mentions"] += 1
+    return p
+
+
+def _relation_facts(checked: list[dict], groups, node_kinds, index, units_of: dict, out: dict, cited: set) -> set:
+    """The relations of ``checked`` between two distinct entities into ``out``; the (src, dst) pairs."""
+    from evo_agents.kg.pipeline.stages import edge, item_unit
+
     relations = set()
     for m in checked:
         for r in m["relations"]:
@@ -389,6 +444,15 @@ def run(maps: list[dict], records, unit_labels: dict, first: dict[str, list[dict
             relations.add((src, dst))
             anchor = units[0].removesuffix("#")
             out[anchor].append(edge(src, RELATES_TO, dst, units, props=p, status=STATUS, conf=DEFAULT_CONF))
+    return relations
+
+
+def _name_links(groups, first: dict, checked: list[dict], units_of: dict, out: dict) -> tuple[int, int]:
+    """The code link of each entity whose name is a symbol's into ``out``; (the links made, the names that matched
+    several symbols)."""
+    from evo_agents.kg.pipeline.stages import edge
+
+    code_index, code_names = links.code_index(first)
     named, ambiguous = 0, 0
     for nid in sorted(groups.name):
         target, name, unclear = links.code_link(groups.names[nid], code_index)
@@ -403,22 +467,7 @@ def run(maps: list[dict], records, unit_labels: dict, first: dict[str, list[dict
         out[units[0].removesuffix("#")].append(
             edge(nid, links.CODE_REL, target, units, props=p, status=STATUS, conf=conf)
         )
-    citable = sorted(item for nid, (kind, item) in index.items() if nid == item and kind in MENTION_KINDS)
-    uncited = [i for i in citable if i not in cited]
-    cov.update(
-        nodes=len(groups.name),
-        distinct=len(groups.name),
-        merged=groups.merged,
-        edges=len(relations),
-        relations=len(relations),
-        code_links={k: levels.get(k, 0) for k in CODE_KINDS},
-        name_links=named,
-        code_ambiguous=ambiguous,
-        cited_items=len([i for i in citable if i in cited]),
-        uncited_items=len(uncited),
-        uncited_samples=uncited[:SAMPLES],
-    )
-    return dict(out), cov
+    return named, ambiguous
 
 
 def _rank(label) -> tuple:
