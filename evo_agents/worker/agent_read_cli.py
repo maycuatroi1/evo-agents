@@ -32,6 +32,10 @@ def _body(args) -> dict:
 
     tool = args.tool.replace("-", "_")
     body: dict = {"project": args.project, "tool": tool, "limit": args.limit}
+    if getattr(args, "graph", None):
+        if not tool.startswith("kg_"):
+            raise chat_cli.WorkerStateError("--graph names a knowledge graph: kg-search and kg-context take it")
+        body["graph"] = args.graph
     if tool == "memory_get":
         if not args.text or not args.text.isdigit():
             raise chat_cli.WorkerStateError("memory-get takes the memory's id as TEXT")
@@ -84,5 +88,10 @@ def register_read(asub) -> None:
     read.add_argument("text", metavar="TEXT", nargs="?", help="what to look for; for memory-get, the memory's id")
     read.add_argument("--id", dest="ids", action="append", help="kg-context: a node id, in place of TEXT (repeatable)")
     read.add_argument("--limit", type=int, default=10, help="kg-search, memory-search: at most this many (1 to 20)")
+    read.add_argument(
+        "--graph",
+        metavar="NAME",
+        help="kg-search, kg-context: only the sources of this named graph of PROJECT (`hub kg graph list`)",
+    )
     json_option(read, returns_object(*READ_KEYS), help="the hub's answer as JSON")
     read.set_defaults(func=cmd_agent_read)

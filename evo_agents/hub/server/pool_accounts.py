@@ -24,6 +24,14 @@ def needs_pool(profile, project: str) -> str | None:
     return NEEDS_POOL.format(handle=profile.handle, project=project)
 
 
+def chat_needs_pool(profile, project: str) -> str | None:
+    """``needs_pool`` for a chat turn: an agent that runs on the hub takes its model through the hub's gateway with the
+    project's provider account, not an account pool (``hub_runtime``), so it needs none."""
+    if profile.runs_on == "hub":
+        return None
+    return needs_pool(profile, project)
+
+
 def pool_env_accounts(pool_id: int, *, lock: bool):
     """The live env accounts of account pool ``pool_id``, past their end or not, by name. With ``lock`` their rows are
     shared-locked. Each row carries its owner (a member) or its profile (an agent's account), which its sealing names."""

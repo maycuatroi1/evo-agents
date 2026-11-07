@@ -123,6 +123,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   today: { icon: CalendarDays },
   kg_optimize: { icon: Gauge },
   kg_pipeline: { icon: DatabaseZap },
+  system_daily_cap: { icon: Wallet },
 };
 
 /** Whether the web has a name and an icon for a kind of notice; a core plugin's own kind may have none. */

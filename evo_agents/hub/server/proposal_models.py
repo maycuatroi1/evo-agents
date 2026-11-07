@@ -11,7 +11,7 @@ from fastapi import Path
 from pydantic import BaseModel, Field, model_validator
 
 from evo_agents.hub import review, tiers
-from evo_agents.hub.server import memory_promotion
+from evo_agents.hub.server import memory_promotion, system_curation
 from evo_agents.hub.server import probes as stored_probes
 from evo_agents.hub.server.change_views import Change
 from evo_agents.hub.server.runs.models import LINE, MAX_ID, OBJECT_NAME
@@ -37,11 +37,13 @@ class EvidenceIn(BaseModel):
     commit: str | None = Field(None, pattern=OBJECT_NAME, description="code: the commit the worktree was at")
     memory_id: int | None = Field(None, ge=1, le=MAX_ID, description="memory: a memory of the project")
     revision: int | None = Field(None, ge=1, le=review.MAX_REVISION, description="memory: one of its revisions")
+    span_id: int | None = Field(None, ge=1, le=MAX_ID, description="span: a span of an agent system's trace")
 
     @model_validator(mode="after")
     def _complete(self):
         needed = {"session": ("session_id",), "transcript": ("session_id", "line"), "run": ("run_id", "seq")}
-        needed = {**needed, "code": ("repo", "path"), "memory": ("memory_id", "revision")}[self.kind]
+        needed = {**needed, "code": ("repo", "path"), "memory": ("memory_id", "revision"), "span": ("span_id",)}
+        needed = needed[self.kind]
         if self.kind == "transcript":
             self.file = self.file or review.MAIN_FILE
         missing = [name for name in needed if getattr(self, name) is None]
@@ -126,6 +128,9 @@ class ProposalIn(BaseModel):
     evidence: list[EvidenceIn] = Field(default_factory=list, max_length=review.MAX_EVIDENCE)
     plan: dict | None = Field(None, description="the draft plan: plan.schema.json, in outcome steps; none to promote")
     promotion: memory_promotion.PromotionIn | None = Field(None, description="kind memory: in place of a plan")
+    system_change: system_curation.SystemChangeIn | None = Field(
+        None, description="kind agent_config, lens agent_system: in place of a plan"
+    )
     probe: stored_probes.ProbeIn | None = Field(
         None,
         description="a task and a verify that say whether an agent repeats the mistake; required when the evidence "
@@ -146,8 +151,16 @@ class ProposalIn(BaseModel):
                 "a proposal rests on findings, evidence of its own, or both: give at least one (a fix proposal, "
                 "fix_of, rests on the probe results the hub adds)"
             )
-        if (self.plan is None) == (self.promotion is None) or (self.promotion and self.kind != "memory"):
-            raise ValueError("a proposal carries a draft plan, or in its place a promotion when its kind is memory")
+        carried = [self.plan, self.promotion, self.system_change]
+        if sum(item is not None for item in carried) != 1 or (self.promotion and self.kind != "memory"):
+            raise ValueError(
+                "a proposal carries a draft plan, or in its place a promotion when its kind is memory, or a system "
+                "change when its kind is agent_config"
+            )
+        if (self.system_change is not None) != (self.kind == system_curation.KIND) or (
+            self.system_change is not None and self.lens != system_curation.LENS
+        ):
+            raise ValueError("a system change rides on a proposal of the lens agent_system and the kind agent_config")
         if self.summary is not None and len(self.summary.encode()) > review.MAX_BODY_BYTES:
             raise ValueError(f"a proposal's summary is at most {review.MAX_BODY_BYTES} bytes of UTF-8")
         self.finding_ids = list(dict.fromkeys(self.finding_ids))
@@ -194,6 +207,9 @@ class Proposal(ProposalSummary):
     evidence: list[dict] = Field(description="its own evidence, as the hub resolved it")
     plan: dict = Field(description="the draft plan; empty for a promotion")
     promotion: dict | None = Field(None, description="kind memory: what it promotes, and the shared memory it wrote")
+    system_change: dict | None = Field(
+        None, description="kind agent_config: what it changes, and what accepting it made (applied)"
+    )
     note: str | None = Field(description="the owner's note with the answer")
     change: Change | None = Field(
         None,

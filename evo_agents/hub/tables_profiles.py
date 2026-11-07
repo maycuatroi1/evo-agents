@@ -5,7 +5,8 @@ agent_profiles holds each profile as it is now (``evo_agents.hub.profiles``): it
 hub, soft-deleted profiles included, so an old message keeps its author), name, description, instructions, colour,
 avatar (a blob of kind agent-avatar the project holds), whether it is its project's default (one per project), its
 permissions on the axes of ``evo_agents.hub.profiles.AXES`` (seven in 0030, eight since 0040), the agent packs of
-plugins it attaches, each pinned at a version of its plugin (since 0041), its version, who created it and when, and
+plugins it attaches, each pinned at a version of its plugin (since 0041), where it runs (``runs_on``, worker or hub,
+since 0217), its version, who created it and when, and
 when it was soft-deleted. Every agent runs on the nodes of its own pool (``worker_pools.agent_id``, 0189); the
 placement column that bridged the move was dropped in 0194.
 agent_profile_versions holds the profile as each version had it, written in the transaction that made the version.
@@ -21,6 +22,7 @@ from __future__ import annotations
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKeyConstraint,
@@ -75,6 +77,7 @@ def profile_tables(metadata: MetaData, runs: Table, credential_leases: Table) ->
         Column("permissions", JSONB, nullable=False),
         Column("packs", JSONB, nullable=False, server_default="[]"),  # since 0041
         Column("starters", JSONB, nullable=False, server_default="[]"),  # since 0215: questions the chat home offers
+        Column("runs_on", Text, nullable=False, server_default="worker"),  # since 0217: worker or hub
         Column("account_pool_id", BigInteger),  # since 0191: its account pool (account_pools), NULL for none
         Column("version", Integer, nullable=False, server_default="1"),
         Column("created_by", BigInteger, nullable=False),
@@ -91,6 +94,7 @@ def profile_tables(metadata: MetaData, runs: Table, credential_leases: Table) ->
         PrimaryKeyConstraint("id", name="agent_profiles_pkey"),
         UniqueConstraint("handle", name="agent_profiles_handle_key"),
         Index("agent_profiles_project_idx", "project_id", "handle"),
+        CheckConstraint("runs_on in ('worker', 'hub')", name="agent_profiles_runs_on_check"),
     )
     Index(  # a project has one default profile
         "agent_profiles_default_key",

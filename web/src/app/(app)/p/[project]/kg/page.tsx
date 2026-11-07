@@ -9,6 +9,7 @@ import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
 import { parseLimit } from "@/lib/kg/entity-params";
 import { entityGraphQuery } from "@/lib/kg/entity-queries";
+import { parseGraph } from "@/lib/kg/graphs";
 import { cleanQuery, kgBuildsQuery, kgGraphQuery, kgSearchQuery, parseBuildFilter } from "@/lib/kg/queries";
 import { buildsHref } from "@/lib/kg/routes";
 import { PROJECT_NAME } from "@/lib/queries";
@@ -24,7 +25,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /**
- * /p/{project}/kg?cluster=&node=&q=&kind=&view=: the explorer, with the builds, the graph's summary and the search the
+ * /p/{project}/kg?cluster=&node=&q=&kind=&view=&graph=: the explorer, with the builds, the graph's summary and the search the
  * URL names prefetched with the visitor's cookie; the clusters, a cluster and a neighbourhood are read in the browser,
  * so the page shows before the graph is drawn. A URL that names no view, scope or search also prefetches the entity
  * graph, which picks the view it opens on (./kg-explorer.tsx). The builds' filter lived here before the builds had a
@@ -37,6 +38,7 @@ export default async function KgPage({ params, searchParams }: Props) {
   if (search.builds !== undefined) redirect(buildsHref(project, parseBuildFilter(search.builds) === "failed"));
   const query = cleanQuery(search.q);
   const kind = cleanQuery(search.kind);
+  const named = parseGraph(search.graph);
   const undecided =
     !["entities", "clusters"].includes(cleanQuery(search.view)) &&
     !query &&
@@ -46,7 +48,7 @@ export default async function KgPage({ params, searchParams }: Props) {
   const [builds, graph, found] = await Promise.all([
     prefetch(client, kgBuildsQuery(() => api, project)),
     prefetch(client, kgGraphQuery(() => api, project)),
-    query ? prefetch(client, kgSearchQuery(() => api, project, query, kind)) : Promise.resolve(null),
+    query ? prefetch(client, kgSearchQuery(() => api, project, query, kind, named)) : Promise.resolve(null),
     undecided ? prefetch(client, entityGraphQuery(() => api, project, parseLimit(cleanQuery(search.limit)))) : null,
   ]);
   return (

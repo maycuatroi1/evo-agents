@@ -39,13 +39,13 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
-from evo_agents.hub import chats, kg_labels, runs, tables
-from evo_agents.hub.server import agent_tasking, audit, cross_labels, run_waits
+from evo_agents.hub import chats, kg_labels, runs, system_context, tables
+from evo_agents.hub.server import agent_tasking, audit, cross_labels, output_store, run_waits, system_traces
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_agents import REFUSALS, AgentRun, Handle, agent_run
 from evo_agents.hub.server.chat_direct import direct_chat
-from evo_agents.hub.server.chat_runs import Hand, chat_run, hand_work, hub_reply
+from evo_agents.hub.server.chat_runs import Hand, agent_access, chat_run, hand_work, hub_reply
 from evo_agents.hub.server.chat_store import insert_message
 from evo_agents.hub.server.decisions import OptionIn, store_decision
 from evo_agents.hub.server.errors import ErrorBody
@@ -65,6 +65,31 @@ worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], respons
 class AgentAskIn(BaseModel):
     handle: Handle = Field(description="the agent asked, of another project, @ left out")
     body: str = Field(min_length=1, description=f"what it is asked, at most {chats.MAX_MESSAGE_BYTES} bytes of UTF-8")
+    goal: str | None = Field(
+        None, max_length=system_context.BRIEF_FIELD_CHARS, description="the brief: what the agent asked should reach"
+    )
+    output: str | None = Field(
+        None, max_length=system_context.BRIEF_FIELD_CHARS, description="the brief: what its answer should hold"
+    )
+    bounds: str | None = Field(
+        None, max_length=system_context.BRIEF_FIELD_CHARS, description="the brief: what it should not do or touch"
+    )
+    done_when: str | None = Field(
+        None, max_length=system_context.BRIEF_FIELD_CHARS, description="the brief: when its work is finished"
+    )
+    refs: list[str] = Field(
+        default_factory=list,
+        max_length=system_context.MAX_REFS,
+        description="the brief: refs it starts from (repo:path, a run, an output, a URL)",
+    )
+    reason: str | None = Field(
+        None,
+        max_length=system_context.REASON_CHARS,
+        description="why an agent of a system asks an agent off its interacts edges; without it such an ask is refused",
+    )
+
+    def brief(self) -> dict:
+        return system_context.clean_brief(self.model_dump(include={*system_context.BRIEF_FIELDS, "refs"}))
 
     @field_validator("body")
     @classmethod
@@ -101,16 +126,37 @@ async def _refusal(conn: AsyncConnection, run: AgentRun, target: Profile | None,
     return why
 
 
-def question_text(run: AgentRun, project: str, target: Profile, text: str) -> str:
-    """The message that asks agent ``target`` in the origin's direct chat with it: what the asking agent wrote, and
-    what its answer should hold."""
+def question_text(run: AgentRun, project: str, target: Profile, text: str, brief: dict | None = None) -> str:
+    """The message that asks agent ``target`` in the origin's direct chat with it: what the asking agent wrote, its
+    brief when it gave one (``system_context.brief_text``), and what its answer should hold."""
+    shown = system_context.brief_text(brief)
     asked = (
         f"@{target.handle}, @{run.profile.handle} of project {project} asks this for {run.principal.login} (run "
         f"#{run.run_id}):\n\n{text.strip()}\n\n"
-        "Your last message of this turn is the answer it gets: what you found or did, the files, outputs and branch "
+        + (f"{shown}\n\n" if shown else "")
+        + "Your last message of this turn is the answer it gets: what you found or did, the files, outputs and branch "
         "of your work, and the knowledge graph nodes it rests on (repo:path or repo:path::Symbol)."
     )
     return runs.clip(asked, chats.MAX_MESSAGE_BYTES)
+
+
+async def _system_refusal(
+    conn: AsyncConnection, found: system_traces.Membership | None, target: Profile, reason: str | None
+) -> tuple[str | None, bool]:
+    """(why the ask of ``target`` by a run of an agent system is refused, or None; whether it is off design): past the
+    budget of its trace, or off its agent's interacts edges with no ``reason`` (``system_context.off_edge_refusal``).
+    An agent of no system asks as before."""
+    if found is None or found.node is None:
+        return None, False
+    over = await system_traces.budget_problem(conn, found)
+    if over is not None:
+        return over, False
+    targets = system_context.edge_targets(found.spec, found.handle)
+    if target.handle in targets:
+        return None, False
+    if not (reason or "").strip():
+        return system_context.off_edge_refusal(found.handle, target.handle, targets), True
+    return None, True
 
 
 async def _hand(
@@ -139,9 +185,9 @@ async def _hand(
     return child, message_id, None
 
 
-async def _open_wait(conn: AsyncConnection, user, run: AgentRun, target: Profile, child: int) -> int:
-    """The wait of the asking run that the end of run ``child`` answers; its id."""
-    _, row = await held_plan_run(conn, user, run.run_id, lock=True, kinds=("chat",))
+async def open_wait(conn: AsyncConnection, row, run: AgentRun, target: Profile, child: int) -> int:
+    """The wait of the asking run (``row``, as ``held_plan_run`` reads it) that the end of run ``child`` answers; its
+    id."""
     wake_at = datetime.now(UTC) + run_waits.MAX_WAIT
     what = f"@{target.handle} of project {target.project} (run #{child})"
     ask = run_waits.WaitAsk(
@@ -178,40 +224,69 @@ async def ask(request: Request, run_id: RunId, body: AgentAskIn, user: CurrentUs
         run = await agent_run(conn, user, run_id)
         if run.kind != "chat":
             raise HTTPException(422, f"run {run_id} is a {run.kind} run: only a chat run's agent asks another agent")
-        found = await chat_run(conn, run_id)
-        assert found is not None  # every chat run starts from a chat message (hand_work)
-        said = await mask_values(conn, request.app.state.sealer, run.profile.id, body.body)
-        said = await mask_run(conn, request.app.state.sealer, run_id, said)
-        target = await by_handle(conn, body.handle)
-        refusal = await _refusal(conn, run, target, body.handle)
-        asked, shown = AgentAsked(run_id=None, decision_id=None, refusal=refusal), f"@{body.handle}: {refusal}"
-        if refusal is None:
-            assert target is not None  # _refusal refuses a handle no agent has
-            asked, shown = await _put(conn, user, run, target, said, body.handle)
-        await hub_reply(conn, found.chat_id, found.root_id, shown)
-    made, refused = asked.run_id, bool(asked.refusal)
-    log.info("agent asked", extra={"run_id": run_id, "handle": body.handle, "made": made, "refused": refused})
+        _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=("chat",))
+        asked = await ask_agent(conn, request.app.state.sealer, run, body, row)
     return asked
 
 
-async def _put(
-    conn: AsyncConnection, user, run: AgentRun, target: Profile, said: str, handle: str
-) -> tuple[AgentAsked, str]:
-    """Hand the question ``said`` to agent ``target`` (named ``handle``) and open the asking run's wait for its
-    answer: what the route answers, and what the asking run's thread shows."""
-    child, message_id, refusal = await _hand(conn, run, target, question_text(run, run.profile.project, target, said))
-    if child is None or message_id is None:
-        return AgentAsked(run_id=None, decision_id=None, refusal=refusal), f"@{handle}: {refusal}"
-    decision_id = await _open_wait(conn, user, run, target, child)
-    await audit.record(
-        conn,
-        actor_id=run.principal.user_id,
-        token_id=run.principal.token_id,
-        action=audit.CHAT_MESSAGE,
-        target=f"message:{message_id} run:{run.run_id} asked:{child}",
-    )
-    shown = f"@{run.profile.handle} asked @{target.handle} of project {target.project} (run #{child}): {said}"
-    return AgentAsked(run_id=child, decision_id=decision_id, refusal=None), shown
+async def ask_agent(
+    conn: AsyncConnection, sealer, run: AgentRun, body: AgentAskIn, row, *, tool: str = system_context.TOOL_ASK
+) -> AgentAsked:
+    """Ask agent ``body.handle`` as the agent of chat run ``run`` (its locked ``row``, as ``held_plan_run`` reads it),
+    with the friction and the trace budget of its agent system, recorded as span tool ``tool``; the route above and
+    the hub runtime's ask and escalate tools (``hub_tools``) share it."""
+    run_id = run.run_id
+    chat = await chat_run(conn, run_id)
+    assert chat is not None  # every chat run starts from a chat message (hand_work)
+    said = await mask_values(conn, sealer, run.profile.id, body.body)
+    said = await mask_run(conn, sealer, run_id, said)
+    target = await by_handle(conn, body.handle)
+    refusal = await _refusal(conn, run, target, body.handle)
+    child = decision_id = message_id = None
+    found = await system_traces.of_run(conn, run_id)
+    off = False
+    if refusal is None:
+        assert target is not None  # _refusal refuses a handle no agent has
+        refusal, off = await _system_refusal(conn, found, target, body.reason)
+    brief = body.brief()
+    if refusal is None:
+        assert target is not None
+        text = question_text(run, run.profile.project, target, said, brief)
+        child, message_id, refusal = await _hand(conn, run, target, text)
+    if refusal is None:
+        assert target is not None and child is not None  # _hand made the run or gave its refusal
+        decision_id = await open_wait(conn, row, run, target, child)
+        await system_traces.save_brief(conn, child, run_id, brief)
+        if off:
+            await system_traces.mark_reason(conn, child, (body.reason or "").strip())
+        shown = f"@{run.profile.handle} asked @{target.handle} of project {target.project} (run #{child}): {said}"
+        await audit.record(
+            conn,
+            actor_id=run.principal.user_id,
+            token_id=run.principal.token_id,
+            action=audit.CHAT_MESSAGE,
+            target=f"message:{message_id} run:{run_id} asked:{child}",
+        )
+    else:
+        shown = f"@{body.handle}: {refusal}"
+    if found is not None:
+        await system_traces.record_tool(
+            conn,
+            found,
+            tool,
+            to_handle=target.handle if target is not None else body.handle,
+            status="ok" if refusal is None else "refused",
+            off_design=off,
+            reason=(body.reason or "").strip() or (refusal if refusal is not None else None),
+            message_id=message_id,
+            attributes={
+                "evo.brief_fields": system_context.brief_present(brief),
+                **({"evo.child_run_id": child} if child is not None else {}),
+            },
+        )
+    await hub_reply(conn, chat.chat_id, chat.root_id, shown)
+    log.info("agent asked", extra={"run_id": run_id, "handle": body.handle, "made": child, "refused": bool(refusal)})
+    return AgentAsked(run_id=child, decision_id=decision_id, refusal=refusal)
 
 
 # The answer
@@ -219,6 +294,12 @@ async def _put(
 
 async def _last_reply(conn: AsyncConnection, run_id: int) -> str | None:
     """The last message of the agent of run ``run_id`` in the thread of the message that started it."""
+    found = await last_reply(conn, run_id)
+    return None if found is None else found[1]
+
+
+async def last_reply(conn: AsyncConnection, run_id: int) -> tuple[int, str] | None:
+    """(id, body) of the last message of the agent of run ``run_id`` in the thread of the message that started it."""
     r, m = tables.runs, tables.chat_messages
     row = (
         await conn.execute(
@@ -230,8 +311,9 @@ async def _last_reply(conn: AsyncConnection, run_id: int) -> str | None:
     if row is None:
         return None
     in_thread = func.coalesce(m.c.thread_root_id, m.c.id) == row.root
-    query = select(m.c.body).where(in_thread, m.c.author_profile_id == row.profile_id).order_by(m.c.id.desc())
-    return (await conn.execute(query.limit(1))).scalar_one_or_none()
+    query = select(m.c.id, m.c.body).where(in_thread, m.c.author_profile_id == row.profile_id).order_by(m.c.id.desc())
+    found = (await conn.execute(query.limit(1))).one_or_none()
+    return None if found is None else (found.id, found.body)
 
 
 async def _refs(conn: AsyncConnection, run_id: int, wait_id: int) -> list[str]:
@@ -266,9 +348,16 @@ async def withheld_answer(conn: AsyncConnection, run_id: int, wait_id: int) -> s
     of every read across projects (``cross_labels``): the hub sink of the asking run's project must let in the label of
     the run asked (its plan's, else its project's default label, ``kg_labels.run_label``). Within one project, nothing
     crosses."""
-    r, d, p = tables.runs, tables.decisions, tables.projects
+    d = tables.decisions
+    project_id = (await conn.execute(select(d.c.project_id).where(d.c.id == wait_id))).scalar_one()
+    return await withheld_from(conn, run_id, project_id)
+
+
+async def withheld_from(conn: AsyncConnection, run_id: int, project_id: int) -> str | None:
+    """Why what run ``run_id`` says may not enter project ``project_id`` (``withheld_answer``); None when it may."""
+    r, p = tables.runs, tables.projects
     asked = select(p.c.name).join_from(r, p, p.c.id == r.c.project_id).where(r.c.id == run_id)
-    asking = select(p.c.name).join_from(d, p, p.c.id == d.c.project_id).where(d.c.id == wait_id)
+    asking = select(p.c.name).where(p.c.id == project_id)
     source, target = (await conn.execute(asked)).scalar_one(), (await conn.execute(asking)).scalar_one()
     if source == target:
         return None
@@ -327,3 +416,99 @@ async def answer_asker(conn: AsyncConnection, run_id: int, state: str, handle: s
         await hub_reply(conn, found.chat_id, found.root_id, answer.thread)
     log.info("asked agent answered", extra={"run_id": run_id, "decision_id": wait_id, "asker": asker, "state": state})
     return asker
+
+
+# Forwarding
+
+
+class AgentForwardIn(BaseModel):
+    run_id: int = Field(gt=0, description="the run whose last answer is forwarded: a run of the same trace")
+
+
+class AgentForwarded(BaseModel):
+    message_id: int | None = Field(description="the message forwarded into the run's thread; null when refused")
+    refusal: str | None = Field(description="why the hub forwarded nothing, as the thread says too")
+
+
+async def _forward_refusal(conn: AsyncConnection, found: system_traces.Membership | None, child_id: int) -> str | None:
+    """Why the run of ``found`` may not forward the answer of run ``child_id``; None when it may: both runs are in
+    one trace of an agent system, the child is another run, and it has ended."""
+    if found is None or found.trace_id is None:
+        return "this run is in no trace of an agent system: only a run of a system forwards an answer"
+    if child_id == found.run_id:
+        return "a run forwards the answer of another run of its trace, not its own"
+    child = await system_traces.of_run(conn, child_id)
+    if child is None or child.trace_id != found.trace_id:
+        return f"run #{child_id} is not in the trace of this run (#{found.trace_id}): only its runs can be forwarded"
+    r = tables.runs
+    state = (await conn.execute(select(r.c.state).where(r.c.id == child_id))).scalar_one()
+    if state not in runs.TERMINAL_STATES:
+        return f"run #{child_id} has not ended ({state}): forward its answer once it has"
+    return None
+
+
+async def forward(conn: AsyncConnection, run: AgentRun, child_id: int) -> tuple[int | None, str | None]:
+    """Post the last answer of run ``child_id`` verbatim, with the files it carries (an interactive answer
+    included), in the thread of chat run ``run``: its author is the child's agent and its run ``run``'s, so the chat
+    shows who forwarded it (``GroupMessage.forwarded_by``). (the message, None), or (None, why not)."""
+    chat = await chat_run(conn, run.run_id)
+    assert chat is not None  # the run of an agent that forwards is a chat run (hand_work)
+    found = await system_traces.of_run(conn, run.run_id)
+    refusal = await _forward_refusal(conn, found, child_id)
+    reply = None
+    r = tables.runs
+    if refusal is None:
+        reply = await last_reply(conn, child_id)
+        if reply is None:
+            refusal = f"run #{child_id} wrote no answer to forward"
+    if refusal is None:
+        project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == run.run_id))).scalar_one()
+        refusal = await withheld_from(conn, child_id, project_id)
+    access = None
+    if refusal is None:
+        access = await agent_access(conn, chat.chat_id, run.profile, chat.dispatcher_id)
+        if access is None:
+            refusal = f"@{run.profile.handle} is no longer in this chat"
+    message_id = None
+    child_profile = None
+    if refusal is None:
+        assert reply is not None and access is not None
+        child_profile = (await conn.execute(select(r.c.profile_id).where(r.c.id == child_id))).scalar_one()
+        message_id, _ = await insert_message(
+            conn, access, reply[1], thread_root_id=chat.root_id, author_profile_id=child_profile, run_id=run.run_id
+        )
+        k = tables.run_output_links
+        carried = select(k.c.output_id).where(k.c.chat_message_id == reply[0]).order_by(k.c.output_id)
+        await output_store.link_outputs(conn, message_id, list((await conn.execute(carried)).scalars()))
+    else:
+        await hub_reply(conn, chat.chat_id, chat.root_id, f"Forward of run #{child_id}: {refusal}")
+    if found is not None:
+        await system_traces.record_tool(
+            conn,
+            found,
+            system_context.TOOL_FORWARD,
+            status="ok" if refusal is None else "refused",
+            reason=refusal,
+            message_id=message_id,
+            attributes={"evo.forwarded_run_id": child_id},
+        )
+    return message_id, refusal
+
+
+@worker_router.post(
+    "/runs/{run_id}/agent/forwards",
+    status_code=201,
+    response_model=AgentForwarded,
+    responses={**REFUSALS, 422: {"model": ErrorBody}},
+)
+async def forward_answer(request: Request, run_id: RunId, body: AgentForwardIn, user: CurrentUser) -> AgentForwarded:
+    """Forward the last answer of run ``body.run_id``, a run of the same trace of an agent system, verbatim into the
+    thread of a chat run this worker holds (``forward``). A refusal is answered (201, ``refusal``) and said in the
+    thread."""
+    async with request.app.state.engine.begin() as conn:
+        run = await agent_run(conn, user, run_id)
+        if run.kind != "chat":
+            raise HTTPException(422, f"run {run_id} is a {run.kind} run: only a chat run's agent forwards an answer")
+        message_id, refusal = await forward(conn, run, body.run_id)
+    log.info("answer forwarded", extra={"run_id": run_id, "forwarded": body.run_id, "refused": bool(refusal)})
+    return AgentForwarded(message_id=message_id, refusal=refusal)

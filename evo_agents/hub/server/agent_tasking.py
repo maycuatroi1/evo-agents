@@ -3,7 +3,8 @@
 of the agents a person may chat with share, so that they never disagree.
 
 ``work_home`` is the first: an agent takes work while it is not deleted and has a pool of its own
-(``agent_placement.home_of``), and ``takes_work`` reads the same for many agents at once. ``task_refusal`` is the
+(``agent_placement.home_of``), or runs on the hub (profile ``runs_on`` hub: a job of the hub takes its turns, no worker
+does, ``hub_runtime``), and ``takes_work`` reads the same for many agents at once. ``task_refusal`` is the
 second: the person must hold writer on the agent's project, or any grant there for the agent of a settle chat they are
 in (``attends``), and admin for an agent type a version of its plugin says takes work from the admins alone
 (``admins_only``). ``role_refusal`` is that rule on a role already read. The texts are the refusals the thread shows.
@@ -11,13 +12,15 @@ in (``attends``), and admin for an agent type a version of its plugin says takes
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import agent_placement
 from evo_agents.hub.server.profile_store import Profile
+
+HUB = "hub"  # profile runs_on of an agent whose turns the hub takes (profiles.RUNS_ON)
 
 
 def deleted_refusal(profile: Profile) -> str | None:
@@ -32,11 +35,13 @@ def no_pool_refusal(profile: Profile) -> str:
 
 
 async def work_home(conn: AsyncConnection, profile: Profile) -> tuple[agent_placement.Home | None, str | None]:
-    """(the pool agent ``profile`` works on, None), or (None, why it takes no work): it was deleted, or it has no pool
-    of its own."""
+    """(the pool agent ``profile`` works on, None), (None, None) for an agent that runs on the hub, or (None, why it
+    takes no work): it was deleted, or it has no pool of its own."""
     refusal = deleted_refusal(profile)
     if refusal is not None:
         return None, refusal
+    if profile.runs_on == HUB:
+        return None, None
     home = await agent_placement.home_of(conn, profile.id)
     if home is None:
         return None, no_pool_refusal(profile)
@@ -44,14 +49,16 @@ async def work_home(conn: AsyncConnection, profile: Profile) -> tuple[agent_plac
 
 
 async def takes_work(conn: AsyncConnection, profile_ids: list[int]) -> set[int]:
-    """Those of the agents ``profile_ids`` that take work now, as ``work_home`` reads it: not deleted, with a pool."""
+    """Those of the agents ``profile_ids`` that take work now, as ``work_home`` reads it: not deleted, with a pool or
+    running on the hub."""
     if not profile_ids:
         return set()
     ap, wp = tables.agent_profiles, tables.worker_pools
     query = (
         select(ap.c.id)
-        .join_from(ap, wp, wp.c.agent_id == ap.c.id)
-        .where(ap.c.id.in_(profile_ids), ap.c.deleted_at.is_(None))
+        .distinct()
+        .outerjoin_from(ap, wp, wp.c.agent_id == ap.c.id)
+        .where(ap.c.id.in_(profile_ids), ap.c.deleted_at.is_(None), or_(wp.c.id.is_not(None), ap.c.runs_on == HUB))
     )
     return set((await conn.execute(query)).scalars())
 

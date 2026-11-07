@@ -37,7 +37,7 @@ class ImpactTools(SessionText):
         at or before it (the innermost one), within its unit's line span when the unit has one."""
         extents = []
         for s in symbols:
-            if not self.visible(s["label"]):
+            if not self.shows(s):
                 continue
             start, end = s["props"].get("line"), None
             for w in store.where(s["id"], b):
@@ -99,7 +99,7 @@ class ImpactTools(SessionText):
         found.docs = {
             d: n
             for d, n in store.nodes(found.mentions, b).items()
-            if self.visible(n["label"]) and d not in found.seeds and d not in found.reached
+            if self.shows(n) and d not in found.seeds and d not in found.reached
         }
         found.coverage = seed_coverage(found.seeds.values())
         return "\n".join(self._impact_lines(found)), self._impact_data(found)
@@ -109,7 +109,7 @@ class ImpactTools(SessionText):
         does not say which repo it comes from: a path names a file only when exactly one visible file matches it;
         otherwise the candidates go back to the caller."""
         b = found.build
-        files = [f for f in store.path_nodes(b) if self.visible(f["label"])]
+        files = [f for f in store.path_nodes(b) if self.shows(f)]
         changed: dict[str, set[int]] = {}
         for path, lines in [(p, None) for p in paths] + sorted(changes.items()):
             repo, sep, rest = path.partition(":")
@@ -151,7 +151,7 @@ class ImpactTools(SessionText):
             frontier = []
             for other in sorted(step):
                 node = nodes.get(other)
-                if node is not None and self.visible(node["label"]):
+                if node is not None and self.shows(node):
                     e = step[other][1]
                     rels = sorted(links[(other, e["dst"])])
                     found.reached[other] = {"hop": hop + 1, "node": node, "edge": e, "rels": rels, "hub": False}

@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
@@ -194,6 +194,12 @@ class AgentRun:
 async def agent_run(conn: AsyncConnection, user: Principal, run_id: int) -> AgentRun:
     """The run ``run_id`` the worker of ``user`` holds, of a kind whose agent uses chats; 404 or 409 otherwise."""
     worker_id = (await worker_of(conn, user))[0]
+    return await held_run(conn, run_id, worker_id, user.token_id, user.kind)
+
+
+async def held_run(conn: AsyncConnection, run_id: int, worker_id: int | None, token_id: int | None, kind: str):
+    """``agent_run`` of the run ``run_id`` that worker ``worker_id`` holds (None: the hub runtime's turn, which holds
+    a run of no worker, ``hub_runtime``), acting with token ``token_id`` of ``kind``; its row locked."""
     r, u = tables.runs, tables.users
     query = (
         select(
@@ -227,7 +233,8 @@ async def agent_run(conn: AsyncConnection, user: Principal, run_id: int) -> Agen
     found = await chat_run(conn, run_id) if row.kind == "chat" else None
     if found is not None:  # the origin of the chain, also when the run went to the workers of its type's run_as
         person, login = found.dispatcher_id, found.dispatcher
-    principal = Principal(person, login, False, user.token_id, user.kind, "")
+    # no token (None), as the hub's other machine principals: Principal types token_id int
+    principal = Principal(person, login, False, cast(int, token_id), kind, "")
     return AgentRun(
         run_id,
         row.kind,
@@ -306,15 +313,22 @@ async def post_message(request: Request, run_id: RunId, body: AgentMessageIn, us
     """A message of the run's agent in a chat it is in: the run's thread for a chat run."""
     async with request.app.state.engine.begin() as conn:
         run = await agent_run(conn, user, run_id)
-        chat, root = await _chat_of(conn, run, body.chat_id)
-        root = await _thread(conn, chat, root, body.reply_to)
-        text = await mask_values(conn, request.app.state.sealer, run.profile.id, body.body)
-        text = await mask_run(conn, request.app.state.sealer, run_id, text)
-        message_id, _ = await post_agent(conn, chat, run.profile, run_id, text, root, output_ids=body.output_ids)
-        await _audit(conn, run, audit.CHAT_MESSAGE, f"chat:{chat.chat_id} message:{message_id} run:{run_id}")
+        chat, message_id = await agent_message(conn, request.app.state.sealer, run, body)
         view = await _view(conn, chat, message_id)
     log.info("chat message of an agent", extra={"run_id": run_id, "chat_id": chat.chat_id, "message_id": message_id})
     return view
+
+
+async def agent_message(conn: AsyncConnection, sealer, run: AgentRun, body: AgentMessageIn) -> tuple[ChatAccess, int]:
+    """Post ``body`` as the agent of ``run``, masked, and audit it: (the chat, the message's id). The route above and
+    the hub runtime's post tool (``hub_tools``) share it."""
+    chat, root = await _chat_of(conn, run, body.chat_id)
+    root = await _thread(conn, chat, root, body.reply_to)
+    text = await mask_values(conn, sealer, run.profile.id, body.body)
+    text = await mask_run(conn, sealer, run.run_id, text)
+    message_id, _ = await post_agent(conn, chat, run.profile, run.run_id, text, root, output_ids=body.output_ids)
+    await _audit(conn, run, audit.CHAT_MESSAGE, f"chat:{chat.chat_id} message:{message_id} run:{run.run_id}")
+    return chat, message_id
 
 
 @worker_router.post("/runs/{run_id}/chat/reactions", response_model=GroupMessage, responses=REFUSALS)

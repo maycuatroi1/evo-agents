@@ -96,6 +96,7 @@ from evo_agents.hub.server import (
     history_search,
     memory_promotion,
     probe_fixes,
+    system_curation,
 )
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
@@ -281,6 +282,12 @@ async def resolve(
             if item.seq > row.event_seq:
                 raise _refused(where, f"run {item.run_id} has {row.event_seq} events, so none with seq {item.seq}")
             found.append({**stored, "resolved": "run_event"})
+        elif item.kind == "span":
+            assert item.span_id is not None  # the model asks a span reference for its span_id
+            system = await system_curation.span_system(conn, run.project_id, item.span_id)
+            if system is None:
+                raise _refused(where, f"no trace of an agent system of project {run.project} has span {item.span_id}")
+            found.append({**stored, "resolved": "span", "system": system})
         else:
             if item.repo not in repos:
                 known = ", ".join(sorted(repos)) or "none"
@@ -495,6 +502,7 @@ def proposals_query():
         p.c.revert_of,
         p.c.fix_of,
         p.c.promotion,
+        p.c.system_change,
     ).select_from(p.outerjoin(u, u.c.id == p.c.answered_by))
 
 
@@ -593,6 +601,7 @@ async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal
                     "at a time",
                 )
         promotion, label = await memory_promotion.checked(conn, run, access, body.promotion, evidence, label)
+        change = await system_curation.checked(conn, run.project_id, body.lens, body.kind, body.system_change, evidence)
         count = len(evidence) + await _finding_evidence(conn, access, body.finding_ids)
         paths = list(dict.fromkeys((item.repo, item.path) for item in body.paths))
         await _probe_needed(conn, run_id, body, evidence, paths)
@@ -631,6 +640,7 @@ async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal
             "duplicate_of": rejected.id if dropped else None,
             "label": label,
             "fix_of": body.fix_of,
+            "system_change": null() if change is None else change,
         }
         proposal_id = (await conn.execute(insert(p).values(**values).returning(p.c.id))).scalar_one()
         if body.probe is not None:

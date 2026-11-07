@@ -497,7 +497,10 @@ A profile has a handle, unique on the hub (deleted profiles' included) and never
 `[a-z0-9-]`; a name shown for it (1 to 80 characters); a description (at most 1000); instructions, added to the system
 prompt of its runs (at most 8000); a colour (`#rrggbb`, one picked by the handle when none is given); an avatar or
 none; starters, at most 4 questions of one line and at most 120 characters each, which the chat home offers before a
-first message to the agent (`starters`, since migration 0215); and eight axes of permissions. The handle never changes. Every edit that changes something, the avatar
+first message to the agent (`starters`, since migration 0215); where its runs run, `runs_on`, `worker` (the default)
+or `hub` (since migration 0217, `--runs-on` of `hub agent create|edit`; a job of the hub takes the chat turns of an
+agent that runs on the hub, Hub runtime);
+and eight axes of permissions. The handle never changes. Every edit that changes something, the avatar
 included, raises its version and keeps the profile as that version had it, which `GET .../agents/{handle}/versions`
 lists. A deleted profile takes no new run. Field names follow an A2A Agent Card where they can: `name`,
 `description`, and `icon_url` for the avatar.
@@ -690,6 +693,262 @@ Schema 0030 adds the profiles (`evo_agents/hub/tables_profiles.py`): `agent_prof
 the project, at version 1; and `profile_id` with `profile_version` on `runs` and on `credential_leases`, both null or
 both set, naming a version. Going back to 0029 drops the two tables and the columns: the profiles, and which profile
 each run and lease went under, are lost.
+
+## Agent systems
+
+An agent system is an object of a project: its agents, named graphs, Curator and orchestrator laid out on a canvas,
+with typed edges between them. It is a spec, `evo-agent-system/1` (`evo_agents/hub/system_spec.py`), kept by revision
+like a plan, in `agent_systems` and `agent_system_revisions` (migration 0217, `evo_agents/hub/tables_systems.py`).
+Every member of the project reads its systems; an admin of the project writes them.
+
+A node has an `id`, a `kind`, an optional `label` and a canvas `position` `{x, y}`:
+
+| Kind | What it names | How many |
+| --- | --- | --- |
+| `entry` | whoever writes to the system | exactly one |
+| `agent` | a profile of the project (`profile`), pinned at one of its versions (`version`) | any |
+| `kg` | a named graph of the project (`graph`), `default` for every source | any |
+| `curator` | the Curator of the project | at most one |
+| `orchestrator` | a profile of the project, pinned like an agent | at most one |
+
+An edge has `from`, `to`, a `kind` and a `description`; its kind fixes the kinds of its ends:
+
+| Kind | From | To |
+| --- | --- | --- |
+| `interacts` | entry or agent | agent |
+| `uses_kg` | agent | kg |
+| `optimizes` | curator | agent or kg |
+| `orchestrates` | orchestrator | agent |
+| `escalates` | agent | orchestrator |
+
+The agent the entry interacts with is the system's entry agent: at most one per system, and a profile is the entry
+agent of at most one system (a partial unique index holds it). `limits` holds the budgets of the system:
+`trace_usd` (2 by default), `trace_runs` (12) and `daily_usd` (5). A trace keeps to the first two (Budget of a trace).
+`idle_minutes_hub` (10) and `idle_minutes_worker` (30), from 1 to 1440, are the idle limits of The Orchestrator.
+
+The hub checks a spec before it stores it. Errors are an unknown key, an edge whose ends do not fit its kind, a node or
+an edge that is not there, a second entry, curator or orchestrator, and a profile or a named graph the project does
+not have. A deleted profile, a version the profile never had, and a profile that is already the entry agent of
+another system are errors too. A pinned version older than the profile's latest is a warning, and so is an entry that
+interacts with no agent. Each problem has `level`, `path`, `message` and the `node` id or `edge` index it is about,
+so the web can show it there. A spec with an error is refused with 422 and the problems as `detail`, and nothing is
+written. An agent or orchestrator node that names no version is pinned at its profile's latest when the spec is
+stored. The API shows each pin with the profile's `latest_version` next to it.
+
+A chat run of an entry agent takes the version its system pins: the run's `profile_version` is that version, and the
+hub reads the run's rules from `agent_profile_versions`, as for every run. A profile in no system runs as before.
+
+| Route | Command | Who |
+| --- | --- | --- |
+| `GET /v1/projects/{p}/systems` | `hub system list` | a member |
+| `GET .../systems/{slug}` (`?revision=N`), its spec, pins and problems now | `hub system show SLUG [--revision N]` | a member |
+| `GET .../systems/{slug}/revisions`, the newest first | | a member |
+| `GET .../systems/{slug}`, written as YAML | `hub system export SLUG [-o FILE]` | a member |
+| `POST .../systems/validate` `{spec, slug}`, written nowhere | `hub system validate FILE` | a member |
+| `PUT .../systems/{slug}` `{spec, if_revision}` | `hub system put FILE [--slug S] [--if-revision N]` | an admin of the project |
+| `DELETE .../systems/{slug}` | `hub system delete SLUG` | an admin of the project |
+
+`PUT` without `if_revision` (or 0) creates the system and is 409 when it exists. With it, the spec replaces that
+revision, or the hub answers 409 `revision_conflict` with the system as it holds it now. A spec the hub already holds
+adds no revision (`changed: false`). `export` writes the revision it read in a `# if_revision: N` line, which `put`
+takes when `--if-revision` is not given, so a change someone made in the meantime is refused, not lost. The slug
+`validate` is reserved. The audit rows `system.create`, `system.update` and `system.delete` name
+`<project> system=<slug> revision=<n>`. For example:
+
+```sh
+evo-agents hub system export support --project northwind -o support.yaml
+evo-agents hub system validate support.yaml --project northwind
+evo-agents hub system put support.yaml --project northwind
+```
+
+```yaml
+schema: evo-agent-system/1
+slug: support
+name: Northwind support
+nodes:
+- {id: in, kind: entry, position: {x: 0, y: 0}}
+- {id: triage, kind: agent, profile: lumen-triage, version: 3, position: {x: 240, y: 0}}
+- {id: docs, kind: kg, graph: default, position: {x: 480, y: 0}}
+edges:
+- {from: in, to: triage, kind: interacts, description: every question}
+- {from: triage, to: docs, kind: uses_kg, description: product docs}
+```
+
+### Designing a system with @builder
+
+The designer has a chat with @builder (plan multi-agent-systems, criterion a11) in a project that enabled the core
+plugin builder (`docs/plugins.md`, Builder). A member describes the whole system or a change of it, and @builder
+answers with an explanation and a proposal of kind `system`: the system's slug, the whole spec it would have, and the
+agent profiles and named graphs it needs that the project does not have yet. The hub checks the spec as
+`PUT .../systems/{slug}` does, with those counted as made, and keeps the proposal pending. The designer polls
+`GET /v1/x/builder/{project}/proposals/waiting?kind=system` and shows the newest proposal of the system on the canvas:
+added nodes and edges faded and dashed, removed ones faded and struck. Accepting it is the proposal's approval, which
+only an admin of the project may give: the hub makes the profiles at version 1 and the graphs, then writes the spec as
+the system's next revision, while the system is still at the revision the proposal saw. Discarding rejects it and
+changes nothing. Rolling the proposal back writes the revision before again, or deletes a system it made; the
+profiles and graphs it made stay.
+
+### What an agent of a system knows
+
+The prompt of a chat run of a system's agent has a System section (`evo_agents/hub/system_context.py`), after the
+rules and within its own budget of 4 KiB (`system_context.SYSTEM_BYTES`): the system's name and purpose, the agents
+it hands work to along its `interacts` edges and who hands it work, each with its @handle and the edge's description,
+the graphs of its `uses_kg` edges, and the Orchestrator it escalates to. The `kg_*` tools of such a run read those
+graphs when the call names no graph (`system:<slug>`, their union); an agent with a `uses_kg` edge to `default` reads
+the project's default as before. A run finds its system through its trace, then as the entry agent of a system, then
+through the latest trace of its chat; a profile in several systems takes the system of the running chat.
+
+### Traces
+
+A person's message that wakes a system's entry agent opens a trace, in any chat, a Home direct chat included
+(`evo_agents/hub/server/system_traces.py`, tables `system_traces`, `system_spans` and `agent_ask_briefs` of migration
+0218, `evo_agents/hub/tables_traces.py`). Every run the entry agent's run hands work to, by an ask or a mention, and
+every run those hand on, joins it: the hub follows `runs.spawned_by_run_id` and the run of the message that woke each
+run. A run that goes on in its session (a parked run resumed, an inbox untaken) gets a span of its own marked
+`evo.resume_of_run_id`; it counts on its node and crosses no edge.
+
+Each span is named as OpenTelemetry GenAI names them: `invoke_agent` for a turn of an agent, `execute_tool` for an
+ask (`agent_ask`), a mention (`chat_mention`), a forward (`agent_forward`) or a knowledge graph query (`kg_*`). Its
+attributes are `gen_ai.*` (`gen_ai.operation.name`, `gen_ai.agent.name`, `gen_ai.conversation.id`,
+`gen_ai.tool.name`, `gen_ai.data_source.id`) and `evo.*` (`evo.child_run_id`, `evo.brief_fields`,
+`evo.forwarded_run_id`). A span holds no content: it names the message (`message_id`) and the run, and the API reads
+time, state, runtime, tokens and cost from the run when it is asked.
+
+How to read a trace: the first `invoke_agent` span comes from node `entry` (`from_node`) and has no parent. Each
+`execute_tool` span runs under the turn that called it and names the node it went to (`to_node`); the `invoke_agent`
+span of the run it handed runs under that turn too, with `from_node` the asking node. `status` is `running`, `ok`,
+`error` or `refused`; a refused span says why in `reason`. `run_state` is the state of the span's run now (`running`,
+`waiting`, `parked`, `done`...), null for a tool span: the web's Observe mode tells a working node from a waiting one by
+it.
+
+`off_design` marks an edge the spec lacks: an ask or a mention from one node to another with no `interacts` edge
+between them, and every span of an agent the spec does not name, which shows as an external node `@handle`. An ask off
+the asker's edges is refused unless it gives `--reason`, which the span keeps; a mention off the edges still runs and
+is recorded off design with no reason. Only the agents of a system meet this rule. The metrics count, per node and per
+edge, the spans, the errors, the spans off design, the p50 and last seconds, the tokens and the cost.
+
+A trace follows its chat's audience: a member of the system's project reads it when they may read the chat. A span
+of a run of another project shows its node, edge, state and `gen_ai.*` attributes to everyone who reads the trace,
+and its message, reason and other attributes only to those with a grant on that project (`content_withheld`).
+
+| Route | What | Who |
+| --- | --- | --- |
+| `GET /v1/projects/{p}/systems/{slug}/traces` (`?limit=50&before=ID`) | the traces, the newest first | a member who reads the chat |
+| `GET .../systems/{slug}/traces/{id}` | a trace, its spans and metrics | the same |
+| `GET .../systems/{slug}/metrics` (`?limit=50`) | metrics of the latest traces | the same |
+| `GET .../systems/{slug}/traces/stream` (`?after=TIME`) | SSE: a `trace` event each time a trace moves, `end` when access ends | the same |
+
+The stream wakes on the hub's one LISTEN (channel `evo_system_traces`, the system's id).
+
+### Budget of a trace
+
+`limits.trace_runs` (12) and `limits.trace_usd` (2) cap a trace: its runs, counted through `spawned_by_run_id`, and
+their cost. Past either, the next ask or mention of the trace is refused with the limit it passed, and a `refused`
+span says so.
+
+### Hub runtime
+
+An agent whose profile has `runs_on: hub` needs no worker and no pool: the hub answers for it in chat through its
+model gateway (Model gateway). The code is `evo_agents/hub/server/hub_runtime.py` and `hub_tools.py`.
+
+A mention, a reply in its thread, an ask or an escalation queues a chat run of runtime `hub`, as it would queue one
+for a worker. In the same transaction the hub defers the job `hub.hub_turn`, which the procrastinate worker of the hub
+runs (the `worker` service of the compose file). The job holds the run as a worker would: queued, leased, running. So
+asks, mentions, parking and waking, `spawned_by_run_id`, cost, the run lists and triage work as they do for worker
+runs. A run of the hub runtime appears with runtime `hub` and no worker. When the job dies, the lease reaper ends the
+run once its lease runs out, 180 seconds plus 120.
+
+One turn goes like this:
+
+1. The model is the run's model: the first model of the profile's model axis, which `chat_runs` picks when the run
+   queues. The turn reaches it through the provider accounts the run may use (the account pool of the agent, as for
+   a run on the gateway). The hub makes a gateway key for the turn alone, bound to those accounts' connections, and
+   revokes it when the turn ends.
+2. The prompt is the one a worker's chat run gets: the same rules, the snapshot of the chat and the System section.
+   The profile's instructions and a short "On the hub" section come before it, and the messages of the run's inbox
+   come after it.
+3. The model calls tools for at most 8 rounds and 180 seconds. A message that reaches the inbox meanwhile joins
+   before the next round.
+4. The model's last answer without a tool call is the agent's reply in the thread, masked as a worker's reply is
+   (`mask_values`, then the run's leased values).
+5. The turn's tokens and the key's cost, as the gateway counts it, go to `run_spend`, to `runs.usage` (under
+   `gateway`, with `total_cost_usd`) and to the attributes of the run's `invoke_agent` span: `gen_ai.request.model`,
+   `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` and `evo.cost_usd`.
+6. A run that asked an agent parks until the answer wakes it in a new run. Any other run ends done. A follow-up in
+   the thread wakes the agent in a new run of the same session, as for a worker.
+
+The tools do what the worker's commands do, through the same code:
+
+| Tool | Worker command it stands for |
+| --- | --- |
+| `kg_search` | the `kg_search` MCP tool, through the agent sink |
+| `chat_post` | `evo-agents worker chat post` |
+| `interactive_answer` | `evo-agents worker chat post --interactive`, with the same size limit, CSP and bridge |
+| `agent_ask` | `evo-agents worker agent ask`, with the same brief, friction off the edges and trace budget |
+| `agent_forward` | `evo-agents worker agent forward` |
+| `escalate` | `evo-agents worker escalate` |
+| `orchestrator_answer`, `orchestrator_reassign`, `orchestrator_ask_owner` | `evo-agents worker triage answer`, `triage reassign`, `triage ask-owner` |
+| `memory_write` | a memory of the project, under the rules of `memory_write` |
+
+A tool that is refused answers the model with the reason, and the turn goes on. Repos, branches, pull requests and
+shell commands are not on the hub, so the agent says what it cannot do.
+
+`limits.daily_usd` of a system (5 USD by default) caps what its hub agents spend in a day (UTC). The hub sums
+`run_spend` of the runs of runtime `hub` queued today with a span in the system's traces. Once the sum reaches the
+limit, the system's hub agents take no turn: each one replies why and its run ends. The owner of the system (who
+created it) gets the notice `system_daily_cap` once a day. Worker runs do not count toward the limit and are not
+stopped by it.
+
+Without a gateway (no `EVO_HUB_GATEWAY_SECRET`), the agent replies that the hub runtime is not configured and its
+run ends done. Without a provider account the run may use, the agent says why. The hub runtime adds no compose
+service and no setting. The `worker` service gets the gateway settings (`EVO_HUB_GATEWAY_URL`,
+`EVO_HUB_GATEWAY_SECRET`) and joins the `gateway` network, since its jobs call the gateway.
+
+```sh
+evo-agents hub agent edit lumen-helper --project northwind --runs-on hub --allow model:openrouter/auto
+```
+
+### The Orchestrator
+
+An agent with an `orchestrates` edge from the system's Orchestrator has the Orchestrator for its triage, in place of
+the project's triage chat (`evo_agents/hub/server/orchestrator.py`). The hub opens a thread to the Orchestrator in the
+system's ops chat, "Ops: SLUG" (`agent_systems.ops_chat_id`, migration 0221). It makes that chat the first time, with
+the system's creator in it, and puts the Orchestrator and the person at the origin of the work in it. The thread's
+first message is the hub's. It names the rule, the agent, its run and trace, and the spans that show it, then mentions
+the Orchestrator, which starts its chat run for the person at the origin at the hop of the work. The message carries
+the run it is about, so the Orchestrator's run joins that trace under the run's span. `orchestrator_threads` keeps
+each thread: its system, trace, agent, rule, evidence spans, chat and first message, the Orchestrator's run, the wait
+of an escalation, the hop and the outcome.
+
+A thread opens when:
+
+| Rule | When | Once per |
+| --- | --- | --- |
+| `failed` | a chat run (a turn) or a run of kind step, plan or author of the agent fails | run |
+| `stale` | a run of the agent stops moving while its worker heartbeats (Runs that stop moving; the project needs `triage_enabled` for this check) | run |
+| `escalate` | the agent runs `evo-agents worker escalate` or the tool `escalate` (`docs/workers.md`, Escalation) | escalation |
+| `loop` | the agent receives the same work for the third time in one trace: the same `goal` of a brief, or the same text once lower case, numbers and punctuation are dropped | agent and trace |
+| `idle` | an open trace with a run that should move (queued, leased, running or verifying) writes no span for `limits.idle_minutes_hub` minutes (10) when all its open runs are on the hub runtime, else `limits.idle_minutes_worker` (30) | trace |
+| `rounds` | a turn of the hub runtime uses its 8 rounds of tools without a final answer | run |
+| `budget` | the trace refuses an ask or a mention for its budget (Budget of a trace) | trace |
+
+The rules call no model. Loop and budget are checked when a span is written, rounds when the turn ends, and idle by
+the reaper on each pass (`run_reaper`). A run that waits for an answer (parked or waiting) is not idle. Each check
+runs in a savepoint: a thread that cannot open is logged and undoes nothing.
+
+A thread for a run of kind step, plan or author is a triage thread too (`run_triage`), so the Orchestrator has the
+frame of What a triage agent may do on its own there, whether or not the project has `triage_enabled`. In any thread
+it has three more actions (`orchestrator_actions.py`; `docs/workers.md`, Failure triage):
+
+- answer: an escalation's wait wakes with the answer; a thread with no wait hands it to the agent it is about.
+- reassign: the work goes to another agent node of the system at the hop of the work, with the escalation's wait.
+- ask-owner: a decision of category `triage` for the person at the origin of the work.
+
+Each posts a `Decision:` line in the thread and writes the audit row `orchestrator.answer`, `orchestrator.reassign` or
+`orchestrator.ask_owner`, whose target names the system, the thread, the rule, the agent and the Orchestrator's run.
+Answer and reassign close the thread. An escalation adds no hop, the trace's budget does not refuse it, and the work
+the Orchestrator reassigns keeps its hop: the hop limit of 3 stays as it is. An agent with no `orchestrates` edge
+keeps the triage it had; one with only an `escalates` edge escalates to that Orchestrator and has no other thread.
 
 ## Group chats
 
@@ -1057,7 +1316,9 @@ The agent of a chat run reads the knowledge graph and the memories of another pr
 `kg-context`, `memory-search` or `memory-get`, which calls `POST /v1/worker/runs/{id}/agent/reads` with the worker's
 token (`evo_agents/hub/server/agent_reads.py`). The evo-hub MCP tools keep reading the run's own project only: a run's
 token reaches no other project, and widening it would widen every tool. Only a chat run reads this way (422 for
-another kind), and never its own project (422, with a pointer to the evo-hub tools).
+another kind), and never its own project (422, with a pointer to the evo-hub tools). `--graph NAME` (`graph` of the
+body) narrows `kg-search` and `kg-context` to a named graph of PROJECT (`docs/kg.md`, Named graphs); the check below
+still applies to what it returns.
 
 The hub reads as the person at the origin of the chain, with that person's grant on PROJECT, through PROJECT's own hub
 sink, as the evo-hub tools of a session of that project would. A person with no grant there gets 404, as for a project

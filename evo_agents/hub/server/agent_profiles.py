@@ -10,7 +10,8 @@ that project's default profile, which the registration of the project created an
 permissions stay all and its instructions empty (422), while its name, description, colour, starters and avatar may
 change. A handle never changes. A profile attaches agent packs of plugins its project enabled, each pinned at a
 version of its plugin (``agent_packs.pinned``; the default profile attaches none). Its starters are at most
-``profiles.MAX_STARTERS`` questions of one line each, which the chat home offers (``chat_home``). Every edit that
+``profiles.MAX_STARTERS`` questions of one line each, which the chat home offers (``chat_home``). ``runs_on`` says where its runs run, worker
+(the default) or hub; the hub only stores it so far. Every edit that
 changes something, the avatar and the packs included, raises the version by one and writes the version row; PATCH with
 ``if_version`` other than the version now is 409, nothing changed. Deleting sets ``deleted_at``: the profile takes no
 new run, and reads as before; its accounts (``evo_agents.hub.server.agent_accounts``) are deleted in the same
@@ -148,6 +149,11 @@ Starters = Annotated[
     ),
 ]
 
+RunsOn = Annotated[
+    Literal["worker", "hub"],
+    Field(description="where its runs run: on a worker of its pool (worker) or on the hub (hub)"),
+]
+
 
 class AgentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -158,6 +164,7 @@ class AgentCreate(BaseModel):
     instructions: Instructions = Field("", description="added to the system prompt of the profile's runs")
     color: Color | None = Field(None, description="default: one picked by the handle")
     starters: Starters = Field(default_factory=list)
+    runs_on: RunsOn | None = Field(None, description="default: worker")
     permissions: AgentPermissions = Field(default_factory=AgentPermissions)
     packs: Pins = Field(
         default_factory=list, description="the agent packs it attaches, in order; see GET .../agent-packs"
@@ -174,6 +181,7 @@ class AgentEdit(BaseModel):
     instructions: Instructions | None = None
     color: Color | None = None
     starters: Starters | None = Field(None, description="the starters whole, in order; [] for none")
+    runs_on: RunsOn | None = None
     permissions: AgentPermissions | None = Field(None, description="the eight axes whole; an axis left out allows all")
     packs: Pins | None = Field(None, description="the agent packs it attaches, whole, in order; [] for none")
     if_version: int | None = Field(None, ge=1, description="409 unless the profile is at this version now")
@@ -210,6 +218,7 @@ class Agent(BaseModel):
     icon_url: str | None = Field(description="GET of the avatar on this hub; null: draw the initial on the colour")
     avatar_sha256: str | None
     starters: list[str] = Field(description="questions the chat home offers before a first message, in order")
+    runs_on: RunsOn
     is_default: bool = Field(description="the project's default profile, @<project>: every permission")
     permissions: AgentPermissions
     restricted: list[str] = Field(description="the axes that are allowlists, in the order of the eight")
@@ -252,6 +261,7 @@ def agent_view(profile: Profile) -> Agent:
         icon_url=icon_url(profile),
         avatar_sha256=profile.avatar_sha256,
         starters=list(profile.starters or ()),
+        runs_on=profile.runs_on,
         is_default=profile.is_default,
         permissions=AgentPermissions.model_validate(profile.permissions),
         restricted=profiles.restricted_axes(profile.permissions),
@@ -367,9 +377,12 @@ async def _refuse_project_name(conn: AsyncConnection, handle: str) -> None:
         )
 
 
-@router.post("/{project}/agents", status_code=201, response_model=Agent, responses=WRITE_REFUSALS)
-async def create_agent(request: Request, project: ProjectName, body: AgentCreate, user: CurrentUser) -> Agent:
-    """Create an agent profile of the project, at version 1."""
+async def create_profile(
+    conn: AsyncConnection, user, access: ProjectAccess, body: AgentCreate, hub_version: str
+) -> Profile:
+    """Create agent profile ``body`` of the project of ``access`` at version 1 as ``user``, with its pool and its audit
+    row, in the caller's transaction; the caller checked that ``user`` may (the admin role on the project). 409 when
+    the handle is taken or names a project."""
     ap = tables.agent_profiles
     values = {
         "handle": body.handle,
@@ -379,33 +392,37 @@ async def create_agent(request: Request, project: ProjectName, body: AgentCreate
         "color": body.color or profiles.default_color(body.handle),
         "avatar_sha256": None,
         "starters": body.starters,
+        "runs_on": body.runs_on or profiles.DEFAULT_RUNS_ON,
         "is_default": False,
         "permissions": body.permissions.stored(),
     }
+    await _refuse_project_name(conn, body.handle)
+    values["packs"] = await pinned(conn, access.project_id, access.name, body.packs, hub_version)
+    statement = (
+        pg_insert(ap)
+        .values(project_id=access.project_id, created_by=user.user_id, **values)
+        .on_conflict_do_nothing(index_elements=[ap.c.handle])
+        .returning(ap.c.id)
+    )
+    profile_id = (await conn.execute(statement)).scalar_one_or_none()
+    if profile_id is None:
+        raise HTTPException(
+            409, f"@{body.handle} is taken by another agent, deleted ones included: pick another handle"
+        )
+    await write_version(conn, profile_id, 1, values, user.user_id)
+    await create_pool(conn, profile_id, body.handle, access.project_id, user.user_id)
+    created = await _profile(conn, access, body.handle)
+    await _record(conn, user, access, audit.AGENT_CREATE, _target(created))
+    return created
+
+
+@router.post("/{project}/agents", status_code=201, response_model=Agent, responses=WRITE_REFUSALS)
+async def create_agent(request: Request, project: ProjectName, body: AgentCreate, user: CurrentUser) -> Agent:
+    """Create an agent profile of the project, at version 1."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _admin(access, "creating")
-        await _refuse_project_name(conn, body.handle)
-        values["packs"] = await pinned(conn, access.project_id, project, body.packs, request.app.state.hub_version)
-        statement = (
-            pg_insert(ap)
-            .values(
-                project_id=access.project_id,
-                created_by=user.user_id,
-                **values,
-            )
-            .on_conflict_do_nothing(index_elements=[ap.c.handle])
-            .returning(ap.c.id)
-        )
-        profile_id = (await conn.execute(statement)).scalar_one_or_none()
-        if profile_id is None:
-            raise HTTPException(
-                409, f"@{body.handle} is taken by another agent, deleted ones included: pick another handle"
-            )
-        await write_version(conn, profile_id, 1, values, user.user_id)
-        await create_pool(conn, profile_id, body.handle, access.project_id, user.user_id)
-        created = await _profile(conn, access, body.handle)
-        await _record(conn, user, access, audit.AGENT_CREATE, _target(created))
+        created = await create_profile(conn, user, access, body, request.app.state.hub_version)
     log.info("agent created", extra={"project": project, "handle": body.handle, "login": user.login})
     return agent_view(created)
 

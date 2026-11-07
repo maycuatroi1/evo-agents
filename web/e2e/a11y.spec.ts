@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
-import { agentPath, agentsPath, createAgentByApi, PIXEL_PNG, putAgentAccountByApi, putAvatarByApi } from "./support/agents";
+import { agentOf, agentPath, agentsPath, createAgentByApi, PIXEL_PNG, putAgentAccountByApi, putAvatarByApi } from "./support/agents";
 import {
   baselinePath,
   canvasesPath,
@@ -94,6 +94,7 @@ import {
 } from "./support/srs";
 import { docsPath, enableDocs, guidePath, seedGuide } from "./support/docs";
 import { packSkill, publishSkill } from "./support/skills";
+import { chainSpec, putSystemByApi, systemPath, systemsPath } from "./support/systems";
 import { createSprintByApi, createTaskByApi, SAMPLE_TASKS, taskPath, tasksPath } from "./support/tasks";
 import { AGENT_COMMIT, CHECKOUTS, heartbeat, NIGHTLY_COMMIT, registerWorker, RUNTIMES } from "./support/workers";
 
@@ -1109,6 +1110,26 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "agents list");
       await page.locator("#main").getByTestId("agents-facet").getByRole("button", { name: /^Deleted/ }).click();
       await expect(page.locator("#main").getByTestId("agents-table").getByTestId("agent-deleted")).toBeVisible();
+    },
+  },
+  {
+    name: "agent systems list, then a system's designer with a node selected and the add dialog",
+    open: async ({ page, me }) => {
+      const handle = await seedAgents(me);
+      const project = me.projects[0];
+      await putSystemByApi(me, project, "a11y-desk", chainSpec("Front desk", [{ handle, version: (await agentOf(me, project, handle)).version }]));
+      await open(page, systemsPath(project));
+      await expect(page.locator("#main").getByTestId("systems-table").locator("tbody tr")).toHaveCount(1);
+      await expectNoSeriousViolations(page, "agent systems list");
+      await open(page, systemPath(project, "a11y-desk"));
+      await expect(page.locator("#main").getByTestId("system-node")).toHaveCount(2);
+      await page.locator("#main").locator(`[data-testid="system-node"][data-node="${handle}"]`).click();
+      await expect(page.locator("#main").getByTestId("system-node-panel")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("agent-config")).toBeVisible();
+      await expectNoSeriousViolations(page, "system designer with a node selected");
+      await page.locator("#main").getByTestId("system-add").click();
+      await page.getByTestId("system-add-kg").click();
+      await expect(page.getByTestId("system-add-dialog")).toBeVisible();
     },
   },
   {

@@ -72,7 +72,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import kg_settings, tables
+from evo_agents.hub import kg_named_graphs, kg_settings, tables
 from evo_agents.hub.access import Refused, has_role
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, Upload, blob_key, sealed_key
 from evo_agents.hub.jobs import kg_lock
@@ -97,13 +97,14 @@ from evo_agents.hub.kg_ingest import (
 )
 from evo_agents.hub.kg_sources import reads_chats
 from evo_agents.hub.memory import AGENT_SINK
-from evo_agents.hub.server import audit, kg_run_access, project_archive, rankers, run_audience
+from evo_agents.hub.server import audit, kg_run_access, project_archive, rankers, run_audience, system_traces
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Mismatch, blob_store, commit_uploads
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.kg.graph_scope import DEFAULT_GRAPH
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve_view import ToolError
 
@@ -696,6 +697,21 @@ def read_sink(access: ProjectAccess, sink: str) -> str:
     return sink
 
 
+async def _named_graph(conn: AsyncConnection, project_id: int, arguments) -> dict[str, frozenset[str]] | None:
+    """The named graph a kg tool call's ``graph`` names, to its sources: ``{}`` for none or ``default``, None for a
+    name the project has no graph of (``evo_agents.hub.kg_named_graphs``). The session checks the argument's type."""
+    graph = arguments.get("graph") if isinstance(arguments, dict) else None
+    if not isinstance(graph, str) or graph.strip() in ("", DEFAULT_GRAPH):
+        return {}
+    sources = await kg_named_graphs.sources_of(conn, project_id, graph.strip())
+    return None if sources is None else {graph.strip(): sources}
+
+
+def _names_graph(arguments) -> bool:
+    graph = arguments.get("graph") if isinstance(arguments, dict) else None
+    return isinstance(graph, str) and bool(graph.strip())
+
+
 async def tool_result(
     state,
     user: Principal,
@@ -722,10 +738,29 @@ async def tool_result(
         if graphs and audience is None:
             audience = await reader_audience(conn, user)
         tuning = await kg_settings.read(conn, access.project_id) if graphs else None
+        named = await _named_graph(conn, access.project_id, arguments) if graphs else {}
+        run_id = user.acts_for_run
+        if (
+            graphs
+            and named == {}
+            and narrow is None
+            and run_id is not None
+            and isinstance(arguments, dict)
+            and not _names_graph(arguments)
+        ):
+            default = await system_traces.default_graph(conn, run_id, access.project_id)
+            if default is not None:  # the graphs its agent uses in its system (uses_kg)
+                arguments, named = {**arguments, "graph": default[0]}, {default[0]: default[1]}
     if not graphs:
         message = (
             f"error: project {project} has no graph on the hub yet: push its runs with `evo-agents hub kg push` "
             "(a build follows)"
+        )
+        return {"content": [{"type": "text", "text": message}], "isError": True}
+    if named is None:
+        message = (
+            f"error: project {project} has no knowledge graph named {arguments.get('graph')!r}: "
+            f"`evo-agents hub kg graph list --project {project}` lists them; {DEFAULT_GRAPH!r} reads every source"
         )
         return {"content": [{"type": "text", "text": message}], "isError": True}
     rules = access.rules
@@ -750,6 +785,7 @@ async def tool_result(
             explore,
             tuning,
             whole,
+            named,
         )
     except GraphOutdated as exc:
         await rebuild_outdated(state, access.project_id, project)
@@ -759,6 +795,10 @@ async def tool_result(
     except ArtifactMismatch as exc:
         log.error("kg graph artifact refused", extra={"project": project, "build_id": graphs[0].build_id})
         raise HTTPException(502, str(exc)) from None
+    if run_id is not None and narrow is None:
+        async with state.engine.begin() as conn:
+            graph = arguments.get("graph") if isinstance(arguments, dict) else None
+            await system_traces.record_kg(conn, run_id, tool, graph if isinstance(graph, str) else None, result)
     if whole:
         return result
     if tool == "kg_search" and isinstance(arguments.get("query"), str):

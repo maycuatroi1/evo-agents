@@ -358,6 +358,42 @@ def semantic_settings(metadata: MetaData) -> Table:
     )
 
 
+GRAPH_NAME_PATTERN = r"^[a-z0-9][a-z0-9._-]{0,62}$"  # of a named graph; ``default`` is the implicit one
+
+
+def named_graphs(metadata: MetaData) -> Table:
+    """kg_named_graphs (0216), added to ``metadata``: the named graphs of a project (``docs/kg.md``, Named graphs): a
+    name, what it is for, and the sources of the project it holds (``sources``, ids of repos, uploads and connectors).
+    The kg tools read one by narrowing the project's one build to those sources at query time
+    (``evo_agents.kg.graph_scope``); nothing else of the graph is kept per named graph. ``default``, every source, has
+    no row. Who made it, who changed it last, when."""
+    name = "kg_named_graphs"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("name", Text, nullable=False),
+        Column("description", Text, nullable=False, server_default=""),
+        Column("sources", JSONB, nullable=False, server_default="[]"),
+        Column("created_by", BigInteger),
+        Column("updated_by", BigInteger),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_created_by_fkey"),
+        ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_updated_by_fkey"),
+        PrimaryKeyConstraint("id", name=f"{name}_pkey"),
+        UniqueConstraint("project_id", "name", name=f"{name}_project_id_name_key"),
+        CheckConstraint(
+            and_(column("name").regexp_match(GRAPH_NAME_PATTERN), column("name") != "default"),
+            name=f"{name}_name_check",
+        ),
+        CheckConstraint("char_length(description) <= 500", name=f"{name}_description_check"),
+        CheckConstraint("jsonb_typeof(sources) = 'array'", name=f"{name}_sources_check"),
+    )
+
+
 def kg_settings_tables(metadata: MetaData) -> tuple[Table, Table]:
     """(kg_settings, kg_settings_changes) (0196), added to ``metadata``: the KG settings of a project that differ from
     the defaults (``evo_agents.kg.settings``; its semantic mode and model stay in kg_semantic), and every change to

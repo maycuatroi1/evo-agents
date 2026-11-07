@@ -82,6 +82,7 @@ export function RailSearch({
   project,
   query,
   kind,
+  graph = "",
   initialError,
   onCommit,
   onPick,
@@ -89,12 +90,14 @@ export function RailSearch({
   project: string;
   query: string;
   kind: string;
+  /** a named graph of the project: the search finds only its sources' nodes; "" for every source */
+  graph?: string;
   initialError: ApiErrorInfo | null;
   onCommit: (query: string) => void;
   onPick: (node: KgNode) => void;
 }) {
   const t = useTranslations("kg.explorer.rail");
-  const search = useHubQuery({ ...kgSearchQuery(browserApi, project, query, kind), enabled: query !== "" }, initialError);
+  const search = useHubQuery({ ...kgSearchQuery(browserApi, project, query, kind, graph), enabled: query !== "" }, initialError);
   return (
     <div className="flex flex-col gap-2 border-b px-4 py-3" role="search" data-testid="kg-search">
       <SearchField

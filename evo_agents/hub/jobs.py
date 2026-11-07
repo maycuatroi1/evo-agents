@@ -80,6 +80,7 @@ MARKET_REFRESH = "hub.market_refresh"  # every 6 hours: each plugin market's ind
 MARKET_LICENSES = "hub.market_licenses"  # hourly: a buying hub's orders, licences, installs, reminders and lapses
 MARKET_SIGNALS = "hub.market_signals"  # daily: a seller's active licences and the month's revenue, as signals
 REAP_POOL_NODES = "hub.reap_pool_nodes"  # hourly: pool nodes offline past their pool's reap_after_days revoked
+HUB_TURN = "hub.hub_turn"  # deferred: one turn of a chat run on the hub runtime, through the hub's gateway
 
 
 LEASE = "lease"  # the short jobs that must run every minute whatever else runs

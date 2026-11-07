@@ -53,12 +53,14 @@ from evo_agents.hub.server import (
     invites,
     projects,
     security,
+    system_trace_views,
     tokens,
     user_emails,
     web_auth,
 )
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.hub_runtime import take_turn as hub_turn  # noqa: F401
 from evo_agents.hub.server.hub_settings import FeatureGate
 from evo_agents.hub.server.kg_entity_key import find as entity_key  # noqa: F401
 from evo_agents.hub.server.loop import routes as loop_routes  # GET .../loop, POST .../loop/resume
@@ -311,6 +313,10 @@ def _include_kg_routes(app: FastAPI) -> None:
 
     app.include_router(kg_settings.router)
 
+    from evo_agents.hub.server import kg_graphs
+
+    app.include_router(kg_graphs.router)
+
     from evo_agents.hub.server import kg_entities_setup
 
     app.include_router(kg_entities_setup.router)
@@ -398,6 +404,7 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         run_events.RunStreams(app.state.listener),
         chat_events.ChatStreams(app.state.listener),
     )
+    app.state.trace_streams = system_trace_views.TraceStreams(app.state.listener)  # the live traces of systems
 
     from evo_agents.hub.server import (
         attachments,
@@ -523,6 +530,7 @@ def _include_member_routes(app: FastAPI) -> None:
         agent_profiles,
         agent_provider_accounts,
         agent_reads,
+        agent_systems,
         agent_types,
         autonomy_policies,
         branding,
@@ -560,6 +568,7 @@ def _include_member_routes(app: FastAPI) -> None:
         model_catalog,
         opportunities,
         opportunity_evidence,
+        orchestrator_actions,
         plugin_cli,
         plugin_host,
         plugin_notify,
@@ -597,6 +606,9 @@ def _include_member_routes(app: FastAPI) -> None:
         rate_limits.worker_router,
         worker_autonomy.worker_router,
         agent_profiles.router,
+        system_trace_views.stream_router,  # before its router, whose /traces/{id} would take /traces/stream
+        system_trace_views.router,  # the traces of agent systems (0218)
+        agent_systems.router,  # the agent systems of a project (0217)
         agent_accounts.router,
         account_pools.router,
         agent_provider_accounts.router,
@@ -631,6 +643,7 @@ def _include_member_routes(app: FastAPI) -> None:
         agent_reads.worker_router,  # and reads another project's knowledge graph and memories
         chat_read.worker_router,
         triage_actions.worker_router,
+        orchestrator_actions.worker_router,  # the Orchestrator of a system acts in its threads; agents escalate
         curator_threads.worker_router,  # the agent of a proposal's thread answers it
         market_install.github_router,  # before plugins.router, whose routes take /v1/plugins/{name}
         plugins.router,

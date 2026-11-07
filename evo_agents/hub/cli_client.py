@@ -100,6 +100,14 @@ def signed_in():
     return Hub(credentials.url, credentials.token), credentials
 
 
+def call_object(hub: Hub, method: str, path: str, body: dict | None = None) -> dict:
+    """The hub's answer to ``method path``, for a route that answers a JSON object; HubError when it did not."""
+    found = hub.call(method, path, body)
+    if not isinstance(found, dict):
+        raise HubError(f"the hub answered {method} {path} with no JSON object")
+    return found
+
+
 def print_json(data) -> None:
     print(json.dumps(data, ensure_ascii=False, indent=2))
 

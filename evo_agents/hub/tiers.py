@@ -72,6 +72,7 @@ ChangeKind = Literal[
     "cli",
     "release_prep",
     "revert",
+    "agent_config",
     "feature",
     "api_change",
     "schema_change",
@@ -100,6 +101,11 @@ CHANGE_KINDS: dict[str, tuple[int, str]] = {
     "cli": (1, "a new command for a chain of commands people type again and again"),
     "release_prep": (1, "preparing a release: changelog, version, the release pull request"),
     "revert": (1, "a git revert of a change the Curator merged whose figures got worse after it; the hub proposes it"),
+    "agent_config": (
+        1,
+        "the instructions, skill or model of an agent, or the sources or a decision of a named knowledge graph, that "
+        "an agent system's curator optimizes; accepting it writes a new profile version or changes the graph",
+    ),
     "feature": (2, "a new feature"),
     "api_change": (2, "a change of an API, a command line or a JSON key"),
     "schema_change": (2, "a change of a database schema or a migration"),

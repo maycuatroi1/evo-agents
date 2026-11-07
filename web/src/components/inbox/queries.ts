@@ -59,6 +59,7 @@ export const NOTICE_KINDS = [
   "market_license_expiring",
   "kg_optimize",
   "kg_pipeline",
+  "system_daily_cap",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [

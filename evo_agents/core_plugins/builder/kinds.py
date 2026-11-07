@@ -31,6 +31,7 @@ from evo_agents.hub.tables_settings import PROPOSAL_KINDS
     PLUGIN,
     PLUGIN_INSTALL,
     PLUGIN_LISTING,
+    SYSTEM,
 ) = PROPOSAL_KINDS
 
 

@@ -172,6 +172,10 @@ TABLES |= {"plugin_cron"}  # migration 0203
 TABLES |= {"kg_answer_jobs", "kg_answers"}  # migration 0207
 TABLES |= {"run_spend"}  # migration 0210
 TABLES |= {"kg_entity_map_runs"}  # migration 0212
+TABLES |= {"kg_named_graphs"}  # migration 0216
+TABLES |= {"agent_systems", "agent_system_revisions"}  # migration 0217
+TABLES |= {"system_traces", "system_spans", "agent_ask_briefs"}  # migration 0218
+TABLES |= {"orchestrator_threads"}  # migration 0221
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -262,8 +266,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_twenty_seven_tables(hub_db):
-    assert len(TABLES) == 227  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_thirty_four_tables(hub_db):
+    assert len(TABLES) == 234  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -4273,6 +4277,38 @@ def test_0160_takes_proposals_of_a_plugin_its_install_and_its_listing_and_going_
         conn.execute(delete(p))
     assert query(hub_db, SNAPSHOT) == before
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0160") :]
+
+
+def test_0222_takes_proposals_of_an_agent_system_and_going_back_drops_them(hub_db):
+    below = "0221"  # 0222's down_revision
+    move_to(hub_db, below)
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    proposal = {"project_id": ids["project"], "change": {"set": {}, "unset": []}, "summary": "s", "base_version": 0}
+    proposal["proposed_by"] = ids["user"]
+    p, n = t.builder_proposals, t.notifications
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # 0160 knows no system proposal
+        conn.execute(insert(p).values({**proposal, "kind": "system", "target": {"system": "support"}}))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0222")
+    notice = {"user_id": ids["user"], "kind": "notice", "notice_kind": "builder_proposal", "title": "System"}
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(p).values({**proposal, "kind": "systems"}))
+        conn.execute(insert(p).values({**proposal, "kind": "system", "target": {"system": "support"}}))
+        conn.execute(insert(p).values({**proposal, "kind": "goal"}))
+        for number, kind in enumerate(("system", "goal"), 1):
+            conn.execute(insert(n).values({**notice, "details": {"proposal": number, "kind": kind}}))
+    # Going back drops the proposals of an agent system with their notices.
+    move_to(hub_db, below, down=True)
+    assert query(hub_db, select(n.c.details["kind"].as_string())) == [("goal",)]
+    assert query(hub_db, select(p.c.kind)) == [("goal",)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(n))
+        conn.execute(delete(p))
+    assert query(hub_db, SNAPSHOT) == before
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0222") :]
 
 
 def test_0161_closes_a_curator_change_with_no_plan_and_going_back_opens_it_again(hub_db):

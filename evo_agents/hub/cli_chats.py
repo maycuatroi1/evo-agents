@@ -80,6 +80,7 @@ MESSAGE_KEYS = (
     "via",
     "bridged_to",
     "from_answer",
+    "forwarded_by",
 )
 PAGE_KEYS = ("chat", "messages", "more")
 

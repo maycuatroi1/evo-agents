@@ -25,6 +25,7 @@ and once it ended, under its last one (``attach_leftovers``), whose chat gets a 
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -34,14 +35,22 @@ from uuid import UUID
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import UUID4, BaseModel, Field, field_validator, model_validator
-from sqlalchemy import exists, func, insert, select, update
+from sqlalchemy import exists, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import blob_gc, chats, outputs, runs, tables
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server import output_notices, output_views
-from evo_agents.hub.server.blobs import Mismatch, Sha256, UploadItem, Uploads, commit_uploads, issue_uploads
+from evo_agents.hub.server.blobs import (
+    Mismatch,
+    Sha256,
+    UploadItem,
+    Uploads,
+    commit_uploads,
+    issue_uploads,
+    put_bytes,
+)
 from evo_agents.hub.server.chat_store import write_event as write_chat_event
 from evo_agents.hub.server.errors import error_response
 from evo_agents.hub.server.output_views import RunOutput
@@ -338,6 +347,33 @@ async def record(request: Request, user: Principal, reach: Reach, batch: OutputB
     return RecordedOutputs(outputs=[by_id[output_id] for output_id in ids], added=added)
 
 
+async def record_held(conn: AsyncConnection, store, target: Target, user_id: int, item: OutputIn, data: bytes) -> int:
+    """Record ``item``, whose bytes ``data`` the caller put in ``store`` already, as an output of run ``target`` (its
+    row locked), held by its project as ``record`` holds an upload: the hub runtime's interactive answer
+    (``hub_tools``), which no worker uploads. ValueError when the run's limits refuse it; the output's id."""
+    await blob_gc.lock_shared(conn)
+    if await blob_gc.revive(conn, [item.sha256]):
+        await asyncio.to_thread(put_bytes, store, item.sha256, data, replace=True)
+    b = tables.blobs
+    held = {"project_id": target.project_id, "sha256": item.sha256, "size": len(data), "kind": outputs.KIND}
+    await conn.execute(pg_insert(b).values(**held, created_by=user_id).on_conflict_do_nothing())
+    count, size = await usage(conn, target.run_id)
+    if (
+        item.size > outputs.MAX_FILE_BYTES
+        or count >= outputs.MAX_RUN_OUTPUTS
+        or size + item.size > outputs.MAX_RUN_BYTES
+    ):
+        raise ValueError(
+            f"run {target.run_id} holds {count} outputs of {size} bytes, and a run holds at most "
+            f"{outputs.MAX_RUN_OUTPUTS} of {outputs.MAX_RUN_BYTES} bytes, a file at most {outputs.MAX_FILE_BYTES}"
+        )
+    ids, touched = await _write(conn, target, [item])
+    if touched:
+        await _note(conn, target, [item], ids, touched)
+        await output_notices.outputs_recorded(conn, target.run_id, touched)
+    return ids[0]
+
+
 # Questions and chat messages
 
 
@@ -368,6 +404,11 @@ async def _link(conn: AsyncConnection, column: str, target_id: int, output_ids: 
     rows = [{"output_id": output_id, column: target_id} for output_id in output_ids]
     key = [k.c.output_id, k.c[column]]
     await conn.execute(pg_insert(k).values(rows).on_conflict_do_nothing(index_elements=key))
+
+
+async def link_outputs(conn: AsyncConnection, message_id: int, output_ids: list[int]) -> None:
+    """Have message ``message_id`` carry outputs ``output_ids`` too, as a forward of a message that carries them."""
+    await _link(conn, "chat_message_id", message_id, output_ids)
 
 
 async def link_decision(conn: AsyncConnection, run_id: int, decision_id: int, output_ids: list[int]) -> None:
@@ -413,6 +454,7 @@ async def attach_leftovers(conn: AsyncConnection, run_id: int) -> None:
         select(cm.c.id, cm.c.chat_id)
         .join_from(cm, r, r.c.chat_id == cm.c.chat_id)
         .where(r.c.id == run_id, cm.c.run_id == run_id)
+        .where(or_(cm.c.author_profile_id.is_(None), cm.c.author_profile_id == r.c.profile_id))  # not a forward
         .order_by(cm.c.seq.desc())
         .limit(1)
     )

@@ -21,7 +21,9 @@ export const kgKeys = {
   builds: (project: string) => ["kg", project, "builds"] as const,
   failedBuilds: (project: string) => ["kg", project, "builds", "failed"] as const,
   graph: (project: string) => ["kg", project, "graph"] as const,
-  search: (project: string, query: string, kind: string) => ["kg", project, "search", query, kind] as const,
+  search: (project: string, query: string, kind: string, graph = "") =>
+    graph ? (["kg", project, "search", query, kind, graph] as const) : (["kg", project, "search", query, kind] as const),
+  graphs: (project: string) => ["kg", project, "graphs"] as const,
   node: (project: string, id: string) => ["kg", project, "node", id] as const,
   neighbourhood: (project: string, id: string, hops: Hops, grouping?: Grouping) =>
     grouping
@@ -99,16 +101,27 @@ export const kgGraphQuery = (api: ApiSource, project: string) =>
     queryFn: ({ signal }) => call(api().GET("/v1/kg/{project}/graph", { params: { path: { project } }, signal })),
   });
 
-export const kgSearchQuery = (api: ApiSource, project: string, query: string, kind: string) =>
+/** The search of the rail; with `graph`, only the nodes of that named graph's sources (`?graph=`). */
+export const kgSearchQuery = (api: ApiSource, project: string, query: string, kind: string, graph = "") =>
   queryOptions({
-    queryKey: kgKeys.search(project, query, kind),
+    queryKey: kgKeys.search(project, query, kind, graph),
     queryFn: ({ signal }) =>
       call(
         api().GET("/v1/kg/{project}/nodes", {
-          params: { path: { project }, query: { q: query, ...(kind ? { kind: [kind] } : {}) } },
+          params: {
+            path: { project },
+            query: { q: query, ...(kind ? { kind: [kind] } : {}), ...(graph ? { graph } : {}) },
+          },
           signal,
         }),
       ),
+  });
+
+/** `default` and the named graphs of the project, the sources its newest build read, and whether the reader writes. */
+export const kgGraphsQuery = (api: ApiSource, project: string) =>
+  queryOptions({
+    queryKey: kgKeys.graphs(project),
+    queryFn: ({ signal }) => call(api().GET("/v1/kg/{project}/graphs", { params: { path: { project } }, signal })),
   });
 
 export const kgNodeQuery = (api: ApiSource, project: string, id: string) =>

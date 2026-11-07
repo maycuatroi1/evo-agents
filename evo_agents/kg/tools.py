@@ -10,6 +10,13 @@ from __future__ import annotations
 
 IMPACT_LIMIT = 20  # dependents kg_impact lists per hop, and a quarter as many documents, unless a call passes limit
 IMPACT_MAX_LIMIT = 500
+GRAPH = {  # a named graph of the project on the hub: some of its sources (``evo_agents.kg.graph_scope``)
+    "type": "string",
+    "description": (
+        "only nodes and edges of this named graph of the project, a set of its sources (`evo-agents hub kg graph "
+        "list`); default: every source"
+    ),
+}
 DEPRECATED = {  # the argument that shows what a writer deprecated on the hub too (``evo_agents.kg.pipeline.curation``)
     "type": "boolean",
     "default": False,
@@ -49,6 +56,7 @@ TOOLS = [
                     "type": "string",
                     "description": "only results of this repo: a source (kg_status lists them) or its git repo name",
                 },
+                "graph": GRAPH,
                 "deprecated": DEPRECATED,
             },
             "required": ["query"],
@@ -73,6 +81,7 @@ TOOLS = [
                     "description": "size of the whole text, as UTF-8 bytes / 3",
                 },
                 "hops": {"type": "integer", "minimum": 1, "maximum": 3, "default": 2},
+                "graph": GRAPH,
                 "deprecated": DEPRECATED,
             },
         },
@@ -85,7 +94,7 @@ TOOLS = [
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {"id": {"type": "string"}, "deprecated": DEPRECATED},
+            "properties": {"id": {"type": "string"}, "graph": GRAPH, "deprecated": DEPRECATED},
             "required": ["id"],
         },
     },
@@ -118,6 +127,7 @@ TOOLS = [
                     "default": IMPACT_LIMIT,
                     "description": "dependents listed per hop, and a quarter as many documents; the rest are counted",
                 },
+                "graph": GRAPH,
                 "deprecated": DEPRECATED,
             },
         },
@@ -134,6 +144,7 @@ TOOLS = [
                 "from": {"type": "string"},
                 "to": {"type": "string"},
                 "max_hops": {"type": "integer", "minimum": 1, "maximum": 6, "default": 6},
+                "graph": GRAPH,
                 "deprecated": DEPRECATED,
             },
             "required": ["from"],

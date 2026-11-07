@@ -15,6 +15,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { parseDepth, parseLimit } from "@/lib/kg/entity-params";
 import { entityGraphQuery } from "@/lib/kg/entity-queries";
+import { parseGraph } from "@/lib/kg/graphs";
 import { parseScope, type Scope, scopeKey, withScope } from "@/lib/kg/explorer";
 import { cleanQuery, kgBuildsQuery, kgClusterSummaryQuery, kgGraphQuery } from "@/lib/kg/queries";
 import type { KgNode } from "@/lib/kg/types";
@@ -23,6 +24,7 @@ import type { EntityViewState } from "./entity-view";
 import { type ExplorerLayout, SCOPE_LAYOUTS } from "./explorer-layout";
 import { RailKinds, RailSearch, RailStats } from "./explorer-rail";
 import { NodeScope } from "./explorer-node-scope";
+import { GraphPicker } from "./graph-picker";
 import { ClusterScope, OverviewScope } from "./explorer-scopes";
 import { KgHeader } from "./kg-header";
 
@@ -37,7 +39,7 @@ export type KgExplorerErrors = {
  * the overview of its clusters, which opens into a cluster's members and into a node's neighbourhood, with the
  * graph's figures, its kinds as filters and a search in the rail, and the inspector for what is selected. The scope
  * lives in the URL (`?cluster=`, `?node=`), so the browser's back and forward walk the exploration and a view can be
- * shared; the search too (`?q=`). The kinds hidden and the layout last for the visit. Read-only.
+ * shared; the search too (`?q=`), and the named graph it is narrowed to (`?graph=`, ./graph-picker.tsx). The kinds hidden and the layout last for the visit. Read-only.
  *
  * `?view=entities` shows the Entities view instead (./entity-view.tsx): the entities and relations a model read from
  * the documents, drawn with sigma.js, its focus, depth and node count in `?entity=`, `?depth=` and `?limit=`. A URL
@@ -60,6 +62,7 @@ export function KgExplorer({ project, errors }: { project: string; errors: KgExp
   const scope = useMemo(() => parseScope(params), [params]);
   const query = cleanQuery(params.get("q") ?? undefined);
   const kind = cleanQuery(params.get("kind") ?? undefined);
+  const named = parseGraph(params.get("graph"));
   const entityState = useMemo<EntityViewState>(
     () => ({ focus: params.get("entity")?.trim() || null, depth: parseDepth(params.get("depth")), limit: parseLimit(params.get("limit")) }),
     [params],
@@ -102,6 +105,12 @@ export function KgExplorer({ project, errors }: { project: string; errors: KgExp
     const next = new URLSearchParams(params.toString());
     if (text) next.set("q", text);
     else next.delete("q");
+    write(next, false);
+  };
+  const pickGraph = (name: string) => {
+    const next = new URLSearchParams(params.toString());
+    if (name) next.set("graph", name);
+    else next.delete("graph");
     write(next, false);
   };
   const switchView = (next: View) => {
@@ -148,7 +157,15 @@ export function KgExplorer({ project, errors }: { project: string; errors: KgExp
     navigate,
     summary,
     search: (
-      <RailSearch project={project} query={query} kind={kind} initialError={errors.search} onCommit={commitQuery} onPick={pick} />
+      <RailSearch
+        project={project}
+        query={query}
+        kind={kind}
+        graph={named}
+        initialError={errors.search}
+        onCommit={commitQuery}
+        onPick={pick}
+      />
     ),
     shared: (present: ReadonlySet<string> | null) => (
       <>
@@ -172,15 +189,18 @@ export function KgExplorer({ project, errors }: { project: string; errors: KgExp
   return (
     <div className="flex flex-col gap-4 lg:h-[calc(100dvh-6.25rem)] lg:min-h-[36rem]" data-testid="kg-explorer-page">
       {header}
-      <Segmented
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Segmented
         label={tExplorer("view")}
         value={view}
         onChange={switchView}
         options={[
           { value: "clusters", label: tExplorer("views.clusters"), icon: Boxes, testId: "kg-view-clusters" },
           { value: "entities", label: tExplorer("views.entities"), icon: Waypoints, testId: "kg-view-entities" },
-        ]}
-      />
+          ]}
+        />
+        <GraphPicker project={project} graph={named} onPick={pickGraph} />
+      </div>
       {choosing ? (
         <Skeleton className="h-[62vh] w-full rounded-md lg:h-auto lg:flex-1" />
       ) : view === "entities" ? (

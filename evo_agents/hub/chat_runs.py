@@ -508,6 +508,8 @@ def build_chat_prompt(
     ships: bool = False,
     label: dict | None = None,
     cdn: bool = False,
+    system: list[str] | None = None,
+    brief: list[str] | None = None,
 ) -> str:
     """The prompt of a chat run of ``agent`` ({handle, name, project, description}) in ``chat`` ({id, title, people,
     agents, and kind: ``chats.DIRECT`` or ``chats.SETTLE`` for those}), woken by message ``trigger`` (as
@@ -522,7 +524,10 @@ def build_chat_prompt(
     agent's project), its rules say messages of the chat may leave the hub at that level, so nothing above it goes
     into them (``label_lines``). With ``cdn`` (the chat is not restricted), its rules let an interactive answer load
     libraries from ``outputs.CDN_HOSTS``; without, they say the page loads nothing from outside
-    (``interactive_rules``)."""
+    (``interactive_rules``). ``brief`` (``system_context.brief_lines``: the brief of the ask that made the run) goes
+    right after the first line, and ``system`` (``system_context.system_lines``: the agent's place in its agent
+    system) after the rules: both have byte budgets of their own and come before the snapshot, so the clip to
+    MAX_PROMPT_BYTES cuts the snapshot and never them."""
     handle = agent.get("handle") or "agent"
     people = ", ".join(chat.get("people") or []) or "none"
     agents = ", ".join(f"@{name}" for name in chat.get("agents") or []) or "none"
@@ -542,8 +547,10 @@ def build_chat_prompt(
         f"You are @{handle} ({agent.get('name') or handle}), an agent of project {agent.get('project')} on the "
         f"evo-agents hub, in {where} (#{chat.get('id')}). {about}".rstrip(),
         "",
+        *([*brief, ""] if brief else []),
         *_rules(handle, login, branch, hop, lazy, harness, direct, settle, ships, cdn),
         *label_lines(label, agent.get("project")),
+        *(["", *system] if system else []),
         "",
         f"People of the chat: {people}. Agents: {agents}.",
         "",

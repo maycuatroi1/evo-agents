@@ -112,7 +112,14 @@ def cmd_worker(args) -> int:
         return _config_error(ConfigError(missing[0], message))
     try:
         from evo_agents.hub import worker
-        from evo_agents.hub.server.app import entity_key, init_sentry, loop_tick, memory_upkeep, release_pass
+        from evo_agents.hub.server.app import (
+            entity_key,
+            hub_turn,
+            init_sentry,
+            loop_tick,
+            memory_upkeep,
+            release_pass,
+        )
     except ImportError as exc:
         return missing_extra(exc, args)
     init_sentry(config)
@@ -124,6 +131,7 @@ def cmd_worker(args) -> int:
         loop_tick=loop_tick,
         memory_upkeep=memory_upkeep,
         entity_key=entity_key,
+        hub_turn=hub_turn,
     )
 
 
@@ -305,6 +313,10 @@ def _register_workspace_commands(hsub) -> None:
     from evo_agents.hub.cli_agents import register_agents
 
     register_agents(hsub)
+
+    from evo_agents.hub.cli_systems import register as register_systems
+
+    register_systems(hsub)
 
     from evo_agents.hub.cli_chats import register_chats
 

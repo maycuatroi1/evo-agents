@@ -64,6 +64,9 @@ KG_EVAL_SET = "kg.eval_set"
 # A writer finished uploading an archive as a source (evo_agents.hub.server.kg_uploads):
 # "<project> source=<id> upload=<id> bytes=<n>", never a file name.
 KG_UPLOAD = "kg.upload"
+# A writer or the agent of a run created, changed or deleted a named graph of a project (evo_agents.hub.server.kg_graphs):
+# "<project> graph=<name> kind=<create|update|delete> sources=<n>".
+KG_GRAPH = "kg.graph"
 # Workers belong to no project; a target names the pairing or the worker by id and name, never a code or a token.
 WORKER_PAIR = "worker.pair"  # a member created a pairing code: "pairing:<id> name=<worker name>"
 # A machine joined with a code or a pool's join token, as its owner with the new worker token:
@@ -116,6 +119,9 @@ RUN_TRIAGE_RERUN = "run.triage_rerun"  # the agent of a triage thread ran a fail
 RUN_TRIAGE_INVITE = "run.triage_invite"  # ... or invited the agent of another project the error names into the thread
 RUN_TRIAGE_PLAN_EDIT = "run.triage_plan_edit"  # ... or edited verify or what of a pending step, as the owner
 RUN_TRIAGE_CANCEL = "run.triage_cancel"  # ... or asked the worker of a stale run to stop it, for its owner
+ORCHESTRATOR_ANSWER = "orchestrator.answer"  # the Orchestrator of a system answered a thread the hub opened to it
+ORCHESTRATOR_REASSIGN = "orchestrator.reassign"  # ... or gave its work to another agent of the system
+ORCHESTRATOR_ASK_OWNER = "orchestrator.ask_owner"  # ... or asked the person at the origin of the work a decision
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
 # The dispatcher of a run or an admin of its project deleted an output of it (evo_agents.hub.server.run_outputs): the
@@ -178,6 +184,11 @@ AGENT_CREATE = "agent.create"  # an admin of the project created an agent profil
 AGENT_UPDATE = "agent.update"  # an admin changed it, its avatar included: the version it made and the fields changed
 AGENT_DELETE = "agent.delete"  # an admin soft-deleted it: it takes no new run
 AGENT_PLACEMENT = "agent.placement"  # no longer written: an admin once moved an agent between legacy and its own pool
+# A project's agent systems (evo_agents.hub.server.agent_systems), in the project; the target is
+# "<project> system=<slug> revision=<n>", never a description or a purpose.
+SYSTEM_CREATE = "system.create"  # an admin of the project created an agent system, at revision 1
+SYSTEM_UPDATE = "system.update"  # an admin stored a new revision of it
+SYSTEM_DELETE = "system.delete"  # an admin deleted it with its revisions
 # Account pools (evo_agents.hub.server.account_pools), in the project; the target is "<project> account-pool:<id>", with
 # " secret:<id>" for an account added or removed and " agent:@<handle>" for an agent attached, never a name of an
 # account or a value.

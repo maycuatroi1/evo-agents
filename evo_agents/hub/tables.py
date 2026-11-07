@@ -56,6 +56,7 @@ from evo_agents.hub import (
     tables_merge,
     tables_night,
     tables_opportunities,
+    tables_orchestrator,
     tables_org,
     tables_outputs,
     tables_plugin_notices,
@@ -70,6 +71,8 @@ from evo_agents.hub import (
     tables_sessions,
     tables_settings,
     tables_signals,
+    tables_systems,
+    tables_traces,
     tables_triage,
     tables_workers,
 )
@@ -723,6 +726,7 @@ proposals = Table(
     Column("revert_of", BigInteger),  # the proposal whose merged change the hub proposes to revert (0018)
     Column("promotion", JSONB),  # the agent memories a proposal of kind memory promotes (0103)
     Column("fix_of", BigInteger),  # the merged change whose probe recurred two weeks in a row, that it fixes (0133)
+    Column("system_change", JSONB),  # kind agent_config: what it changes, in place of a draft plan (0220)
     ForeignKeyConstraint(  # curator_changes names its proposal: a cycle, as plan_revisions_run_id_fkey
         ["fix_of"], ["curator_changes.id"], ondelete="SET NULL", name="proposals_fix_of_fkey", use_alter=True
     ),
@@ -778,10 +782,13 @@ channel_link_codes = Table(  # the one-time codes that link a member's channel: 
 
 accounts, account_policies, run_accounts, user_emails, provider_accounts = tables_accounts.account_tables(metadata)
 agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata, runs, credential_leases)  # 0030
+agent_systems, agent_system_revisions = tables_systems.system_tables(metadata)  # 0217
 account_pools, account_pool_members = tables_account_pools.account_pool_tables(metadata)  # 0191
 guard_terms, guard_targets = tables_guard.guard_tables(metadata)  # the private names and published repos (0192)
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
 chat_bridges, chat_bridge_codes, chat_bridge_messages = bridge_tables(metadata)  # 0165
+system_traces, system_spans, agent_ask_briefs = tables_traces.trace_tables(metadata)  # traces of systems (0218)
+orchestrator_threads = tables_orchestrator.orchestrator_tables(metadata)  # an Orchestrator's threads (0221)
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
 retired_project_plugins = tables_plugins.retired_table(metadata)  # canvas, srs and tasks before 0147
@@ -839,6 +846,7 @@ kg_decisions, kg_decision_events = tables_kg.decision_tables(metadata)  # 0142
 kg_query_labels = tables_kg.query_labels(metadata)  # each kg_search and what the agent opened after it (0178)
 kg_eval_sets = tables_kg.eval_sets(metadata)  # each version of a project's retrieval question set (0179)
 kg_semantic = tables_kg.semantic_settings(metadata)  # whether a project's graph is searched by meaning too (0181)
+kg_named_graphs = tables_kg.named_graphs(metadata)  # the named graphs of a project, sets of its sources (0216)
 kg_settings, kg_settings_changes = tables_kg.kg_settings_tables(
     metadata
 )  # a project's KG settings and their changes (0196)

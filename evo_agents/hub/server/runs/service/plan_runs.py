@@ -36,6 +36,12 @@ async def held_plan_run(
     ``lock``: state, worker_id, kind, project_id, the project's name, plan_id, dispatched_by, the dispatcher's login
     and repos. 404 for any other run, a run of one step included."""
     worker_id, _, name, *_ = await worker_of(conn, user)
+    return name, await held_row(conn, run_id, worker_id, lock=lock, kinds=kinds)
+
+
+async def held_row(conn: AsyncConnection, run_id: int, worker_id: int | None, *, lock: bool, kinds: tuple[str, ...]):
+    """The row of ``held_plan_run`` for worker ``worker_id`` (None: the hub runtime's turn, which holds a run of no
+    worker, ``hub_runtime``)."""
     r, p, u = tables.runs, tables.projects, tables.users
     query = (
         select(
@@ -66,7 +72,7 @@ async def held_plan_run(
             f"run {run_id} is {what}, which has no plan to read or steps to report: report its state with "
             f"POST /v1/worker/runs/{run_id}/state",
         )
-    return name, row
+    return row
 
 
 async def _dispatcher_access(conn: AsyncConnection, row, user: Principal) -> ProjectAccess:

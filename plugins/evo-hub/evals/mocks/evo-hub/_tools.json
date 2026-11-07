@@ -27,6 +27,10 @@
             "type": "string",
             "description": "only results of this repo: a source (kg_status lists them) or its git repo name"
           },
+          "graph": {
+            "type": "string",
+            "description": "only nodes and edges of this named graph of the project, a set of its sources (`evo-agents hub kg graph list`); default: every source"
+          },
           "deprecated": {
             "type": "boolean",
             "default": false,
@@ -66,6 +70,10 @@
             "maximum": 3,
             "default": 2
           },
+          "graph": {
+            "type": "string",
+            "description": "only nodes and edges of this named graph of the project, a set of its sources (`evo-agents hub kg graph list`); default: every source"
+          },
           "deprecated": {
             "type": "boolean",
             "default": false,
@@ -82,6 +90,10 @@
         "properties": {
           "id": {
             "type": "string"
+          },
+          "graph": {
+            "type": "string",
+            "description": "only nodes and edges of this named graph of the project, a set of its sources (`evo-agents hub kg graph list`); default: every source"
           },
           "deprecated": {
             "type": "boolean",
@@ -133,6 +145,10 @@
             "default": 20,
             "description": "dependents listed per hop, and a quarter as many documents; the rest are counted"
           },
+          "graph": {
+            "type": "string",
+            "description": "only nodes and edges of this named graph of the project, a set of its sources (`evo-agents hub kg graph list`); default: every source"
+          },
           "deprecated": {
             "type": "boolean",
             "default": false,
@@ -158,6 +174,10 @@
             "minimum": 1,
             "maximum": 6,
             "default": 6
+          },
+          "graph": {
+            "type": "string",
+            "description": "only nodes and edges of this named graph of the project, a set of its sources (`evo-agents hub kg graph list`); default: every source"
           },
           "deprecated": {
             "type": "boolean",

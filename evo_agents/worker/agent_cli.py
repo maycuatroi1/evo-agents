@@ -22,6 +22,7 @@ from evo_agents.worker import (
     chat_cli,
     cli_support,
     curator_cli,
+    escalate_cli,
     merge_check_cli,
     output_cli,
     playbook_cli,
@@ -40,6 +41,7 @@ from evo_agents.worker.agent_input import (
     probe_file,
     promotion_file,
     read_text,
+    system_change_file,
     wait_until,
 )
 from evo_agents.worker.cli_support import worker_command
@@ -72,6 +74,7 @@ AGENT_PARSERS += (probe_cli.register_probe,)  # a review run's probe of a merged
 AGENT_PARSERS += (merge_check_cli.register_merge_check,)  # a plan run's pull request judged at its head
 AGENT_PARSERS += (curator_cli.register_curator,)  # a proposal's thread answers the proposal
 AGENT_PARSERS += (agent_ask_cli.register_agent,)  # a chat run asks an agent of another project
+AGENT_PARSERS += (escalate_cli.register_escalate,)  # an agent of an agent system asks its Orchestrator
 
 
 @dataclass
@@ -523,6 +526,15 @@ def cmd_finding(args) -> int:
     return 0
 
 
+def _carried(args) -> dict:
+    """What a proposal carries in place of the others: its draft plan, its promotion or its system change."""
+    if args.plan_file:
+        return {"plan": plan_file(args.plan_file)}
+    if args.promote_file:
+        return {"promotion": promotion_file(args.promote_file)}
+    return {"system_change": system_change_file(args.system_change_file)}
+
+
 @worker_command
 def cmd_propose(args) -> int:
     from evo_agents.hub.review import MAX_BODY_BYTES
@@ -548,7 +560,7 @@ def cmd_propose(args) -> int:
         "paths": paths,
         "finding_ids": list(dict.fromkeys(args.finding or [])),
         "evidence": evidence,
-        **({"plan": plan_file(args.plan_file)} if args.plan_file else {"promotion": promotion_file(args.promote_file)}),
+        **_carried(args),
     }
     if args.summary_file:
         text = read_text(args.summary_file, "summary", MAX_BODY_BYTES)
@@ -758,6 +770,11 @@ def _register_review(wsub) -> None:
     draft = propose.add_mutually_exclusive_group(required=True)
     draft.add_argument("--plan-file", help="the draft plan, YAML or JSON, in outcome steps")
     draft.add_argument("--promote-file", help="kind memory: the promotion of agents' memories, YAML or JSON")
+    draft.add_argument(
+        "--system-change-file",
+        help="kind agent_config, lens agent_system: the change of an agent or a graph a system's curator optimizes, "
+        "YAML or JSON",
+    )
     propose.add_argument("--path", action="append", metavar="REPO:PATH", help="a file it would edit; repeat it")
     propose.add_argument("--finding", action="append", type=int, metavar="ID", help="a finding it rests on; repeat it")
     propose.add_argument(

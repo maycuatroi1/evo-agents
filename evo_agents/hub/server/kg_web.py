@@ -43,6 +43,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from evo_agents.hub import kg_named_graphs
 from evo_agents.hub.kg_entity_graph import (
     CITATIONS,
     CODE_LINKS,
@@ -59,6 +60,7 @@ from evo_agents.hub.server.kg import built_graphs, rebuild_outdated
 from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
+from evo_agents.kg.graph_scope import DEFAULT_GRAPH, GraphScope
 
 log = logging.getLogger(__name__)
 
@@ -128,6 +130,9 @@ class NodeSearch(BaseModel):
     query: str
     kinds: list[str] = Field(description="the kinds the search was limited to; empty for all")
     results: list[KgNode]
+    named_graph: str | None = Field(
+        None, description="the named graph the search was limited to; null for every source"
+    )
 
 
 class Evidence(BaseModel):
@@ -296,12 +301,33 @@ async def search_nodes(
     q: Annotated[str, Query(min_length=1, max_length=200, description="name, id, path, code or words")],
     kind: Annotated[list[str] | None, Query(max_length=20, description="only nodes of these kinds")] = None,
     limit: Annotated[int, Query(ge=1, le=SEARCH_LIMIT)] = SEARCH_LIMIT,
+    graph: Annotated[
+        str | None,
+        Query(min_length=1, max_length=63, description="a named graph of the project: only its sources' nodes"),
+    ] = None,
 ) -> NodeSearch:
-    """Visible nodes matching ``q``, best first, as kg_search finds them."""
+    """Visible nodes matching ``q``, best first, as kg_search finds them; of the named graph ``graph`` only when
+    given (``evo_agents.hub.server.kg_graphs``)."""
     kinds = sorted({k for k in kind or [] if k})
-    found, ref = await read_graph(request, user, project, lambda session: session.search(q, kinds, limit))
+    scope = await _named_scope(request, user, project, graph)
+    found, ref = await read_graph(request, user, project, lambda session: session.search(q, kinds, limit, scope))
     results = (found or {}).get("results", [])
-    return NodeSearch(graph=ref, query=q, kinds=kinds, results=[KgNode(**n) for n in results])
+    named = scope.name if scope is not None else None
+    return NodeSearch(graph=ref, query=q, kinds=kinds, results=[KgNode(**n) for n in results], named_graph=named)
+
+
+async def _named_scope(request: Request, user, project: str, graph: str | None) -> GraphScope | None:
+    """The scope of the named graph ``graph`` of the project; None for none or ``default``; 404 for a name the
+    project has no graph of."""
+    if graph is None or graph == DEFAULT_GRAPH:
+        return None
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        require_reader(access)
+        sources = await kg_named_graphs.sources_of(conn, access.project_id, graph)
+    if sources is None:
+        raise HTTPException(404, f"project {project} has no knowledge graph named {graph}")
+    return GraphScope(graph, sources)
 
 
 @router.get("/{project}/node", response_model=NodeDetail)

@@ -1,9 +1,10 @@
 # The knowledge graph
 
 How the graph of a project answers an agent: what `kg_impact` follows and covers per language, how the text of every
-tool is written, who sees an element through the audience of its label, how `kg_search` finds nodes, what the note
-after a grep adds, how plans of the hub, commits and pull requests enter the graph, which commit each git source read
-and when a sync or a build does anything, how long this machine keeps old data, and how `kg eval` measures retrieval.
+tool is written, who sees an element through the audience of its label, how a named graph narrows the tools to some
+sources, how `kg_search` finds nodes, what the note after a grep adds, how plans of the hub, commits and pull requests
+enter the graph, which commit each git source read and when a sync or a build does anything, how long this machine
+keeps old data, and how `kg eval` measures retrieval.
 [Graph setup](kg-setup.md) covers building a graph and calling the tools.
 
 ## What kg_impact follows
@@ -265,6 +266,48 @@ history never enters a local graph. A local session finds chat messages through 
 `evo-agents hub mcp`. On the hub a reader's audience is computed from its database at every read (`docs/hub.md`,
 Projects and who sees what), and the core plugin chats labels each message with `chat:<id>` plus
 `grant:<project>:<level>` for each other project its label names (`docs/plugins.md`, Chat history).
+
+## Named graphs
+
+A hub project can hold several named knowledge graphs. A named graph is a name and a set of the project's sources
+(repos, uploads, connectors: the source ids `kg_status` and `evo-agents hub kg graph list` show), and one source can be
+in as many named graphs as fit it. The implicit graph `default` holds every source; it has no row and cannot be
+renamed or deleted. Names are 1 to 63 of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit.
+
+```
+evo-agents hub kg graph list --project northwind
+evo-agents hub kg graph create billing --project northwind --source lumen-api --source lumen-runbooks
+evo-agents hub kg graph update billing --project northwind --add lumen-web --remove lumen-runbooks
+evo-agents hub kg graph update billing --project northwind --rename payments
+evo-agents hub kg graph delete payments --project northwind
+```
+
+The API is `GET|POST /v1/kg/{project}/graphs` and `PATCH|DELETE /v1/kg/{project}/graphs/{name}`
+(`evo_agents/hub/server/kg_graphs.py`); the web's KG page has a picker of them. Reading the list needs a grant on the
+project; writing needs the writer role, or the token of a run of the same project, and each write is audited as
+`kg.graph`. A source a named graph names that the newest build did not read is listed as `missing`: nothing of it shows
+until a build reads it.
+
+`kg_search`, `kg_context`, `kg_node`, `kg_path` and `kg_impact` take `graph`, on the hub's MCP and through
+`evo-agents kg query TOOL TEXT --backend hub --graph NAME`. With it they return only the nodes and edges of that
+graph's sources. The filter is applied at query time on the project's one shared build (`evo_agents/kg/graph_scope.py`):
+no named graph has a store, a build, an artifact or a key of its own, and the migration that added them (0216) only
+adds `kg_named_graphs`.
+
+- A node belongs to the named graph when its readable id starts with one of the sources, when its properties name one
+  as `repo`, or when one of the units it was read from (`where_prov`) or derived from (`derivations`) belongs to one. A
+  requirement that a document of the source mentions belongs; a node with no unit of the sources does not, so a named
+  graph only narrows.
+- An edge belongs when both its nodes do.
+- Labels, audience and `deprecated` filter first, as before: `graph` is one more condition and never shows what the
+  reader's clearance hides.
+- A call without `graph`, or with `graph: "default"`, answers exactly as before.
+- A name the project has no graph of is an error result that names `evo-agents hub kg graph list`. On this machine
+  (`--backend local`) no named graph exists, so any name but `default` is that error.
+
+A read across projects of a chat run's agent takes it too: `evo-agents worker agent read PROJECT kg-search TEXT
+--graph NAME` (`graph` of `/v1/worker/runs/{id}/agent/reads`) names a graph of the project read, and the check of what
+the run's own project lets in still applies to what it returns (`docs/hub.md`, Agents across projects).
 
 ## Search
 
