@@ -1,7 +1,7 @@
 """The Curator's lens agent_system: its lens, its kind of change and the change a proposal of it carries.
 
 Revision ID: 0220
-Revises: 0218
+Revises: 0219
 Create Date: 2026-11-07
 
 A review run that looks through the lens ``agent_system`` (plan multi-agent-systems, criterion a8;
@@ -24,7 +24,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0220"
-down_revision = "0218"
+down_revision = "0219"
 branch_labels = None
 depends_on = None
 
