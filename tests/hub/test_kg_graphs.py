@@ -18,6 +18,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub import kg_graphs_cli, kg_named_graphs
 from evo_agents.hub.mcp_tools import KG_TOOLS
 from evo_agents.kg.serve import Session
