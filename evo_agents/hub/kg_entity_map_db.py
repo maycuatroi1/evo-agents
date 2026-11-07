@@ -92,7 +92,7 @@ async def on_build(conn: AsyncConnection, project_id: int, build_id: int, covera
     last = (
         await conn.execute(select(t.c.created_at).where(t.c.project_id == project_id).order_by(t.c.id.desc()).limit(1))
     ).first()
-    now = await conn.scalar(select(func.now()))
+    now = (await conn.execute(select(func.now()))).scalar_one()
     wanted = model.wants_run(coverage, had_run=last is not None, last_asked=None if last is None else last[0], now=now)
     if wanted is None or await active_of(conn, project_id) is not None:
         return None

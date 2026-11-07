@@ -670,8 +670,8 @@ async def post_agent(
         if hand is None or mention["name"] != target:
             mention["refusal"] = AGENT_REPLY_REFUSAL
             continue
-        asked = replace(hand, message_id=message_id, root_id=root_id or message_id)
-        mention["run_id"], mention["refusal"] = await _hand_on(conn, asked, mention["profile_id"])
+        handed = replace(hand, message_id=message_id, root_id=root_id or message_id)
+        mention["run_id"], mention["refusal"] = await _hand_on(conn, handed, mention["profile_id"])
     await insert_mentions(conn, message_id, kept)
     await link_message(conn, run_id, message_id, output_ids or [])
     for user_id in dict.fromkeys(people):
@@ -781,7 +781,7 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
     if new in runs.TERMINAL_STATES:  # what it sent after its last message goes under that one
         await attach_leftovers(conn, run_id)
     profile = await _run_profile(conn, run_id) if new in runs.TERMINAL_STATES else None
-    if new == "failed":
+    if new == "failed" and profile is not None:  # failed is a terminal state: profile is read
         why = found.error or "its worker gave no reason"
         await hub_reply(conn, found.chat_id, found.root_id, f"Run #{run_id} of @{profile.handle} failed: {why}")
     went_on = await _go_on_untaken(conn, run_id, found) if new == "done" else None
@@ -874,6 +874,7 @@ async def chat_prompt(
     from evo_agents.hub.server.chat_views import message_select, profiles_by_id
 
     found = await chat_run(conn, run_id)
+    assert found is not None  # run_specs asks for the prompt of a chat run alone, which a message started
     profile = await _run_profile(conn, run_id)
     c, cm = tables.chats, tables.chat_messages
     title, kind = (await conn.execute(select(c.c.title, c.c.kind).where(c.c.id == found.chat_id))).one()

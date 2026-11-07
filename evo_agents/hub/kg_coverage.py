@@ -132,7 +132,8 @@ def build_coverage(coverage: Mapping | None, reach: Mapping | None, *, skipped: 
         }
     mapped = coverage.get("entity_map")
     if isinstance(mapped, Mapping) and mapped.get("enabled"):  # the counts alone: no item id, no wording of a map
-        links = mapped.get("code_links") if isinstance(mapped.get("code_links"), Mapping) else {}
+        code_links = mapped.get("code_links")
+        links = code_links if isinstance(code_links, Mapping) else {}
         found["entity_map"] = {  # enabled: what kg_entity_map_run.wants_run and its route read
             "enabled": True,
             **{key: _int(mapped.get(key)) for key in MAP_COUNTS},

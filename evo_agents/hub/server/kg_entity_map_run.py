@@ -23,7 +23,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -204,7 +204,7 @@ async def advance(engine: AsyncEngine, *, blobs=None, data_dir=None, now: dateti
     count = count or count_readable
     t = tables.kg_entity_map_runs
     async with engine.begin() as conn:
-        moment = now or await conn.scalar(select(func.now()))
+        moment = now or (await conn.execute(select(func.now()))).scalar_one()
         rows = (await conn.execute(_context().where(t.c.state.in_(ENTITY_MAP_ACTIVE)).order_by(t.c.id))).all()
     outcomes: dict[str, int] = {}
     for ctx in rows:
@@ -279,7 +279,7 @@ async def start(conn: AsyncConnection, user: Principal, project: str) -> tuple[E
         return _shown(found, access.name), False
     latest = await _latest_build(conn, access.project_id)
     mapped = ((latest.coverage or {}).get("entity_map") if latest else None) or {}
-    if not mapped.get("enabled"):
+    if latest is None or not mapped.get("enabled"):
         raise HTTPException(
             409,
             f"the latest build of project {access.name} is not of strategy entity-graph-agent: an entity map is read "
@@ -370,7 +370,7 @@ class EntityMapChanged(BaseModel):
     uncited: list[dict] = Field(description="the documents, sections, plans and steps no map cites")
 
 
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409)}
 
 
 @router.post(

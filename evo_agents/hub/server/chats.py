@@ -128,7 +128,7 @@ class ChatMessageIn(BaseModel):
     reply_to: int | None = Field(None, ge=1, le=MAX_ID, description="the message it answers: it goes in its thread")
     attachment_ids: AttachmentIds = Field(default_factory=list)
     from_answer: int | None = Field(
-        None,
+        default=None,
         ge=1,
         le=MAX_ID,
         description=(

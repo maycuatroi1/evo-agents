@@ -204,7 +204,7 @@ def _complete(config: dict, asked: str, keys=None) -> dict:
             model=config["model"],
             messages=[{"role": "user", "content": asked}],
             temperature=0,
-            **({"extra_body": {"reasoning": config["reasoning"]}} if config.get("reasoning") else {}),
+            extra_body={"reasoning": config["reasoning"]} if config.get("reasoning") else None,
         )
     except Exception as exc:  # the library's errors differ by version: a failed call is a failed call
         raise EntitiesError(redact(f"the model endpoint failed: {type(exc).__name__}: {exc}", key)) from None
