@@ -207,6 +207,13 @@ def hub(context: JobContext) -> HubContext:
     return context.additional_context["hub"]
 
 
+def hub_engine(context: JobContext) -> AsyncEngine:
+    """The engine a job reaches the hub's database through."""
+    engine = hub(context).engine
+    assert engine is not None  # HubContext.__post_init__ makes one on its pool
+    return engine
+
+
 @queue.task(name=jobs.PING, pass_context=True)
 async def ping(context: JobContext, seconds: float = 0.0, note: str = "") -> dict:
     """Wait ``seconds`` (at most PING_MAX_SECONDS) and return; for checking that a worker runs jobs."""
@@ -616,19 +623,19 @@ async def index_history(context: JobContext, timestamp: int | None = None) -> di
 
 @queue.periodic(cron="* * * * *")
 @queue.task(name=jobs.RECORD_SPEND, pass_context=True, lock=jobs.RECORD_SPEND, queueing_lock=jobs.RECORD_SPEND)
-async def record_spend(context: JobContext, timestamp: int | None = None) -> dict:
+async def record_spend(context: JobContext, timestamp: int) -> dict:
     from evo_agents.hub.spend_store import record_pending
 
-    return await record_pending(hub(context).engine)
+    return await record_pending(hub_engine(context))
 
 
 @queue.periodic(cron="*/5 * * * *")
 @queue.task(name=jobs.LOCAL_SPEND, pass_context=True, lock=jobs.LOCAL_SPEND, queueing_lock=jobs.LOCAL_SPEND)
-async def local_spend(context: JobContext, timestamp: int | None = None) -> dict:
+async def local_spend(context: JobContext, timestamp: int) -> dict:
     from evo_agents.hub.local_spend import local_spend as read
 
     found = hub(context)
-    return await read(found.engine, found.blobs, scratch=found.data_dir / "facets")
+    return await read(hub_engine(context), found.blobs, scratch=found.data_dir / "facets")
 
 
 @queue.periodic(cron="43 3 * * *")

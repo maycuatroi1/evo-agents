@@ -224,7 +224,7 @@ def run_pipeline(
 def _map_kinds(name: str | None, harness_root, kinds) -> list[str]:
     """The kinds an entity of a map may be: the strategy's that the ontology holds, OTHER always."""
     try:
-        said = list(strategy.available(harness_root)[name].ontology.get("node_kinds") or [])
+        said = [] if name is None else list(strategy.available(harness_root)[name].ontology.get("node_kinds") or [])
     except (KeyError, strategy.StrategyError):
         said = []
     found = [k for k in said if kinds is None or k in kinds]

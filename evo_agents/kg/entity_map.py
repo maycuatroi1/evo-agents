@@ -40,6 +40,7 @@ import json
 from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from evo_agents.kg import entity_links as links
 
@@ -91,8 +92,8 @@ def _mentions(raw, where: str, rejected: list) -> list[dict]:
             continue
         kept = {"node": node}
         for key, limit in (("hash", 200), ("quote", MAX_QUOTE)):
-            if _text(m.get(key), limit):
-                kept[key] = _text(m.get(key), limit)
+            if said := _text(m.get(key), limit):
+                kept[key] = said
         if isinstance(m.get("line"), int) and not isinstance(m.get("line"), bool) and m["line"] >= 1:
             kept["line"] = m["line"]
         found.append(kept)
@@ -126,7 +127,8 @@ def _entity(e, where: str, rejected: list) -> dict | None:
     for key, limit in (("type", 80), ("description", MAX_DESCRIPTION)):
         if _text(e.get(key), limit):
             kept[key] = _text(e.get(key), limit)
-    aliases = e.get("aliases") if isinstance(e.get("aliases"), list) else []
+    aliases = e.get("aliases")
+    aliases = aliases if isinstance(aliases, list) else []
     own = links.key(name)
     kept["aliases"] = sorted(
         {a.strip()[:MAX_NAME] for a in aliases if isinstance(a, str) and links.key(a) not in ("", own)}
@@ -143,14 +145,14 @@ def _relation(r, where: str, rejected: list) -> dict | None:
     if src is None or dst is None:
         rejected.append({"entry": where, "reason": "a relation names its two entities, src and dst"})
         return None
-    kept = {"src": src, "dst": dst}
+    kept: dict[str, Any] = {"src": src, "dst": dst}
     for key, limit in (("keywords", 200), ("description", MAX_DESCRIPTION)):
         words = r.get(key)
         words = ", ".join(w for w in words if isinstance(w, str)) if isinstance(words, list) else words
-        if _text(words, limit):
-            kept[key] = _text(words, limit)
+        if said := _text(words, limit):
+            kept[key] = said
     try:
-        kept["strength"] = min(max(float(r.get("strength")), 0.0), 10.0)
+        kept["strength"] = min(max(float(r.get("strength", 1.0)), 0.0), 10.0)
     except (TypeError, ValueError):
         kept["strength"] = 1.0
     kept["mentions"] = _mentions(r.get("mentions"), where, rejected)
@@ -457,7 +459,7 @@ def _name_links(groups, first: dict, checked: list[dict], units_of: dict, out: d
     for nid in sorted(groups.name):
         target, name, unclear = links.code_link(groups.names[nid], code_index)
         ambiguous += unclear
-        if target is None:
+        if target is None or name is None:  # code_link finds both or neither
             continue
         named += 1
         exact = name.strip().strip("`").removesuffix("()") in (code_names.get(target), target)

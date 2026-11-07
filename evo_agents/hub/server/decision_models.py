@@ -47,9 +47,9 @@ EVIDENCE = f"what the question rests on, at most {decision_asks.MAX_EVIDENCE} re
 class OptionIn(BaseModel):
     key: OptionKey
     label: str = Field(min_length=1, max_length=LABEL_CHARS, pattern=LINE, description="one line")
-    description: str | None = Field(None, min_length=1, max_length=DESCRIPTION_CHARS)
+    description: str | None = Field(default=None, min_length=1, max_length=DESCRIPTION_CHARS)
     waits: bool | None = Field(
-        None,
+        default=None,
         description="true when the option says not yet: choosing it leaves the decision open and the run waiting, and "
         "no answer goes to the agent",
     )
@@ -108,7 +108,10 @@ class DecisionAsk(BaseModel):
     category: Literal[runs.ASKED_DECISION_CATEGORIES] = Field(description="the agent asks only about these")
     question: str = Field(min_length=1, max_length=runs.MAX_QUESTION_CHARS)
     context: str | None = Field(
-        None, min_length=1, max_length=runs.MAX_DECISION_CONTEXT_BYTES, description="markdown, at most 16 KiB of UTF-8"
+        default=None,
+        min_length=1,
+        max_length=runs.MAX_DECISION_CONTEXT_BYTES,
+        description="markdown, at most 16 KiB of UTF-8",
     )
     options: list[OptionIn] = Field(
         default_factory=list,
@@ -116,17 +119,17 @@ class DecisionAsk(BaseModel):
         description=f"{runs.DECISION_OPTIONS[0]} to {runs.DECISION_OPTIONS[1]}; none for a credential request, which "
         "takes the hub's",
     )
-    recommended: OptionKey | None = Field(None, description="the key of the option the agent recommends")
+    recommended: OptionKey | None = Field(default=None, description="the key of the option the agent recommends")
     recommended_reason: str | None = Field(
-        None, min_length=1, max_length=decision_asks.MAX_REASON_CHARS, description=REASON
+        default=None, min_length=1, max_length=decision_asks.MAX_REASON_CHARS, description=REASON
     )
-    reversible: bool | None = Field(None, description=REVERSIBLE)
-    undo: str | None = Field(None, min_length=1, max_length=decision_asks.MAX_UNDO_CHARS, description=UNDO)
+    reversible: bool | None = Field(default=None, description=REVERSIBLE)
+    undo: str | None = Field(default=None, min_length=1, max_length=decision_asks.MAX_UNDO_CHARS, description=UNDO)
     evidence: list[EvidenceRef] = Field(
         default_factory=list, max_length=decision_asks.MAX_EVIDENCE, description=EVIDENCE
     )
     step_key: str | None = Field(
-        None, min_length=1, max_length=200, pattern=LINE, description="the step of the plan it is about"
+        default=None, min_length=1, max_length=200, pattern=LINE, description="the step of the plan it is about"
     )
     output_ids: list[Annotated[int, Field(ge=1, le=MAX_ID)]] = Field(
         default_factory=list,
@@ -134,12 +137,12 @@ class DecisionAsk(BaseModel):
         description="outputs of the run the question carries, such as the screenshot it is about",
     )
     credential_request: CredentialRequest | None = Field(
-        None,
+        default=None,
         description="category credential only: what the run needs of its owner, a variable's value, their hub account "
         "or both; the hub gives the decision its options",
     )
     approval: Approval | None = Field(
-        None,
+        default=None,
         description="category merge only: the pull request, head and scope its answer holds for; a push that moves "
         "the head or changes the scope leaves the answer behind",
     )

@@ -161,10 +161,12 @@ class Readable:
     @classmethod
     def of(cls, data: Mapping | None) -> Readable:
         data = data or {}
-        found = cls(**{k: int(data.get(k) or 0) for k in ("items", "above", "entities", "citable", "uncited")})
-        found.classes = {str(k): int(v) for k, v in (data.get("classes") or {}).items()}
-        found.changed = {str(k): int(v) for k, v in (data.get("changed") or {}).items()}
-        return found
+        counts = {k: int(data.get(k) or 0) for k in ("items", "above", "entities", "citable", "uncited")}
+        return cls(
+            **counts,
+            classes={str(k): int(v) for k, v in (data.get("classes") or {}).items()},
+            changed={str(k): int(v) for k, v in (data.get("changed") or {}).items()},
+        )
 
 
 def _uncited(store, ceiling) -> tuple[list[str], int]:

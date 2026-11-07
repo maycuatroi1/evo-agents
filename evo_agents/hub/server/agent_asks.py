@@ -179,29 +179,39 @@ async def ask(request: Request, run_id: RunId, body: AgentAskIn, user: CurrentUs
         if run.kind != "chat":
             raise HTTPException(422, f"run {run_id} is a {run.kind} run: only a chat run's agent asks another agent")
         found = await chat_run(conn, run_id)
+        assert found is not None  # every chat run starts from a chat message (hand_work)
         said = await mask_values(conn, request.app.state.sealer, run.profile.id, body.body)
         said = await mask_run(conn, request.app.state.sealer, run_id, said)
         target = await by_handle(conn, body.handle)
         refusal = await _refusal(conn, run, target, body.handle)
-        child = decision_id = None
+        asked, shown = AgentAsked(run_id=None, decision_id=None, refusal=refusal), f"@{body.handle}: {refusal}"
         if refusal is None:
-            text = question_text(run, run.profile.project, target, said)
-            child, message_id, refusal = await _hand(conn, run, target, text)
-        if refusal is None:
-            decision_id = await _open_wait(conn, user, run, target, child)
-            shown = f"@{run.profile.handle} asked @{target.handle} of project {target.project} (run #{child}): {said}"
-            await audit.record(
-                conn,
-                actor_id=run.principal.user_id,
-                token_id=run.principal.token_id,
-                action=audit.CHAT_MESSAGE,
-                target=f"message:{message_id} run:{run_id} asked:{child}",
-            )
-        else:
-            shown = f"@{body.handle}: {refusal}"
+            assert target is not None  # _refusal refuses a handle no agent has
+            asked, shown = await _put(conn, user, run, target, said, body.handle)
         await hub_reply(conn, found.chat_id, found.root_id, shown)
-    log.info("agent asked", extra={"run_id": run_id, "handle": body.handle, "made": child, "refused": bool(refusal)})
-    return AgentAsked(run_id=child, decision_id=decision_id, refusal=refusal)
+    made, refused = asked.run_id, bool(asked.refusal)
+    log.info("agent asked", extra={"run_id": run_id, "handle": body.handle, "made": made, "refused": refused})
+    return asked
+
+
+async def _put(
+    conn: AsyncConnection, user, run: AgentRun, target: Profile, said: str, handle: str
+) -> tuple[AgentAsked, str]:
+    """Hand the question ``said`` to agent ``target`` (named ``handle``) and open the asking run's wait for its
+    answer: what the route answers, and what the asking run's thread shows."""
+    child, message_id, refusal = await _hand(conn, run, target, question_text(run, run.profile.project, target, said))
+    if child is None or message_id is None:
+        return AgentAsked(run_id=None, decision_id=None, refusal=refusal), f"@{handle}: {refusal}"
+    decision_id = await _open_wait(conn, user, run, target, child)
+    await audit.record(
+        conn,
+        actor_id=run.principal.user_id,
+        token_id=run.principal.token_id,
+        action=audit.CHAT_MESSAGE,
+        target=f"message:{message_id} run:{run.run_id} asked:{child}",
+    )
+    shown = f"@{run.profile.handle} asked @{target.handle} of project {target.project} (run #{child}): {said}"
+    return AgentAsked(run_id=child, decision_id=decision_id, refusal=None), shown
 
 
 # The answer
@@ -235,7 +245,7 @@ async def _refs(conn: AsyncConnection, run_id: int, wait_id: int) -> list[str]:
     refs = []
     if made:
         refs.append("Outputs: " + ", ".join(f"{item.name} (#{item.id})" for item in made))
-    repos = [entry.get("repo") for entry in row.repos or [] if isinstance(entry, dict) and entry.get("repo")]
+    repos = [entry["repo"] for entry in row.repos or [] if isinstance(entry, dict) and entry.get("repo")]
     if row.branch and repos:
         commit = f" at {row.commit_sha[:12]}" if row.commit_sha else ""
         refs.append(f"Branch: {row.branch} of {', '.join(repos)}{commit}")
