@@ -4,9 +4,10 @@ its ladder lacks, and says why it leaves an item out."""
 
 from __future__ import annotations
 
+import pytest
+
 from evo_agents.hub.access import ProjectRules
 from evo_agents.hub.server import cross_labels
-from evo_agents.hub.server.agent_reads import elements
 
 LEVELS = ["public", "internal", "customer", "secret"]
 LOCATIONS = ["any", "domestic-only"]
@@ -50,6 +51,9 @@ def test_the_agent_is_told_how_many_items_were_left_out_and_why():
 
 
 def test_elements_reads_ids_and_labels_and_skips_properties():
+    pytest.importorskip("fastapi")  # agent_reads holds routes: macOS and Windows install no hub-server extra
+    from evo_agents.hub.server.agent_reads import elements
+
     data = {
         "nodes": [
             {"id": "n1", "label": {"level": "internal"}, "props": {"id": "p", "label": {"level": "secret"}}},
