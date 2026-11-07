@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Eye, EyeOff, Sparkles, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -10,6 +10,7 @@ import { StatePanel } from "@/components/states/states";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
+import { call } from "@/lib/api/client";
 import { chatAgentsQuery } from "@/lib/chat-keys";
 import type { SpecDiff } from "@/lib/system-diff";
 import { systemProposalKeys, type SystemProposal } from "@/lib/system-proposals";
@@ -18,8 +19,22 @@ import { answerProposal, type ProposalAnswer } from "@/lib/waiting-proposals";
 
 import type { DesignerSlots } from "./slots";
 
-/** The handle of the core plugin builder's agent (`evo_agents/core_plugins/builder`). */
+/** The core plugin builder and its agent type (`evo_agents/core_plugins/builder`), whose profile is @builder. */
 export const BUILDER = "builder";
+
+/**
+ * The handle of the project's @builder: the profile its agent type `builder` made when an admin enabled it, which is
+ * `builder` in the first project only and `builder-<project>` (or the handle the admin named) in every other one, since
+ * a handle is unique on the hub. Null while the type is not enabled.
+ */
+const builderHandleQuery = (project: string) =>
+  queryOptions({
+    queryKey: ["systems", "builder-handle", project] as const,
+    queryFn: async ({ signal }): Promise<string | null> => {
+      const types = await call(browserApi().GET("/v1/projects/{project}/agent-types", { params: { path: { project } }, signal }));
+      return types.find((one) => one.plugin === BUILDER && one.name === BUILDER && one.enabled)?.handle ?? null;
+    },
+  });
 
 type Props = {
   project: string;
@@ -47,7 +62,8 @@ export function BuilderPanel({ project, slug, revision, canChange, proposal, dif
   const queryClient = useQueryClient();
   const failure = useWriteFailure();
   const agents = useQuery(chatAgentsQuery(browserApi));
-  const builder = agents.data?.find((one) => one.handle === BUILDER && one.project === project) ?? null;
+  const handle = useQuery(builderHandleQuery(project)).data ?? null;
+  const builder = agents.data?.find((one) => one.handle === handle && one.project === project) ?? null;
   const answer = useMutation({
     mutationFn: ({ id, said }: { id: number; said: ProposalAnswer }) => answerProposal(browserApi(), project, id, said),
     onSettled: () =>
