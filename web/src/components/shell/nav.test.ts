@@ -53,6 +53,7 @@ describe("nav", () => {
       ["insights", "improvement"],
       ["curator", "improvement"],
       ["agents", "knowledge"],
+      ["systems", "knowledge"],
       ["memories", "knowledge"],
       ["skills", "knowledge"],
       ["browser", "knowledge"],
