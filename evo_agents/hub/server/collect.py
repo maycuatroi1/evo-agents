@@ -97,6 +97,7 @@ from evo_agents.hub.server import (
     memory_promotion,
     product_figures,
     runtime_figures,
+    system_curation,
 )
 from evo_agents.hub.server import goals as project_goals
 from evo_agents.hub.server import history as history_figures
@@ -653,6 +654,7 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate, *, hold: bool = F
         return None
     count = int((charter.get("review") or {}).get("lenses") or review.LENSES_PER_NIGHT)
     lenses = kg_optimize.with_lens(review.lenses_for(gate.night, count), optimized)
+    lenses = await system_curation.with_lens(conn, due.project_id, lenses, charter)
     values = {
         "kind": "review",
         "project_id": due.project_id,
@@ -880,7 +882,7 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
     )
     if entities is not None and entities[2] > 0:  # the entities step's items that only a run with claude answers
         prompt += kg_entity_relay.prompt_line(view.project, entities[2])
-    return prompt
+    return prompt + await system_curation.prompt_section(conn, row.project_id, list(lenses), charter)
 
 
 async def looks_through(conn: AsyncConnection, run_id: int, project_id: int, lens: str) -> bool:

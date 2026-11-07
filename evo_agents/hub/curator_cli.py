@@ -136,6 +136,7 @@ PROPOSAL_KEYS = PROPOSAL_SUMMARY_KEYS + (
     "evidence",
     "plan",
     "promotion",
+    "system_change",
     "note",
     "change",
     "probe",

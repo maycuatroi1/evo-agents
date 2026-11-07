@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import system_context, system_spec, tables
 from evo_agents.hub.server import system_store
+from evo_agents.kg.sessions import READ_META
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ CHANNEL = "evo_system_traces"  # notified with a system's id when a span of one 
 RESUME = "evo.resume_of_run_id"  # the attribute of an invoke_agent span of a run that goes on in a session
 ENDED_OK = ("done",)  # the end states of a run whose span is ok; the others are errors
 MAX_RESUMES = 50  # how far back the brief of a session is looked for
+KG_RESULTS = "evo.kg.results"  # the attribute of a kg span: how many results the query read (record_kg)
 
 
 @dataclass(frozen=True)
@@ -459,12 +461,29 @@ async def default_graph(conn: AsyncConnection, run_id: int, project_id: int) -> 
     return f"system:{found.system.slug}", frozenset(sources)
 
 
-async def record_kg(conn: AsyncConnection, run_id: int, tool: str, graph: str | None) -> None:
-    """An execute_tool span of a kg tool call of run ``run_id`` in a trace, the graph it read as its data source."""
+def results_read(result) -> int | None:
+    """How many results a kg tool's ``result`` (an MCP result) says it read, from its text's READ_META; None when it
+    says none, as an error or kg_status."""
+    for block in (result.get("content") or []) if isinstance(result, dict) else []:
+        meta = block.get("_meta") if isinstance(block, dict) else None
+        read = meta.get(READ_META) if isinstance(meta, dict) else None
+        count = read.get("results_read") if isinstance(read, dict) else None
+        if isinstance(count, int) and not isinstance(count, bool):
+            return count
+    return None
+
+
+async def record_kg(conn: AsyncConnection, run_id: int, tool: str, graph: str | None, result=None) -> None:
+    """An execute_tool span of a kg tool call of run ``run_id`` in a trace, the graph it read as its data source and,
+    when ``result`` says it, how many results it read (``evo.kg.results``: 0 is a query that came back empty, which
+    the Curator's lens agent_system counts)."""
     found = await of_run(conn, run_id)
     if found is None or found.trace_id is None:
         return
-    await record_tool(conn, found, tool, attributes={"gen_ai.data_source.id": graph or "default"})
+    attributes: dict = {"gen_ai.data_source.id": graph or "default"}
+    if (count := results_read(result)) is not None:
+        attributes[KG_RESULTS] = count
+    await record_tool(conn, found, tool, attributes=attributes)
 
 
 # Reading

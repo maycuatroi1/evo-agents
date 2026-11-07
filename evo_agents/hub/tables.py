@@ -725,6 +725,7 @@ proposals = Table(
     Column("revert_of", BigInteger),  # the proposal whose merged change the hub proposes to revert (0018)
     Column("promotion", JSONB),  # the agent memories a proposal of kind memory promotes (0103)
     Column("fix_of", BigInteger),  # the merged change whose probe recurred two weeks in a row, that it fixes (0133)
+    Column("system_change", JSONB),  # kind agent_config: what it changes, in place of a draft plan (0220)
     ForeignKeyConstraint(  # curator_changes names its proposal: a cycle, as plan_revisions_run_id_fkey
         ["fix_of"], ["curator_changes.id"], ondelete="SET NULL", name="proposals_fix_of_fkey", use_alter=True
     ),

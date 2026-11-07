@@ -5733,6 +5733,7 @@
             "security",
             "product_goals",
             "product",
+            "agent_system",
             "kg_health",
             "kg_init",
             "kg_questions",
@@ -5860,6 +5861,7 @@
             "security",
             "product_goals",
             "product",
+            "agent_system",
             "kg_health",
             "kg_init",
             "kg_questions",
@@ -5987,6 +5989,7 @@
             "security",
             "product_goals",
             "product",
+            "agent_system",
             "kg_health",
             "kg_init",
             "kg_questions",
@@ -6492,6 +6495,7 @@
             "security",
             "product_goals",
             "product",
+            "agent_system",
             "kg_health",
             "kg_init",
             "kg_questions",
@@ -6929,6 +6933,7 @@
           "evidence",
           "plan",
           "promotion",
+          "system_change",
           "note",
           "change",
           "probe"
@@ -7010,6 +7015,7 @@
           "evidence",
           "plan",
           "promotion",
+          "system_change",
           "note",
           "change",
           "probe"
@@ -7075,6 +7081,7 @@
             "security",
             "product_goals",
             "product",
+            "agent_system",
             "kg_health",
             "kg_init",
             "kg_questions",
@@ -7251,6 +7258,7 @@
           "evidence",
           "plan",
           "promotion",
+          "system_change",
           "note",
           "change",
           "probe"
@@ -7314,6 +7322,7 @@
           "evidence",
           "plan",
           "promotion",
+          "system_change",
           "note",
           "change",
           "probe"
@@ -7354,6 +7363,7 @@
             "security",
             "product_goals",
             "product",
+            "agent_system",
             "kg_health",
             "kg_init",
             "kg_questions",
@@ -7379,6 +7389,7 @@
             "cli",
             "release_prep",
             "revert",
+            "agent_config",
             "feature",
             "api_change",
             "schema_change",
@@ -7509,6 +7520,7 @@
           "evidence",
           "plan",
           "promotion",
+          "system_change",
           "note",
           "change",
           "probe"
@@ -26705,6 +26717,7 @@
             "security",
             "product_goals",
             "product",
+            "agent_system",
             "kg_health",
             "kg_init",
             "kg_questions",
@@ -26918,6 +26931,7 @@
             "security",
             "product_goals",
             "product",
+            "agent_system",
             "kg_health",
             "kg_init",
             "kg_questions",
@@ -27096,6 +27110,7 @@
             "security",
             "product_goals",
             "product",
+            "agent_system",
             "kg_health",
             "kg_init",
             "kg_questions",
@@ -27121,6 +27136,7 @@
             "cli",
             "release_prep",
             "revert",
+            "agent_config",
             "feature",
             "api_change",
             "schema_change",
@@ -27153,6 +27169,14 @@
         {
           "flags": [
             "--promote-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--system-change-file"
           ],
           "value": "string",
           "required": false,
@@ -49688,6 +49712,7 @@
                       "security",
                       "product_goals",
                       "product",
+                      "agent_system",
                       "kg_health",
                       "kg_init",
                       "kg_questions",
@@ -49969,6 +49994,7 @@
                       "security",
                       "product_goals",
                       "product",
+                      "agent_system",
                       "kg_health",
                       "kg_init",
                       "kg_questions",
@@ -57904,6 +57930,7 @@
                       "security",
                       "product_goals",
                       "product",
+                      "agent_system",
                       "kg_health",
                       "kg_init",
                       "kg_questions",
@@ -58066,6 +58093,7 @@
                       "security",
                       "product_goals",
                       "product",
+                      "agent_system",
                       "kg_health",
                       "kg_init",
                       "kg_questions",
@@ -119510,6 +119538,65 @@
           ],
           "title": "DecisionBody"
         },
+        "DecisionIn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "deprecate",
+                "merge",
+                "link"
+              ],
+              "title": "Kind"
+            },
+            "src": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Src"
+            },
+            "rel": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rel"
+            },
+            "dst": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dst"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Reason"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "src",
+            "reason"
+          ],
+          "title": "DecisionIn",
+          "description": "A decision on the project's knowledge graph, as ``kg_decisions.NewKgDecision`` takes one."
+        },
         "DecisionList": {
           "properties": {
             "decisions": {
@@ -123823,7 +123910,8 @@
                 "transcript",
                 "run",
                 "code",
-                "memory"
+                "memory",
+                "span"
               ],
               "title": "Kind"
             },
@@ -123999,6 +124087,20 @@
               ],
               "title": "Revision",
               "description": "memory: one of its revisions"
+            },
+            "span_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Span Id",
+              "description": "span: a span of an agent system's trace"
             }
           },
           "type": "object",
@@ -124419,6 +124521,7 @@
                 "security",
                 "product_goals",
                 "product",
+                "agent_system",
                 "kg_health",
                 "kg_init",
                 "kg_questions",
@@ -144966,6 +145069,7 @@
                     "security",
                     "product_goals",
                     "product",
+                    "agent_system",
                     "kg_health",
                     "kg_init",
                     "kg_questions",
@@ -153069,6 +153173,19 @@
               "title": "Promotion",
               "description": "kind memory: what it promotes, and the shared memory it wrote"
             },
+            "system_change": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "System Change",
+              "description": "kind agent_config: what it changes, and what accepting it made (applied)"
+            },
             "note": {
               "anyOf": [
                 {
@@ -153231,6 +153348,7 @@
                 "security",
                 "product_goals",
                 "product",
+                "agent_system",
                 "kg_health",
                 "kg_init",
                 "kg_questions",
@@ -153252,6 +153370,7 @@
                 "cli",
                 "release_prep",
                 "revert",
+                "agent_config",
                 "feature",
                 "api_change",
                 "schema_change",
@@ -153339,6 +153458,17 @@
                 }
               ],
               "description": "kind memory: in place of a plan"
+            },
+            "system_change": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SystemChangeIn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "kind agent_config, lens agent_system: in place of a plan"
             },
             "probe": {
               "anyOf": [
@@ -158651,7 +158781,7 @@
           "properties": {
             "lenses": {
               "type": "integer",
-              "maximum": 18.0,
+              "maximum": 19.0,
               "minimum": 1.0,
               "title": "Lenses",
               "description": "lenses a night looks through, in turn",
@@ -164663,6 +164793,7 @@
                 "security",
                 "product_goals",
                 "product",
+                "agent_system",
                 "kg_health",
                 "kg_init",
                 "kg_questions",
@@ -164760,6 +164891,7 @@
                 "security",
                 "product_goals",
                 "product",
+                "agent_system",
                 "kg_health",
                 "kg_init",
                 "kg_questions",
@@ -164781,6 +164913,7 @@
                 "cli",
                 "release_prep",
                 "revert",
+                "agent_config",
                 "feature",
                 "api_change",
                 "schema_change",
@@ -164868,6 +165001,17 @@
                 }
               ],
               "description": "kind memory: in place of a plan"
+            },
+            "system_change": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SystemChangeIn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "kind agent_config, lens agent_system: in place of a plan"
             },
             "probe": {
               "anyOf": [
@@ -170538,6 +170682,93 @@
           },
           "type": "object",
           "title": "StoredProbe"
+        },
+        "SystemChangeIn": {
+          "properties": {
+            "system": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "title": "System",
+              "description": "the agent system's slug"
+            },
+            "node": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$",
+              "title": "Node",
+              "description": "the node its curator optimizes"
+            },
+            "instructions": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instructions",
+              "description": "an agent: its instructions, whole"
+            },
+            "skill": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AgentAxis"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "an agent: its skill axis, whole"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AgentAxis"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "an agent: its model axis, whole"
+            },
+            "add": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Add",
+              "description": "a kg node: sources its graph gets"
+            },
+            "remove": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Remove",
+              "description": "a kg node: sources it loses"
+            },
+            "decision": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/DecisionIn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a kg node: a decision on the project's graph"
+            }
+          },
+          "type": "object",
+          "required": [
+            "system",
+            "node"
+          ],
+          "title": "SystemChangeIn",
+          "description": "What a proposal of kind agent_config changes: a target of an optimizes edge of an agent system."
         },
         "SystemCheck": {
           "properties": {

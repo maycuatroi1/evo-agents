@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import review, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, memory_promotion
+from evo_agents.hub.server import audit, memory_promotion, system_curation
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server import probes as stored_probes
@@ -255,6 +255,8 @@ async def answer_proposal_as(
     )
     if body.action == "accept" and row.promotion is not None:
         await memory_promotion.promote(conn, access, user, proposal_id, row.promotion)
+    elif body.action == "accept" and row.system_change is not None:
+        await system_curation.apply(conn, access, user, proposal_id, row.run_id, row.system_change)
     elif body.action == "accept" and row.tier in await planned_tiers_of(conn, access.project_id):
         from evo_agents.hub.server.proposal_plans import plan_from_proposal  # it reads proposals through this module
 

@@ -798,7 +798,7 @@ async def tool_result(
     if run_id is not None and narrow is None:
         async with state.engine.begin() as conn:
             graph = arguments.get("graph") if isinstance(arguments, dict) else None
-            await system_traces.record_kg(conn, run_id, tool, graph if isinstance(graph, str) else None)
+            await system_traces.record_kg(conn, run_id, tool, graph if isinstance(graph, str) else None, result)
     if whole:
         return result
     if tool == "kg_search" and isinstance(arguments.get("query"), str):

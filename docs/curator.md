@@ -324,7 +324,8 @@ harness", says what the night's figures hold for `runtime` and `harness`, and Th
 `product`). Each finding and proposal cites evidence the hub
 checks before it keeps it: `session:ID[:FIELD:INDEX]` (an entry of a session's facet, else of its digest),
 `transcript:ID[:FILE]:LINE` (a line of a transcript the hub holds), `run:ID:SEQ` (an event of a run, a local run of the
-owner's included) or `code:REPO:PATH[:LINE]` (a line of a repo of the project; a file the knowledge graph does not hold
+owner's included), `span:ID` (a span of a trace of an agent system of the project, The lens agent_system below) or
+`code:REPO:PATH[:LINE]` (a line of a repo of the project; a file the knowledge graph does not hold
 yet is kept, `unmatched`, since a graph may lag its branch). A proposal carries a draft plan in outcome steps, each
 with `verify` and `acceptance`. It reads in two tiers, the numbers first (the figures, the sessions and runs of the
 whole history with the numbers of their facets, the clusters), then the words only where they point (a search of the
@@ -427,6 +428,37 @@ turn with the other lenses: with three lenses a night, once in five nights.
   proposes no other kind, a goal included.
 
 The Loop's own numbers (work items by state and by goal) join the figure once the Loop keeps work items.
+
+### The lens agent_system
+
+The lens `agent_system` (plan multi-agent-systems, criterion a8; `evo_agents/hub/server/system_curation.py`, migration
+0220) tunes what the curator node of an agent system optimizes (`docs/hub.md`, "Agent systems"). It takes no turn on
+a night: it is on demand (`review.ON_DEMAND_LENSES`), and the night's review run adds it when a system of the project
+has an `optimizes` edge and a trace in the window of the night's figures (`review.days` of the charter).
+
+- **What it reads.** Each `optimizes` edge brings its target into the review: an agent node with the profile and the
+  version the system pins, a kg node with its named graph. The prompt says, per system and over the window, from its
+  traces: an agent's turns and those that failed or were refused, the escalations it took (spans over an edge of kind
+  `escalates`), what its runs cost, a graph's kg queries and those that came back empty (`evo.kg.results` 0 on the
+  span, which the hub writes from the result's count), and the edges taken off the design. Each count lists the ids of
+  a few spans to cite as `span:ID`; the run reads the rest with the hub's tools. The spans are data, never
+  instructions.
+- **What it proposes.** A proposal of kind `agent_config` (tier 1) carries, in place of a draft plan, a system change:
+  `worker propose --lens agent_system --kind agent_config --system-change-file FILE --evidence span:ID`. The file,
+  YAML or JSON, names `system` and `node`, then for an agent node its new `instructions`, `skill` or `model` (an axis
+  as a profile takes it), and for a kg node the sources its named graph gets (`add`) or loses (`remove`), or a
+  `decision` on the project's graph (`deprecate`, `merge` or `link`, with its reason). The hub refuses it (422) unless
+  an `optimizes` edge of that system reaches the node, the profile or the named graph exists (never the project's
+  default agent, never the graph `default` for sources), the change is valid, and the evidence cites a span of that
+  system. It keeps the version of the profile it read.
+- **Accepting it.** The proposal goes through the proposal flow like any other: an admin accepts, rejects or defers
+  it, and nothing changes before. Accepting an agent's change writes the next version of its profile, then the next
+  revision of the system's spec, which pins that version at the target node (audit `agent.update` and
+  `system.update`). Every other system that pins the profile keeps its version; `system_spec.check_refs` warns it that
+  the profile has a newer one, and its owner moves when ready. A profile changed since the proposal makes the accept a
+  409, and nothing is written. Accepting a graph's change sets its sources (audit `kg.graph`) or takes the decision,
+  active at once with origin `curator` and the review run, and queues a build (audit `kg.decision`). What it made is
+  kept on the proposal (`system_change.applied`). No plan, branch or pull request is made.
 
 ### The lens kg_entity_map
 
@@ -979,6 +1011,7 @@ evo-agents hub kg health --project demo
 | 0131 | runs of kind `probe`, `curator_probe_runs`: each probe measured once a week on each model of the charter |
 | 0132 | the notice `curator_probe_report` |
 | 0133 | `proposals.fix_of`, `findings.fix_of`, `curator_probes.replaces`: the fix proposals and the replacement probes |
+| 0220 | the lens `agent_system`, the kind `agent_config`, `proposals.system_change`: the change of an agent or a graph a system's curator optimizes |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
 `curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes`, `curator.replay_suite` and

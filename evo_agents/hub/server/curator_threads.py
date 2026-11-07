@@ -177,6 +177,12 @@ def _facts(row, planned: tuple[int, ...], owner: str, *, again: bool) -> list[st
     lines.append(f"Draft plan {(row.draft or {}).get('id')}: {_more(steps, named) or 'no step'}.")
     if row.promotion is not None:
         lines.append("Accepting it promotes agents' memories into a shared memory of the project, and makes no plan.")
+    elif row.system_change is not None:
+        change = row.system_change
+        lines.append(
+            f"Accepting it changes node {change.get('node')} of agent system {change.get('system')} through the hub: "
+            "a new version of its agent, which the system then pins, or a change of its graph; it makes no plan."
+        )
     elif row.tier in planned:
         lines.append(
             f"Accepting it makes its draft the Curator's plan, which the night shift builds (the charter plans "
@@ -216,6 +222,7 @@ async def _proposal_row(conn: AsyncConnection, proposal_id: int):
             p.c.finding_ids,
             p.c.draft,
             p.c.promotion,
+            p.c.system_change,
             r.c.dispatched_by.label("owner_id"),
             u.c.login.label("owner"),
         )

@@ -41,7 +41,7 @@ def test_the_lens_is_on_demand_and_migration_0212_holds_the_lenses():
     assert model.LENS in review_model.LENSES and model.LENS in review_model.ON_DEMAND_LENSES
     assert model.LENS not in review_model.lenses_for(NOW.date(), len(review_model.LENSES))
     migration = import_module("evo_agents.hub.migrations.versions.0212_kg_entity_map")
-    assert sorted(migration.LENSES) == sorted(review_model.LENSES)
+    assert sorted(migration.LENSES) == sorted(set(review_model.LENSES) - {"agent_system"})  # 0220 adds it
     assert (migration.STATES, migration.VIAS) == (model.STATES, model.VIAS)
 
 
