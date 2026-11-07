@@ -200,6 +200,9 @@ class HubContext:
     # the server's finder of the key of a build's entities step (evo_agents.hub.server.kg_entity_key.find), handed down
     # the same way; None finds no key, and a url model with a key_env stops before any call
     entity_key: Callable[..., Awaitable[tuple[dict, str | None]]] | None = None
+    # the server's turn of a chat run on the hub runtime (evo_agents.hub.server.hub_runtime.take_turn), handed down the
+    # same way; None takes no turn
+    hub_turn: Callable[..., Awaitable[dict]] | None = None
 
     def __post_init__(self):
         if self.engine is None:  # an engine keeps no connection of its own (NullPool): nothing to dispose of
@@ -320,10 +323,10 @@ async def reap_pool_nodes(context: JobContext, timestamp: int | None = None) -> 
 
 @queue.task(name=jobs.HUB_TURN, pass_context=True)
 async def hub_turn(context: JobContext, run_id: int) -> dict:
-    from evo_agents.hub.server.hub_runtime import take_turn
-
     found = hub(context)
-    return await take_turn(found.engine, found.config, found.blobs, found.sealer, run_id)
+    if found.hub_turn is None:
+        raise RuntimeError("the hub worker command handed down no turn of the hub runtime (HubContext.hub_turn)")
+    return await found.hub_turn(hub_engine(context), found.config, found.blobs, found.sealer, run_id)
 
 
 @queue.task(name=jobs.KG_BUILD, queue=jobs.KG_QUEUE, pass_context=True)
@@ -738,11 +741,12 @@ async def run(
     loop_tick=None,
     memory_upkeep=None,
     entity_key=None,
+    hub_turn=None,
 ) -> int:
     """Migrate, then run jobs of ``queues`` (None: every queue) until a signal stops the worker. The exit status: 0
-    when a signal stopped it, 1 when it could not start or stopped by itself. ``release_pass``, ``loop_tick``, ``memory_upkeep`` and
-    ``entity_key`` are the server's (``HubContext.release_pass``, ``HubContext.loop_tick``, ``HubContext.memory_upkeep``,
-    ``HubContext.entity_key``)."""
+    when a signal stopped it, 1 when it could not start or stopped by itself. ``release_pass``, ``loop_tick``, ``memory_upkeep``,
+    ``entity_key`` and ``hub_turn`` are the server's (``HubContext.release_pass``, ``HubContext.loop_tick``,
+    ``HubContext.memory_upkeep``, ``HubContext.entity_key``, ``HubContext.hub_turn``)."""
     from evo_agents.hub.server.github_app import GitHubApp
     from evo_agents.hub.server.sealing import Sealer
 
@@ -801,6 +805,7 @@ async def run(
                     loop_tick,
                     memory_upkeep,
                     entity_key,
+                    hub_turn,
                 )
                 log.info("worker ready", extra={"schema": ",".join(result.after), "applied": list(result.applied)})
                 signalled = await work(
@@ -835,9 +840,10 @@ def main(
     loop_tick=None,
     memory_upkeep=None,
     entity_key=None,
+    hub_turn=None,
 ) -> int:
     if concurrency < 1:
         raise ValueError(f"concurrency must be at least 1, not {concurrency}")
     passes = {"release_pass": release_pass, "loop_tick": loop_tick, "memory_upkeep": memory_upkeep}
-    passes["entity_key"] = entity_key
+    passes["entity_key"], passes["hub_turn"] = entity_key, hub_turn
     return asyncio.run(run(config, concurrency, queues=queues, **passes))

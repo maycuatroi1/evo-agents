@@ -123,16 +123,18 @@ test("dragging from an agent's handle offers only the nodes an edge fits, and dr
   await open(page, systemPath(project, "drag"));
   await designerAt(page, 1);
 
-  const handle = node(page, front).locator("xpath=ancestor::div[contains(@class,'react-flow__node')]").locator(".react-flow__handle.source");
+  const handle = main(page).locator(`.react-flow__handle.source[data-nodeid="${front}"]`);
   const from = await handle.boundingBox();
   const to = await node(page, back).boundingBox();
   if (!from || !to) throw new Error("the canvas did not lay out");
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
   await page.mouse.down();
   await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
-  // While dragging, the other agent offers Talks to; the curator, which an agent never starts an edge to, offers none.
+  // While dragging, the other agent offers Talks to; the curator offers the edge that fits the other way (it optimizes
+  // the agent); the entry, which already talks to this agent and talks to one alone, offers none.
   await expect(node(page, back)).toHaveAttribute("data-drop", "interacts");
-  await expect(node(page, "curator")).toHaveAttribute("data-drop", "");
+  await expect(node(page, "curator")).toHaveAttribute("data-drop", "optimizes");
+  await expect(node(page, "entry")).toHaveAttribute("data-drop", "none");
   await page.mouse.up();
   await expect(edges(page, "interacts")).toHaveCount(2);
   await expect(main(page).getByTestId("system-edge-panel")).toBeVisible();

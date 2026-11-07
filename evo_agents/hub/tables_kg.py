@@ -385,7 +385,10 @@ def named_graphs(metadata: MetaData) -> Table:
         ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_updated_by_fkey"),
         PrimaryKeyConstraint("id", name=f"{name}_pkey"),
         UniqueConstraint("project_id", "name", name=f"{name}_project_id_name_key"),
-        CheckConstraint(f"name ~ '{GRAPH_NAME_PATTERN}' AND name <> 'default'", name=f"{name}_name_check"),
+        CheckConstraint(
+            and_(column("name").regexp_match(GRAPH_NAME_PATTERN), column("name") != "default"),
+            name=f"{name}_name_check",
+        ),
         CheckConstraint("char_length(description) <= 500", name=f"{name}_description_check"),
         CheckConstraint("jsonb_typeof(sources) = 'array'", name=f"{name}_sources_check"),
     )

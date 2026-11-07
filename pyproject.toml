@@ -236,7 +236,6 @@ ignore_imports = [
     "evo_agents.hub.worker -> evo_agents.hub.server.curator_shift",
     "evo_agents.hub.worker -> evo_agents.hub.server.digests",
     "evo_agents.hub.worker -> evo_agents.hub.server.github_app",
-    "evo_agents.hub.worker -> evo_agents.hub.server.hub_runtime",
     "evo_agents.hub.worker -> evo_agents.hub.server.merge_ancestry",
     "evo_agents.hub.worker -> evo_agents.hub.server.merge_check",
     "evo_agents.hub.worker -> evo_agents.hub.server.market_install",

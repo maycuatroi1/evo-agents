@@ -43,7 +43,10 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL", name=f"{NAME}_updated_by_fkey"),
         sa.PrimaryKeyConstraint("id", name=f"{NAME}_pkey"),
         sa.UniqueConstraint("project_id", "name", name=f"{NAME}_project_id_name_key"),
-        sa.CheckConstraint(f"name ~ '{NAME_PATTERN}' AND name <> 'default'", name=f"{NAME}_name_check"),
+        sa.CheckConstraint(
+            sa.and_(sa.column("name").regexp_match(NAME_PATTERN), sa.column("name") != "default"),
+            name=f"{NAME}_name_check",
+        ),
         sa.CheckConstraint("char_length(description) <= 500", name=f"{NAME}_description_check"),
         sa.CheckConstraint("jsonb_typeof(sources) = 'array'", name=f"{NAME}_sources_check"),
     )

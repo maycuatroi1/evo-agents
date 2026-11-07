@@ -60,6 +60,7 @@ from evo_agents.hub.server import (
 )
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.hub_runtime import take_turn as hub_turn  # noqa: F401
 from evo_agents.hub.server.hub_settings import FeatureGate
 from evo_agents.hub.server.kg_entity_key import find as entity_key  # noqa: F401
 from evo_agents.hub.server.loop import routes as loop_routes  # GET .../loop, POST .../loop/resume
