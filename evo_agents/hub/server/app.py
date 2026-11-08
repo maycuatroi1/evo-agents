@@ -550,6 +550,7 @@ def _include_member_routes(app: FastAPI) -> None:
         chat_people,
         chat_read,
         chats,
+        claude_sign_in,
         context_answer_reuse,
         credential_shares,
         credentials,
@@ -605,6 +606,7 @@ def _include_member_routes(app: FastAPI) -> None:
         credential_shares.router,  # the shares of secrets and accounts
         run_leases.router,
         credentials.worker_router,
+        claude_sign_in.router,  # before accounts.router: /v1/accounts/claude-sign-in is no account's name
         accounts.router,
         account_views.router,
         rate_limits.worker_router,

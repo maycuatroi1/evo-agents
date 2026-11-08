@@ -133,6 +133,7 @@ class ResizeObserverStub {
 
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+  flows = 0;
   api.answer = null;
   api.seen = [];
 });
@@ -150,25 +151,109 @@ function Harness({ account = null }: { account?: Account | null }) {
 }
 
 const tokenField = () => screen.getByLabelText("Token") as HTMLInputElement;
+const codeField = () => screen.getByTestId("login-web-code") as HTMLInputElement;
 const puts = () => api.seen.filter((request) => request.method === "PUT");
+const finishes = () => api.seen.filter((request) => request.method === "POST" && request.url.endsWith("/v1/accounts/claude-sign-in/finish"));
+
+let flows = 0;
+/** POST /v1/accounts/claude-sign-in: a new flow each time, its state in the address of claude.ai. */
+function started(request: Request): Response | null {
+  if (request.method !== "POST" || new URL(request.url).pathname !== "/v1/accounts/claude-sign-in") return null;
+  flows += 1;
+  return json({
+    authorize_url: `https://claude.com/cai/oauth/authorize?state=state-${flows}&redirect_uri=https%3A%2F%2Fplatform.claude.com%2Foauth%2Fcode%2Fcallback`,
+    flow: `flow-${flows}`,
+    expires_at: "2026-10-14T00:15:00Z",
+  });
+}
 
 describe("LoginDialog", () => {
-  it("tells an OAuth account's renewal to be the command of a terminal and asks the hub for nothing", async () => {
-    api.answer = (request) => reads(request) ?? json({}, 500);
-    renderVi(<Harness account={{ ...ACCOUNT, auth: "oauth", state: "needs-relogin" }} />);
-    const dialog = await screen.findByTestId("login-dialog");
-    expect(within(dialog).getByTestId("login-command-text").textContent).toBe("evo-agents hub account oauth-login claude-a");
-    expect(within(dialog).queryByTestId("login-form")).toBeNull();
+  it("adds a Claude account by Claude's sign-in: a suggested name, claude.ai in a new tab, then the code it shows", async () => {
+    const user = userEvent.setup();
+    let refuse = true;
+    api.answer = (request) =>
+      reads(request) ??
+      started(request) ??
+      (finishes().includes(request)
+        ? refuse
+          ? json({ error: "bad_gateway", message: "Claude did not give a token" }, 502)
+          : json({ ...written("claude-2", true), email: "octo@example.org" })
+        : json({ error: "not_found" }, 404));
+    renderVi(<Harness />);
+
+    const dialog = screen.getByRole("dialog", { name: "Thêm tài khoản Claude" });
+    // claude-a is taken by nothing named claude: the first free name is suggested.
+    expect(within(dialog).getByLabelText("Tên")).toHaveValue("claude");
+    expect(within(dialog).getByTestId("login-method-web")).toHaveAttribute("aria-checked", "true");
     expect(within(dialog).queryByTestId("login-token")).toBeNull();
-    expect(api.seen.filter((request) => request.method !== "GET")).toEqual([]);
+    const open = await within(dialog).findByTestId("login-web-open");
+    expect(open).toHaveAttribute("href", expect.stringContaining("state=state-1"));
+    expect(open).toHaveAttribute("target", "_blank");
+    expect(open).toHaveAttribute("rel", "noopener noreferrer");
+
+    const add = within(dialog).getByRole("button", { name: "Thêm tài khoản" });
+    await user.click(add);
+    expect(screen.getByText("Chọn ít nhất một dự án.")).toBeInTheDocument();
+    expect(screen.getByTestId("login-web-code-error")).toHaveTextContent("Dán mã claude.ai hiện ra");
+    expect(finishes()).toHaveLength(0);
+
+    await user.clear(screen.getByLabelText("Tên"));
+    await user.type(screen.getByLabelText("Tên"), "claude-2");
+    await user.click(within(await within(dialog).findByTestId("login-projects")).getByRole("checkbox", { name: "demo" }));
+    open.addEventListener("click", (event) => event.preventDefault());
+    await user.click(open);
+    expect(open).toHaveTextContent("Mở lại claude.ai");
+    await user.type(codeField(), "the-code#state-1");
+    await user.click(add);
+
+    // Claude refused the code: the reason shows, the code is gone, and the next sign-in is a new one.
+    const alert = await screen.findByTestId("account-dialog-error");
+    expect(alert).toHaveTextContent("Claude không nhận mã");
+    expect(codeField()).toHaveValue("");
+    await waitFor(() => expect(within(dialog).getByTestId("login-web-open")).toHaveAttribute("href", expect.stringContaining("state=state-2")));
+    expect(await finishes()[0].clone().json()).toEqual({
+      flow: "flow-1",
+      code: "the-code#state-1",
+      name: "claude-2",
+      projects: ["demo"],
+      workers: [],
+      pools: [],
+    });
+
+    refuse = false;
+    await user.type(codeField(), "  other-code#state-2 ");
+    await user.click(add);
+    expect(await screen.findByText("Đã thêm tài khoản claude-2")).toBeInTheDocument();
+    expect(screen.getByText(/Đã đăng nhập bằng octo@example.org/)).toBeInTheDocument();
+    expect(await finishes()[1].clone().json()).toMatchObject({ flow: "flow-2", code: "other-code#state-2" });
+    expect(finishes()[1].headers.get("X-Evo-CSRF")).toBe("csrf-1");
+    expect(screen.getByTestId("open-state")).toHaveTextContent("closed");
   });
 
-  it("adds a Claude account once the form's checks pass, and keeps none of the token", async () => {
+  it("renews an OAuth account by Claude's sign-in, naming the account alone", async () => {
+    const user = userEvent.setup();
+    api.answer = (request) =>
+      reads(request) ?? started(request) ?? (finishes().includes(request) ? json({ ...written("claude-o", false), email: null }) : json({}, 404));
+    renderVi(<Harness account={{ ...ACCOUNT, name: "claude-o", auth: "oauth", state: "needs-relogin" }} />);
+    const dialog = screen.getByRole("dialog", { name: "Gia hạn token của claude-o" });
+    expect(within(dialog).getByTestId("login-kept-projects")).toHaveTextContent("demo, docs");
+    expect(within(dialog).queryByLabelText("Tên")).toBeNull();
+    await within(dialog).findByTestId("login-web-open");
+    await user.type(codeField(), "renew-code");
+    await user.click(within(dialog).getByRole("button", { name: "Gia hạn token" }));
+    expect(await screen.findByText("Đã gia hạn token của claude-o")).toBeInTheDocument();
+    const body = await finishes()[0].clone().json();
+    expect(body).toEqual({ flow: expect.stringMatching(/^flow-/), code: "renew-code", name: "claude-o" });
+  });
+
+  it("adds a Claude account from a pasted token once the form's checks pass, and keeps none of the token", async () => {
     const user = userEvent.setup();
     api.answer = (request) => reads(request) ?? (request.method === "PUT" ? json(written("claude-work", true)) : json({ error: "not_found" }, 404));
     renderVi(<Harness />);
 
     const dialog = screen.getByRole("dialog", { name: "Thêm tài khoản Claude" });
+    await user.click(within(dialog).getByTestId("login-method-token"));
+    await user.clear(screen.getByLabelText("Tên"));
     const projects = await within(dialog).findByTestId("login-projects");
     expect(within(projects).getAllByRole("checkbox").map((box) => (box as HTMLInputElement).value)).toEqual(["demo", "ops"]);
     const workers = await within(dialog).findByTestId("login-workers");
@@ -232,11 +317,12 @@ describe("LoginDialog", () => {
     api.answer = (request) => reads(request) ?? json({ error: "not_found" }, 404);
     renderVi(<Harness />);
 
+    await user.clear(screen.getByLabelText("Tên"));
     await user.type(screen.getByLabelText("Tên"), "claude-a");
     await user.click(await screen.findByRole("button", { name: "Gia hạn claude-a thay vào đó" }));
     const dialog = screen.getByRole("dialog", { name: "Gia hạn token của claude-a" });
     expect(within(dialog).getByTestId("login-form")).toHaveAttribute("data-mode", "renew");
-    expect(within(dialog).getByLabelText("Tên")).toHaveAttribute("readonly");
+    expect(within(dialog).queryByLabelText("Tên")).toBeNull();
     expect(within(dialog).getByTestId("login-kept-projects")).toHaveTextContent("demo, docs");
     expect(within(dialog).queryByTestId("login-projects")).toBeNull();
   });
@@ -254,8 +340,7 @@ describe("LoginDialog", () => {
     renderVi(<Harness account={ACCOUNT} />);
 
     const dialog = screen.getByRole("dialog", { name: "Gia hạn token của claude-a" });
-    expect(within(dialog).getByLabelText("Tên")).toHaveValue("claude-a");
-    expect(within(dialog).getByLabelText("Tên")).toHaveAttribute("readonly");
+    await user.click(within(dialog).getByTestId("login-method-token"));
     expect(within(dialog).getByTestId("login-kept-projects")).toHaveTextContent("demo, docs");
     expect(within(dialog).getByTestId("login-kept-workers")).toHaveTextContent("mac-mini");
     expect(within(dialog).getByTestId("login-command-text")).toHaveTextContent(/^evo-agents hub account login claude-a$/);

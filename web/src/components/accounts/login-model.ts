@@ -21,8 +21,8 @@ export type LoginForm = {
   expires: string;
 };
 
-export type LoginField = "name" | "projects" | "expires" | "token";
-export const LOGIN_FIELDS: readonly LoginField[] = ["name", "projects", "expires", "token"];
+export type LoginField = "name" | "projects" | "expires" | "token" | "code";
+export const LOGIN_FIELDS: readonly LoginField[] = ["name", "projects", "expires", "token", "code"];
 
 export type LoginProblem =
   | "nameRequired"
@@ -35,7 +35,9 @@ export type LoginProblem =
   | "tokenRequired"
   | "tokenApiKey"
   | "tokenSpaces"
-  | "tokenTooLong";
+  | "tokenTooLong"
+  | "codeRequired"
+  | "codeSpaces";
 
 export type LoginProblems = Partial<Record<LoginField, LoginProblem>>;
 
@@ -99,18 +101,23 @@ export function tokenProblem(token: string): LoginProblem | null {
   return null;
 }
 
-/** What is wrong with the form and the token, field by field; empty when they may be sent. */
-export function loginProblems(
-  form: LoginForm,
-  token: string,
-  { renewing, match, now }: { renewing: boolean; match: NameMatch; now: number },
-): LoginProblems {
+function nameProblems(form: LoginForm, { renewing, match }: { renewing: boolean; match: NameMatch }): LoginProblems {
   const found: LoginProblems = {};
   if (!renewing) {
     if (!form.name) found.name = "nameRequired";
     else if (!SECRET_NAME.test(form.name)) found.name = "nameInvalid";
     else if (match.kind === "other") found.name = "nameOther";
   }
+  return found;
+}
+
+/** What is wrong with the form and the token, field by field; empty when they may be sent. */
+export function loginProblems(
+  form: LoginForm,
+  token: string,
+  { renewing, match, now }: { renewing: boolean; match: NameMatch; now: number },
+): LoginProblems {
+  const found = nameProblems(form, { renewing, match });
   if (form.projects.length === 0) found.projects = "projectsRequired";
   const end = form.expires ? expiresAtOf(form.expires) : null;
   if (end === null) found.expires = "expiresRequired";
@@ -159,4 +166,24 @@ export function loginCommand(form: LoginForm, { renewing, now }: { renewing: boo
   }
   if (form.expires && form.expires !== defaultExpiryDay(now) && expiresAtOf(form.expires)) words.push("--expires", form.expires);
   return { text: words.join(" "), complete };
+}
+
+/**
+ * What is wrong before Claude's sign-in from the page is finished: the name and projects of a new account (a renewal
+ * keeps the account's), and the code claude.ai showed, which is one word (`code#state`, or the address it went to).
+ */
+export function signInProblems(form: LoginForm, code: string, { renewing, match }: { renewing: boolean; match: NameMatch }): LoginProblems {
+  const found = nameProblems(form, { renewing, match });
+  if (!renewing && form.projects.length === 0) found.projects = "projectsRequired";
+  const value = code.trim();
+  if (!value) found.code = "codeRequired";
+  else if (/\s/.test(value)) found.code = "codeSpaces";
+  return found;
+}
+
+/** The first of `claude`, `claude-2`, `claude-3`... that names none of the visitor's secrets: a new account's name. */
+export function suggestedName(taken: Iterable<string>): string {
+  const names = new Set(taken);
+  if (!names.has("claude")) return "claude";
+  for (let index = 2; ; index += 1) if (!names.has(`claude-${index}`)) return `claude-${index}`;
 }

@@ -89,13 +89,13 @@ test("the sidebar leads to Accounts, which points to the Secrets page while ther
   await expect(main(page).getByTestId("accounts-secrets-link")).toHaveAttribute("href", "/secrets");
 });
 
-test("Add Claude account writes a token the list then shows without it, and Renew token keeps the account's bindings", async ({
+test("Add Claude account signs in on claude.ai and keeps the token it buys, and Renew token takes a pasted token and keeps the bindings", async ({
   page,
   member,
 }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
-  const token = secretValue("setup-token");
+  const bought = "sk-ant-oat01-e2e-ok-web";
   const renewed = secretValue("setup-token-new");
   const received = recordResponses(page);
 
@@ -108,24 +108,28 @@ test("Add Claude account writes a token the list then shows without it, and Rene
   await expect(catalog).toBeHidden();
   let dialog = page.getByTestId("login-dialog");
   await expect(dialog.getByRole("heading", { name: "Add Claude account" })).toBeVisible();
-  await expect(dialog.getByTestId("login-steps")).toContainText("claude setup-token");
+  // A name is suggested and the member's one project is picked: signing in is all that is left.
+  await expect(dialog.getByTestId("login-name")).toHaveValue("claude");
+  await expect(dialog.getByTestId("login-projects").getByRole("checkbox", { name: project })).toBeChecked();
   await dialog.getByTestId("login-name").fill("claude-web");
-  await dialog.getByTestId("login-projects").getByRole("checkbox", { name: project }).check();
-  await expect(dialog.getByTestId("login-command-text")).toHaveText(`evo-agents hub account login claude-web --project ${project}`);
-  const field = dialog.getByTestId("login-token");
-  await expect(field).toHaveAttribute("type", "password");
-  expect(await field.getAttribute("name")).toBeNull();
-  await field.fill(token);
-
-  const [put] = await Promise.all([
-    page.waitForRequest((request) => request.method() === "PUT" && request.url().endsWith("/v1/secrets/claude-web")),
+  const open = dialog.getByTestId("login-web-open");
+  await expect(open).toHaveAttribute("target", "_blank");
+  await expect(open).toHaveAttribute("rel", /noopener/);
+  const authorize = new URL((await open.getAttribute("href")) ?? "");
+  expect(authorize.searchParams.get("redirect_uri")).toBe("https://platform.claude.com/oauth/code/callback");
+  expect(authorize.searchParams.get("scope")).toBe("user:inference");
+  const state = authorize.searchParams.get("state");
+  // The member opens claude.ai and comes back with its code; the spec keeps the browser here.
+  await open.evaluate((link) => link.addEventListener("click", (event) => event.preventDefault()));
+  await open.click();
+  await expect(open).toContainText("Open claude.ai again");
+  await dialog.getByTestId("login-web-code").fill(`e2e-ok-web#${state}`);
+  const [finish] = await Promise.all([
+    page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith("/v1/accounts/claude-sign-in/finish")),
     dialog.getByTestId("login-save").click(),
   ]);
-  expect(put.headers()["x-evo-csrf"]).toBeTruthy();
-  const body = put.postDataJSON();
-  expect(body).toMatchObject({ kind: "env", env_var: VAR, projects: [project], workers: [], value: token });
-  // A year from today less a day, at 00:00 UTC.
-  expect(Date.parse(body.expires_at) - Date.now()).toBeGreaterThan(362 * 24 * 3600 * 1000);
+  expect(finish.headers()["x-evo-csrf"]).toBeTruthy();
+  expect(finish.postDataJSON()).toMatchObject({ name: "claude-web", projects: [project], workers: [], pools: [] });
   await expect(dialog).toBeHidden();
   await expect(toast(page, "Account claude-web added")).toBeVisible();
   const added = row(page, "claude-web");
@@ -140,30 +144,36 @@ test("Add Claude account writes a token the list then shows without it, and Rene
     { name: "claude-web", kind: "env", env_var: VAR, projects: [project] },
   ]);
 
-  // Renew token: the name is locked, the bindings are the account's, and only the token and its end change.
+  // Renew token with a pasted token: the bindings are the account's, and only the token and its end change.
   await added.getByRole("button", { name: "Renew the token of claude-web" }).click();
   dialog = page.getByTestId("login-dialog");
   await expect(dialog.getByRole("heading", { name: "Renew the token of claude-web" })).toBeVisible();
-  await expect(dialog.getByTestId("login-name")).toHaveValue("claude-web");
-  await expect(dialog.getByTestId("login-name")).toHaveAttribute("readonly");
   await expect(dialog.getByTestId("login-kept-projects")).toHaveText(project);
+  await dialog.getByTestId("login-method-token").click();
+  await expect(dialog.getByTestId("login-steps")).toContainText("claude setup-token");
   await expect(dialog.getByTestId("login-command-text")).toHaveText("evo-agents hub account login claude-web");
-  await dialog.getByTestId("login-token").fill(renewed);
+  const field = dialog.getByTestId("login-token");
+  await expect(field).toHaveAttribute("type", "password");
+  expect(await field.getAttribute("name")).toBeNull();
+  await field.fill(renewed);
   const [again] = await Promise.all([
     page.waitForRequest((request) => request.method() === "PUT" && request.url().endsWith("/v1/secrets/claude-web")),
     dialog.getByTestId("login-save").click(),
   ]);
-  expect(again.postDataJSON()).toMatchObject({ kind: "env", env_var: VAR, projects: [project], workers: [], value: renewed });
+  const body = again.postDataJSON();
+  expect(body).toMatchObject({ kind: "env", env_var: VAR, projects: [project], workers: [], value: renewed });
+  // A year from today less a day, at 00:00 UTC.
+  expect(Date.parse(body.expires_at) - Date.now()).toBeGreaterThan(362 * 24 * 3600 * 1000);
   await expect(dialog).toBeHidden();
   await expect(toast(page, "Token of claude-web renewed")).toBeVisible();
 
   await page.reload();
   await expect(row(page, "claude-web")).toBeVisible();
   const html = await page.content();
-  expect(html).not.toContain(token);
+  expect(html).not.toContain(bought);
   expect(html).not.toContain(renewed);
   const bodies = (await received()).join("\n");
-  expect(bodies).not.toContain(token);
+  expect(bodies).not.toContain(bought);
   expect(bodies).not.toContain(renewed);
 });
 
@@ -367,8 +377,8 @@ test("model accounts are a card per provider and service credentials their own t
   await expect(cards.locator("h3")).toHaveText(["Claude subscription", "Anthropic"]);
   const claude = cards.and(page.locator('[data-provider-id="claude"]'));
   const anthropic = cards.and(page.locator('[data-provider-id="anthropic"]'));
-  await expect(claude.getByTestId("provider-card-count")).toHaveText("1 key");
-  await expect(claude.getByTestId("provider-card-host")).toHaveText("Signs in on the worker");
+  await expect(claude.getByTestId("provider-card-count")).toHaveText("1 account");
+  await expect(claude.getByTestId("provider-card-host")).toHaveText("Signed in on claude.ai");
   await expect(anthropic.getByTestId("provider-card-host")).toHaveText("Key set as an env secret");
 
   // Model accounts: the provider's name as text with its logo, and a cost, or an API value for the subscription.
@@ -433,7 +443,7 @@ test("a hub with model accounts only says there is no service credential, and th
   for (const width of [375, 800]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/accounts");
-    await expect(main(page).getByTestId("provider-card-count")).toHaveText("2 keys");
+    await expect(main(page).getByTestId("provider-card-count")).toHaveText("2 accounts");
     // Two accounts for one variable: only then do weight and priority show.
     await expect(row(page, "claude-a").getByTestId("account-target")).toContainText("weight 1, priority 0");
     expect(await overflow(page)).toBe(0);

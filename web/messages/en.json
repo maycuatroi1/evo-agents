@@ -4628,11 +4628,6 @@
       "needs-relogin": "Needs sign-in"
     },
     "oauthEnds": "OAuth, access token until <time></time>",
-    "oauthRenew": {
-      "title": "Sign in again as {name}",
-      "description": "Run <code>evo-agents hub account oauth-login</code> in a terminal to replace its tokens. The account stays.",
-      "descriptionRelogin": "Its refresh token was refused. Run <code>evo-agents hub account oauth-login</code> in a terminal to sign in again."
-    },
     "until": "until <time></time>",
     "rank": "weight {weight}, priority {priority}",
     "usage": {
@@ -4724,17 +4719,17 @@
     "login": {
       "addTitle": "Add Claude account",
       "renewTitle": "Renew the token of {name}",
-      "addDescription": "Runs of the projects you pick take this account's token for <code>{variable}</code>, in turn with your other accounts for it. The hub seals the token and never shows it again, to you either.",
-      "renewDescription": "A new token from <code>claude setup-token</code> for this account. Its projects, workers, weight, priority, pause and runs stay; only the token and the day it ends change.",
+      "addDescription": "Sign in with a Claude subscription. Runs of the projects you pick use it, in turn with your other Claude accounts. The hub seals the token and never shows it.",
+      "renewDescription": "Sign in again to give this account a new token. Its projects, workers, weight, priority and runs stay.",
       "close": "Close",
       "name": "Name",
       "namePlaceholder": "e.g. claude-work",
-      "nameHint": "Lower case letters, digits, dots, dashes and underscores, up to 64, starting with a letter or a digit.",
+      "nameHint": "Lower case letters, digits, dots, dashes and underscores.",
       "nameLocked": "A renewal keeps the account's name.",
       "nameTaken": "You already have an account named {name}. Saving gives it this token and end date and binds it to the projects and workers below; its weight, priority, pause and runs stay.",
       "renewInstead": "Renew {name} instead",
       "projects": "Projects",
-      "projectsHint": "Runs of these projects may take the account. Only projects where you have the writer role are listed.",
+      "projectsHint": "Runs of these projects may use the account. Only projects where you are a writer are listed.",
       "projectsFailed": "Could not read your projects. Close the dialog and try again.",
       "noProjects": "You have the writer role on no project yet, so no run could take an account. Ask a project's admin for the writer role.",
       "workers": "Workers",
@@ -4792,15 +4787,43 @@
         "tokenRequired": "Paste the token that claude setup-token printed.",
         "tokenApiKey": "This is an API key of the Anthropic Console: it goes in ANTHROPIC_API_KEY, on the Secrets page. An account takes the token of claude setup-token.",
         "tokenSpaces": "A token is one line without spaces.",
-        "tokenTooLong": "At most {max} bytes."
+        "tokenTooLong": "At most {max} bytes.",
+        "codeRequired": "Paste the code claude.ai showed after you approved.",
+        "codeSpaces": "The code is one word without spaces: copy it again from claude.ai."
       },
       "errors": {
         "forbidden": "The hub refused: an account needs the writer role on each of its projects, and binds only to your own workers that are not revoked.",
         "notFound": "A project you picked is gone, or you can no longer see it. The lists were reloaded.",
         "conflict": "You keep 200 secrets already: delete one on the Secrets page before adding another.",
         "invalid": "The hub refused the token or the day it ends.",
-        "unavailable": "This hub cannot keep secrets yet: its operator has not set the key that seals them."
-      }
+        "unavailable": "This hub cannot keep secrets yet: its operator has not set the key that seals them.",
+        "stale": "This sign-in expired or is not yours. Click Sign in with Claude again.",
+        "refused": "Claude did not accept the code: it was used already or is too old. Open claude.ai again and paste the new code."
+      },
+      "bindingsTitle": "Workers and pools",
+      "bindingsWorkers": "{count, plural, one {# worker} other {# workers}}",
+      "bindingsPools": "{count, plural, one {# pool} other {# pools}}",
+      "connectTitle": "Connect the account",
+      "method": {
+        "label": "How to connect",
+        "web": "Sign in",
+        "token": "Paste a token"
+      },
+      "web": {
+        "openTitle": "Approve on claude.ai",
+        "openText": "Opens claude.ai in a new tab. Sign in with the Claude account you want to add, then click Authorize.",
+        "open": "Sign in with Claude",
+        "reopen": "Open claude.ai again",
+        "newTab": "(opens in a new tab)",
+        "preparing": "Preparing the sign-in",
+        "startFailed": "Could not start the sign-in.",
+        "retry": "Retry",
+        "codeTitle": "Paste the code",
+        "codePlaceholder": "Code from claude.ai",
+        "codeHint": "After you approve, claude.ai shows a code. Copy it and paste it here."
+      },
+      "signedInAs": "Signed in as {email}. ",
+      "addedWebText": "Runs of its projects may use it until {until}."
     },
     "policies": {
       "title": "Rotation by project",
@@ -4888,25 +4911,35 @@
       },
       "pools": {
         "title": "Account pools",
-        "description": "Named sets of accounts an admin attaches to agents. An agent in pool mode runs on its pool alone.",
-        "none": "No account pool.",
+        "description": "Named sets of accounts for the agents of a project. An agent attached to a pool runs only on the accounts in it.",
+        "none": "No pool in this project yet.",
         "hint": "An agent has one account pool. With no usable account in it, its run waits in the queue.",
         "failed": "The account pool could not be changed.",
-        "added": "Account added to {pool}.",
-        "accountCount": "{count, plural, one {# account} other {# accounts}}",
-        "agentCount": "{count, plural, one {# agent} other {# agents}}",
-        "delete": "Delete",
-        "inUse": "An agent uses this pool: detach it first.",
+        "added": "{name} added to {pool}.",
+        "inUse": "An agent uses this pool: attach it to another pool first.",
         "noAccounts": "No account in this pool.",
-        "remove": "Remove {name}",
-        "accountName": "Account name",
-        "agentHandle": "Agent handle (optional)",
-        "addAccount": "Add account",
+        "remove": "Remove {name} from {pool}",
+        "addAccount": "Add an account...",
         "attachFor": "Account pool of @{handle}",
-        "noPool": "No pool",
-        "poolName": "New pool name",
-        "create": "Create pool",
-        "agents": "Agents"
+        "noPool": "No pool (rotation)",
+        "poolName": "Pool name, e.g. team-claude",
+        "create": "Create",
+        "agents": "Accounts of the project's agents",
+        "deleteLabel": "Delete pool {pool}",
+        "usedBy": "Used by {agents}",
+        "unused": "No agent uses it yet",
+        "accountsOf": "Accounts in {pool}",
+        "paused": "Paused",
+        "addTo": "Add an account to {pool}",
+        "nothingToAdd": "All your model accounts are in this pool",
+        "yours": "Your accounts",
+        "agentsTitle": "Pool of each agent",
+        "nameInvalid": "Letters, digits, dots, dashes and underscores, up to 40, starting with a letter or a digit.",
+        "nameTaken": "This project has a pool named {name} already.",
+        "cancel": "Cancel",
+        "newPool": "New pool",
+        "poolCount": "{count, plural, one {# pool} other {# pools}}",
+        "loadFailed": "Could not read the pools of this project."
       }
     },
     "variables": "{provider}, {count, plural, one {# variable} other {# variables}}",
@@ -5032,7 +5065,7 @@
       },
       "card": {
         "keys": "{count, plural, one {# key} other {# keys}}",
-        "login": "Signs in on the worker",
+        "login": "Signed in on claude.ai",
         "envKey": "Key set as an env secret",
         "format": "API format",
         "addLabel": "Add a key of {name}",
@@ -5040,7 +5073,9 @@
         "models": "{count, plural, one {# model} other {# models}}",
         "moreModels": "and {count} more",
         "loginModels": "Runs take Claude Code's own models.",
-        "caption": "Keys of {name}"
+        "caption": "Keys of {name}",
+        "accounts": "{count, plural, one {# account} other {# accounts}}",
+        "addAccount": "Add account"
       },
       "gateway": {
         "offTitle": "This hub runs no model gateway",

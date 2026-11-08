@@ -48,11 +48,12 @@ export function AccountCell({ account, ranked, shared = false }: { account: Acco
     .filter(Boolean)
     .join(" · ");
   return (
-    <div className="flex min-w-0 items-center gap-2.5">
+    // The name is what a row is read by: its column keeps room for it (CellMain alone adds no width to the table).
+    <div className="flex min-w-48 items-center gap-2.5 sm:min-w-60">
       <ProviderLogo provider={account.provider} />
       <CellMain sub={sub} subTitle={sub} subTestId="account-target">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="truncate font-mono text-[13px]" title={account.name} data-account-name={account.name}>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span className="min-w-0 font-mono text-[13px] [overflow-wrap:anywhere]" title={account.name} data-account-name={account.name}>
             {account.name}
           </span>
           {shared ? (

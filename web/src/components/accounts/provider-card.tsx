@@ -52,7 +52,7 @@ export function ProviderCard({
                   {name}
                 </h3>
                 <Badge variant="secondary" data-testid="provider-card-count">
-                  {t("keys", { count: card.accounts.length })}
+                  {t(login ? "accounts" : "keys", { count: card.accounts.length })}
                 </Badge>
               </div>
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-muted">
@@ -82,11 +82,11 @@ export function ProviderCard({
               onClick={() => onAdd(card)}
               onPointerEnter={login ? preloadLogin : undefined}
               onFocus={login ? preloadLogin : undefined}
-              aria-label={t("addLabel", { name })}
+              aria-label={login ? t("addAccount") : t("addLabel", { name })}
               data-testid="provider-card-add"
             >
               <Plus aria-hidden="true" />
-              {t("add")}
+              {login ? t("addAccount") : t("add")}
             </Button>
           </header>
         }
