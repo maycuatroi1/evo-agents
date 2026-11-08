@@ -322,10 +322,11 @@ def test_an_ask_parks_the_hub_run_and_the_answer_wakes_it(client, hub, hub_db, g
     brief = {"goal": "name the signer", "output": "a service and a path", "done_when": "it names both"}
     gateway.script = [
         {"content": None, "tool_calls": [tool_call("agent_ask", {"handle": KB_AGENT, "body": QUESTION, **brief})]},
-        {"content": "I asked @kb-bot; its answer comes back here."},
+        {"content": None, "tool_calls": [tool_call("kg_search", {"query": "export links"})]},
     ]
     asked = turn(client, gateway, parent)
     assert asked["state"] == "parked" and len(asked["asked"]) == 1
+    assert (asked["rounds"], len(gateway.asked)) == (1, 1)  # the ask ended the turn: no search after it
     (child,) = asked["asked"]
     state, requested, _, worker_id, _, hop, spawned_by, _ = run_row(hub_db, child)
     assert (state, requested, worker_id, hop, spawned_by) == ("queued", "hub", None, 2, parent)

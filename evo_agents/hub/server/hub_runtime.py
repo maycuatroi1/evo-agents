@@ -13,7 +13,9 @@ TURN_SECONDS and a margin, so the lease reaper ends a turn whose job died), then
    revoked at its end.
 4. The prompt is the worker's (``chat_runs.chat_prompt``, the same rules), the profile's instructions and ON_HUB, and
    the messages of the run's inbox, which the turn takes. The model calls the tools of ``hub_tools`` for at most
-   MAX_ROUNDS rounds and TURN_SECONDS; messages that reach the inbox meanwhile join before the next round.
+   MAX_ROUNDS rounds and TURN_SECONDS; messages that reach the inbox meanwhile join before the next round. A round
+   whose tools asked an agent or escalated ends the turn, as the worker's agent ends its turn after the command: the
+   answer then wakes a new run instead of reaching a turn that goes on searching.
 5. Its last answer, masked as the worker's reply is, is the agent's reply in the thread (``chat_runs.agent_reply``).
    The turn's tokens and the key's cost go to run_spend, runs.usage and the attributes of the run's invoke_agent span.
 6. A run that asked an agent and waits for the answer parks (waiting, then parked), and the answer wakes it in a new
@@ -69,7 +71,8 @@ You run on the hub, without a worker, a checkout or a shell: the commands above 
 - The knowledge graph: the tool kg_search. A memory of the project: the tool memory_write.
 - Repos, branches, pull requests and other commands are not on the hub: say what you cannot do.
 
-Your last answer without a tool call is your reply in the thread, and ends your turn."""
+Your last answer without a tool call is your reply in the thread, and ends your turn. A call of agent_ask or escalate
+ends your turn too: the answer wakes you in a new turn."""
 
 
 @dataclass(frozen=True)
@@ -348,10 +351,14 @@ async def _rounds(client, key: str, held: Held, turn: hub_tools.Turn, messages: 
                 return found
             continue
         messages.append({"role": "assistant", "content": message.get("content"), "tool_calls": calls})
+        asked = len(turn.asked)
         for call in calls:
             function = call.get("function") or {}
             result = await hub_tools.call(turn, function.get("name") or "", function.get("arguments") or "{}")
             messages.append({"role": "tool", "tool_call_id": call.get("id"), "content": result})
+        if len(turn.asked) > asked:  # an ask or an escalation: the turn ends here, the answer wakes a new one
+            found.reply = message.get("content") or ""
+            return found
         await _between(turn.engine, held.run_id, messages, None)
     found.exhausted = found.reply is None
     found.reply = found.reply or f"I stopped after {found.rounds} round(s) of this turn without a final answer."
