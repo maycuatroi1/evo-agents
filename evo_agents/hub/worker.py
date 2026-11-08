@@ -3,7 +3,8 @@
 The worker migrates the database like the api (under the advisory lock), then takes jobs from the procrastinate
 queue in Postgres, ``concurrency`` at a time, until SIGTERM or SIGINT. A second procrastinate worker in the same
 process takes only the queue ``jobs.LEASE`` (recovering runs, delivering notifications), one job at a time, so those
-run every minute even while long jobs fill the ``concurrency`` slots. On the first signal it takes no new job and
+run every minute even while long jobs fill the ``concurrency`` slots; a third takes only ``jobs.HUB_QUEUE``, the turns
+of the hub runtime, HUB_CONCURRENCY at a time. On the first signal it takes no new job and
 waits up to SHUTDOWN_GRACE for the running ones; procrastinate aborts what is still running after that, and a second
 signal kills the process. Stopped by a signal, it exits 0; stopped by anything else, such as losing Postgres, it
 exits 1, so the container is restarted and the failure shows. It needs the blob store: what it builds lives in R2,
@@ -172,6 +173,7 @@ JOB_RETENTION = timedelta(days=14)
 STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT)
 SIDE_CONNECTIONS = 3  # the pool serves the jobs plus procrastinate's fetching, heartbeat and periodic deferrer
 LEASE_CONCURRENCY = 1  # jobs the worker on jobs.LEASE runs at a time, beside the ``concurrency`` of the others
+HUB_CONCURRENCY = 4  # turns of the hub runtime the worker on jobs.HUB_QUEUE takes at a time: they wait on the gateway
 
 queue = App(connector=PsycopgConnector())  # never opened as is: ``run`` swaps in a connector with the DSN
 
@@ -321,7 +323,7 @@ async def reap_pool_nodes(context: JobContext, timestamp: int | None = None) -> 
     return await reap(found.engine, found.sealer, found.github_app or getattr(found, "curator_app", None))
 
 
-@queue.task(name=jobs.HUB_TURN, pass_context=True)
+@queue.task(name=jobs.HUB_TURN, pass_context=True, queue=jobs.HUB_QUEUE)
 async def hub_turn(context: JobContext, run_id: int) -> dict:
     found = hub(context)
     if found.hub_turn is None:
@@ -664,11 +666,12 @@ async def prune_jobs(context: JobContext, timestamp: int | None = None) -> None:
 
 
 def connector(config: HubConfig, concurrency: int) -> PsycopgConnector:
-    """A connector whose pool procrastinate opens and closes, sized for ``concurrency`` jobs and the lease worker's."""
+    """A connector whose pool procrastinate opens and closes, sized for ``concurrency`` jobs, the lease worker's and
+    the hub worker's."""
     return PsycopgConnector(
         conninfo=config.dsn,
         min_size=1,
-        max_size=max(config.pool_max_size, concurrency + LEASE_CONCURRENCY + 2 * SIDE_CONNECTIONS),
+        max_size=max(config.pool_max_size, concurrency + LEASE_CONCURRENCY + HUB_CONCURRENCY + 3 * SIDE_CONNECTIONS),
         timeout=config.pool_timeout,
         kwargs={"application_name": APPLICATION_NAME, "connect_timeout": CONNECT_TIMEOUT},
         name="evo-hub-worker",
@@ -677,10 +680,11 @@ def connector(config: HubConfig, concurrency: int) -> PsycopgConnector:
 
 
 async def workers(**options) -> None:
-    """Two procrastinate workers on the one App: one with ``options``, and one on jobs.LEASE alone, so recovering
-    runs and delivering notifications never wait behind a long job. A worker whose ``queues`` leave out the default
-    queue (``--queue kg``) runs the first alone. Both stop when either does, the error of the one that stopped first
-    raised; cancelled, both stop and wait for their running jobs."""
+    """Three procrastinate workers on the one App: one with ``options``, one on jobs.LEASE alone, so recovering runs
+    and delivering notifications never wait behind a long job, and one on jobs.HUB_QUEUE alone, HUB_CONCURRENCY turns
+    of the hub runtime at a time. A worker whose ``queues`` leave out the default queue (``--queue kg``) runs the
+    first alone. All stop when one does, the error of the one that stopped first raised; cancelled, they stop and
+    wait for their running jobs."""
     queues = options.get("queues")
     if queues and jobs.DEFAULT_QUEUE not in queues:
         await queue.run_worker_async(install_signal_handlers=False, **options)
@@ -691,9 +695,15 @@ async def workers(**options) -> None:
         "queues": [jobs.LEASE],
         "concurrency": LEASE_CONCURRENCY,
     }
+    turns = {
+        **options,
+        "name": f"{options.get('name') or 'worker'}-{jobs.HUB_QUEUE}",
+        "queues": [jobs.HUB_QUEUE],
+        "concurrency": HUB_CONCURRENCY,
+    }
     running = [
         asyncio.ensure_future(queue.run_worker_async(install_signal_handlers=False, **each))
-        for each in (options, lease)
+        for each in (options, lease, turns)
     ]
     try:
         done, _ = await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)

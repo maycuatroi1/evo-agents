@@ -340,10 +340,36 @@ def test_lease_recovery_not_starved_by_a_long_job_holding_every_slot(hub_db, tmp
     }.items() <= dict(query(hub_db, queues)).items()
 
 
+def test_hub_turns_run_beside_a_long_job_and_beside_each_other(hub_db, tmp_path, s3):
+    """The turns of the hub runtime took the default queue's one slot, one after the other behind every other job:
+    in the demo system of plan multi-agent-systems (step 11) each hop of a trace waited for the turn before it."""
+    migrate(hub_db.dsn)
+
+    async def defer_all(job_queue, pool):
+        long_job = await job_queue.defer(jobs.PING, seconds=25)
+        turns = [await job_queue.defer(jobs.HUB_TURN, run_id=999_000 + n) for n in range(2)]  # no such run: no turn
+        return long_job, turns
+
+    with running_worker(hub_db, tmp_path, s3) as worker:  # concurrency 1: the ping takes the default queue's slot
+        long_job, turns = asyncio.run(with_queue(hub_db, defer_all))
+        wait_for(lambda: job(hub_db, long_job)["status"] == "doing", what="the long job starting")
+        for turn in turns:
+            wait_for(lambda turn=turn: job(hub_db, turn)["status"] == "succeeded", timeout=20, what="a hub turn")
+        assert job(hub_db, long_job)["status"] == "doing"  # they ran beside it, not after it
+        worker.proc.kill()
+    queues = select(column("queue_name")).select_from(procrastinate_jobs).where(column("task_name") == jobs.HUB_TURN)
+    assert set(query(hub_db, queues)) == {(jobs.HUB_QUEUE,)}
+
+
 def test_lease_recovery_not_starved_its_jobs_alone_go_to_the_lease_queue():
     assert {name for name, task in queue.tasks.items() if task.queue == jobs.LEASE} == jobs.LEASE_JOBS
     hub_tasks = {name: task for name, task in queue.tasks.items() if task.queue != "builtin"}  # procrastinate's own
-    assert {task.queue for name, task in hub_tasks.items() if name not in jobs.LEASE_JOBS} == {"default", jobs.KG_QUEUE}
+    assert {task.queue for name, task in hub_tasks.items() if name not in jobs.LEASE_JOBS} == {
+        "default",
+        jobs.KG_QUEUE,
+        jobs.HUB_QUEUE,
+    }
+    assert {name for name, task in hub_tasks.items() if task.queue == jobs.HUB_QUEUE} == {jobs.HUB_TURN}
     assert all(jobs.queue_of(name) == task.queue for name, task in hub_tasks.items())
 
 
