@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ReactFlowProvider, useReactFlow } from "@xyflow/react";
+import { getViewportForBounds, ReactFlowProvider, useReactFlow, useStoreApi } from "@xyflow/react";
 import { X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -13,7 +13,7 @@ import { browserApi } from "@/lib/api/browser";
 import { specDiff } from "@/lib/system-diff";
 import { proposalFor, systemProposalsQuery } from "@/lib/system-proposals";
 import { freeId, type Join, type NodeKind, placeFor, placeProblems, type Spec, type SpecNode, specOf, withoutNode } from "@/lib/systems";
-import { laidOut } from "@/lib/systems-layout";
+import { boundsOf, laidOut } from "@/lib/systems-layout";
 
 import { type Adding, AddNodeDialog } from "./add-node-dialog";
 import { BuilderPanel } from "./builder-panel";
@@ -109,9 +109,14 @@ function Designer({ project, system, slots }: DesignerProps) {
     },
     [pin, spec.nodes, t],
   );
+  // React Flow's fitView waits for its next setNodes, which a controlled canvas does not make on its own: fit the view
+  // to the laid-out spec's own box instead.
+  const store = useStoreApi();
   const layout = () => {
-    change(laidOut(spec));
-    requestAnimationFrame(() => void flow.fitView({ padding: 0.2, maxZoom: 1, duration: 200 }));
+    const next = laidOut(spec);
+    change(next);
+    const { width, height } = store.getState();
+    void flow.setViewport(getViewportForBounds(boundsOf(next), width, height, 0.25, 1, 0.2), { duration: 200 });
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {

@@ -21,7 +21,7 @@ import {
   withoutNode,
   worst,
 } from "./systems";
-import { laidOut } from "./systems-layout";
+import { boundsOf, drawnAt, laidOut, NODE_SIZE, SLOT_HEIGHT, SLOT_WIDTH, slotOf } from "./systems-layout";
 
 const spec = (): Spec => ({
   schema: "evo-agent-system/1",
@@ -127,10 +127,51 @@ describe("history", () => {
 });
 
 describe("layout", () => {
-  it("puts the entry before its agent and the agent before its graph", () => {
-    const withGraph = { ...spec(), edges: [...spec().edges, { from: "triage", to: "docs", kind: "uses_kg" as const, description: "" }] };
-    const at = new Map(laidOut(withGraph).nodes.map((node) => [node.id, node.position]));
+  const full = () => ({
+    ...spec(),
+    edges: [
+      ...spec().edges,
+      { from: "triage", to: "billing", kind: "interacts" as const, description: "" },
+      { from: "triage", to: "docs", kind: "uses_kg" as const, description: "" },
+      { from: "boss", to: "billing", kind: "orchestrates" as const, description: "" },
+      { from: "billing", to: "boss", kind: "escalates" as const, description: "" },
+      { from: "curator", to: "triage", kind: "optimizes" as const, description: "" },
+    ],
+  });
+
+  it("runs the flow left to right, the orchestrator and the Curator above it and the graphs below", () => {
+    const at = new Map(laidOut(full()).nodes.map((node) => [node.id, node.position]));
     expect(at.get("entry")!.x).toBeLessThan(at.get("triage")!.x);
-    expect(at.get("triage")!.x).toBeLessThan(at.get("docs")!.x);
+    expect(at.get("triage")!.x).toBeLessThan(at.get("billing")!.x);
+    expect(at.get("entry")!.y).toBe(at.get("triage")!.y);
+    expect(at.get("boss")!.y).toBeLessThan(at.get("triage")!.y);
+    expect(at.get("curator")!.y).toBe(at.get("boss")!.y);
+    expect(at.get("docs")!.y).toBeGreaterThan(at.get("triage")!.y);
+  });
+
+  it("puts the orchestrator over the agents it directs and a graph under its readers, never two on one place", () => {
+    const at = new Map(laidOut(full()).nodes.map((node) => [node.id, node.position]));
+    expect(at.get("boss")!.x).toBe(at.get("billing")!.x);
+    expect(at.get("docs")!.x).toBe(at.get("triage")!.x);
+    expect(Math.abs(at.get("curator")!.x - at.get("boss")!.x)).toBeGreaterThanOrEqual(SLOT_WIDTH);
+  });
+
+  it("bounds every slot of the laid-out spec, with room for the words around them", () => {
+    const placed = laidOut(full());
+    const box = boundsOf(placed);
+    for (const node of placed.nodes) {
+      expect(node.position.x).toBeGreaterThanOrEqual(box.x);
+      expect(node.position.y).toBeGreaterThan(box.y);
+      expect(node.position.x + SLOT_WIDTH).toBeLessThanOrEqual(box.x + box.width);
+      expect(node.position.y + SLOT_HEIGHT).toBeLessThan(box.y + box.height);
+    }
+  });
+
+  it("keeps a node's shape in the middle of its slot", () => {
+    for (const kind of ["entry", "agent", "kg", "curator", "orchestrator"] as const) {
+      const slot = { x: 40, y: -12 };
+      expect(slotOf(kind, drawnAt(kind, slot))).toEqual(slot);
+    }
+    expect(drawnAt("agent", { x: 0, y: 0 })).toEqual({ x: (SLOT_WIDTH - NODE_SIZE.agent.width) / 2, y: (SLOT_HEIGHT - NODE_SIZE.agent.height) / 2 });
   });
 });

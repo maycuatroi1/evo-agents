@@ -4079,7 +4079,9 @@
       "loadFailedHint": "Lỗi mạng đã chặn nó. Tải lại trang để thử lại.",
       "reload": "Tải lại",
       "notInDesign": "Không có trong thiết kế",
-      "offDesignEdge": "Ngoài thiết kế"
+      "offDesignEdge": "Ngoài thiết kế",
+      "showOptimizes": "Vẽ các đường của Curator",
+      "optimizedBadge": "Curator tối ưu nút này"
     },
     "add": {
       "existing": "Hồ sơ",

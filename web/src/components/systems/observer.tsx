@@ -8,6 +8,8 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
+import { agentsQuery } from "@/lib/agent-queries";
+import type { Agent } from "@/lib/agents";
 import { browserApi } from "@/lib/api/browser";
 import { type SystemOut, specOf, type TraceOut } from "@/lib/systems";
 import { edgeActivity, ghostNodes, graphQueries, liveTraceIds, metricsOf, type Numbers, nodeStates, type NodeState } from "@/lib/systems-observe";
@@ -17,6 +19,8 @@ import { DESIGNER_FRAME } from "./designer-frame";
 import { ObserveCanvas, type Observed } from "./observe-canvas";
 import { TraceList } from "./trace-list";
 import { useTraceStream } from "./use-trace-stream";
+
+const NO_AGENTS: readonly Agent[] = [];
 
 /** The spans of the newest traces read, one list (stable while their data is). */
 const allSpans = (results: { data?: TraceOut }[]) => results.flatMap((result) => result.data?.spans ?? []);
@@ -70,6 +74,7 @@ function Observer({ project, system }: { project: string; system: SystemOut }) {
   const status = useTraceStream(project, slug);
   const traces = useQuery(systemTracesQuery(browserApi, project, slug));
   const metrics = useQuery(systemMetricsQuery(browserApi, project, slug));
+  const agents = useQuery(agentsQuery(browserApi, project));
   const ids = liveTraceIds(traces.data ?? []);
   const spans = useQueries({ queries: ids.map((id) => systemTraceQuery(browserApi, project, slug, id)), combine: allSpans });
   const now = useNow(true) ?? 0;
@@ -101,7 +106,7 @@ function Observer({ project, system }: { project: string; system: SystemOut }) {
       </div>
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <div className="system-graph relative min-h-[320px] min-w-0 flex-1 bg-background" data-testid="system-observe-canvas">
-          <ObserveCanvas spec={spec} observed={observed} selected={selected} onSelect={setSelected} />
+          <ObserveCanvas spec={spec} observed={observed} agents={agents.data ?? NO_AGENTS} selected={selected} onSelect={setSelected} />
         </div>
         <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto border-t bg-card p-4 max-lg:max-h-[55%] lg:w-[24rem] lg:border-t-0 lg:border-l" aria-label={t("panel")}>
           {selected ? (
