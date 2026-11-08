@@ -258,6 +258,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Knowledge graph | `Network` |
 | Agents, a project's agent profiles; New agent | `Bot`; `Plus` |
 | Systems, a project's agent systems; the designer's Test | `Workflow`; `FlaskConical` |
+| A system's nodes: entry, agent, knowledge graph, Curator, orchestrator | `MessageCircle`, `Bot`, the knowledge-graph glyph (a hub and three nodes, `designer-nodes.tsx`), `MoonStar`, `Network` |
 | Chats, a group chat; New chat; Chat with an agent (its direct chat) | `MessagesSquare`; `Plus`; `MessagesSquare` |
 | A chat's thread, Reply in thread; Add a reaction; a chat's members | `MessageSquareReply`; `SmilePlus`; `Users` |
 | Reply in a direct chat, the composer's Replying to; what an answer answers (its quote) | `Reply`; `CornerDownRight` |
@@ -1017,9 +1018,24 @@ Shared pieces built on them:
   name and the slug made of it). A system's page is its designer, drawn with `@xyflow/react` and loaded on demand
   (`designer-lazy.tsx`): a toolbar (Add, the palette of entry, agent, knowledge graph, curator and orchestrator, one
   each of those a system holds once; Undo, Redo, Auto layout with dagre; the save state; Test; Save), the canvas, and a
-  24 rem side panel from `lg` (under the canvas below it) for the node or edge selected. A node is a card with its
-  kind's icon, its name and its pin (`@handle vN`); a pin behind its profile shows Upgrade, a problem the hub finds
-  shows on the node or edge it names in `danger` or `attention`, and the system's own problems sit over the canvas.
+  24 rem side panel from `lg` (under the canvas below it) for the node or edge selected. Each kind has its own shape
+  (`designer-nodes.tsx`): an agent is a 60 px circle holding its profile's `AgentAvatar` (the image, or the initial on
+  the agent's colour; `Bot` on `muted` when the profile is unknown) with its name and pin (`@handle vN`) under it on a
+  `background` chip, the orchestrator a 68 px circle with a `Network` badge and its words over it, a knowledge graph a
+  208 x 56 tile with the knowledge-graph glyph on a `chart-3` ground, the entry a pill with `MessageCircle`, the Curator
+  a dashed 52 px square with `MoonStar` and its words to its right; a node the Curator optimizes carries a `MoonStar`
+  badge. A spec keeps each node's position as the top-left of a 220 x 76 slot, and the shape is drawn in its middle.
+  Lines (`designer-edge.tsx`) run centre to centre and end on the shape with an arrowhead in their colour: Talks to
+  `muted-foreground` solid, Orchestrates `chart-4` solid, Escalates to `chart-4` dotted, Reads `chart-3` dashed,
+  Optimizes `neutral-solid` dotted; two lines between the same nodes bow apart. The Curator's lines are left out until
+  the legend's Optimizes toggle (`aria-pressed`) draws them, or one of their ends has the focus. A line shows its
+  words (kind and description) only while it or an end is hovered or selected, it has a problem, or a proposal touches
+  it; otherwise a dot at its middle is its button (its words in `aria-label`). The pointer on a node or a line fades
+  what it does not touch to 30 %. The legend sits at the canvas's bottom left with the kinds the system has. Auto
+  layout puts the flow (entry and agents along Talks to) left to right in the middle with dagre, the orchestrator
+  above the agents it directs and the Curator above the start, each graph under the agents that read it. A pin behind
+  its profile shows Upgrade, a problem the hub finds shows on the node or edge it names in `danger` or `attention`,
+  and the system's own problems sit over the canvas.
   Dragging from a handle marks the nodes an edge of some kind fits with that kind and draws only those; the panel's
   Connect to does the same without a mouse. The panel edits a node's label, its graphs, its edges and, for an agent,
   its config (name, description, instructions, runs on, model, skill, tool, starters), which saves a new version of
@@ -1033,7 +1049,8 @@ Shared pieces built on them:
   revision read-only (`observer.tsx`, `observe-canvas.tsx`, the logic in `lib/systems-observe.ts`): each node shows
   its state (idle, working, waiting, failed, from the runs of the five newest traces) and its numbers (runs, p50, cost
   over the last 50 traces; queries for a graph, traces for the entry); an edge shows how often work crossed it and is
-  drawn in `running` with a moving dash while a crossing is recent; a crossing the design lacks is a dashed
+  drawn in `running` with a moving dash while a crossing is recent, a working agent's circle has a turning dashed
+  `running` ring, which stands still under reduced motion; a crossing the design lacks is a dashed
   `attention` edge, to a dashed node outside the design when it reached one. Selecting a node shows its numbers in
   full above the recent traces in the side panel. The trace stream (`use-trace-stream.ts`) keeps both current while
   the tab is in view and closes while it is hidden; nothing says it is live, only a line when it fails or ends. A

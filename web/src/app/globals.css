@@ -421,6 +421,10 @@
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+/* An agent or the orchestrator of a system is round, and so is its focus ring. */
+.system-graph .react-flow__node.system-node-round:focus-visible {
+  border-radius: 9999px;
+}
 /* Observe mode: an edge work goes through now flows toward its end. */
 @media (prefers-reduced-motion: no-preference) {
   .system-graph .system-edge-lit {

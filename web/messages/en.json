@@ -4079,7 +4079,9 @@
       "loadFailedHint": "A network error stopped it. Reload the page to try again.",
       "reload": "Reload",
       "notInDesign": "Not in the design",
-      "offDesignEdge": "Off design"
+      "offDesignEdge": "Off design",
+      "showOptimizes": "Draw the Curator's lines",
+      "optimizedBadge": "The Curator optimizes it"
     },
     "add": {
       "existing": "Profile",
