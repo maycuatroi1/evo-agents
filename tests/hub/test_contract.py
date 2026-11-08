@@ -203,6 +203,11 @@ def test_keys_passed_on_from_the_hub_are_the_properties_of_its_answer():
     assert checked >= 21
 
 
+def test_hub_kg_measure_help_says_how_long_it_waits():
+    help_text = " ".join(hub_parsers()["hub kg measure"].format_help().split())
+    assert f"waits up to {kg_cli.MEASURE_TIMEOUT:.0f} s" in help_text
+
+
 def test_the_commands_of_plan_runs_decisions_and_notifications():
     printed = commands()
     assert {

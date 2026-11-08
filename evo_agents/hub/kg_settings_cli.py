@@ -14,6 +14,7 @@ from urllib.parse import quote
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in
 from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.hub.kg_cli import MEASURE_TIMEOUT
 from evo_agents.kg import settings as kg_settings
 
 
@@ -109,7 +110,7 @@ def cmd_measure(args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     body = {"values": values, "split": args.split, "max_questions": args.max_questions}
-    found = hub.call("POST", f"/v1/kg/{quote(args.project, safe='')}/measure", body)
+    found = hub.call("POST", f"/v1/kg/{quote(args.project, safe='')}/measure", body, timeout=MEASURE_TIMEOUT)
     out = measure_json(args.project, found)
     if args.json:
         print_json(out)
@@ -142,7 +143,10 @@ def register(ksub) -> None:
     parser.set_defaults(func=cmd_settings)
 
     measure = ksub.add_parser(
-        "measure", help="score a candidate of the KG settings on the project's question set, changing nothing"
+        "measure",
+        help="score a candidate of the KG settings on the project's question set, changing nothing",
+        description="Score a candidate of the KG settings on the project's question set, changing nothing. The hub opens "
+        f"the graph and asks the questions twice, so this waits up to {MEASURE_TIMEOUT:.0f} s for its answer.",
     )
     measure.add_argument("--project", required=True, help="project name on the hub")
     measure.add_argument("--settings", help="a json file of keys and values, tried on top of the project's settings")
