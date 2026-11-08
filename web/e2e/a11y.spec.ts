@@ -2013,6 +2013,9 @@ const PAGES: Entry[] = [
       await importSample(author, project);
       const v2 = await editItem(author, project, USE_CASE.code, (held) => `${held}\n\nThe cart is kept for a day.`);
       await submitVersion(author, project, v2);
+      await open(page, `/p/${project}/x/srs/reviews`);
+      await expect(page.locator("#main").getByTestId("srs-queue-case").first()).toBeVisible();
+      await expectNoSeriousViolations(page, "SRS reviews");
       await open(page, documentPath(project, "/versions"));
       await expect(page.locator("#main").getByTestId("srs-versions-table")).toBeVisible();
       await expectNoSeriousViolations(page, "SRS versions");

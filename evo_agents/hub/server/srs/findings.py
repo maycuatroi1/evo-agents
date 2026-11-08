@@ -395,10 +395,23 @@ async def _review_run(conn: AsyncConnection, held: VersionRow):
     return (await conn.execute(query)).first()
 
 
+async def review_run(conn: AsyncConnection, held: VersionRow):
+    """@ba's review of the round of version ``held`` (its id and state), or None when the hub handed none."""
+    return await _review_run(conn, held)
+
+
+async def holds(conn: AsyncConnection, doc: DocumentRow, held: VersionRow):
+    """What holds an approval of version ``held`` of ``doc`` now: the open findings of level decide of the document, and
+    @ba's review of the version's round (its id and state) while it is queued or running, else None."""
+    deciding = [row for row in await findings(conn, doc, OPEN) if row.level == DECIDE]
+    run = await _review_run(conn, held)
+    return deciding, run if run is not None and run.state in ACTIVE_STATES else None
+
+
 async def approval_hold(conn: AsyncConnection, access: ProjectAccess, doc: DocumentRow, held: VersionRow) -> None:
     """409 when version ``held`` of ``doc`` may not be approved now (see the module), naming each open finding of
     level decide with its chat link, or the review run that is still to end."""
-    deciding = [row for row in await findings(conn, doc, OPEN) if row.level == DECIDE]
+    deciding, run = await holds(conn, doc, held)
     if deciding:
         waive = f"evo-agents hub srs waive {doc.slug} FINDING --project {access.name} --reason TEXT"
         raise SrsError(
@@ -411,8 +424,7 @@ async def approval_hold(conn: AsyncConnection, access: ProjectAccess, doc: Docum
                 for row in deciding
             ],
         )
-    run = await _review_run(conn, held)
-    if run is not None and run.state in ACTIVE_STATES:
+    if run is not None:
         raise SrsError(
             409,
             f"version {held.number} of {doc.slug} is not approved while @{BA}'s review of its round {held.round} "
@@ -440,10 +452,12 @@ __all__ = [
     "findings",
     "graph_problems",
     "held_problems",
+    "holds",
     "looked_up",
     "record",
     "refused",
     "reopen",
+    "review_run",
     "settle",
     "sources_of",
 ]

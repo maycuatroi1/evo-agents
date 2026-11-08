@@ -58,6 +58,7 @@ ACTION_NOTICES = frozenset(
         "curator_paused",
         "builder_proposal",
         "canvas_baseline",
+        "srs_review",
         "merge_paused",
         "pm_escalation",
         "loop_paused",

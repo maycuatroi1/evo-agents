@@ -105,7 +105,7 @@ export function CodeChip({ code, href, testId }: { code: string; href?: Route; t
   return <Identifier value={code} href={href} testId={testId} data-code={code} />;
 }
 
-/** A version as `v8`, in a mono chip, linking where given. */
-export function VersionChip({ number, href }: { number: number; href?: Route }) {
-  return <Identifier value={`v${number}`} href={href} data-version={number} />;
+/** A version as `v8`, in a mono chip, linking where given; `label` names the link when `v8` alone would not say what it opens. */
+export function VersionChip({ number, href, label }: { number: number; href?: Route; label?: string }) {
+  return <Identifier value={`v${number}`} href={href} linkLabel={label} data-version={number} />;
 }

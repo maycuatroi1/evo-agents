@@ -7314,7 +7314,9 @@
       "market_license_expiring": "The licence of a paid plugin ends soon",
       "kg_optimize": "The report of a KG optimize run",
       "kg_pipeline": "The knowledge graph of an upload is ready or failed",
-      "system_daily_cap": "An agent system reached its daily spending cap"
+      "system_daily_cap": "An agent system reached its daily spending cap",
+      "srs_review": "An SRS version waits for your review",
+      "srs_reviewed": "A review of your SRS version"
     },
     "item": {
       "unread": "Unread",
@@ -7324,6 +7326,7 @@
       "viewLabel": "View decision #{id}",
       "openRun": "Open run #{id}",
       "openBaseline": "Review the baseline",
+      "openReview": "Open the review",
       "openPluginNotice": "Open",
       "markRead": "Mark as read",
       "markReadLabel": "Mark as read: {title}",
@@ -9339,7 +9342,8 @@
       "review": "Review of v{number} of {slug}",
       "compare": "Comparison of {slug}",
       "comments": "Comments of {slug}",
-      "import": "Import SRS into {project}"
+      "import": "Import SRS into {project}",
+      "reviews": "SRS reviews of {project}"
     },
     "versionState": {
       "draft": "Draft",
@@ -9418,7 +9422,38 @@
       "readerText": "Readers open documents, versions and comments. Writing, importing and reviewing take the writer role.",
       "emptyTitle": "No BA documents yet",
       "emptyWriter": "An SRS or a specification lives here with its versions, reviews and codes that never change. Import a Markdown file whose headings follow the template.",
-      "emptyReader": "An SRS or a specification lives here with its versions, reviews and codes. A writer of the project imports the first one."
+      "emptyReader": "An SRS or a specification lives here with its versions, reviews and codes. A writer of the project imports the first one.",
+      "reviews": "Waiting for review"
+    },
+    "queue": {
+      "versionsCount": "{count, plural, one {# version in review} other {# versions in review}}",
+      "waitingCount": "{count, plural, one {# waits for you} other {# wait for you}}",
+      "documents": "Documents",
+      "filterLabel": "Show",
+      "filterMine": "Waiting for me",
+      "filterAll": "All",
+      "toReview": "{count, plural, other {# to review}}",
+      "listLabel": "Versions in review",
+      "openReview": "Review v{version} of {title}",
+      "round": "Round {round}",
+      "by": "By {author}",
+      "submitted": "submitted",
+      "baReviewing": "@ba is reviewing",
+      "deciding": "{count, plural, one {# finding to decide is open} other {# findings to decide are open}}",
+      "ready": "Ready for review",
+      "casesLabel": "Use cases of v{version} of {title} to review",
+      "noCases": "v{version} changes no use case: a review of the whole version approves it.",
+      "reviewVersion": "Review v{version}",
+      "review": "Review",
+      "reviewFor": "Review {name}",
+      "reviewersLabel": "Reviews of {name}",
+      "noReview": "No review yet",
+      "you": "you",
+      "emptyTitle": "No version is in review",
+      "emptyText": "When a writer submits a version of a BA document, the use cases it adds, changes or drops wait here for their reviewers.",
+      "mineEmptyTitle": "Nothing waits for you",
+      "mineEmptyText": "A use case waits for you while you may review its version, it is still pending and it has no review of yours. All lists every version in review.",
+      "showAll": "Show all"
     },
     "toc": {
       "label": "Contents",
@@ -9498,7 +9533,7 @@
     },
     "draft": {
       "submitted": "Sent v{version} to review",
-      "submittedText": "Reviewers find it on its Review page.",
+      "submittedText": "Its reviewers get a notice once @ba's review of it ends.",
       "returned": "{reviewer} returned v{version} to draft",
       "title": "v{version} is a draft by {author}",
       "submit": "Submit v{version} for review",

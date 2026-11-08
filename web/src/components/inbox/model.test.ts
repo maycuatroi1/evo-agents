@@ -134,6 +134,9 @@ describe("the rest of the list by day and by run", () => {
     expect(opensByItself(note(1, { notice_kind: "curator_brief" }))).toBe(false);
     expect(opensByItself(note(1, { notice_kind: "merge_default_branch", details: { ask: "sample", repo: "api" } }))).toBe(true);
     expect(opensByItself(note(1, { notice_kind: "canvas_baseline", read_at: "2026-10-05T08:00:00Z" }))).toBe(false);
+    expect(opensByItself(note(1, { notice_kind: "srs_review" }))).toBe(true);
+    expect(opensByItself(note(1, { notice_kind: "srs_review", read_at: "2026-10-05T08:00:00Z" }))).toBe(false);
+    expect(opensByItself(note(1, { notice_kind: "srs_reviewed" }))).toBe(false);
     expect(opensByItself(note(1))).toBe(false);
     expect(opensByItself(decision(1, "answered"))).toBe(false);
   });

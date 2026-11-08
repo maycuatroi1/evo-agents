@@ -1,4 +1,4 @@
-import type { SrsDocument, SrsFinding, SrsItem, SrsReview, SrsUseCase, SrsUseCaseReview, SrsVersion } from "@/components/srs/api";
+import type { SrsDocument, SrsFinding, SrsItem, SrsQueuedVersion, SrsReview, SrsUseCase, SrsUseCaseReview, SrsVersion } from "@/components/srs/api";
 
 /** Items, versions and documents for the SRS pages' unit tests: the shape of the demo-shop sample (tests/hub/fixtures/srs). */
 export function item(key: string, patch: Partial<SrsItem> = {}): SrsItem {
@@ -136,4 +136,18 @@ export function caseReview(patch: Partial<SrsUseCaseReview> = {}): SrsUseCaseRev
 /** A use case of v3 in review that the version changes and nobody reviewed yet. */
 export function aUseCase(patch: Partial<SrsUseCase> = {}): SrsUseCase {
   return { key: "uc1", code: "UC ORD-1", title: "Place an order", change: "changed", state: "pending", reviews: [], ...patch };
+}
+
+/** v3 of demo-shop in review by alice as the review queue lists it: one use case to review, nothing holding it, and the visitor may review it. */
+export function queued(patch: Partial<SrsQueuedVersion> = {}): SrsQueuedVersion {
+  return {
+    ...version(3, { state: "in_review", round: 1, author: "alice", submitted_at: "2026-10-11T08:00:00Z" }),
+    use_cases: [aUseCase()],
+    document: "demo-shop",
+    document_title: "Demo Shop: Order Service",
+    held_by: null,
+    deciding: 0,
+    may_review: true,
+    ...patch,
+  };
 }

@@ -11,6 +11,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   DatabaseZap,
+  FileCheck,
   FlaskConical,
   Gauge,
   GitMerge,
@@ -124,6 +125,8 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   kg_optimize: { icon: Gauge },
   kg_pipeline: { icon: DatabaseZap },
   system_daily_cap: { icon: Wallet },
+  srs_review: { icon: ClipboardCheck },
+  srs_reviewed: { icon: FileCheck },
 };
 
 /** Whether the web has a name and an icon for a kind of notice; a core plugin's own kind may have none. */

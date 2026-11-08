@@ -6,8 +6,9 @@ import { PLUGIN } from "./api";
 
 /**
  * Where the SRS pages are, under the plugin's native pages (web/DESIGN.md, Plugins): /p/{project}/x/srs/documents
- * lists the documents and holds each document's pages; /p/{project}/x/srs/import imports Markdown. A code or a key
- * travels in the path, encoded, since every code the templates allow is a path segment once encoded.
+ * lists the documents and holds each document's pages; /p/{project}/x/srs/reviews is the review queue;
+ * /p/{project}/x/srs/import imports Markdown. A code or a key travels in the path, encoded, since every code the
+ * templates allow is a path segment once encoded.
  */
 function query(params: Record<string, string | number | boolean | null | undefined>): string {
   const search = new URLSearchParams();
@@ -20,6 +21,11 @@ function query(params: Record<string, string | number | boolean | null | undefin
 
 export function documentsHref(project: string): Route {
   return pluginPageHref(project, PLUGIN, "documents");
+}
+
+/** The review queue: the use cases of every version in review, grouped by version. */
+export function reviewsHref(project: string): Route {
+  return pluginPageHref(project, PLUGIN, "reviews");
 }
 
 export function importHref(project: string, document?: string | null): Route {
@@ -55,6 +61,16 @@ export function versionsHref(project: string, slug: string): Route {
 /** A version's review: its approvals, what it changes and the reviewer's form. */
 export function reviewHref(project: string, slug: string, number: number): Route {
   return `${documentBase(project, slug)}/versions/${number}` as Route;
+}
+
+/** The id of a use case's row on its version's review page, by the use case's key. */
+export function caseAnchor(key: string): string {
+  return `case-${key}`;
+}
+
+/** A use case's row on its version's review page, where its reviewer approves it or asks for changes. */
+export function caseReviewHref(project: string, slug: string, number: number, key: string): Route {
+  return `${reviewHref(project, slug, number)}#${encodeURIComponent(caseAnchor(key))}` as Route;
 }
 
 export function compareHref(project: string, slug: string, from: number, to: number): Route {

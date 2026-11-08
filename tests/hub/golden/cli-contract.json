@@ -27927,7 +27927,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.61.1"
+      "version": "0.61.4"
     },
     "paths": {
       "/v1/health": {
@@ -73240,6 +73240,120 @@
           }
         }
       },
+      "/v1/x/srs/{project}/reviews": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Review Queue",
+          "description": "The versions in review of the documents the caller sees, the one submitted first first: each with the use cases\nit needs reviewed, their state and the reviews that count, what holds its approval now (@ba's review of the round,\nthen open findings of level decide) and whether the caller may review it.",
+          "operationId": "review_queue_v1_x_srs__project__reviews_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SrsQueuedVersion"
+                    },
+                    "title": "Response Review Queue V1 X Srs  Project  Reviews Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/x/srs/{project}/documents/{slug}": {
         "get": {
           "tags": [
@@ -74460,7 +74574,7 @@
             "plugins"
           ],
           "summary": "Submit Version",
-          "description": "Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it\nwhen the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it\nrecords holds approval.",
+          "description": "Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it\nwhen the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it\nrecords holds approval. The reviewers get the notice srs_review once nothing holds approval: at once when @ba\nreviews nothing, else when its review ends (``notices``).",
           "operationId": "submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post",
           "parameters": [
             {
@@ -141946,7 +142060,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 36,
+              "maxItems": 38,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -171722,6 +171836,174 @@
           ],
           "title": "SrsProblem"
         },
+        "SrsQueuedVersion": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "parent_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Number",
+              "description": "the version it was built on"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "in_review",
+                "approved",
+                "superseded",
+                "withdrawn"
+              ],
+              "title": "State"
+            },
+            "round": {
+              "type": "integer",
+              "title": "Round",
+              "description": "how many times it was submitted"
+            },
+            "author": {
+              "type": "string",
+              "title": "Author"
+            },
+            "drafted_by_run": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Drafted By Run",
+              "description": "the run of the agent that drafted it, when one did"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "submitted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Submitted At"
+            },
+            "decided_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided At"
+            },
+            "review_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SrsReviewRun"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "@ba's review of the current round, when the hub handed one; none in a project without @ba"
+            },
+            "reviews": {
+              "items": {
+                "$ref": "#/components/schemas/SrsReview"
+              },
+              "type": "array",
+              "title": "Reviews"
+            },
+            "use_cases": {
+              "items": {
+                "$ref": "#/components/schemas/SrsUseCase"
+              },
+              "type": "array",
+              "title": "Use Cases"
+            },
+            "document": {
+              "type": "string",
+              "title": "Document",
+              "description": "the document's slug"
+            },
+            "document_title": {
+              "type": "string",
+              "title": "Document Title"
+            },
+            "held_by": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "ba_review",
+                    "findings"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Held By",
+              "description": "what holds an approval now: @ba's review of the round while it is queued or running, then the open findings of level decide of the document; null when it may be approved"
+            },
+            "deciding": {
+              "type": "integer",
+              "title": "Deciding",
+              "description": "the open findings of level decide of the document"
+            },
+            "may_review": {
+              "type": "boolean",
+              "title": "May Review",
+              "description": "whether the caller may review it: a writer who wrote no version of the document since the one approved last, any writer when self_approval is on, never the agent of a run"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "parent_number",
+            "state",
+            "round",
+            "author",
+            "drafted_by_run",
+            "summary",
+            "created_at",
+            "submitted_at",
+            "decided_at",
+            "review_run",
+            "reviews",
+            "use_cases",
+            "document",
+            "document_title",
+            "held_by",
+            "deciding",
+            "may_review"
+          ],
+          "title": "SrsQueuedVersion",
+          "description": "A version in review of a document the caller sees, with the use cases it needs reviewed, what holds its approval\nnow and whether the caller may review it."
+        },
         "SrsRef": {
           "properties": {
             "rel": {
@@ -177209,7 +177491,9 @@
                 "agent_pool_empty",
                 "srs_adopt",
                 "kg_pipeline",
-                "system_daily_cap"
+                "system_daily_cap",
+                "srs_review",
+                "srs_reviewed"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -177279,7 +177563,9 @@
                 "agent_pool_empty",
                 "srs_adopt",
                 "kg_pipeline",
-                "system_daily_cap"
+                "system_daily_cap",
+                "srs_review",
+                "srs_reviewed"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"

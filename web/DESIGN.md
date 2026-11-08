@@ -274,7 +274,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | The hub's branding; its features, on or off | `Palette`; `ToggleRight` |
 | Plugins, the store and a project's; a plugin enabled in a project; disabled there; a task run, a task a plugin handed an agent type | `Puzzle`; `Plug`; `Unplug`; `Puzzle` |
 | A plugin's tier: isolated, core; a core plugin of the hub's image; a page's sandbox | `Box`, `Cpu`; `PackageCheck`; `ShieldCheck` |
-| SRS, a project's BA documents; Import Markdown; a version's review; a document's comments; an item's page | `FileText`; `Upload`; `ClipboardCheck`; `MessageSquareText`; `ArrowUpRight` |
+| SRS, a project's BA documents; Import Markdown; a version's review; a document's comments; an item's page; the review queue; the notices srs_review and srs_reviewed | `FileText`; `Upload`; `ClipboardCheck`; `MessageSquareText`; `ArrowUpRight`; `ListChecks`; `ClipboardCheck`, `FileCheck` |
 | An SRS item's kind: section, use case, business rule, screen, NFR, common rule, glossary, approval page, revision history | `Heading`, `Route`, `Scale`, `AppWindow`, `Gauge`, `BookCheck`, `BookA`, `Signature`, `History` |
 | An SRS version: draft, in review, approved, superseded; an item added, changed, removed, moved | `CircleDashed`, `Eye`, `CircleCheck`, `CircleMinus`; `Plus`, `PencilLine`, `Minus`, `MoveRight` |
 | A permission a plugin asks for; an upgrade waiting; the trusted publishers | `KeyRound`; `ArrowUpCircle`; `BadgeCheck` |
@@ -1350,7 +1350,7 @@ Shared pieces built on them:
   is the kind's icon, the title on one line (two on a phone) and, while unread, the first line of the body; the project
   (from 1024 px) and the time sit at its end. A notice opens in place (the row is one button, `aria-expanded`) to its
   kind's tag, its facts, its body and its links; one that asks something of its reader (an answer of the merge queue, a
-  baseline to review, a page that wants a sign-in) opens by itself while unread, and so does the run's row that holds
+  baseline or an SRS version to review, a page that wants a sign-in) opens by itself while unread, and so does the run's row that holds
   one; the Curator's morning brief of each project stays folded to its first line. A decision or a proposal no longer open is a link to its sheet, with its state
   as a pill. Mark as read sits at the end of each unread row (and of a run's row, for its unread ones), shown from
   768 px while the pointer or focus is on that row; Mark all as read is in the header (Mark these as read, by id, while
@@ -1881,8 +1881,18 @@ Shared pieces built on them:
   that has not enabled it has neither the SRS menu item (its manifest's page `documents`) nor the pages, as the API
   answers 404. Its words are the `srs` namespace of both message files. The documents (`/documents`) are one `DataCard`
   table: title over slug, kind, the approved and the latest version as a `v8` chip beside its state, who created it;
-  the tabs Documents and Import (writers) sit under the head, with Settings (the plugin's page in the project) and
-  Import Markdown in the actions. A document's pages share `DocumentHead`: the title, the slug as a chip, the kind, one
+  the tabs Documents and Import (writers) sit under the head, with Waiting for review (the review queue), Settings (the
+  plugin's page in the project) and Import Markdown in the actions. The review queue (`/reviews`, the manifest's page
+  `reviews` in the menu, `review-queue-page.tsx`) is one card per version in review, the one submitted first first: the
+  document's title (to the document), `vN` (to its review), the round from 2, who wrote it and when it was submitted,
+  and a line for what holds approval (@ba's review with its run, the findings to decide in `attention`, else Ready for
+  review); then each use case to review with its code, its title linking to its row on the review page
+  (`#case-<key>`), its change and state pills, who reviewed it, and Review while the visitor may review the version and
+  the use case is pending. The facets Waiting for me (where a visitor who may review a version lands: the pending use
+  cases with no review of theirs, and a version that changes none until they review its round) and All count what they
+  hold; the head counts the versions and, in `attention`, what waits for the visitor. While @ba reviews a version of the
+  queue, the page reads it again every 15 s. The notices srs_review (to the reviewers, once nothing holds the version)
+  and srs_reviewed (to its author) link the version's review as Open the review. A document's pages share `DocumentHead`: the title, the slug as a chip, the kind, one
   line with template, visibility and the approved, in-review and latest versions, Compare and Export (a `.md` the
   browser saves), then the tabs Read, Versions, Review vN and Comments with the open threads counted. Read
   (`/documents/{slug}?v=&s=&edit=`) shows the approved version unless a version is picked (a menu of links, not a

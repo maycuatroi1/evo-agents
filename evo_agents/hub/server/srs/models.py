@@ -128,6 +128,23 @@ class SrsVersionCases(SrsVersion):
     use_cases: list[SrsUseCase]
 
 
+class SrsQueuedVersion(SrsVersionCases):
+    """A version in review of a document the caller sees, with the use cases it needs reviewed, what holds its approval
+    now and whether the caller may review it."""
+
+    document: str = Field(description="the document's slug")
+    document_title: str
+    held_by: Literal["ba_review", "findings"] | None = Field(
+        description="what holds an approval now: @ba's review of the round while it is queued or running, then the open "
+        "findings of level decide of the document; null when it may be approved"
+    )
+    deciding: int = Field(description="the open findings of level decide of the document")
+    may_review: bool = Field(
+        description="whether the caller may review it: a writer who wrote no version of the document since the one "
+        "approved last, any writer when self_approval is on, never the agent of a run"
+    )
+
+
 class SrsRef(BaseModel):
     rel: Literal[REF_RELS]
     to: str = Field(description="the key of the item it links to")

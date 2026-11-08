@@ -43,6 +43,7 @@ from evo_agents.hub.server.srs import (
     findings,
     imports,
     markdown,
+    notices,
     reviews,
     store,
     use_case_reviews,
@@ -61,6 +62,7 @@ from evo_agents.hub.server.srs.models import (
     SrsImport,
     SrsImportResult,
     SrsItemDetail,
+    SrsQueuedVersion,
     SrsRetireIn,
     SrsRetireResult,
     SrsReviewIn,
@@ -135,6 +137,45 @@ async def list_documents(
         access = await project_access(conn, user, project)
         found = await store.documents(conn, access, sink, with_archived=with_archived)
         return [summary_model(row) for row in found]
+
+    return await _answer(request, work)
+
+
+@router.get("/{project}/reviews", response_model=list[SrsQueuedVersion])
+async def review_queue(request: Request, project: ProjectName, user: CurrentUser, sink: Sink = None):
+    """The versions in review of the documents the caller sees, the one submitted first first: each with the use cases
+    it needs reviewed, their state and the reviews that count, what holds its approval now (@ba's review of the round,
+    then open findings of level decide) and whether the caller may review it."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        settings = await store.settings(conn, access)
+        writer = has_role(access.role, "writer") and user.acts_for_run is None
+        queued = []
+        for doc in await store.documents(conn, access, sink):
+            for row in await store.versions(conn, doc.id):
+                if row.state != "in_review":
+                    continue
+                snap = await store.snapshot(conn, row)
+                wide = use_case_reviews.round_approvals(row)
+                cases = await use_case_reviews.states(conn, access.project_id, doc, row, snap.doc, settings, wide)
+                deciding, running = await findings.holds(conn, doc, row)
+                authors = await use_case_reviews.authors_since(conn, doc, row.number)
+                barred = not settings.self_approval and user.user_id in authors
+                held_by = "ba_review" if running is not None else "findings" if deciding else None
+                queued.append(
+                    SrsQueuedVersion(
+                        **cases_model(row, cases).model_dump(),
+                        document=doc.slug,
+                        document_title=doc.title,
+                        held_by=held_by,
+                        deciding=len(deciding),
+                        may_review=writer and not barred,
+                    )
+                )
+        return sorted(
+            queued, key=lambda version: (version.submitted_at is None, version.submitted_at, version.document)
+        )
 
     return await _answer(request, work)
 
@@ -345,7 +386,8 @@ async def submit_version(
 ):
     """Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it
     when the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it
-    records holds approval."""
+    records holds approval. The reviewers get the notice srs_review once nothing holds approval: at once when @ba
+    reviews nothing, else when its review ends (``notices``)."""
 
     async def work(conn):
         access = await project_access(conn, user, project)
@@ -353,6 +395,8 @@ async def submit_version(
         sent = await reviews.submit(conn, access, doc, number, await store.settings(conn, access))
         if await review_entered(conn, access, doc, sent) is not None:
             sent = await store.version(conn, doc, number)  # with @ba's review run of the round
+        else:
+            await notices.tell_reviewers(conn, access.project_id, doc, sent)
         return version_model(sent)
 
     return await _answer(request, work)
@@ -565,6 +609,8 @@ async def waive_finding(
         doc = await store.document(conn, access, slug, sink, lock=True)
         waived = findings.Settling(findings.WAIVED, body.reason, user.user_id)
         row = await findings.settle(conn, access, doc, finding_id, waived)
+        if row.level == findings.DECIDE:  # the last one waived lets the reviewers know (``notices``)
+            await notices.findings_settled(conn, access.project_id, doc)
         return finding_model(row, await findings.code_documents(conn, access, sink, [row]))
 
     return await _answer(request, work)

@@ -44,7 +44,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
-from evo_agents.hub.server.srs import ROLES, checks, events, findings, store, use_case_reviews
+from evo_agents.hub.server.srs import ROLES, checks, events, findings, notices, store, use_case_reviews
 from evo_agents.hub.server.srs.doc import SrsError
 from evo_agents.hub.server.srs.store import DocumentRow, ReviewRow, Settings, VersionRow
 from evo_agents.hub.server.srs.use_case_reviews import APPROVE, REQUEST_CHANGES, CaseReview, CaseState, approved_by
@@ -159,8 +159,10 @@ async def review(
         "body": request.body,
     }
     await conn.execute(insert(s.reviews).values(values))
+    reviewer = (user.user_id, user.login)
     if request.decision == REQUEST_CHANGES:
         await conn.execute(update(s.versions).where(s.versions.c.id == held.id).values(state="draft"))
+        await notices.tell_author(conn, access.project_id, doc, held, reviewer, notices.CHANGES, note=request.body)
     else:
         mine = ReviewRow(user.login, user.user_id, role, APPROVE, request.body, held.round, held.created_at)
         approves, cases = await _approves(conn, access, doc, held, settings, [*approvals, mine])
@@ -168,6 +170,7 @@ async def review(
         if approves:
             await _approve(conn, doc, held)
             await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)
+            await notices.tell_author(conn, access.project_id, doc, held, reviewer, notices.APPROVED)
     return await store.version(conn, doc, number)
 
 
@@ -226,11 +229,18 @@ async def review_use_case(
     await use_case_reviews.record(conn, held, item_id, user.user_id, role, request.decision, request.body)
     doc_now = (await store.snapshot(conn, held)).doc
     after = await use_case_reviews.states(conn, access.project_id, doc, held, doc_now, settings, wide)
+    reviewer = (user.user_id, user.login)
     if request.decision == APPROVE:
         await events.use_cases_approved(conn, access.project_id, doc, held, user, after)
+    else:
+        name = case.code or case.title
+        await notices.tell_author(
+            conn, access.project_id, doc, held, reviewer, notices.CHANGES, use_case=name, note=request.body
+        )
     if request.decision == APPROVE and use_case_reviews.ready(after):
         await _approve(conn, doc, held)
         await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)
+        await notices.tell_author(conn, access.project_id, doc, held, reviewer, notices.APPROVED)
     return await store.version(conn, doc, number), after
 
 

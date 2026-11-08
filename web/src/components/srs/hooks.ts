@@ -20,14 +20,15 @@ export function useSrsViewer(project: string): Viewer | null {
 }
 
 /**
- * Reload what a write to a document may have changed: the document's versions, comparisons and comments, and the list
- * of documents (its latest and approved versions). A 401 sends the visitor to sign in.
+ * Reload what a write to a document may have changed: the document's versions, comparisons and comments, the list
+ * of documents (its latest and approved versions) and the review queue. A 401 sends the visitor to sign in.
  */
 export function useDocumentRefresh(project: string, slug: string | null) {
   const queryClient = useQueryClient();
   return useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: srsKeys.documents(project), exact: true }),
+      queryClient.invalidateQueries({ queryKey: srsKeys.reviews(project), exact: true }),
       slug ? queryClient.invalidateQueries({ queryKey: srsKeys.document(project, slug) }) : Promise.resolve(),
     ]);
   }, [queryClient, project, slug]);

@@ -144,10 +144,20 @@ export function NotificationContent({ notification, onRead }: { notification: No
 
 const LINK = "inline-flex min-h-7 items-center gap-1 text-sm text-brand underline-offset-4 hover:underline max-md:min-h-11";
 
+/** The notices of no run that lead to a page of the hub, with the words of their link. */
+const PAGE_LINKS: ReadonlyMap<string, "openBaseline" | "openPluginNotice" | "openLogin" | "openReview"> = new Map([
+  ["canvas_baseline", "openBaseline"],
+  ["plugin_notice", "openPluginNotice"],
+  ["browser_needs_login", "openLogin"],
+  ["srs_review", "openReview"],
+  ["srs_reviewed", "openReview"],
+]);
+
 /**
  * Where a notification leads: Answer or View for a decision or a proposal (into the sheet), the proposal's page, the
  * run of a notice or of a decision, the triage thread of a failed run, or the hub page of a notice of no run (a
- * baseline to review, a plugin's page, a page that wants a sign-in). Following a notice's link reads it.
+ * baseline to review, a plugin's page, a page that wants a sign-in, an SRS version's review). Following a notice's link
+ * reads it.
  */
 export function NotificationLinks({
   notification,
@@ -166,6 +176,7 @@ export function NotificationLinks({
   const proposal = notification.kind === "proposal" && notification.proposal_id != null;
   const open = isWaiting(notification);
   const target = decision || proposal ? null : noticeHref(notification);
+  const pageLink = notification.notice_kind ? PAGE_LINKS.get(notification.notice_kind) : undefined;
   const readOnFollow = () => {
     if (unread) onRead(notification.id);
   };
@@ -204,9 +215,9 @@ export function NotificationLinks({
           <ArrowRight className="size-3.5" aria-hidden="true" />
         </Link>
       ) : null}
-      {target && notification.run_id === null && (notification.notice_kind === "canvas_baseline" || notification.notice_kind === "plugin_notice" || notification.notice_kind === "browser_needs_login") ? (
+      {target && notification.run_id === null && pageLink ? (
         <Link href={target} onClick={readOnFollow} className={cn(LINK, "font-medium")} data-testid="notification-link">
-          {notification.notice_kind === "plugin_notice" ? t("openPluginNotice") : notification.notice_kind === "browser_needs_login" ? t("openLogin") : t("openBaseline")}
+          {t(pageLink)}
           <ArrowRight className="size-3.5" aria-hidden="true" />
         </Link>
       ) : null}

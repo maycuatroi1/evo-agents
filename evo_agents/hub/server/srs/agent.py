@@ -54,7 +54,7 @@ from evo_agents.hub.server.chat_runs import chat_run
 from evo_agents.hub.server.loop.runs_of import use_case_author
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, member_principal
-from evo_agents.hub.server.srs import BA, checks, findings, markdown, reviews, store
+from evo_agents.hub.server.srs import BA, checks, findings, markdown, notices, reviews, store
 from evo_agents.hub.server.srs.auto_review import review_entered
 from evo_agents.hub.server.srs.diff import diff as item_changes
 from evo_agents.hub.server.srs.diff import text_of
@@ -371,6 +371,8 @@ async def _propose(conn: AsyncConnection, who: Acting, args: dict) -> str:
     doc = await store.document(conn, access, slug, who.sink)
     sent = await reviews.submit(conn, access, doc, made, settings)
     review = await review_entered(conn, access, doc, sent)
+    if review is None:  # no review of @ba to wait for: the reviewers learn of it now (``notices``)
+        await notices.tell_reviewers(conn, access.project_id, doc, sent)
     new = await store.snapshot(conn, sent)
     since = latest.version.number
     login = author.login
@@ -465,7 +467,10 @@ async def _finding(conn: AsyncConnection, who: Acting, args: dict, graph_refs) -
     status = findings.RESOLVED if settling else findings.WAIVED
     settler = await _settler(conn, who, args.get("settled_by"))
     how = findings.Settling(status, args["resolution"], settler, sources, link)
-    return _finding_text(await findings.settle(conn, who.access, doc, args["finding"], how), doc.slug, f"is {status}")
+    row = await findings.settle(conn, who.access, doc, args["finding"], how)
+    if row.level == findings.DECIDE:  # the last one settled lets the reviewers know (``notices``)
+        await notices.findings_settled(conn, who.access.project_id, doc)
+    return _finding_text(row, doc.slug, f"is {status}")
 
 
 async def finding(params: dict, context: CoreContext) -> dict:

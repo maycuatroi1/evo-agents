@@ -96,13 +96,15 @@ class Snapshot:
 
 @dataclass(frozen=True)
 class Settings:
-    """The plugin's effective config in a project: the template, the members of each role, the approval policy, and
-    whether the author of a version may approve it (``self_approval``, off unless an admin turns it on)."""
+    """The plugin's effective config in a project: the template, the members of each role, the approval policy,
+    whether the author of a version may approve it (``self_approval``, off unless an admin turns it on), and the members
+    told when a version waits for its reviewers (``reviewers``, every writer who may review it when empty)."""
 
     template: Template
     roles: dict = field(default_factory=dict)
     policy: dict = field(default_factory=dict)
     self_approval: bool = False
+    reviewers: tuple[str, ...] = ()
 
 
 def sink_of(access: ProjectAccess, sink: str | None) -> str | None:
@@ -416,6 +418,11 @@ def compare_path(project: str, slug: str, low: int, high: int) -> str:
     return f"{document_path(project, slug)}/compare?from={low}&to={high}"
 
 
+def review_path(project: str, slug: str, number: int) -> str:
+    """The review page of version ``number`` of a document on the hub's web."""
+    return f"{document_path(project, slug)}/versions/{number}"
+
+
 def item_path(project: str, slug: str, ref: str) -> str:
     """An item's page on the hub's web, by its code or key."""
     return f"{document_path(project, slug)}/items/{quote(ref, safe='')}"
@@ -441,7 +448,8 @@ async def project_settings(conn: AsyncConnection, project_id: int, project: str)
     except TemplateError as exc:
         raise SrsError(409, f"the config of plugin {PLUGIN} in project {project}: {exc}") from None
     roles, policy = dict(values.get("roles") or {}), dict(values.get("approval_policy") or {})
-    return Settings(template, roles, policy, self_approval=values.get("self_approval") is True)
+    reviewers = tuple(dict.fromkeys(str(login) for login in values.get("reviewers") or ()))
+    return Settings(template, roles, policy, self_approval=values.get("self_approval") is True, reviewers=reviewers)
 
 
 __all__ = [
@@ -460,6 +468,7 @@ __all__ = [
     "documents",
     "item_id",
     "item_path",
+    "review_path",
     "missing",
     "project_settings",
     "reader",
