@@ -67,7 +67,8 @@ function Source({ project, slug, source }: { project: string; slug: string; sour
   );
 }
 
-function Sources({ project, slug, sources }: { project: string; slug: string; sources: SrsFindingSource[] }) {
+/** The sources of a finding, one per line: what shows the conflict, or what settled it. */
+export function Sources({ project, slug, sources }: { project: string; slug: string; sources: SrsFindingSource[] }) {
   return (
     <ul className="flex min-w-0 flex-col gap-1" role="list">
       {sources.map((source) => (

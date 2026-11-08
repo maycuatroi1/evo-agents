@@ -69,6 +69,10 @@ describe("UseCaseReviews", () => {
     expect(within(rows[2]).getByRole("link", { name: "UC ORD-3" })).toHaveAttribute("href", "/p/demo/x/srs/documents/demo-shop/items/UC%20ORD-3?v=2");
     expect(within(rows[2]).getByText("Name the gateway")).toBeInTheDocument();
     expect(screen.getByTestId("srs-cases-holds")).toHaveTextContent("Chưa duyệt được v3");
+    // Each opens the use case's own review, with its text, its changes and @ba's points.
+    const open = within(rows[0]).getByTestId("srs-case-open");
+    expect(open).toHaveTextContent("Đọc và duyệt");
+    expect(open).toHaveAttribute("href", "/p/demo/x/srs/documents/demo-shop/versions/3/cases/uc1");
   });
 
   it("posts an approval for the use case, by its code", async () => {
@@ -131,6 +135,7 @@ describe("UseCaseReviews", () => {
     expect(screen.queryByTestId("srs-case-approve")).toBeNull();
     expect(screen.queryByTestId("srs-case-request")).toBeNull();
     expect(screen.getAllByTestId("srs-case")).toHaveLength(3);
+    expect(screen.getAllByTestId("srs-case-open")[0]).toHaveTextContent("Xem");
   });
 
   it("says a version with no use case to review is approved by a review of the whole version", () => {

@@ -24429,7 +24429,8 @@
           "settled_at",
           "chat_link",
           "run_id",
-          "created_at"
+          "created_at",
+          "options"
         ],
         "schema": "SrsFinding"
       }
@@ -24937,7 +24938,8 @@
           "settled_at",
           "chat_link",
           "run_id",
-          "created_at"
+          "created_at",
+          "options"
         ],
         "schema": "SrsFinding"
       }
@@ -75899,6 +75901,146 @@
                       "$ref": "#/components/schemas/SrsFinding"
                     },
                     "title": "Response List Findings V1 X Srs  Project  Documents  Slug  Findings Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/findings/{finding_id}/settle": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Settle Finding",
+          "description": "Settle an open finding as a writer of the project, never the agent of a run, from the review of a use case: by\npicking one of its choices (``option``, 0 for A), which becomes its resolution with ``note``, or, for a finding with\nno choice, by ``note`` alone. The last open finding of level decide settled tells the reviewers of each version in\nreview that nothing holds it any more (``notices``). 409 when it is not open, or the document is archived.",
+          "operationId": "settle_finding_v1_x_srs__project__documents__slug__findings__finding_id__settle_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "finding_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Finding Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SrsSettleIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsFinding"
                   }
                 }
               }
@@ -171361,6 +171503,14 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "options": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Options",
+              "description": "the choices a member picks from to settle it (A, B, ...); empty for none"
             }
           },
           "type": "object",
@@ -171380,7 +171530,8 @@
             "settled_at",
             "chat_link",
             "run_id",
-            "created_at"
+            "created_at",
+            "options"
           ],
           "title": "SrsFinding",
           "description": "A conflict found in a document, with the sources that show it and, once settled, how."
@@ -172088,6 +172239,91 @@
           ],
           "title": "SrsProblem"
         },
+        "SrsQueuedUseCase": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "change": {
+              "type": "string",
+              "enum": [
+                "added",
+                "changed",
+                "removed"
+              ],
+              "title": "Change",
+              "description": "what the version does to it since the version approved last"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "changes_requested"
+              ],
+              "title": "State"
+            },
+            "reviews": {
+              "items": {
+                "$ref": "#/components/schemas/SrsUseCaseReview"
+              },
+              "type": "array",
+              "title": "Reviews"
+            },
+            "intent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Intent",
+              "description": "what its actor wants (its Intent, or the Objective of an older use case), as the version reads; null for one it drops"
+            },
+            "deciding": {
+              "type": "integer",
+              "title": "Deciding",
+              "description": "its open findings of level decide, which hold approval"
+            },
+            "noted": {
+              "type": "integer",
+              "title": "Noted",
+              "description": "its open findings of another level, advice only"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "code",
+            "title",
+            "change",
+            "state",
+            "reviews",
+            "intent",
+            "deciding",
+            "noted"
+          ],
+          "title": "SrsQueuedUseCase",
+          "description": "A use case to review in the queue, with what a reviewer reads first and the open findings about it (itself or a\nbusiness rule under it)."
+        },
         "SrsQueuedVersion": {
           "properties": {
             "number": {
@@ -172191,7 +172427,7 @@
             },
             "use_cases": {
               "items": {
-                "$ref": "#/components/schemas/SrsUseCase"
+                "$ref": "#/components/schemas/SrsQueuedUseCase"
               },
               "type": "array",
               "title": "Use Cases"
@@ -172613,6 +172849,34 @@
             "changes"
           ],
           "title": "SrsSave"
+        },
+        "SrsSettleIn": {
+          "properties": {
+            "option": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 3.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Option",
+              "description": "the choice picked, 0 for A; needed when it offers any"
+            },
+            "note": {
+              "type": "string",
+              "maxLength": 10000,
+              "title": "Note",
+              "description": "why; the resolution of a finding with no choice",
+              "default": ""
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "SrsSettleIn"
         },
         "SrsUseCase": {
           "properties": {

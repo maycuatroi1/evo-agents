@@ -5845,3 +5845,28 @@ def test_migration_0224_grants_tasks_write_and_docs_write_and_going_back_takes_t
     move_to(hub_db, "0223", down=True)
     assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:dispatch"],)], "both go from grants"
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0224") :]
+
+
+def test_migration_0225_gives_srs_findings_their_choices_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0224")
+    s = hub_tables.srs
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        document = {"project_id": ids["project"], "slug": "demo-shop", "title": "Demo shop", "created_by": ids["user"]}
+        doc = one(conn, insert(s.documents).values(**document, label={"level": "internal"}).returning(s.documents.c.id))
+        version = {"document_id": doc, "number": 1, "author_id": ids["user"], "content_sha256": "a" * 64}
+        version_id = one(conn, insert(s.versions).values(**version).returning(s.versions.c.id))
+    found = {"document_id": doc, "version_id": version_id, "kind": "contradiction", "level": "decide"}
+    found |= {"summary": "Two limits", "label": {"level": "internal"}, "sources": [{"kind": "code", "ref": "X"}]}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(s.findings).values(found))
+    move_to(hub_db, "0225")
+    assert query(hub_db, select(s.findings.c.options)) == [([],)], "a finding recorded before offers no choice"
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(s.findings).values(**found, options=["Keep 3", "Take 5"]))
+        for wrong in ({"a": "b"}, ["a", "b", "c", "d", "e"]):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(s.findings).values(**found, options=wrong))
+    move_to(hub_db, "0224", down=True)
+    assert "options" not in columns(hub_db, "srs_findings")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0225") :]

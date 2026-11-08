@@ -1,8 +1,9 @@
 # evo-agents hub web
 
 The web interface of the hub: Next.js (App Router, TypeScript strict), Tailwind and shadcn/ui, TanStack Query
-and Table, next-intl (English by default, Vietnamese from the user menu). It reads the hub API only through a
-client generated from the API's OpenAPI document, and writes nothing except the admin actions and sign-out.
+and Table, next-intl (English by default unless `EVO_HUB_WEB_DEFAULT_LOCALE` says otherwise, the other language from
+the user menu). It reads the hub API only through a client generated from the API's OpenAPI document, and writes
+nothing except the admin actions and sign-out.
 `DESIGN.md` describes the design system.
 
 In production it is its own image (`output: "standalone"`, built by `web/Dockerfile`) behind the same domain as
@@ -22,6 +23,7 @@ EVO_HUB_API_INTERNAL_URL=http://127.0.0.1:8080 pnpm dev
 | --- | --- | --- |
 | `EVO_HUB_API_INTERNAL_URL` | runtime, and at build time for the rewrite | where server components reach the API; when set at build time, `/v1/*` is also forwarded there so the browser stays on one origin (local runs, Playwright, the image: `web/Dockerfile` builds with `http://api:8080` unless given `--build-arg EVO_HUB_API_INTERNAL_URL=...`) |
 | `EVO_HUB_WEB_TIME_ZONE` | runtime | time zone of dates rendered on the server, `Asia/Ho_Chi_Minh` by default |
+| `EVO_HUB_WEB_DEFAULT_LOCALE` | runtime | language of a visitor who has not picked one in the user menu: `en` (the default) or `vi`; the cookie the menu sets wins, and any other value counts as unset |
 | `PORT`, `HOSTNAME` | runtime | where `pnpm start` (the standalone server) listens |
 | `EVO_WEB_FIXTURES` | build time | `1` builds the routes of the tests' fixtures too (`page.fixture.tsx`, `layout.fixture.tsx`: the native page of the core plugin notes); Playwright's build sets it, the image never does |
 

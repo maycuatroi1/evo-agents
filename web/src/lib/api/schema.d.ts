@@ -8250,6 +8250,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/srs/{project}/documents/{slug}/findings/{finding_id}/settle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle Finding
+         * @description Settle an open finding as a writer of the project, never the agent of a run, from the review of a use case: by
+         *     picking one of its choices (``option``, 0 for A), which becomes its resolution with ``note``, or, for a finding with
+         *     no choice, by ``note`` alone. The last open finding of level decide settled tells the reviewers of each version in
+         *     review that nothing holds it any more (``notices``). 409 when it is not open, or the document is archived.
+         */
+        post: operations["settle_finding_v1_x_srs__project__documents__slug__findings__finding_id__settle_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/srs/{project}/documents/{slug}/findings/{finding_id}/waive": {
         parameters: {
             query?: never;
@@ -42171,6 +42194,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Options
+             * @description the choices a member picks from to settle it (A, B, ...); empty for none
+             */
+            options: string[];
         };
         /** SrsFindingSource */
         SrsFindingSource: {
@@ -42420,6 +42448,47 @@ export interface components {
             line: number | null;
         };
         /**
+         * SrsQueuedUseCase
+         * @description A use case to review in the queue, with what a reviewer reads first and the open findings about it (itself or a
+         *     business rule under it).
+         */
+        SrsQueuedUseCase: {
+            /** Key */
+            key: string;
+            /** Code */
+            code: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Change
+             * @description what the version does to it since the version approved last
+             * @enum {string}
+             */
+            change: "added" | "changed" | "removed";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "approved" | "changes_requested";
+            /** Reviews */
+            reviews: components["schemas"]["SrsUseCaseReview"][];
+            /**
+             * Intent
+             * @description what its actor wants (its Intent, or the Objective of an older use case), as the version reads; null for one it drops
+             */
+            intent: string | null;
+            /**
+             * Deciding
+             * @description its open findings of level decide, which hold approval
+             */
+            deciding: number;
+            /**
+             * Noted
+             * @description its open findings of another level, advice only
+             */
+            noted: number;
+        };
+        /**
          * SrsQueuedVersion
          * @description A version in review of a document the caller sees, with the use cases it needs reviewed, what holds its approval
          *     now and whether the caller may review it.
@@ -42465,7 +42534,7 @@ export interface components {
             /** Reviews */
             reviews: components["schemas"]["SrsReview"][];
             /** Use Cases */
-            use_cases: components["schemas"]["SrsUseCase"][];
+            use_cases: components["schemas"]["SrsQueuedUseCase"][];
             /**
              * Document
              * @description the document's slug
@@ -42639,6 +42708,20 @@ export interface components {
             preamble?: string | null;
             /** Changes */
             changes: components["schemas"]["SrsChange"][];
+        };
+        /** SrsSettleIn */
+        SrsSettleIn: {
+            /**
+             * Option
+             * @description the choice picked, 0 for A; needed when it offers any
+             */
+            option?: number | null;
+            /**
+             * Note
+             * @description why; the resolution of a finding with no choice
+             * @default
+             */
+            note: string;
         };
         /**
          * SrsUseCase
@@ -78283,6 +78366,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SrsFinding"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    settle_finding_v1_x_srs__project__documents__slug__findings__finding_id__settle_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                finding_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsSettleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsFinding"];
                 };
             };
             /** @description Unauthorized */

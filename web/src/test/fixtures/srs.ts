@@ -1,4 +1,14 @@
-import type { SrsDocument, SrsFinding, SrsItem, SrsQueuedVersion, SrsReview, SrsUseCase, SrsUseCaseReview, SrsVersion } from "@/components/srs/api";
+import type {
+  SrsDocument,
+  SrsFinding,
+  SrsItem,
+  SrsQueuedUseCase,
+  SrsQueuedVersion,
+  SrsReview,
+  SrsUseCase,
+  SrsUseCaseReview,
+  SrsVersion,
+} from "@/components/srs/api";
 
 /** Items, versions and documents for the SRS pages' unit tests: the shape of the demo-shop sample (tests/hub/fixtures/srs). */
 export function item(key: string, patch: Partial<SrsItem> = {}): SrsItem {
@@ -124,6 +134,7 @@ export function finding(id: number, patch: Partial<SrsFinding> = {}): SrsFinding
     chat_link: null,
     run_id: 41,
     created_at: "2026-10-11T08:05:00Z",
+    options: [],
     ...patch,
   };
 }
@@ -138,11 +149,16 @@ export function aUseCase(patch: Partial<SrsUseCase> = {}): SrsUseCase {
   return { key: "uc1", code: "UC ORD-1", title: "Place an order", change: "changed", state: "pending", reviews: [], ...patch };
 }
 
+/** A use case of v3 as the review queue lists it: what its actor wants, and no open finding about it. */
+export function aQueuedCase(patch: Partial<SrsQueuedUseCase> = {}): SrsQueuedUseCase {
+  return { ...aUseCase(), intent: "The customer turns a cart into an order", deciding: 0, noted: 0, ...patch };
+}
+
 /** v3 of demo-shop in review by alice as the review queue lists it: one use case to review, nothing holding it, and the visitor may review it. */
 export function queued(patch: Partial<SrsQueuedVersion> = {}): SrsQueuedVersion {
   return {
-    ...version(3, { state: "in_review", round: 1, author: "alice", submitted_at: "2026-10-11T08:00:00Z" }),
-    use_cases: [aUseCase()],
+    ...version(3, { state: "in_review", round: 1, author: "alice", submitted_at: "2026-10-11T08:00:00Z", summary: "Cap a cart at 50 lines" }),
+    use_cases: [aQueuedCase()],
     document: "demo-shop",
     document_title: "Demo Shop: Order Service",
     held_by: null,

@@ -40,6 +40,7 @@ from tests.hub.test_srs_use_case_reviews import CASES, one
 
 WAITS = f"v1 of demo-shop in {PROJECT} waits for your review"
 LINK = f"/p/{PROJECT}/x/srs/documents/demo-shop/versions/1"
+QUEUE = f"/p/{PROJECT}/x/srs/reviews"  # where a notice of three use cases to read leads
 
 
 def kind_of(client, headers, notice_kind: str) -> list[dict]:
@@ -80,7 +81,7 @@ def test_srs_notices_without_ba_the_reviewers_learn_at_submit_once_per_round_and
     imported(client, hub["chi"])
     assert told(client, hub["other"]) == [], "a draft waits for nobody"
     submitted(client, hub["chi"], 1)
-    assert told(client, hub["other"]) == told(client, hub["owner"]) == [(WAITS, 1, 1, LINK)]
+    assert told(client, hub["other"]) == told(client, hub["owner"]) == [(WAITS, 1, 1, QUEUE)]
     assert told(client, hub["chi"]) == told(client, hub["reader"]) == []
     (notice,) = kind_of(client, hub["other"], notices.REVIEW)
     assert "Use cases to review: UC ORD-1 (added), UC ORD-2 (added), UC RET-1 (added)." in notice["body"]
@@ -96,14 +97,14 @@ def test_srs_notices_without_ba_the_reviewers_learn_at_submit_once_per_round_and
         LINK,
     )
     submitted(client, hub["chi"], 1)
-    assert told(client, hub["other"]) == [(WAITS, 1, 2, LINK), (WAITS, 1, 1, LINK)], "a new round asks again"
+    assert told(client, hub["other"]) == [(WAITS, 1, 2, QUEUE), (WAITS, 1, 1, QUEUE)], "a new round asks again"
 
 
 def test_srs_notices_go_to_the_reviewers_the_config_names_or_every_writer_who_may_when_none_of_them_may(client, hub):
     configured(client, hub["owner"], {"reviewers": [OWNER.upper(), "nobody-here"]})
     imported(client, hub["chi"])
     submitted(client, hub["chi"], 1)
-    assert told(client, hub["owner"]) == [(WAITS, 1, 1, LINK)]
+    assert told(client, hub["owner"]) == [(WAITS, 1, 1, QUEUE)]
     assert told(client, hub["other"]) == []
     stock = item(client, hub["chi"], "BR ORD1-2")
     saved(client, hub["owner"], 1, {"key": stock["key"], "body": "- Placing the order holds its stock for 20 minutes."})
@@ -130,7 +131,7 @@ def test_srs_notices_wait_for_bas_review_then_for_the_last_finding_to_decide(cli
         assert waived.status_code == 200, waived.text
         if finding == first:
             assert told(client, hub["other"]) == [], "one finding to decide still holds it"
-    assert told(client, hub["other"]) == told(client, hub["owner"]) == [(WAITS, 1, 1, LINK)]
+    assert told(client, hub["other"]) == told(client, hub["owner"]) == [(WAITS, 1, 1, QUEUE)]
     (notice,) = kind_of(client, hub["other"], notices.REVIEW)
     assert (
         f"@ba reviewed it (run #{run_id})." in notice["body"]
@@ -145,7 +146,7 @@ def test_srs_notices_reach_the_reviewers_when_bas_review_ends_without_a_finding_
     moved(client, studio, run_id, "verifying", "done", summary="Nothing found.")
     assert told(client, hub["other"]) == [], "the run's end is told by the event the hub delivers"
     delivered(client)
-    assert told(client, hub["other"]) == [(WAITS, 1, 1, LINK)]
+    assert told(client, hub["other"]) == [(WAITS, 1, 1, QUEUE)]
     assert tell_again(client, 1) == []
 
 

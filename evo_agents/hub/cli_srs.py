@@ -70,6 +70,7 @@ FINDING_KEYS = (
     "chat_link",
     "run_id",
     "created_at",
+    "options",
 )
 VERSION_KEYS = (
     "number",
@@ -385,6 +386,8 @@ def _print_finding(found: dict) -> None:
     )
     print(f"  {found['summary']}")
     print(f"  sources: {_sources(found['sources'])}")
+    for at, option in enumerate(found.get("options") or ()):
+        print(f"  {'ABCD'[at]}. {option}")
     if found["status"] != "open":
         by = found["settled_by"] or ("the graph" if found["status"] == "resolved" else "@ba")
         print(f"  {found['status']} by {by} {when(found['settled_at'])}: {found['resolution']}")

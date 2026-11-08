@@ -34,7 +34,7 @@ type Props = { items: SrsItem[]; item: SrsItem; links: ItemLinks };
 const H3 = "mt-6 mb-2 text-[15px] leading-[22px] font-semibold first:mt-0";
 
 /** The codes of `items` a text names, each with its item's page. */
-function useCodes(items: SrsItem[], links: ItemLinks): SplitCodes {
+export function useCodes(items: SrsItem[], links: ItemLinks): SplitCodes {
   return useCallback(
     (text: string) => splitCodes(text, items).map((part) => (typeof part === "string" ? part : { code: part.code, href: links.item(part.ref) })),
     [items, links],
@@ -69,12 +69,14 @@ function Facts({ rows }: { rows: { label: string; value: ReactNode }[] }) {
   );
 }
 
-function Rule({ rule, links, codes }: { rule: SrsItem; links: ItemLinks; codes: SplitCodes }) {
+/** A business rule as a bordered block: the steps it applies at, its code and title, its text; `mark` leads its head. */
+export function Rule({ rule, links, codes, mark }: { rule: SrsItem; links: ItemLinks; codes: SplitCodes; mark?: ReactNode }) {
   const t = useTranslations("srs.item");
   const steps = stepRefs(rule);
   return (
     <article className="rounded-md border p-4" aria-labelledby={`rule-${rule.key}`} data-testid="srs-rule">
       <header className="mb-2 flex flex-wrap items-center gap-2">
+        {mark}
         {steps.length ? <span className="text-xs text-muted-foreground">{t("atSteps", { steps: steps.join(", "), count: steps.length })}</span> : null}
         {rule.code ? <CodeChip code={rule.code} href={links.item(rule.code)} /> : null}
         <h4 id={`rule-${rule.key}`} className="text-sm font-medium">
@@ -90,11 +92,44 @@ function Rule({ rule, links, codes }: { rule: SrsItem; links: ItemLinks; codes: 
   );
 }
 
+/** A use case's Activity Flow as a table that scrolls sideways on its own, each code in a cell linking to its item. */
+export function StepsTable({ items, item, links }: Props) {
+  const t = useTranslations("srs.item");
+  const steps = stepsOf(item);
+  if (steps.rows.length === 0) return <p className="text-[13px] text-muted-foreground">{t("noSteps")}</p>;
+  return (
+    <div role="region" aria-label={t("stepsLabel", { code: item.code ?? item.title })} tabIndex={0} className="overflow-x-auto rounded-md border">
+      <table className="w-full border-collapse text-sm" data-testid="srs-steps">
+        <caption className="sr-only">{t("stepsLabel", { code: item.code ?? item.title })}</caption>
+        <thead>
+          <tr>
+            {steps.columns.map((column) => (
+              <th key={column} scope="col" className="border-b bg-muted/50 px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+                {fieldName(column)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {steps.rows.map((row, index) => (
+            <tr key={index}>
+              {steps.columns.map((column, at) => (
+                <td key={column} className={at === 0 ? "border-b px-3 py-2 align-top font-mono text-[13px]" : "border-b px-3 py-2 align-top"}>
+                  {row[column] ? <CodeText text={row[column]} items={items} links={links} /> : <span className="text-fg-subtle">-</span>}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function UseCase({ items, item, links }: Props) {
   const t = useTranslations("srs.item");
   const tField = useTranslations("srs.field");
   const facts = factsOf(item);
-  const steps = stepsOf(item);
   const prose = proseOutsideTables(item.body);
   const rules = rulesOf(items, item);
   const sections = useCaseSections(items, item);
@@ -116,35 +151,7 @@ function UseCase({ items, item, links }: Props) {
         ]}
       />
       <h3 className={H3}>{t("activityFlow")}</h3>
-      {steps.rows.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">{t("noSteps")}</p>
-      ) : (
-        <div role="region" aria-label={t("stepsLabel", { code: item.code ?? item.title })} tabIndex={0} className="overflow-x-auto rounded-md border">
-          <table className="w-full border-collapse text-sm" data-testid="srs-steps">
-            <caption className="sr-only">{t("stepsLabel", { code: item.code ?? item.title })}</caption>
-            <thead>
-              <tr>
-                {steps.columns.map((column) => (
-                  <th key={column} scope="col" className="border-b bg-muted/50 px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                    {fieldName(column)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {steps.rows.map((row, index) => (
-                <tr key={index}>
-                  {steps.columns.map((column, at) => (
-                    <td key={column} className={at === 0 ? "border-b px-3 py-2 align-top font-mono text-[13px]" : "border-b px-3 py-2 align-top"}>
-                      {row[column] ? <CodeText text={row[column]} items={items} links={links} /> : <span className="text-fg-subtle">-</span>}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <StepsTable items={items} item={item} links={links} />
       {prose ? (
         <div className="mt-4">
           <SafeMarkdown testId="srs-markdown" codes={codes}>

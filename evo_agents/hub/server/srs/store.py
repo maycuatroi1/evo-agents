@@ -423,6 +423,16 @@ def review_path(project: str, slug: str, number: int) -> str:
     return f"{document_path(project, slug)}/versions/{number}"
 
 
+def case_path(project: str, slug: str, number: int, key: str) -> str:
+    """The review of one use case (by its key) of version ``number`` of a document on the hub's web."""
+    return f"{review_path(project, slug, number)}/cases/{quote(key, safe='')}"
+
+
+def queue_path(project: str) -> str:
+    """The use cases waiting for review in a project, on the hub's web (``GET .../reviews``)."""
+    return f"/p/{quote(project, safe='')}/x/srs/reviews"
+
+
 def item_path(project: str, slug: str, ref: str) -> str:
     """An item's page on the hub's web, by its code or key."""
     return f"{document_path(project, slug)}/items/{quote(ref, safe='')}"
@@ -469,6 +479,8 @@ __all__ = [
     "item_id",
     "item_path",
     "review_path",
+    "case_path",
+    "queue_path",
     "missing",
     "project_settings",
     "reader",

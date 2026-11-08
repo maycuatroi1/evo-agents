@@ -356,6 +356,7 @@ def _findings(metadata: MetaData) -> Table:
         Column("label", JSONB, nullable=False),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("commit_authors", JSONB, nullable=False, server_default="[]"),  # 0070
+        Column("options", JSONB, nullable=False, server_default="[]"),  # 0225: the choices members pick from
         _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
         _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
         _key(name, "item_id", "srs_items", ondelete="CASCADE"),

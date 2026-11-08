@@ -1,6 +1,7 @@
 "use client";
 
-import { CircleCheck, Lock, Undo2 } from "lucide-react";
+import { BookOpenCheck, CircleCheck, Lock, Undo2 } from "lucide-react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useRef, useState } from "react";
 
@@ -17,7 +18,7 @@ import { isApiError } from "@/lib/api/errors";
 import { type ReviewRole, reviewUseCase, type SrsReviewIn, type SrsUseCase } from "./api";
 import { CaseStateBadge, ChangeBadge, CodeChip, VersionChip } from "./badges";
 import { signInAgainOn401, useDocumentRefresh } from "./hooks";
-import { caseAnchor, itemHref } from "./links";
+import { caseAnchor, caseHref, itemHref } from "./links";
 import { carriedFrom, caseName, caseRef, caseVersion, ownReview } from "./use-case-model";
 
 const MAX_REVIEW_CHARS = 10_000; // evo_agents.hub.tables_srs.MAX_REVIEW_CHARS
@@ -219,8 +220,8 @@ function CaseControls({
 
 /**
  * One use case of the version: its code (linking to its page), title, what the version does to it and where it stands,
- * the reviews that count, and, for a writer who may review it, Approve and Request changes. The row's id is the anchor
- * the review queue links to (`caseReviewHref`).
+ * Read and review (or View), which opens the use case's own review with its text, changes and @ba's points, the
+ * reviews that count, and, for a writer who may review it, Approve and Request changes. The row's id is its anchor.
  */
 export function UseCaseRow({
   project,
@@ -237,8 +238,10 @@ export function UseCaseRow({
   useCase: SrsUseCase;
   actions: CaseActions | null;
 }) {
+  const t = useTranslations("srs.review.cases");
   const titleId = useId();
   const ref = caseRef(useCase);
+  const name = caseName(useCase);
   return (
     <li
       id={caseAnchor(useCase.key)}
@@ -255,6 +258,12 @@ export function UseCaseRow({
         <span className="flex flex-wrap items-center gap-2 sm:ml-auto">
           <ChangeBadge change={useCase.change} />
           <CaseStateBadge state={useCase.state} />
+          <Button asChild size="sm" variant="secondary">
+            <Link href={caseHref(project, slug, version, useCase.key)} aria-label={actions ? t("readFor", { name }) : t("viewFor", { name })} data-testid="srs-case-open">
+              <BookOpenCheck aria-hidden="true" />
+              {actions ? t("read") : t("view")}
+            </Link>
+          </Button>
         </span>
       </div>
       <CaseReviews useCase={useCase} version={version} login={actions?.login ?? null} />

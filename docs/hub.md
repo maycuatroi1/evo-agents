@@ -4215,6 +4215,7 @@ environment, never in a committed file.
 | `EVO_HUB_CORE_PLUGIN_INDEX_URL` | build | the index those come from, one or more URLs separated by spaces, a credential in the URL if it wants one; it reaches the build as the secret `core_plugin_index` alone, and no layer of the image keeps it; unset is PyPI |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
 | `EVO_HUB_WEB_TIME_ZONE` | web, api, worker | time zone of dates rendered on the server, default `Asia/Ho_Chi_Minh`; also the time zone of a member's quiet hours and summary push until they choose one (`docs/notifications.md`) |
+| `EVO_HUB_WEB_DEFAULT_LOCALE` | web | the language of a browser that has not picked one in the user menu: `en` (the default) or `vi` |
 | `EVO_HUB_PLATFORM_NETWORK` | compose | the external network the database is on |
 
 The compose file passes api and worker every variable `evo_agents/hub/config.py` reads, an empty value being unset,

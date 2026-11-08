@@ -1,79 +1,107 @@
 import { describe, expect, it } from "vitest";
 
-import { aUseCase, caseReview, queued, review } from "@/test/fixtures/srs";
+import { aQueuedCase, caseReview, queued, review } from "@/test/fixtures/srs";
 
-import { caseReviewHref, reviewsHref } from "./links";
-import { caseWaitsFor, defaultFilter, mayReviewCase, queueCounts, queueGroups, toReview, versionWaitsFor } from "./review-queue-model";
+import { caseHref, reviewsHref } from "./links";
+import { baLine, cardStatus, clip, nextCard, plainLine, queueCards, waitsForViewer } from "./review-queue-model";
 
 describe("the review queue", () => {
-  const open = aUseCase({ key: "uc1" });
-  const reviewed = aUseCase({ key: "uc2", code: "UC ORD-2", reviews: [caseReview({ reviewer: "bao" })] });
-  const approved = aUseCase({ key: "uc3", code: "UC ORD-3", state: "approved", reviews: [caseReview({ reviewer: "chi" })] });
-  const asked = aUseCase({
+  const open = aQueuedCase({ key: "uc1" });
+  const reviewed = aQueuedCase({ key: "uc2", code: "UC ORD-2", reviews: [caseReview({ reviewer: "bao" })] });
+  const approved = aQueuedCase({ key: "uc3", code: "UC ORD-3", state: "approved", reviews: [caseReview({ reviewer: "chi" })] });
+  const asked = aQueuedCase({
     key: "uc4",
     code: "UC ORD-4",
     state: "changes_requested",
     reviews: [caseReview({ reviewer: "chi", decision: "request_changes", body: "Say who pays." })],
   });
-  const shop = queued({ use_cases: [open, reviewed, approved, asked] });
+  const mineAsked = aQueuedCase({ key: "uc5", state: "changes_requested", reviews: [caseReview({ reviewer: "bao", decision: "request_changes" })] });
+  const deciding = aQueuedCase({ key: "uc6", code: "UC ORD-6", deciding: 2 });
+  const shop = queued({ use_cases: [open, reviewed, approved, asked, mineAsked, deciding], held_by: "findings", deciding: 2 });
   const billing = queued({
     document: "northwind-billing",
     document_title: "Northwind Billing",
     number: 5,
     round: 2,
     may_review: false,
-    use_cases: [aUseCase({ key: "b1", code: "UC BIL-1" })],
+    use_cases: [aQueuedCase({ key: "b1", code: "UC BIL-1" })],
   });
   const terms = queued({ document: "northwind-terms", document_title: "Northwind Terms", number: 2, use_cases: [] });
+  const checking = queued({ document: "northwind-ledger", number: 7, held_by: "ba_review", review_run: { id: 431, state: "running" } });
 
-  it("keeps under Waiting for me the pending use cases the viewer may review and has not reviewed", () => {
-    expect(caseWaitsFor(shop, open, "bao")).toBe(true);
-    expect(caseWaitsFor(shop, reviewed, "bao")).toBe(false);
-    expect(caseWaitsFor(shop, reviewed, "dung")).toBe(true);
-    expect(caseWaitsFor(shop, approved, "bao")).toBe(false);
-    expect(caseWaitsFor(shop, asked, "bao")).toBe(false);
-    expect(caseWaitsFor(billing, billing.use_cases[0], "bao")).toBe(false);
-    const groups = queueGroups([shop, billing, terms], "mine", "bao");
-    expect(groups.map((group) => [group.version.document, group.cases.map((one) => one.key)])).toEqual([
-      ["demo-shop", ["uc1"]],
-      ["northwind-terms", []],
+  it("says where each use case stands for the viewer, in plain words", () => {
+    expect(cardStatus(shop, mineAsked, "bao")).toEqual({ kind: "asked" });
+    expect(cardStatus(shop, reviewed, "bao")).toEqual({ kind: "approved" });
+    expect(cardStatus(shop, approved, "bao")).toEqual({ kind: "approved" });
+    expect(cardStatus(billing, billing.use_cases[0], "bao")).toEqual({ kind: "others" });
+    expect(cardStatus(shop, asked, "bao")).toEqual({ kind: "changes" });
+    expect(cardStatus(checking, checking.use_cases[0], "bao")).toEqual({ kind: "ba_review" });
+    expect(cardStatus(shop, deciding, "bao")).toEqual({ kind: "deciding", count: 2 });
+    // The document's points to decide hold this use case's approval too, though none is about it.
+    expect(cardStatus(shop, open, "bao")).toEqual({ kind: "deciding", count: 2 });
+    expect(cardStatus(queued(), open, "bao")).toEqual({ kind: "waiting" });
+    expect(cardStatus(shop, reviewed, "erin")).toEqual({ kind: "deciding", count: 2 });
+  });
+
+  it("gives a version that changes no use case one card, waiting until the viewer reviews its round", () => {
+    expect(cardStatus(terms, null, "bao")).toEqual({ kind: "waiting" });
+    expect(cardStatus({ ...terms, reviews: [review({ reviewer: "bao", round: 1 })] }, null, "bao")).toEqual({ kind: "approved" });
+    expect(cardStatus({ ...terms, round: 2, reviews: [review({ reviewer: "bao", round: 1 })] }, null, "bao")).toEqual({ kind: "waiting" });
+    expect(cardStatus({ ...terms, may_review: false }, null, "bao")).toEqual({ kind: "others" });
+  });
+
+  it("puts what waits for the viewer first, then what waits for @ba or others, each in the queue's order", () => {
+    const { mine, others } = queueCards([shop, billing, terms, checking], "bao");
+    expect(mine.map((card) => [card.version.document, card.useCase?.key ?? null])).toEqual([
+      ["demo-shop", "uc1"],
+      ["demo-shop", "uc6"],
+      ["northwind-terms", null],
     ]);
-  });
-
-  it("waits on a version that changes no use case until the viewer reviews its round", () => {
-    expect(versionWaitsFor(terms, "bao")).toBe(true);
-    expect(versionWaitsFor({ ...terms, reviews: [review({ reviewer: "bao", round: 1 })] }, "bao")).toBe(false);
-    expect(versionWaitsFor({ ...terms, round: 2, reviews: [review({ reviewer: "bao", round: 1 })] }, "bao")).toBe(true);
-    expect(versionWaitsFor({ ...terms, may_review: false }, "bao")).toBe(false);
-    expect(versionWaitsFor(shop, "bao")).toBe(false);
-  });
-
-  it("shows every version and use case under All, in the queue's order, and counts what each filter holds", () => {
-    expect(queueGroups([shop, billing, terms], "all", "bao").map((group) => [group.version.document, group.cases.length])).toEqual([
-      ["demo-shop", 4],
-      ["northwind-billing", 1],
-      ["northwind-terms", 0],
+    expect(others.map((card) => [card.version.document, card.useCase?.key ?? null, card.status.kind])).toEqual([
+      ["demo-shop", "uc2", "approved"],
+      ["demo-shop", "uc3", "approved"],
+      ["demo-shop", "uc4", "changes"],
+      ["demo-shop", "uc5", "asked"],
+      ["northwind-billing", "b1", "others"],
+      ["northwind-ledger", "uc1", "ba_review"],
     ]);
-    expect(queueCounts([shop, billing, terms], "bao")).toEqual({ versions: 3, all: 6, mine: 2 });
-    expect(queueCounts([], "bao")).toEqual({ versions: 0, all: 0, mine: 0 });
-    expect(toReview([])).toBe(0);
+    expect(queueCards([], "bao")).toEqual({ mine: [], others: [] });
+    expect(waitsForViewer({ kind: "deciding", count: 1 })).toBe(true);
+    expect(waitsForViewer({ kind: "ba_review" })).toBe(false);
   });
 
-  it("lands a visitor who may review a version on Waiting for me, anyone else on All", () => {
-    expect(defaultFilter([shop, billing])).toBe("mine");
-    expect(defaultFilter([billing])).toBe("all");
-    expect(defaultFilter([])).toBe("all");
+  it("finds the next use case waiting for the viewer after the one they decided", () => {
+    const queue = [shop, billing, terms];
+    expect(nextCard(queue, "bao", { document: "demo-shop", number: 3, key: "uc1" })?.useCase?.key).toBe("uc6");
+    expect(nextCard(queue, "bao", { document: "demo-shop", number: 3, key: "uc6" })?.version.document).toBe("northwind-terms");
+    expect(nextCard(queue, "bao", { document: "northwind-terms", number: 2, key: null })?.useCase?.key).toBe("uc1");
+    // A use case no longer waiting (just approved) is not in the list: the first waiting one comes next.
+    expect(nextCard(queue, "bao", { document: "demo-shop", number: 3, key: "uc2" })?.useCase?.key).toBe("uc1");
+    expect(nextCard([queued()], "bao", { document: "demo-shop", number: 3, key: "uc1" })).toBeNull();
   });
 
-  it("offers Review on a pending use case of a version the viewer may review", () => {
-    expect(mayReviewCase(shop, reviewed)).toBe(true);
-    expect(mayReviewCase(shop, approved)).toBe(false);
-    expect(mayReviewCase(shop, asked)).toBe(false);
-    expect(mayReviewCase(billing, billing.use_cases[0])).toBe(false);
+  it("says what @ba's check of the version found", () => {
+    expect(baLine(checking, checking.use_cases[0])).toEqual({ kind: "running" });
+    expect(baLine(shop, deciding)).toEqual({ kind: "here", count: 2 });
+    expect(baLine(shop, open)).toEqual({ kind: "elsewhere", count: 2 });
+    expect(baLine(queued({ review_run: { id: 9, state: "done" } }), open)).toEqual({ kind: "clear" });
+    expect(baLine(queued({ review_run: { id: 9, state: "failed" } }), open)).toEqual({ kind: "broke" });
+    // A project without @ba: nothing to say.
+    expect(baLine(queued(), open)).toBeNull();
   });
 
-  it("links the queue, and a use case to its row on the version's review page", () => {
+  it("cuts a long line at a word, as one plain line", () => {
+    expect(plainLine("**Cap** the `cart`\n at [50 lines](https://example.org)")).toBe("Cap the cart at 50 lines");
+    expect(clip("Short", 160)).toBe("Short");
+    const long = "word ".repeat(60);
+    const cut = clip(long, 160);
+    expect(cut.length).toBeLessThanOrEqual(160);
+    expect(cut.endsWith("word…")).toBe(true);
+  });
+
+  it("links the queue, and a use case to its own review", () => {
     expect(reviewsHref("demo")).toBe("/p/demo/x/srs/reviews");
-    expect(caseReviewHref("demo", "demo-shop", 3, "uc1")).toBe("/p/demo/x/srs/documents/demo-shop/versions/3#case-uc1");
+    expect(caseHref("demo", "demo-shop", 3, "uc1")).toBe("/p/demo/x/srs/documents/demo-shop/versions/3/cases/uc1");
+    expect(caseHref("demo", "demo-shop", 3, "a b/c")).toBe("/p/demo/x/srs/documents/demo-shop/versions/3/cases/a%20b%2Fc");
   });
 });
