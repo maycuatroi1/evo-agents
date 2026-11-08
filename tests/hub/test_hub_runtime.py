@@ -30,7 +30,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from evo_agents.hub import chat_runs, system_spec, tables
 from evo_agents.hub.jobs import HUB_TURN
-from evo_agents.hub.server import agent_tasking, hub_runtime, pool_accounts
+from evo_agents.hub.server import agent_tasking, hub_runtime, pool_accounts, run_retry
 from evo_agents.hub.server.profile_store import by_handle
 from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import sql
@@ -259,6 +259,27 @@ def test_the_tool_loop_stops_after_its_rounds(client, hub, hub_db, gateway, help
     done = turn(client, gateway, run_id)
     assert (done["state"], done["rounds"]) == ("done", 2)
     assert len(gateway.asked) == 2
+
+
+def test_the_next_attempt_of_a_lost_hub_run_keeps_its_gateway_provider(client, hub, hub_db, gateway, helper):
+    """A deploy that restarts the hub loses the turn it was taking: the retry answered "its model is not one the
+    hub's gateway serves" when it did not copy runs.gateway_provider (demo system, run 2943 of plan
+    multi-agent-systems step 11)."""
+    chat = created(client, hub["owner"], agents=["helper"])
+    sent(client, hub["owner"], chat["id"], "@helper which service signs the identity tokens?")
+    (run_id,) = chat_runs_of(hub_db)
+    r = tables.runs
+
+    async def retried():
+        async with client.app.state.engine.begin() as conn:
+            return (await conn.execute(run_retry.next_attempt(run_id))).scalar_one()
+
+    retry = client.portal.call(retried)
+    provider = select(r.c.gateway_provider).where(r.c.id.in_([run_id, retry])).order_by(r.c.id)
+    (first,), (second,) = sql(hub_db, provider)
+    assert first is not None and second == first
+    gateway.script = [{"content": "lumen-identity's token service signs them."}]
+    assert turn(client, gateway, retry)["state"] == "done"
 
 
 def test_a_hub_agent_needs_no_pool_and_says_when_the_hub_has_no_gateway(client, hub, hub_db, gateway, helper):
