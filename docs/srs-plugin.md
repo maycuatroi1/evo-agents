@@ -165,7 +165,8 @@ approves it or asks for changes, with these rules:
 
 **Notices.** The reviewers of a version learn that it waits for them once nothing holds its approval, so nobody is
 asked to look at a version @ba is still reviewing. The hub sends the notice `srs_review` (Inbox, and every channel of
-the member, Telegram included) with the version's review page as its link and the use cases to review in its body:
+the member, Telegram included) with the use cases to review in its body. Its link opens the review of that use case
+when the version has one to review, else the list of what waits (`/p/{project}/x/srs/reviews`):
 
 - when the version enters review and the hub handed @ba no review of its round (the agent type is off or past its cap);
 - when @ba's review of its round ends, whatever it ended as, and the document has no open finding of level `decide`;
@@ -255,6 +256,13 @@ A finding is one conflict @ba found in a document (`srs_findings`): the version 
 (none for the whole document), its kind (`duplicate`, `contradiction`, `kg_conflict`, `overlap`), its level (`info`,
 `advisory`, `decide`), a summary, the sources that show it, and its status: `open`, `resolved` or `waived`. Each row
 carries the document's label and names the run that wrote it.
+
+**Choices.** A finding of level `decide` may offer two to four choices (`options`, migration 0225): short sentences in
+the document's language, shown to the reviewer as A, B, C, D on the review of the use case it is about. @ba writes the
+summary in plain words for a reviewer who has not read the sources, in the document's language. Any writer of the
+project settles an open finding there by picking a choice, which becomes its resolution with their note
+(`POST .../findings/{id}/settle`), as a member settling it in its settle chat would; a finding with no choice is
+settled the same way by a note.
 
 **No source, no finding.** A finding names at least one source, and the hub looks each up before it writes anything:
 a code an item of the project holds (`UC ORD-2`, in any document), the id of a node of the project's knowledge graph
@@ -448,7 +456,7 @@ Under `/v1/x/srs/{project}/`:
 | Route | What |
 | --- | --- |
 | `GET documents` (`?all=true`) | the documents the caller sees, each with its latest and approved versions; the archived ones only with `all` |
-| `GET reviews` | the versions in review of the documents the caller sees, the one submitted first first: each with its `use_cases` to review, what holds its approval now (`held_by`: `ba_review` while @ba's review of its round is queued or running, then `findings` while a finding of level `decide` is open; null when none), the number of those findings (`deciding`) and whether the caller may review it (`may_review`) |
+| `GET reviews` | the versions in review of the documents the caller sees, the one submitted first first: each with its `use_cases` to review, what holds its approval now (`held_by`: `ba_review` while @ba's review of its round is queued or running, then `findings` while a finding of level `decide` is open; null when none), the number of those findings (`deciding`) and whether the caller may review it (`may_review`); each use case also has its `intent` (or the `objective` of an older one) and its own open findings, about it or a business rule under it, by level (`deciding`, `noted`) |
 | `GET documents/{slug}` (`?version=N`) | a document with every version, the newest first, and one version whole |
 | `GET documents/{slug}/versions` | every version with its reviews |
 | `GET documents/{slug}/versions/{number}` | a version whole: its items, its problems and its `use_cases` to review |
@@ -465,6 +473,7 @@ Under `/v1/x/srs/{project}/`:
 | `POST documents/{slug}/archive`, `POST documents/{slug}/unarchive` | archive a document, open it again; the document's summary |
 | `GET` and `POST documents/{slug}/comments`, `POST .../comments/{id}/resolve` | threads on a document, a version or an item |
 | `GET documents/{slug}/findings` (`?status=open`) | the findings of a document, oldest first, each with its sources and how it was settled; a code source names the `document` whose item holds it, when the caller sees that document |
+| `POST documents/{slug}/findings/{id}/settle` | `{"option", "note"}`: a writer settles an open finding from the review of a use case, by picking one of its `options` (0 for A), which becomes its resolution with the note, or, for a finding with no option, by the note alone; never a run's token |
 | `POST documents/{slug}/findings/{id}/waive` | `{"reason"}`: an admin waives an open finding |
 
 The web shows them on the plugin's pages, at `/p/{project}/x/srs/documents` in the project's menu (SRS): the documents,

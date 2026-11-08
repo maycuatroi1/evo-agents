@@ -62,11 +62,13 @@ from evo_agents.hub.server.srs.models import (
     SrsImport,
     SrsImportResult,
     SrsItemDetail,
+    SrsQueuedUseCase,
     SrsQueuedVersion,
     SrsRetireIn,
     SrsRetireResult,
     SrsReviewIn,
     SrsSave,
+    SrsSettleIn,
     SrsVersion,
     SrsVersionCases,
     SrsVersionDetail,
@@ -82,6 +84,7 @@ from evo_agents.hub.server.srs.models import (
     preview_model,
     retire_model,
     summary_model,
+    use_case_model,
     version_model,
 )
 from evo_agents.hub.server.srs.writes import Writer, dropped, give_screen_codes, unheld_problems, write_version
@@ -141,6 +144,31 @@ async def list_documents(
     return await _answer(request, work)
 
 
+async def _queued_cases(conn: AsyncConnection, doc: store.DocumentRow, content, cases) -> list[SrsQueuedUseCase]:
+    """The use cases to review of a version whose content is ``content``, each with its intent as the version reads and
+    the open findings of the document about it or a business rule under it, by level."""
+    under = findings.use_case_of(content)
+    intents = {  # Intent, or the Objective it replaced in older use cases
+        item.key: item.fields.get("intent") or item.fields.get("objective")
+        for item in content.items
+        if item.kind == "use_case"
+    }
+    counts: dict[str, list[int]] = {}
+    for row in await findings.findings(conn, doc, findings.OPEN):
+        case = under.get(row.item or "")
+        if case is not None:
+            counts.setdefault(case, [0, 0])[0 if row.level == findings.DECIDE else 1] += 1
+    return [
+        SrsQueuedUseCase(
+            **use_case_model(case).model_dump(),
+            intent=intents.get(case.key) or None,
+            deciding=counts.get(case.key, [0, 0])[0],
+            noted=counts.get(case.key, [0, 0])[1],
+        )
+        for case in cases
+    ]
+
+
 @router.get("/{project}/reviews", response_model=list[SrsQueuedVersion])
 async def review_queue(request: Request, project: ProjectName, user: CurrentUser, sink: Sink = None):
     """The versions in review of the documents the caller sees, the one submitted first first: each with the use cases
@@ -163,9 +191,11 @@ async def review_queue(request: Request, project: ProjectName, user: CurrentUser
                 authors = await use_case_reviews.authors_since(conn, doc, row.number)
                 barred = not settings.self_approval and user.user_id in authors
                 held_by = "ba_review" if running is not None else "findings" if deciding else None
+                version = cases_model(row, cases).model_dump(exclude={"use_cases"})
                 queued.append(
                     SrsQueuedVersion(
-                        **cases_model(row, cases).model_dump(),
+                        **version,
+                        use_cases=await _queued_cases(conn, doc, snap.doc, cases),
                         document=doc.slug,
                         document_title=doc.title,
                         held_by=held_by,
@@ -586,6 +616,39 @@ async def list_findings(
         rows = await findings.findings(conn, doc, status)
         held = await findings.code_documents(conn, access, sink, rows)
         return [finding_model(row, held) for row in rows]
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/documents/{slug}/findings/{finding_id}/settle", response_model=SrsFinding)
+async def settle_finding(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    finding_id: Annotated[int, Path(ge=1)],
+    body: SrsSettleIn,
+    user: CurrentUser,
+    sink: Sink = None,
+):
+    """Settle an open finding as a writer of the project, never the agent of a run, from the review of a use case: by
+    picking one of its choices (``option``, 0 for A), which becomes its resolution with ``note``, or, for a finding with
+    no choice, by ``note`` alone. The last open finding of level decide settled tells the reviewers of each version in
+    review that nothing holds it any more (``notices``). 409 when it is not open, or the document is archived."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        if user.acts_for_run is not None:
+            raise SrsError(403, "the agent of a run settles a finding with srs__finding, in its settle chat")
+        reviews.writer(access, "settling a finding")
+        doc = await store.document(conn, access, slug, sink, lock=True)
+        held = await findings.finding(conn, doc, finding_id)
+        resolution = findings.chosen(held, body.option, body.note)
+        row = await findings.settle(
+            conn, access, doc, finding_id, findings.Settling(findings.RESOLVED, resolution, user.user_id)
+        )
+        if row.level == findings.DECIDE:
+            await notices.findings_settled(conn, access.project_id, doc)
+        return finding_model(row, await findings.code_documents(conn, access, sink, [row]))
 
     return await _answer(request, work)
 

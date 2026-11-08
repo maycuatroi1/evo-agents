@@ -9343,7 +9343,8 @@
       "compare": "So sánh version của {slug}",
       "comments": "Bình luận về {slug}",
       "import": "Nhập SRS vào {project}",
-      "reviews": "Duyệt SRS của {project}"
+      "reviews": "Việc cần duyệt của {project}",
+      "caseReview": "Duyệt use case {key} của {slug}"
     },
     "versionState": {
       "draft": "Nháp",
@@ -9426,34 +9427,42 @@
       "reviews": "Chờ duyệt"
     },
     "queue": {
-      "versionsCount": "{count, plural, other {# version đang chờ duyệt}}",
-      "waitingCount": "{count, plural, other {# mục chờ bạn duyệt}}",
+      "title": "Việc cần duyệt",
+      "intro": "Đồng đội gửi các use case dưới đây để bạn đọc và quyết định: đồng ý, hoặc yêu cầu sửa. Mỗi mục mất khoảng 5 đến 10 phút.",
+      "waitingCount": "{count, plural, other {# mục chờ bạn}}",
       "documents": "Tài liệu",
-      "filterLabel": "Hiển thị",
-      "filterMine": "Chờ tôi duyệt",
-      "filterAll": "Tất cả",
-      "toReview": "{count, plural, other {# mục cần duyệt}}",
-      "listLabel": "Các version đang chờ duyệt",
-      "openReview": "Duyệt v{version} của {title}",
-      "round": "Vòng {round}",
-      "by": "Người viết {author}",
-      "submitted": "gửi duyệt",
-      "baReviewing": "@ba đang rà soát",
-      "deciding": "{count, plural, other {Còn # phát hiện cần quyết định chưa chốt}}",
-      "ready": "Sẵn sàng duyệt",
-      "casesLabel": "Các use case của v{version} trong {title} cần duyệt",
-      "noCases": "v{version} không đổi use case nào: duyệt cả version là version được duyệt.",
-      "reviewVersion": "Duyệt v{version}",
-      "review": "Duyệt",
-      "reviewFor": "Duyệt {name}",
-      "reviewersLabel": "Các lượt duyệt {name}",
-      "noReview": "Chưa ai duyệt",
-      "you": "bạn",
-      "emptyTitle": "Không có version nào đang chờ duyệt",
-      "emptyText": "Khi người có vai trò ghi gửi duyệt một version của tài liệu BA, các use case mà version đó thêm, sửa hoặc bỏ sẽ chờ người duyệt ở đây.",
-      "mineEmptyTitle": "Không có gì chờ bạn duyệt",
-      "mineEmptyText": "Một use case chờ bạn khi bạn được duyệt version của nó, nó vẫn chờ duyệt và bạn chưa duyệt nó. Mục Tất cả liệt kê mọi version đang chờ duyệt.",
-      "showAll": "Xem tất cả"
+      "mineTitle": "Chờ bạn",
+      "othersTitle": "Đang chờ @ba hoặc người khác",
+      "status": {
+        "waiting": "Chờ bạn duyệt",
+        "deciding": "{count, plural, other {Cần chốt # điểm trước}}",
+        "baReview": "@ba đang kiểm tra, khoảng 5 phút",
+        "approved": "Đã duyệt",
+        "asked": "Bạn đã yêu cầu sửa",
+        "changes": "Đã có người yêu cầu sửa",
+        "others": "Chờ người khác"
+      },
+      "sent": "{author} gửi",
+      "thisTime": "Lần này sửa:",
+      "goal": "Mục tiêu:",
+      "noSummary": "Người gửi không ghi lời nhắn.",
+      "ba": {
+        "running": "@ba đang kiểm tra",
+        "here": "{count, plural, other {@ba đã kiểm tra xong, nêu # điểm cần bạn chọn}}",
+        "elsewhere": "{count, plural, other {@ba đã kiểm tra xong, còn # điểm ở phần khác của tài liệu cần chốt}}",
+        "clear": "@ba đã kiểm tra xong, không có điểm nào chặn",
+        "broke": "@ba chưa kiểm tra xong lần này"
+      },
+      "added": "Use case mới",
+      "removed": "Lần này bỏ",
+      "wholeTitle": "Phần sửa ngoài use case",
+      "wholeText": "Lần gửi này không sửa use case nào, bạn duyệt cả tài liệu.",
+      "read": "Đọc và duyệt",
+      "view": "Xem",
+      "readFor": "Đọc và duyệt {name}",
+      "viewFor": "Xem {name}",
+      "emptyTitle": "Không có use case nào chờ bạn duyệt",
+      "emptyText": "Khi đồng đội gửi use case cho bạn duyệt, bạn sẽ nhận thông báo và mục đó hiện ở đây."
     },
     "toc": {
       "label": "Mục lục",
@@ -9781,8 +9790,133 @@
         "roleAuto": "Để hub chọn",
         "approvedToast": "Đã duyệt {name}",
         "versionApprovedToast": "Đã duyệt {name}; v{version} đã được duyệt",
-        "requestedToast": "Đã yêu cầu sửa {name}"
+        "requestedToast": "Đã yêu cầu sửa {name}",
+        "read": "Đọc và duyệt",
+        "view": "Xem",
+        "readFor": "Đọc và duyệt {name}",
+        "viewFor": "Xem {name}"
       }
+    },
+    "caseReview": {
+      "back": "Việc cần duyệt",
+      "subAsks": "{code}. {author} nhờ bạn duyệt bản sửa ngày {date}.",
+      "subSent": "{code}. {author} gửi bản sửa ngày {date}.",
+      "inUse": "Bản đang dùng là bản duyệt ngày {date}.",
+      "inUseVersion": "Đang dùng một bản khác.",
+      "firstOne": "Chưa có bản nào được duyệt, đây là bản đầu tiên.",
+      "stepsLabel": "Các bước duyệt",
+      "step": {
+        "content": "1. Use case nói gì",
+        "changes": "2. Lần này sửa gì",
+        "ba": "3. @ba lưu ý",
+        "decide": "4. Quyết định"
+      },
+      "content": {
+        "field": {
+          "actor": "Ai dùng",
+          "intent": "Muốn đạt gì",
+          "context": "Bối cảnh",
+          "trigger": "Khi nào bắt đầu",
+          "pre_condition": "Cần có trước",
+          "expectation": "Xong khi nào"
+        },
+        "legend": "Chữ nền xanh là phần lần này thêm, chữ gạch ngang là phần bỏ.",
+        "addedText": "thêm:",
+        "removedText": "bỏ:",
+        "mark": {
+          "added": "Mới",
+          "changed": "Đã sửa",
+          "removed": "Đã bỏ"
+        },
+        "added": "Use case này mới có trong lần gửi này.",
+        "removed": "Lần gửi này bỏ use case này. Dưới đây là nội dung đang dùng.",
+        "noFields": "Use case chưa ghi các mục này, mở trang use case để đọc toàn bộ.",
+        "more": "Các bước ({steps}) và quy tắc ({rules})",
+        "moreChanged": "có thay đổi",
+        "steps": "Các bước",
+        "rules": "Quy tắc",
+        "noRules": "Không có.",
+        "openItem": "Mở toàn bộ use case"
+      },
+      "changes": {
+        "note": "Lời nhắn của {author}",
+        "noNote": "Không có lời nhắn.",
+        "inCase": "Trong use case này",
+        "first": "Chưa có bản nào được duyệt, nên mọi nội dung đều mới.",
+        "noCompare": "Bản sửa này cũ hơn bản đang dùng nên không so ở đây.",
+        "failed": "Không đọc được bản đang dùng để so. Mục So sánh đầy đủ có mọi thay đổi.",
+        "added": "Cả use case là mới.",
+        "removed": "Cả use case bị bỏ.",
+        "nothing": "Phần sửa nằm ngoài các mục trên, xem So sánh đầy đủ.",
+        "compare": "So sánh đầy đủ"
+      },
+      "ba": {
+        "reviewing": "@ba đang kiểm tra use case này, thường mất khoảng 5 phút.",
+        "reviewingText": "Bạn có thể đọc trước. Mục này tự cập nhật khi @ba xong.",
+        "broke": "@ba chưa kiểm tra xong lần này, danh sách có thể còn thiếu.",
+        "none": "@ba không thấy điểm nào cần chốt.",
+        "noneWithout": "Không có điểm nào cần chốt.",
+        "intro": "Chọn một hướng cho mỗi điểm. Nút Đồng ý mở khi mọi điểm đã chốt.",
+        "decideLabel": "Các điểm cần chốt",
+        "elsewhere": "{count, plural, other {# điểm cần chốt ở phần khác của tài liệu}}",
+        "elsewhereText": "Nút Đồng ý chờ cả các điểm này.",
+        "advice": "Gợi ý thêm ({count})",
+        "adviceText": "Chỉ để tham khảo, không chặn quyết định của bạn.",
+        "about": "Về",
+        "sources": "Xem nguồn",
+        "choices": "Các hướng",
+        "pickedNote": "Bạn chọn {option}. Ghi chú (không bắt buộc)",
+        "howSettled": "Bạn chốt thế nào?",
+        "noteMissing": "Hãy ghi cách chốt.",
+        "settle": "Chốt",
+        "settled": "Đã chốt",
+        "settling": "Đang chốt",
+        "cancel": "Hủy",
+        "settledToast": "Đã chốt theo hướng {option}",
+        "settledNoteToast": "Đã chốt điểm này",
+        "failed": "Không đọc được các điểm @ba lưu ý.",
+        "retry": "Thử lại"
+      },
+      "decide": {
+        "title": "4. Quyết định",
+        "hint": "Đồng ý nếu use case đã đúng với bạn. Nếu có chỗ sai hoặc thiếu, chọn Yêu cầu sửa, người viết sẽ nhận ghi chú của bạn.",
+        "approve": "Đồng ý",
+        "approving": "Đang gửi",
+        "request": "Yêu cầu sửa",
+        "noteLabel": "Cần sửa gì?",
+        "noteMissing": "Hãy ghi cần sửa gì.",
+        "send": "Gửi yêu cầu sửa",
+        "sending": "Đang gửi",
+        "cancel": "Hủy",
+        "lock": {
+          "ba": "@ba đang kiểm tra, nút Đồng ý mở khi xong.",
+          "here": "{count, plural, other {Chọn xong # điểm ở bước 3 thì nút Đồng ý mở.}}",
+          "elsewhere": "{count, plural, other {Còn # điểm ở phần khác của tài liệu cần chốt (bước 3), nút Đồng ý mở khi xong.}}",
+          "both": "Chọn xong {here} điểm của use case này và {elsewhere} điểm ở phần khác của tài liệu (bước 3) thì nút Đồng ý mở."
+        },
+        "own": {
+          "approve": "Bạn đã đồng ý ngày {date}. Bạn vẫn có thể đổi ý.",
+          "request_changes": "Bạn đã yêu cầu sửa ngày {date}."
+        },
+        "blocked": {
+          "reader": "Bạn chỉ có quyền đọc trong dự án này nên không duyệt được.",
+          "author": "Bạn viết bản sửa này nên không tự duyệt được, người khác trong nhóm sẽ duyệt.",
+          "closed": "Bản sửa này không còn chờ duyệt.",
+          "unchanged": "Lần gửi này không sửa use case này nên không cần duyệt riêng."
+        },
+        "done": {
+          "approve": "Bạn đã đồng ý use case này.",
+          "approvedAll": "Bạn đã đồng ý và bản sửa đã được duyệt.",
+          "request_changes": "Bạn đã yêu cầu sửa. {author} sẽ nhận ghi chú của bạn."
+        },
+        "next": "Use case tiếp theo",
+        "list": "Về danh sách",
+        "again": "Đổi quyết định"
+      },
+      "missingTitle": "Không thấy use case này trong lần gửi này",
+      "missingText": "Không có use case {ref} trong lần gửi này hay trong bản đang dùng.",
+      "missingVersionTitle": "Không có lần gửi này",
+      "missingVersionText": "{title} không có lần gửi này. Danh sách việc cần duyệt cho biết mục nào đang chờ bạn."
     },
     "findings": {
       "title": "Phát hiện",

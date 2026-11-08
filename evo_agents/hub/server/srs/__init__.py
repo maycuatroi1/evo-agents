@@ -295,7 +295,7 @@ FINDING_SCHEMA = {
     "properties": {
         "action": {
             "enum": ["record", "resolve", "waive", "reopen"],
-            "description": "record a finding (kind, level, summary, sources; version, item); resolve or waive an open "
+            "description": "record a finding (kind, level, summary, sources; version, item, options); resolve or waive an open "
             "one (finding, resolution; settled_by, chat_link, and sources to resolve it); reopen one settled within "
             "24 hours (finding)",
         },
@@ -308,7 +308,21 @@ FINDING_SCHEMA = {
             "enum": ["info", "advisory", "decide"],
             "description": "decide: members must settle it, and it holds approval while open",
         },
-        "summary": {"type": "string", "minLength": 1, "maxLength": 2000, "description": "the conflict in a sentence"},
+        "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "the conflict in plain words, in the document's language, for a reviewer who has not read the "
+            "sources: what the document says, what the source says, and for level decide what members must choose",
+        },
+        "options": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 4,
+            "items": {"type": "string", "minLength": 1, "maxLength": 300},
+            "description": "for level decide, the choices the reviewer picks from on the review page (shown as A, B, ...): "
+            "each one short sentence in the document's language saying what the document would then state",
+        },
         "sources": {
             "type": "array",
             "minItems": 1,

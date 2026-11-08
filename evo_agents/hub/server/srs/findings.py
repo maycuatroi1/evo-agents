@@ -39,7 +39,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.runs import ACTIVE_STATES
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.srs import BA, store
-from evo_agents.hub.server.srs.doc import SrsError
+from evo_agents.hub.server.srs.doc import Document, SrsError
 from evo_agents.hub.server.srs.store import DocumentRow, VersionRow
 from evo_agents.hub.server.srs.template import code_key
 from evo_agents.hub.tables_srs import (
@@ -55,10 +55,12 @@ from evo_agents.hub.tables_srs import (
 OPEN, RESOLVED, WAIVED = "open", "resolved", "waived"
 DECIDE = "decide"  # the level whose open findings hold approval
 REOPEN_HOURS = 24  # how long after it was settled a finding may be reopened
+MIN_OPTIONS, MAX_OPTIONS, MAX_OPTION_CHARS = 2, 4, 300  # the choices of a finding, when it has any
+OPTION_KEYS = "ABCD"  # how the reviewer sees the choices, in their order
 SHOWS = ("node", "code", "path")  # the kinds of source that show a conflict; a version of the document only settles one
 LINK = re.compile(r"^(https?://|/)\S+$")
 ACTIONS = {  # what srs__finding takes for each action: (required, also allowed)
-    "record": (("kind", "level", "summary", "sources"), ("version", "item")),
+    "record": (("kind", "level", "summary", "sources"), ("version", "item", "options")),
     "resolve": (("finding", "resolution"), ("settled_by", "chat_link", "sources")),
     "waive": (("finding", "resolution"), ("settled_by", "chat_link")),
     "reopen": (("finding",), ()),
@@ -85,6 +87,7 @@ class FindingRow:
     chat_link: str | None
     run_id: int | None
     created_at: datetime
+    options: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -124,6 +127,7 @@ def _query(document_id: int):
             f.c.chat_link,
             f.c.run_id,
             f.c.created_at,
+            f.c.options,
         )
         .select_from(
             f.join(v, v.c.id == f.c.version_id)
@@ -185,6 +189,48 @@ def checked_args(action: str, args: dict) -> None:
     extra = sorted(set(args) - {"action", "document", *required, *allowed})
     if extra:
         raise SrsError(422, f"srs__finding {action} takes no {', '.join(extra)}; nothing was written")
+
+
+def use_case_of(doc: Document) -> dict[str, str]:
+    """The key of the use case each item of ``doc`` sits under (itself for a use case), for the items under one: what a
+    finding about a business rule is about for the review of its use case."""
+    found = {}
+    for index, item in enumerate(doc.items):
+        for at in (index, *doc.ancestors(index)):
+            above = doc.items[at]
+            if above.kind == "use_case" and above.key and item.key:
+                found[item.key] = above.key
+                break
+    return found
+
+
+def checked_options(raw) -> list[str]:
+    """The choices of a finding as stored: none, or MIN_OPTIONS to MAX_OPTIONS distinct short sentences; 422 else."""
+    options = [str(option).strip() for option in raw or ()]
+    if not options:
+        return []
+    if not MIN_OPTIONS <= len(options) <= MAX_OPTIONS or len(set(options)) != len(options):
+        raise SrsError(422, f"a finding offers {MIN_OPTIONS} to {MAX_OPTIONS} distinct choices, or none")
+    if any(not option or len(option) > MAX_OPTION_CHARS for option in options):
+        raise SrsError(422, f"each choice of a finding is one sentence of at most {MAX_OPTION_CHARS} characters")
+    return options
+
+
+def chosen(row: FindingRow, option: int | None, note: str) -> str:
+    """The resolution of ``row`` when a member picks choice ``option`` (0 for A) with ``note``; 422 for a choice it does
+    not offer, or none of a finding that offers some, or a finding with no choice and no note."""
+    note = note.strip()
+    if row.options:
+        if option is None or not 0 <= option < len(row.options):
+            keys = ", ".join(OPTION_KEYS[: len(row.options)])
+            raise SrsError(422, f"finding {row.id} is settled by picking one of its choices: {keys}")
+        picked = f"{OPTION_KEYS[option]}. {row.options[option]}"
+        return f"{picked}\n\n{note}" if note else picked
+    if option is not None:
+        raise SrsError(422, f"finding {row.id} offers no choice: say how it is settled in a note")
+    if not note:
+        raise SrsError(422, f"finding {row.id} offers no choice: say how it is settled in a note")
+    return note
 
 
 def sources_of(raw: list[dict] | None, *, settling: bool = False) -> list[Source]:
@@ -278,6 +324,7 @@ class NewFinding:
     sources: list[Source]
     version: int | None = None  # the latest when None
     item: str | None = None  # a code, an alias or a key; the whole document when None
+    options: tuple[str, ...] = ()  # the choices members pick from, in their order (A, B, ...); none when empty
 
 
 async def record(
@@ -297,6 +344,7 @@ async def record(
         )
     if not new.sources:
         raise SrsError(422, "a finding names at least one source that shows it: without one it is no conflict")
+    options = checked_options(new.options)
     row = await store.version(conn, doc, new.version)
     problems = await held_problems(conn, access, doc, row.number, new.sources)
     if problems:
@@ -314,6 +362,7 @@ async def record(
         "run_id": run_id,
         "label": doc.label,
         "commit_authors": list(dict.fromkeys(commit_authors))[:MAX_COMMIT_AUTHORS],
+        "options": options,
     }
     return await finding(conn, doc, (await conn.execute(insert(f).values(values).returning(f.c.id))).scalar_one())
 
@@ -447,6 +496,9 @@ __all__ = [
     "approval_hold",
     "chat_link",
     "checked_args",
+    "checked_options",
+    "chosen",
+    "use_case_of",
     "code_documents",
     "finding",
     "findings",

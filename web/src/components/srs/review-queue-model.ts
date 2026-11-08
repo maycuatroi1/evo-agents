@@ -1,64 +1,134 @@
-import type { SrsQueuedVersion, SrsUseCase } from "./api";
+import type { SrsQueuedUseCase, SrsQueuedVersion } from "./api";
+import { reviewBroke, reviewHolds } from "./findings-model";
 import { ownReview } from "./use-case-model";
 
 /**
- * The pure model of the review queue (/p/{project}/x/srs/reviews): the versions in review of the documents the viewer
- * sees, each with its use cases to review, and which of them wait for the viewer.
+ * The pure model of the review queue (/p/{project}/x/srs/reviews): one card per use case waiting for review, said in
+ * plain words. A card is what the viewer can do with it now (its status), who sent it, what changed and what @ba
+ * found, and the cards waiting for the viewer come first. Nothing here reads the API.
  */
 
-/** What the queue shows: what waits for the viewer, or every version in review. */
-export type QueueFilter = "mine" | "all";
-
-/** The queue reads again this often while @ba reviews a version in it, so the version's line changes when it ends. */
+/** The queue reads again this often while @ba checks a version in it, so a card's status changes when it ends. */
 export const QUEUE_REFRESH_MS = 15_000;
 
-type Reviewable = Pick<SrsQueuedVersion, "may_review">;
-
-/** Whether a use case of `version` waits for `login`: they may review the version now, it is pending and no review of theirs counts on it. */
-export function caseWaitsFor(version: Reviewable, useCase: Pick<SrsUseCase, "state" | "reviews">, login: string | null): boolean {
-  return version.may_review && useCase.state === "pending" && ownReview(useCase, login) === null;
-}
+/** How long the lines of a card may be: what changed this time, and the use case's goal. */
+export const SUMMARY_CHARS = 160;
+export const INTENT_CHARS = 200;
 
 /**
- * Whether a version that changes no use case waits for `login`: a review of the whole version approves it, so it waits
- * while they may review it and have not reviewed its current round.
+ * Where a card stands for the viewer, checked in this order: their own review (asked for changes, or approved), the
+ * use case approved, a version they may not review, someone else's request for changes, @ba still checking, points
+ * to settle before an approval (about this use case, else elsewhere in the document), else waiting for them.
  */
-export function versionWaitsFor(version: Pick<SrsQueuedVersion, "may_review" | "use_cases" | "reviews" | "round">, login: string | null): boolean {
-  if (!version.may_review || version.use_cases.length > 0) return false;
-  return !version.reviews.some((review) => review.round === version.round && review.reviewer === login);
+export type CardStatus =
+  | { kind: "asked" }
+  | { kind: "approved" }
+  | { kind: "others" }
+  | { kind: "changes" }
+  | { kind: "ba_review" }
+  | { kind: "deciding"; count: number }
+  | { kind: "waiting" };
+
+/** A card of the queue: a use case of a version in review, or a version that changes none (`useCase` null). */
+export type QueueCard = { version: SrsQueuedVersion; useCase: SrsQueuedUseCase | null; status: CardStatus };
+
+type Version = Pick<SrsQueuedVersion, "may_review" | "held_by" | "deciding" | "reviews" | "round">;
+
+/** The review `login` gave a version that changes no use case, in its current round. */
+function ownVersionReview(version: Pick<SrsQueuedVersion, "reviews" | "round">, login: string | null) {
+  return login === null ? null : (version.reviews.find((review) => review.round === version.round && review.reviewer === login) ?? null);
 }
 
-/** Whether the viewer may act on a use case from the queue: they may review its version and it still waits for approvals. */
-export function mayReviewCase(version: Reviewable, useCase: Pick<SrsUseCase, "state">): boolean {
-  return version.may_review && useCase.state === "pending";
+/** What holds an approval the viewer could give: @ba's check, then the points to settle (this use case's first). */
+function held(version: Version, deciding: number): CardStatus | null {
+  if (version.held_by === "ba_review") return { kind: "ba_review" };
+  if (deciding > 0) return { kind: "deciding", count: deciding };
+  if (version.held_by === "findings" && version.deciding > 0) return { kind: "deciding", count: version.deciding };
+  return null;
 }
 
-/** The filter a visitor lands on: what waits for them when they may review any version, else every version. */
-export function defaultFilter(queue: readonly Reviewable[]): QueueFilter {
-  return queue.some((version) => version.may_review) ? "mine" : "all";
+export function cardStatus(
+  version: Version,
+  useCase: Pick<SrsQueuedUseCase, "state" | "reviews" | "deciding"> | null,
+  login: string | null,
+): CardStatus {
+  if (useCase === null) {
+    const own = ownVersionReview(version, login);
+    if (own) return { kind: own.decision === "approve" ? "approved" : "asked" };
+    if (!version.may_review) return { kind: "others" };
+    return held(version, 0) ?? { kind: "waiting" };
+  }
+  const own = ownReview(useCase, login);
+  if (own?.decision === "request_changes") return { kind: "asked" };
+  if (own?.decision === "approve" || useCase.state === "approved") return { kind: "approved" };
+  if (!version.may_review) return { kind: "others" };
+  if (useCase.state === "changes_requested") return { kind: "changes" };
+  return held(version, useCase.deciding) ?? { kind: "waiting" };
 }
 
-/** A version of the queue with the use cases the filter shows under it. */
-export type QueueGroup = { version: SrsQueuedVersion; cases: SrsUseCase[] };
-
-/**
- * The versions and use cases `filter` shows, in the queue's order (submitted first, first). Under "mine", only the use
- * cases waiting for `login`, and the versions that hold one or wait for a review of their own.
- */
-export function queueGroups(queue: readonly SrsQueuedVersion[], filter: QueueFilter, login: string | null): QueueGroup[] {
-  if (filter === "all") return queue.map((version) => ({ version, cases: version.use_cases }));
-  return queue.flatMap((version) => {
-    const cases = version.use_cases.filter((useCase) => caseWaitsFor(version, useCase, login));
-    return cases.length > 0 || versionWaitsFor(version, login) ? [{ version, cases }] : [];
-  });
+/** Whether a card waits for the viewer: they can review it now, or settle what holds it first. */
+export function waitsForViewer(status: CardStatus): boolean {
+  return status.kind === "waiting" || status.kind === "deciding";
 }
 
-/** What the groups hold to review: each use case, and a version that changes none as one. */
-export function toReview(groups: readonly QueueGroup[]): number {
-  return groups.reduce((sum, group) => sum + Math.max(group.cases.length, 1), 0);
+/** The cards of the queue in its order (the version submitted first, first; its use cases in the document's order). */
+export function queueCards(queue: readonly SrsQueuedVersion[], login: string | null): { mine: QueueCard[]; others: QueueCard[] } {
+  const mine: QueueCard[] = [];
+  const others: QueueCard[] = [];
+  for (const version of queue) {
+    const cases = version.use_cases.length > 0 ? version.use_cases : [null];
+    for (const useCase of cases) {
+      const card = { version, useCase, status: cardStatus(version, useCase, login) };
+      (waitsForViewer(card.status) ? mine : others).push(card);
+    }
+  }
+  return { mine, others };
 }
 
-/** The queue's counts: versions in review, what they hold to review, and how much of it waits for `login`. */
-export function queueCounts(queue: readonly SrsQueuedVersion[], login: string | null): { versions: number; all: number; mine: number } {
-  return { versions: queue.length, all: toReview(queueGroups(queue, "all", login)), mine: toReview(queueGroups(queue, "mine", login)) };
+/** The card after `current` that waits for the viewer, else the first other one that does; null when none. */
+export function nextCard(queue: readonly SrsQueuedVersion[], login: string | null, current: { document: string; number: number; key: string | null }): QueueCard | null {
+  const { mine } = queueCards(queue, login);
+  const isCurrent = (card: QueueCard) =>
+    card.version.document === current.document && card.version.number === current.number && (card.useCase?.key ?? null) === current.key;
+  const at = mine.findIndex(isCurrent);
+  const after = at < 0 ? mine : [...mine.slice(at + 1), ...mine.slice(0, at)];
+  return after.find((card) => !isCurrent(card)) ?? null;
+}
+
+/** What a card says about @ba's check of the version: still running, done with what it found, stopped, or nothing. */
+export type BaLine =
+  | { kind: "running" }
+  | { kind: "here"; count: number }
+  | { kind: "elsewhere"; count: number }
+  | { kind: "clear" }
+  | { kind: "broke" }
+  | null;
+
+export function baLine(version: Pick<SrsQueuedVersion, "review_run" | "held_by" | "deciding">, useCase: Pick<SrsQueuedUseCase, "deciding"> | null): BaLine {
+  const run = version.review_run;
+  if (version.held_by === "ba_review" || reviewHolds(run)) return { kind: "running" };
+  if (reviewBroke(run)) return { kind: "broke" };
+  const here = useCase?.deciding ?? 0;
+  if (here > 0) return { kind: "here", count: here };
+  if (version.deciding > 0) return { kind: "elsewhere", count: version.deciding };
+  return run ? { kind: "clear" } : null;
+}
+
+/** Text of a field as one plain line: Markdown marks and links dropped, white space as one space. */
+export function plainLine(text: string): string {
+  return text
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/(\*\*|__|`)/g, "")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** `text` as one plain line of at most `max` characters, cut at a word with an ellipsis when longer. */
+export function clip(text: string, max: number): string {
+  const line = plainLine(text);
+  if (line.length <= max) return line;
+  const cut = line.slice(0, max - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,.;:]+$/, "")}…`;
 }

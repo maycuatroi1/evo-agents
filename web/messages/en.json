@@ -9343,7 +9343,8 @@
       "compare": "Comparison of {slug}",
       "comments": "Comments of {slug}",
       "import": "Import SRS into {project}",
-      "reviews": "SRS reviews of {project}"
+      "reviews": "Reviews waiting for you in {project}",
+      "caseReview": "Review of {key} in {slug}"
     },
     "versionState": {
       "draft": "Draft",
@@ -9426,34 +9427,42 @@
       "reviews": "Waiting for review"
     },
     "queue": {
-      "versionsCount": "{count, plural, one {# version in review} other {# versions in review}}",
+      "title": "Reviews waiting for you",
+      "intro": "Teammates sent the use cases below for you to read and decide: agree, or ask for changes. Each takes about 5 to 10 minutes.",
       "waitingCount": "{count, plural, one {# waits for you} other {# wait for you}}",
       "documents": "Documents",
-      "filterLabel": "Show",
-      "filterMine": "Waiting for me",
-      "filterAll": "All",
-      "toReview": "{count, plural, other {# to review}}",
-      "listLabel": "Versions in review",
-      "openReview": "Review v{version} of {title}",
-      "round": "Round {round}",
-      "by": "By {author}",
-      "submitted": "submitted",
-      "baReviewing": "@ba is reviewing",
-      "deciding": "{count, plural, one {# finding to decide is open} other {# findings to decide are open}}",
-      "ready": "Ready for review",
-      "casesLabel": "Use cases of v{version} of {title} to review",
-      "noCases": "v{version} changes no use case: a review of the whole version approves it.",
-      "reviewVersion": "Review v{version}",
-      "review": "Review",
-      "reviewFor": "Review {name}",
-      "reviewersLabel": "Reviews of {name}",
-      "noReview": "No review yet",
-      "you": "you",
-      "emptyTitle": "No version is in review",
-      "emptyText": "When a writer submits a version of a BA document, the use cases it adds, changes or drops wait here for their reviewers.",
-      "mineEmptyTitle": "Nothing waits for you",
-      "mineEmptyText": "A use case waits for you while you may review its version, it is still pending and it has no review of yours. All lists every version in review.",
-      "showAll": "Show all"
+      "mineTitle": "Waiting for you",
+      "othersTitle": "Waiting for @ba or someone else",
+      "status": {
+        "waiting": "Waiting for your review",
+        "deciding": "{count, plural, one {Settle # point first} other {Settle # points first}}",
+        "baReview": "@ba is checking, about 5 minutes",
+        "approved": "Approved",
+        "asked": "You asked for changes",
+        "changes": "Someone asked for changes",
+        "others": "Waiting for someone else"
+      },
+      "sent": "{author} sent it",
+      "thisTime": "This time:",
+      "goal": "Goal:",
+      "noSummary": "The sender left no note.",
+      "ba": {
+        "running": "@ba is checking",
+        "here": "{count, plural, one {@ba is done checking and raised # point for you to choose} other {@ba is done checking and raised # points for you to choose}}",
+        "elsewhere": "{count, plural, one {@ba is done checking: # point elsewhere in the document needs settling} other {@ba is done checking: # points elsewhere in the document need settling}}",
+        "clear": "@ba is done checking, nothing blocks it",
+        "broke": "@ba could not finish checking this time"
+      },
+      "added": "New use case",
+      "removed": "Removed this time",
+      "wholeTitle": "Changes outside the use cases",
+      "wholeText": "This change touches no use case: you review the document as a whole.",
+      "read": "Read and review",
+      "view": "View",
+      "readFor": "Read and review {name}",
+      "viewFor": "View {name}",
+      "emptyTitle": "No use case waits for your review",
+      "emptyText": "When a teammate sends you one, you get a notice and it shows here."
     },
     "toc": {
       "label": "Contents",
@@ -9781,8 +9790,133 @@
         "roleAuto": "The hub's pick",
         "approvedToast": "Approved {name}",
         "versionApprovedToast": "Approved {name}; v{version} is now approved",
-        "requestedToast": "Asked for changes on {name}"
+        "requestedToast": "Asked for changes on {name}",
+        "read": "Read and review",
+        "view": "View",
+        "readFor": "Read and review {name}",
+        "viewFor": "View {name}"
       }
+    },
+    "caseReview": {
+      "back": "Reviews waiting for you",
+      "subAsks": "{code}. {author} asks you to review the change of {date}.",
+      "subSent": "{code}. {author} sent the change of {date}.",
+      "inUse": "The text in use is the change approved on {date}.",
+      "inUseVersion": "Another change is in use.",
+      "firstOne": "Nothing is approved yet: this is the first.",
+      "stepsLabel": "Steps of the review",
+      "step": {
+        "content": "1. What the use case says",
+        "changes": "2. What changed this time",
+        "ba": "3. What @ba noted",
+        "decide": "4. Decide"
+      },
+      "content": {
+        "field": {
+          "actor": "Who uses it",
+          "intent": "What they want",
+          "context": "Context",
+          "trigger": "When it starts",
+          "pre_condition": "Needed first",
+          "expectation": "Done when"
+        },
+        "legend": "Words on green were added this time; struck-through words were removed.",
+        "addedText": "added:",
+        "removedText": "removed:",
+        "mark": {
+          "added": "New",
+          "changed": "Changed",
+          "removed": "Removed"
+        },
+        "added": "This use case is new in this change.",
+        "removed": "This change removes the use case. Below is the text in use.",
+        "noFields": "The use case fills in none of these fields; open its page for the whole text.",
+        "more": "Steps ({steps}) and rules ({rules})",
+        "moreChanged": "changed",
+        "steps": "Steps",
+        "rules": "Rules",
+        "noRules": "None.",
+        "openItem": "Open the whole use case"
+      },
+      "changes": {
+        "note": "{author}'s note",
+        "noNote": "No note.",
+        "inCase": "In this use case",
+        "first": "Nothing is approved yet, so everything is new.",
+        "noCompare": "This change is older than the one in use, so it is not compared here.",
+        "failed": "Could not read the text in use to compare with. The full comparison shows every change.",
+        "added": "The whole use case is new.",
+        "removed": "The whole use case is removed.",
+        "nothing": "The change is outside these fields: see the full comparison.",
+        "compare": "Full comparison"
+      },
+      "ba": {
+        "reviewing": "@ba is checking this use case, usually for about 5 minutes.",
+        "reviewingText": "You can read ahead. This card updates when it is done.",
+        "broke": "@ba could not finish checking this time, so the list may miss something.",
+        "none": "@ba sees nothing to settle.",
+        "noneWithout": "Nothing to settle.",
+        "intro": "Pick one answer for each point. Agree opens once every point is settled.",
+        "decideLabel": "Points to settle",
+        "elsewhere": "{count, plural, one {# point elsewhere in the document to settle} other {# points elsewhere in the document to settle}}",
+        "elsewhereText": "Agree waits for these too.",
+        "advice": "More suggestions ({count})",
+        "adviceText": "Advice only: none of these holds your decision.",
+        "about": "About",
+        "sources": "See sources",
+        "choices": "Choices",
+        "pickedNote": "You pick {option}. Note (optional)",
+        "howSettled": "How is it settled?",
+        "noteMissing": "Say how it is settled.",
+        "settle": "Settle",
+        "settled": "Settled",
+        "settling": "Settling",
+        "cancel": "Cancel",
+        "settledToast": "Settled with {option}",
+        "settledNoteToast": "Point settled",
+        "failed": "Could not read @ba's notes.",
+        "retry": "Try again"
+      },
+      "decide": {
+        "title": "4. Decide",
+        "hint": "Agree when the use case reads right to you. When something is wrong or missing, ask for changes: the author gets your note.",
+        "approve": "Agree",
+        "approving": "Sending",
+        "request": "Ask for changes",
+        "noteLabel": "What needs changing?",
+        "noteMissing": "Say what needs changing.",
+        "send": "Send the request",
+        "sending": "Sending",
+        "cancel": "Cancel",
+        "lock": {
+          "ba": "@ba is checking; Agree opens when it is done.",
+          "here": "{count, plural, one {Choose an answer for the # point in step 3 and Agree opens.} other {Choose an answer for the # points in step 3 and Agree opens.}}",
+          "elsewhere": "{count, plural, one {# point elsewhere in the document still needs settling (step 3); Agree opens once it is.} other {# points elsewhere in the document still need settling (step 3); Agree opens once they are.}}",
+          "both": "Settle the {here} points of this use case and the {elsewhere} elsewhere in the document (step 3), and Agree opens."
+        },
+        "own": {
+          "approve": "You agreed on {date}. You can still change your mind.",
+          "request_changes": "You asked for changes on {date}."
+        },
+        "blocked": {
+          "reader": "You can only read this project, so you cannot review.",
+          "author": "You wrote this change, so someone else in the team reviews it.",
+          "closed": "This change no longer waits for review.",
+          "unchanged": "This change does not touch this use case, so it needs no review of its own."
+        },
+        "done": {
+          "approve": "You agreed on this use case.",
+          "approvedAll": "You agreed, and the change is now approved.",
+          "request_changes": "You asked for changes. {author} gets your note."
+        },
+        "next": "Next use case",
+        "list": "Back to the list",
+        "again": "Change my decision"
+      },
+      "missingTitle": "This use case is not in this change",
+      "missingText": "No use case {ref} in this change or in the one in use.",
+      "missingVersionTitle": "This change does not exist",
+      "missingVersionText": "{title} has no such change. The list of reviews shows what waits for you."
     },
     "findings": {
       "title": "Findings",

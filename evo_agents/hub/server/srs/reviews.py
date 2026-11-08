@@ -235,7 +235,15 @@ async def review_use_case(
     else:
         name = case.code or case.title
         await notices.tell_author(
-            conn, access.project_id, doc, held, reviewer, notices.CHANGES, use_case=name, note=request.body
+            conn,
+            access.project_id,
+            doc,
+            held,
+            reviewer,
+            notices.CHANGES,
+            use_case=name,
+            case_key=case.key,
+            note=request.body,
         )
     if request.decision == APPROVE and use_case_reviews.ready(after):
         await _approve(conn, doc, held)

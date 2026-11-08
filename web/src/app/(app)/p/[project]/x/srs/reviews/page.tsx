@@ -11,8 +11,6 @@ import { serverApi } from "@/lib/api/server";
 import { requirePlugin } from "@/lib/plugins-server";
 import { PROJECT_NAME } from "@/lib/queries";
 
-import { pageTitle } from "../route-params";
-
 type Props = { params: Promise<{ project: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -20,17 +18,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: t("reviews", { project: decodeURIComponent((await params).project) }) };
 }
 
-/** The review queue of a project that enabled the core plugin srs: the use cases of every version in review. */
+/** The review queue of a project that enabled the core plugin srs: the use cases waiting for review, the visitor's first. */
 export default async function SrsReviewsRoute({ params }: Props) {
   const project = decodeURIComponent((await params).project);
   if (!PROJECT_NAME.test(project)) notFound();
-  const plugin = await requirePlugin("srs", project, "reviews");
+  await requirePlugin("srs", project, "reviews");
   const api = await serverApi();
   const client = getQueryClient();
   const error = await prefetch(client, srsReviewQueueQuery(() => api, project));
   return (
     <HydrationBoundary state={dehydrate(client)}>
-      <ReviewQueuePage project={project} title={pageTitle(plugin, "reviews", "SRS reviews")} initialError={error} />
+      <ReviewQueuePage project={project} initialError={error} />
     </HydrationBoundary>
   );
 }

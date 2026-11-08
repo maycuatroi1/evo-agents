@@ -37,7 +37,8 @@ export function isDeciding(finding: Pick<SrsFinding, "status" | "level">): boole
   return finding.status === "open" && finding.level === "decide";
 }
 
-const LEVEL_ORDER: Record<FindingLevel, number> = { decide: 0, advisory: 1, info: 2 };
+/** The order findings of the same group are listed in: those to decide, then advisory, then info. */
+export const FINDING_LEVEL_ORDER: Record<FindingLevel, number> = { decide: 0, advisory: 1, info: 2 };
 
 export type FindingGroups = { decide: SrsFinding[]; open: SrsFinding[]; settled: SrsFinding[] };
 
@@ -52,7 +53,7 @@ export function groupFindings(findings: readonly SrsFinding[]): FindingGroups {
   const settledAt = (finding: SrsFinding) => (finding.settled_at ? Date.parse(finding.settled_at) : 0);
   return {
     decide: open.filter(isDeciding).sort(byId),
-    open: open.filter((finding) => !isDeciding(finding)).sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level] || byId(a, b)),
+    open: open.filter((finding) => !isDeciding(finding)).sort((a, b) => FINDING_LEVEL_ORDER[a.level] - FINDING_LEVEL_ORDER[b.level] || byId(a, b)),
     settled: [...settled].sort((a, b) => settledAt(b) - settledAt(a) || b.id - a.id),
   };
 }

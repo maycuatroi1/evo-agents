@@ -23,7 +23,7 @@ export function documentsHref(project: string): Route {
   return pluginPageHref(project, PLUGIN, "documents");
 }
 
-/** The review queue: the use cases of every version in review, grouped by version. */
+/** The review queue: the use cases waiting for review, those waiting for the visitor first. */
 export function reviewsHref(project: string): Route {
   return pluginPageHref(project, PLUGIN, "reviews");
 }
@@ -68,9 +68,9 @@ export function caseAnchor(key: string): string {
   return `case-${key}`;
 }
 
-/** A use case's row on its version's review page, where its reviewer approves it or asks for changes. */
-export function caseReviewHref(project: string, slug: string, number: number, key: string): Route {
-  return `${reviewHref(project, slug, number)}#${encodeURIComponent(caseAnchor(key))}` as Route;
+/** The review of one use case of a version, by the use case's key: what it says, what changed, @ba's notes, the decision. */
+export function caseHref(project: string, slug: string, number: number, key: string): Route {
+  return `${reviewHref(project, slug, number)}/cases/${encodeURIComponent(key)}` as Route;
 }
 
 export function compareHref(project: string, slug: string, from: number, to: number): Route {

@@ -66,9 +66,15 @@ Call `srs__finding` with `action: record`, the document, the version, the item w
   graph says otherwise), `overlap` (two that share part of their scope);
 - `level`: `decide` when members must choose between the two, `advisory` when they should look, `info` otherwise. An
   open finding of level `decide` holds the version's approval;
-- `summary`: the conflict in one sentence;
+- `summary`: the conflict in plain words, **in the language the document is written in**, for a reviewer who has not
+  read the sources: what this version says, what the other item, plan or file says, and, for level `decide`, the
+  choice members must make. Two or three short sentences; no node ids or file paths here, they go in `sources`;
+- `options`: for level `decide`, two to four choices the reviewer picks from on the review page, shown as A, B, C,
+  each one short sentence in the document's language saying what the document would then state (such as "Thêm bước
+  người thay merge vào use case" and "Bỏ bước đó khỏi bộ đo"). Leave it out for the other levels;
 - `sources`: what shows it, each `{kind, ref, note}`: `code` (the code of the other item, such as `UC ORD-2`),
-  `node` (a node id `kg_search` or `kg_context` gave), `path` (`repo:path` of a file or document).
+  `node` (a node id `kg_search` or `kg_context` gave), `path` (`repo:path` of a file or document). Write each `note`
+  in the document's language too.
 
 The hub looks each source up and refuses the finding, writing nothing, when it cannot find one. **A conflict with no
 source is no finding: do not record it.** Do not record again a conflict an open finding already holds.

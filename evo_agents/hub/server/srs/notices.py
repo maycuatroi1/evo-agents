@@ -135,6 +135,10 @@ async def tell_reviewers(
     body = _body(held, cases, run, settled)
     title = f"v{held.number} of {doc.slug} in {rules.name} waits for your review"
     cases_named = [case.code or case.key for case in cases]
+    if len(cases) == 1:  # one use case to read: its review, else the list of what waits
+        link = store.case_path(rules.name, doc.slug, held.number, cases[0].key)
+    else:
+        link = store.queue_path(rules.name)
     told = []
     for user_id in await reviewers(conn, project_id, doc, held, settings):
         if await _told(conn, user_id, held):
@@ -148,7 +152,7 @@ async def tell_reviewers(
             body=body,
             project_id=project_id,
             details=_details(doc, held, READY, use_cases=cases_named, review_run=run.id if run else None),
-            link=store.review_path(rules.name, doc.slug, held.number),
+            link=link,
         )
         told.append(user_id)
     return told
@@ -173,6 +177,7 @@ async def tell_author(
     event: str,
     *,
     use_case: str | None = None,
+    case_key: str | None = None,
     note: str = "",
 ) -> bool:
     """Tell the author of ``held`` that ``reviewer`` (id, login) asked for changes on it, or on ``use_case``
@@ -197,7 +202,11 @@ async def tell_author(
         body=note.strip() or None,
         project_id=project_id,
         details=_details(doc, held, event, reviewer=login, use_case=use_case),
-        link=store.review_path(rules.name, doc.slug, held.number),
+        link=(
+            store.case_path(rules.name, doc.slug, held.number, case_key)
+            if case_key
+            else store.review_path(rules.name, doc.slug, held.number)
+        ),
     )
     return True
 

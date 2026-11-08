@@ -293,6 +293,7 @@ services:
     environment:
       EVO_HUB_API_INTERNAL_URL: ${EVO_HUB_API_INTERNAL_URL:-http://evo-agents-hub-api:8080}
       EVO_HUB_WEB_TIME_ZONE: ${EVO_HUB_WEB_TIME_ZONE:-Asia/Ho_Chi_Minh}
+      EVO_HUB_WEB_DEFAULT_LOCALE: ${EVO_HUB_WEB_DEFAULT_LOCALE:-}
     expose: ["3000"]
     healthcheck:
       test:

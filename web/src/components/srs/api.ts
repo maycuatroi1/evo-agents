@@ -22,6 +22,7 @@ export type SrsUseCase = Schemas["SrsUseCase"];
 export type SrsUseCaseReview = Schemas["SrsUseCaseReview"];
 export type SrsVersionCases = Schemas["SrsVersionCases"];
 export type SrsQueuedVersion = Schemas["SrsQueuedVersion"];
+export type SrsQueuedUseCase = Schemas["SrsQueuedUseCase"];
 export type UseCaseState = SrsUseCase["state"];
 export type SrsItem = Schemas["SrsItem"];
 export type SrsProblem = Schemas["SrsProblem"];
@@ -38,6 +39,7 @@ export type SrsImport = Schemas["SrsImport"];
 export type SrsFinding = Schemas["SrsFinding"];
 export type SrsFindingSource = Schemas["SrsFindingSource"];
 export type SrsReviewRun = Schemas["SrsReviewRun"];
+export type SrsSettleIn = Schemas["SrsSettleIn"];
 export type VersionState = SrsVersion["state"];
 export type ItemKind = SrsItem["kind"];
 export type DocumentKind = SrsDocumentSummary["kind"];
@@ -55,6 +57,7 @@ export const srsKeys = {
     [...srsKeys.document(project, slug), "diff", from, to] as const,
   comments: (project: string, slug: string) => [...srsKeys.document(project, slug), "comments"] as const,
   findings: (project: string, slug: string) => [...srsKeys.document(project, slug), "findings"] as const,
+  openFindings: (project: string, slug: string) => [...srsKeys.findings(project, slug), "open"] as const,
   reviews: (project: string) => [...srsKeys.all(project), "reviews"] as const,
 };
 
@@ -115,6 +118,19 @@ export const srsFindingsQuery = (api: ApiSource, project: string, slug: string) 
       call(api().GET("/v1/x/srs/{project}/documents/{slug}/findings", { params: { path: { project, slug } }, signal })),
   });
 
+/** The open conflicts of a document, oldest first: what the review of a use case settles or reads as advice. */
+export const srsOpenFindingsQuery = (api: ApiSource, project: string, slug: string) =>
+  queryOptions({
+    queryKey: srsKeys.openFindings(project, slug),
+    queryFn: ({ signal }) =>
+      call(
+        api().GET("/v1/x/srs/{project}/documents/{slug}/findings", {
+          params: { path: { project, slug }, query: { status: "open" } },
+          signal,
+        }),
+      ),
+  });
+
 /** The config the plugin gets in the project (roles and approval policy), which every member reads. */
 export const srsConfigQuery = (api: ApiSource, project: string) =>
   queryOptions({
@@ -158,6 +174,16 @@ export async function reviewUseCase(api: ApiClient, project: string, slug: strin
   const headers = await csrfHeaders(api);
   const params = { path: { project, slug, number, ref } };
   return call(api.POST("/v1/x/srs/{project}/documents/{slug}/versions/{number}/items/{ref}/reviews", { params, body, headers }));
+}
+
+/**
+ * Settle an open finding from the review of a use case: by its choice `option` (0 for A) with an optional note, or, for
+ * a finding that offers none, by `note` alone.
+ */
+export async function settleFinding(api: ApiClient, project: string, slug: string, findingId: number, body: SrsSettleIn) {
+  const headers = await csrfHeaders(api);
+  const params = { path: { project, slug, finding_id: findingId } };
+  return call(api.POST("/v1/x/srs/{project}/documents/{slug}/findings/{finding_id}/settle", { params, body, headers }));
 }
 
 export async function addComment(api: ApiClient, project: string, slug: string, body: SrsCommentIn) {

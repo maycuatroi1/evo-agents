@@ -128,10 +128,23 @@ class SrsVersionCases(SrsVersion):
     use_cases: list[SrsUseCase]
 
 
+class SrsQueuedUseCase(SrsUseCase):
+    """A use case to review in the queue, with what a reviewer reads first and the open findings about it (itself or a
+    business rule under it)."""
+
+    intent: str | None = Field(
+        description="what its actor wants (its Intent, or the Objective of an older use case), as the version reads; "
+        "null for one it drops"
+    )
+    deciding: int = Field(description="its open findings of level decide, which hold approval")
+    noted: int = Field(description="its open findings of another level, advice only")
+
+
 class SrsQueuedVersion(SrsVersionCases):
     """A version in review of a document the caller sees, with the use cases it needs reviewed, what holds its approval
     now and whether the caller may review it."""
 
+    use_cases: list[SrsQueuedUseCase]
     document: str = Field(description="the document's slug")
     document_title: str
     held_by: Literal["ba_review", "findings"] | None = Field(
@@ -409,12 +422,22 @@ class SrsFinding(BaseModel):
     chat_link: str | None = Field(description="the link of the chat message that settled it")
     run_id: int | None = Field(description="the run of @ba that recorded it")
     created_at: datetime
+    options: list[str] = Field(description="the choices a member picks from to settle it (A, B, ...); empty for none")
 
 
 class SrsWaiveIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reason: str = Field(min_length=1, max_length=MAX_RESOLUTION_CHARS, description="why, kept as its resolution")
+
+
+class SrsSettleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    option: int | None = Field(None, ge=0, le=3, description="the choice picked, 0 for A; needed when it offers any")
+    note: str = Field(
+        "", max_length=MAX_RESOLUTION_CHARS, description="why; the resolution of a finding with no choice"
+    )
 
 
 def edit_changes(changes: list[SrsChange]) -> list[edits.Change]:

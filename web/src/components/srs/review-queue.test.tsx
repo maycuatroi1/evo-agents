@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { queryKeys } from "@/lib/queries";
-import { aUseCase, caseReview, queued } from "@/test/fixtures/srs";
+import { aQueuedCase, caseReview, queued } from "@/test/fixtures/srs";
 import { renderVi } from "@/test/render";
 
 import { type SrsQueuedVersion, srsKeys } from "./api";
@@ -14,18 +13,18 @@ import { ReviewQueuePage } from "./review-queue-page";
 const PROJECT = "demo";
 
 /** A client that holds the queue and the visitor bao, a writer of the project, and never asks the API. */
-function show(queue: SrsQueuedVersion[]) {
+function show(queue: SrsQueuedVersion[], role: "writer" | "reader" = "writer") {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
   client.setQueryData(srsKeys.reviews(PROJECT), queue);
   client.setQueryData(queryKeys.whoami, {
     login: "bao",
     admin: false,
     token: { kind: "web", scopes: [], expires_at: null },
-    grants: [{ project: PROJECT, role: "writer", max_level: "internal" }],
+    grants: [{ project: PROJECT, role, max_level: "internal" }],
   });
   return renderVi(
     <QueryClientProvider client={client}>
-      <ReviewQueuePage project={PROJECT} title="SRS reviews" initialError={null} />
+      <ReviewQueuePage project={PROJECT} initialError={null} />
     </QueryClientProvider>,
   );
 }
@@ -34,11 +33,14 @@ beforeEach(() => vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("no
 afterEach(() => vi.unstubAllGlobals());
 
 const SHOP = queued({
+  author: "erin",
+  summary: "Giới hạn giỏ hàng ở 50 dòng và thêm bước kiểm tra tồn kho trước khi đặt",
   held_by: "findings",
   deciding: 2,
+  review_run: { id: 40, state: "done" },
   use_cases: [
-    aUseCase({ key: "uc1" }),
-    aUseCase({ key: "uc2", code: "UC ORD-2", title: "Cancel an order", reviews: [caseReview({ reviewer: "bao" })] }),
+    aQueuedCase({ key: "uc1", deciding: 2, intent: "Khách hàng **đặt** đơn từ giỏ hàng" }),
+    aQueuedCase({ key: "uc2", code: "UC ORD-2", title: "Cancel an order", reviews: [caseReview({ reviewer: "bao" })] }),
   ],
 });
 const BILLING = queued({
@@ -49,61 +51,67 @@ const BILLING = queued({
   author: "chi",
   held_by: "ba_review",
   review_run: { id: 431, state: "running" },
-  use_cases: [aUseCase({ key: "b1", code: "UC BIL-1", title: "Refund a payment", change: "added" })],
+  use_cases: [aQueuedCase({ key: "b1", code: "UC BIL-1", title: "Refund a payment", change: "added", intent: null })],
 });
 
 describe("ReviewQueuePage", () => {
-  it("lands a reviewer on what waits for them, and shows every version under All with what holds it", async () => {
-    const user = userEvent.setup();
+  it("explains the page, then lists what waits for the reviewer first, each card in plain words", () => {
     show([SHOP, BILLING]);
-    expect(screen.getByTestId("srs-queue")).toHaveAttribute("data-filter", "mine");
-    expect(screen.getByTestId("srs-queue-versions-count")).toHaveTextContent("2 version đang chờ duyệt");
-    expect(screen.getByTestId("srs-queue-waiting-count")).toHaveTextContent("2 mục chờ bạn duyệt");
-    expect(screen.getByRole("button", { name: /Chờ tôi duyệt/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Việc cần duyệt");
+    expect(screen.getByText(/Đồng đội gửi các use case dưới đây để bạn đọc và quyết định/)).toBeInTheDocument();
+    expect(screen.getByTestId("srs-queue-waiting-count")).toHaveTextContent("1 mục chờ bạn");
 
-    // bao reviewed UC ORD-2 already: only UC ORD-1 of demo-shop and UC BIL-1 of billing wait for them
-    let cases = screen.getAllByTestId("srs-queue-case");
-    expect(cases.map((row) => row.getAttribute("data-key"))).toEqual(["uc1", "b1"]);
-    const review = within(cases[0]).getByTestId("srs-queue-review");
-    expect(review).toHaveAttribute("href", "/p/demo/x/srs/documents/demo-shop/versions/3#case-uc1");
-    expect(within(cases[0]).getByTestId("srs-queue-case-link")).toHaveAttribute("href", "/p/demo/x/srs/documents/demo-shop/versions/3#case-uc1");
+    const mine = screen.getByTestId("srs-queue-mine");
+    expect(within(mine).getByRole("heading", { level: 2 })).toHaveTextContent("Chờ bạn");
+    const [card] = within(mine).getAllByTestId("srs-queue-case");
+    expect(card).toHaveAttribute("data-key", "uc1");
+    expect(within(card).getByTestId("srs-queue-status")).toHaveTextContent("Cần chốt 2 điểm trước");
+    expect(within(card).getByTestId("srs-queue-byline")).toHaveTextContent("erin gửi");
+    expect(within(card).getByRole("heading", { level: 3 })).toHaveTextContent("Place an order");
+    expect(card).toHaveTextContent("Demo Shop: Order Service");
+    expect(within(card).getByTestId("srs-queue-summary")).toHaveTextContent("Lần này sửa: Giới hạn giỏ hàng ở 50 dòng");
+    expect(within(card).getByTestId("srs-queue-intent")).toHaveTextContent("Mục tiêu: Khách hàng đặt đơn từ giỏ hàng");
+    expect(within(card).getByTestId("srs-queue-ba")).toHaveTextContent("@ba đã kiểm tra xong, nêu 2 điểm cần bạn chọn");
+    const read = within(card).getByTestId("srs-queue-review");
+    expect(read).toHaveTextContent("Đọc và duyệt");
+    expect(read).toHaveAttribute("href", "/p/demo/x/srs/documents/demo-shop/versions/3/cases/uc1");
 
-    const [shop, billing] = screen.getAllByTestId("srs-queue-version");
-    expect(within(shop).getByTestId("srs-queue-hold")).toHaveTextContent("Còn 2 phát hiện cần quyết định chưa chốt");
-    expect(within(shop).queryByTestId("srs-queue-round")).toBeNull();
-    expect(within(billing).getByTestId("srs-queue-hold")).toHaveTextContent("@ba đang rà soát");
-    expect(within(billing).getByTestId("srs-review-run")).toHaveAttribute("data-run-id", "431");
-    expect(within(billing).getByTestId("srs-queue-round")).toHaveTextContent("Vòng 2");
-    expect(within(billing).getByTestId("srs-queue-byline")).toHaveTextContent("Người viết chi");
-
-    await user.click(screen.getByRole("button", { name: /Tất cả/ }));
-    expect(screen.getByTestId("srs-queue")).toHaveAttribute("data-filter", "all");
-    cases = screen.getAllByTestId("srs-queue-case");
-    expect(cases.map((row) => row.getAttribute("data-key"))).toEqual(["uc1", "uc2", "b1"]);
-    expect(within(cases[1]).getByTestId("srs-queue-reviewer")).toHaveTextContent("bao");
-    expect(within(cases[1]).getByTestId("srs-queue-reviewer")).toHaveTextContent("bạn");
+    const others = screen.getByTestId("srs-queue-others");
+    expect(within(others).getByRole("heading", { level: 2 })).toHaveTextContent("Đang chờ @ba hoặc người khác");
+    const cards = within(others).getAllByTestId("srs-queue-case");
+    expect(cards.map((one) => one.getAttribute("data-status"))).toEqual(["approved", "ba_review"]);
+    expect(within(cards[1]).getByTestId("srs-queue-status")).toHaveTextContent("@ba đang kiểm tra, khoảng 5 phút");
+    expect(within(cards[1]).getByTestId("srs-queue-ba")).toHaveTextContent("@ba đang kiểm tra");
+    expect(within(cards[1]).getByTestId("srs-queue-change")).toHaveTextContent("Use case mới");
+    expect(within(cards[1]).queryByTestId("srs-queue-intent")).toBeNull();
   });
 
-  it("says when nothing waits for the reviewer, and when nothing is in review at all", async () => {
-    const user = userEvent.setup();
-    const done = queued({ use_cases: [aUseCase({ reviews: [caseReview({ reviewer: "bao" })] })] });
+  it("says kindly when nothing waits for the reviewer, and when nothing is in review at all", () => {
+    const done = queued({ use_cases: [aQueuedCase({ reviews: [caseReview({ reviewer: "bao" })] })] });
     const { unmount } = show([done]);
-    expect(screen.getByTestId("srs-queue-mine-empty")).toHaveTextContent("Không có gì chờ bạn duyệt");
-    await user.click(screen.getByTestId("srs-queue-show-all"));
-    expect(screen.getAllByTestId("srs-queue-case")).toHaveLength(1);
-    expect(screen.getByTestId("srs-queue-case")).toHaveAttribute("data-state", "pending");
+    expect(screen.getByTestId("srs-queue-mine-empty")).toHaveTextContent("Không có use case nào chờ bạn duyệt");
+    expect(screen.getByTestId("srs-queue-mine-empty")).toHaveTextContent("bạn sẽ nhận thông báo");
+    expect(within(screen.getByTestId("srs-queue-others")).getByTestId("srs-queue-status")).toHaveTextContent("Đã duyệt");
+    expect(screen.queryByTestId("srs-queue-waiting-count")).toBeNull();
     unmount();
 
     show([]);
-    expect(screen.getByTestId("srs-queue-empty")).toHaveTextContent("Không có version nào đang chờ duyệt");
-    expect(screen.queryByTestId("srs-queue-filter")).toBeNull();
+    expect(screen.getByTestId("srs-queue-empty")).toHaveTextContent("Không có use case nào chờ bạn duyệt");
   });
 
-  it("lists a reader's queue under All, with no Review", () => {
-    show([queued({ may_review: false, held_by: null })]);
-    expect(screen.getByTestId("srs-queue")).toHaveAttribute("data-filter", "all");
-    expect(screen.getByTestId("srs-queue-hold")).toHaveTextContent("Sẵn sàng duyệt");
-    expect(screen.queryByTestId("srs-queue-review")).toBeNull();
-    expect(screen.queryByTestId("srs-queue-waiting-count")).toBeNull();
+  it("gives someone who may not review a View button and the status Waiting for someone else", () => {
+    show([queued({ may_review: false })], "reader");
+    const card = screen.getByTestId("srs-queue-case");
+    expect(within(card).getByTestId("srs-queue-status")).toHaveTextContent("Chờ người khác");
+    expect(within(card).getByTestId("srs-queue-review")).toHaveTextContent("Xem");
+    expect(screen.getByTestId("srs-queue-mine-empty")).toBeInTheDocument();
+  });
+
+  it("gives a version that changes no use case one card that opens the version's review", () => {
+    show([queued({ document: "northwind-terms", document_title: "Northwind Terms", number: 2, use_cases: [] })]);
+    const card = screen.getByTestId("srs-queue-case");
+    expect(within(card).getByRole("heading", { level: 3 })).toHaveTextContent("Phần sửa ngoài use case");
+    expect(within(card).getByTestId("srs-queue-status")).toHaveTextContent("Chờ bạn duyệt");
+    expect(within(card).getByTestId("srs-queue-review")).toHaveAttribute("href", "/p/demo/x/srs/documents/northwind-terms/versions/2");
   });
 });

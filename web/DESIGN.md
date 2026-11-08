@@ -275,6 +275,8 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Plugins, the store and a project's; a plugin enabled in a project; disabled there; a task run, a task a plugin handed an agent type | `Puzzle`; `Plug`; `Unplug`; `Puzzle` |
 | A plugin's tier: isolated, core; a core plugin of the hub's image; a page's sandbox | `Box`, `Cpu`; `PackageCheck`; `ShieldCheck` |
 | SRS, a project's BA documents; Import Markdown; a version's review; a document's comments; an item's page; the review queue; the notices srs_review and srs_reviewed | `FileText`; `Upload`; `ClipboardCheck`; `MessageSquareText`; `ArrowUpRight`; `ListChecks`; `ClipboardCheck`, `FileCheck` |
+| The review queue's card status: waiting for the reader, points to settle first, @ba checking, approved, changes asked, waiting for someone else; @ba's line, stopped | `Eye`, `MessageCircleQuestion`, `Bot`, `CircleCheck`, `Undo2`, `Users`; `Bot`, `TriangleAlert` |
+| A use case's review: back to the queue; Read and review on a version's row; a field or a rule changed (a mark, no icon); Agree, Ask for changes, Agree locked; the next use case; its folds | `ArrowLeft`; `BookOpenCheck`; none; `CircleCheck`, `Undo2`, `Lock`; `ArrowRight`; `ChevronRight` |
 | An SRS item's kind: section, use case, business rule, screen, NFR, common rule, glossary, approval page, revision history | `Heading`, `Route`, `Scale`, `AppWindow`, `Gauge`, `BookCheck`, `BookA`, `Signature`, `History` |
 | An SRS version: draft, in review, approved, superseded; an item added, changed, removed, moved | `CircleDashed`, `Eye`, `CircleCheck`, `CircleMinus`; `Plus`, `PencilLine`, `Minus`, `MoveRight` |
 | A permission a plugin asks for; an upgrade waiting; the trusted publishers | `KeyRound`; `ArrowUpCircle`; `BadgeCheck` |
@@ -1882,17 +1884,46 @@ Shared pieces built on them:
   answers 404. Its words are the `srs` namespace of both message files. The documents (`/documents`) are one `DataCard`
   table: title over slug, kind, the approved and the latest version as a `v8` chip beside its state, who created it;
   the tabs Documents and Import (writers) sit under the head, with Waiting for review (the review queue), Settings (the
-  plugin's page in the project) and Import Markdown in the actions. The review queue (`/reviews`, the manifest's page
-  `reviews` in the menu, `review-queue-page.tsx`) is one card per version in review, the one submitted first first: the
-  document's title (to the document), `vN` (to its review), the round from 2, who wrote it and when it was submitted,
-  and a line for what holds approval (@ba's review with its run, the findings to decide in `attention`, else Ready for
-  review); then each use case to review with its code, its title linking to its row on the review page
-  (`#case-<key>`), its change and state pills, who reviewed it, and Review while the visitor may review the version and
-  the use case is pending. The facets Waiting for me (where a visitor who may review a version lands: the pending use
-  cases with no review of theirs, and a version that changes none until they review its round) and All count what they
-  hold; the head counts the versions and, in `attention`, what waits for the visitor. While @ba reviews a version of the
-  queue, the page reads it again every 15 s. The notices srs_review (to the reviewers, once nothing holds the version)
-  and srs_reviewed (to its author) link the version's review as Open the review. A document's pages share `DocumentHead`: the title, the slug as a chip, the kind, one
+  plugin's page in the project) and Import Markdown in the actions. The two review screens are written for a reviewer
+  who has never used the hub, in plain words: the Vietnamese copy says "bản sửa" (a version), "lần gửi" (a round) and
+  "điểm @ba lưu ý" (a finding), never version, round, finding or policy, and speaks to the reader as "bạn". The review
+  queue (`/reviews`, the manifest's page `reviews` in the menu, `review-queue-page.tsx`, `queue-card.tsx`) heads with
+  Reviews waiting for you, one line saying what the reader is asked to do and how long it takes, and, in `attention`,
+  how many cards wait for them. A card per use case to review (a version that changes none is one card, opening the
+  version's review) sits in Waiting for you or, after it, Waiting for @ba or someone else, each group in the queue's
+  order (the version submitted first, first), two columns from xl. A card is its status as a pill (Waiting for your
+  review and Settle n points first in `attention`, @ba is checking in `running`, Approved in `success`, You asked for
+  changes and Someone asked for changes neutral, Waiting for someone else an outline; `review-queue-model.ts` decides
+  it), who sent it and how long ago, the use case's title over its code and document (New use case or Removed this
+  time as a tag), This time: and the version's summary cut to 160 characters, Goal: and the use case's intent cut to
+  200, a line about @ba's check (checking, done with the points to choose about it or elsewhere in `attention`, done
+  with nothing in the way, or stopped), and one button: Read and review (ink in Waiting for you, secondary after it),
+  or View for someone who may not review the version. With nothing waiting for the reader, the first group says so
+  kindly and that a notice comes when one arrives. While @ba checks a version of the queue, the page reads it again
+  every 15 s. A use case's review (`/documents/{slug}/versions/{n}/cases/{key}`, `case-review-page.tsx`, its four
+  cards in `case-*-card.tsx`, its pure model in `case-review-model.ts`) links back to the queue, heads with the use
+  case's title and one line (its code, who asks the reader to review the change of which day, and the day the text in
+  use was approved), then the four steps as links to their cards (two columns from lg: what it says and what changed,
+  then @ba and the decision). 1, what the use case says: its fields as labelled rows in plain words (who uses it, what
+  they want, the context, when it starts, what is needed first, when it is done), each change since the version
+  approved last marked New, Changed or Removed and drawn word by word (`field-diff.tsx` on `lib/word-diff.ts`: added
+  words on a `success` tint, removed ones struck through in `danger`, each named for a screen reader), then the
+  Activity Flow and the business rules folded under one line that counts them and says when they changed, each rule
+  with its mark. 2, what changed this time: the author's note, the fields, steps and rules the version added, changed
+  or removed in this use case, and Full comparison. 3, what @ba noted: the open findings about the use case or a rule
+  under it, those to decide first, each its summary as a question and one button per choice (A., B., up to D.);
+  picking one asks for an optional note and settles the finding (`POST .../findings/{id}/settle`), and one with no
+  choice takes a note and Settled; its sources fold under See sources. The points to decide elsewhere in the
+  document, which hold approval too, and the other findings (advice only) fold under a counted line each. While @ba
+  checks the version a neutral banner says it takes about 5 minutes and the reader can read ahead, and the page reads
+  the version and the findings every 15 s. 4, the decision: Agree (ink) and Ask for changes (a required note, What
+  needs changing?), one review of the use case; while @ba checks or points are open, Agree is disabled with a lock and
+  one line in `attention` says what opens it, named in its `aria-describedby`. An author, a reader, a version no
+  longer in review and a use case this version does not touch each get one plain line instead. After a decision the
+  card says what it did, takes the focus, and offers Next use case (the next one waiting for the reader) or Back to
+  the list. The version's review lists the same use cases with Read and review (View for a reader) on each row. The
+  notices srs_review (to the reviewers, once nothing holds the version: the use case's review when it has one to
+  review, else the queue) and srs_reviewed (to its author) open them. A document's pages share `DocumentHead`: the title, the slug as a chip, the kind, one
   line with template, visibility and the approved, in-review and latest versions, Compare and Export (a `.md` the
   browser saves), then the tabs Read, Versions, Review vN and Comments with the open threads counted. Read
   (`/documents/{slug}?v=&s=&edit=`) shows the approved version unless a version is picked (a menu of links, not a
@@ -1922,7 +1953,8 @@ Shared pieces built on them:
   While a finding to decide is open, or the review runs, the form's Approve is disabled with a lock and Request
   changes is taken; a banner under the choices says why (`attention` with the settle chat for findings, neutral with
   the run for the review) and the Approve radio names it in `aria-describedby`. A 409 of the hub still shows as the
-  form's refusal and reads the findings again. No control on the web settles or waives a finding. Compare
+  form's refusal and reads the findings again. No control of the version's review settles or waives a finding; a use
+  case's review settles one by its choices. Compare
   (`/compare?from=&to=`) counts the items that changed in one `MetricStrip` and draws each item's lines as a plan's
   diff does, unified or side by side from md. Import (`/x/srs/import`, a page without a menu item) previews the hub's
   dry run (counts, problems with their lines, what a next version adds, changes and drops, the outline) before Import,

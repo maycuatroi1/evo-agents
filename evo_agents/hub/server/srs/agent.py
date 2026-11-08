@@ -433,6 +433,10 @@ def _finding_text(row: findings.FindingRow, slug: str, done: str) -> str:
         f"Summary: {row.summary}",
         "Sources: " + "; ".join(str(findings.Source(**source)) for source in row.sources),
     ]
+    if row.options:
+        lines.append(
+            "Choices: " + "; ".join(f"{findings.OPTION_KEYS[at]}. {text}" for at, text in enumerate(row.options))
+        )
     if row.status != findings.OPEN:
         by = f" by {row.settled_by}" if row.settled_by else " from the graph" if row.status == findings.RESOLVED else ""
         lines.append(f"{row.status.capitalize()}{by}: {row.resolution}")
@@ -458,7 +462,13 @@ async def _finding(conn: AsyncConnection, who: Acting, args: dict, graph_refs) -
     doc = await _document(conn, who, args["document"], lock=True)
     if action == "record":
         new = findings.NewFinding(
-            args["kind"], args["level"], args["summary"], sources, args.get("version"), args.get("item")
+            args["kind"],
+            args["level"],
+            args["summary"],
+            sources,
+            args.get("version"),
+            args.get("item"),
+            tuple(args.get("options") or ()),
         )
         row = await findings.record(conn, who.access, doc, new, who.run_id, authors)
         return _finding_text(row, doc.slug, "is recorded")
