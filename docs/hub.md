@@ -874,8 +874,10 @@ One turn goes like this:
 5. The turn's tokens and the key's cost, as the gateway counts it, go to `run_spend`, to `runs.usage` (under
    `gateway`, with `total_cost_usd`) and to the attributes of the run's `invoke_agent` span: `gen_ai.request.model`,
    `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` and `evo.cost_usd`.
-6. A run that asked an agent parks until the answer wakes it in a new run. Any other run ends done. A follow-up in
-   the thread wakes the agent in a new run of the same session, as for a worker.
+6. A round whose tools asked an agent or escalated ends the turn, as the agent of a worker ends its turn after the
+   command, so the answer never reaches a turn that goes on without it. A run that asked an agent parks until the
+   answer wakes it in a new run. Any other run ends done. A follow-up in the thread wakes the agent in a new run of
+   the same session, as for a worker.
 
 The tools do what the worker's commands do, through the same code:
 
