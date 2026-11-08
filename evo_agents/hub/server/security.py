@@ -46,7 +46,7 @@ otherwise it gets the same 401 as any other credential. It never works under WOR
 ``run_access_rules`` with 403 and the reason, but those of the groups its owner's run reach opens, which the statement
 that finds the token reads with it (``Principal.run_reach``), and every write made with it, refused or not, adds an
 audit row naming the run. While it is answered, ``run_access_rules.ACTING_RUN`` names the run, so no run starts from
-it; its principal acts for the run (``Principal.acts_for_run``) as the agent of a run on /mcp does, for the rules of
+it unless its owner's run reach holds ``runs``; its principal acts for the run (``Principal.acts_for_run``) as the agent of a run on /mcp does, for the rules of
 the routes open to it; and a stream it opened looks again at each turn whether it is still live (``still_live``). The
 token of a KG run (``kg_run_access``, host ``kg-run:<run id>``) lives the same way without its run running as its
 owner, is never a hub admin, and reaches the routes of ``kg_run_access.ROUTES`` on its run's project alone. The
@@ -595,8 +595,7 @@ class Authenticate:
         if principal is None or principal.kind != RUN:
             await answer(scope, receive, send)
             return
-        acting = run_access_rules.ACTING_RUN.set(principal.run_id)  # no run starts while it answers
-        try:
+        with run_access_rules.acting(principal.run_id, principal.run_reach):  # no run starts unless its reach says so
             if request.method not in UNSAFE_METHODS:
                 await answer(scope, receive, send)
                 return
@@ -606,8 +605,6 @@ class Authenticate:
             finally:
                 engine = request.app.state.engine
                 await run_access_rules.record_write(engine, principal, request.method, path, watched.status)
-        finally:
-            run_access_rules.ACTING_RUN.reset(acting)
 
     async def _check(self, request: Request, worker_route: bool) -> Response | None:
         config = request.app.state.config

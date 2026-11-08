@@ -1,9 +1,9 @@
 """The run reach of a member (``run_access_rules.REACH_GROUPS``, ``users.run_reach``): the groups agents, workers,
-curator, releases and answers, which the tokens of the member's runs that run as them reach once the member opened them.
+curator, releases, answers and runs, which the tokens of the member's runs that run as them reach once the member opened them.
 
 Empty, a run's token is refused there as before, with a refusal that says how the owner opens the group. Each group
 opened lets exactly its paths through; the terminal, the live view, takeover and handback of a run, the worker
-protocol, an agent's accounts, secrets, tokens, the run reach itself and every other group stay refused with all five
+protocol, an agent's accounts, secrets, tokens, the run reach itself and every other group stay refused with all six
 open. Only the member reads and sets their own, at GET and PUT /v1/autonomy/run-reach, each change audited
 ``run_access.reach``; the hub reads it with the run's token, so a change holds from the run's next request. The command
 line is ``evo-agents hub autonomy run-reach``."""
@@ -23,17 +23,18 @@ from sqlalchemy import func, select
 from evo_agents.hub import client as hub_client
 from evo_agents.hub import tables
 from evo_agents.hub.cli_autonomy import Usage, reach_groups
-from evo_agents.hub.server import autonomy_store, run_access_rules
+from evo_agents.hub.server import autonomy_store, run_access, run_access_rules
 from evo_agents.hub.server.autonomy_models import RunReachSet
 from evo_agents.hub.server.run_access_rules import REACH_GROUPS, refusal
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
-from tests.hub.test_credentials_api import OWNER, PROJECT, worker_of
+from tests.hub.test_credentials_api import OWNER, PLAN, PROJECT, STEPS, worker_of
 from tests.hub.test_run_access import (  # noqa: F401  (hub is a fixture: its default agent has an account pool)
     as_me_run,
     as_run,
     audit_of,
+    chat_worker,
     command,
     hub,
     owner_admin,
@@ -79,6 +80,15 @@ OPTIONAL = {
         ("POST", "/v1/projects/p/releases/resume"),
     ),
     "answers": (("POST", "/v1/kg/p/answers"),),
+    "runs": (
+        ("POST", "/v1/projects/p/runs"),
+        ("POST", "/v1/projects/p/plan-runs"),
+        ("POST", "/v1/projects/p/author-runs"),
+        ("POST", "/v1/projects/p/runs/9/rerun"),
+        ("POST", "/v1/projects/p/runs/9/messages"),
+        ("POST", "/v1/projects/p/local-runs/abc/inbox"),
+        ("POST", "/v1/x/editorial/p/posts/3/run"),
+    ),
 }
 # (method, path) refused whatever the owner opened
 FIXED = (
@@ -107,10 +117,9 @@ FIXED = (
     ("POST", "/v1/org/workersx"),  # a segment, not a string's start: the org chart, not its workers
     ("PUT", "/v1/projects/p/policy"),
     ("PUT", "/v1/admin/projects/p/grants/alice"),
-    ("POST", "/v1/projects/p/runs"),
-    ("POST", "/v1/projects/p/plan-runs"),
-    ("POST", "/v1/projects/p/runs/9/rerun"),
     ("POST", "/v1/projects/p/decisions/1/answer"),
+    ("POST", "/v1/projects/p/runs/9/approve"),
+    ("POST", "/v1/x/builder/p/proposals/1/answer"),
 )
 
 
@@ -147,15 +156,15 @@ def test_each_group_opened_lets_exactly_its_own_paths_through(group):
 
 
 @pytest.mark.parametrize(("method", "path"), FIXED)
-def test_the_fixed_groups_stay_refused_with_all_five_open(method, path):
+def test_the_fixed_groups_stay_refused_with_all_six_open(method, path):
     message = refusal(method, path, ALL)
     assert message is not None, (method, path)
     assert "lets their runs reach it" not in message, "a fixed group says no way to open it"
     assert message.endswith("the owner does that with their own sign-in")
 
 
-def test_a_name_outside_the_five_opens_nothing():
-    names = frozenset({"secrets", "tokens", "terminal", "run access", "autonomy", "runs", "decisions", "grants"})
+def test_a_name_outside_the_six_opens_nothing():
+    names = frozenset({"secrets", "tokens", "terminal", "run access", "autonomy", "decisions", "grants"})
     for method, path in FIXED:
         assert refusal(method, path, names | ALL) is not None, (method, path)
 
@@ -246,7 +255,7 @@ def test_a_runs_token_reaches_what_its_owner_opened_from_its_next_request(client
         ("GET", "/v1/tokens"),
         ("PUT", REACH),
         ("PUT", "/v1/autonomy/prefs"),
-        ("POST", f"/v1/projects/{PROJECT}/plan-runs"),
+        ("POST", f"/v1/projects/{PROJECT}/decisions/1/answer"),
     ):
         response = client.request(method, path, json={}, headers=run)
         assert middleware_refused(response), (method, path, response.text)
@@ -301,6 +310,62 @@ def test_a_runs_token_asks_an_answer_job_once_its_owner_opened_answers(client, h
     assert sql(hub_db, jobs) == [(1,)]
 
 
+def test_a_runs_token_starts_runs_and_hands_agents_work_once_its_owner_opened_runs(client, hub, hub_db):
+    """A run that runs as its owner and must drive agents (the demo of an agent system) starts runs and mentions agents
+    in a chat once its owner opened the run reach runs; without it each way is refused and says how, and nothing is
+    queued. A run it starts never runs as the owner, so the owner's account goes no further than the run let."""
+    owner_admin(client, hub)
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)  # a node of the default agent's
+    _, token = as_me_run(client, hub, worker)
+    run = as_run(token)
+    dispatch = f"/v1/projects/{PROJECT}/runs"
+    body = {"plan_id": PLAN, "steps": [STEPS["evo-agents"]]}
+    r = tables.runs
+    count = select(func.count()).select_from(r)
+    before = sql(hub_db, count)
+    made = client.post("/v1/chats", json={"title": "Demo", "people": [], "agents": [PROJECT]}, headers=run)
+    assert made.status_code == 201, made.text
+    messages = f"/v1/chats/{made.json()['id']}/messages"
+
+    refused = client.post(dispatch, json=body, headers=run)
+    assert refused.status_code == 403, refused.text
+    message = refused.json()["message"]
+    assert "(group runs)" in message and message.endswith("run-reach --allow runs`"), message
+    assert client.post(messages, json={"body": f"@{PROJECT} read the diff"}, headers=run).status_code == 201
+    # the other groups open nothing of it
+    others = [group for group in REACH_GROUPS if group != "runs"]
+    assert client.put(REACH, json={"groups": others}, headers=hub["owner"]).status_code == 200
+    assert client.post(dispatch, json=body, headers=run).status_code == 403
+    assert client.post(messages, json={"body": f"@{PROJECT} read it again"}, headers=run).status_code == 201
+    assert sql(hub_db, count) == before, "no run, no chat run while runs is closed"
+    listed = client.get(messages, params={"limit": 50}, headers=hub["owner"]).json()["messages"]
+    said = [m["body"] for m in listed if run_access_rules.NEW_RUN in m["body"]]
+    assert said and all(f"run-reach --allow {','.join(others)},runs`" in text for text in said[-1:]), said
+
+    opened = client.put(REACH, json={"groups": ["runs"]}, headers=hub["owner"])
+    assert opened.status_code == 200, opened.text
+    started = client.post(dispatch, json=body, headers=run)
+    assert started.status_code == 201, started.text
+    new_id = started.json()[0]["id"]
+    assert sql(hub_db, select(r.c.dispatched_by, r.c.as_owner).where(r.c.id == new_id)) == [
+        (sql(hub_db, select(tables.users.c.id).where(tables.users.c.login == OWNER))[0][0], False)
+    ]
+    # the run it starts never runs as the owner: the reach opens no onward account
+    onward = client.post(dispatch, json={**body, "as_me": True}, headers=run)
+    assert onward.status_code == 403 and onward.json()["message"] == run_access.ONWARD, onward.text
+    handed = client.post(messages, json={"body": f"@{PROJECT} read the diff now"}, headers=run)
+    assert handed.status_code == 201, handed.text
+    chat_runs = sql(hub_db, select(r.c.id, r.c.hop, r.c.as_owner).where(r.c.kind == "chat"))
+    assert len(chat_runs) == 1 and chat_runs[0][1:] == (1, False), chat_runs
+    written = [row[0] for row in audit_of(hub_db, "run_access.write")]
+    assert any(f" POST {dispatch} 201" in target for target in written), written
+    assert not any(token in target for target in written)
+
+    assert client.put(REACH, json={"groups": []}, headers=hub["owner"]).status_code == 200
+    again = client.post(dispatch, json=body, headers=run)
+    assert again.status_code == 403 and "(group runs)" in again.json()["message"], again.text
+
+
 def test_the_store_refuses_the_agent_of_a_run_behind_the_middleware(client, hub, hub_db):
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id, _ = as_me_run(client, hub, worker)
@@ -329,7 +394,7 @@ def test_the_store_refuses_the_agent_of_a_run_behind_the_middleware(client, hub,
 def test_allow_parses_a_comma_separated_list_into_the_hubs_order():
     assert reach_groups("curator,agents") == ["agents", "curator"]
     assert reach_groups(" workers , workers ,") == ["workers"]
-    assert reach_groups("answers,releases,agents,workers,curator") == list(REACH_GROUPS)
+    assert reach_groups("runs,answers,releases,agents,workers,curator") == list(REACH_GROUPS)
     for wrong, said in (("", "names one or more"), (",", "names one or more"), ("agents,secrets", "'secrets'")):
         with pytest.raises(Usage) as refused:
             reach_groups(wrong)

@@ -299,7 +299,7 @@ The web's `/org` page has Stop and Lift buttons, with a confirmation that counts
 |---|---|
 | `evo-agents hub autonomy show [--login L] [--agent H --project P] [--repo R] [--json]` | the effective level and each class with its mode and source; `--json` prints principal, project, agent, level, classes, environments, workers |
 | `evo-agents hub autonomy set --level A2 [--class K6=deny]... [--reset]` | your own preference; class overrides merge onto those before, `--reset` drops them (A5 unless `--level`) |
-| `evo-agents hub autonomy run-reach [--allow agents,workers,curator,releases,answers \| --none] [--json]` | what your runs that run as you reach besides what every run's token reaches; `--allow` replaces the set, `--none` clears it (`docs/credentials.md`, "A run that runs as its owner") |
+| `evo-agents hub autonomy run-reach [--allow agents,workers,curator,releases,answers,runs \| --none] [--json]` | what your runs that run as you reach besides what every run's token reaches; `--allow` replaces the set, `--none` clears it (`docs/credentials.md`, "A run that runs as its owner") |
 | `evo-agents hub autonomy ceiling set --unit <slug> --level A3 --note <text> [--class Kn=mode]... [--environment E]... [--worker W]...` | the next ceiling revision, whole: what it leaves out it drops |
 | `evo-agents hub stop (--login L \| --unit SLUG \| --all) [--reason TEXT] [--lift] [--json]` | the stop S4 of a scope, or `--lift` to lift it |
 | `evo-agents worker ask --category merge --pull N [...]` | inside a run: asks a merge decision bound to the head and scope of pull request N, which `gh` reads in the run's directory |
