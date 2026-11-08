@@ -39,11 +39,11 @@ from evo_agents.hub.server.secrets import (
     Secret,
     SecretWrite,
     SecretWritten,
-    _secrets,
     binding_refusal,
     live_secrets,
     own_pools,
     own_workers,
+    owned_secrets,
     provider_holds,
     put_secret,
     sealer_of,
@@ -180,7 +180,7 @@ async def finish_sign_in(request: Request, body: SignInFinish, user: CurrentUser
         raise HTTPException(422, str(exc)) from None
     engine = request.app.state.engine
     async with engine.connect() as conn:
-        existing = _account_of(await _secrets(conn, user.user_id, body.name), body.name)
+        existing = _account_of(await owned_secrets(conn, user.user_id, body.name), body.name)
     kept = (existing.projects, existing.workers, existing.pools) if existing else ([], [], [])
     projects = unique_names(body.projects if body.projects is not None else list(kept[0]))
     if body.workers is None and body.pools is None:  # the account's binding stays

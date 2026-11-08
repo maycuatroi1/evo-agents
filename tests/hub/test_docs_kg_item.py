@@ -5,6 +5,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
+pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.hub.kg_sources import checked
 from evo_agents.hub.server.docs.kg import document_item
 from evo_agents.hub.server.docs.store import KgDocument

@@ -245,7 +245,7 @@ def bound_names(target, key):
     return func.array(names.scalar_subquery(), type_=ARRAY(Text))
 
 
-async def _secrets(conn: AsyncConnection, owner_id: int, name: str | None = None) -> list[Secret]:
+async def owned_secrets(conn: AsyncConnection, owner_id: int, name: str | None = None) -> list[Secret]:
     s, b = tables.secrets, tables.secret_bindings
     listed = select(
         s.c.id,
@@ -273,7 +273,7 @@ async def _secrets(conn: AsyncConnection, owner_id: int, name: str | None = None
 async def list_secrets(request: Request, user: CurrentUser, response: Response) -> list[Secret]:
     """The caller's own secrets, by name, without their values; a hub admin's own too."""
     async with request.app.state.engine.begin() as conn:
-        found = await _secrets(conn, user.user_id)
+        found = await owned_secrets(conn, user.user_id)
     response.headers.update(NO_STORE)
     return found
 
@@ -588,7 +588,7 @@ async def put_secret(
             await drop_tokens(conn, secret_id)
         target = audit_target(secret_id)
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_PUT, target=target)
-        (secret,) = await _secrets(conn, user.user_id, name)
+        (secret,) = await owned_secrets(conn, user.user_id, name)
     extra = {"secret": name, "kind": body.kind, "login": user.login, "replaced": not created, "key_id": sealed.key_id}
     log.info("secret written", extra=extra)
     response.headers.update(NO_STORE)
@@ -659,7 +659,7 @@ async def rebind_secret(
         if not project_ids:  # personal, or its projects went: nothing to bind them on
             raise HTTPException(409, f"secret {name} is bound to no project: write it whole with PUT, naming them")
         await bind_secret(conn, row.id, project_ids, worker_ids, pool_ids)
-        (secret,) = await _secrets(conn, user.user_id, name)
+        (secret,) = await owned_secrets(conn, user.user_id, name)
         target = f"{audit_target(row.id)} {binding_text(secret)}"
         await audit.record(
             conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_REBIND, target=target

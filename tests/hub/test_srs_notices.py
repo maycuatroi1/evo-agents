@@ -5,6 +5,9 @@ whose three use cases are all to review; owner (admin) and someone-else are the 
 from __future__ import annotations
 
 import pytest
+
+pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
+
 from sqlalchemy import select
 
 from tests.hub import pg

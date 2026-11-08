@@ -12,6 +12,10 @@ import urllib.parse
 from datetime import UTC, datetime, timedelta
 
 import pytest
+
+pytest.importorskip("fastapi", reason="the hub server needs the hub-server extra, evo-ak[hub-server]")
+pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
+
 from fastapi import HTTPException
 
 from evo_agents.hub import claude_oauth
