@@ -495,17 +495,45 @@ for one already past, that no run takes it. `account list` adds such a line unde
 ends within 30 days or has ended. For a Claude account the line names `evo-agents hub account login NAME`, and for an
 account on another variable `hub secret set`.
 
-On the web, the Accounts page has **Add Claude account** in its header and in its empty state. The dialog asks for the
-name, the projects (at least one, among those the visitor holds writer on), the workers (optional; none means any of
-theirs), the token in a masked field, and the day it ends, a year from today less a day by default. It shows the steps
-of `claude setup-token` and the matching `evo-agents hub account login` command to copy, for a member who would rather
-have the CLI read the token. A name that is a Claude account already shows a note that saving replaces its token, with
-a button to renew it instead; a name that is another kind of secret is refused, since the `PUT` would replace it whole.
-The dialog refuses an API key, as the CLI does, and forgets the token as soon as it is sent. Each row for
-`CLAUDE_CODE_OAUTH_TOKEN` has **Renew token**, which opens the same dialog with the name, projects and workers locked,
-so only the token and the end change; to move an account, replace it on the Secrets page or pass `--project` or
-`--worker` to `account login`. A token that ends within 30 days shows "Renew before" its day in the State cell, and a
-notice above the table lists each one with a Renew token link; an account past its end shows "Ended" and its day.
+On the web, the Accounts page has **Add Claude account** (the Claude card's Add account, the catalog's Claude entry,
+the empty state). The dialog suggests a name (`claude`, then `claude-2` and on), picks the visitor's project when they
+hold writer on one only, and folds the workers and pools under one line ("Any of yours" until some are picked). How the
+token reaches the hub is a choice of two, the first the default:
+
+- **Sign in** (see "Signing in on the web" below): open claude.ai, approve, paste the code it shows. No terminal.
+- **Paste a token**: the token of `claude setup-token` in a masked field, the day it ends (a year from today less a day
+  by default), and the matching `evo-agents hub account login` command to copy, for a member who would rather have the
+  CLI read the token. The dialog refuses an API key, as the CLI does, and forgets the token as soon as it is sent.
+
+A name that is a Claude account already shows a note that saving replaces its token, with a button to renew it
+instead; a name that is another kind of secret is refused, since the write would replace it whole. Each row for
+`CLAUDE_CODE_OAUTH_TOKEN` has **Renew token**, which opens the same dialog for that account, its projects and workers
+kept, so only the token and the end change; an OAuth account that needs a new sign-in renews the same way and becomes an
+account of a setup token. To move an account, replace it on the Secrets page or pass `--project` or `--worker` to
+`account login`. A token that ends within 30 days shows "Renew before" its day in the State cell, and a notice above the
+table lists each one with a Renew token link; an account past its end shows "Ended" and its day.
+
+#### Signing in on the web
+
+`POST /v1/accounts/claude-sign-in` starts a sign-in (`evo_agents/hub/server/claude_sign_in.py`): the hub draws a PKCE
+verifier and a state, and answers the page of claude.ai to approve on and the flow, the verifier, the state and the time
+sealed for the caller (associated data `claude-sign-in:{user id}`), which the page keeps and sends back. The page of
+claude.ai asks for Claude Code's client, the scope `user:inference` alone and the redirect Claude Code uses when it
+cannot listen on localhost (`https://platform.claude.com/oauth/code/callback`), so after the approval claude.ai shows a
+code (`code#state`) instead of sending the browser anywhere. The page opens it as a link in a new tab, without an
+opener, and asks for a new flow every ten minutes while the dialog is open; the flow of the moment the link was opened
+is the one sent.
+
+`POST /v1/accounts/claude-sign-in/finish` takes the flow, the pasted code and the account: a name, and for a new
+account its projects (one at least), workers or pools; a renewal names the account alone and keeps its bindings. The
+hub opens the flow (400 when it is another member's, altered, or older than 15 minutes), checks the code's state, then
+the name and the bindings as `PUT /v1/secrets/{name}` would (403, 404, 409, 422) before it spends the code, which buys
+one token once. It trades the code at Claude's token endpoint for the token `claude setup-token` makes, asking for a
+year (`expires_in`), and writes it as that `PUT` does, its end a day before the token's. A code the endpoint refuses
+(used, too old, another flow's) is a 502 that writes nothing, and the dialog starts a new sign-in. The answer is the
+secret as `PUT` gives it with the address of the Claude account that approved, when claude.ai names it; the token, the
+code and the verifier are in no answer, log line or row in the clear. `EVO_CLAUDE_OAUTH_AUTHORIZE_URL` and
+`EVO_CLAUDE_OAUTH_TOKEN_URL` name other endpoints (the end-to-end stack's fake one).
 
 `hub secret set` still writes an account, with the value on stdin or at a prompt. It sets no `expires_at` unless given
 `--expires`, so give it the day the token ends, or the hub keeps leasing the token after it has stopped working:
@@ -623,7 +651,10 @@ by id, never by name or value.
   admin role on the project or on the hub.
 - CLI: `evo-agents hub account-pool list|show|create|delete|add|remove` and `evo-agents hub agent account-pool HANDLE POOL`
   (`--none` detaches).
-- Web: the Account pools group of the Accounts page, for each project the visitor administers.
+- Web: the Account pools group of the Accounts page, a section for each project the visitor administers: its pools as
+  cards, each listing its accounts (an X removes one) and the agents that use it, with a menu that adds one of the
+  visitor's model accounts or of the project's agents (no name to type); New pool; and a select per agent of the
+  project for the pool it runs on. A pool an agent uses cannot be deleted, and its delete button says so.
 
 A run of an agent leases model accounts from the agent's pool alone, chosen by weight,
 priority and cooldown as any account is. When none is usable the run waits in the queue: it does not take the

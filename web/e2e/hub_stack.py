@@ -842,6 +842,19 @@ def control_server(
             if self.path == "/github/token":
                 token = github.issue_token(Account(str(body["login"]), int(body["id"])))
                 self._reply(200, {"token": token})
+            elif self.path == "/claude/v1/oauth/token":
+                # Claude's token endpoint, for the sign-in of the Accounts page: a code that starts with e2e-ok buys a
+                # token of a year (its tail makes the token, so a spec knows what to look for); any other is refused.
+                code = str(body.get("code", ""))
+                if (
+                    body.get("grant_type") == "authorization_code"
+                    and code.startswith("e2e-ok")
+                    and body.get("code_verifier")
+                ):
+                    answer = {"access_token": f"sk-ant-oat01-{code}", "expires_in": int(body.get("expires_in") or 3600)}
+                    self._reply(200, answer | {"account": {"email_address": "member@example.test"}})
+                else:
+                    self._reply(400, {"error": "invalid_grant"})
             elif self.path == "/skills/bundle":
                 self._reply(200, skill_bundle(body))
             elif self.path == "/plugins/bundle":
@@ -1031,6 +1044,8 @@ def main() -> int:
             EVO_HUB_SESSION_SECRET="e2e-session-" + secrets.token_hex(24),
             EVO_HUB_SECRETS_KEY=secrets.token_urlsafe(32),  # seals the members' secrets (docs/credentials.md)
             EVO_HUB_PUBLIC_URL=web_origin,
+            # The Claude sign-in of the Accounts page trades its code at the stack's fake token endpoint.
+            EVO_CLAUDE_OAUTH_TOKEN_URL=f"http://127.0.0.1:{stack_port}/claude/v1/oauth/token",
             EVO_HUB_TELEGRAM_BOT_TOKEN=TELEGRAM_TOKEN,
             EVO_HUB_TELEGRAM_WEBHOOK_SECRET=TELEGRAM_SECRET,
             EVO_HUB_TELEGRAM_API_URL=f"http://127.0.0.1:{telegram_server.server_address[1]}",

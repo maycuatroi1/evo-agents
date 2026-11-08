@@ -8724,6 +8724,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/accounts/claude-sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Sign In
+         * @description Start a Claude sign-in: the page to open, and the sealed flow to send back with the code it shows.
+         */
+        post: operations["start_sign_in_v1_accounts_claude_sign_in_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/accounts/claude-sign-in/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish Sign In
+         * @description Trade the pasted code for the token of a year and keep it as the Claude account ``name``.
+         */
+        post: operations["finish_sign_in_v1_accounts_claude_sign_in_finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/accounts": {
         parameters: {
             query?: never;
@@ -19264,6 +19304,80 @@ export interface components {
              * @description K6: those of them PROD was rolled back from
              */
             rolled_back?: number | null;
+        };
+        /** ClaudeSignedIn */
+        ClaudeSignedIn: {
+            /** Name */
+            name: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "env" | "git" | "forge";
+            /**
+             * Env Var
+             * @description kind env: the variable it sets
+             */
+            env_var: string | null;
+            /**
+             * Url Prefix
+             * @description kinds git and forge: the https prefix of the origins it answers for
+             */
+            url_prefix: string | null;
+            /**
+             * Username
+             * @description kind git: the user git sends with it
+             */
+            username: string | null;
+            /**
+             * Environment
+             * @description kind env: the environment it is labelled for (test)
+             */
+            environment?: string | null;
+            /**
+             * Projects
+             * @description the projects whose runs get it; empty for a personal secret
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /**
+             * Pools
+             * @description the worker pools it is bound to, each node of each
+             * @default []
+             */
+            pools: string[];
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description when its value was last written
+             */
+            updated_at: string;
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
+            /**
+             * Created
+             * @description false when a secret of this name was replaced
+             */
+            created: boolean;
+            /**
+             * Email
+             * @description the Claude account that approved, when claude.ai named it
+             */
+            email: string | null;
         };
         /** Clearance */
         Clearance: {
@@ -40920,6 +41034,59 @@ export interface components {
              * @default
              */
             text: string;
+        };
+        /** SignInFinish */
+        SignInFinish: {
+            /**
+             * Flow
+             * @description what POST /v1/accounts/claude-sign-in gave
+             */
+            flow: string;
+            /**
+             * Code
+             * Format: password
+             * @description what claude.ai showed after the approval: code#state, the bare code or the address it went to
+             */
+            code: string;
+            /**
+             * Name
+             * @description the account: a new one, or one of the caller's Claude accounts to give the new token
+             */
+            name: string;
+            /**
+             * Projects
+             * @description the projects whose runs may take it, the writer role on each; left out to keep an account's
+             */
+            projects?: string[] | null;
+            /**
+             * Workers
+             * @description the caller's workers it is for; left out to keep an account's
+             */
+            workers?: string[] | null;
+            /**
+             * Pools
+             * @description the caller's worker pools it is for; never with workers
+             */
+            pools?: string[] | null;
+        };
+        /** SignInStarted */
+        SignInStarted: {
+            /**
+             * Authorize Url
+             * @description the page of claude.ai to approve the sign-in on; it then shows a code
+             */
+            authorize_url: string;
+            /**
+             * Flow
+             * @description the sign-in, sealed for the caller: send it back with the code
+             */
+            flow: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description after this the flow is refused and the sign-in starts again
+             */
+            expires_at: string;
         };
         /** Signal */
         Signal: {
@@ -79898,6 +80065,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_sign_in_v1_accounts_claude_sign_in_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignInStarted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    finish_sign_in_v1_accounts_claude_sign_in_finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInFinish"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeSignedIn"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

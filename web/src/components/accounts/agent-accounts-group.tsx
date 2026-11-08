@@ -21,12 +21,13 @@ function AgentCell({ account }: { account: ListedAgentAccount }) {
   const t = useTranslations("accounts.groups.agent");
   const agent = { name: account.agent_name, handle: account.handle, color: account.color, icon_url: account.icon_url };
   return (
-    <div className="flex min-w-0 items-center gap-2.5">
+    // Room for the handle and the project: CellMain alone adds no width to the table.
+    <div className="flex min-w-44 items-center gap-2.5">
       <AgentAvatar agent={agent} size="sm" />
       <CellMain sub={account.project} subTitle={t("projectTitle", { project: account.project })} subTestId="agent-account-project">
         <Link
           href={agentHref(account.project, account.handle)}
-          className="truncate font-mono text-[13px] underline-offset-4 hover:underline"
+          className="min-w-0 font-mono text-[13px] [overflow-wrap:anywhere] underline-offset-4 hover:underline"
           aria-label={t("open", { handle: account.handle, project: account.project })}
           data-testid="agent-account-agent"
         >

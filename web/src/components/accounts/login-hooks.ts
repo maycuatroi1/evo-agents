@@ -59,6 +59,8 @@ export function useTokenFailure() {
       const info = isApiError(error) ? error.info : null;
       const status = info?.status ?? 0;
       const words: Record<number, string> = {
+        400: t("stale"),
+        502: t("refused"),
         403: t("forbidden"),
         404: t("notFound"),
         409: t("conflict"),

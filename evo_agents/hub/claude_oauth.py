@@ -39,6 +39,17 @@ REDIRECT_URI = f"http://localhost:{CALLBACK_PORT}{CALLBACK_PATH}"
 SCOPES = "org:create_api_key user:profile user:inference"
 TIMEOUT_S = 30
 WAIT_S = 300.0  # how long the member has to approve in the browser
+RESTART = "start `oauth-login` again"
+
+# The sign-in of the hub's web page (``evo_agents.hub.server.claude_sign_in``): the hub cannot listen on the member's
+# localhost, so claude.ai sends the browser to the page of Anthropic's that shows the code, the redirect Claude Code
+# itself uses then, and the member pastes the code on the hub. What it buys is the token of `claude setup-token`: the
+# scope of inference alone, for a year. The addresses are those of Claude Code 2.1; the same variables name others.
+WEB_AUTHORIZE_URL = "https://claude.com/cai/oauth/authorize"
+WEB_TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
+MANUAL_REDIRECT_URI = "https://platform.claude.com/oauth/code/callback"
+SETUP_TOKEN_SCOPE = "user:inference"
+SETUP_TOKEN_SECONDS = 365 * 24 * 60 * 60  # what `claude setup-token` asks for
 
 
 class OAuthError(Exception):
@@ -97,9 +108,10 @@ def authorize_url(pkce: Pkce) -> str:
     return f"{base}?{query}"
 
 
-def parse_code(text: str, state: str) -> str:
+def parse_code(text: str, state: str, restart: str = RESTART) -> str:
     """The authorization code in what the member pasted: the callback URL, ``code#state`` as the page of claude.ai shows
-    it, or the bare code. OAuthError for nothing, or for a state that is not this sign-in's."""
+    it, or the bare code. OAuthError for nothing, or for a state that is not this sign-in's (``restart`` says what to
+    do then)."""
     text = text.strip()
     if not text:
         raise OAuthError("no code: paste the code, or the address the browser went to after you approved")
@@ -115,7 +127,7 @@ def parse_code(text: str, state: str) -> str:
     if not code or any(char.isspace() for char in code):
         raise OAuthError("found no authorization code in what was pasted")
     if got_state is not None and not secrets.compare_digest(got_state, state):
-        raise OAuthError("the state of the answer is not this sign-in's: start `oauth-login` again")
+        raise OAuthError(f"the state of the answer is not this sign-in's: {restart}")
     return code
 
 
@@ -244,3 +256,65 @@ def refresh(refresh_token: str, now: datetime | None = None) -> Tokens:
     if not answer.get("refresh_token"):
         answer = {**answer, "refresh_token": refresh_token}
     return tokens_from(answer, now or datetime.now(UTC))
+
+
+@dataclass(frozen=True)
+class SetupToken:
+    """The token of `claude setup-token` the web sign-in bought, when it ends, and whose it is. ``repr`` shows no
+    token."""
+
+    token: str = field(repr=False)
+    expires_at: datetime
+    email: str | None = None
+
+
+def setup_token_url(pkce: Pkce) -> str:
+    """The page of claude.ai a member approves the hub's web sign-in on; it then shows the code to paste."""
+    base = os.environ.get("EVO_CLAUDE_OAUTH_AUTHORIZE_URL") or WEB_AUTHORIZE_URL
+    query = urllib.parse.urlencode(
+        {
+            "code": "true",
+            "client_id": CLIENT_ID,
+            "response_type": "code",
+            "redirect_uri": MANUAL_REDIRECT_URI,
+            "scope": SETUP_TOKEN_SCOPE,
+            "code_challenge": pkce.challenge,
+            "code_challenge_method": "S256",
+            "state": pkce.state,
+        }
+    )
+    return f"{base}?{query}"
+
+
+def exchange_setup_token(code: str, pkce: Pkce, now: datetime | None = None) -> SetupToken:
+    """The token of a year ``code`` buys, as `claude setup-token` asks for it; OAuthError when the endpoint refuses
+    the code or gives no token. An endpoint that names no lifetime is taken at the year asked for."""
+    url = os.environ.get("EVO_CLAUDE_OAUTH_TOKEN_URL") or WEB_TOKEN_URL
+    answer = _post(
+        url,
+        {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": MANUAL_REDIRECT_URI,
+            "client_id": CLIENT_ID,
+            "code_verifier": pkce.verifier,
+            "state": pkce.state,
+            "expires_in": SETUP_TOKEN_SECONDS,
+        },
+    )
+    token, lifetime = answer.get("access_token"), answer.get("expires_in")
+    if not isinstance(token, str) or not token:
+        raise OAuthError("the token endpoint gave no token")
+    if isinstance(lifetime, bool) or not isinstance(lifetime, int | float) or lifetime <= 0:
+        lifetime = SETUP_TOKEN_SECONDS
+    account = answer.get("account") if isinstance(answer.get("account"), dict) else {}
+    email = account.get("email_address")
+    return SetupToken(
+        token, (now or datetime.now(UTC)) + timedelta(seconds=lifetime), email if isinstance(email, str) else None
+    )
+
+
+def pkce_of(verifier: str, state: str) -> Pkce:
+    """The PKCE of a sign-in kept as its verifier and state."""
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    return Pkce(verifier, challenge, state)

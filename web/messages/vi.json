@@ -4628,11 +4628,6 @@
       "needs-relogin": "Cần đăng nhập lại"
     },
     "oauthEnds": "OAuth, access token đến <time></time>",
-    "oauthRenew": {
-      "title": "Đăng nhập lại cho {name}",
-      "description": "Chạy <code>evo-agents hub account oauth-login</code> trong terminal để thay bộ token. Tài khoản giữ nguyên.",
-      "descriptionRelogin": "Refresh token bị từ chối. Chạy <code>evo-agents hub account oauth-login</code> trong terminal để đăng nhập lại."
-    },
     "until": "đến <time></time>",
     "rank": "trọng số {weight}, ưu tiên {priority}",
     "usage": {
@@ -4724,17 +4719,17 @@
     "login": {
       "addTitle": "Thêm tài khoản Claude",
       "renewTitle": "Gia hạn token của {name}",
-      "addDescription": "Run của các dự án bạn chọn dùng token của tài khoản này cho <code>{variable}</code>, lần lượt với các tài khoản khác của bạn cho biến đó. Hub niêm phong token và không bao giờ hiện lại, kể cả với bạn.",
-      "renewDescription": "Một token mới từ <code>claude setup-token</code> cho tài khoản này. Dự án, worker, trọng số, ưu tiên, trạng thái tạm dừng và các run của nó giữ nguyên; chỉ token và ngày hết hạn thay đổi.",
+      "addDescription": "Đăng nhập bằng gói Claude. Run của các dự án bạn chọn sẽ dùng tài khoản này, luân phiên với các tài khoản Claude khác của bạn. Hub niêm phong token và không hiện lại.",
+      "renewDescription": "Đăng nhập lại để cấp token mới cho tài khoản này. Dự án, worker, trọng số, ưu tiên và các run giữ nguyên.",
       "close": "Đóng",
       "name": "Tên",
       "namePlaceholder": "ví dụ claude-work",
-      "nameHint": "Chữ thường, số, dấu chấm, gạch ngang và gạch dưới, tối đa 64 ký tự, bắt đầu bằng chữ hoặc số.",
+      "nameHint": "Chữ thường, số, dấu chấm, gạch ngang và gạch dưới.",
       "nameLocked": "Gia hạn giữ nguyên tên tài khoản.",
       "nameTaken": "Bạn đã có tài khoản tên {name}. Lưu sẽ đặt token và ngày hết hạn này cho nó và gắn nó với các dự án, worker bên dưới; trọng số, ưu tiên, trạng thái tạm dừng và các run của nó giữ nguyên.",
       "renewInstead": "Gia hạn {name} thay vào đó",
       "projects": "Dự án",
-      "projectsHint": "Run của các dự án này được dùng tài khoản. Chỉ liệt kê dự án bạn có vai trò writer.",
+      "projectsHint": "Run của các dự án này được dùng tài khoản. Chỉ hiện dự án bạn có vai trò writer.",
       "projectsFailed": "Không tải được danh sách dự án. Đóng hộp thoại rồi thử lại.",
       "noProjects": "Bạn chưa có vai trò writer ở dự án nào, nên không run nào dùng được tài khoản. Hãy xin quản trị dự án cấp vai trò writer.",
       "workers": "Worker",
@@ -4792,15 +4787,43 @@
         "tokenRequired": "Dán token mà claude setup-token đã in ra.",
         "tokenApiKey": "Đây là API key của Anthropic Console: nó thuộc về ANTHROPIC_API_KEY, ở trang Secret. Tài khoản nhận token của claude setup-token.",
         "tokenSpaces": "Token là một dòng, không có khoảng trắng.",
-        "tokenTooLong": "Tối đa {max} byte."
+        "tokenTooLong": "Tối đa {max} byte.",
+        "codeRequired": "Dán mã claude.ai hiện ra sau khi bạn duyệt.",
+        "codeSpaces": "Mã là một chuỗi liền, không có khoảng trắng: sao chép lại từ claude.ai."
       },
       "errors": {
         "forbidden": "Hub từ chối: tài khoản cần vai trò writer ở mọi dự án nó gắn với, và chỉ gắn được với worker của chính bạn chưa bị thu hồi.",
         "notFound": "Một dự án bạn chọn không còn nữa, hoặc bạn không còn quyền xem nó. Danh sách vừa được tải lại.",
         "conflict": "Bạn đã giữ 200 secret: hãy xoá bớt một cái ở trang Secret trước khi thêm.",
         "invalid": "Hub từ chối token hoặc ngày hết hạn của nó.",
-        "unavailable": "Hub này chưa giữ được secret: người vận hành chưa đặt khoá dùng để niêm phong chúng."
-      }
+        "unavailable": "Hub này chưa giữ được secret: người vận hành chưa đặt khoá dùng để niêm phong chúng.",
+        "stale": "Phiên đăng nhập này đã hết hạn hoặc không phải của bạn. Bấm Đăng nhập Claude lại.",
+        "refused": "Claude không nhận mã: mã đã dùng rồi hoặc quá cũ. Mở lại claude.ai và dán mã mới."
+      },
+      "bindingsTitle": "Worker và pool",
+      "bindingsWorkers": "{count} worker",
+      "bindingsPools": "{count} pool",
+      "connectTitle": "Kết nối tài khoản",
+      "method": {
+        "label": "Cách kết nối",
+        "web": "Đăng nhập",
+        "token": "Dán token"
+      },
+      "web": {
+        "openTitle": "Duyệt trên claude.ai",
+        "openText": "Mở claude.ai ở tab mới. Đăng nhập tài khoản Claude muốn thêm rồi bấm Authorize.",
+        "open": "Đăng nhập Claude",
+        "reopen": "Mở lại claude.ai",
+        "newTab": "(mở ở tab mới)",
+        "preparing": "Đang chuẩn bị đăng nhập",
+        "startFailed": "Không bắt đầu được phiên đăng nhập.",
+        "retry": "Thử lại",
+        "codeTitle": "Dán mã",
+        "codePlaceholder": "Mã từ claude.ai",
+        "codeHint": "Sau khi duyệt, claude.ai hiện một mã. Sao chép và dán vào đây."
+      },
+      "signedInAs": "Đã đăng nhập bằng {email}. ",
+      "addedWebText": "Run của các dự án của nó được dùng nó tới {until}."
     },
     "policies": {
       "title": "Xoay vòng theo dự án",
@@ -4888,25 +4911,35 @@
       },
       "pools": {
         "title": "Nhóm tài khoản",
-        "description": "Tập tài khoản có tên mà admin gắn cho agent. Agent ở chế độ nhóm chỉ chạy bằng nhóm của nó.",
-        "none": "Chưa có nhóm tài khoản.",
+        "description": "Các nhóm tài khoản có tên dành cho agent của một dự án. Agent gắn với pool chỉ chạy bằng các tài khoản trong pool đó.",
+        "none": "Dự án này chưa có pool nào.",
         "hint": "Mỗi agent có một nhóm tài khoản. Khi nhóm không có tài khoản dùng được, lần chạy chờ trong hàng đợi.",
         "failed": "Không đổi được nhóm tài khoản.",
-        "added": "Đã thêm tài khoản vào {pool}.",
-        "accountCount": "{count, plural, other {# tài khoản}}",
-        "agentCount": "{count, plural, other {# agent}}",
-        "delete": "Xóa",
-        "inUse": "Một agent đang dùng nhóm này: gỡ ra trước.",
+        "added": "Đã thêm {name} vào {pool}.",
+        "inUse": "Có agent đang dùng pool này: gắn agent đó sang pool khác trước.",
         "noAccounts": "Nhóm chưa có tài khoản.",
-        "remove": "Gỡ {name}",
-        "accountName": "Tên tài khoản",
-        "agentHandle": "Handle của agent (tùy chọn)",
-        "addAccount": "Thêm tài khoản",
-        "attachFor": "Nhóm tài khoản của @{handle}",
-        "noPool": "Không có nhóm",
-        "poolName": "Tên nhóm mới",
-        "create": "Tạo nhóm",
-        "agents": "Agent"
+        "remove": "Gỡ {name} khỏi {pool}",
+        "addAccount": "Thêm tài khoản...",
+        "attachFor": "Pool tài khoản của @{handle}",
+        "noPool": "Không pool (luân phiên)",
+        "poolName": "Tên pool, ví dụ team-claude",
+        "create": "Tạo",
+        "agents": "Tài khoản của agent trong dự án",
+        "deleteLabel": "Xoá pool {pool}",
+        "usedBy": "Agent dùng: {agents}",
+        "unused": "Chưa agent nào dùng",
+        "accountsOf": "Tài khoản trong {pool}",
+        "paused": "Tạm dừng",
+        "addTo": "Thêm tài khoản vào {pool}",
+        "nothingToAdd": "Mọi tài khoản model của bạn đã ở trong pool này",
+        "yours": "Tài khoản của bạn",
+        "agentsTitle": "Pool của từng agent",
+        "nameInvalid": "Chữ, số, dấu chấm, gạch ngang và gạch dưới, tối đa 40 ký tự, bắt đầu bằng chữ hoặc số.",
+        "nameTaken": "Dự án đã có pool tên {name}.",
+        "cancel": "Huỷ",
+        "newPool": "Pool mới",
+        "poolCount": "{count} pool",
+        "loadFailed": "Không đọc được pool của dự án này."
       }
     },
     "variables": "{provider}, {count, plural, other {# biến}}",
@@ -5032,7 +5065,7 @@
       },
       "card": {
         "keys": "{count, plural, other {# khóa}}",
-        "login": "Đăng nhập trên worker",
+        "login": "Đăng nhập qua claude.ai",
         "envKey": "Khóa đặt làm env secret",
         "format": "Định dạng API",
         "addLabel": "Thêm một khóa của {name}",
@@ -5040,7 +5073,9 @@
         "models": "{count, plural, other {# mô hình}}",
         "moreModels": "và {count} mô hình khác",
         "loginModels": "Các lần chạy dùng mô hình riêng của Claude Code.",
-        "caption": "Các khóa của {name}"
+        "caption": "Các khóa của {name}",
+        "accounts": "{count} tài khoản",
+        "addAccount": "Thêm tài khoản"
       },
       "gateway": {
         "offTitle": "Hub này không chạy model gateway",

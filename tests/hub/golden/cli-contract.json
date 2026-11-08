@@ -78741,6 +78741,160 @@
           }
         }
       },
+      "/v1/accounts/claude-sign-in": {
+        "post": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "Start Sign In",
+          "description": "Start a Claude sign-in: the page to open, and the sealed flow to send back with the code it shows.",
+          "operationId": "start_sign_in_v1_accounts_claude_sign_in_post",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SignInStarted"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/accounts/claude-sign-in/finish": {
+        "post": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "Finish Sign In",
+          "description": "Trade the pasted code for the token of a year and keep it as the Claude account ``name``.",
+          "operationId": "finish_sign_in_v1_accounts_claude_sign_in_finish_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInFinish"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ClaudeSignedIn"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Bad Request",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "502": {
+              "description": "Bad Gateway",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/accounts": {
         "get": {
           "tags": [
@@ -118749,6 +118903,161 @@
           ],
           "title": "ClassFigures",
           "description": "What the hub saw of one class over the last FIGURE_DAYS days for the person's runs."
+        },
+        "ClaudeSignedIn": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "env",
+                "git",
+                "forge"
+              ],
+              "title": "Kind"
+            },
+            "env_var": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Env Var",
+              "description": "kind env: the variable it sets"
+            },
+            "url_prefix": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url Prefix",
+              "description": "kinds git and forge: the https prefix of the origins it answers for"
+            },
+            "username": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Username",
+              "description": "kind git: the user git sends with it"
+            },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment",
+              "description": "kind env: the environment it is labelled for (test)"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects whose runs get it; empty for a personal secret"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it is bound to; empty for any worker of its owner"
+            },
+            "pools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Pools",
+              "description": "the worker pools it is bound to, each node of each",
+              "default": []
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At",
+              "description": "when its value was last written"
+            },
+            "shares": {
+              "items": {
+                "$ref": "#/components/schemas/CredentialShare"
+              },
+              "type": "array",
+              "title": "Shares",
+              "description": "its shares not revoked, newest first"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created",
+              "description": "false when a secret of this name was replaced"
+            },
+            "email": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email",
+              "description": "the Claude account that approved, when claude.ai named it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "kind",
+            "env_var",
+            "url_prefix",
+            "username",
+            "projects",
+            "workers",
+            "expires_at",
+            "created_at",
+            "updated_at",
+            "shares",
+            "created",
+            "email"
+          ],
+          "title": "ClaudeSignedIn"
         },
         "Clearance": {
           "properties": {
@@ -168203,6 +168512,118 @@
             "path"
           ],
           "title": "Sign"
+        },
+        "SignInFinish": {
+          "properties": {
+            "flow": {
+              "type": "string",
+              "maxLength": 4096,
+              "minLength": 1,
+              "title": "Flow",
+              "description": "what POST /v1/accounts/claude-sign-in gave"
+            },
+            "code": {
+              "type": "string",
+              "maxLength": 4096,
+              "minLength": 1,
+              "format": "password",
+              "title": "Code",
+              "description": "what claude.ai showed after the approval: code#state, the bare code or the address it went to",
+              "writeOnly": true
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+              "title": "Name",
+              "description": "the account: a new one, or one of the caller's Claude accounts to give the new token"
+            },
+            "projects": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  "type": "array",
+                  "maxItems": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Projects",
+              "description": "the projects whose runs may take it, the writer role on each; left out to keep an account's"
+            },
+            "workers": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+                  },
+                  "type": "array",
+                  "maxItems": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workers",
+              "description": "the caller's workers it is for; left out to keep an account's"
+            },
+            "pools": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                  },
+                  "type": "array",
+                  "maxItems": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pools",
+              "description": "the caller's worker pools it is for; never with workers"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "flow",
+            "code",
+            "name"
+          ],
+          "title": "SignInFinish"
+        },
+        "SignInStarted": {
+          "properties": {
+            "authorize_url": {
+              "type": "string",
+              "title": "Authorize Url",
+              "description": "the page of claude.ai to approve the sign-in on; it then shows a code"
+            },
+            "flow": {
+              "type": "string",
+              "title": "Flow",
+              "description": "the sign-in, sealed for the caller: send it back with the code"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At",
+              "description": "after this the flow is refused and the sign-in starts again"
+            }
+          },
+          "type": "object",
+          "required": [
+            "authorize_url",
+            "flow",
+            "expires_at"
+          ],
+          "title": "SignInStarted"
         },
         "Signal": {
           "properties": {
