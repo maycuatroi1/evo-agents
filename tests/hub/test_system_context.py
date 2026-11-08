@@ -56,7 +56,8 @@ def test_the_system_section_names_purpose_edges_in_and_out_graphs_and_the_orches
     assert "at most 12 runs and 2 USD" in triage
     billing = "\n".join(system_context.system_lines(system_context.place_of("support", spec, "lumen-billing")))
     assert "Who hands you work:\n- @lumen-triage: invoices" in billing
-    assert "The Orchestrator you escalate to: @lumen-lead: refunds over 100 USD" in billing
+    assert "The Orchestrator you escalate to (with `evo-agents worker escalate --question TEXT`" in billing
+    assert "an escalation adds no hop, an ask of it would): @lumen-lead: refunds over 100 USD" in billing
     assert "Agents you hand work to" not in billing and "Knowledge graphs" not in billing
     assert system_context.place_of("support", spec, "lumen-other") is None
 

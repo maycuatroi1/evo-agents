@@ -67,7 +67,7 @@ You run on the hub, without a worker, a checkout or a shell: the commands above 
 - `evo-agents worker chat post`: the tool chat_post. `--interactive` with an HTML file: the tool interactive_answer,
   with the same rules.
 - `evo-agents worker agent ask`: the tool agent_ask, with the same brief. `evo-agents worker agent forward`: the tool
-  agent_forward. Escalating to your system's Orchestrator: the tool escalate.
+  agent_forward. `evo-agents worker escalate`: the tool escalate, with the same brief.
 - The knowledge graph: the tool kg_search. A memory of the project: the tool memory_write.
 - Repos, branches, pull requests and other commands are not on the hub: say what you cannot do.
 
