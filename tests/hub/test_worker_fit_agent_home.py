@@ -80,3 +80,13 @@ def test_the_default_profile_a_daemon_with_agent_home_or_another_first_runtime_i
     assert unfit_worker(worker(features=runs.WORKER_FEATURES), profile(), "machine", "chat") is None
     assert unfit_worker(worker(), profile(runtimes=["codex"]), "machine", "chat") is None
     assert unfit_worker(worker(runtimes=("codex",)), profile(), "machine", "question") is None
+
+
+def test_a_daemon_with_no_checkout_is_fit_only_when_it_clones_the_repos_it_lacks():
+    bare = worker(features=runs.WORKER_FEATURES)
+    bare.checkouts = {}
+    assert runs.CLONES_CHECKOUTS in runs.WORKER_FEATURES
+    assert unfit_worker(bare, profile(), "machine", "chat") is None
+    old = worker(features=tuple(f for f in runs.WORKER_FEATURES if f != runs.CLONES_CHECKOUTS))
+    old.checkouts = {}
+    assert unfit_worker(old, profile(), "machine", "chat") == "has no checkout, and claims nothing"

@@ -171,7 +171,11 @@ def worker_problems(
         (row.dispatch_from == "web" and via != "web", "takes runs dispatched from the web only"),
         (row.holding >= row.slots, "has no free slot"),  # its runs and the runs queued for it
         (row.others > 0, "holds a run of another member, and a shared worker runs one member's runs at a time"),
-        (not row.checkouts, "has no checkout, and claims nothing"),
+        # a daemon that clones the repos it lacks (runs.CLONES_CHECKOUTS) claims with no checkout, as Claimer.stops says
+        (
+            not row.checkouts and runs.CLONES_CHECKOUTS not in (row.features or ()),
+            "has no checkout, and claims nothing",
+        ),
         (not usable_runtimes(row, profile), f"has no runtime @{profile.handle} allows"),
         (
             profiles.needs_worker(profile.permissions, profile.instructions)
