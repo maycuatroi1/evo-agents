@@ -178,7 +178,9 @@ Without that sink, or for an item whose label is above its clearance, nothing is
 - On the hub, a build defers the items and the nightly review run answers them on the pool's login (see "Claude Code
   as the model" above), so the entities reach the graph a night after the build that asked for them.
 - The walk calls no model. kg_context walks twice (seeds, then fill), so its p95 rises with the size of the graph;
-  measure it with `kg bench` or `hub kg measure` before keeping the strategy.
+  measure it with `kg bench` or `hub kg measure` before keeping the strategy. One `hub kg measure` call on a large
+  graph can take minutes, because the hub opens the graph and asks the questions twice (current, then candidate);
+  the command waits up to 600 s for the answer.
 - `apply` names `strategy`, `entities`, the passage keys, `semantic_mode` and `ontology` as needing a new build; the
   walk is a query key and takes effect at once.
 
