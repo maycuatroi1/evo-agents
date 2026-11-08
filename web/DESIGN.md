@@ -677,11 +677,14 @@ Shared pieces built on them:
   with an agent in a frame of its own:
   - `chats/agent-chat.tsx`, `AgentChat`: the frame. The picker bar over the agent's start until the direct chat has a
     message, then `ChatView` itself, with its threads, outputs and interactive answers, and `useUnder` and
-    `agentPanels` as on a chat's page. `ChatView` loads on demand (`next/dynamic`), so a page on the start screen does
+    `agentPanels` as on a chat's page. The chat's own head names the agent, so the bar goes once the chat shows: the
+    name in the head is the picker (the name and `ChevronsUpDown`; the face still opens the agent's menu), and the
+    page's actions (Today) stand before Details from 768 px (`ChatView`'s `headSlots`). The bar stays while the chat
+    cannot be read. `ChatView` loads on demand (`next/dynamic`), so a page on the start screen does
     not carry it. Looking at an agent opens no chat: the first message opens the direct chat
     (`PUT /v1/chats/direct/{handle}`), sends, reads the chat's page again and shows the chat.
   - `chats/agent-picker.tsx`, `AgentPicker`: a ghost button, 44 px tall, with the agent's face, name and "@handle,
-    project" in mono and `ChevronsUpDown`, opening a DropdownMenu of radio items (face, name, handle and project), in
+    project" in mono and `ChevronsUpDown` (with `title`, that title and the icon, drawn as the text it stands in), opening a DropdownMenu of radio items (face, name, handle and project), in
     the hub's order; its label names the agent and its project.
   - `chats/chat-start.tsx`, `ChatStart`: the agent's face at `xl`, the h1 "Chat with NAME" in 24 px, "@handle,
     project" and what it does, centred in the frame, then the composer (a `card` box with a 3-row textarea, the hint

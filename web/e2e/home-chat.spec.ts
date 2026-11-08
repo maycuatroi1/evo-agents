@@ -89,10 +89,13 @@ test("Home chooses the agent written to last, and starts a chat with another fro
   const sent = (await chatPageOf(me, opened.id)).messages;
   expect(sent.map((message) => message.body)).toEqual([STARTERS[0]]);
 
-  // Analyst is now the agent written to last: Home opens on it.
+  // Analyst is now the agent written to last: Home opens on it. The chat's head names it once, and the name opens the picker.
   await open(page, "/");
   await expect(picker(page)).toHaveAttribute("data-agent", analyst.handle);
   await expect(page.getByTestId("chat-view")).toHaveAttribute("data-chat-id", String(opened.id));
+  await expect(page.getByTestId("chat-header").getByTestId("chat-home-picker")).toHaveAttribute("data-agent", analyst.handle);
+  await expect(page.getByTestId("chat-header").getByTestId("chat-home-today")).toBeVisible();
+  await expect(picker(page)).toHaveCount(1);
 });
 
 test("an agent's interactive answer shows in its message on Home", async ({ page, member }) => {
