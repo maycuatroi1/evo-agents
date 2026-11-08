@@ -18,9 +18,10 @@ agent types and tasks, 404 for any other.
   ``branch`` runs on that branch of that repo instead: 422 for a repo the project lacks or a branch a task may not
   name (``task_runs.branch_problem``: a default branch, or a branch of another kind of run), 409 while another task
   run of the project that is not over works on it. ``minutes`` asks for up to MAX_MINUTES of agent time. ``repos``
-  names the repos of the project the run gets a worktree of (422 for one it lacks; default: every repo), and ``base``
-  a branch of origin each worktree starts from instead of the default branch (``task_runs.base_problem``, 422), which
-  the draft pull request of each push goes into too.
+  names the repos of the project the run gets a worktree of (422 for one it lacks; default: every repo), each by its
+  name or as ``{repo, base}`` (``TaskRepo``), and ``base`` a branch of origin each worktree starts from instead of the
+  default branch (``task_runs.base_problem``, 422), which the draft pull request of each push goes into too; the base a
+  repo of ``repos`` names is that repo's alone, in place of ``base``.
 - GET /v1/plugin-api/projects/{p}/tasks/{task}: a task the plugin handed, by the id its dispatch answered: the latest
   attempt of its run, its state, branch and pull requests, ids and states only.
 
@@ -28,9 +29,9 @@ agent types and tasks, 404 for any other.
 ``runs:dispatch`` grant: the image trusts the plugin, and the admin who enabled the type chose its run_as and its cap.
 
 POST /v1/worker/runs/{id}/task/pulls: the worker that holds a task run pushed the run's branch of a repo; the hub opens
-a draft pull request of it with the workers' App, into the base its task names or else the repo's default branch, or
-finds the one open, never merges it, keeps it in runs.pulls and says so in the run's log. A repo elsewhere, or a hub
-without the App, gets none.
+a draft pull request of it with the workers' App, into the base its task names for the repo or else the repo's default
+branch, or finds the one open, never merges it, keeps it in runs.pulls and says so in the run's log. A repo elsewhere,
+or a hub without the App, gets none.
 
 ``task_prompt`` is the prompt of a task run at its claim, and ``task_run_ended`` stores the event task.result for the
 plugin of the run's agent type when the run ends (``run_state.record_move``).
@@ -79,6 +80,20 @@ router = APIRouter(prefix="/v1/plugin-api", tags=["plugin api"], responses={401:
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 
 
+class TaskRepo(BaseModel):
+    """A repo of the project a task's run gets a worktree of, with the branch of origin that worktree starts from."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    repo: RepoName
+    base: str = Field(
+        min_length=1,
+        max_length=task_runs.MAX_BRANCH_CHARS,
+        description="a branch of origin this repo's worktree starts from, in place of the task's base or the repo's "
+        "default branch, which the draft pull request of its push goes into; the run fails when its origin lacks it",
+    )
+
+
 class TaskIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -111,29 +126,49 @@ class TaskIn(BaseModel):
         description=f"the agent time the run may take, at most {task_runs.MAX_MINUTES}; default: "
         f"{task_runs.TIME_CAP_SECONDS // 60}",
     )
-    repos: list[RepoName] | None = Field(
+    repos: list[RepoName | TaskRepo] | None = Field(
         None,
         min_length=1,
         max_length=task_runs.MAX_REPOS,
-        description="the repos of the project the run gets a worktree of, each once; default: every repo",
+        description="the repos of the project the run gets a worktree of, each once: a name, whose worktree starts "
+        "from the task's base, else the repo's default branch, or {repo, base}, whose worktree starts from that base; "
+        "default: every repo",
     )
     base: str | None = Field(
         None,
         min_length=1,
         max_length=task_runs.MAX_BRANCH_CHARS,
         description="a branch of origin each worktree of the run starts from instead of the repo's default branch, "
-        "which the draft pull request of each branch it pushes goes into; the run fails when a repo's origin lacks it",
+        "unless its item of repos names a base of its own, which the draft pull request of each branch it pushes goes "
+        "into; the run fails when a repo's origin lacks it",
     )
+
+    def repo_names(self) -> list[str] | None:
+        """The names of the repos the task names, in its order, or None for every repo of the project."""
+        if self.repos is None:
+            return None
+        return [entry if isinstance(entry, str) else entry.repo for entry in self.repos]
+
+    def own_bases(self) -> dict[str, str]:
+        """The repos of ``repos`` that name a base of their own: repo -> that base."""
+        return {entry.repo: entry.base for entry in self.repos or () if isinstance(entry, TaskRepo)}
+
+    def base_of(self, repo: str) -> str | None:
+        """The branch of origin the worktree of ``repo`` starts from: the base the task names for it, else the task's
+        ``base``, else None for the repo's default branch."""
+        return self.own_bases().get(repo, self.base)
 
     @model_validator(mode="after")
     def _repo_with_branch(self) -> TaskIn:
         if (self.repo is None) != (self.branch is None):
             raise ValueError("a task names a repo and its branch together, or neither")
-        if self.repos is not None and len(set(self.repos)) != len(self.repos):
+        names = self.repo_names()
+        if names is not None and len(set(names)) != len(names):
             raise ValueError("a task names each of its repos once")
-        if self.repos is not None and self.repo is not None and self.repo not in self.repos:
+        if names is not None and self.repo is not None and self.repo not in names:
             raise ValueError(f"the repo whose branch the task names, {self.repo}, is one of its repos")
-        if self.base is not None and self.base == self.branch:
+        own = self.own_bases().get(self.repo) if self.repo is not None else None
+        if self.branch is not None and self.branch in (self.base, own):
             raise ValueError("a task's base is a branch it starts from, never the branch it pushes to")
         return self
 
@@ -284,15 +319,20 @@ async def branch_refusal(
     conn: AsyncConnection, project_id: int, names: list[str], body: TaskIn
 ) -> tuple[int, str] | None:
     """(status, why) the task of ``body`` may not work on the repos and the branches it names, or None (none named
-    included): its repos are some of ``names``, the project's, and its base one a task may start from
-    (``task_runs.base_problem``); the repo whose branch it names is one of ``names``, the branch one a task may name
-    (``task_runs.branch_problem``), and no task run of the project that is not over works on it."""
-    unknown = [name for name in body.repos or () if name not in names]
+    included): its repos are some of ``names``, the project's, and its base and the base each of its repos names one a
+    task may start from (``task_runs.base_problem``); the repo whose branch it names is one of ``names``, the branch
+    one a task may name (``task_runs.branch_problem``), and no task run of the project that is not over works on
+    it."""
+    unknown = [name for name in body.repo_names() or () if name not in names]
     if unknown:
         return 422, f"the project has no repo {unknown[0]}: a task names some of {', '.join(names) or 'none'}"
     problem = task_runs.base_problem(body.base) if body.base is not None else None
     if problem is not None:
         return 422, problem
+    for repo, base in body.own_bases().items():
+        problem = task_runs.base_problem(base)
+        if problem is not None:
+            return 422, f"the base of {repo}: {problem}"
     if body.repo is None or body.branch is None:
         return None
     if body.repo not in names:
@@ -315,15 +355,22 @@ async def branch_refusal(
     return None
 
 
+def _entry(repo: str, branch: str, base: str | None) -> dict:
+    """The runs.repos entry of ``repo`` of a task run: ``{repo, branch}``, with ``base`` when the task names one for
+    it (``RunRepo``)."""
+    return {"repo": repo, "branch": branch, **({"base": base} if base is not None else {})}
+
+
 async def _queue(
     conn: AsyncConnection, enabled, row, body: TaskIn, left: float, names: list[str], for_id: int | None = None
 ) -> int:
     """Queue the task run of ``body`` for agent type ``row`` on the branch task/<its id> of each repo of ``names``,
     the project's, or of those of them the task names, but the repo whose branch the task names, on that one, each
-    from the task's base when it names one; its principal its run_as, or the person ``for_id`` it is for, bounded by
-    the run_as too (``run_autonomy``)."""
-    if body.repos is not None:
-        names = [name for name in names if name in body.repos]
+    from the base the task names for it, else from the task's base when it names one (``TaskIn.base_of``); its
+    principal its run_as, or the person ``for_id`` it is for, bounded by the run_as too (``run_autonomy``)."""
+    asked = body.repo_names()
+    if asked is not None:
+        names = [name for name in names if name in asked]
     profile = await by_id(conn, row.profile_id)
     allow = profiles.allowed(profile.permissions, "model")
     values = {
@@ -348,8 +395,7 @@ async def _queue(
     run_id = await insert_run(conn, values, run_autonomy.For(user_id=for_id, also=also, repos=tuple(names)))
     branch = task_runs.branch_of(run_id)
     named = {body.repo: body.branch} if body.repo and body.branch else {}
-    based = {"base": body.base} if body.base is not None else {}
-    repos = [{"repo": name, "branch": named.get(name, branch), **based} for name in names] or null()  # SQL NULL
+    repos = [_entry(name, named.get(name, branch), body.base_of(name)) for name in names] or null()  # SQL NULL
     r = tables.runs
     await conn.execute(update(r).values(branch=branch, repos=repos, pulls=[]).where(r.c.id == run_id))
     await notify_queued(conn, run_id)

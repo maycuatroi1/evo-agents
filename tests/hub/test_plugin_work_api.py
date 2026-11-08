@@ -7,7 +7,8 @@ tasks it made, never another, in the name of the admin who granted it its permis
 images and saves documents whose slug starts with its id, each save the next version. Granted runs:dispatch, it reads
 the summary and the outputs of the task runs of its own agent types, and of no other run. Granted srs:read, it lists
 the codes and keys of the use cases of the version of a document approved last. A task names the repos its run gets
-a worktree of and a base each starts from, which the draft pull request of its push goes into.
+a worktree of and a base each starts from, one for the run or one of a repo's own, which the draft pull request of
+that repo's push goes into.
 """
 
 from __future__ import annotations
@@ -335,6 +336,59 @@ def test_task_dispatch_names_its_repos_and_a_base_the_draft_pull_request_goes_in
         ({"base": "a..b"}, "not a branch name git takes"),
         ({"repo": "notes", "branch": "post/x", "repos": ["evo-agents"]}, "is one of its repos"),
         ({"repo": "notes", "branch": "post/x", "base": "post/x"}, "never the branch it pushes to"),
+    ):
+        response = hand(client, key, **body)
+        assert response.status_code == 422 and said in response.text, (body, response.text)
+
+
+def test_each_repo_of_a_task_may_name_a_base_of_its_own_which_its_draft_pull_request_goes_into(
+    client, hub, hub_db, github
+):
+    credentials_api.install(github, "evo-agents", permissions=WORKERS_APP)
+    github.add_repo(MINE, "evo-agents")
+    enabled(client, hub["owner"])
+    laptop = node(client, hub_db, hub["other"], "laptop")
+    key = hub["key"]
+    repos = [{"repo": "evo-agents", "base": "main"}, "lumen-kb-docs", {"repo": "notes", "base": "release/2"}]
+    task = handed(client, key, repo="evo-agents", branch="qa/checkout", repos=repos, base="deploy/test")
+    run_id, own = task["run_id"], task_runs.branch_of(task["run_id"])
+    entries = [
+        {"repo": "evo-agents", "branch": "qa/checkout", "base": "main"},
+        {"repo": "lumen-kb-docs", "branch": own, "base": "deploy/test"},
+        {"repo": "notes", "branch": own, "base": "release/2"},
+    ]
+    assert of_run(hub_db, run_id, "repos")[0][0] == entries, "a repo's own base in place of the task's"
+    spec = claim(client, laptop)
+    assert spec["id"] == run_id and spec["repos"] == entries
+    lines = {
+        line.split(":")[0].removeprefix("- "): line
+        for line in autonomy_card.without_card(spec["prompt"]).splitlines()
+        if line.startswith("- ")
+    }
+    assert lines["evo-agents"].endswith("(from main, which its draft pull request goes into)")
+    assert lines["notes"].endswith("(from release/2, which its draft pull request goes into)")
+    moved(client, laptop, run_id, "running", session_id="sess-1")
+    github.push(MINE, "evo-agents", "qa/checkout", "2" * 40)
+    body = {"repo": "evo-agents", "branch": "qa/checkout", "head": "2" * 40}
+    opened = in_chats(client, laptop, run_id, "task/pulls", body)
+    assert opened.status_code == 201, opened.text
+    made_pull = github.pull_of(MINE, "evo-agents", "qa/checkout")
+    assert (made_pull.base, made_pull.draft) == ("main", True), "into the repo's own base, not the task's"
+
+    mixed = handed(client, key, task="A mixed task.", repos=["lumen-kb-docs", {"repo": "notes", "base": "deploy/test"}])
+    plain_entry, based_entry = of_run(hub_db, mixed["run_id"], "repos")[0][0]
+    assert set(plain_entry) == {"repo", "branch"}, "a name without the task's base: the repo's default branch"
+    assert based_entry == {"repo": "notes", "branch": task_runs.branch_of(mixed["run_id"]), "base": "deploy/test"}
+    for body, said in (
+        ({"repos": [{"repo": "nowhere", "base": "deploy/test"}]}, "the project has no repo nowhere"),
+        ({"repos": ["notes", {"repo": "notes", "base": "deploy/test"}]}, "names each of its repos once"),
+        ({"repos": [{"repo": "notes", "base": "task/3"}]}, "the base of notes: task/3 is no branch of the repo's own"),
+        ({"repos": [{"repo": "notes", "base": "HEAD"}]}, "the base of notes: HEAD is no branch of the repo's own"),
+        ({"repos": [{"repo": "notes", "base": "a..b"}]}, "the base of notes: 'a..b' is not a branch name git takes"),
+        ({"repos": [{"repo": "notes"}]}, "Field required"),
+        ({"repos": [{"repo": "notes", "base": "deploy/test", "branch": "x"}]}, "Extra inputs are not permitted"),
+        ({"repo": "notes", "branch": "post/x", "repos": [{"repo": "evo-agents", "base": "main"}]}, "is one of its"),
+        ({"repo": "notes", "branch": "post/x", "repos": [{"repo": "notes", "base": "post/x"}]}, "never the branch"),
     ):
         response = hand(client, key, **body)
         assert response.status_code == 422 and said in response.text, (body, response.text)

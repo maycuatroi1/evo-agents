@@ -29,8 +29,9 @@ branch, never forced; the other repos stay on ``task/<run>``. A task may also as
 
 A task may name the repos of the project it needs (``repos``, default: every repo), and a branch of origin each of
 their worktrees starts from instead of the default branch (``base``, ``base_problem``), such as a branch the project
-deploys a test stack from; the draft pull request of each branch the run pushes goes into that base too. The worker
-fails the run when origin of one of the repos lacks it, rather than start from another branch.
+deploys a test stack from, or a base of its own for a repo of ``repos``, which that repo starts from in place of
+``base``; the draft pull request of each branch the run pushes goes into its repo's base too. The worker fails the run
+when origin of one of the repos lacks the base it starts from, rather than start from another branch.
 """
 
 from __future__ import annotations

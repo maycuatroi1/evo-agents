@@ -4,7 +4,7 @@ a task the plugin handed it, which may change code.
 The daemon takes the run's leases for the repos of its project it has a checkout of (the others it leaves out, saying
 so), checks it can read each, and makes the directory ``~/.evo/worker/worktrees/<project>-<run>`` with a writable
 worktree of each, on the run's branch ``task/<id>`` (the id of the run the plugin's dispatch made), from origin's
-branch when an earlier attempt pushed it already, else from origin's branch the task names as its base
+branch when an earlier attempt pushed it already, else from origin's branch the task names as that repo's base
 (``task_runs.base_problem``), else from origin's default branch (``branch_work``); the one repo whose branch the task
 names (``task_runs.branch_problem``) on that branch instead, pushed back to it. The agent works
 in EVO_RUN_KIND ``task``, one turn that asks nobody anything. When it ends, the daemon commits what the agent left in

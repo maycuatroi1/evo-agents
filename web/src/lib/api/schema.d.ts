@@ -43479,12 +43479,12 @@ export interface components {
             minutes?: number | null;
             /**
              * Repos
-             * @description the repos of the project the run gets a worktree of, each once; default: every repo
+             * @description the repos of the project the run gets a worktree of, each once: a name, whose worktree starts from the task's base, else the repo's default branch, or {repo, base}, whose worktree starts from that base; default: every repo
              */
-            repos?: string[] | null;
+            repos?: (string | components["schemas"]["TaskRepo"])[] | null;
             /**
              * Base
-             * @description a branch of origin each worktree of the run starts from instead of the repo's default branch, which the draft pull request of each branch it pushes goes into; the run fails when a repo's origin lacks it
+             * @description a branch of origin each worktree of the run starts from instead of the repo's default branch, unless its item of repos names a base of its own, which the draft pull request of each branch it pushes goes into; the run fails when a repo's origin lacks it
              */
             base?: string | null;
         };
@@ -43579,6 +43579,19 @@ export interface components {
              * @description the agent type's cap, which the project's admins set
              */
             daily_usd: number;
+        };
+        /**
+         * TaskRepo
+         * @description A repo of the project a task's run gets a worktree of, with the branch of origin that worktree starts from.
+         */
+        TaskRepo: {
+            /** Repo */
+            repo: string;
+            /**
+             * Base
+             * @description a branch of origin this repo's worktree starts from, in place of the task's base or the repo's default branch, which the draft pull request of its push goes into; the run fails when its origin lacks it
+             */
+            base: string;
         };
         /** TaskRunOutputs */
         TaskRunOutputs: {
