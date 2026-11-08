@@ -20,6 +20,9 @@ The walk, as ``Walk`` sets it:
   every seed, edge and node before it joins the subgraph, so no score flows through a hidden element.
 - the walk itself. ``damping`` (0.5, HippoRAG 2's) is the share of the mass that follows an edge at each step; the
   rest restarts at the seeds. ``steps`` iterations.
+- the ranking (``order``). kg_search lists the best ``top_matches`` (3) text matches first, then what the walk reached;
+  a reached node that is no text match ranks by its score divided by log2(2 + its edges in the subgraph), so a hub
+  that touches every seed cannot outrank the best matches by the mass it gathers alone.
 
 Nothing here calls a model, reads a question set, or needs a library outside the standard one.
 """
@@ -84,6 +87,7 @@ class Walk:
     seeds: int = 40  # text matches, best first, the walk may restart at
     steps: int = 30  # iterations of the walk
     keep: int = 60  # nodes the walk reached beyond the text matches that kg_search lists
+    top_matches: int = 3  # text matches kg_search lists, by text score, before any node the walk alone reached
     conf_floor: float = 0.5  # an edge of a lower confidence carries no walk
     context: bool = True  # kg_context fills its budget past its seeds by the walk, not by hops from them
     entity_code: bool = False  # the entity_code setting, not a key of walk (of)
@@ -99,6 +103,7 @@ _RANGES = {
     "seeds": (1, 200),
     "steps": (1, 200),
     "keep": (0, 500),
+    "top_matches": (0, 20),
     "conf_floor": (0.0, 1.0),
 }
 KEYS = tuple(f.name for f in fields(Walk) if f.name != "entity_code")  # entity_code is a KG setting of its own
@@ -316,27 +321,41 @@ def fallback_seeds(reader: Reader, base: dict[str, float], walk: Walk) -> dict[s
     return {i: w / math.log2(2 + len(adj.get(i, ()))) for i, w in seeds.items()}
 
 
-def run(store, b: int, base: dict[str, float], walk: Walk, seen) -> dict[str, float]:
-    """The walk's score of each visible node it reached from ``base`` (id -> text match in 0..1); ``seen(element)`` is
-    the reader's test of a node or an edge (``Session.seen``)."""
+def walked(store, b: int, base: dict[str, float], walk: Walk, seen) -> tuple[dict[str, float], dict[str, dict]]:
+    """``run``'s scores and the subgraph the walk went over (id -> its neighbours there)."""
     reader = Reader(store, b, seen)
     seeds = seed(reader, base, walk)
     if not seeds:
-        return {}
-    return personalized(subgraph(reader, seeds, walk), seeds, walk)
+        return {}, {}
+    adj = subgraph(reader, seeds, walk)
+    return personalized(adj, seeds, walk), adj
+
+
+def run(store, b: int, base: dict[str, float], walk: Walk, seen) -> dict[str, float]:
+    """The walk's score of each visible node it reached from ``base`` (id -> text match in 0..1); ``seen(element)`` is
+    the reader's test of a node or an edge (``Session.seen``)."""
+    return walked(store, b, base, walk, seen)[0]
 
 
 def order(store, b: int, scored, walk: Walk, seen) -> list[str]:
     """kg_search's ids under the walk: the matches the search gave no score (an id or a name is the query) first, then
-    the nodes the walk reached that are not entities, by its score, then the entities it reached, then the other text
-    matches in the text order. ``scored`` is ``Store.search_scored``: (id, text score), best first."""
+    the first ``walk.top_matches`` text matches by their text score, then the nodes the walk reached that are not
+    entities, by its score, then the entities it reached, then the other text matches in the text order. ``scored`` is
+    ``Store.search_scored``: (id, text score), best first.
+
+    A reached node that is no text match ranks by its walk score divided by log2(2 + its edges in the subgraph), as
+    ``fallback_seeds`` weighs a seed, so a hub joined to every seed gathers no rank by its edges alone; with
+    ``top_matches`` 0 neither holds and the walk orders as it did before both."""
     scored = list(scored)
-    found = run(store, b, _rels(scored), walk, seen)
+    found, adj = walked(store, b, _rels(scored), walk, seen)
     matched = {i for i, _ in scored}
+    if walk.top_matches:
+        found = {i: s if i in matched else s / math.log2(2 + len(adj.get(i, ()))) for i, s in found.items()}
     reached = sorted(found, key=lambda i: (-found[i], i))
     beyond = [i for i in reached if i not in matched][: walk.keep]
     keep = set(beyond) | matched
     listed = [i for i, s in scored if s is None]
+    listed += [i for i, s in scored if s is not None][: walk.top_matches]
     listed += [i for i in reached if i in keep and not is_entity(i)]
     listed += [i for i in reached if i in keep and is_entity(i)]
     listed += [i for i, _ in scored]

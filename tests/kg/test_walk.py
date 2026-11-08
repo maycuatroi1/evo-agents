@@ -303,3 +303,51 @@ def test_a_graph_without_entities_walks_from_its_text_matches(tmp_path, kg_env):
     assert walked and walked[0] == plain[0] == "symbol:app:app/search.py::rank_results"
     context = Session(project, "agent").call("kg_context", {"query": "rank_results"})
     assert not context.get("isError") and context["structuredContent"]["nodes"]
+
+
+# -- the ranking ----------------------------------------------------------------------------------------------------
+
+# Three text matches a, b, c; a hub h joined to each of them and to four nodes the question never names; a node x
+# joined to a alone.
+HUB_ADJ = {
+    "doc:a": {"doc:h": 1.0, "doc:x": 1.0},
+    "doc:b": {"doc:h": 1.0},
+    "doc:c": {"doc:h": 1.0},
+    "doc:h": {"doc:a": 1.0, "doc:b": 1.0, "doc:c": 1.0, **{f"doc:o{n}": 1.0 for n in range(4)}},
+    "doc:x": {"doc:a": 1.0},
+    **{f"doc:o{n}": {"doc:h": 1.0} for n in range(4)},
+}
+HUB_SCORED = [("doc:a", 3.0), ("doc:b", 2.0), ("doc:c", 1.0)]
+
+
+def hub_order(monkeypatch, walk, seeds=(1.0, 1.0, 1.0)):
+    seeds = dict(zip(("doc:a", "doc:b", "doc:c"), seeds, strict=True))
+    found = ppr.personalized(HUB_ADJ, seeds, walk)
+    monkeypatch.setattr(ppr, "walked", lambda store, b, base, walk, seen: (found, HUB_ADJ))
+    return found, ppr.order(None, 1, HUB_SCORED, walk, lambda e: True)
+
+
+def test_a_hub_joined_to_every_seed_ranks_below_the_best_text_matches(monkeypatch):
+    found, ids = hub_order(monkeypatch, ppr.Walk())
+    assert found["doc:h"] > max(found[i] for i, _ in HUB_SCORED)  # the hub gathers the most mass
+    assert ids[:3] == ["doc:a", "doc:b", "doc:c"]  # the best text matches, by text score, then the hub
+
+
+def test_a_reached_node_ranks_by_its_walk_score_per_edge(monkeypatch):
+    found, ids = hub_order(monkeypatch, ppr.Walk(top_matches=1), seeds=(1.0, 0.1, 0.1))
+    assert found["doc:h"] > found["doc:x"]  # the hub gathers more mass than x, joined to a alone
+    assert ids.index("doc:x") < ids.index("doc:h")  # divided by log2(2 + edges): 7 edges against 1
+
+
+def test_a_walk_with_top_matches_0_orders_as_before(monkeypatch):
+    found, ids = hub_order(monkeypatch, ppr.Walk(top_matches=0))
+    assert ids == sorted(found, key=lambda i: (-found[i], i))  # the walk's own score alone
+    assert ids[0] == "doc:h"
+
+
+def test_top_matches_is_a_walk_key_of_0_to_20():
+    assert kg_settings.of({"walk": True}).walk["top_matches"] == 3
+    assert kg_settings.of({"walk": {"top_matches": 0}}).walk["top_matches"] == 0
+    for bad in (21, -1, 1.5):
+        with pytest.raises(kg_settings.SettingsError, match="walk.top_matches"):
+            kg_settings.of({"walk": {"top_matches": bad}})
