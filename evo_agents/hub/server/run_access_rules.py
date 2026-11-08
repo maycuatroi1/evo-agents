@@ -15,21 +15,25 @@ messaged, no decision answered and no approval given, and nothing of the Curator
 on a route open to it is the route's to refuse, as for the agent of a run on /mcp: each of those rules tests
 ``Principal.acts_for_run``, which both have.
 
-Five of those groups are the owner's to open, REACH_GROUPS: ``agents`` (the writes of a project's agent profiles and
+Six of those groups are the owner's to open, REACH_GROUPS: ``agents`` (the writes of a project's agent profiles and
 agent types), ``workers`` (workers, worker pools, their join tokens and labels, and the org chart's workers),
 ``curator`` (the Curator's writes), ``releases`` (setting a project's release schedule, resuming it and checking it
-now, which may queue the cut of a release as the schedule's owner) and ``answers`` (asking an answer job of a project's
+now, which may queue the cut of a release as the schedule's owner), ``answers`` (asking an answer job of a project's
 graph, ``kg_answers.ask``, whose batches the hub queues later as review runs dispatched as the job's sender, the
-owner). The member's run reach, ``users.run_reach``, set with PUT /v1/autonomy/run-reach (``evo-agents hub autonomy
+owner) and ``runs`` (starting a run, messaging one and handing an agent work: the routes of the group and every place
+``new_run_refusal`` guards). The member's run reach, ``users.run_reach``, set with PUT /v1/autonomy/run-reach (``evo-agents hub autonomy
 run-reach --allow ...``), is the set of them the tokens of their runs skip; ``security`` reads it with the token, so a
 change holds from the next request of every run. It is empty unless the member chose, which refuses as before, and a
 refusal of one of them says how the owner opens it. Every other group stays refused whatever the owner chose.
 
-While the middleware answers a request of a run's token, ACTING_RUN holds the run's id, and no run is queued whatever
-route the request took: ``refuse_new_run`` is the last word of every place that inserts a run
-(``runs.service.dispatch.insert_run``, the session of a chat run and a parked run's resumption), and
-``new_run_refusal`` the reason a place that refuses with words (a mention in a chat, a core plugin's task) says. The
-one exception is the release check now, which the middleware let through only when the owner opened ``releases``: it
+While the middleware answers a request of a run's token, ACTING_RUN holds the run's id and ACTING_REACH its owner's run
+reach (``acting``), and no run is queued whatever route the request took unless that reach holds ``runs``:
+``refuse_new_run`` is the last word of every place that inserts a run (``runs.service.dispatch.insert_run``, the
+session of a chat run and a parked run's resumption), and ``new_run_refusal`` the reason a place that refuses with
+words (a mention in a chat, a core plugin's task) says. A run a token of such an owner starts never runs as the owner
+(``run_access.refuse_onward``, which no reach lifts), so its own agent has no run's token and the owner's account goes
+no further than the run they let run as them; a mention it makes is a person's, hop 1 of ``chat_runs.MAX_HOPS``. The
+other exception is the release check now, which the middleware let through only when the owner opened ``releases``: it
 queues its cut inside ``release_dispatch``, as the schedule's owner, as the daily check would.
 
 ``record_write`` adds the audit row run_access.write of each write made with a run's token, refused or not, once its
@@ -59,7 +63,7 @@ _PROJECT = r"/v1/projects/[^/]+"
 _RUN = rf"{_PROJECT}/runs/[^/]+"
 # The groups a member may let the tokens of their runs reach (``users.run_reach``), in the order the hub keeps them.
 REACH_GROUPS = RUN_REACH_GROUPS
-AGENTS, WORKERS, CURATOR, RELEASES, ANSWERS = REACH_GROUPS
+AGENTS, WORKERS, CURATOR, RELEASES, ANSWERS, RUNS = REACH_GROUPS
 RUN_REACH_PATH = "/v1/autonomy/run-reach"
 # (group, why, path patterns): every method of a path in one of them is refused
 REFUSED = (
@@ -117,8 +121,8 @@ WRITES_REFUSED = (
     ),
     (AGENTS, "a project's agent profiles and agent types", (rf"{_PROJECT}/agents", rf"{_PROJECT}/agent-types")),
     (
-        "runs",
-        "starting a run or sending one a message, which would carry the owner's account into work of its own",
+        RUNS,
+        "starting a run or sending one a message, which carries the owner's account into work of its own",
         (
             rf"{_PROJECT}/runs$",
             rf"{_PROJECT}/plan-runs",
@@ -164,6 +168,8 @@ NEW_RUN = (
 )
 # The run whose token the request being answered carries (``security.Authenticate``); None for any other credential.
 ACTING_RUN: ContextVar[int | None] = ContextVar("acting_run", default=None)
+# The run reach of that run's owner (``users.run_reach``): RUNS in it lets the request start runs (``new_run_refusal``).
+ACTING_REACH: ContextVar[frozenset[str]] = ContextVar("acting_reach", default=frozenset())
 MAX_PATH_CHARS = 500  # of the path an audit row names
 
 
@@ -210,9 +216,29 @@ def refusal(method: str, path: str, reach: frozenset[str] = frozenset()) -> str 
     return None
 
 
+@contextmanager
+def acting(run_id: int, reach: frozenset[str]):
+    """While it holds, the request being answered carries the token of run ``run_id``, whose owner's run reach is
+    ``reach`` (``security.Authenticate``)."""
+    run = ACTING_RUN.set(run_id)
+    opened = ACTING_REACH.set(reach)
+    try:
+        yield
+    finally:
+        ACTING_REACH.reset(opened)
+        ACTING_RUN.reset(run)
+
+
 def new_run_refusal() -> str | None:
-    """Why no run may start now: the request being answered carries a run's token (``ACTING_RUN``); None otherwise."""
-    return NEW_RUN if ACTING_RUN.get() is not None else None
+    """Why no run may start now: the request being answered carries a run's token (``ACTING_RUN``) whose owner's run
+    reach does not hold RUNS (``ACTING_REACH``); None otherwise."""
+    if ACTING_RUN.get() is None:
+        return None
+    reach = ACTING_REACH.get()
+    if RUNS in reach:
+        return None
+    allowed = ",".join(reach_order(reach | {RUNS}))
+    return f"{NEW_RUN}, or lets their runs start runs with `evo-agents hub autonomy run-reach --allow {allowed}`"
 
 
 @contextmanager

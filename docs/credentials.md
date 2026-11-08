@@ -965,9 +965,13 @@ These groups refuse writes (POST, PUT, PATCH, DELETE) and leave reads open:
 - agent profiles and agent types: `/v1/projects/{p}/agents*` (an agent's placement and account pool among them) and
   `/v1/projects/{p}/agent-types*`, unless the owner's run reach holds `agents`;
 - runs: a dispatch (`POST /v1/projects/{p}/runs`), a plan run, an author run, a rerun, a message to a run or to a
-  local run's inbox, an editorial post's run. No run starts from it, with or without
-  `as_me`: the owner's account would go on into work the owner never chose, with the accounts, browser identities or
-  worker the request names;
+  local run's inbox, an editorial post's run, unless the owner's run reach holds `runs`. Without it no run starts from
+  the token, with or without `as_me`: the owner's account would go on into work the owner never chose, with the
+  accounts, browser identities or worker the request names. With it the run starts runs, messages them and hands agents
+  work (a mention in a chat, a core plugin's task) as its owner would, so a plan run whose step drives agents (the demo
+  of an agent system, a comparison over many questions) does it itself; a run it starts never runs as the owner
+  (`as_me` stays refused, and a rerun that would keep it too), so its own agent has no run's token and the owner's
+  account goes no further than the run they let; a mention it makes is a person's, hop 1 of the three;
 - decisions: the answer to a decision of any run, a local run's decision marked answered, the approval of a run in
   review, the merge queue's answers, the reset of the Loop's breaker, the answers and rollbacks of `@builder`;
 - the Curator: its charter, proposals, changes, probes and builds, unless the owner's run reach holds `curator`;
@@ -981,22 +985,23 @@ These groups refuse writes (POST, PUT, PATCH, DELETE) and leave reads open:
   questions asks them itself. The run of a batch is a KG run, which never runs as its owner, so it asks no job whatever
   the owner opened.
 
-**The run reach.** Five of those groups are the owner's to open to every run that runs as them: `agents`, `workers`,
-`curator`, `releases` and `answers`. The set is per member and hub-wide, empty unless the member chose, which refuses
-as above; a refusal of one of the five says how to open it. Only the member sets their own, with their own sign-in:
+**The run reach.** Six of those groups are the owner's to open to every run that runs as them: `agents`, `workers`,
+`curator`, `releases`, `answers` and `runs`. The set is per member and hub-wide, empty unless the member chose, which
+refuses as above; a refusal of one of the six says how to open it. Only the member sets their own, with their own
+sign-in:
 
 ```sh
-evo-agents hub autonomy run-reach                                                 # show it
-evo-agents hub autonomy run-reach --allow agents,workers,curator,releases,answers # replace it with these
-evo-agents hub autonomy run-reach --none                                          # clear it
+evo-agents hub autonomy run-reach                                                      # show it
+evo-agents hub autonomy run-reach --allow agents,workers,curator,releases,answers,runs # replace it with these
+evo-agents hub autonomy run-reach --none                                               # clear it
 ```
 
 That is `GET` and `PUT /v1/autonomy/run-reach` with `{"groups": [...]}`, which replaces the set whole; each change adds
 the audit row `run_access.reach`, "reach <login> <before>-><after>". The hub reads the set with the run's token, so a
 change holds from the next request of every run of the member, running or not. Whatever the set holds, the agent's
 accounts and provider accounts stay in the group secrets, the terminal, the live view, takeover and handback of a run
-and the worker protocol stay refused, and so do secrets, tokens, run access, grants, the rest of the owner's autonomy,
-runs and decisions. The routes inside a group still check their own rules: the K12 class of the run's autonomy holds a
+and the worker protocol stay refused, and so do secrets, tokens, run access, grants, the rest of the owner's autonomy
+and decisions. The routes inside a group still check their own rules: the K12 class of the run's autonomy holds a
 write of an agent profile (`route_autonomy`), and the routes of workers and pools keep their own checks of who may
 call them.
 
@@ -1006,7 +1011,7 @@ or returns no SRS version, decides no item of a canvas baseline, claims no post 
 session, whose answer carries the session's cookies (`session_run` of the core plugin API), reads no probe's verify,
 uses no invite's right to register a project, and the K8 and K12 classes of its run's autonomy hold its writes
 (`route_autonomy`). And no run starts while a request of its token is answered (`run_access_rules.ACTING_RUN`), whatever
-route it took: a message it posts in a chat stays, and its mention of an agent is refused in the thread, with no run
+route it took, unless the owner's run reach holds `runs`: a message it posts in a chat stays, and its mention of an agent is refused in the thread, with no run
 and nothing in a run's inbox; a core plugin's task is not handed. The rerun the agent of a triage thread makes never
 runs as the owner, whatever the failed run did. A stream of a run's log or of a chat the token opened looks at each
 turn, at most every 5 seconds, whether the token is still live, and stops once it is not.

@@ -712,18 +712,23 @@ def test_a_runs_token_is_refused_handing_an_agent_work_in_a_chat_and_its_message
 def test_a_runs_token_is_refused_any_new_run_whatever_route_would_queue_it():
     assert run_access_rules.new_run_refusal() is None
     run_access_rules.refuse_new_run()  # nothing while no run's token is being answered
-    acting = run_access_rules.ACTING_RUN.set(7)
-    try:
-        assert run_access_rules.new_run_refusal() == run_access_rules.NEW_RUN
+    with run_access_rules.acting(7, frozenset({"agents"})):
+        why = run_access_rules.new_run_refusal()
+        assert why is not None and why.startswith(run_access_rules.NEW_RUN)
+        assert why.endswith("`evo-agents hub autonomy run-reach --allow agents,runs`"), why
         with pytest.raises(HTTPException) as refused:
             run_access_rules.refuse_new_run()
-        assert refused.value.status_code == 403 and refused.value.detail == run_access_rules.NEW_RUN
+        assert refused.value.status_code == 403 and refused.value.detail == why
         made = asyncio.run(task_dispatch.hand_own_task(None, "pm", 1, "pm", "a task"))
-        assert made == (None, run_access_rules.NEW_RUN)
+        assert made == (None, why)
         with pytest.raises(HTTPException):
             asyncio.run(dispatch.insert_run(None, {"project_id": 1}))
-    finally:
-        run_access_rules.ACTING_RUN.reset(acting)
+    assert run_access_rules.new_run_refusal() is None  # the request ended
+    with run_access_rules.acting(7, frozenset({"runs"})):  # the owner opened runs: no refusal of its own
+        assert run_access_rules.new_run_refusal() is None
+        run_access_rules.refuse_new_run()
+        with run_access_rules.release_dispatch():
+            assert run_access_rules.new_run_refusal() is None
 
 
 def test_lifecycle_the_triage_rerun_of_a_run_that_ran_as_its_owner_does_not(client, hub, hub_db):
