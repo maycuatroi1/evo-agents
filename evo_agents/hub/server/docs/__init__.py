@@ -15,15 +15,18 @@ the sink X-Evo-Sink names, else the project's hub sink, as plans are read. The h
 native pages (``PAGES``): the documents, a document read at any version with its images, its history, and the editor.
 ``evo-agents hub docs list|show|put|history`` is their client: ``put`` uploads the images a Markdown file names beside
 it and saves the file as the next version. The tool ``docs__read`` of the hub's /mcp reads them for the agent of a run.
+The project's knowledge graph holds the latest version of each document, under its label (``kg``, source
+``plugin.docs``), so ``kg_search`` finds a document by what it says.
 
 The hub imports this package for the manifest only: ``store`` reads and writes the documents, ``images`` keeps and
-serves their images, ``models`` and ``server`` are the API, ``agent`` is the tool.
+serves their images, ``models`` and ``server`` are the API, ``agent`` is the tool, ``kg`` the graph's source.
 """
 
 from evo_agents.hub.tables_docs import MAX_IMAGE_BYTES, SLUG
 
 SERVER = "evo_agents.hub.server.docs.server"
 AGENT = "evo_agents.hub.server.docs.agent"
+KG = "evo_agents.hub.server.docs.kg"
 
 READ_SCHEMA = {
     "type": "object",
@@ -60,7 +63,7 @@ PAGES = {"documents": {"title": "Docs", "icon": "book-open", "description": "The
 
 MANIFEST = {
     "id": "docs",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "publisher": "evo-agents",
     "tier": "core",
     "name": "Docs",
@@ -73,6 +76,9 @@ MANIFEST = {
             for name, title, text, schema in TOOLS
         ],
         "routes": [{"name": "documents", "title": "The documents of a project", "python": f"{SERVER}:router"}],
+        "kg_sources": [
+            {"name": "documents", "title": "The latest version of each document", "python": f"{KG}:kg_source"}
+        ],
         "tables": [{"name": name, "title": title} for name, title in TABLES],
         "pages": [{"name": name, **page} for name, page in PAGES.items()],
     },
