@@ -5,7 +5,9 @@ a plugin's config (``evo_agents.hub.server.project_plugins``), and the hub's own
 ``list --project P`` prints each plugin installed on the hub, whether P enabled it and what it asks for. ``enable
 NAME --project P`` prints what the installed version asks for, each permission with what it lets the plugin do, and
 grants exactly that once the person at the terminal answers yes, or with ``--yes``; without a terminal it needs
-``--yes``. ``disable NAME --project P`` turns it off for P, its grants going with it.
+``--yes``. ``--records-level LEVEL`` sets the highest level of P's ladder its jobs and events, which have no caller,
+reach in its records (records:use). ``disable NAME --project P`` turns it off for P, its grants going with it.
+``agent-type list|enable|disable`` keeps the agent types of P's plugins (``cli_plugin_agent_types``).
 
 ``config NAME --project P`` prints the project's layer of the plugin's config (``--agent H`` an agent profile's,
 ``--instance`` instead of ``--project`` the hub's), ``--versions`` every version of it. ``--set FIELD=VALUE`` (VALUE
@@ -25,6 +27,7 @@ import sys
 from urllib.parse import quote, urlencode
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli_plugin_agent_types import register_agent_type_commands
 from evo_agents.hub.cli_secrets import Refused, read_value
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import JsonOutput, json_option, returns_array, returns_object
@@ -147,7 +150,8 @@ def cmd_enable(args) -> int:
     plugin = hub.call("GET", _project_path(args.project, args.name))
     if not args.json:
         _asks(plugin)
-    if plugin["enabled"] and not plugin["pending"]:
+    level = args.records_level
+    if plugin["enabled"] and not plugin["pending"] and level in (None, (plugin or {}).get("records_level")):
         if args.json:
             print_json(plugin)
         else:
@@ -159,11 +163,13 @@ def cmd_enable(args) -> int:
         print("Nothing granted.")
         return 1
     asked = [item["name"] for item in plugin["permissions"]]
-    enabled = hub.call("POST", _project_path(args.project, args.name, "enable"), {"permissions": asked})
+    body = {"permissions": asked} if level is None else {"permissions": asked, "records_level": level}
+    enabled = hub.call("POST", _project_path(args.project, args.name, "enable"), body)
     if args.json:
         print_json(enabled)
     else:
-        print(f"Enabled plugin {args.name} {enabled['version']} for project {args.project}.")
+        reach = f", its jobs and events reaching records up to {level}" if level is not None else ""
+        print(f"Enabled plugin {args.name} {enabled['version']} for project {args.project}{reach}.")
     return 0
 
 
@@ -335,12 +341,17 @@ def project_list_output() -> JsonOutput:
 
 
 def register_project_commands(psub, name) -> None:
-    """Add enable, disable, config and rollback to ``hub plugin``; ``name`` adds the NAME argument."""
+    """Add enable, disable, config, rollback and agent-type to ``hub plugin``; ``name`` adds the NAME argument."""
     output = returns_object(*PROJECT_PLUGIN_KEYS, schema="ProjectPlugin")
     enabled = psub.add_parser("enable", help="enable an installed plugin for a project, granting what it asks for")
     name(enabled)
     enabled.add_argument("--project", metavar="PROJECT", required=True, help="the project")
     enabled.add_argument("--yes", action="store_true", help="grant what it asks for without asking")
+    enabled.add_argument(
+        "--records-level",
+        metavar="LEVEL",
+        help="the highest level of the project's ladder its jobs and events reach in its records (records:use)",
+    )
     json_option(enabled, output)
     enabled.set_defaults(func=cmd_enable)
 
@@ -378,3 +389,5 @@ def register_project_commands(psub, name) -> None:
     rolled.add_argument("--to", metavar="VERSION", type=int, required=True, help="the version to copy")
     json_option(rolled, returns_object(*LAYER_KEYS, schema="PluginConfigLayer"))
     rolled.set_defaults(func=cmd_rollback)
+
+    register_agent_type_commands(psub)

@@ -39,6 +39,12 @@ class RunRepo(BaseModel):
 
     repo: str
     branch: str | None = Field(None, description="null when the plan names none: the branch checked out")
+    base: str | None = Field(
+        None,
+        exclude_if=lambda value: value is None,
+        description="a task run's: the branch of origin its worktree starts from instead of the default branch, and "
+        "the base of the draft pull request of its push; absent when its task names none",
+    )
 
 
 class PlanCopy(BaseModel):

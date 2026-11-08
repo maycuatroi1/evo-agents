@@ -9873,6 +9873,191 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/plugin-api/projects/{project}/board/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find Tasks
+         * @description The task the plugin made under ``key``: a list of one, or empty.
+         */
+        get: operations["find_tasks_v1_plugin_api_projects__project__board_tasks_get"];
+        put?: never;
+        /**
+         * Create Task
+         * @description A new task of the plugin under ``key``, in the name of the admin who granted the plugin its permissions.
+         */
+        post: operations["create_task_v1_plugin_api_projects__project__board_tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/board/tasks/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Task
+         * @description Change a task the plugin made: its fields, its status, its people, its links.
+         */
+        patch: operations["edit_task_v1_plugin_api_projects__project__board_tasks__ref__patch"];
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/board/tasks/{ref}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Comment
+         * @description Comment on a task the plugin made.
+         */
+        post: operations["add_comment_v1_plugin_api_projects__project__board_tasks__ref__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/docs/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Image
+         * @description Upload an image for the project's documents, kept once by its SHA-256; a version then shows it by a name.
+         */
+        post: operations["upload_image_v1_plugin_api_projects__project__docs_images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/docs/documents/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Document
+         * @description Save the next version of a document of the plugin, or create it at version 1; a save that changes nothing
+         *     writes nothing.
+         */
+        put: operations["save_document_v1_plugin_api_projects__project__docs_documents__slug__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/runs/{run_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Summary
+         * @description A task run of an agent type of the plugin, with its evidence and error.
+         */
+        get: operations["run_summary_v1_plugin_api_projects__project__runs__run_id__summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/runs/{run_id}/outputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Outputs
+         * @description The outputs of a task run of an agent type of the plugin, oldest first, each with the URL of its bytes.
+         */
+        get: operations["run_outputs_v1_plugin_api_projects__project__runs__run_id__outputs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/runs/{run_id}/outputs/{output_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Output Content
+         * @description The bytes of an output of a task run of an agent type of the plugin.
+         */
+        get: operations["output_content_v1_plugin_api_projects__project__runs__run_id__outputs__output_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/srs/{slug}/use-cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Approved Use Cases
+         * @description The use cases of the version of document ``slug`` approved last: code and key of each.
+         */
+        get: operations["approved_use_cases_v1_plugin_api_projects__project__srs__slug__use_cases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/task/pulls": {
         parameters: {
             query?: never;
@@ -14815,6 +15000,40 @@ export interface components {
              * @description sha256: and the hash of its files, migrations and needs-you lines (approval_heads.scope_of)
              */
             scope?: string | null;
+        };
+        /** ApprovedUseCase */
+        ApprovedUseCase: {
+            /**
+             * Code
+             * @description its code in that version, as UC POST-21
+             */
+            code: string;
+            /**
+             * Key
+             * @description the hub's key of the item, the same in every version of the document
+             */
+            key: string;
+        };
+        /**
+         * ApprovedUseCases
+         * @description The use cases of the version of a document approved last, identifiers only.
+         */
+        ApprovedUseCases: {
+            /**
+             * Document
+             * @description the document's slug
+             */
+            document: string;
+            /**
+             * Version
+             * @description the version approved last, which every use case below is read from
+             */
+            version: number;
+            /**
+             * Use Cases
+             * @description in the document's order
+             */
+            use_cases: components["schemas"]["ApprovedUseCase"][];
         };
         /**
          * ArmResult
@@ -31859,6 +32078,155 @@ export interface components {
              */
             secrets: string[];
         };
+        /**
+         * PluginTask
+         * @description A task the plugin made, whole, with the key it made it under.
+         */
+        PluginTask: {
+            /** Number */
+            number: number;
+            /**
+             * Ref
+             * @description the number as shown, after the config's prefix: T-42
+             */
+            ref: string;
+            /** Type */
+            type: string;
+            /** Title */
+            title: string;
+            /** Status */
+            status: string;
+            /**
+             * Status Group
+             * @description None for a status the config no longer lists
+             */
+            status_group: ("todo" | "doing" | "review" | "done" | "cancelled") | null;
+            /**
+             * Priority
+             * @enum {string}
+             */
+            priority: "urgent" | "high" | "medium" | "low";
+            /** Due On */
+            due_on: string | null;
+            /** Sprint */
+            sprint: string | null;
+            /**
+             * Parent
+             * @description the ref of the task it belongs to
+             */
+            parent: string | null;
+            /** Assignees */
+            assignees: string[];
+            roles: components["schemas"]["TasksRoles"];
+            /**
+             * Steps Done
+             * @description how many of the plan steps it links are done
+             */
+            steps_done: number;
+            /**
+             * Steps Total
+             * @description how many plan steps it links that the caller sees
+             */
+            steps_total: number;
+            /**
+             * Codes
+             * @description the codes of the SRS items it links to that the caller sees, as linked
+             */
+            codes: string[];
+            /**
+             * Label
+             * @description the label the task carries
+             */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Blocked
+             * @description it has an open blocker: one set by hand, or an open decision of its runs
+             */
+            blocked: boolean;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Description Md */
+            description_md: string;
+            /**
+             * Outcome Md
+             * @description what the task came to, markdown; pm reads it before the description's outcome section
+             */
+            outcome_md: string;
+            /**
+             * External Ref
+             * @description where an import took it from, and what it named it could not link
+             */
+            external_ref: {
+                [key: string]: unknown;
+            } | null;
+            /** Links */
+            links: components["schemas"]["TasksLink"][];
+            /**
+             * Blockers
+             * @description every open blocker, those set by hand first
+             */
+            blockers: components["schemas"]["TasksBlocker"][];
+            /** Events */
+            events: components["schemas"]["TasksEvent"][];
+            /** Comments */
+            comments: components["schemas"]["TasksComment"][];
+            /**
+             * Key
+             * @description the plugin's own key of the task
+             */
+            key: string;
+        };
+        /**
+         * PluginTaskIn
+         * @description A new task of the plugin, under a key of its own; its type and status are the config's first when left out.
+         */
+        PluginTaskIn: {
+            /**
+             * Key
+             * @description the plugin's own key of the task, unique among its tasks in the project: GET ?key= finds it
+             */
+            key: string;
+            /** Title */
+            title: string;
+            /**
+             * Description Md
+             * @description Markdown
+             * @default
+             */
+            description_md: string;
+            /**
+             * Type
+             * @description one of the config's types; default: its first
+             */
+            type?: string | null;
+            /**
+             * Status
+             * @description a key of the config's statuses; default: its first
+             */
+            status?: string | null;
+            /**
+             * Priority
+             * @description one of urgent, high, medium, low
+             * @default medium
+             */
+            priority: string;
+            /** Assignees */
+            assignees?: string[];
+            roles?: components["schemas"]["TasksRolesIn"];
+            links?: components["schemas"]["TasksLinksIn"];
+        };
         /** PluginVersion */
         PluginVersion: {
             /** Version */
@@ -38932,6 +39300,11 @@ export interface components {
              * @description null when the plan names none: the branch checked out
              */
             branch?: string | null;
+            /**
+             * Base
+             * @description a task run's: the branch of origin its worktree starts from instead of the default branch, and the base of the draft pull request of its push; absent when its task names none
+             */
+            base?: string | null;
         };
         /**
          * RunRepoSource
@@ -42937,6 +43310,16 @@ export interface components {
              * @description the agent time the run may take, at most 120; default: 30
              */
             minutes?: number | null;
+            /**
+             * Repos
+             * @description the repos of the project the run gets a worktree of, each once; default: every repo
+             */
+            repos?: string[] | null;
+            /**
+             * Base
+             * @description a branch of origin each worktree of the run starts from instead of the repo's default branch, which the draft pull request of each branch it pushes goes into; the run fails when a repo's origin lacks it
+             */
+            base?: string | null;
         };
         /** TaskPull */
         TaskPull: {
@@ -43029,6 +43412,78 @@ export interface components {
              * @description the agent type's cap, which the project's admins set
              */
             daily_usd: number;
+        };
+        /** TaskRunOutputs */
+        TaskRunOutputs: {
+            /** Run Id */
+            run_id: number;
+            /**
+             * Outputs
+             * @description oldest first, those the filters keep; url is where the plugin reads them
+             */
+            outputs: components["schemas"]["RunOutput"][];
+            /**
+             * Count
+             * @description every output the run holds
+             */
+            count: number;
+            /**
+             * Bytes
+             * @description their bytes
+             */
+            bytes: number;
+        };
+        /**
+         * TaskRunSummary
+         * @description A task run of an agent type of the plugin, with what the hub kept of its end.
+         */
+        TaskRunSummary: {
+            /**
+             * Task Id
+             * @description the run its dispatch made, which names its branch
+             */
+            task_id: number;
+            /**
+             * Run Id
+             * @description its latest run: a run its worker lost goes on in the next attempt
+             */
+            run_id: number;
+            /** Attempt */
+            attempt: number;
+            /** Project */
+            project: string;
+            /** Agent Type */
+            agent_type: string;
+            /** State */
+            state: string;
+            /** Branch */
+            branch: string;
+            /**
+             * Pulls
+             * @description the draft pull requests the hub opened, {repo, url, number} each
+             */
+            pulls: {
+                [key: string]: unknown;
+            }[];
+            /** Failure Cause */
+            failure_cause: string | null;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Summary
+             * @description the evidence of the run once it ended done or in review: the worker, the commits and their diffstat, each verify command with its exit code, then the agent's summary; null before
+             */
+            summary: string | null;
+            /**
+             * Error
+             * @description why it failed, as its worker reported it; null otherwise
+             */
+            error: string | null;
         };
         /**
          * TasksBlocker
@@ -84616,6 +85071,748 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    find_tasks_v1_plugin_api_projects__project__board_tasks_get: {
+        parameters: {
+            query: {
+                /** @description the key the plugin made it under */
+                key: string;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginTask"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_task_v1_plugin_api_projects__project__board_tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginTaskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginTask"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edit_task_v1_plugin_api_projects__project__board_tasks__ref__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the task's number, as T-42 or 42 */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TasksItemEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginTask"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_comment_v1_plugin_api_projects__project__board_tasks__ref__comments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the task's number, as T-42 or 42 */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TasksCommentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TasksComment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    upload_image_v1_plugin_api_projects__project__docs_images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        /** @description the image's bytes, a PNG, JPEG, WebP or GIF image of at most 10485760 bytes */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocsUploadedImage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    save_document_v1_plugin_api_projects__project__docs_documents__slug__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the document's slug, which starts with the plugin's id and - */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocsSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocsSaved"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    run_summary_v1_plugin_api_projects__project__runs__run_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRunSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_outputs_v1_plugin_api_projects__project__runs__run_id__outputs_get: {
+        parameters: {
+            query?: {
+                /** @description only these sources; repeat it */
+                source?: ("sent" | "tool" | "outputs")[];
+                /** @description only the outputs after this id */
+                after?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRunOutputs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    output_content_v1_plugin_api_projects__project__runs__run_id__outputs__output_id__content_get: {
+        parameters: {
+            query?: {
+                /** @description answer it as an attachment, which a browser saves */
+                download?: boolean;
+            };
+            header?: {
+                /** @description one byte range, bytes=first-last */
+                Range?: string | null;
+                /** @description the ETag of the bytes the browser holds */
+                "if-none-match"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+                output_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the output's bytes, in its own media type */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the byte range asked for */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description the bytes the browser holds, named by If-None-Match, are the output's */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description the range asked for lies outside the output */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    approved_use_cases_v1_plugin_api_projects__project__srs__slug__use_cases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the document's slug */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovedUseCases"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

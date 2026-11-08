@@ -570,10 +570,14 @@ def _include_member_routes(app: FastAPI) -> None:
         opportunity_evidence,
         orchestrator_actions,
         plugin_cli,
+        plugin_docs_api,
         plugin_host,
         plugin_notify,
         plugin_publishers,
         plugin_records_api,
+        plugin_runs_api,
+        plugin_srs_api,
+        plugin_tasks_api,
         plugin_ui,
         plugins,
         problem_evidence,
@@ -627,6 +631,10 @@ def _include_member_routes(app: FastAPI) -> None:
         plugin_notify.router,
         plugin_records_api.backend,
         plugin_records_api.members,
+        plugin_tasks_api.router,  # tasks:write, under .../board/ apart from task_dispatch's .../tasks/{task}
+        plugin_docs_api.router,  # docs:write
+        plugin_runs_api.router,  # the summary and outputs of the plugin's task runs, with runs:dispatch
+        plugin_srs_api.router,  # srs:read
         task_dispatch.worker_router,
         chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
         chats.router,

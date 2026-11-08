@@ -17568,6 +17568,183 @@
         "schema": "evo_agents__hub__server__plans__Written"
       }
     },
+    "hub plugin agent-type disable": {
+      "positionals": [
+        {
+          "name": "plugin",
+          "metavar": "PLUGIN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "plugin",
+          "name",
+          "title",
+          "description",
+          "handle",
+          "environment",
+          "packs",
+          "enabled",
+          "run_as",
+          "daily_usd",
+          "spent_usd",
+          "enabled_by",
+          "enabled_at",
+          "disabled_at"
+        ],
+        "schema": "AgentType"
+      }
+    },
+    "hub plugin agent-type enable": {
+      "positionals": [
+        {
+          "name": "plugin",
+          "metavar": "PLUGIN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--run-as"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--daily-usd"
+          ],
+          "value": "number",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--handle"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "plugin",
+          "name",
+          "title",
+          "description",
+          "handle",
+          "environment",
+          "packs",
+          "enabled",
+          "run_as",
+          "daily_usd",
+          "spent_usd",
+          "enabled_by",
+          "enabled_at",
+          "disabled_at"
+        ],
+        "schema": "AgentType"
+      }
+    },
+    "hub plugin agent-type list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "plugin",
+          "name",
+          "title",
+          "description",
+          "handle",
+          "environment",
+          "packs",
+          "enabled",
+          "run_as",
+          "daily_usd",
+          "spent_usd",
+          "enabled_by",
+          "enabled_at",
+          "disabled_at"
+        ],
+        "schema": "AgentType"
+      }
+    },
     "hub plugin config": {
       "positionals": [
         {
@@ -17797,6 +17974,14 @@
             "--yes"
           ],
           "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--records-level"
+          ],
+          "value": "string",
           "required": false,
           "repeatable": false
         },
@@ -86114,6 +86299,1097 @@
           }
         }
       },
+      "/v1/plugin-api/projects/{project}/board/tasks": {
+        "post": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Create Task",
+          "description": "A new task of the plugin under ``key``, in the name of the admin who granted the plugin its permissions.",
+          "operationId": "create_task_v1_plugin_api_projects__project__board_tasks_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginTaskIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginTask"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Find Tasks",
+          "description": "The task the plugin made under ``key``: a list of one, or empty.",
+          "operationId": "find_tasks_v1_plugin_api_projects__project__board_tasks_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "key",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "the key the plugin made it under",
+                "title": "Key"
+              },
+              "description": "the key the plugin made it under"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/PluginTask"
+                    },
+                    "title": "Response Find Tasks V1 Plugin Api Projects  Project  Board Tasks Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/plugin-api/projects/{project}/board/tasks/{ref}": {
+        "patch": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Edit Task",
+          "description": "Change a task the plugin made: its fields, its status, its people, its links.",
+          "operationId": "edit_task_v1_plugin_api_projects__project__board_tasks__ref__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20,
+                "description": "the task's number, as T-42 or 42",
+                "title": "Ref"
+              },
+              "description": "the task's number, as T-42 or 42"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksItemEdit"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginTask"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/plugin-api/projects/{project}/board/tasks/{ref}/comments": {
+        "post": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Add Comment",
+          "description": "Comment on a task the plugin made.",
+          "operationId": "add_comment_v1_plugin_api_projects__project__board_tasks__ref__comments_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20,
+                "description": "the task's number, as T-42 or 42",
+                "title": "Ref"
+              },
+              "description": "the task's number, as T-42 or 42"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksCommentIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TasksComment"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/plugin-api/projects/{project}/docs/images": {
+        "post": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Upload Image",
+          "description": "Upload an image for the project's documents, kept once by its SHA-256; a version then shows it by a name.",
+          "operationId": "upload_image_v1_plugin_api_projects__project__docs_images_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DocsUploadedImage"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          },
+          "requestBody": {
+            "required": true,
+            "description": "the image's bytes, a PNG, JPEG, WebP or GIF image of at most 10485760 bytes",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/plugin-api/projects/{project}/docs/documents/{slug}": {
+        "put": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Save Document",
+          "description": "Save the next version of a document of the plugin, or create it at version 1; a save that changes nothing\nwrites nothing.",
+          "operationId": "save_document_v1_plugin_api_projects__project__docs_documents__slug__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the document's slug, which starts with the plugin's id and -",
+                "title": "Slug"
+              },
+              "description": "the document's slug, which starts with the plugin's id and -"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocsSave"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DocsSaved"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/plugin-api/projects/{project}/runs/{run_id}/summary": {
+        "get": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Run Summary",
+          "description": "A task run of an agent type of the plugin, with its evidence and error.",
+          "operationId": "run_summary_v1_plugin_api_projects__project__runs__run_id__summary_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskRunSummary"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/plugin-api/projects/{project}/runs/{run_id}/outputs": {
+        "get": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Run Outputs",
+          "description": "The outputs of a task run of an agent type of the plugin, oldest first, each with the URL of its bytes.",
+          "operationId": "run_outputs_v1_plugin_api_projects__project__runs__run_id__outputs_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "source",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "sent",
+                    "tool",
+                    "outputs"
+                  ],
+                  "type": "string"
+                },
+                "description": "only these sources; repeat it",
+                "default": [],
+                "title": "Source"
+              },
+              "description": "only these sources; repeat it"
+            },
+            {
+              "name": "after",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 0,
+                "description": "only the outputs after this id",
+                "default": 0,
+                "title": "After"
+              },
+              "description": "only the outputs after this id"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskRunOutputs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/plugin-api/projects/{project}/runs/{run_id}/outputs/{output_id}/content": {
+        "get": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Output Content",
+          "description": "The bytes of an output of a task run of an agent type of the plugin.",
+          "operationId": "output_content_v1_plugin_api_projects__project__runs__run_id__outputs__output_id__content_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "output_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Output Id"
+              }
+            },
+            {
+              "name": "download",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "answer it as an attachment, which a browser saves",
+                "default": false,
+                "title": "Download"
+              },
+              "description": "answer it as an attachment, which a browser saves"
+            },
+            {
+              "name": "Range",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "one byte range, bytes=first-last",
+                "title": "Range"
+              },
+              "description": "one byte range, bytes=first-last"
+            },
+            {
+              "name": "if-none-match",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the ETag of the bytes the browser holds",
+                "title": "If-None-Match"
+              },
+              "description": "the ETag of the bytes the browser holds"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "the output's bytes, in its own media type",
+              "content": {
+                "application/octet-stream": {}
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "206": {
+              "content": {
+                "application/octet-stream": {}
+              },
+              "description": "the byte range asked for"
+            },
+            "304": {
+              "description": "the bytes the browser holds, named by If-None-Match, are the output's"
+            },
+            "416": {
+              "description": "the range asked for lies outside the output"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/plugin-api/projects/{project}/srs/{slug}/use-cases": {
+        "get": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Approved Use Cases",
+          "description": "The use cases of the version of document ``slug`` approved last: code and key of each.",
+          "operationId": "approved_use_cases_v1_plugin_api_projects__project__srs__slug__use_cases_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the document's slug",
+                "title": "Slug"
+              },
+              "description": "the document's slug"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApprovedUseCases"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/task/pulls": {
         "post": {
           "tags": [
@@ -107722,6 +108998,56 @@
           ],
           "title": "Approval",
           "description": "What a merge approval holds for: one head of one request, with one scope."
+        },
+        "ApprovedUseCase": {
+          "properties": {
+            "code": {
+              "type": "string",
+              "title": "Code",
+              "description": "its code in that version, as UC POST-21"
+            },
+            "key": {
+              "type": "string",
+              "title": "Key",
+              "description": "the hub's key of the item, the same in every version of the document"
+            }
+          },
+          "type": "object",
+          "required": [
+            "code",
+            "key"
+          ],
+          "title": "ApprovedUseCase"
+        },
+        "ApprovedUseCases": {
+          "properties": {
+            "document": {
+              "type": "string",
+              "title": "Document",
+              "description": "the document's slug"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version approved last, which every use case below is read from"
+            },
+            "use_cases": {
+              "items": {
+                "$ref": "#/components/schemas/ApprovedUseCase"
+              },
+              "type": "array",
+              "title": "Use Cases",
+              "description": "in the document's order"
+            }
+          },
+          "type": "object",
+          "required": [
+            "document",
+            "version",
+            "use_cases"
+          ],
+          "title": "ApprovedUseCases",
+          "description": "The use cases of the version of a document approved last, identifiers only."
         },
         "ArmResult": {
           "properties": {
@@ -146558,7 +147884,7 @@
                 "minLength": 1
               },
               "type": "array",
-              "maxItems": 12,
+              "maxItems": 14,
               "title": "Permissions",
               "description": "the grant: exactly what the installed version asks for, as GET .../plugins/{name} shows it"
             },
@@ -146964,6 +148290,316 @@
           ],
           "title": "PluginRuntime",
           "description": "A runtime a plugin enabled on a project declares (``evo_agents.plugins.runtimes``): the command of an ACP agent,\nat the plugin's version the hub has installed."
+        },
+        "PluginTask": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "ref": {
+              "type": "string",
+              "title": "Ref",
+              "description": "the number as shown, after the config's prefix: T-42"
+            },
+            "type": {
+              "type": "string",
+              "title": "Type"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status"
+            },
+            "status_group": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "todo",
+                    "doing",
+                    "review",
+                    "done",
+                    "cancelled"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Group",
+              "description": "None for a status the config no longer lists"
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority"
+            },
+            "due_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due On"
+            },
+            "sprint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sprint"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent",
+              "description": "the ref of the task it belongs to"
+            },
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Assignees"
+            },
+            "roles": {
+              "$ref": "#/components/schemas/TasksRoles"
+            },
+            "steps_done": {
+              "type": "integer",
+              "title": "Steps Done",
+              "description": "how many of the plan steps it links are done"
+            },
+            "steps_total": {
+              "type": "integer",
+              "title": "Steps Total",
+              "description": "how many plan steps it links that the caller sees"
+            },
+            "codes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Codes",
+              "description": "the codes of the SRS items it links to that the caller sees, as linked"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label",
+              "description": "the label the task carries"
+            },
+            "blocked": {
+              "type": "boolean",
+              "title": "Blocked",
+              "description": "it has an open blocker: one set by hand, or an open decision of its runs"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "description_md": {
+              "type": "string",
+              "title": "Description Md"
+            },
+            "outcome_md": {
+              "type": "string",
+              "title": "Outcome Md",
+              "description": "what the task came to, markdown; pm reads it before the description's outcome section"
+            },
+            "external_ref": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "External Ref",
+              "description": "where an import took it from, and what it named it could not link"
+            },
+            "links": {
+              "items": {
+                "$ref": "#/components/schemas/TasksLink"
+              },
+              "type": "array",
+              "title": "Links"
+            },
+            "blockers": {
+              "items": {
+                "$ref": "#/components/schemas/TasksBlocker"
+              },
+              "type": "array",
+              "title": "Blockers",
+              "description": "every open blocker, those set by hand first"
+            },
+            "events": {
+              "items": {
+                "$ref": "#/components/schemas/TasksEvent"
+              },
+              "type": "array",
+              "title": "Events"
+            },
+            "comments": {
+              "items": {
+                "$ref": "#/components/schemas/TasksComment"
+              },
+              "type": "array",
+              "title": "Comments"
+            },
+            "key": {
+              "type": "string",
+              "title": "Key",
+              "description": "the plugin's own key of the task"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "ref",
+            "type",
+            "title",
+            "status",
+            "status_group",
+            "priority",
+            "due_on",
+            "sprint",
+            "parent",
+            "assignees",
+            "roles",
+            "steps_done",
+            "steps_total",
+            "codes",
+            "label",
+            "blocked",
+            "created_by",
+            "created_at",
+            "updated_at",
+            "description_md",
+            "outcome_md",
+            "external_ref",
+            "links",
+            "blockers",
+            "events",
+            "comments",
+            "key"
+          ],
+          "title": "PluginTask",
+          "description": "A task the plugin made, whole, with the key it made it under."
+        },
+        "PluginTaskIn": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Key",
+              "description": "the plugin's own key of the task, unique among its tasks in the project: GET ?key= finds it"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Title"
+            },
+            "description_md": {
+              "type": "string",
+              "maxLength": 100000,
+              "title": "Description Md",
+              "description": "Markdown",
+              "default": ""
+            },
+            "type": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type",
+              "description": "one of the config's types; default: its first"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "a key of the config's statuses; default: its first"
+            },
+            "priority": {
+              "type": "string",
+              "maxLength": 20,
+              "title": "Priority",
+              "description": "one of urgent, high, medium, low",
+              "default": "medium"
+            },
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Assignees"
+            },
+            "roles": {
+              "$ref": "#/components/schemas/TasksRolesIn"
+            },
+            "links": {
+              "$ref": "#/components/schemas/TasksLinksIn"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "key",
+            "title"
+          ],
+          "title": "PluginTaskIn",
+          "description": "A new task of the plugin, under a key of its own; its type and status are the config's first when left out."
         },
         "PluginVersion": {
           "properties": {
@@ -162753,6 +164389,18 @@
               ],
               "title": "Branch",
               "description": "null when the plan names none: the branch checked out"
+            },
+            "base": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base",
+              "description": "a task run's: the branch of origin its worktree starts from instead of the default branch, and the base of the draft pull request of its push; absent when its task names none"
             }
           },
           "type": "object",
@@ -172239,6 +173887,40 @@
               ],
               "title": "Minutes",
               "description": "the agent time the run may take, at most 120; default: 30"
+            },
+            "repos": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                  },
+                  "type": "array",
+                  "maxItems": 50,
+                  "minItems": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repos",
+              "description": "the repos of the project the run gets a worktree of, each once; default: every repo"
+            },
+            "base": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base",
+              "description": "a branch of origin each worktree of the run starts from instead of the repo's default branch, which the draft pull request of each branch it pushes goes into; the run fails when a repo's origin lacks it"
             }
           },
           "additionalProperties": false,
@@ -172443,6 +174125,153 @@
             "daily_usd"
           ],
           "title": "TaskQueued"
+        },
+        "TaskRunOutputs": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "outputs": {
+              "items": {
+                "$ref": "#/components/schemas/RunOutput"
+              },
+              "type": "array",
+              "title": "Outputs",
+              "description": "oldest first, those the filters keep; url is where the plugin reads them"
+            },
+            "count": {
+              "type": "integer",
+              "title": "Count",
+              "description": "every output the run holds"
+            },
+            "bytes": {
+              "type": "integer",
+              "title": "Bytes",
+              "description": "their bytes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "outputs",
+            "count",
+            "bytes"
+          ],
+          "title": "TaskRunOutputs"
+        },
+        "TaskRunSummary": {
+          "properties": {
+            "task_id": {
+              "type": "integer",
+              "title": "Task Id",
+              "description": "the run its dispatch made, which names its branch"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "its latest run: a run its worker lost goes on in the next attempt"
+            },
+            "attempt": {
+              "type": "integer",
+              "title": "Attempt"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "agent_type": {
+              "type": "string",
+              "title": "Agent Type"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch"
+            },
+            "pulls": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Pulls",
+              "description": "the draft pull requests the hub opened, {repo, url, number} each"
+            },
+            "failure_cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Failure Cause"
+            },
+            "queued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Queued At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Summary",
+              "description": "the evidence of the run once it ended done or in review: the worker, the commits and their diffstat, each verify command with its exit code, then the agent's summary; null before"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why it failed, as its worker reported it; null otherwise"
+            }
+          },
+          "type": "object",
+          "required": [
+            "task_id",
+            "run_id",
+            "attempt",
+            "project",
+            "agent_type",
+            "state",
+            "branch",
+            "pulls",
+            "failure_cause",
+            "queued_at",
+            "finished_at",
+            "summary",
+            "error"
+          ],
+          "title": "TaskRunSummary",
+          "description": "A task run of an agent type of the plugin, with what the hub kept of its end."
         },
         "TasksBlocker": {
           "properties": {

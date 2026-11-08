@@ -100,7 +100,8 @@ async def _items(
     return [item_model(config, row, held[row.id], done[row.id], coded[row.id], bool(waiting[row.id])) for row in rows]
 
 
-async def _detail(conn, access: ProjectAccess, config: Settings, number: int, sink) -> TasksItemDetail:
+async def task_detail(conn, access: ProjectAccess, config: Settings, number: int, sink) -> TasksItemDetail:
+    """Task ``number`` whole, as ``access`` reads it through ``sink``: its links, blockers, history and comments."""
     row = await store.task(conn, access, number, sink)
     waiting = await blockers.open_for(conn, config, [row.id])
     [item] = await _items(conn, access, config, [row], sink, waiting)
@@ -155,7 +156,7 @@ async def show_task(request: Request, project: ProjectName, ref: Ref, user: Curr
 
     async def work(conn):
         access, config = await _opened(conn, user, project)
-        return await _detail(conn, access, config, number_of(ref), sink)
+        return await task_detail(conn, access, config, number_of(ref), sink)
 
     return await _answer(request, work)
 
@@ -203,7 +204,7 @@ async def create_task(request: Request, project: ProjectName, body: TasksItemIn,
         )
         number = await writes.create(conn, writer, task)
         await _graph_changed(request, conn, access)
-        return await _detail(conn, access, config, number, sink)
+        return await task_detail(conn, access, config, number, sink)
 
     return await _answer(request, work)
 
@@ -227,7 +228,7 @@ async def edit_task(
         )
         await writes.edit(conn, writer, row, changes)
         await _graph_changed(request, conn, access)
-        return await _detail(conn, access, config, row.number, sink)
+        return await task_detail(conn, access, config, row.number, sink)
 
     return await _answer(request, work)
 
@@ -332,4 +333,4 @@ async def import_tasks(request: Request, project: ProjectName, body: TasksImport
     return await _answer(request, work)
 
 
-__all__ = ["router"]
+__all__ = ["router", "task_detail"]
