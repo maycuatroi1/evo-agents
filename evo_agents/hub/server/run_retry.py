@@ -12,10 +12,11 @@ CHAT_COLUMNS = ("chat_id", "chat_message_id", "hop")  # a chat run's retry keeps
 def next_attempt(run_id: int):
     """The next attempt of run ``run_id``: the same step, ``parent_run_id`` pointing back, the attempt one higher and
     the runtime the dispatch asked for. It keeps the dispatch's credential, so a worker that takes runs dispatched
-    from the web only takes the retry of one too, and never the retry of a run dispatched with a token; the schedule,
-    night and caps of a run the night shift queued; the agent profile and version it went under; its plugin config; a
-    task run's agent type and pull requests; its principal and autonomy snapshot; whether it gets a browser; whether it
-    runs as its owner (``run_access``), with a token of its own."""
+    from the web only takes the retry of one too, and never the retry of a run dispatched with a token; the gateway
+    provider its model goes through (a run of the hub runtime has no other way to its model); the schedule, night and
+    caps of a run the night shift queued; the agent profile and version it went under; its plugin config; a task run's
+    agent type and pull requests; its principal and autonomy snapshot; whether it gets a browser; whether it runs as
+    its owner (``run_access``), with a token of its own."""
     r = tables.runs
     copied = (
         "kind",
@@ -37,6 +38,7 @@ def next_attempt(run_id: int):
         "repos",
         "session_per_step",
         "model",
+        "gateway_provider",
         "schedule_id",
         "schedule_night",
         "budget",
