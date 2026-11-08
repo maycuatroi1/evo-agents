@@ -265,8 +265,9 @@ async def plan_write_refusal(
 ) -> str | None:
     """Why a write of plan ``plan_id`` is refused: a new plan whose id is one of the Curator's, unless the hub makes it
     from a proposal (``made_by_curator``); and for a Curator's plan, another repo or branch, a step in another repo,
-    or a change of anything but the progress of its steps and its status (``judge.progress_free``). None for any other
-    plan, and for a write that keeps them."""
+    or a change of anything but the progress of its steps and its status (``judge.progress_free``), or than the mend of
+    a verify that is no shell command line (``judge.mended_verify``). None for any other plan, and for a write that
+    keeps them."""
     if old_body is None and not made_by_curator and judge.is_curator_plan_id(plan_id):
         return (
             f"plan ids that start with {judge.CURATOR_PLAN_PREFIX} belong to the Curator: the hub makes such a plan "
@@ -279,7 +280,8 @@ async def plan_write_refusal(
         f"plan {plan_id} is the Curator's: it works on {change.branch} of {change.repo} alone, never on another branch "
         "or repo and least of all on a default branch, and a write of it changes the status, done_at, evidence and "
         "note of its steps and its status alone, its what, goal, context, verify and acceptance staying as the hub "
-        "made them; nothing was written"
+        "made them (a verify that is no shell command line may be replaced by one that is and keeps each of its "
+        "runnable clauses); nothing was written"
     )
     repos = new_body.get("repos")
     if not isinstance(repos, list) or len(repos) != 1 or not isinstance(repos[0], dict):
@@ -290,7 +292,9 @@ async def plan_write_refusal(
     steps = steps if isinstance(steps, list) else []
     if any(isinstance(step, dict) and step.get("repo") not in (None, change.repo) for step in steps):
         return why
-    if old_body is not None and judge.progress_free(old_body) != judge.progress_free(new_body):
+    if old_body is not None and judge.progress_free(old_body) != judge.progress_free(
+        judge.mended_verify(old_body, new_body)
+    ):
         return why
     return None
 

@@ -604,6 +604,15 @@ def test_a_proposal_needs_support_known_repos_and_a_draft_in_outcome_steps(revie
         ({"evidence": [], "finding_ids": []}, "give at least one"),
         ({"plan": without_acceptance}, "is not an outcome step"),
         ({"plan": without_verify}, "has no verify"),
+        (  # curator-64's draft: a clause of prose after the command, which no worker runs
+            {
+                "plan": {
+                    **DRAFT,
+                    "steps": [{**DRAFT["steps"][0], "verify": "pytest -q; and a unit test that checks it"}],
+                }
+            },
+            "the verify of step 1 runs `and` as a program",
+        ),
         ({"plan": {**DRAFT, "steps": []}}, "it has no steps"),
         ({"plan": {**DRAFT, "id": "Not An Id"}}, "must be a plan id"),
         ({"plan": {**DRAFT, "steps": [{"title": "no what", "verify": "x", "acceptance": ["y"]}]}}, "plan.schema.json"),
