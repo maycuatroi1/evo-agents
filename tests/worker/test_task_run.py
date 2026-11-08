@@ -166,6 +166,38 @@ def test_a_task_run_starts_from_the_base_its_task_names_and_pushes_its_own_branc
     with_daemon(machine, body)
 
 
+def test_each_repo_of_a_task_run_starts_from_its_own_base_and_only_a_repo_it_changed_is_pushed(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            "task": [
+                {"sh": "for r in alpha beta; do git -C $r symbolic-ref --short HEAD; git -C $r rev-parse HEAD; done"},
+                {"write": {"beta/draft.md": "# Northwind launch\n\nFixed on the release branch.\n"}},
+                {"result": {"summary": "Read alpha on the test stack's branch, fixed beta."}},
+                {"say": "Done."},
+            ]
+        }
+    )
+    alpha_tip = draft_branch(machine, "alpha", "deploy/test")
+    beta_tip = draft_branch(machine, "beta", "release/2")
+
+    async def body(hub, daemon):
+        run_id = hub.queue_task_run(["alpha", "beta"])
+        branch = task_runs.branch_of(run_id)
+        hub.runs[run_id]["spec"]["repos"][0]["base"] = "deploy/test"
+        hub.runs[run_id]["spec"]["repos"][1]["base"] = "release/2"
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        (look,) = [entry for entry in machine.commands() if entry["run"] == run_id]
+        assert look["stdout"].splitlines() == [branch, alpha_tip, branch, beta_tip], "each from its own base"
+        assert machine.origin_rev("alpha", f"refs/heads/{branch}") is None, "a repo it did not change is not pushed"
+        head = machine.origin_rev("beta", f"refs/heads/{branch}")
+        assert head is not None and machine.origin("beta", "rev-parse", f"{head}~1") == beta_tip, "on top of its base"
+        assert task_pulls(hub) == [(run_id, "beta", branch, head)], "the hub hears of the changed repo alone"
+        assert machine.origin_rev("alpha", "refs/heads/deploy/test") == alpha_tip, "a base is never pushed"
+        assert machine.origin_rev("beta", "refs/heads/release/2") == beta_tip
+
+    with_daemon(machine, body)
+
+
 def test_a_task_run_fails_when_origin_lacks_the_base_its_task_names(machine):  # noqa: F811
     machine.scenarios({"task": [{"result": {"summary": "Nothing."}}, {"say": "Nothing."}]})
 

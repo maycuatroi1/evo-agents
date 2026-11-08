@@ -8,9 +8,10 @@ hub told of each push (POST /v1/worker/runs/{id}/<kind>/pulls), which opens the 
 
 A task run may work in one repo on a branch its task names (``named``, from the run's repos), which is no default
 branch: that branch from origin when origin has it, else from the default branch, pushed back to it, never forced
-(``gitops.check_push`` takes it as ``named_branch``). Its task may also name a base (``bases``, from the run's repos):
-a branch of origin each worktree starts from instead of the default branch, when origin does not have the run's
-branch yet; a repo whose origin lacks it fails the run.
+(``gitops.check_push`` takes it as ``named_branch``). Its task may also name a base for each repo (``bases``, from the
+run's repos, one entry each, so repos of one run may start from different branches): the branch of origin that repo's
+worktree starts from instead of the default branch, when origin does not have the run's branch yet; a repo whose
+origin lacks its base fails the run.
 """
 
 from __future__ import annotations

@@ -1212,10 +1212,27 @@ is a repo the project lacks; a branch another task run of the project works on w
 `repos` names the repos of the project the run gets a worktree of, each once (default: every repo); a repo the project
 lacks is a 422, and the repo whose `branch` the task names is one of them. `base` names a branch of origin each
 worktree starts from instead of the repo's default branch, such as `deploy/test` of a project that deploys a test stack
-from it, and the draft pull request of each branch the run pushes goes into it. The run pushes `task/<task_id>` (or the
-branch its task names) and never `base`, which is never that branch (422); `HEAD`, or a branch of a run (`task/`,
-`chat/`, `curator/`, `evo-run/`), is a 422. A worker whose checkout's origin lacks `base` fails the run before the agent
-starts. Without `repos` and `base` the run's repos keep the shape `{repo, branch}` they had.
+from it, and the draft pull request of each branch the run pushes goes into it. An item of `repos` is a repo's name,
+whose worktree starts from `base` when the task names one and else from the repo's default branch, or an object
+`{"repo": ..., "base": ...}`, whose worktree starts from its own `base` in place of the task's, with the draft pull
+request of that repo going into it. The two forms mix, so one run can start each repo from a different branch:
+
+```json
+{
+  "task": "Run the checkout cases against the test stack and fix what fails.",
+  "repo": "lumen-e2e",
+  "branch": "qa/checkout",
+  "repos": ["lumen-e2e", {"repo": "lumen-web", "base": "deploy/test"}, "lumen-docs"]
+}
+```
+
+Here `lumen-e2e` works on `qa/checkout` (made from its default branch when origin lacks it), `lumen-web` starts from
+`deploy/test` and `lumen-docs` from its default branch. The worker pushes only the repos the agent changed, and the hub
+opens a draft pull request of each into that repo's base, or its default branch when it has none. The run pushes
+`task/<task_id>` (or the branch its task names) and never a base, which is never that branch (422); `HEAD`, or a branch
+of a run (`task/`, `chat/`, `curator/`, `evo-run/`), is a 422, for `base` and for the base of a repo alike. A worker
+whose checkout's origin lacks the base a repo starts from fails the run before the agent starts. Without `base` and
+without a base in `repos` the run's repos keep the shape `{repo, branch}` they had.
 
 `task` is at most 16 KiB in UTF-8 and `title` at most 200 characters (when left out, the task's text on one line, cut short). The hub
 refuses the dispatch with:
@@ -1247,8 +1264,8 @@ one headless turn of the agent, which asks nobody anything (`docs/workers.md`, T
 - pushes that branch of each repo it changed, never a default branch and never forced;
 - tells the hub of each push.
 
-The hub opens a draft pull request of the branch with the workers' GitHub App, into the task's `base` or else the
-repo's default branch, or finds the one open, and never merges it. A repo elsewhere than GitHub, or a hub without the App, gets the pushed branch only. A run its worker lost goes on
+The hub opens a draft pull request of the branch with the workers' GitHub App, into the base the task names for the
+repo (its own in `repos`, else the task's `base`) or else the repo's default branch, or finds the one open, and never merges it. A repo elsewhere than GitHub, or a hub without the App, gets the pushed branch only. A run its worker lost goes on
 in its next attempt on the same branch. A task run is never rerun: the plugin hands the task again (409).
 
 **The plugin learns the end through its events**: when the run is done, failed or cancelled, the hub writes the event

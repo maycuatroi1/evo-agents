@@ -174313,10 +174313,17 @@
               "anyOf": [
                 {
                   "items": {
-                    "type": "string",
-                    "maxLength": 200,
-                    "minLength": 1,
-                    "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                      },
+                      {
+                        "$ref": "#/components/schemas/TaskRepo"
+                      }
+                    ]
                   },
                   "type": "array",
                   "maxItems": 50,
@@ -174327,7 +174334,7 @@
                 }
               ],
               "title": "Repos",
-              "description": "the repos of the project the run gets a worktree of, each once; default: every repo"
+              "description": "the repos of the project the run gets a worktree of, each once: a name, whose worktree starts from the task's base, else the repo's default branch, or {repo, base}, whose worktree starts from that base; default: every repo"
             },
             "base": {
               "anyOf": [
@@ -174341,7 +174348,7 @@
                 }
               ],
               "title": "Base",
-              "description": "a branch of origin each worktree of the run starts from instead of the repo's default branch, which the draft pull request of each branch it pushes goes into; the run fails when a repo's origin lacks it"
+              "description": "a branch of origin each worktree of the run starts from instead of the repo's default branch, unless its item of repos names a base of its own, which the draft pull request of each branch it pushes goes into; the run fails when a repo's origin lacks it"
             }
           },
           "additionalProperties": false,
@@ -174546,6 +174553,32 @@
             "daily_usd"
           ],
           "title": "TaskQueued"
+        },
+        "TaskRepo": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Repo"
+            },
+            "base": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Base",
+              "description": "a branch of origin this repo's worktree starts from, in place of the task's base or the repo's default branch, which the draft pull request of its push goes into; the run fails when its origin lacks it"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "repo",
+            "base"
+          ],
+          "title": "TaskRepo",
+          "description": "A repo of the project a task's run gets a worktree of, with the branch of origin that worktree starts from."
         },
         "TaskRunOutputs": {
           "properties": {

@@ -1035,9 +1035,10 @@ rules, the repos and the task, which is cut first to keep the prompt within its 
 the type's cap of cost for 24 hours, and 30 minutes of agent time.
 
 The daemon makes a writable worktree of each repo it has a checkout of on the run's branch, from origin's branch when
-an earlier attempt pushed it, else from the branch of origin the task names as its `base`, else from origin's default
-branch (`runner/branch_work.py`, shared with chat runs). A task whose `base` a repo's origin lacks fails before the
-agent starts. The task's `repos`, when it names them, are the repos of the run. The
+an earlier attempt pushed it, else from the branch of origin the task names as that repo's base (a base of its own in
+`repos`, else the task's `base`), else from origin's default branch (`runner/branch_work.py`, shared with chat runs),
+so repos of one run may start from different branches. A task whose base a repo's origin lacks fails before the agent
+starts. The task's `repos`, when it names them, are the repos of the run. The
 agent works in one headless turn, `EVO_RUN_KIND=task`, and asks nobody anything. At the end the daemon:
 
 - commits what the agent left in each worktree;
