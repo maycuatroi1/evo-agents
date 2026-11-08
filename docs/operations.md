@@ -113,9 +113,6 @@ follows the evo-agents hub UI kit, in light and dark ([web/DESIGN.md](../web/DES
   tabs beside it, and a usage card adds up the run's tokens by type with the cost the agent reported. From 1280 px
   the session and the side column of cards scroll on their own. A repo links to its page on its forge, and on GitHub
   or GitLab its branch and commit do too.
-- Monitor (`/monitor`) lists every run in flight over your projects and watches the ones you pick in a grid of live
-  tiles that shares out the window: each tile a run's state, worker, time, plan steps and the tail of its trace, for
-  viewing only. The tiles are in the URL (`?runs=project:id,...`), so a link opens the same grid.
 - A plan's page shows its steps as Board, List or Graph (`?view=graph`): the graph draws each step under the steps it
   waits for, marks the Ready ones, and a step selected (`&step=11`) opens its details beside the graph, read only.
 - Insights charts a project's runs by day over 7, 30 or 90 days: outcomes, failure rate, run time and tokens

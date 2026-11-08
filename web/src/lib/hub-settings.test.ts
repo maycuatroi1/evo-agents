@@ -7,7 +7,7 @@ const FEATURES: Features = {
     { id: "chats", layers: ["instance"], enabled: false },
     { id: "curator", layers: ["instance", "project"], enabled: true },
     { id: "kg", layers: ["instance", "project"], enabled: false },
-    { id: "monitor", layers: ["instance"], enabled: true },
+    { id: "market", layers: ["instance"], enabled: true },
   ],
   projects: [
     { project: "alpha", values: { kg: true, curator: false } },
@@ -31,7 +31,7 @@ describe("featureOn", () => {
 
   it("reads the hub's layer alone for a feature of the whole hub", () => {
     expect(featureOn(FEATURES, "chats", "beta")).toBe(false);
-    expect(featureOn(FEATURES, "monitor", null)).toBe(true);
+    expect(featureOn(FEATURES, "market", null)).toBe(true);
   });
 });
 

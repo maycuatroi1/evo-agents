@@ -105,7 +105,6 @@
     "src/components/home/run-lists.tsx": [
       "src/components/admin/notice.tsx",
       "src/components/kg/use-now.ts",
-      "src/components/monitor/model.ts",
       "src/components/plans/progress.tsx",
       "src/components/runs/badges.tsx",
       "src/components/runs/hooks.ts",
@@ -181,44 +180,6 @@
     ],
     "src/components/live/live-indicator.tsx": [
       "src/components/kg/use-now.ts"
-    ],
-    "src/components/monitor/flight-list.tsx": [
-      "src/components/home/model.ts",
-      "src/components/home/parts.tsx",
-      "src/components/runs/badges.tsx"
-    ],
-    "src/components/monitor/model.ts": [
-      "src/components/home/model.ts",
-      "src/components/runs/queries.ts"
-    ],
-    "src/components/monitor/monitor-page.tsx": [
-      "src/components/home/model.ts",
-      "src/components/runs/queries.ts"
-    ],
-    "src/components/monitor/parts.tsx": [
-      "src/components/home/model.ts",
-      "src/components/home/parts.tsx",
-      "src/components/kg/use-now.ts",
-      "src/components/plans/progress.tsx",
-      "src/components/runs/queries.ts"
-    ],
-    "src/components/monitor/run-tile.test.tsx": [
-      "src/components/home/model.ts",
-      "src/components/runs/queries.ts"
-    ],
-    "src/components/monitor/run-tile.tsx": [
-      "src/components/home/model.ts",
-      "src/components/runs/badges.tsx",
-      "src/components/runs/log-model.ts",
-      "src/components/runs/queries.ts",
-      "src/components/runs/use-run-log.ts"
-    ],
-    "src/components/monitor/tile-trace.tsx": [
-      "src/components/inbox/agent-digest.ts",
-      "src/components/runs/queries.ts",
-      "src/components/runs/trace-look.ts",
-      "src/components/runs/trace-model.ts",
-      "src/components/runs/use-run-log.ts"
     ],
     "src/components/palette/command-palette.test.tsx": [
       "src/components/home/model.ts"
@@ -333,8 +294,7 @@
     "src/components/runs/runs-page.tsx": [
       "src/components/admin/pager.tsx",
       "src/components/admin/use-paged-query.ts",
-      "src/components/kg/use-now.ts",
-      "src/components/monitor/model.ts"
+      "src/components/kg/use-now.ts"
     ],
     "src/components/runs/runs-table.tsx": [
       "src/components/plans/links.ts",
@@ -370,7 +330,6 @@
       "src/components/workers/queries.ts"
     ],
     "src/components/shell/nav-counts.ts": [
-      "src/components/home/model.ts",
       "src/components/inbox/queries.ts",
       "src/components/runs/queries.ts",
       "src/components/workers/model.ts",

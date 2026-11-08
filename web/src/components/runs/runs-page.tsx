@@ -1,8 +1,7 @@
 "use client";
 
-import { Activity, CircleCheck, CircleX, Clock, Eye, Laptop, type LucideIcon, MonitorPlay, Play, Scale, Send } from "lucide-react";
+import { Activity, CircleCheck, CircleX, Clock, Eye, Laptop, type LucideIcon, Play, Scale, Send } from "lucide-react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useState } from "react";
@@ -15,7 +14,6 @@ import { ToolbarFilters } from "@/components/data/filter-sheet";
 import { MetricStrip, QuietLine } from "@/components/data/metric-strip";
 import { SearchField } from "@/components/data/search-field";
 import { useNow } from "@/components/kg/use-now";
-import { MONITOR_PATH } from "@/components/monitor/model";
 import { PageHeader } from "@/components/shell/page-header";
 import { ShortcutKeys, useDispatchShortcut } from "@/components/shell/shortcuts";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -258,24 +256,13 @@ export function RunsPage({ project, initialError }: { project: string; initialEr
       <PageHeader
         title={t("title")}
         actions={
-          <>
-            {/* Every run in flight of every project, live, side by side: the Monitor. */}
-            <Button variant="secondary" asChild>
-              <Link href={MONITOR_PATH} data-testid="runs-monitor">
-                <MonitorPlay aria-hidden="true" />
-                {t("monitorButton")}
-              </Link>
+          canDispatch ? (
+            <Button onClick={() => setDispatching(true)} aria-keyshortcuts={dispatchKey ? "D" : undefined} data-testid="runs-dispatch">
+              <Send aria-hidden="true" />
+              {t("dispatchButton")}
+              {dispatchKey ? <ShortcutKeys id="dispatch" className="ml-0.5" keyClassName="border-current bg-transparent text-current opacity-70" /> : null}
             </Button>
-            {canDispatch ? (
-              <Button onClick={() => setDispatching(true)} aria-keyshortcuts={dispatchKey ? "D" : undefined} data-testid="runs-dispatch">
-                <Send aria-hidden="true" />
-                {t("dispatchButton")}
-                {dispatchKey ? (
-                  <ShortcutKeys id="dispatch" className="ml-0.5" keyClassName="border-current bg-transparent text-current opacity-70" />
-                ) : null}
-              </Button>
-            ) : null}
-          </>
+          ) : null
         }
       />
       <QueryView state={summary} loading={<ListSkeleton metrics={4} />}>

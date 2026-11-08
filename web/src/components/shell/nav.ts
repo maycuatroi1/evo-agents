@@ -21,7 +21,6 @@ import {
   type LucideIcon,
   MessageCircle,
   MessagesSquare,
-  MonitorPlay,
   MoonStar,
   Network,
   Puzzle,
@@ -45,7 +44,7 @@ import { browserApi } from "@/lib/api/browser";
 import { type FeatureId, featureOn, featuresQuery } from "@/lib/hub-settings";
 
 /**
- * The sidebar's links, in the kit's AppShell order: Home (the chat home), Today, Inbox, Monitor and Chats; the current
+ * The sidebar's links, in the kit's AppShell order: Home (the chat home), Today, Inbox and Chats; the current
  * project's areas, then the pages its enabled plugins add (shell/plugin-nav.tsx) before its Plugins; the hub-wide
  * areas (org chart, workers, memories, skills, then secrets, accounts and administration). A step that adds a project
  * area adds one entry to PROJECT_NAV, a hub-wide area one entry to HUB_NAV, and one label under `nav` in
@@ -53,9 +52,9 @@ import { type FeatureId, featureOn, featuresQuery } from "@/lib/hub-settings";
  * `feature` leaves the sidebar and the palette while a hub admin has that feature off, for the hub or for the project
  * shown.
  *
- * A project area marked `top` sits in the first group, after Home, Today, Inbox, Monitor and Chats, for the project
- * shown: the knowledge graph, the core of a project, one click from anywhere. The palette and the breadcrumb still name
- * it as the project's area it is.
+ * A project area marked `top` sits in the first group, after Home, Today, Inbox and Chats, for the project shown: its
+ * agent systems and its knowledge graph, the core of a project, one click from anywhere. The palette and the breadcrumb
+ * still name each as the project's area it is.
  *
  * An item that names a `group` sits in that fold of the sidebar (NAV_GROUPS) instead of on its own row, so the
  * sidebar keeps to the places a visitor opens every day: the fold opens on a click, by itself when the page shown is
@@ -66,7 +65,6 @@ export type NavLabel =
   | "home"
   | "today"
   | "inbox"
-  | "monitor"
   | "overview"
   | "decide"
   | "plans"
@@ -99,10 +97,10 @@ export type NavLabel =
 
 /**
  * A number at the end of a nav item, in its tone: the decisions waiting for the visitor's answer (attention), the
- * project's active runs (running), the runs at work in every project of the visitor's grants (running), the messages
- * of others in the visitor's chats that they have not read (attention). Hidden while it is zero or unknown.
+ * project's active runs (running), the messages of others in the visitor's chats that they have not read (attention).
+ * Hidden while it is zero or unknown.
  */
-export type NavCount = "openDecisions" | "activeRuns" | "runningRuns" | "unreadChats";
+export type NavCount = "openDecisions" | "activeRuns" | "unreadChats";
 
 /** A fold of the sidebar, its label under `nav.groups` in the message files. */
 export type NavGroup = "delivery" | "improvement" | "knowledge" | "apps" | "settings";
@@ -146,19 +144,18 @@ export type HubNavItem = {
 };
 
 /**
- * The first group, without a label: where the visitor starts, what waits for them (decisions, chats) and the runs they
- * watch live.
+ * The first group, without a label: where the visitor starts and what waits for them (decisions, chats).
  */
 export const HOME_NAV: readonly HubNavItem[] = [
   { label: "home", icon: MessageCircle, href: "/" },
   { label: "today", icon: LayoutDashboard, href: "/today" },
   { label: "inbox", icon: Inbox, href: "/inbox", count: "openDecisions" },
-  { label: "monitor", icon: MonitorPlay, href: "/monitor", count: "runningRuns", feature: "monitor" },
   { label: "chats", icon: MessagesSquare, href: "/chats", count: "unreadChats", feature: "chats" },
 ];
 
 export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "overview", icon: FolderKanban, segment: "" },
+  { label: "systems", icon: Workflow, segment: "systems", top: true },
   { label: "kg", icon: Network, segment: "kg", feature: "kg", top: true },
   { label: "decide", icon: Signpost, segment: "decide" },
   { label: "plans", icon: ListChecks, segment: "plans" },
@@ -173,7 +170,6 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "insights", icon: ChartColumn, segment: "insights", group: "improvement" },
   { label: "curator", icon: MoonStar, segment: "curator", feature: "curator", group: "improvement" },
   { label: "agents", icon: Bot, segment: "agents", group: "knowledge" },
-  { label: "systems", icon: Workflow, segment: "systems", group: "knowledge" },
   { label: "memories", icon: BookOpen, segment: "memories", group: "knowledge" },
   { label: "skills", icon: Sparkles, segment: "skills", group: "knowledge" },
   { label: "browser", icon: Globe, segment: "browser", group: "knowledge" },

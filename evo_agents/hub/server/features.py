@@ -8,7 +8,7 @@
 - The same under /v1/admin/projects/{project}/features: a project's layer, for hub admins.
 
 A write turns features on (true) or off (false) and unsets others, which then follow the layer below
-(``hub_settings.write_layer``); a feature turned on or off for the whole hub only (chats, monitor) has no project
+(``hub_settings.write_layer``); a feature turned on or off for the whole hub only (chats, market) has no project
 layer (422). The routes and the /mcp tools of a feature that is off answer 404 (``hub_settings.FeatureGate``,
 ``hub_settings.require_tool``).
 """

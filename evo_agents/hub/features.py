@@ -15,7 +15,7 @@ routes stay under /v1/x/<feature>/<project>/ and their tools on /mcp keep the na
 (``tool_prefixes``), so turning one off answers 404 to both, and the hub reaches its jobs, events and knowledge graph
 source in the projects it is on in only.
 
-The monitor owns no route of its own (it reads the overview Home reads), so turning it off hides a page only. The
+The
 market (``evo_agents.hub.server.market``) owns /v1/market and its pages; installing from a GitHub release stays. The
 seller, off unless a hub admin turns it on, owns /v1/seller, where the hub sells paid plugins
 (``evo_agents.hub.server.seller``); its public API for buying hubs, /v1/seller-api, checks the feature itself.
@@ -79,7 +79,6 @@ FEATURES = (
         (re.compile(rf"/v1/kg/{_PROJECT}(?:/.*)?"), re.compile(rf"/v1/worker/kg/{_PROJECT}(?:/.*)?")),
         frozenset(tool["name"] for tool in KG_TOOLS),
     ),
-    Feature("monitor", (INSTANCE,)),
     Feature("market", (INSTANCE,), (re.compile(r"/v1/market(?:/.*)?"),)),
     Feature("seller", (INSTANCE,), (re.compile(r"/v1/seller(?:/.*)?"),), default=False),
     *(

@@ -18,13 +18,14 @@ import { systemHref, systemObserveHref, systemQuery, systemsHref } from "@/lib/s
 import { DESIGNER_FRAME } from "./designer-frame";
 import { SystemDesigner, SystemObserver } from "./designer-lazy";
 import type { DesignerSlots } from "./slots";
+import { SystemName } from "./system-name";
 
 export type SystemMode = "design" | "observe";
 type Props = { project: string; slug: string; mode: SystemMode; initialError: ApiErrorInfo | null; slots: DesignerSlots };
 
 /**
  * One agent system of a project (web/DESIGN.md, Agent systems): its name, revision and entry agent over the designer.
- * Every member reads it and may test it; an admin of the project changes it. Two tabs: Design (the designer) and
+ * Every member reads it and may test it; an admin of the project changes it, and renames it from the title. Two tabs: Design (the designer) and
  * Observe (`?mode=observe`, the saved revision with the work going through it). The designer, once opened, stays
  * mounted under Observe, so a draft survives a look at the traces.
  */
@@ -47,7 +48,7 @@ export function SystemPage({ project, slug, mode, initialError, slots }: Props) 
         {(system) => (
           <>
             <PageHeader
-              title={system.name || system.slug}
+              title={<SystemName project={project} system={system} />}
               leading={<Workflow className="size-5 text-muted-foreground" aria-hidden="true" />}
               tags={
                 <>

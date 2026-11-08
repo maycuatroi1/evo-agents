@@ -6,10 +6,13 @@ import {
   historyOf,
   joins,
   newSpec,
+  nextSystemNumber,
+  onlyRenamed,
   outdated,
   placeProblems,
   push,
   redo,
+  renamed,
   sameSpec,
   slugOf,
   slugProblem,
@@ -123,6 +126,29 @@ describe("history", () => {
     expect(sameSpec(back.present, spec())).toBe(true);
     expect(redo(back).present.nodes[1].label).toBe("Triage");
     expect(undo(start)).toBe(start);
+  });
+
+  it("carries a rename into every draft, so an undo keeps the new name", () => {
+    const moved = push(historyOf(spec()), withNode(spec(), "triage", { label: "Triage" }));
+    const named = renamed(moved, "Help desk");
+    expect([...named.past, named.present, ...named.future].map((draft) => draft.name)).toEqual(["Help desk", "Help desk"]);
+    expect(undo(named).present.name).toBe("Help desk");
+    expect(named.present.nodes[1].label).toBe("Triage");
+  });
+
+  it("tells a rename from any other change", () => {
+    expect(onlyRenamed(spec(), { ...spec(), name: "Help desk" })).toBe(true);
+    expect(onlyRenamed(spec(), spec())).toBe(true);
+    expect(onlyRenamed(spec(), { ...withNode(spec(), "triage", { label: "Triage" }), name: "Help desk" })).toBe(false);
+  });
+});
+
+describe("new system", () => {
+  it("numbers the next system after the lowest free system-{n}", () => {
+    expect(nextSystemNumber([])).toBe(1);
+    expect(nextSystemNumber(["support", "system-1", "system-2"])).toBe(3);
+    expect(nextSystemNumber(["system-2", "system-3"])).toBe(1);
+    expect(nextSystemNumber(new Set(["system-1", "system-3"]))).toBe(2);
   });
 });
 

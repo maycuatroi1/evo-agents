@@ -1,6 +1,6 @@
 """Turning the features of the hub on and off, as criterion a11 of plan hub-agent-plugins names it
 (``evo_agents.hub.features``, ``evo_agents.hub.server.features``, ``evo_agents.hub.server.hub_settings``): core
-declares chats, curator, kg and monitor; with nothing set every feature is on and no route is turned away, as on
+declares chats, curator, kg, market and the rest; with nothing set every feature is on and no route is turned away, as on
 0.16.1; a hub admin turns a feature off for the whole hub or for one project, a project's layer over the hub's, and the
 routes and /mcp tools of a feature that is off answer 404 for that project (the 404 of an unknown project to someone
 who cannot see it); the Curator's night shift leaves out a project its Curator is off for; each change is a version
@@ -22,12 +22,11 @@ SECOND = "second-project"
 
 
 def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
-    assert features.IDS == ("chats", "curator", "kg", "monitor", "market", "seller", "canvas", "srs", "tasks", "docs")
+    assert features.IDS == ("chats", "curator", "kg", "market", "seller", "canvas", "srs", "tasks", "docs")
     assert {f.id: f.layers for f in features.FEATURES} == {
         "chats": ("instance",),
         "curator": ("instance", "project"),
         "kg": ("instance", "project"),
-        "monitor": ("instance",),
         "market": ("instance",),
         "seller": ("instance",),
         "canvas": ("instance", "project"),
@@ -83,8 +82,7 @@ def test_a_projects_layer_wins_over_the_hubs_and_a_feature_neither_sets_is_on():
     assert not features.enabled(chats, {"chats": False}, {"chats": True})  # the hub's alone: a project's is ignored
     assert features.problems({"kg": False, "curator": True}, "project") == []
     assert features.problems({"wiki": False}, "instance") == [
-        "wiki: not a feature of this hub, which has chats, curator, kg, monitor, market, seller, canvas, srs, tasks, "
-        "docs"
+        "wiki: not a feature of this hub, which has chats, curator, kg, market, seller, canvas, srs, tasks, docs"
     ]
     srs = features.BY_ID["srs"]
     assert not features.enabled(srs, {}) and features.enabled(srs, {}, {"srs": True})
@@ -168,7 +166,6 @@ def test_with_nothing_set_every_feature_is_on_and_no_route_is_turned_away(toggle
             {"id": "chats", "layers": ["instance"], "enabled": True},
             {"id": "curator", "layers": ["instance", "project"], "enabled": True},
             {"id": "kg", "layers": ["instance", "project"], "enabled": True},
-            {"id": "monitor", "layers": ["instance"], "enabled": True},
             {"id": "market", "layers": ["instance"], "enabled": True},
             {"id": "seller", "layers": ["instance"], "enabled": False},
             {"id": "canvas", "layers": ["instance", "project"], "enabled": False},
@@ -213,14 +210,13 @@ def test_a_feature_turned_off_for_a_project_answers_404_there_and_nowhere_else(t
 
 @needs_pg
 def test_the_hubs_layer_turns_a_feature_off_everywhere_and_a_projects_layer_turns_it_back_on(toggles):
-    set_layer(toggles, "/v1/admin/features", values={"kg": False, "chats": False, "monitor": False})
+    set_layer(toggles, "/v1/admin/features", values={"kg": False, "chats": False, "market": False})
     states = {f["id"]: f["enabled"] for f in get(toggles, "/v1/features", "reader").json()["features"]}
     assert states == {
         "chats": False,
         "curator": True,
         "kg": False,
-        "monitor": False,
-        "market": True,
+        "market": False,
         "seller": False,
         "canvas": False,
         "srs": False,
@@ -236,7 +232,7 @@ def test_the_hubs_layer_turns_a_feature_off_everywhere_and_a_projects_layer_turn
     turned_away(get(toggles, f"/v1/kg/{SECOND}/builds"), off("kg", SECOND))
     set_layer(toggles, project_layer(), unset=["kg"])
     turned_away(get(toggles, f"/v1/kg/{PROJECT}/builds"), off("kg", PROJECT))
-    set_layer(toggles, "/v1/admin/features", unset=["kg", "chats", "monitor"])
+    set_layer(toggles, "/v1/admin/features", unset=["kg", "chats", "market"])
     for path in routes():
         assert get(toggles, path).status_code == 200, path
 

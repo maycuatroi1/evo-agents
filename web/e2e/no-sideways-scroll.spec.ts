@@ -8,7 +8,6 @@ import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from ".
 import { seedInsights } from "./support/insights";
 import { buildsPath, grantOn, kgPath, nodePath, SHARED_NODE, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
-import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from "./support/monitor";
 import { seatByApi, unitByApi } from "./support/org";
 import { ACTIVE_PLAN, open, seedPlans } from "./support/plans";
 import {
@@ -42,10 +41,10 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * found a wide table widening the shell's <main> at 768 and 1024 px, where the open sidebar leaves the content its
  * narrowest for the breakpoint; the shell's inset is min-w-0 since. The pages with the widest tables of each area
  * (admin, plans, memories, skills, knowledge graph, workers, secrets and their shares, accounts, runs), the org chart three units deep, Insights with its charts and a wide table,
- * Home, the Inbox and a decision in it, the notification settings, the sign-in page, the product page, the Monitor, chats and an SRS version's review with @ba's
+ * Home, the Inbox and a decision in it, the notification settings, the sign-in page, the product page, chats and an SRS version's review with @ba's
  * findings, seeded with long unbroken names, at 375, 768
  * and 1024 px, and at 1440 px, where the content is as wide as the window leaves beside the sidebar, the run page splits
- * into its two scroll regions and the Monitor puts its list beside the grid.
+ * into its two scroll regions.
  */
 const WIDTHS = [375, 768, 1024, 1440];
 const LONG = "a-rather-long-unbroken-name-that-never-wraps-in-a-table-cell";
@@ -350,25 +349,6 @@ test.describe("signed out", () => {
     await noSidewaysScroll(page, WIDTHS, [{ path: "/", ready: (p) => expect(p.getByTestId("product-page")).toBeVisible() }]);
   });
 });
-
-for (const width of WIDTHS) {
-  test(`the monitor never scrolls sideways at ${width} px`, async ({ page, member }) => {
-    const me = await member([{ role: "writer", maxLevel: "internal" }]);
-    const project = me.projects[0];
-    // Long unbroken names in the list and the tiles: a worker, a line of the trace, a command and a failure.
-    await seedMonitorPlan(me, project);
-    const {
-      live,
-      runs: [run],
-    } = await runningRuns(me, project, ["1"], `${LONG}-worker`);
-    await sendEvents(live, run.id, [say(`${LONG}${LONG}`), command(1, `cat /${LONG}/${LONG}/${LONG}.ts`)]);
-    const [ended] = await endedRuns(me, project, ["2"], `${LONG}-ended`);
-    await noSidewaysScroll(page, [width], [
-      { path: "/monitor", ready: shown("tile-line") },
-      { path: monitorPath([run, ended]), ready: shown("tile-error-line") },
-    ]);
-  });
-}
 
 for (const width of WIDTHS) {
   test(`insights never scroll sideways at ${width} px, charts or tables`, async ({ page, member }) => {

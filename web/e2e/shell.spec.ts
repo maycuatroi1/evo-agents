@@ -229,8 +229,8 @@ test.describe("shell", () => {
       "nav-home",
       "nav-today",
       "nav-inbox",
-      "nav-monitor",
       "nav-chats",
+      "nav-systems",
       "nav-kg",
       "nav-overview",
       "nav-decide",
@@ -246,7 +246,6 @@ test.describe("shell", () => {
       "nav-insights",
       "nav-curator",
       "nav-agents",
-      "nav-systems",
       "nav-memories",
       "nav-skills",
       "nav-browser",
@@ -286,9 +285,6 @@ test.describe("shell", () => {
     await expect(page.getByTestId("nav-inbox")).toHaveAccessibleName("Inbox, 1 quyết định hoặc đề xuất chờ bạn trả lời");
     await expect(page.getByTestId("nav-runs-count")).toHaveText("1");
     await expect(page.getByTestId("nav-runs")).toHaveAccessibleName("Run, 1 run đang hoạt động");
-    // Monitor counts the runs at work: a plan run waiting for a decision is not one.
-    await expect(page.getByTestId("nav-monitor")).toHaveAccessibleName("Monitor");
-    await expect(page.getByTestId("nav-monitor-count")).toHaveCount(0);
 
     // The page shown sits on surface-selected with a brand icon; the others stay muted.
     await expect(page.getByTestId("nav-runs")).toHaveAttribute("aria-current", "page");
