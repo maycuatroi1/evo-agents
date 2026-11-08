@@ -5,6 +5,9 @@
   model and state of its run (run_spend, runs), and the metrics of its nodes and edges.
 - GET .../systems/{slug}/metrics[?limit=N]: the metrics of each node and edge over its last N traces the caller may
   read.
+- GET .../systems/{slug}/metrics/traces[?days=N]: the numbers of each trace the caller may read that started in the
+  last N days, and their spread (``system_trace_stats``): cost, runs, deepest hop, budget refusals, overrun of
+  limits.trace_usd, Orchestrator threads, off-design ratio per edge, p50 and p95.
 - GET .../systems/{slug}/traces/stream: server-sent ``trace`` events (a ``TraceSummary``) each time a trace of the
   system moves, built on the process's one LISTEN (``system_traces.CHANNEL``); a ``: ping`` keeps it open.
 
@@ -19,7 +22,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterable
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
@@ -29,7 +32,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import system_context, system_spec, tables
-from evo_agents.hub.server import agent_tasking, route_autonomy, system_traces
+from evo_agents.hub.server import agent_tasking, route_autonomy, system_trace_stats, system_traces
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.errors import ErrorBody
@@ -42,6 +45,8 @@ from evo_agents.hub.server.security import CurrentUser, Principal, still_live
 log = logging.getLogger(__name__)
 
 MAX_TRACES = 200  # traces a list or the metrics read at most
+MAX_WINDOW_TRACES = 2000  # traces the spread of a window reads at most, the newest first
+MAX_DAYS = 365
 STREAM_POLL_SECONDS = 5.0
 SHOWN_ATTRIBUTES = ("gen_ai.",)  # the attributes a reader without a grant on a span's project still sees
 
@@ -122,6 +127,67 @@ class TraceSummary(BaseModel):
 class Metrics(BaseModel):
     nodes: list[dict] = Field(description="per node: count, errors, off_design, p50_seconds, last_seconds, tokens, usd")
     edges: list[dict] = Field(description="per edge (from_node, to_node): the same numbers")
+
+
+class Spread(BaseModel):
+    p50: float | None
+    p95: float | None
+    max: float | None
+
+
+class EdgeRatio(BaseModel):
+    from_node: str | None
+    to_node: str | None
+    count: int = Field(description="attempts to cross it: turns handed over it, and asks and mentions refused on it")
+    off_design: int
+    off_design_ratio: float = Field(description="off_design / count")
+
+
+class TraceNumbers(BaseModel):
+    id: int
+    revision: int
+    started_at: datetime
+    last_at: datetime
+    open: bool = Field(description="a turn of it is still running")
+    usd: float = Field(
+        description="the final cost of its runs and the runs their tree spawned, as the budget counts it"
+    )
+    runs: int = Field(description="its runs and the runs their tree spawned, as the budget counts them")
+    max_hop: int | None = Field(description="the deepest hop of its runs; null when none has one")
+    trace_usd: float = Field(description="limits.trace_usd of the revision it ran under")
+    trace_runs: int = Field(description="limits.trace_runs of the revision it ran under")
+    over_usd: float | None = Field(description="usd minus trace_usd when positive, else null")
+    budget_refusals: int = Field(description="asks and mentions the budget refused")
+    loop_threads: int
+    idle_threads: int
+    rounds_threads: int
+    edges: list[EdgeRatio]
+
+
+class TraceSpread(BaseModel):
+    traces: int
+    usd: Spread
+    runs: Spread
+    max_hop: Spread
+    over_budget: int = Field(description="traces whose usd passed trace_usd")
+    max_over_usd: float | None
+    budget_refusals: int
+    loop_threads: int
+    idle_threads: int
+    rounds_threads: int
+    edges: list[EdgeRatio] = Field(description="per edge over every trace: attempts, off design and their ratio")
+
+
+class TraceDistribution(BaseModel):
+    system: str
+    days: int
+    since: datetime
+    withheld: int = Field(description="traces of the window the caller may not read, left out")
+    truncated: bool = Field(
+        description=f"the window held more than {MAX_WINDOW_TRACES} traces: the oldest are left out"
+    )
+    summary: TraceSpread
+    traces: list[TraceNumbers] = Field(description="the newest first")
 
 
 class TraceOut(TraceSummary):
@@ -331,6 +397,66 @@ async def system_metrics(
         found = await read_traces(conn, user, access, slug, _trace_query(access, slug), limit)
     rows = [row for _, spans in found for row in _metric_rows(spans)]
     return Metrics(**system_context.metrics(rows))
+
+
+@router.get("/{project}/systems/{slug}/metrics/traces", response_model=TraceDistribution, responses=READ_REFUSALS)
+async def trace_distribution(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    user: CurrentUser,
+    days: Annotated[int, Query(ge=1, le=MAX_DAYS, description="the traces that started in the last N days")] = 30,
+) -> TraceDistribution:
+    """The numbers of each trace of the system that started in the last ``days`` days and the caller may read, and
+    their spread: p50 and p95 of the cost and the runs, the traces past limits.trace_usd, the budget refusals, the
+    loop, idle and rounds threads, and the off-design ratio per edge. It reads only."""
+    t = tables.system_traces
+    async with request.app.state.engine.begin() as conn:
+        access, _ = await _system(conn, user, project, slug)
+        since = (await conn.execute(select(func.now()))).scalar_one() - timedelta(days=days)
+        query = (
+            select(t.c.id, t.c.system_id, t.c.system_revision, t.c.chat_id, t.c.started_at, t.c.last_at)
+            .where(t.c.project_id == access.project_id, t.c.system_slug == slug, t.c.started_at >= since)
+            .order_by(t.c.id.desc())
+            .limit(MAX_WINDOW_TRACES + 1)
+        )
+        rows = list(await conn.execute(query))
+        truncated = len(rows) > MAX_WINDOW_TRACES
+        rows = rows[:MAX_WINDOW_TRACES]
+        readable: dict[int | None, bool] = {}
+        kept = []
+        for row in rows:
+            if row.chat_id not in readable:
+                readable[row.chat_id] = await _readable(conn, user, row.chat_id)
+            if readable[row.chat_id]:
+                kept.append(row)
+        found = await system_trace_stats.numbers(conn, [(row.id, row.system_id, row.system_revision) for row in kept])
+        s = tables.system_spans
+        running = select(s.c.trace_id).where(
+            s.c.trace_id.in_([row.id for row in kept]), s.c.name == system_context.INVOKE, s.c.status == "running"
+        )
+        still = set((await conn.execute(running.distinct())).scalars())
+    traces = [
+        TraceNumbers(
+            id=row.id,
+            revision=row.system_revision,
+            started_at=row.started_at,
+            last_at=row.last_at,
+            open=row.id in still,
+            **found[row.id],
+        )
+        for row in kept
+    ]
+    summary = TraceSpread(**system_context.distribution([found[row.id] for row in kept]))
+    return TraceDistribution(
+        system=slug,
+        days=days,
+        since=since,
+        withheld=len(rows) - len(kept),
+        truncated=truncated,
+        summary=summary,
+        traces=traces,
+    )
 
 
 @router.get("/{project}/systems/{slug}/traces/{trace_id}", response_model=TraceOut, responses=READ_REFUSALS)

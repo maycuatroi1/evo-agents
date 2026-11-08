@@ -25262,6 +25262,65 @@
         "schema": "SystemSummary"
       }
     },
+    "hub system metrics": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--days"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 30
+        },
+        {
+          "flags": [
+            "--traces"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "system",
+          "days",
+          "since",
+          "withheld",
+          "truncated",
+          "summary",
+          "traces"
+        ],
+        "schema": "TraceDistribution"
+      }
+    },
     "hub system put": {
       "positionals": [
         {
@@ -81157,6 +81216,106 @@
           }
         }
       },
+      "/v1/projects/{project}/systems/{slug}/metrics/traces": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Trace Distribution",
+          "description": "The numbers of each trace of the system that started in the last ``days`` days and the caller may read, and\ntheir spread: p50 and p95 of the cost and the runs, the traces past limits.trace_usd, the budget refusals, the\nloop, idle and rounds threads, and the off-design ratio per edge. It reads only.",
+          "operationId": "trace_distribution_v1_projects__project__systems__slug__metrics_traces_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "days",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 365,
+                "minimum": 1,
+                "description": "the traces that started in the last N days",
+                "default": 30,
+                "title": "Days"
+              },
+              "description": "the traces that started in the last N days"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TraceDistribution"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/systems/{slug}/traces/{trace_id}": {
         "get": {
           "tags": [
@@ -123317,6 +123476,55 @@
             "rejected"
           ],
           "title": "EarlierView"
+        },
+        "EdgeRatio": {
+          "properties": {
+            "from_node": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Node"
+            },
+            "to_node": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Node"
+            },
+            "count": {
+              "type": "integer",
+              "title": "Count",
+              "description": "attempts to cross it: turns handed over it, and asks and mentions refused on it"
+            },
+            "off_design": {
+              "type": "integer",
+              "title": "Off Design"
+            },
+            "off_design_ratio": {
+              "type": "number",
+              "title": "Off Design Ratio",
+              "description": "off_design / count"
+            }
+          },
+          "type": "object",
+          "required": [
+            "from_node",
+            "to_node",
+            "count",
+            "off_design",
+            "off_design_ratio"
+          ],
+          "title": "EdgeRatio"
         },
         "EditorialChoice": {
           "properties": {
@@ -170208,6 +170416,50 @@
           "type": "object",
           "title": "SpentTokens"
         },
+        "Spread": {
+          "properties": {
+            "p50": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "P50"
+            },
+            "p95": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "P95"
+            },
+            "max": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max"
+            }
+          },
+          "type": "object",
+          "required": [
+            "p50",
+            "p95",
+            "max"
+          ],
+          "title": "Spread"
+        },
         "SrsBaseline": {
           "properties": {
             "project": {
@@ -178267,6 +178519,170 @@
           ],
           "title": "ToolStat"
         },
+        "TraceDistribution": {
+          "properties": {
+            "system": {
+              "type": "string",
+              "title": "System"
+            },
+            "days": {
+              "type": "integer",
+              "title": "Days"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since"
+            },
+            "withheld": {
+              "type": "integer",
+              "title": "Withheld",
+              "description": "traces of the window the caller may not read, left out"
+            },
+            "truncated": {
+              "type": "boolean",
+              "title": "Truncated",
+              "description": "the window held more than 2000 traces: the oldest are left out"
+            },
+            "summary": {
+              "$ref": "#/components/schemas/TraceSpread"
+            },
+            "traces": {
+              "items": {
+                "$ref": "#/components/schemas/TraceNumbers"
+              },
+              "type": "array",
+              "title": "Traces",
+              "description": "the newest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "system",
+            "days",
+            "since",
+            "withheld",
+            "truncated",
+            "summary",
+            "traces"
+          ],
+          "title": "TraceDistribution"
+        },
+        "TraceNumbers": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "started_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Started At"
+            },
+            "last_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Last At"
+            },
+            "open": {
+              "type": "boolean",
+              "title": "Open",
+              "description": "a turn of it is still running"
+            },
+            "usd": {
+              "type": "number",
+              "title": "Usd",
+              "description": "the final cost of its runs and the runs their tree spawned, as the budget counts it"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs",
+              "description": "its runs and the runs their tree spawned, as the budget counts them"
+            },
+            "max_hop": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Hop",
+              "description": "the deepest hop of its runs; null when none has one"
+            },
+            "trace_usd": {
+              "type": "number",
+              "title": "Trace Usd",
+              "description": "limits.trace_usd of the revision it ran under"
+            },
+            "trace_runs": {
+              "type": "integer",
+              "title": "Trace Runs",
+              "description": "limits.trace_runs of the revision it ran under"
+            },
+            "over_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Over Usd",
+              "description": "usd minus trace_usd when positive, else null"
+            },
+            "budget_refusals": {
+              "type": "integer",
+              "title": "Budget Refusals",
+              "description": "asks and mentions the budget refused"
+            },
+            "loop_threads": {
+              "type": "integer",
+              "title": "Loop Threads"
+            },
+            "idle_threads": {
+              "type": "integer",
+              "title": "Idle Threads"
+            },
+            "rounds_threads": {
+              "type": "integer",
+              "title": "Rounds Threads"
+            },
+            "edges": {
+              "items": {
+                "$ref": "#/components/schemas/EdgeRatio"
+              },
+              "type": "array",
+              "title": "Edges"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "revision",
+            "started_at",
+            "last_at",
+            "open",
+            "usd",
+            "runs",
+            "max_hop",
+            "trace_usd",
+            "trace_runs",
+            "over_usd",
+            "budget_refusals",
+            "loop_threads",
+            "idle_threads",
+            "rounds_threads",
+            "edges"
+          ],
+          "title": "TraceNumbers"
+        },
         "TraceOut": {
           "properties": {
             "id": {
@@ -178375,6 +178791,78 @@
             "metrics"
           ],
           "title": "TraceOut"
+        },
+        "TraceSpread": {
+          "properties": {
+            "traces": {
+              "type": "integer",
+              "title": "Traces"
+            },
+            "usd": {
+              "$ref": "#/components/schemas/Spread"
+            },
+            "runs": {
+              "$ref": "#/components/schemas/Spread"
+            },
+            "max_hop": {
+              "$ref": "#/components/schemas/Spread"
+            },
+            "over_budget": {
+              "type": "integer",
+              "title": "Over Budget",
+              "description": "traces whose usd passed trace_usd"
+            },
+            "max_over_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Over Usd"
+            },
+            "budget_refusals": {
+              "type": "integer",
+              "title": "Budget Refusals"
+            },
+            "loop_threads": {
+              "type": "integer",
+              "title": "Loop Threads"
+            },
+            "idle_threads": {
+              "type": "integer",
+              "title": "Idle Threads"
+            },
+            "rounds_threads": {
+              "type": "integer",
+              "title": "Rounds Threads"
+            },
+            "edges": {
+              "items": {
+                "$ref": "#/components/schemas/EdgeRatio"
+              },
+              "type": "array",
+              "title": "Edges",
+              "description": "per edge over every trace: attempts, off design and their ratio"
+            }
+          },
+          "type": "object",
+          "required": [
+            "traces",
+            "usd",
+            "runs",
+            "max_hop",
+            "over_budget",
+            "max_over_usd",
+            "budget_refusals",
+            "loop_threads",
+            "idle_threads",
+            "rounds_threads",
+            "edges"
+          ],
+          "title": "TraceSpread"
         },
         "TraceSummary": {
           "properties": {

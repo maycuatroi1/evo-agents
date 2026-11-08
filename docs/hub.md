@@ -837,9 +837,40 @@ and its message, reason and other attributes only to those with a grant on that 
 | `GET /v1/projects/{p}/systems/{slug}/traces` (`?limit=50&before=ID`) | the traces, the newest first | a member who reads the chat |
 | `GET .../systems/{slug}/traces/{id}` | a trace, its spans and metrics | the same |
 | `GET .../systems/{slug}/metrics` (`?limit=50`) | metrics of the latest traces | the same |
+| `GET .../systems/{slug}/metrics/traces` (`?days=30`) | the numbers of each trace of the last N days and their spread | the same |
 | `GET .../systems/{slug}/traces/stream` (`?after=TIME`) | SSE: a `trace` event each time a trace moves, `end` when access ends | the same |
 
 The stream wakes on the hub's one LISTEN (channel `evo_system_traces`, the system's id).
+
+### Spread of the traces
+
+`GET .../systems/{slug}/metrics/traces?days=N` (1 to 365, 30 by default) reads the traces of the system that started
+in the last N days and the caller may read, at most 2000, the newest first (`truncated` says the window held more,
+`withheld` how many the caller may not read). It changes nothing: the budget, the hops, the loop rule and off_design
+work as before. The code is `evo_agents/hub/server/system_trace_stats.py`, with `system_context.trace_row` and
+`distribution`. Each trace has:
+
+| Field | What |
+| --- | --- |
+| `usd`, `runs` | its runs and the runs their tree spawned (`spawned_by_run_id`) and their cost, as the budget counts them (`system_traces.usage`) |
+| `max_hop` | the deepest hop of those runs (`MAX_HOPS` is 3) |
+| `trace_usd`, `trace_runs` | the limits of the revision the trace ran under |
+| `over_usd` | `usd` minus `trace_usd` when positive, else null |
+| `budget_refusals` | the asks and mentions the budget refused (`refused` spans whose reason is the budget's); an ask refused by the budget whose agent gave `--reason` keeps that reason on its span and is not counted (issue #549) |
+| `loop_threads`, `idle_threads`, `rounds_threads` | the Orchestrator threads opened on it by those rules |
+| `edges` | per edge, the attempts to cross it (turns handed over it, asks and mentions refused on it), those off design (for a refused one, by the spec of the trace's revision) and their ratio |
+| `open` | a turn of it is still running |
+
+`summary` gives, over those traces, p50, p95 and max of `usd`, `runs` and `max_hop` (interpolated between the two
+nearest ranks), how many passed `trace_usd` and by how much at most, the refusals and threads in all, and the
+off-design ratio of each edge. `hub system metrics` prints it for one system, or for every system of the project
+when no slug is given; `--traces` adds a line for each trace, `--json` prints what the hub answered (a list, one
+item a system). A deleted system is left out of that list; name its slug to read its traces.
+
+```sh
+evo-agents hub system metrics --project northwind --days 30
+evo-agents hub system metrics support --project northwind --days 7 --traces
+```
 
 ### Budget of a trace
 
