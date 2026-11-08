@@ -16,9 +16,11 @@ The caller's connection is an ``AsyncConnection`` of the hub's engine (``evo_age
 only async connector is psycopg's, gets the psycopg connection under it through ``driver``, and the savepoint is the
 engine's ``begin_nested()``. This is the one place the hub hands out that psycopg connection.
 
-The jobs that keep runs and notifications moving (``LEASE_JOBS``) go to the queue ``LEASE``, kg builds to KG_QUEUE,
-every other job to DEFAULT_QUEUE. A worker that takes the default queue runs a worker of its own on ``LEASE``, so a
-long plugin job on the default queue never holds them back; ``queue_of`` names a task's queue, and ``JobQueue.defer``
+The jobs that keep runs and notifications moving (``LEASE_JOBS``) go to the queue ``LEASE``, the turns of the hub
+runtime to HUB_QUEUE, kg builds to KG_QUEUE, every other job to DEFAULT_QUEUE. A worker that takes the default queue
+runs a worker of its own on ``LEASE`` and one on HUB_QUEUE, so a long plugin job on the default queue never holds them
+back, and the turns of the agents of a system, up to 180 seconds each, run beside each other instead of one at a time
+behind every other job; ``queue_of`` names a task's queue, and ``JobQueue.defer``
 uses it unless the caller names one.
 """
 
@@ -34,6 +36,7 @@ from evo_agents.hub.db import driver
 
 DEFAULT_QUEUE = "default"  # every job but the kg ones: periodic, short, on their own worker
 KG_QUEUE = "kg"  # the kg jobs of defer_kg: knowledge graph builds, on workers of their own
+HUB_QUEUE = "hub"  # the turns of the hub runtime (HUB_TURN), on a worker of their own beside the default queue's
 
 PING = "hub.ping"  # does nothing for a moment: proves a worker takes jobs
 CLEANUP_UPLOADS = "hub.cleanup_uploads"  # hourly: uploads never committed, after 24 hours
@@ -91,6 +94,8 @@ def queue_of(task: str) -> str:
     """The queue the jobs of ``task`` go to."""
     if task in LEASE_JOBS:
         return LEASE
+    if task == HUB_TURN:
+        return HUB_QUEUE
     return KG_QUEUE if task == KG_BUILD else DEFAULT_QUEUE
 
 

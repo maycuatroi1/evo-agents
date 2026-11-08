@@ -854,7 +854,8 @@ model gateway (Model gateway). The code is `evo_agents/hub/server/hub_runtime.py
 
 A mention, a reply in its thread, an ask or an escalation queues a chat run of runtime `hub`, as it would queue one
 for a worker. In the same transaction the hub defers the job `hub.hub_turn`, which the procrastinate worker of the hub
-runs (the `worker` service of the compose file). The job holds the run as a worker would: queued, leased, running. So
+runs (the `worker` service of the compose file) on its queue `hub`, up to four turns at a time beside the jobs of
+the queue `default`. The job holds the run as a worker would: queued, leased, running. So
 asks, mentions, parking and waking, `spawned_by_run_id`, cost, the run lists and triage work as they do for worker
 runs. A run of the hub runtime appears with runtime `hub` and no worker. When the job dies, the lease reaper ends the
 run once its lease runs out, 180 seconds plus 120.
