@@ -7,7 +7,6 @@ describe("nav", () => {
   it("names the feature a hub admin may turn off on the items it hides", () => {
     const tagged = [...HOME_NAV, ...PROJECT_NAV, ...HUB_NAV].filter((item) => item.feature);
     expect(tagged.map((item) => [item.label, item.feature])).toEqual([
-      ["monitor", "monitor"],
       ["chats", "chats"],
       ["kg", "kg"],
       ["curator", "curator"],
@@ -29,16 +28,16 @@ describe("nav", () => {
     expect(isActive("/p/demo", "/p/demo", true)).toBe(true);
   });
 
-  it("lists the groups in the kit's order, counting the inbox's decisions, the runs at work, unread chats and the project's active runs", () => {
+  it("lists the groups in the kit's order, counting the inbox's decisions, unread chats and the project's active runs", () => {
     expect(HOME_NAV.map((item) => [item.label, item.href, item.count ?? null])).toEqual([
       ["home", "/", null],
       ["today", "/today", null],
       ["inbox", "/inbox", "openDecisions"],
-      ["monitor", "/monitor", "runningRuns"],
       ["chats", "/chats", "unreadChats"],
     ]);
     expect(PROJECT_NAV.map((item) => [item.label, item.group ?? null])).toEqual([
       ["overview", null],
+      ["systems", null],
       ["kg", null],
       ["decide", null],
       ["plans", null],
@@ -53,7 +52,6 @@ describe("nav", () => {
       ["insights", "improvement"],
       ["curator", "improvement"],
       ["agents", "knowledge"],
-      ["systems", "knowledge"],
       ["memories", "knowledge"],
       ["skills", "knowledge"],
       ["browser", "knowledge"],
@@ -62,8 +60,8 @@ describe("nav", () => {
     expect(PROJECT_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([
       ["runs", "activeRuns"],
     ]);
-    // The knowledge graph sits with Home, Inbox, Monitor and Chats, for the project shown.
-    expect(PROJECT_NAV.filter((item) => item.top).map((item) => item.label)).toEqual(["kg"]);
+    // The systems and the knowledge graph sit with Home, Today, Inbox and Chats, for the project shown.
+    expect(PROJECT_NAV.filter((item) => item.top).map((item) => item.label)).toEqual(["systems", "kg"]);
     expect(HUB_NAV.map((item) => [item.label, item.group ?? null])).toEqual([
       ["workers", null],
       ["org", null],

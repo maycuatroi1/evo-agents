@@ -127,6 +127,17 @@ export function newSpec(name: string): Spec {
   return { schema: SCHEMA, name: name.trim(), purpose: "", nodes: [{ id: "entry", kind: "entry", position: { x: 0, y: 0 } }], edges: [] };
 }
 
+/**
+ * The number of the next system New system creates, named "System {n}" at `system-{n}`: the lowest from 1 whose slug
+ * no system of `taken` holds, so a new one never needs a name or an address before it exists.
+ */
+export function nextSystemNumber(taken: Iterable<string>): number {
+  const held = new Set(taken);
+  let n = 1;
+  while (held.has(`system-${n}`)) n += 1;
+  return n;
+}
+
 /** Why `slug` cannot name a system, or null. */
 export function slugProblem(slug: string): "pattern" | "reserved" | null {
   if (!SLUG.test(slug)) return "pattern";
@@ -268,6 +279,20 @@ export const historyOf = (spec: Spec): History => ({ past: [], present: spec, fu
 export function push(history: History, next: Spec): History {
   if (sameSpec(history.present, next) && JSON.stringify(history.present) === JSON.stringify(next)) return history;
   return { past: [...history.past, history.present].slice(-HISTORY), present: next, future: [] };
+}
+
+/**
+ * The history with `name` in every draft: a rename saved from the page's title while the draft had changes, so the
+ * draft moves onto the new revision and an undo never brings the old name back.
+ */
+export function renamed(history: History, name: string): History {
+  const named = (spec: Spec): Spec => ({ ...spec, name });
+  return { past: history.past.map(named), present: named(history.present), future: history.future.map(named) };
+}
+
+/** Whether `next` is `before` with another name only. */
+export function onlyRenamed(before: Spec, next: Spec): boolean {
+  return sameSpec({ ...next, name: before.name }, before);
 }
 
 export function undo(history: History): History {

@@ -49,7 +49,7 @@ async function addAgent(page: Page, handle: string) {
   await expect(node(page, handle)).toBeVisible();
 }
 
-test("an admin creates a system from the nav, adds two agents, joins and describes them, and saves revision 2", async ({ page, member }) => {
+test("an admin creates a system from the nav at once, renames it, adds two agents, joins and describes them, and saves revision 3", async ({ page, member }) => {
   const me = await member([{ role: "admin", maxLevel: "internal" }]);
   const project = me.projects[0];
   const triage = uniqueName("triage");
@@ -65,13 +65,11 @@ test("an admin creates a system from the nav, adds two agents, joins and describ
   await expect(page.getByTestId("nav-systems")).toHaveAttribute("aria-current", "page");
   await expect(main(page).getByTestId("systems-empty")).toBeVisible();
 
+  // New system creates one at once, with no form first: System 1 at system-1, in its designer.
   await main(page).getByTestId("systems-new").first().click();
-  const dialog = page.getByTestId("system-new-dialog");
-  await dialog.getByTestId("system-new-name").fill("Support desk");
-  await expect(dialog.getByTestId("system-new-slug")).toHaveValue("support-desk");
-  await dialog.getByTestId("system-new-create").click();
-  await page.waitForURL(`**${systemPath(project, "support-desk")}`);
+  await page.waitForURL(`**${systemPath(project, "system-1")}`);
   await designerAt(page, 1);
+  await expect(main(page).getByTestId("system-name")).toHaveText("System 1");
   await expect(node(page, "entry")).toBeVisible();
   // Test needs a saved entry agent.
   await expect(main(page).getByTestId("system-test")).toBeDisabled();
@@ -89,15 +87,32 @@ test("an admin creates a system from the nav, adds two agents, joins and describ
   await description.blur();
   await expect(main(page).getByTestId("system-state")).toHaveAttribute("data-dirty", "true");
 
+  // A rename from the title while the draft has changes: saved at once as revision 2, and the draft follows it.
+  await main(page).getByTestId("system-name").click();
+  const title = main(page).getByTestId("system-name-input");
+  await expect(title).toHaveValue("System 1");
+  await title.fill("Support desk");
+  await title.press("Enter");
+  await expect(main(page).getByTestId("system-name")).toHaveText("Support desk");
+  await expect(main(page).getByTestId("system-revision")).toHaveText("Revision 2");
+  await designerAt(page, 2);
+  await expect(main(page).getByTestId("system-state")).toHaveAttribute("data-dirty", "true");
+  // Escape leaves the name as it is.
+  await main(page).getByTestId("system-name").click();
+  await title.fill("Nothing");
+  await title.press("Escape");
+  await expect(main(page).getByTestId("system-name")).toHaveText("Support desk");
+
   // Undo takes the description back, redo brings it again.
   await main(page).getByTestId("system-undo").click();
   await expect(edges(page, "interacts")).toHaveCount(2);
   await main(page).getByTestId("system-redo").click();
   await main(page).getByTestId("system-layout").click();
-  await save(page, 2);
+  await save(page, 3);
 
-  const saved = await systemOf(me, project, "support-desk");
-  expect(saved.revision).toBe(2);
+  const saved = await systemOf(me, project, "system-1");
+  expect(saved.revision).toBe(3);
+  expect(saved.spec.name).toBe("Support desk");
   expect(saved.entry_agent).toBe(triage);
   expect(saved.spec.edges).toContainEqual({ from: triage, to: billing, kind: "interacts", description: "Hands over refunds and invoices." });
 

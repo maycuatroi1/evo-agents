@@ -9,8 +9,10 @@ import { isApiError } from "@/lib/api/errors";
 import {
   type History,
   historyOf,
+  onlyRenamed,
   push,
   redo,
+  renamed,
   sameSpec,
   type Spec,
   specOf,
@@ -56,16 +58,20 @@ export function useDesigner(project: string, system: SystemOut) {
     [agents.data],
   );
 
-  // The hub's system, read again (after a save elsewhere, or Load latest), replaces a draft with no change.
+  // The hub's system, read again (after a save elsewhere, or Load latest), replaces a draft with no change. A rename
+  // from the page's title (nothing else changed) moves a draft with changes onto the new revision, with the new name.
   // Adjusted while rendering, as React advises for state that follows a prop, rather than in an effect.
   const [seen, setSeen] = useState(system.revision);
   if (system.revision !== seen) {
     setSeen(system.revision);
+    const next = specOf(system.spec);
     if (!dirty) {
-      const next = specOf(system.spec);
       setBase({ revision: system.revision, spec: next });
       setHistory(historyOf(next));
       setProblems(system.problems);
+    } else if (onlyRenamed(base.spec, next)) {
+      setBase({ revision: system.revision, spec: next });
+      setHistory((current) => renamed(current, next.name));
     }
   }
 

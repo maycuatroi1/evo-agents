@@ -269,7 +269,6 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Memories | `BookOpen` |
 | Skills | `Sparkles` |
 | Inbox; the bell in the top bar | `Inbox`; `Bell` |
-| Monitor, the runs watched live | `MonitorPlay` |
 | Home (the chat home); Today; a project's overview | `MessageCircle`; `LayoutDashboard`; `FolderKanban` |
 | My memories; administration | `Brain`; `Shield` |
 | The hub's branding; its features, on or off | `Palette`; `ToggleRight` |
@@ -379,7 +378,7 @@ product name beside them; without one the shell shows the mark, the favicon and 
 - Full width. On every page the content takes the whole width between the sidebar and the window's right edge, less
   the 24 px gutter (16 px on phones); the shell (`components/shell/app-shell.tsx`) sets no cap, and
   `e2e/layout-width.spec.ts` measures the content frame at 1920 by 1080, open and folded sidebar, on Home, the Inbox,
-  the Monitor, a project's Runs, a run, a plan, My memories, Workers and the administration, within 1 px. A page that would stretch
+  a project's Runs, a run, a plan, My memories, Workers and the administration, within 1 px. A page that would stretch
   thin on a wide window lays itself out for the width instead of narrowing the shell: a side column of fixed width
   beside a fluid one (a run, Home, a memory), more fields to a row from 2xl in a form (four in the Curator's charter),
   two facts to a row from 2xl in a list of facts that has the card to itself (a plan's step), a row of figures in one
@@ -542,10 +541,10 @@ Shared pieces built on them:
   corners, never round. `NAME_LINK` is the name in a table's first column or a list's primary cell: text colour,
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
-  "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Today, Inbox, Monitor, Chats and the
-  current project's Knowledge graph (a project area marked `top`, the core of a project one click from anywhere), the
-  current project (Overview, Decisions, Plans, Runs, then the folds Delivery: Merge queue, Releases; Improvement: Goals,
-  Signals, Loop, Insights, Curator; Knowledge: Agents, Systems, Memories, Skills, Browser; Apps: the pages its
+  "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Today, Inbox, Chats and the
+  current project's Systems and Knowledge graph (project areas marked `top`, the core of a project one click from
+  anywhere), the current project (Overview, Decisions, Plans, Runs, then the folds Delivery: Merge queue, Releases;
+  Improvement: Goals, Signals, Loop, Insights, Curator; Knowledge: Agents, Memories, Skills, Browser; Apps: the pages its
   enabled plugins add and Plugins, section Plugins below), the hub (Workers, Org chart, My memories, Shared skills, then
   the fold Settings: Secrets, Accounts, Administration for a hub admin), and at the foot the fleet line and the account.
   A fold (`NAV_GROUPS`) keeps the areas opened less often under one row, so the sidebar fits a laptop screen: the
@@ -557,9 +556,8 @@ Shared pieces built on them:
   closed fold's links stay in the page, `hidden`. On the folded desktop sidebar a fold is its icon, and a click opens
   its items in a menu to the right (the fold's name as an `overline` on top, the page shown `surface-selected`). A fold
   left with one item shows it on its own row, and an item with a count never sits in a fold. Inbox counts the decisions
-  and the Curator's proposals waiting for the visitor's answer in `attention`, Monitor the runs at work in every project
-  of the grants (`counts.running` of `GET /v1/me/overview`, asked every 15 seconds while one runs) and Runs the project's
-  active runs, both in `running` (`nav-counts.ts`, through the same queries as the bell, Home and the runs pages); a count is a round pill drawn for the eye, said in words to screen
+  and the Curator's proposals waiting for the visitor's answer in `attention`, Runs the project's active runs in
+  `running` (`nav-counts.ts`, through the same queries as the bell and the runs pages); a count is a round pill drawn for the eye, said in words to screen
   readers after the label, hidden at zero, and a dot on the icon when the sidebar is folded. The fleet line
   (`fleet-line.tsx`) reads `GET /v1/workers` like the Workers page ("2 workers online, 1 busy"; a `success` dot while
   any is online, `danger` when every one is offline or draining, `neutral` before the first) and links there. The
@@ -639,7 +637,7 @@ Shared pieces built on them:
   outside it, so the heading's text stays the name: an agent's avatar.
 - `components/live`: the kit's LiveIndicator, in the top bar beside the bell. A page registers what keeps it current:
   its main query through `useHubQuery(..., { live: true })` (or `usePagedQuery`, `useLiveQuery`), a stream through
-  `useLiveSignal` (the run page's event stream, with the log's Pause; the Monitor's worst tile); a page that registered nothing shows none, and a
+  `useLiveSignal` (the run page's event stream, with the log's Pause); a page that registered nothing shows none, and a
   query that does not poll counts for nothing. `live-model.ts` is the state machine: Live while updates arrive, which
   is how a page should be, so the indicator is then for screen readers only (`sr-only`, its status region still says
   each change); Reconnecting from the first failed read (TanStack's
@@ -720,7 +718,7 @@ Shared pieces built on them:
   #7") open the DecisionSheet over Home, loaded on demand (`next/dynamic`, asked for when the pointer or focus reaches
   Answer), so Answer then Send answer answers with the agent's pick. In flight lists the active runs (the agent at work
   first with the live dot, waiting and parked, queued): a plan run carries its tag and its steps done of the total as a
-  bar; a waiting run says whose answer it waits for (the person asked, `asked_of`); its head links to the Monitor ("Watch on Monitor"). Recent lists the runs that ended last, a failure's reason in
+  bar; a waiting run says whose answer it waits for (the person asked, `asked_of`). Recent lists the runs that ended last, a failure's reason in
   `danger`, and Rerun (ghost, `RotateCcw`) on the visitor's own failed or lost run of one step where they write. Fleet
   lists the visitor's own workers with `HeartbeatBars`; Projects each project of the grants with the role, active plans,
   repos and open decisions. A member without a grant sees the EmptyState that says a hub administrator grants roles,
@@ -1015,10 +1013,13 @@ Shared pieces built on them:
   under the list. The form repeats the hub's checks and shows them once Save was tried; an edit sends
   only what changed with `if_version`, and Save stays off until something did. The project's default agent shows only
   its name, description, colour and avatar, with a note that it keeps every permission and no instructions.
-- `components/systems`, a project's agent systems (`/p/{project}/systems` and `/p/{project}/systems/{slug}`, after
-  Agents in the sidebar's Knowledge fold; docs/hub.md, Agent systems). The list is one `DataCard` table: the name with
-  its slug, the entry agent, the nodes and edges, the revision, when it last changed; an admin gets New system (a
-  name and the slug made of it). A system's page is its designer, drawn with `@xyflow/react` and loaded on demand
+- `components/systems`, a project's agent systems (`/p/{project}/systems` and `/p/{project}/systems/{slug}`, in the
+  sidebar's first group after Chats; docs/hub.md, Agent systems). The list is one `DataCard` table: the name with its
+  slug, the entry agent, the nodes and edges, the revision, when it last changed; an admin gets New system, which
+  creates one at once with no form first ("System 3" at `system-3`, the lowest number free) and opens its designer.
+  The system's name is the page's title: who may change the system clicks it to rename it in place (Enter or leaving
+  the field saves it as the next revision, Escape keeps the old name), and a draft of the designer with other changes
+  follows the rename instead of meeting a conflict (`system-name.tsx`, `use-designer.ts`). A system's page is its designer, drawn with `@xyflow/react` and loaded on demand
   (`designer-lazy.tsx`): a toolbar (Add, the palette of entry, agent, knowledge graph, curator and orchestrator, one
   each of those a system holds once; Undo, Redo, Auto layout with dagre; the save state; Test; Save), the canvas, and a
   24 rem side panel from `lg` (under the canvas below it) for the node or edge selected. Each kind has its own shape
@@ -1060,7 +1061,7 @@ Shared pieces built on them:
   trace's page (`/p/{project}/systems/{slug}/traces/{id}`, `trace-page.tsx`) gives its totals, a table by agent (runs,
   messages, tool calls, kg queries, cost) and the waterfall of its spans in the order of their tree, each with its
   run's link or its message's in the chat; a refused or off-design span is marked in `danger` or `attention`.
-- `components/chats`, group chats (`/chats` and `/chats/{id}`, in the sidebar's first group after Monitor; docs/hub.md, Group
+- `components/chats`, group chats (`/chats` and `/chats/{id}`, in the sidebar's first group after Inbox; docs/hub.md, Group
   chats): people and the agents of projects in one conversation. One frame for the list and a chat
   (`app/(app)/chats/layout.tsx`, `chats-shell.tsx`), so the list keeps its place from chat to chat: from 1024 px one
   window tall, the list in a column of 19 rem (21 from 2xl) and the chat beside it, each scrolling on its own; below,
@@ -1277,8 +1278,7 @@ Shared pieces built on them:
   in progress and blocked ones away; a step that is not ready keeps a disabled checkbox and says why. Its footer says
   which of the visitor's own workers could take the runs now, from what their heartbeats report, the way the hub
   matches them at claim time. The Dispatch and Run this step buttons show only for a writer of the project (whoami's
-  grants); the API decides again on every dispatch. The runs page's head links to the Monitor for anyone (secondary,
-  `MonitorPlay`, before Dispatch).
+  grants); the API decides again on every dispatch.
 - `components/runs`, plan runs (`plan-run.tsx`, `plan-run-dialog.tsx`, shared fields in `dispatch-fields.tsx`): Run plan
   sits in the plan page's header (`PlanHeader`'s `actions`) and in an action column on the rows of the plans list's
   active area, only for a writer. It is shown but locked, with the reason in words beside it, while the plan has an
@@ -1694,50 +1694,6 @@ Shared pieces built on them:
   first opened): a switch per kind of notice a member may turn off (today Files from your runs), applied when flipped
   with a toast, and All notification settings at its foot, to `/settings/notifications`. The project's overview has a Run outputs card (`pages/output-settings.tsx`): the switch of the images of
   tools' results, which an admin of the project flips and anyone else reads disabled, and the hub's limits.
-- `components/monitor`, the Monitor (`/monitor`, in the sidebar's first group after Inbox): every run in flight of the
-  projects of the visitor's grants in a list, and the runs the visitor watches as live tiles in a grid. One read of
-  `GET /v1/me/overview` (prefetched on the server with the runs the URL names; every 5 seconds while a run is in
-  flight, 30 otherwise; the page's LiveIndicator query). The head is "Monitor" over one line that says what the grid
-  follows ("Following every run in flight: a run that starts joins the grid.", "Watching 4 runs you chose."), with
-  Follow every run in flight (secondary) once the visitor chose.
-  - The URL (`model.ts`). `/monitor` alone follows every run in flight: a run that starts joins the grid, and one that
-    ends keeps its tile until it is closed. `?runs=project:id,project:id` names the tiles in grid order, ended runs
-    included, so a reload or a link shows the same grid: a project's name is `[a-z0-9-]`, so the colon never belongs
-    to it, and the run id tells the run inside its project. An empty value is a grid with no tile; an entry that is not
-    a project and a run id is left out; the grid holds 24 tiles at most and says so past them. Checking or unchecking
-    a row, or closing a tile, writes the tiles to the URL through `history.replaceState`; Follow every run in flight
-    goes back to `/monitor`.
-  - The layout. From xl the page is one window tall, as a run's: the list a column of 18 rem (20 rem from 2xl) that
-    scrolls inside itself, a region Tab reaches, and the grid beside it sharing out the rest: 1 tile takes it all, 2
-    sit side by side, 3 or 4 two by two, 5 or 6 three by two, 7 to 9 three by three, each row as tall as the others,
-    and nothing scrolls; from 10 tiles four columns of 17 rem tiles scroll inside the grid, a region Tab reaches. From
-    768 to 1279 px the grid has two columns (one for a single tile) of 22 rem tiles, under 768 px one of 20 rem, and
-    the page scrolls; the list is then a card above the grid that folds behind its head ("Show the runs in flight",
-    open while the grid is empty). A row of the list is its checkbox's label ("Watch run #12"): the number, the
-    project and the state pill, the plan's or step's title (with the Plan run tag), the worker, the time and a plan
-    run's steps as a bar and "3/11"; a watched row is `surface-selected`.
-  - A tile (`run-tile.tsx`) is for viewing only: `#12` as a link to the run's page ("Open run #12"), the project, the
-    `StatusBadge` (the pulsing dot only while running) and a ghost close button named "Stop watching run #12"; then the
-    title; then the worker, the time ("12 min so far", "queued 3 min ago", "ran 4 min", "ended 2 min ago"), a plan
-    run's steps, "Waiting for you" in `attention` with `MessageSquare` while the run waits on the visitor's decision
-    ("Waiting for octo" otherwise) and the stream's state as a still dot and a word (none once the run ended). No
-    Cancel, no message box, no terminal: those stay on the run's page and in the Inbox. The rest of the tile is the
-    tail of the trace (`tile-trace.tsx`) on `term-bg`: the last 60 things the run's Trace shows, one line each through
-    `agentDigest` (the agent's words, each tool with its argument and exit code or duration, the plan, the owner's
-    messages, "Asked you"), the 24-hour time in `term-muted`, who in their `term-*` tone, and a failed or lost run's
-    reason last in `term-error`; "Earlier events are on the run's page." heads it when the run had events before the
-    tail. It follows the newest line unless the visitor scrolled up, when Jump to the latest shows. The log region is
-    `aria-live="off"`, so nine tiles do not talk over each other; each tile says once, in a status region, when its
-    run moves ("Run #12 is now Done.").
-  - Reads. Each tile's run is read by the page (every 5 seconds while active); a run the visitor cannot read (403,
-    404) is left out, and a note says how many. A tile follows its trace with one EventSource from 200 events before
-    the run's `last_seq` (`useRunLog` with `startAfter`, keeping the latest 400 events), never the whole history, which
-    may hold 20,000 events; while the stream fails it reads `events?after=` as the run page does. The stream closes
-    when the tile closes, when the page is left and when the run ends. The top bar's LiveIndicator says the worst of
-    the tiles' streams and of the list's reads (`worstSignal`). Loading is a skeleton of the list and two tiles; no
-    run in flight while following is the EmptyState; a failed first read is the error state; a tile whose run cannot
-    be read says so with Try again. The hub serves HTTP/2, so a wall of streams shares one connection; the local web's
-    HTTP/1.1 allows six per origin, which `e2e/monitor.spec.ts` keeps in mind.
 - `components/insights`, a project's Insights (`/p/{project}/insights`, in the sidebar's Improvement fold after Loop): the
   runs that ended on each UTC day of the last 7, 30 or 90 days, from `GET /v1/projects/{p}/runs/stats` (prefetched on the
   server for the range the URL names). The range is the kit's segmented control in one row under the page head, with

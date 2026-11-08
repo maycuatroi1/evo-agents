@@ -761,7 +761,7 @@ def test_builder_hub_wide_proposals_are_decided_by_a_hub_admin_in_the_thread(cli
 
 
 def test_builder_tool_answers_the_agent_of_a_builder_run_of_an_admin_alone(client, hub, hub_db):
-    change = {"kind": "features", "summary": "Monitor off", "target": {"layer": "hub"}, "set": {"monitor": False}}
+    change = {"kind": "features", "summary": "Market off", "target": {"layer": "hub"}, "set": {"market": False}}
     refused = f"error: only the agent of a chat run of @builder in project {PROJECT} proposes a change"
     assert rpc(client, hub["owner"], call(3, TOOL, change))["content"][0]["text"] == refused, "no run"
     # the agent of another profile's run, on a node of @reviewer's pool
@@ -782,7 +782,7 @@ def test_builder_tool_answers_the_agent_of_a_builder_run_of_an_admin_alone(clien
         ({**change, "target": {"layer": "everywhere"}}, "bad arguments for builder__propose: target.layer: "),
         ({**change, "set": {}}, "the change sets and unsets no field; nothing proposed"),
         ({**change, "set": {"chats": "no"}}, "chats: true turns it on and false off, nothing else; nothing changed"),
-        ({**change, "target": {"layer": "project"}}, "monitor: it is turned on or off for the whole hub only, "),
+        ({**change, "target": {"layer": "project"}}, "market: it is turned on or off for the whole hub only, "),
         (
             {**change, "kind": "agent", "target": {"agent": PROJECT}, "set": {"name": "x"}},
             f"@{PROJECT} is the default agent of project {PROJECT}, which @builder does not change",

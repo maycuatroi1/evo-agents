@@ -146,22 +146,22 @@ test("a feature turned off for the whole hub leaves every member's menus, and it
 }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const [project] = me.projects;
-  await setFeatures(null, { values: { chats: false, monitor: false, curator: false } });
+  await setFeatures(null, { values: { chats: false, curator: false } });
   await setFeatures(project, { values: { curator: true } });
 
   await page.goto(`/p/${project}`);
   await expect(page.getByTestId("nav-plans")).toBeVisible();
-  for (const gone of ["nav-chats", "nav-monitor"]) await expect(page.getByTestId(gone)).toHaveCount(0);
+  await expect(page.getByTestId("nav-chats")).toHaveCount(0);
   await expect(page.getByTestId("nav-curator")).toBeAttached(); // the project turns it back on for itself
-  await page.goto("/monitor");
+  await page.goto("/chats");
   await expect(page.locator("#main").getByTestId("state-not-found")).toBeVisible();
   const chats = await page.request.get("/v1/chats");
   expect(chats.status()).toBe(404);
   expect((await chats.json()).message).toContain("chats is turned off on this hub");
 
-  await setFeatures(null, { unset: ["chats", "monitor", "curator"] });
+  await setFeatures(null, { unset: ["chats", "curator"] });
   await page.goto(`/p/${project}`);
-  for (const back of ["nav-chats", "nav-monitor"]) await expect(page.getByTestId(back)).toBeVisible();
+  await expect(page.getByTestId("nav-chats")).toBeVisible();
   // Curator and the knowledge graph come back in their folds.
   for (const back of ["nav-curator", "nav-kg"]) await expect(page.getByTestId(back)).toBeAttached();
   expect((await page.request.get("/v1/chats")).status()).toBe(200);

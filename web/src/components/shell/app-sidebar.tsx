@@ -60,14 +60,12 @@ import { UserMenu } from "./user-menu";
 const COUNT_TONE: Record<NavCount, string> = {
   openDecisions: "bg-attention-soft text-attention",
   activeRuns: "bg-running-soft text-running",
-  runningRuns: "bg-running-soft text-running",
   unreadChats: "bg-attention-soft text-attention",
 };
 /** The same tone as a dot on the icon when the sidebar is folded and the number has no room. */
 const COUNT_DOT: Record<NavCount, string> = {
   openDecisions: "bg-attention-solid",
   activeRuns: "bg-running",
-  runningRuns: "bg-running",
   unreadChats: "bg-attention-solid",
 };
 
@@ -237,7 +235,7 @@ function NavFold({ group, links, open, onOpenChange, onNavigate }: FoldProps) {
 
 /**
  * The sidebar of the kit's AppShell: the mark and name (the hub's branding's when it sets them), the project switcher,
- * Home, Inbox, Monitor, Chats and the selected project's knowledge graph, the project's other areas and the pages its
+ * Home, Today, Inbox, Chats and the selected project's systems and knowledge graph, its other areas and the pages its
  * plugins add, the hub's areas, then the
  * fleet line and the account at the foot. An area whose feature a hub admin turned off, for the hub or the project
  * shown, is left out. 240 px wide, folding to 56 px of icons on desktop (the header button, Ctrl or Cmd + B) and a
@@ -291,7 +289,7 @@ export function AppSidebar({ openGroups = [] }: { openGroups?: readonly NavGroup
       group: item.group,
     };
   };
-  // The project's areas marked `top` (the knowledge graph) follow Home, Inbox, Monitor and Chats.
+  // The project's areas marked `top` (its systems and knowledge graph) follow Home, Today, Inbox and Chats.
   const homeLinks = [
     ...HOME_NAV.filter((item) => shown(item)).map(hubLink),
     ...(project ? PROJECT_NAV.filter((item) => item.top && shown(item, project)).map((item) => projectLink(item, project)) : []),

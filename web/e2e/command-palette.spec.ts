@@ -185,7 +185,7 @@ test("a reader finds the project's runs and plans but is offered no action", asy
   await expect(palette.getByRole("option", { name: /Dispatch a step|Run plan|Rerun|Register worker/ })).toHaveCount(0);
 });
 
-test("goes to the Monitor, in every project's Go to", async ({ page, member }) => {
+test("goes to Chats, in every project's Go to", async ({ page, member }) => {
   const me = await member([{ role: "reader", maxLevel: "internal" }]);
   await open(page, `/p/${me.projects[0]}`);
   const palette = await openWithKeyboard(page);
@@ -194,12 +194,8 @@ test("goes to the Monitor, in every project's Go to", async ({ page, member }) =
   await expect(hub.first()).toHaveAttribute("data-item", "goto:hub:home");
   await expect(hub.nth(1)).toHaveAttribute("data-item", "goto:hub:today");
   await expect(hub.nth(2)).toHaveAttribute("data-item", "goto:hub:inbox");
-  await expect(hub.nth(3)).toHaveAttribute("data-item", "goto:hub:monitor");
-  await page.keyboard.type("monitor");
-  await expect(option(palette, "goto:hub:monitor")).toHaveAttribute("aria-selected", "true");
-  await expect(option(palette, "goto:hub:monitor")).toContainText("Monitor");
-  await page.keyboard.press("Enter");
+  await expect(hub.nth(3)).toHaveAttribute("data-item", "goto:hub:chats");
+  await option(palette, "goto:hub:chats").click();
   await expect(palette).toBeHidden();
-  await page.waitForURL(/\/monitor$/);
-  await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Monitor");
+  await page.waitForURL(/\/chats$/);
 });

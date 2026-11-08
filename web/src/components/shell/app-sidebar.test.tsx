@@ -121,8 +121,8 @@ describe("AppSidebar", () => {
       "nav-home",
       "nav-today",
       "nav-inbox",
-      "nav-monitor",
       "nav-chats",
+      "nav-systems",
       "nav-kg",
       "nav-overview",
       "nav-decide",
@@ -138,7 +138,6 @@ describe("AppSidebar", () => {
       "nav-insights",
       "nav-curator",
       "nav-agents",
-      "nav-systems",
       "nav-memories",
       "nav-skills",
       "nav-browser",
@@ -167,8 +166,8 @@ describe("AppSidebar", () => {
       "nav-home",
       "nav-today",
       "nav-inbox",
-      "nav-monitor",
       "nav-chats",
+      "nav-systems",
       "nav-kg",
       "nav-overview",
       "nav-decide",
@@ -305,7 +304,6 @@ describe("AppSidebar", () => {
         { id: "chats", layers: ["instance"], enabled: false },
         { id: "curator", layers: ["instance", "project"], enabled: false },
         { id: "kg", layers: ["instance", "project"], enabled: true },
-        { id: "monitor", layers: ["instance"], enabled: false },
       ],
       projects: [{ project: "demo", values: { kg: false, curator: true } }],
     };
@@ -318,7 +316,7 @@ describe("AppSidebar", () => {
     };
     setup();
     await waitFor(() => expect(screen.queryByTestId("nav-kg")).toBeNull());
-    for (const gone of ["nav-chats", "nav-monitor"]) expect(screen.queryByTestId(gone)).toBeNull();
+    expect(screen.queryByTestId("nav-chats")).toBeNull();
     expect(screen.getByTestId("nav-curator")).toBeInTheDocument(); // the project's layer turns it back on
     expect(screen.getByTestId("brand")).toHaveTextContent("Acme Agents");
     expect(screen.getByTestId("hub-logo")).toHaveAttribute("src", "/v1/branding/logo?v=0123456789abcdef");
@@ -350,28 +348,6 @@ describe("AppSidebar", () => {
     await waitFor(() => expect(screen.getByTestId("nav-inbox-count")).toBeInTheDocument());
     expect(screen.queryByTestId("nav-chats-count")).toBeNull();
     expect(screen.getByTestId("nav-chats")).toHaveAccessibleName("Chat");
-  });
-
-  it("counts the runs at work in every project on Monitor, in running, and hides the count at zero", async () => {
-    api.answers["/v1/me/overview"] = { counts: { running: 3 } };
-    setup();
-    await waitFor(() => expect(screen.getByTestId("nav-monitor-count")).toHaveTextContent("3"));
-    expect(screen.getByTestId("nav-monitor-count").className).toContain("bg-running-soft");
-    expect(screen.getByTestId("nav-monitor")).toHaveAttribute("href", "/monitor");
-    expect(screen.getByTestId("nav-monitor")).toHaveAccessibleName("Monitor, 3 run đang chạy");
-  });
-
-  it("shows no Monitor count while nothing runs, or while the overview cannot be read", async () => {
-    api.answers["/v1/me/overview"] = { counts: { running: 0 } };
-    const { unmount } = setup();
-    await waitFor(() => expect(screen.getByTestId("nav-inbox-count")).toBeInTheDocument());
-    expect(screen.queryByTestId("nav-monitor-count")).toBeNull();
-    expect(screen.getByTestId("nav-monitor")).toHaveAccessibleName("Monitor");
-    unmount();
-    api.fail.add("/v1/me/overview");
-    setup();
-    await waitFor(() => expect(screen.getByTestId("nav-inbox-count")).toBeInTheDocument());
-    expect(screen.queryByTestId("nav-monitor-count")).toBeNull();
   });
 
   it("hides a count at zero, and outside a project shows the group of the project the switcher stands in with", async () => {

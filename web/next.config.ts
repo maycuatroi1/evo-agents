@@ -42,6 +42,10 @@ const nextConfig: NextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: [...STATIC_SECURITY_HEADERS] }];
   },
+  // The Monitor is gone (its runs are on Today and each project's Runs); an old link lands on Today.
+  async redirects() {
+    return [{ source: "/monitor", destination: "/today", permanent: false }];
+  },
   async rewrites() {
     return apiUrl ? { beforeFiles: [{ source: "/v1/:path*", destination: `${apiUrl}/v1/:path*` }] } : [];
   },

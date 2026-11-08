@@ -4,11 +4,13 @@ import { Plus, Workflow } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { DataCard } from "@/components/data/data-card";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK } from "@/components/data/identifier";
+import { useWriteFailure } from "@/components/feedback/notice";
+import { notifyFailure } from "@/components/feedback/toast";
 import { When } from "@/components/data/when";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -16,13 +18,11 @@ import { EmptyState, TableSkeleton } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
-import type { ApiErrorInfo } from "@/lib/api/errors";
+import { type ApiErrorInfo, isApiError } from "@/lib/api/errors";
 import { whoamiQuery } from "@/lib/queries";
-import type { SystemSummary } from "@/lib/systems";
-import { systemHref, systemsQuery } from "@/lib/systems-queries";
-import { useQuery } from "@tanstack/react-query";
-
-import { NewSystemDialog } from "./new-system-dialog";
+import { newSpec, nextSystemNumber, type SystemSummary } from "@/lib/systems";
+import { putSystem, systemHref, systemKeys, systemsQuery } from "@/lib/systems-queries";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 const NARROW_HIDDEN = { size: "hidden md:table-cell", updated: "hidden lg:table-cell" };
 
@@ -92,23 +92,57 @@ function SystemsTable({ project, systems }: { project: string; systems: SystemSu
   );
 }
 
+/** How many times New system tries the next number when another system took its slug meanwhile (the hub's 409). */
+const CREATE_TRIES = 5;
+
+/**
+ * New system, at once: "System {n}" at `system-{n}`, the lowest number no system of the project holds, created as
+ * revision 1 with its entry alone, then its designer, where the name changes from the title. No form comes first.
+ */
+function useNewSystem(project: string, taken: readonly SystemSummary[] | null) {
+  const t = useTranslations("systems.new");
+  const failure = useWriteFailure();
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  return useMutation({
+    mutationFn: async () => {
+      const held = new Set((taken ?? []).map((system) => system.slug));
+      for (let attempt = 1; ; attempt += 1) {
+        const n = nextSystemNumber(held);
+        const slug = `system-${n}`;
+        try {
+          return await putSystem(browserApi(), project, slug, newSpec(t("name", { n })), null);
+        } catch (error) {
+          if (!isApiError(error) || error.status !== 409 || attempt >= CREATE_TRIES) throw error;
+          held.add(slug);
+        }
+      }
+    },
+    onSuccess: (written) => {
+      void queryClient.invalidateQueries({ queryKey: systemKeys.list(project) });
+      queryClient.setQueryData(systemKeys.one(project, written.slug), written);
+      router.push(systemHref(project, written.slug));
+    },
+    onError: (error) => notifyFailure(t("failed"), failure(error)),
+  });
+}
+
 /**
  * A project's agent systems (web/DESIGN.md, Agent systems): agents, graphs, a curator and an orchestrator joined on a
  * canvas, each system with its entry agent, its size and its revision. Every member reads them; an admin of the
- * project creates one here and lands in its designer.
+ * project creates one here with one click and lands in its designer.
  */
 export function SystemsPage({ project, initialError }: { project: string; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("systems");
-  const router = useRouter();
   const state = useHubQuery(systemsQuery(browserApi, project), initialError);
   const me = useQuery(whoamiQuery(browserApi));
   const admin = me.data?.grants.some((grant) => grant.project === project && grant.role === "admin") ?? false;
-  const [creating, setCreating] = useState(false);
   const systems = state.status === "success" ? state.data : null;
+  const create = useNewSystem(project, systems);
   const newButton = admin ? (
-    <Button onClick={() => setCreating(true)} data-testid="systems-new">
+    <Button onClick={() => create.mutate()} busy={create.isPending} disabled={!systems} data-testid="systems-new">
       <Plus aria-hidden="true" />
-      {t("newButton")}
+      {create.isPending ? t("new.creating") : t("newButton")}
     </Button>
   ) : null;
   return (
@@ -137,7 +171,6 @@ export function SystemsPage({ project, initialError }: { project: string; initia
           )
         }
       </QueryView>
-      {admin ? <NewSystemDialog project={project} open={creating} onOpenChange={setCreating} onCreated={(slug) => router.push(systemHref(project, slug))} /> : null}
     </div>
   );
 }
