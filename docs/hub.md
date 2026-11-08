@@ -793,7 +793,8 @@ profiles and graphs it made stay.
 The prompt of a chat run of a system's agent has a System section (`evo_agents/hub/system_context.py`), after the
 rules and within its own budget of 4 KiB (`system_context.SYSTEM_BYTES`): the system's name and purpose, the agents
 it hands work to along its `interacts` edges and who hands it work, each with its @handle and the edge's description,
-the graphs of its `uses_kg` edges, and the Orchestrator it escalates to. The `kg_*` tools of such a run read those
+the graphs of its `uses_kg` edges, and the Orchestrator it escalates to, with the command `evo-agents worker escalate`
+(an ask of the Orchestrator would spend a hop, an escalation adds none). The `kg_*` tools of such a run read those
 graphs when the call names no graph (the graph's name when it is one, else `system:<slug>`, their union; a
 query's span carries that name, so a single graph's queries count for its kg node); an agent with a `uses_kg` edge to `default` reads
 the project's default as before. A run finds its system through its trace, then as the entry agent of a system, then

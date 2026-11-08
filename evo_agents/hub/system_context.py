@@ -5,7 +5,7 @@ only but the spec module, so the hub, the worker's commands and the tests share 
 - ``system_lines``: the System section of the prompt of a run of an agent in a system: the system's purpose, the
   agents it hands work to and those that hand it work (the interacts edges out and in, with @handle and description),
   the knowledge graphs it uses (its uses_kg edges, which the kg tools read when no ``graph`` is named), the
-  Orchestrator it escalates to, and the rules of asking: a brief (goal, output, done-when), a reason for an agent off
+  Orchestrator it escalates to (with ESCALATE_COMMAND), and the rules of asking: a brief (goal, output, done-when), a reason for an agent off
   its edges, forwarding an answer verbatim, the budget of a trace. It has a byte budget of its own, SYSTEM_BYTES.
 - ``brief_lines``: the brief an ask gave (``evo-agents worker agent ask --goal ... --done-when``), at the head of the
   prompt of the run it made, within BRIEF_BYTES.
@@ -57,6 +57,7 @@ ATTRIBUTES = (  # the OpenTelemetry GenAI attributes a span carries
 ENTRY = "entry"  # the kind of node a person's message comes from
 ASK_COMMAND = "evo-agents worker agent ask"
 FORWARD_COMMAND = "evo-agents worker agent forward"
+ESCALATE_COMMAND = "evo-agents worker escalate"  # docs/workers.md, Escalation
 CUT = "\n[... the rest of the system is left out]"
 
 
@@ -228,7 +229,11 @@ def system_lines(place: Place) -> list[str]:
         lines += [f"- {graph}: {about or '(no description)'}" for graph, about in graphs]
     lead = orchestrator_of(spec, place.handle)
     if lead is not None:
-        lines += ["", f"The Orchestrator you escalate to: @{lead[0]}: {lead[1] or '(no description)'}"]
+        lines += [
+            "",
+            f"The Orchestrator you escalate to (with `{ESCALATE_COMMAND} --question TEXT` and the brief flags of an ask; "
+            f"an escalation adds no hop, an ask of it would): @{lead[0]}: {lead[1] or '(no description)'}",
+        ]
     lines += [
         "",
         "How you work in it:",
