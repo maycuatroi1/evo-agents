@@ -49,7 +49,7 @@ from pathlib import Path
 from evo_agents import __version__
 from evo_agents.hub.credentials import normalize_origin
 from evo_agents.hub.judge import programs
-from evo_agents.hub.verify_words import COMMAND_NAME, shell_problem
+from evo_agents.hub.verify_words import command_name, shell_problem
 from evo_agents.worker import gitops
 
 PROBE_TIMEOUT = 60.0  # seconds git has to answer one question to a remote
@@ -295,7 +295,7 @@ def verify_problems(
         unrunnable = shell_problem(command)
         if unrunnable is not None:
             message = f"{said} is not runnable as a shell command: it {unrunnable}"
-            absent = [program for program in missing if COMMAND_NAME.fullmatch(program.rsplit("/", 1)[-1])]
+            absent = [program for program in missing if command_name(program)]
             if absent:
                 named = ", ".join(f"`{program}`" for program in absent)
                 message += f"; it also runs {named}, which this worker does not have"

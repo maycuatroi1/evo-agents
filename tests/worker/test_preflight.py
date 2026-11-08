@@ -155,6 +155,12 @@ def test_preflight_says_a_prose_verify_is_not_a_command_instead_of_blaming_the_p
     (quote,) = preflight.verify_problems([("2", "check that it's done")], os.defpath)
     assert quote.message.startswith("step 2: verify command `check that it's done` is not runnable as a shell command")
     assert "a quote is left open" in quote.message
+    # curator-64's step 1 (runs #2659, #2664) said "calls and, which is not on this worker's PATH": a move to another
+    # worker followed (``triage_rules.lacks_program``) and the night shift's circuit breaker tripped
+    curator = "true; and a unit test with a fake hub that checks cmd_measure calls POST /v1/kg/x/measure"
+    (english,) = preflight.verify_problems([("1", curator)], os.defpath)
+    assert "is not runnable as a shell command: it runs `and` as a program" in english.message
+    assert "PATH" not in english.message and "this worker does not have" not in english.message
 
 
 def test_preflight_still_blames_the_path_for_a_plausible_program_that_is_absent(tmp_path):
