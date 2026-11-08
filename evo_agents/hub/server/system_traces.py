@@ -497,7 +497,8 @@ async def prompt_parts(conn: AsyncConnection, run_id: int) -> tuple[list[str], l
 
 async def default_graph(conn: AsyncConnection, run_id: int, project_id: int) -> tuple[str, frozenset[str]] | None:
     """(a name, the sources) the kg tools of run ``run_id`` read when a call names no graph: the union of the named
-    graphs its agent uses in its system (uses_kg); None for a run of no system, of another project, with no such edge,
+    graphs its agent uses in its system (uses_kg), named after the graph when it is one, so that its spans count for
+    its kg node, and ``system:<slug>`` for several; None for a run of no system, of another project, with no such edge,
     or when one of them is ``default`` (every source)."""
     from evo_agents.hub import kg_named_graphs
 
@@ -510,7 +511,7 @@ async def default_graph(conn: AsyncConnection, run_id: int, project_id: int) -> 
     sources: set[str] = set()
     for graph in graphs:
         sources |= await kg_named_graphs.sources_of(conn, project_id, graph) or frozenset()
-    return f"system:{found.system.slug}", frozenset(sources)
+    return (graphs[0] if len(graphs) == 1 else f"system:{found.system.slug}"), frozenset(sources)
 
 
 def results_read(result) -> int | None:

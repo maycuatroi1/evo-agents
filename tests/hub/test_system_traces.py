@@ -226,9 +226,9 @@ def test_the_kg_tools_of_a_system_agent_default_to_the_graphs_it_uses(client, hu
             await system_traces.record_kg(conn, run["id"], "kg_search", found[0] if found else None)
             return found
 
-    assert client.portal.call(partial(default)) == ("system:review", frozenset())
+    assert client.portal.call(partial(default)) == ("docs", frozenset())
     (span,) = [s for s in spans_of(hub_db) if s["tool"] == "kg_search"]
-    assert span["attributes"]["gen_ai.data_source.id"] == "system:review"
+    assert span["attributes"]["gen_ai.data_source.id"] == "docs"
     assert span["attributes"]["gen_ai.operation.name"] == "execute_tool"
 
 
