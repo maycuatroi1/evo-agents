@@ -5,9 +5,11 @@ the hops, the loop rule or off_design.
 ``numbers`` reads, for a batch of traces at once: the runs of each trace and of the tree they spawned
 (``spawned_by_run_id``), their cost and deepest hop, as ``system_traces.usage`` counts them for the budget; the asks
 and mentions the budget refused (``refused`` execute_tool spans whose reason starts with
-``system_context.BUDGET_REFUSAL``); the Orchestrator threads opened on the trace by rule; and the attempts to cross
+``system_context.BUDGET_REFUSAL``; an ask refused by the budget whose agent gave ``--reason`` keeps that reason
+instead, so it is not counted); the Orchestrator threads opened on the trace by rule; and the attempts to cross
 each edge: the turns handed over it (``invoke_agent`` spans that are no resume) and the asks and mentions refused on
-it, each off design or not.
+it, each off design or not. A refused span is off design when the spec of its revision has no edge for it, since a
+refusal by the budget stores off_design false.
 """
 
 from __future__ import annotations
@@ -70,7 +72,8 @@ async def _threads(conn: AsyncConnection, trace_ids: list[int]) -> dict[int, dic
 
 async def _crossings(
     conn: AsyncConnection, trace_ids: list[int]
-) -> dict[int, list[tuple[str | None, str | None, bool]]]:
+) -> dict[int, list[tuple[str | None, str | None, bool, bool]]]:
+    """{trace: [(from, to, off design as stored, refused)]} of the attempts to cross an edge."""
     s = tables.system_spans
     handed = (
         (s.c.name == system_context.INVOKE) & s.c.from_node.is_not(None) & ~s.c.attributes.has_key(system_traces.RESUME)
@@ -85,10 +88,11 @@ async def _crossings(
         .where(s.c.trace_id.in_(trace_ids), handed | refused)
         .order_by(s.c.trace_id, s.c.id)
     )
-    found: dict[int, list[tuple[str | None, str | None, bool]]] = {}
+    found: dict[int, list[tuple[str | None, str | None, bool, bool]]] = {}
     for row in await conn.execute(query):
-        end = row.node if row.name == system_context.INVOKE else row.to_node
-        found.setdefault(row.trace_id, []).append((row.from_node, end, bool(row.off_design)))
+        handed_over = row.name == system_context.INVOKE
+        end = row.node if handed_over else row.to_node
+        found.setdefault(row.trace_id, []).append((row.from_node, end, bool(row.off_design), not handed_over))
     return found
 
 
@@ -118,6 +122,10 @@ async def numbers(conn: AsyncConnection, traces: list[tuple[int, int | None, int
             max_hop=hop,
             budget_refusals=refusals.get(trace_id, 0),
             threads=threads.get(trace_id, {}),
-            crossings=crossings.get(trace_id, []),
+            crossings=[
+                # a refusal by the budget stores off_design false whatever the edge: the spec says
+                (start, end, off or (refused and not system_context.on_design(spec, start, end)))
+                for start, end, off, refused in crossings.get(trace_id, [])
+            ],
         )
     return out

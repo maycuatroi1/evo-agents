@@ -88,8 +88,10 @@ if pg.DSN:
 
     from evo_agents.hub import system_spec, tables
     from evo_agents.hub.cli_systems import cmd_metrics
+    from evo_agents.hub.server import system_trace_views
     from tests.hub.live import sql
     from tests.hub.test_chat_runs import (  # noqa: F401
+        OTHER,
         PROJECT,
         app_key,
         chat_worker,
@@ -153,7 +155,7 @@ if pg.DSN:
         for rule in ("loop", "idle", "rounds", "budget"):
             thread(hub_db, first, rule)
 
-        quiet = created(client, hub["owner"], title="Quiet", agents=["reviewer"])
+        quiet = created(client, hub["owner"], title="Quiet", people=[OTHER], agents=["reviewer"])
         sent(client, hub["owner"], quiet["id"], "@reviewer look at the docs")
         old = created(client, hub["owner"], title="Old", agents=["reviewer"])
         sent(client, hub["owner"], old["id"], "@reviewer an old question")
@@ -175,8 +177,8 @@ if pg.DSN:
         edges = {(e["from_node"], e["to_node"]): e for e in busy["edges"]}
         assert (edges[("in", "review")]["count"], edges[("in", "review")]["off_design"]) == (1, 0)
         assert edges[("review", "fix")]["off_design_ratio"] == 0
-        # the turn handed off the edges, and the mention the budget refused on the same edge
-        assert (edges[("fix", "review")]["count"], edges[("fix", "review")]["off_design"]) == (2, 1)
+        # the turn handed off the edges, and the mention the budget refused on the same edge, off design by the spec
+        assert (edges[("fix", "review")]["count"], edges[("fix", "review")]["off_design"]) == (2, 2)
         calm = traces[second]
         assert (calm["usd"], calm["runs"], calm["over_usd"], calm["budget_refusals"]) == (0, 1, None, 0)
         summary = found["summary"]
@@ -222,5 +224,22 @@ if pg.DSN:
         assert cmd_metrics(args) == 0
         out = capsys.readouterr().out
         assert f"system {SLUG}: 2 traces" in out and "system docs: 0 traces" in out
-        assert "edge fix -> review: 2 crossings, 1 off design (50%)" in out
+        assert "edge fix -> review: 2 crossings, 2 off design (100%)" in out
         assert "over trace_usd 1 (max 0.50 USD)" in out
+
+        # a member outside the chats reads only the trace of the chat they are in; the others are withheld
+        theirs = spread(client, hub["other"])
+        assert [trace["id"] for trace in theirs["traces"]] == [second] and theirs["withheld"] == 1
+        assert theirs["summary"]["traces"] == 1
+
+        # a window that holds more traces than are read keeps the newest
+        monkeypatch.setattr(system_trace_views, "MAX_WINDOW_TRACES", 1)
+        cut = spread(client, hub["owner"])
+        assert cut["truncated"] is True and [trace["id"] for trace in cut["traces"]] == [second]
+        monkeypatch.undo()
+
+        # a deleted system: its traces stay, read by slug, under the default limits
+        assert client.delete(f"/v1/projects/{PROJECT}/systems/{SLUG}", headers=hub["owner"]).status_code == 200
+        gone = {trace["id"]: trace for trace in spread(client, hub["owner"])["traces"]}
+        assert (gone[first]["trace_usd"], gone[first]["over_usd"]) == (system_context.limits_of({})[0], None)
+        assert gone[first]["usd"] == 1.5

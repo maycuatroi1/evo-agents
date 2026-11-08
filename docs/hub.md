@@ -856,9 +856,9 @@ work as before. The code is `evo_agents/hub/server/system_trace_stats.py`, with 
 | `max_hop` | the deepest hop of those runs (`MAX_HOPS` is 3) |
 | `trace_usd`, `trace_runs` | the limits of the revision the trace ran under |
 | `over_usd` | `usd` minus `trace_usd` when positive, else null |
-| `budget_refusals` | the asks and mentions the budget refused (`refused` spans) |
+| `budget_refusals` | the asks and mentions the budget refused (`refused` spans whose reason is the budget's); an ask refused by the budget whose agent gave `--reason` keeps that reason on its span and is not counted (issue #549) |
 | `loop_threads`, `idle_threads`, `rounds_threads` | the Orchestrator threads opened on it by those rules |
-| `edges` | per edge, the attempts to cross it (turns handed over it, asks and mentions refused on it), those off design and their ratio |
+| `edges` | per edge, the attempts to cross it (turns handed over it, asks and mentions refused on it), those off design (for a refused one, by the spec of the trace's revision) and their ratio |
 | `open` | a turn of it is still running |
 
 `summary` gives, over those traces, p50, p95 and max of `usd`, `runs` and `max_hop` (interpolated between the two
