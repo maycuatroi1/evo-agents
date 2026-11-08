@@ -17,7 +17,7 @@ import { isApiError } from "@/lib/api/errors";
 import { type ReviewRole, reviewUseCase, type SrsReviewIn, type SrsUseCase } from "./api";
 import { CaseStateBadge, ChangeBadge, CodeChip, VersionChip } from "./badges";
 import { signInAgainOn401, useDocumentRefresh } from "./hooks";
-import { itemHref } from "./links";
+import { caseAnchor, itemHref } from "./links";
 import { carriedFrom, caseName, caseRef, caseVersion, ownReview } from "./use-case-model";
 
 const MAX_REVIEW_CHARS = 10_000; // evo_agents.hub.tables_srs.MAX_REVIEW_CHARS
@@ -219,7 +219,8 @@ function CaseControls({
 
 /**
  * One use case of the version: its code (linking to its page), title, what the version does to it and where it stands,
- * the reviews that count, and, for a writer who may review it, Approve and Request changes.
+ * the reviews that count, and, for a writer who may review it, Approve and Request changes. The row's id is the anchor
+ * the review queue links to (`caseReviewHref`).
  */
 export function UseCaseRow({
   project,
@@ -239,7 +240,13 @@ export function UseCaseRow({
   const titleId = useId();
   const ref = caseRef(useCase);
   return (
-    <li className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0" data-testid="srs-case" data-state={useCase.state} data-key={useCase.key}>
+    <li
+      id={caseAnchor(useCase.key)}
+      className="flex scroll-mt-20 flex-col gap-3 py-4 first:pt-0 last:pb-0"
+      data-testid="srs-case"
+      data-state={useCase.state}
+      data-key={useCase.key}
+    >
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
         <CodeChip code={ref} href={itemHref(project, slug, ref, caseVersion(useCase, version, approved))} />
         <h3 id={titleId} className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">

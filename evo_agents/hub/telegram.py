@@ -41,6 +41,8 @@ NOTICE_WORDS = {  # as the web's Inbox names them
     "author_waiting": "An author run waits for your reply",
     "builder_proposal": "A change of @builder waits for your approval",
     "canvas_baseline": "A baseline of a Lean Canvas waits for your review",
+    "srs_review": "A version of an SRS document waits for your review",
+    "srs_reviewed": "A review of your SRS version",
     "merge_paused": "Merge queue paused",
     "release": "Daily release",
     "pm_daily": "Daily digest of the project",

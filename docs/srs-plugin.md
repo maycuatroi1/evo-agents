@@ -38,6 +38,7 @@ It asks for no permission. Its config, in the project's layer (`docs/hub.md`, Pl
 | `approval_policy` | per kind of document (`srs`, `spec`), the roles whose approval a version needs (`required`) and those that may approve too (`optional`) | one approval is enough (section Approval) |
 | `required_use_case_fields` | the fields every use case fills, besides its actor, before its version is submitted: `intent`, `context`, `expectation`, `objective`, `trigger`, `pre_condition`, `post_condition`, `status` or `id` | `[]`: the actor alone |
 | `self_approval` | `true` lets the author of a version review it, approve it or ask for changes, as any writer of the project (section Approval) | `false`: another member reviews it |
+| `reviewers` | the members, by login, told when a version waits for review (section Approval, Notices) | every writer who may review the version |
 
 The headings a template reads stay the template's; a client changes only the patterns of its codes. Only an admin of the
 project writes the config, with the commands above or on the plugin's page of the project on the web
@@ -161,6 +162,22 @@ approves it or asks for changes, with these rules:
   the hub, queues a build of its knowledge graph. It emits the event `srs.version.approved` in the same transaction;
   when the project enables the plugin tasks, the plugin keeps the project's tasks in step once the hub delivers that
   event (section Tasks when a version is approved).
+
+**Notices.** The reviewers of a version learn that it waits for them once nothing holds its approval, so nobody is
+asked to look at a version @ba is still reviewing. The hub sends the notice `srs_review` (Inbox, and every channel of
+the member, Telegram included) with the version's review page as its link and the use cases to review in its body:
+
+- when the version enters review and the hub handed @ba no review of its round (the agent type is off or past its cap);
+- when @ba's review of its round ends, whatever it ended as, and the document has no open finding of level `decide`;
+- when the last open finding of level `decide` of the document is settled or waived while the version is in review and
+  @ba's review of its round is no longer queued or running.
+
+The reviewers are the members the config's `reviewers` names, else every writer and admin of the project; of them,
+only those who may review the version now (a writer, the document's label visible to them, no version written since
+the one approved last unless `self_approval`). When none of the members named may, every writer who may is told. Each
+is told once per version and round. The author of a version gets the notice `srs_reviewed` when a reviewer asks for
+changes on it or on one of its use cases (the note is its body) and when it is approved; a reviewer is never told of
+their own review.
 
 **Reviewing a use case.** A version in review has *use cases to review*: those it adds, those it changes (the use case
 itself, or a business rule under it added, changed or dropped) and those it drops, compared with the version approved
@@ -431,6 +448,7 @@ Under `/v1/x/srs/{project}/`:
 | Route | What |
 | --- | --- |
 | `GET documents` (`?all=true`) | the documents the caller sees, each with its latest and approved versions; the archived ones only with `all` |
+| `GET reviews` | the versions in review of the documents the caller sees, the one submitted first first: each with its `use_cases` to review, what holds its approval now (`held_by`: `ba_review` while @ba's review of its round is queued or running, then `findings` while a finding of level `decide` is open; null when none), the number of those findings (`deciding`) and whether the caller may review it (`may_review`) |
 | `GET documents/{slug}` (`?version=N`) | a document with every version, the newest first, and one version whole |
 | `GET documents/{slug}/versions` | every version with its reviews |
 | `GET documents/{slug}/versions/{number}` | a version whole: its items, its problems and its `use_cases` to review |
@@ -450,6 +468,8 @@ Under `/v1/x/srs/{project}/`:
 | `POST documents/{slug}/findings/{id}/waive` | `{"reason"}`: an admin waives an open finding |
 
 The web shows them on the plugin's pages, at `/p/{project}/x/srs/documents` in the project's menu (SRS): the documents,
+the review queue (`/p/{project}/x/srs/reviews`, SRS reviews: the use cases of every version in review, grouped by
+version, with what holds each and a filter for those waiting for the viewer),
 a document's contents with each section read and edited in place, an item's page with the trace the knowledge graph
 holds, the versions, the comparison of two versions, the review with the document's findings and the comments; the
 import is reached from the documents.

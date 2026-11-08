@@ -199,15 +199,19 @@ export function groupInbox(notifications: readonly Notification[], timeZone: str
   }));
 }
 
+/** The notices that ask an act of their reader: a baseline to review, a page that wants a sign-in, an SRS version to review. */
+const ASKING_NOTICES: ReadonlySet<string> = new Set(["canvas_baseline", "browser_needs_login", "srs_review"]);
+
 /**
  * Whether a notice opens in the list by itself while unread: it asks something of its reader (an answer of the merge
- * queue, a baseline to review, a page that wants a sign-in). Everything else, the Curator's morning brief of each
- * project included, shows its title and the first line of its body until opened.
+ * queue, a baseline or an SRS version to review, a page that wants a sign-in). Everything else, the Curator's morning
+ * brief of each project and an SRS author's notice of a review included, shows its title and the first line of its body
+ * until opened.
  */
 export function opensByItself(notification: Pick<Notification, "kind" | "notice_kind" | "details" | "project" | "read_at">): boolean {
   if (notification.kind !== "notice" || notification.read_at !== null) return false;
   if (mergeAsk(notification) !== null) return true;
-  return notification.notice_kind === "canvas_baseline" || notification.notice_kind === "browser_needs_login";
+  return notification.notice_kind != null && ASKING_NOTICES.has(notification.notice_kind);
 }
 
 /** The first line of a body with words in it, without Markdown's marks at its start, for the line under a title. */

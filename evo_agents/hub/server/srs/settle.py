@@ -60,7 +60,7 @@ from evo_agents.hub.server.chat_views import person_author
 from evo_agents.hub.server.chats import resolve_mentions
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.security import MACHINE, Principal
-from evo_agents.hub.server.srs import BA, findings, store
+from evo_agents.hub.server.srs import BA, findings, notices, store
 from evo_agents.hub.server.srs.doc import SrsError
 from evo_agents.hub.server.srs.store import PLUGIN
 from evo_agents.hub.server.user_emails import logins_of_emails
@@ -127,7 +127,19 @@ async def review_ended(params: dict, context: CoreContext) -> dict:
         return {}
     async with context.engine.begin() as conn:
         await open_chat(conn, context.project_id, task_id)
+        await _tell_reviewers(conn, context.project_id, task_id)
     return {}
+
+
+async def _tell_reviewers(conn: AsyncConnection, project_id: int, review_run_id: int) -> None:
+    """The reviewers of the version whose current round's review was run ``review_run_id`` learn that it waits for them,
+    unless an open finding of level decide still holds it (``notices``); a second delivery tells nobody again."""
+    version = await _version(conn, project_id, review_run_id)
+    if version is None or version.state != "in_review" or version.archived:
+        return
+    doc = await store.document_by_id(conn, project_id, version.document_id)
+    if doc is not None:
+        await notices.tell_reviewers(conn, project_id, doc, await store.version(conn, doc, version.number))
 
 
 async def _version(conn: AsyncConnection, project_id: int, review_run_id: int) -> _Version | None:

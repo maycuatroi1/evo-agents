@@ -7854,6 +7854,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/srs/{project}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Queue
+         * @description The versions in review of the documents the caller sees, the one submitted first first: each with the use cases
+         *     it needs reviewed, their state and the reviews that count, what holds its approval now (@ba's review of the round,
+         *     then open findings of level decide) and whether the caller may review it.
+         */
+        get: operations["review_queue_v1_x_srs__project__reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/srs/{project}/documents/{slug}": {
         parameters: {
             query?: never;
@@ -8037,7 +8059,8 @@ export interface paths {
          * Submit Version
          * @description Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it
          *     when the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it
-         *     records holds approval.
+         *     records holds approval. The reviewers get the notice srs_review once nothing holds approval: at once when @ba
+         *     reviews nothing, else when its review ends (``notices``).
          */
         post: operations["submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post"];
         delete?: never;
@@ -42346,6 +42369,76 @@ export interface components {
              */
             line: number | null;
         };
+        /**
+         * SrsQueuedVersion
+         * @description A version in review of a document the caller sees, with the use cases it needs reviewed, what holds its approval
+         *     now and whether the caller may review it.
+         */
+        SrsQueuedVersion: {
+            /** Number */
+            number: number;
+            /**
+             * Parent Number
+             * @description the version it was built on
+             */
+            parent_number: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "in_review" | "approved" | "superseded" | "withdrawn";
+            /**
+             * Round
+             * @description how many times it was submitted
+             */
+            round: number;
+            /** Author */
+            author: string;
+            /**
+             * Drafted By Run
+             * @description the run of the agent that drafted it, when one did
+             */
+            drafted_by_run: number | null;
+            /** Summary */
+            summary: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /** @description @ba's review of the current round, when the hub handed one; none in a project without @ba */
+            review_run: components["schemas"]["SrsReviewRun"] | null;
+            /** Reviews */
+            reviews: components["schemas"]["SrsReview"][];
+            /** Use Cases */
+            use_cases: components["schemas"]["SrsUseCase"][];
+            /**
+             * Document
+             * @description the document's slug
+             */
+            document: string;
+            /** Document Title */
+            document_title: string;
+            /**
+             * Held By
+             * @description what holds an approval now: @ba's review of the round while it is queued or running, then the open findings of level decide of the document; null when it may be approved
+             */
+            held_by: ("ba_review" | "findings") | null;
+            /**
+             * Deciding
+             * @description the open findings of level decide of the document
+             */
+            deciding: number;
+            /**
+             * May Review
+             * @description whether the caller may review it: a writer who wrote no version of the document since the one approved last, any writer when self_approval is on, never the agent of a run
+             */
+            may_review: boolean;
+        };
         /** SrsRef */
         SrsRef: {
             /**
@@ -44635,7 +44728,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier; null: back to the hub's default
@@ -44649,7 +44742,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier
@@ -76386,6 +76479,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SrsDocumentSummary"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    review_queue_v1_x_srs__project__reviews_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsQueuedVersion"][];
                 };
             };
             /** @description Unauthorized */

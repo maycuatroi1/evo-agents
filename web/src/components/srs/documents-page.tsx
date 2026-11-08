@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Settings, Upload } from "lucide-react";
+import { FileText, ListChecks, Settings, Upload } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useMemo } from "react";
@@ -21,7 +21,7 @@ import { type SrsDocumentSummary, srsDocumentsQuery } from "./api";
 import { VersionBadge, VersionChip } from "./badges";
 import { ReaderNote } from "./banner";
 import { useSrsViewer } from "./hooks";
-import { documentHref, documentsHref, importHref, settingsHref } from "./links";
+import { documentHref, documentsHref, importHref, reviewsHref, settingsHref } from "./links";
 import { canWrite } from "./model";
 
 const NARROW_HIDDEN = { kind: "hidden md:table-cell", created_by: "hidden lg:table-cell", created_at: "hidden sm:table-cell" };
@@ -116,7 +116,8 @@ function DocumentsTable({ project, documents }: { project: string; documents: Sr
 /**
  * The BA documents of a project (/p/{project}/x/srs/documents, the core plugin srs; web/DESIGN.md, Plugins): each with
  * its kind, the version approved last and the latest with its state. A writer imports Markdown from here; a reader
- * reads. An admin of the project sets the plugin's template, roles and approval policy on its page in the project.
+ * reads. The head links the review queue. An admin of the project sets the plugin's template, roles and approval policy
+ * on its page in the project.
  */
 export function DocumentsPage({ project, title, initialError }: { project: string; title: string; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("srs.documents");
@@ -130,6 +131,12 @@ export function DocumentsPage({ project, title, initialError }: { project: strin
           title={title}
           actions={
             <>
+              <Button asChild variant="ghost">
+                <Link href={reviewsHref(project)} data-testid="srs-reviews-open">
+                  <ListChecks aria-hidden="true" />
+                  {t("reviews")}
+                </Link>
+              </Button>
               <Button asChild variant="ghost">
                 <Link href={settingsHref(project)} data-testid="srs-settings">
                   <Settings aria-hidden="true" />

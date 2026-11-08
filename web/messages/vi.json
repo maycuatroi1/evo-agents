@@ -7314,7 +7314,9 @@
       "market_license_expiring": "Giấy phép của một plugin trả phí sắp hết hạn",
       "kg_optimize": "Báo cáo của một lượt tối ưu KG",
       "kg_pipeline": "Knowledge graph của một lượt tải lên đã sẵn sàng hoặc thất bại",
-      "system_daily_cap": "Một hệ thống agent đã chạm mức chi tiêu trong ngày"
+      "system_daily_cap": "Một hệ thống agent đã chạm mức chi tiêu trong ngày",
+      "srs_review": "Một version SRS chờ bạn duyệt",
+      "srs_reviewed": "Có lượt duyệt mới cho version SRS của bạn"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -7324,6 +7326,7 @@
       "viewLabel": "Xem quyết định #{id}",
       "openRun": "Mở run #{id}",
       "openBaseline": "Duyệt baseline",
+      "openReview": "Mở trang duyệt",
       "openPluginNotice": "Mở",
       "markRead": "Đánh dấu đã đọc",
       "markReadLabel": "Đánh dấu đã đọc: {title}",
@@ -9339,7 +9342,8 @@
       "review": "Duyệt v{number} của {slug}",
       "compare": "So sánh version của {slug}",
       "comments": "Bình luận về {slug}",
-      "import": "Nhập SRS vào {project}"
+      "import": "Nhập SRS vào {project}",
+      "reviews": "Duyệt SRS của {project}"
     },
     "versionState": {
       "draft": "Nháp",
@@ -9418,7 +9422,38 @@
       "readerText": "Người đọc mở được tài liệu, version và bình luận. Viết, nhập và duyệt cần vai trò ghi.",
       "emptyTitle": "Chưa có tài liệu BA",
       "emptyWriter": "SRS hay tài liệu đặc tả nằm ở đây cùng các version, lượt duyệt và mã không bao giờ đổi. Nhập một file Markdown có heading theo template.",
-      "emptyReader": "SRS hay tài liệu đặc tả nằm ở đây cùng các version, lượt duyệt và mã. Người có vai trò ghi của dự án nhập tài liệu đầu tiên."
+      "emptyReader": "SRS hay tài liệu đặc tả nằm ở đây cùng các version, lượt duyệt và mã. Người có vai trò ghi của dự án nhập tài liệu đầu tiên.",
+      "reviews": "Chờ duyệt"
+    },
+    "queue": {
+      "versionsCount": "{count, plural, other {# version đang chờ duyệt}}",
+      "waitingCount": "{count, plural, other {# mục chờ bạn duyệt}}",
+      "documents": "Tài liệu",
+      "filterLabel": "Hiển thị",
+      "filterMine": "Chờ tôi duyệt",
+      "filterAll": "Tất cả",
+      "toReview": "{count, plural, other {# mục cần duyệt}}",
+      "listLabel": "Các version đang chờ duyệt",
+      "openReview": "Duyệt v{version} của {title}",
+      "round": "Vòng {round}",
+      "by": "Người viết {author}",
+      "submitted": "gửi duyệt",
+      "baReviewing": "@ba đang rà soát",
+      "deciding": "{count, plural, other {Còn # phát hiện cần quyết định chưa chốt}}",
+      "ready": "Sẵn sàng duyệt",
+      "casesLabel": "Các use case của v{version} trong {title} cần duyệt",
+      "noCases": "v{version} không đổi use case nào: duyệt cả version là version được duyệt.",
+      "reviewVersion": "Duyệt v{version}",
+      "review": "Duyệt",
+      "reviewFor": "Duyệt {name}",
+      "reviewersLabel": "Các lượt duyệt {name}",
+      "noReview": "Chưa ai duyệt",
+      "you": "bạn",
+      "emptyTitle": "Không có version nào đang chờ duyệt",
+      "emptyText": "Khi người có vai trò ghi gửi duyệt một version của tài liệu BA, các use case mà version đó thêm, sửa hoặc bỏ sẽ chờ người duyệt ở đây.",
+      "mineEmptyTitle": "Không có gì chờ bạn duyệt",
+      "mineEmptyText": "Một use case chờ bạn khi bạn được duyệt version của nó, nó vẫn chờ duyệt và bạn chưa duyệt nó. Mục Tất cả liệt kê mọi version đang chờ duyệt.",
+      "showAll": "Xem tất cả"
     },
     "toc": {
       "label": "Mục lục",
@@ -9498,7 +9533,7 @@
     },
     "draft": {
       "submitted": "Đã gửi duyệt v{version}",
-      "submittedText": "Người duyệt thấy nó ở trang Duyệt.",
+      "submittedText": "Người duyệt sẽ nhận thông báo khi @ba rà soát xong.",
       "returned": "{reviewer} đã trả v{version} về nháp",
       "title": "v{version} là bản nháp của {author}",
       "submit": "Gửi duyệt v{version}",

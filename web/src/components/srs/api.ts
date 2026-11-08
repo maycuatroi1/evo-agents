@@ -21,6 +21,7 @@ export type SrsReview = Schemas["SrsReview"];
 export type SrsUseCase = Schemas["SrsUseCase"];
 export type SrsUseCaseReview = Schemas["SrsUseCaseReview"];
 export type SrsVersionCases = Schemas["SrsVersionCases"];
+export type SrsQueuedVersion = Schemas["SrsQueuedVersion"];
 export type UseCaseState = SrsUseCase["state"];
 export type SrsItem = Schemas["SrsItem"];
 export type SrsProblem = Schemas["SrsProblem"];
@@ -54,6 +55,7 @@ export const srsKeys = {
     [...srsKeys.document(project, slug), "diff", from, to] as const,
   comments: (project: string, slug: string) => [...srsKeys.document(project, slug), "comments"] as const,
   findings: (project: string, slug: string) => [...srsKeys.document(project, slug), "findings"] as const,
+  reviews: (project: string) => [...srsKeys.all(project), "reviews"] as const,
 };
 
 export const srsDocumentsQuery = (api: ApiSource, project: string) =>
@@ -61,6 +63,16 @@ export const srsDocumentsQuery = (api: ApiSource, project: string) =>
     queryKey: srsKeys.documents(project),
     queryFn: ({ signal }) =>
       call(api().GET("/v1/x/srs/{project}/documents", { params: { path: { project } }, signal })),
+  });
+
+/**
+ * The review queue: every version in review of the documents the caller sees, the one submitted first first, each with
+ * its use cases to review, what holds its approval now and whether the caller may review it.
+ */
+export const srsReviewQueueQuery = (api: ApiSource, project: string) =>
+  queryOptions({
+    queryKey: srsKeys.reviews(project),
+    queryFn: ({ signal }) => call(api().GET("/v1/x/srs/{project}/reviews", { params: { path: { project } }, signal })),
   });
 
 /** A document with its versions and one of them whole: `version`, or the latest when null. */

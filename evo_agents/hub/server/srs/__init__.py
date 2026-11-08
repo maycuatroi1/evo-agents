@@ -140,6 +140,13 @@ CONFIG = {
             "additionalProperties": False,
             "properties": {kind: _POLICY for kind in DOCUMENT_KINDS},
         },
+        "reviewers": {
+            **_LOGINS,
+            "title": "Reviewers",
+            "description": "The members (logins) told when a version waits for review: once it is in review, @ba's "
+            "review of its round ended and no finding to decide is open. Left empty, every writer who may review the "
+            "version is told; when none of those named may review it, they all are.",
+        },
         "self_approval": {
             "title": "Self-approval",
             "description": "Whether the author of a version may approve it or ask for changes, as any writer of the "
@@ -391,6 +398,7 @@ TABLES = (
 # reached from the documents.
 PAGES = {
     "documents": {"title": "SRS", "icon": "file-text", "description": "The project's BA documents"},
+    "reviews": {"title": "SRS reviews", "icon": "list-checks", "description": "The use cases waiting for review"},
     "import": {"title": "Import SRS", "icon": "file-text", "menu": False},
 }
 
@@ -437,7 +445,8 @@ MANIFEST = {
             {
                 "name": "reviews",
                 "title": "The end of @ba's review of a version",
-                "description": "Opens the settle chat of a version whose review left findings of level decide open.",
+                "description": "Opens the settle chat of a version whose review left findings of level decide open, "
+                "or tells its reviewers that it waits for them when none is.",
                 "on": ["task.result"],
                 "python": f"{SETTLE}:review_ended",
             },
