@@ -9148,6 +9148,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/systems/{slug}/metrics/traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trace Distribution
+         * @description The numbers of each trace of the system that started in the last ``days`` days and the caller may read, and
+         *     their spread: p50 and p95 of the cost and the runs, the traces past limits.trace_usd, the budget refusals, the
+         *     loop, idle and rounds threads, and the off-design ratio per edge. It reads only.
+         */
+        get: operations["trace_distribution_v1_projects__project__systems__slug__metrics_traces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/systems/{slug}/traces/{trace_id}": {
         parameters: {
             query?: never;
@@ -21314,6 +21336,25 @@ export interface components {
              * @description rejected in the last 30 days, newest first
              */
             rejected: components["schemas"]["RejectedProposal"][];
+        };
+        /** EdgeRatio */
+        EdgeRatio: {
+            /** From Node */
+            from_node: string | null;
+            /** To Node */
+            to_node: string | null;
+            /**
+             * Count
+             * @description attempts to cross it: turns handed over it, and asks and mentions refused on it
+             */
+            count: number;
+            /** Off Design */
+            off_design: number;
+            /**
+             * Off Design Ratio
+             * @description off_design / count
+             */
+            off_design_ratio: number;
         };
         /** EditorialChoice */
         EditorialChoice: {
@@ -41800,6 +41841,15 @@ export interface components {
              */
             total: number;
         };
+        /** Spread */
+        Spread: {
+            /** P50 */
+            p50: number | null;
+            /** P95 */
+            p95: number | null;
+            /** Max */
+            max: number | null;
+        };
         /**
          * SrsBaseline
          * @description The baseline of a goal that aims at an SRS document: proposed until an admin confirms it.
@@ -45069,6 +45119,99 @@ export interface components {
              */
             duration_ms: number;
         };
+        /** TraceDistribution */
+        TraceDistribution: {
+            /** System */
+            system: string;
+            /** Days */
+            days: number;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Withheld
+             * @description traces of the window the caller may not read, left out
+             */
+            withheld: number;
+            /**
+             * Truncated
+             * @description the window held more than 2000 traces: the oldest are left out
+             */
+            truncated: boolean;
+            summary: components["schemas"]["TraceSpread"];
+            /**
+             * Traces
+             * @description the newest first
+             */
+            traces: components["schemas"]["TraceNumbers"][];
+        };
+        /** TraceNumbers */
+        TraceNumbers: {
+            /** Id */
+            id: number;
+            /** Revision */
+            revision: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Last At
+             * Format: date-time
+             */
+            last_at: string;
+            /**
+             * Open
+             * @description a turn of it is still running
+             */
+            open: boolean;
+            /**
+             * Usd
+             * @description the final cost of its runs and the runs their tree spawned, as the budget counts it
+             */
+            usd: number;
+            /**
+             * Runs
+             * @description its runs and the runs their tree spawned, as the budget counts them
+             */
+            runs: number;
+            /**
+             * Max Hop
+             * @description the deepest hop of its runs; null when none has one
+             */
+            max_hop: number | null;
+            /**
+             * Trace Usd
+             * @description limits.trace_usd of the revision it ran under
+             */
+            trace_usd: number;
+            /**
+             * Trace Runs
+             * @description limits.trace_runs of the revision it ran under
+             */
+            trace_runs: number;
+            /**
+             * Over Usd
+             * @description usd minus trace_usd when positive, else null
+             */
+            over_usd: number | null;
+            /**
+             * Budget Refusals
+             * @description asks and mentions the budget refused
+             */
+            budget_refusals: number;
+            /** Loop Threads */
+            loop_threads: number;
+            /** Idle Threads */
+            idle_threads: number;
+            /** Rounds Threads */
+            rounds_threads: number;
+            /** Edges */
+            edges: components["schemas"]["EdgeRatio"][];
+        };
         /** TraceOut */
         TraceOut: {
             /** Id */
@@ -45122,6 +45265,34 @@ export interface components {
             /** Spans */
             spans: components["schemas"]["SpanOut"][];
             metrics: components["schemas"]["Metrics"];
+        };
+        /** TraceSpread */
+        TraceSpread: {
+            /** Traces */
+            traces: number;
+            usd: components["schemas"]["Spread"];
+            runs: components["schemas"]["Spread"];
+            max_hop: components["schemas"]["Spread"];
+            /**
+             * Over Budget
+             * @description traces whose usd passed trace_usd
+             */
+            over_budget: number;
+            /** Max Over Usd */
+            max_over_usd: number | null;
+            /** Budget Refusals */
+            budget_refusals: number;
+            /** Loop Threads */
+            loop_threads: number;
+            /** Idle Threads */
+            idle_threads: number;
+            /** Rounds Threads */
+            rounds_threads: number;
+            /**
+             * Edges
+             * @description per edge over every trace: attempts, off design and their ratio
+             */
+            edges: components["schemas"]["EdgeRatio"][];
         };
         /** TraceSummary */
         TraceSummary: {
@@ -81838,6 +82009,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Metrics"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trace_distribution_v1_projects__project__systems__slug__metrics_traces_get: {
+        parameters: {
+            query?: {
+                /** @description the traces that started in the last N days */
+                days?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceDistribution"];
                 };
             };
             /** @description Unauthorized */

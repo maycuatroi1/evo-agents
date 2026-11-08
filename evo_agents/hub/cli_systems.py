@@ -1,4 +1,4 @@
-"""``evo-agents hub system list|show|put|export|validate|delete``: the agent systems of a project (``docs/hub.md``,
+"""``evo-agents hub system list|show|put|export|validate|delete|metrics``: the agent systems of a project (``docs/hub.md``,
 Agent systems; ``evo_agents.hub.system_spec``), over /v1/projects/{p}/systems.
 
 A system is a YAML file of spec ``evo-agent-system/1``: its entry, agents, named graphs, curator and orchestrator on a
@@ -6,7 +6,9 @@ canvas, and the typed edges between them. ``export`` writes a system as such a f
 ``# if_revision: N`` line; ``put`` stores a file as the system's next revision, taking that line (or
 ``--if-revision``) as the revision it replaces, so a change made meanwhile is a refusal rather than lost. ``validate``
 asks the hub what is wrong in a file, against the project, and writes nothing. Every member of the project reads its
-systems; ``put`` and ``delete`` need the admin role on it.
+systems; ``put`` and ``delete`` need the admin role on it. ``metrics`` prints the spread of the traces of a system,
+or of every system of the project, over the last N days (cost, runs, deepest hop, budget refusals, overrun of
+limits.trace_usd, Orchestrator threads, off design per edge), and reads only.
 
 Every command finds its project with ``--project``, or in the harness.yaml (``hub.project``) of the harness around the
 current directory. ``--json`` prints what the hub answered. Standard library and PyYAML only.
@@ -44,6 +46,7 @@ SYSTEM_KEYS = (
     "updated_at",
 )
 CHECKED_KEYS = ("valid", "spec", "problems")
+DISTRIBUTION_KEYS = ("system", "days", "since", "withheld", "truncated", "summary", "traces")
 IF_REVISION = re.compile(r"^#\s*if_revision:\s*(\d+)\s*$", re.M)
 
 
@@ -233,6 +236,69 @@ def cmd_delete(args) -> int:
     return 0
 
 
+def _figure(value, digits: int = 2) -> str:
+    return "-" if value is None else f"{value:.{digits}f}"
+
+
+def _print_distribution(found: dict, traces: bool) -> None:
+    summary = found["summary"]
+    usd, runs, hop = summary["usd"], summary["runs"], summary["max_hop"]
+    print(f"system {found['system']}: {summary['traces']} traces since {when(found['since'])} UTC", end="")
+    print(f", {found['withheld']} withheld" if found["withheld"] else "", end="")
+    print(", truncated to the newest" if found["truncated"] else "")
+    if not summary["traces"]:
+        return
+    print(
+        f"  usd p50 {_figure(usd['p50'])} p95 {_figure(usd['p95'])} max {_figure(usd['max'])}; runs p50 "
+        f"{_figure(runs['p50'], 1)} p95 {_figure(runs['p95'], 1)} max {_figure(runs['max'], 0)}; hop p95 "
+        f"{_figure(hop['p95'], 1)} max {_figure(hop['max'], 0)}"
+    )
+    print(
+        f"  over trace_usd {summary['over_budget']} (max {_figure(summary['max_over_usd'])} USD); budget refusals "
+        f"{summary['budget_refusals']}; threads loop {summary['loop_threads']}, idle {summary['idle_threads']}, "
+        f"rounds {summary['rounds_threads']}"
+    )
+    for edge in summary["edges"]:
+        print(
+            f"  edge {edge['from_node']} -> {edge['to_node']}: {edge['count']} crossings, {edge['off_design']} off "
+            f"design ({edge['off_design_ratio']:.0%})"
+        )
+    if traces:
+        rows = [
+            (
+                str(t["id"]),
+                when(t["started_at"]),
+                _figure(t["usd"]),
+                str(t["runs"]),
+                "-" if t["max_hop"] is None else str(t["max_hop"]),
+                _figure(t["over_usd"]),
+                str(t["budget_refusals"]),
+                f"{t['loop_threads']}/{t['idle_threads']}/{t['rounds_threads']}",
+                str(sum(edge["off_design"] for edge in t["edges"])),
+                "open" if t["open"] else "",
+            )
+            for t in found["traces"]
+        ]
+        header = ("TRACE", "STARTED", "USD", "RUNS", "HOP", "OVER", "REFUSED", "LOOP/IDLE/ROUNDS", "OFF", "")
+        table(header, rows)
+
+
+@client_command
+def cmd_metrics(args) -> int:
+    hub, _ = signed_in()
+    project = project_of(args)
+    slugs = [args.slug] if args.slug else [s["slug"] for s in hub.call("GET", _path(project)) or []]
+    found = [call_object(hub, "GET", f"{_path(project, slug)}/metrics/traces?days={args.days}") for slug in slugs]
+    if args.json:
+        print_json(found)
+        return 0
+    if not found:
+        print(f"Project {project} has no agent system.")
+    for each in found:
+        _print_distribution(each, args.traces)
+    return 0
+
+
 def _project(parser) -> None:
     parser.add_argument("--project", help=PROJECT_HELP)
 
@@ -245,7 +311,7 @@ def register(hsub) -> None:
     """``hub system``, under the subparsers ``hsub`` of ``hub``."""
     system = hsub.add_parser(
         "system",
-        help="list, show, put, export, validate or delete the agent systems of a project",
+        help="list, show, put, export, validate, delete or measure the agent systems of a project",
         description="An agent system is a project's agents, named graphs, curator and orchestrator on a canvas, with "
         "typed edges between them (evo-agent-system/1, a YAML file). Members read them; admins write them.",
     )
@@ -296,3 +362,17 @@ def register(hsub) -> None:
     _project(delete)
     json_option(delete, returns_object("project", "deleted", schema="SystemDeleted"))
     delete.set_defaults(func=cmd_delete)
+
+    metrics = ssub.add_parser(
+        "metrics",
+        help="the spread of the traces of a system, or of every system of the project, over the last N days",
+        description="Per system: p50, p95 and max of the cost, the runs and the deepest hop of its traces, the traces "
+        "past limits.trace_usd, the budget refusals, the loop, idle and rounds threads and the off-design ratio per "
+        "edge, over the traces you may read. It reads only.",
+    )
+    metrics.add_argument("slug", metavar="SLUG", nargs="?", help="the system's slug (default: every system)")
+    _project(metrics)
+    metrics.add_argument("--days", type=int, default=30, metavar="N", help="the traces of the last N days (30)")
+    metrics.add_argument("--traces", action="store_true", help="also print a line for each trace")
+    json_option(metrics, returns_array(*DISTRIBUTION_KEYS, schema="TraceDistribution"))
+    metrics.set_defaults(func=cmd_metrics)

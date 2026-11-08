@@ -14,6 +14,9 @@ only but the spec module, so the hub, the worker's commands and the tests share 
 - ``budget_problem``: why a trace takes no new ask or mention, past ``limits.trace_usd`` or ``limits.trace_runs``.
 - ``metrics``: the numbers of each node and edge of a system over the spans of its traces: count, errors, off-design,
   p50 and last duration, tokens and cost.
+- ``trace_row`` and ``distribution``: the numbers of each trace (its final cost, runs, deepest hop, budget refusals,
+  overrun of ``limits.trace_usd``, Orchestrator threads, off-design ratio per edge) and their spread over a window,
+  p50 and p95 included. They read; nothing in them changes the budget, the hops, the loop rule or off_design.
 
 A trace is named and shaped as OpenTelemetry GenAI names agent spans: ``invoke_agent`` for a run of an agent,
 ``execute_tool`` for what it does through the hub (an ask, a mention, a forward, a query of a knowledge graph), with
@@ -359,4 +362,93 @@ def metrics(spans: list[dict]) -> dict:
         "edges": [
             {"from_node": start, "to_node": end, **numbers(found)} for (start, end), found in sorted(edges.items())
         ],
+    }
+
+
+THREAD_RULES = ("loop", "idle", "rounds")  # triage_rules.LOOP, IDLE, ROUNDS: the threads a trace row counts
+
+
+def percentile(values: list[float], share: float) -> float | None:
+    """The ``share`` (0 to 1) percentile of ``values``, interpolated between the two nearest ranks as numpy's default
+    does; None for no values."""
+    if not values:
+        return None
+    found = sorted(float(value) for value in values)
+    at = (len(found) - 1) * share
+    low = int(at)
+    high = min(low + 1, len(found) - 1)
+    return found[low] + (found[high] - found[low]) * (at - low)
+
+
+def _edge_ratios(crossings: list[tuple[str | None, str | None, bool]]) -> list[dict]:
+    edges: dict[tuple[str | None, str | None], list[bool]] = {}
+    for start, end, off in crossings:
+        edges.setdefault((start, end), []).append(off)
+    return [
+        {
+            "from_node": start,
+            "to_node": end,
+            "count": len(found),
+            "off_design": sum(found),
+            "off_design_ratio": round(sum(found) / len(found), 4),
+        }
+        for (start, end), found in sorted(edges.items(), key=lambda item: (str(item[0][0]), str(item[0][1])))
+    ]
+
+
+def trace_row(
+    spec: dict,
+    *,
+    usd: float,
+    runs: int,
+    max_hop: int | None,
+    budget_refusals: int,
+    threads: dict[str, int],
+    crossings: list[tuple[str | None, str | None, bool]],
+) -> dict:
+    """The numbers of one trace under the limits of ``spec`` (the revision it ran under): its final ``usd`` and
+    ``runs`` (``system_traces.usage``), its deepest hop, the asks and mentions the budget refused, the overrun of
+    ``limits.trace_usd`` (None unless the cost passed it), the Orchestrator threads opened on it by rule, and per edge
+    the attempts to cross it (``crossings``: from, to, off design) with the share off design."""
+    limit_usd, limit_runs = limits_of(spec)
+    over = round(usd - limit_usd, 6) if usd > limit_usd else None
+    return {
+        "usd": round(usd, 6),
+        "runs": runs,
+        "max_hop": max_hop,
+        "trace_usd": limit_usd,
+        "trace_runs": limit_runs,
+        "over_usd": over,
+        "budget_refusals": budget_refusals,
+        **{f"{rule}_threads": int(threads.get(rule, 0)) for rule in THREAD_RULES},
+        "edges": _edge_ratios(crossings),
+    }
+
+
+def _spread(values: list[float]) -> dict:
+    return {"p50": percentile(values, 0.5), "p95": percentile(values, 0.95), "max": max(values) if values else None}
+
+
+def distribution(rows: list[dict]) -> dict:
+    """The spread of the trace rows ``rows`` (``trace_row``) of one system: how many, p50, p95 and max of the cost, the
+    runs and the deepest hop, how many passed ``limits.trace_usd`` and by how much at most, the budget refusals and
+    threads in all, and per edge the attempts and the share off design over every trace."""
+    crossings = [
+        (edge["from_node"], edge["to_node"], index < edge["off_design"])
+        for row in rows
+        for edge in row["edges"]
+        for index in range(edge["count"])
+    ]
+    overs = [row["over_usd"] for row in rows if row["over_usd"] is not None]
+    hops = [row["max_hop"] for row in rows if row["max_hop"] is not None]
+    return {
+        "traces": len(rows),
+        "usd": _spread([row["usd"] for row in rows]),
+        "runs": _spread([row["runs"] for row in rows]),
+        "max_hop": _spread(hops),
+        "over_budget": len(overs),
+        "max_over_usd": max(overs) if overs else None,
+        "budget_refusals": sum(row["budget_refusals"] for row in rows),
+        **{f"{rule}_threads": sum(row[f"{rule}_threads"] for row in rows) for rule in THREAD_RULES},
+        "edges": _edge_ratios(crossings),
     }
