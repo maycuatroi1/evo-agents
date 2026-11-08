@@ -2953,6 +2953,21 @@ evo-agents hub docs list --project demo
 evo-agents hub docs show guide --project demo --version 1 --out /tmp/guide
 ```
 
+**In the knowledge graph.** The project's graph holds the latest version of each document, a source of the feature
+(`plugin.docs`, `evo_agents/hub/server/docs/kg.py`, extension point `kg_sources` of `docs/plugins.md`). A document is
+the item `plugin.docs:document:<slug>`, a Document node named by its title, with its slug, version number and that
+version's author as props (`document`, `version`, `author`) and a link to its page on the hub's web. Its Markdown is the
+item's text, with a Section per heading, so `kg_search` finds a document by a phrase of its body, a heading reads as
+`plugin.docs:document:<slug>#<heading slug>`, and the link stage reads the codes, plans and files it mentions. Older
+versions and images are not read. Each item carries the document's own label, so a reader whose sink does not clear
+it never sees the document in the graph, as on its pages. A save that writes a version queues a build of the graph
+when the project has one on the hub; a save that changes nothing queues none. A project that turns the feature off
+drops its documents from the next build.
+
+```sh
+evo-agents kg query kg_search "three hops without progress" --backend hub
+```
+
 ## Memories, skills and knowledge graphs
 
 **Memories.** `evo-agents hub memory push` and `evo-agents hub memory pull` sync Claude Code's memory files for a

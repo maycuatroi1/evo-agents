@@ -35,14 +35,16 @@ from evo_agents.kg.extract import python as py_extract
 from evo_agents.kg.ids import normalize_time
 from evo_agents.kg.schema import node_kind_for_item
 
-MAP_VERSION = "7"
+MAP_VERSION = "8"
 STRUCTURE_VERSION = "14"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
 # The optional extra behind the graphify-ast code backend (symbols for about 40 languages).
 GRAPHIFY_INSTALL = "pip install 'evo-ak[graphify]' or uv tool install 'evo-ak[graphify]'"
 
-# Props of a commit, a pull request, a ticket or a chat's item that its node keeps, besides path and repo (``map_item``).
+# Props of a commit, a pull request, a ticket, a chat's item or a document of the hub that its node keeps, besides path
+# and repo (``map_item``). A document of the hub (kind ``doc``: of the features docs and srs) keeps its slug and version,
+# and a document of the feature docs that version's author.
 # A commit's node also keeps ``time``, its committer time as UTC text that sorts (``normalize_time``), so the
 # commits that changed a file can be read newest first (``evo_agents.hub.kg_graph``).
 NODE_PROPS = {
@@ -52,6 +54,7 @@ NODE_PROPS = {
     "chat": ("chat",),
     "thread": ("chat", "root"),
     "message": ("chat", "thread", "seq", "author_kind", "author", "sent_at", "run"),
+    "doc": ("document", "version", "author"),
 }
 DECLARED_KIND = re.compile(r"^[A-Z][A-Za-z0-9]*$")  # the kind of a node an item declares, as an ontology names one
 DECLARED_REL = re.compile(r"^[a-z][a-z_]*$")  # the relation of an edge it declares

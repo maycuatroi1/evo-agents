@@ -533,6 +533,28 @@ followed with it. Without a token no pull request is read (a line in the run's l
 did not move is not read again, a pull request opened or closed meanwhile shows once the ref moves. `pulls: false`
 on a source, or `EVO_KG_PULLS=0` on the machine, turns the reading off; the test suite sets the latter.
 
+## Sources the hub keeps
+
+A build of a project's graph on the hub also reads the data the hub keeps in its own database, beside what machines
+push (`evo_agents/hub/kg_sources.py`, extension point `kg_sources` of `docs/plugins.md`). Each such source has an id
+starting with `plugin.`, gives each item the label of the row it came from, so the sink rules apply to it as to any
+item, and queues a build when its data changes:
+
+| Source | What it gives | Where it is described |
+| --- | --- | --- |
+| `plugin.docs` | the latest version of each document of the feature docs, `plugin.docs:document:<slug>`, a Document with a Section per heading | `docs/hub.md`, Docs |
+| `plugin.srs` | the approved version of each SRS document, its use cases and requirements | `docs/srs-plugin.md` |
+| `plugin.tasks` | each task, a Ticket | `docs/tasks-plugin.md` |
+| `plugin.canvas` | each Lean Canvas and its claims | `docs/canvas-plugin.md` |
+| `plugin.chats` | the messages of the project's group chats, under the chat's audience | `docs/plugins.md`, Chat history |
+| `plugin.hub_problems` | the project's problems, goals and evidence | `docs/problems.md` |
+| `plugin.hub_opportunities` | the project's opportunities | `docs/opportunities.md` |
+| `plugin.hub_decisions` | the decisions writers took on the graph | Decisions, below |
+
+A source of a plugin or feature the project does not have on gives nothing, and its items leave the next build. So a
+research note an agent saved with `evo-agents hub docs put` is found by `kg_search` on a phrase of it, in the next
+build after the save.
+
 ## Freshness
 
 The graph is a snapshot of what its sources held when they synced. It says which snapshot, and it is built again only

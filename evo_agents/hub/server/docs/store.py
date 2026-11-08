@@ -9,7 +9,8 @@ takes the document's row lock first, so two saves of one document are one after 
 and images are those of the latest version writes nothing; with ``base_version`` it is refused (409) unless that is
 the latest version, so an editor does not save over a version it never read, and with 0 unless the document does not
 exist yet, so a new one never lands on another of the same slug. Every image a version names must be an
-image of the project (``docs_images``), uploaded before.
+image of the project (``docs_images``), uploaded before. A save that writes a version queues a build of the project's
+knowledge graph when it has one on the hub (``kg_documents`` is what the build reads).
 """
 
 from __future__ import annotations
@@ -22,6 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.jobs import JobQueue
+from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.projects import ProjectAccess
 
 SINK_HEADER = "X-Evo-Sink"  # evo_agents.hub.server.plans.SINK_HEADER
@@ -200,6 +203,43 @@ async def version(conn: AsyncConnection, doc: DocumentRow, number: int | None = 
     return VersionRow(**row._mapping, images=await images_of(conn, row.id))
 
 
+@dataclass(frozen=True)
+class KgDocument:
+    """A document as the project's knowledge graph reads it: its latest version whole, with its author."""
+
+    slug: str
+    title: str
+    label: dict
+    version: int
+    author: str
+    body: str
+    updated_at: datetime
+
+
+async def kg_documents(conn: AsyncConnection, project_id: int) -> list[KgDocument]:
+    """Every document of project ``project_id`` at its latest version, by slug, whatever its label: the build of the
+    graph labels each item with it, so a reader sees only what their sink lets through (``evo_agents.hub.server.docs.
+    kg``)."""
+    d, v, u = tables.docs.documents, tables.docs.versions, tables.users
+    query = (
+        select(
+            d.c.slug,
+            v.c.title,
+            d.c.label,
+            v.c.number.label("version"),
+            u.c.login.label("author"),
+            v.c.body,
+            v.c.created_at.label("updated_at"),
+        )
+        .select_from(
+            d.join(v, (v.c.document_id == d.c.id) & (v.c.number == d.c.latest_version)).join(u, u.c.id == v.c.author_id)
+        )
+        .where(d.c.project_id == project_id)
+        .order_by(d.c.slug)
+    )
+    return [KgDocument(**row._mapping) for row in await conn.execute(query)]
+
+
 async def shows_image(conn: AsyncConnection, doc: DocumentRow, sha256: str) -> tuple[str, int] | None:
     """The media type and size of image ``sha256`` when a version of ``doc`` shows it; None otherwise."""
     k, v, i = tables.docs.version_images, tables.docs.versions, tables.docs.images
@@ -273,6 +313,12 @@ async def _create(
     return document_id
 
 
+async def _graph_changed(conn: AsyncConnection, access: ProjectAccess) -> None:
+    """Queue a build of the project's knowledge graph, whose source ``plugin.docs`` gives the latest version of each
+    document (``evo_agents.hub.server.docs.kg``), in the save's transaction."""
+    await queue_if_configured(JobQueue.in_transaction(), conn, access.project_id, access.name)
+
+
 async def save(
     conn: AsyncConnection,
     access: ProjectAccess,
@@ -294,6 +340,7 @@ async def save(
         if base_version:
             raise DocsError(409, f"document {slug} of project {access.name} does not exist: save it without a base")
         await _create(conn, access, user_id, slug, content, images, label)
+        await _graph_changed(conn, access)
         return Saved(await document(conn, access, slug, sink), 1, True, True)
     doc = await document(conn, access, slug, sink)
     if label is not None:
@@ -313,4 +360,5 @@ async def save(
     d = tables.docs.documents
     changed = {"title": content["title"], "latest_version": number, "updated_at": func.now()}
     await conn.execute(update(d).values(**changed).where(d.c.id == doc.id))
+    await _graph_changed(conn, access)
     return Saved(await document(conn, access, slug, sink), number, False, True)
