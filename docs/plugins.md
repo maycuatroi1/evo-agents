@@ -221,13 +221,15 @@ project is what the project granted that its installed version still asks for, c
 | `chats:read` | read the project's group chats | the `chat.message` events; a core plugin's `read_message` and `chat_history_items` (section The core plugin API) |
 | `memories:read` | read the project's memories | the bridge's `memories.list` |
 | `notifications:send` | send notifications to the project's members | an isolated plugin's channel, which gets the project's notifications; `POST /v1/plugin-api/projects/{project}/notifications`, which sends a notice to members (section Notifications from a plugin) |
-| `runs:dispatch` | dispatch runs in the project | handing tasks to the plugin's own agent types the project enabled, through the hub's API for plugins, and the `task.result` events (section Agent types) |
+| `runs:dispatch` | dispatch runs in the project | handing tasks to the plugin's own agent types the project enabled, through the hub's API for plugins, the `task.result` events, and the summary and outputs of those task runs (section Agent types) |
 | `chats:write` | post messages in the project's group chats | a core plugin's `open_direct_chat` and `send_message`, as a member whose channel it is (section The core plugin API); no route of the hub posts an isolated plugin's message |
 | `canvas:read` | read the project's Lean Canvases: each claim's revs and each approved baseline | the `canvas.claim` and `canvas.baseline` events |
 | `signals:read` | read the project's signals: each batch the hub takes | the `signal.posted` events |
-| `srs:read` | read the project's SRS documents: each version approved, with the codes of the items it changed, and each use case approved | the `srs.version.approved` and `srs.use_case.approved` events |
+| `srs:read` | read the project's SRS documents: each version approved, with the codes of the items it changed, and each use case approved | the `srs.version.approved` and `srs.use_case.approved` events; `GET /v1/plugin-api/projects/{project}/srs/{slug}/use-cases` (section Tasks and documents of a plugin) |
 | `tasks:read` | read the project's tasks: each status a task takes, with what the task links to | the `tasks.status` events |
 | `records:use` | keep records of its own in the project, for the people it serves | the plugin's records (section Records): `/v1/plugin-api/projects/{project}/records/...` for its backend, the bridge's `records.*` for its pages |
+| `tasks:write` | create tasks in the project, each under a key of its own, and change and comment on the tasks it created, in the name of the admin who granted it its permissions | `/v1/plugin-api/projects/{project}/board/tasks/...` (section Tasks and documents of a plugin) |
+| `docs:write` | save documents of the project whose slug starts with its id, with their images, in the name of the admin who granted it its permissions | `/v1/plugin-api/projects/{project}/docs/...` (section Tasks and documents of a plugin) |
 
 A plugin's routes, MCP tools, jobs and pages need no permission: they work in every project that enabled the plugin,
 for the callers the hub lets through (sections Extension points and Pages).
@@ -629,6 +631,59 @@ key per day, so that a retry or a second run of the job notifies once:
 
 The `remind` job computes tomorrow's date, `2026-10-23` for a run on the 22nd, and posts the body
 `{"to": ["members"], "title": "Tomorrow, 2026-10-23", "topic": "reminder", "key": "reminder-2026-10-23"}` to the route.
+
+### Tasks and documents of a plugin
+
+A backend granted `tasks:write`, `docs:write` or `srs:read` writes tasks, saves documents and lists use cases through
+the hub's API for plugins, with the token of its backend and no other credential, in a project that has the feature it
+writes on (404 otherwise: tasks, docs, srs). Each call runs the code a member's request runs, in the name of the admin
+of the project who granted the plugin its permissions last: their grant as it is now, read through the project's hub
+sink. That admin is the author of each task, change, comment and version the plugin writes. Once they hold less than
+writer on the project (reader, for the use cases), every call is a 403 until an admin enables the plugin again, which
+grants it in that admin's name (`evo_agents/hub/server/plugin_api_access.py`).
+
+**Tasks** (`tasks:write`, `evo_agents/hub/server/plugin_tasks_api.py`). The routes sit under `board/` so they stay
+apart from `GET .../tasks/{task_id}`, which reads a task the plugin handed an agent type (section Agent types):
+
+```http
+POST /v1/plugin-api/projects/northwind/board/tasks
+Authorization: Bearer evp_...
+Content-Type: application/json
+
+{"key": "login-safari", "type": "bug", "title": "[qa:login-safari] Login fails on Safari",
+ "description_md": "## Steps\n\n1. Open the login page", "status": "todo",
+ "links": {"use_cases": ["UC LOGIN-1"], "runs": [4812]}}
+```
+
+- `POST .../board/tasks` creates a task under `key`, the plugin's own key of it, at most 200 characters. The body takes
+  `type`, `title`, `description_md` (Markdown), `status`, `priority`, `assignees`, `roles` and `links` (SRS items by
+  code, runs, plan steps as `plan#step`, pull requests), as a member's `POST /v1/x/tasks/{project}/tasks` does; `type`
+  and `status` default to the config's first. A task of the project under that key already is a 409 that names it. The
+  task carries the project's label, and the hub keeps `<plugin>:<key>` as its external key (unique in the project) and
+  `{"plugin": ..., "key": ...}` as its `external_ref`.
+- `GET .../board/tasks?key=K` answers the task the plugin made under key K, a list of one, or an empty list.
+- `PATCH .../board/tasks/{ref}` changes a task the plugin made, as a member's PATCH does: its status, fields, people
+  and links. `POST .../board/tasks/{ref}/comments` comments on it. A task the plugin did not make is a 404 for both, so
+  a plugin never changes a task a member, an import or another plugin keeps.
+
+Each answer is the task whole, as `GET /v1/x/tasks/{project}/tasks/{ref}` shows it to a member, with `key`. Creating or
+changing a task queues a build of the project's knowledge graph, as a member's request does.
+
+**Documents** (`docs:write`, `evo_agents/hub/server/plugin_docs_api.py`). `POST .../docs/images` uploads one image, its
+bytes as the body (PNG, JPEG, WebP or GIF, at most 10 MiB), kept once by its SHA-256, and answers the `sha256`. `PUT
+.../docs/documents/{slug}` saves the next version of a document, or creates it at version 1: `title`, the Markdown
+`body`, `summary`, and `images`, each `{name, sha256}` with the name the Markdown gives it (`![Login](shots/login.png)`),
+uploaded before. Its `slug` starts with the plugin's id and `-` (`lumen-qa-round-12` for plugin `lumen-qa`), else 422,
+so a plugin never writes a document a member or another plugin keeps; a `label` is a 422 too. A save that changes
+nothing writes nothing, and `base_version` refuses a save over a version the plugin did not read (409), as for a member
+(`docs/hub.md`, section Docs). A version shows at most 100 images.
+
+**Use cases** (`srs:read`, `evo_agents/hub/server/plugin_srs_api.py`). `GET .../srs/{slug}/use-cases` answers the use
+cases of the version of document `slug` approved last, identifiers only: `{"document", "version", "use_cases": [{"code",
+"key"}]}` in the document's order. `key` is the hub's key of the item, the same in every version while its code may
+change. No text of the document leaves this way; an agent the plugin hands a task reads the text through its own run. A
+document with no approved version, or whose label is above what the granting admin reads through the hub sink, is a
+404.
 
 ### Lean Canvas
 
@@ -1108,9 +1163,16 @@ it routes as before.
 `PUT /v1/projects/{project}/agent-types/{plugin}/{name}` with:
 
 - `run_as`: the member whose name its runs go under, a writer or an admin of the project;
-- `workers`: the workers of that member its runs may take, by name, at most 16 (none: any the profile allows);
 - `daily_usd`: the cap of what its task runs may cost in 24 hours, above 0 and at most 1000;
 - `handle`, optional: the handle of the profile the first enable makes.
+
+The command line does the same:
+
+```sh
+evo-agents hub plugin agent-type list --project northwind             # each type of the project's plugins, and how
+evo-agents hub plugin agent-type enable lumen-qa qa --project northwind --run-as ada --daily-usd 20
+evo-agents hub plugin agent-type disable lumen-qa qa --project northwind
+```
 
 The first enable creates the type's profile in the project from the template:
 
@@ -1122,8 +1184,8 @@ The first enable creates the type's profile in the project from the template:
   the next.
 
 None of those handles free refuses the enable (409), as does a plugin the project did not enable or turned off.
-Enabling the type again keeps that profile, which the project's admins edit like any other, and changes `run_as`,
-`workers` and `daily_usd`; a `handle` other than the profile's refuses it (409), since a handle never changes. A
+Enabling the type again keeps that profile, which the project's admins edit like any other, and changes `run_as`
+and `daily_usd`; a `handle` other than the profile's refuses it (409), since a handle never changes. A
 deleted profile refuses it (409): a handle is never taken again. `DELETE` on the same path turns the type off and keeps its row and profile. `GET
 /v1/projects/{project}/agent-types` lists the types of the plugins the project enabled, to every member, each with how
 it is enabled and what its task runs cost in the last 24 hours. The audit log keeps `agent-type.enable` and
@@ -1147,6 +1209,14 @@ is a repo the project lacks; a branch another task run of the project works on w
 `minutes` asks for 1 to 120 minutes of agent time in place of 30; the run's cost cap stays what is left of the type's
 `daily_usd`, and the worker stops the run 30 minutes after its agent time.
 
+`repos` names the repos of the project the run gets a worktree of, each once (default: every repo); a repo the project
+lacks is a 422, and the repo whose `branch` the task names is one of them. `base` names a branch of origin each
+worktree starts from instead of the repo's default branch, such as `deploy/test` of a project that deploys a test stack
+from it, and the draft pull request of each branch the run pushes goes into it. The run pushes `task/<task_id>` (or the
+branch its task names) and never `base`, which is never that branch (422); `HEAD`, or a branch of a run (`task/`,
+`chat/`, `curator/`, `evo-run/`), is a 422. A worker whose checkout's origin lacks `base` fails the run before the agent
+starts. Without `repos` and `base` the run's repos keep the shape `{repo, branch}` they had.
+
 `task` is at most 16 KiB in UTF-8 and `title` at most 200 characters (when left out, the task's text on one line, cut short). The hub
 refuses the dispatch with:
 
@@ -1163,7 +1233,7 @@ as the run's cost cap with 30 minutes of agent time, as a chat run has, or the `
 time. The run goes under the type's profile, dispatched by `run_as` with the credential kind `machine`, and waits for
 a worker of `run_as` that:
 
-- the type names (any, when it names none);
+- is a node of the agent's own pool, `agent-<handle>`;
 - runs task runs;
 - has a checkout of one of the project's repos, when the project has any;
 - passes the profile's axes.
@@ -1177,8 +1247,8 @@ one headless turn of the agent, which asks nobody anything (`docs/workers.md`, T
 - pushes that branch of each repo it changed, never a default branch and never forced;
 - tells the hub of each push.
 
-The hub opens a draft pull request of the branch with the workers' GitHub App, or finds the one open, and never merges
-it. A repo elsewhere than GitHub, or a hub without the App, gets the pushed branch only. A run its worker lost goes on
+The hub opens a draft pull request of the branch with the workers' GitHub App, into the task's `base` or else the
+repo's default branch, or finds the one open, and never merges it. A repo elsewhere than GitHub, or a hub without the App, gets the pushed branch only. A run its worker lost goes on
 in its next attempt on the same branch. A task run is never rerun: the plugin hands the task again (409).
 
 **The plugin learns the end through its events**: when the run is done, failed or cancelled, the hub writes the event
@@ -1192,6 +1262,19 @@ hands its own types tasks without that grant, gets it all the same. Its payload 
 
 `GET /v1/plugin-api/projects/{project}/tasks/{task_id}` reads the same of a task's latest attempt, with when it was
 queued and when it ended. It answers for the plugin's own tasks only (404 for any other).
+
+**The plugin reads what a run of its agent types left**, with `runs:dispatch`, by the run's own id (`run_id` of
+`task.result`, each attempt apart; `evo_agents/hub/server/plugin_runs_api.py`):
+
+- `GET /v1/plugin-api/projects/{project}/runs/{run_id}/summary`: the task as above, with `summary`, the evidence the hub
+  kept when the run ended done (the worker, the commits and their diffstat, each verify, then the agent's summary), and
+  `error`;
+- `GET .../runs/{run_id}/outputs`: the files its agent made that the hub keeps (`docs/hub.md`, section Outputs of
+  runs), oldest first, `source` and `after` filtering them, each with `url`;
+- `GET .../runs/{run_id}/outputs/{output_id}/content`: the bytes of one, at that `url`, as a member's GET of them is
+  answered (its media type, a `Range`, `ETag`, and `download=true` for an attachment).
+
+A run that is not a task run of an agent type of the plugin in the project is a 404, as is an output of another run.
 
 ### Questions of a core plugin
 
@@ -1265,7 +1348,8 @@ A backend touches records only on behalf of the caller of the call it is serving
   use: the call reaches the lower of the delegation's level and the grant's now, and a revoked grant is a 403.
 - A call with no caller (a job, an event) sends no delegation. It reaches the levels up to `records_level`, which the
   admin of the project sets when enabling the plugin (`POST .../plugins/{name}/enable` with `records_level`, a level of
-  the ladder; left out, what is set stays, and none at first, which refuses such calls with a 403). It has no writer, so
+  the ladder, or `evo-agents hub plugin enable NAME --project P --records-level LEVEL`; left out, what is set stays, and
+  none at first, which refuses such calls with a 403). It has no writer, so
   it cannot name `writer` as an audience, and no audience filter applies to it.
 - A header that is not a live delegation is a 403; the call never falls back to one with no caller.
 - Writing needs the writer role of the person the call is for (a call with no caller: `records_level`).

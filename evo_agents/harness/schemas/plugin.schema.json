@@ -86,7 +86,9 @@
           "signals:read",
           "srs:read",
           "tasks:read",
-          "records:use"
+          "records:use",
+          "tasks:write",
+          "docs:write"
         ]
       }
     },

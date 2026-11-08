@@ -4,8 +4,9 @@ a task the plugin handed it, which may change code.
 The daemon takes the run's leases for the repos of its project it has a checkout of (the others it leaves out, saying
 so), checks it can read each, and makes the directory ``~/.evo/worker/worktrees/<project>-<run>`` with a writable
 worktree of each, on the run's branch ``task/<id>`` (the id of the run the plugin's dispatch made), from origin's
-branch when an earlier attempt pushed it already, else from origin's default branch (``branch_work``); the one repo
-whose branch the task names (``task_runs.branch_problem``) on that branch instead, pushed back to it. The agent works
+branch when an earlier attempt pushed it already, else from origin's branch the task names as its base
+(``task_runs.base_problem``), else from origin's default branch (``branch_work``); the one repo whose branch the task
+names (``task_runs.branch_problem``) on that branch instead, pushed back to it. The agent works
 in EVO_RUN_KIND ``task``, one turn that asks nobody anything. When it ends, the daemon commits what the agent left in
 each worktree and pushes the run's branch of each repo whose commits the branch lacks on origin, never a default branch
 and never forced (``gitops.check_push``, kind ``task``), tells the hub (POST /v1/worker/runs/{id}/task/pulls), which
@@ -40,6 +41,16 @@ def _named_branches(repos, branch: str) -> dict[str, str]:
     return named
 
 
+def _bases(repos) -> dict[str, str]:
+    """The repos of the run whose entry names a base: the branch of origin its worktree starts from."""
+    found = {}
+    for entry in repos or []:
+        if isinstance(entry, dict) and isinstance(entry.get("repo"), str) and isinstance(entry.get("base"), str):
+            if entry["base"]:
+                found[entry["repo"]] = entry["base"]
+    return found
+
+
 async def _no_more_turns() -> list[dict]:
     """A task run is one turn: nobody writes to its agent."""
     return []
@@ -60,7 +71,8 @@ class TaskRun:
         self.conversation = Conversation(run, self.directory, after_turn=_no_more_turns)
         self.branch = str(run.spec.get("branch") or task_runs.branch_of(run.id))
         self.named = _named_branches(run.spec.get("repos"), self.branch)
-        self.work = BranchWork(run, self.directory, self.branch, TASK, self.named)  # its worktrees and their push
+        self.bases = _bases(run.spec.get("repos"))
+        self.work = BranchWork(run, self.directory, self.branch, TASK, self.named, self.bases)  # its worktrees, push
 
     async def steps(self) -> None:
         run, spec = self.run, self.run.spec
@@ -78,6 +90,10 @@ class TaskRun:
             problem = task_runs.branch_problem(branch)
             if problem is not None:
                 raise RunFailed(f"the task names {branch} of {name}: {problem}")
+        for name, base in self.bases.items():
+            problem = task_runs.base_problem(base)
+            if problem is not None:
+                raise RunFailed(f"the task names {base} of {name} to start from: {problem}")
         names = [entry.get("repo") for entry in repos]
         await access.take_credentials(run, names, best_effort=True)  # cloning those it lacks first
         run.check()

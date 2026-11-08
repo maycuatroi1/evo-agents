@@ -3721,14 +3721,16 @@ axis of the project's agent profiles names. Schema 0040 adds the axis to every p
 column and takes the axis out of every profile, whose runs then run on the host.
 
 Its agent types are listed there too (`docs/plugins.md`, Agent types): an admin of the project enables one with `PUT
-/v1/projects/{project}/agent-types/{plugin}/{name}`, which creates its agent profile the first time and names the
-member its runs go under (`run_as`), the workers of that member they may take and the cap of their cost in 24 hours.
-`DELETE` on the same path turns it off. The plugin, granted `runs:dispatch`, hands it tasks with its token
+/v1/projects/{project}/agent-types/{plugin}/{name}` (or `evo-agents hub plugin agent-type enable PLUGIN NAME --project
+P --run-as LOGIN --daily-usd USD`), which creates its agent profile the first time and names the member its runs go
+under (`run_as`) and the cap of their cost in 24 hours. `DELETE` on the same path (`agent-type disable`) turns it off. The plugin, granted `runs:dispatch`, hands it tasks with its token
 (`/v1/plugin-api/`): each a run of kind `task` on the branch `task/<run>` of the project's repos. The hub refuses a
 task once the type's runs cost its cap, opens a draft pull request of each pushed branch and never merges it, and tells
 the plugin the end with the event `task.result`. Schema 0042 adds the table `project_agent_types`, the kind `task` of
 runs with `runs.agent_type_id` and `runs.pulls`, and the delivery kind `task.result`. Going back to 0041 deletes the
-task runs and their deliveries, and drops the columns and the table.
+task runs and their deliveries, and drops the columns and the table. Schema 0224 lets a project grant a plugin
+`tasks:write` and `docs:write`, with which its backend keeps tasks and documents of the project through the same API
+(`docs/plugins.md`, section Tasks and documents of a plugin); going back to 0223 takes both out of every grant.
 
 The core plugin builder (`docs/plugins.md`, Builder) keeps what its agent proposes until an admin decides it. Schema
 0043 adds the table `builder_proposals` (each proposal's kind, target, change, summary, the setting's version it was

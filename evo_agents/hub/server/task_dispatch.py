@@ -17,7 +17,10 @@ agent types and tasks, 404 for any other.
   names (``claims``). Audited as task.dispatch in the project, ``run_as`` its actor. A task that names ``repo`` and
   ``branch`` runs on that branch of that repo instead: 422 for a repo the project lacks or a branch a task may not
   name (``task_runs.branch_problem``: a default branch, or a branch of another kind of run), 409 while another task
-  run of the project that is not over works on it. ``minutes`` asks for up to MAX_MINUTES of agent time.
+  run of the project that is not over works on it. ``minutes`` asks for up to MAX_MINUTES of agent time. ``repos``
+  names the repos of the project the run gets a worktree of (422 for one it lacks; default: every repo), and ``base``
+  a branch of origin each worktree starts from instead of the default branch (``task_runs.base_problem``, 422), which
+  the draft pull request of each push goes into too.
 - GET /v1/plugin-api/projects/{p}/tasks/{task}: a task the plugin handed, by the id its dispatch answered: the latest
   attempt of its run, its state, branch and pull requests, ids and states only.
 
@@ -25,8 +28,9 @@ agent types and tasks, 404 for any other.
 ``runs:dispatch`` grant: the image trusts the plugin, and the admin who enabled the type chose its run_as and its cap.
 
 POST /v1/worker/runs/{id}/task/pulls: the worker that holds a task run pushed the run's branch of a repo; the hub opens
-a draft pull request of it with the workers' App, or finds the one open, never merges it, keeps it in runs.pulls and
-says so in the run's log. A repo elsewhere, or a hub without the App, gets none.
+a draft pull request of it with the workers' App, into the base its task names or else the repo's default branch, or
+finds the one open, never merges it, keeps it in runs.pulls and says so in the run's log. A repo elsewhere, or a hub
+without the App, gets none.
 
 ``task_prompt`` is the prompt of a task run at its claim, and ``task_run_ended`` stores the event task.result for the
 plugin of the run's agent type when the run ends (``run_state.record_move``).
@@ -67,6 +71,7 @@ log = logging.getLogger(__name__)
 
 TypeName = Annotated[str, Path(pattern=f"^{CONTRIBUTION}$", description="the agent type, as the manifest names it")]
 TaskId = Annotated[int, Path(ge=1, le=MAX_ID, description="the id the task's dispatch answered")]
+RepoName = Annotated[str, Field(min_length=1, max_length=200, pattern=r"^[^\x00-\x1f\x7f]+$")]
 TOKEN_HINT = "a live plugin token is required: Authorization: Bearer evp_..., the token the plugin host hands a backend"
 REFUSALS = {code: {"model": ErrorBody} for code in (401, 403, 404, 409, 422, 429)}
 
@@ -106,11 +111,30 @@ class TaskIn(BaseModel):
         description=f"the agent time the run may take, at most {task_runs.MAX_MINUTES}; default: "
         f"{task_runs.TIME_CAP_SECONDS // 60}",
     )
+    repos: list[RepoName] | None = Field(
+        None,
+        min_length=1,
+        max_length=task_runs.MAX_REPOS,
+        description="the repos of the project the run gets a worktree of, each once; default: every repo",
+    )
+    base: str | None = Field(
+        None,
+        min_length=1,
+        max_length=task_runs.MAX_BRANCH_CHARS,
+        description="a branch of origin each worktree of the run starts from instead of the repo's default branch, "
+        "which the draft pull request of each branch it pushes goes into; the run fails when a repo's origin lacks it",
+    )
 
     @model_validator(mode="after")
     def _repo_with_branch(self) -> TaskIn:
         if (self.repo is None) != (self.branch is None):
             raise ValueError("a task names a repo and its branch together, or neither")
+        if self.repos is not None and len(set(self.repos)) != len(self.repos):
+            raise ValueError("a task names each of its repos once")
+        if self.repos is not None and self.repo is not None and self.repo not in self.repos:
+            raise ValueError(f"the repo whose branch the task names, {self.repo}, is one of its repos")
+        if self.base is not None and self.base == self.branch:
+            raise ValueError("a task's base is a branch it starts from, never the branch it pushes to")
         return self
 
 
@@ -228,6 +252,9 @@ def _task(row) -> dict:
     }
 
 
+task_select, task_view = _task_select, _task  # a task run with its names, and its fields of ``Task``: plugin_runs_api
+
+
 async def type_refusal(conn: AsyncConnection, enabled, row, name: str) -> tuple[int, str] | None:
     """(status, why) agent type ``name`` (``row`` of ``agent_types.enabled_type``) takes no task now, or None."""
     if contributed(enabled.manifest, name) is None or row is None or row.disabled_at is not None:
@@ -256,9 +283,16 @@ def _title(body: TaskIn, name: str) -> str:
 async def branch_refusal(
     conn: AsyncConnection, project_id: int, names: list[str], body: TaskIn
 ) -> tuple[int, str] | None:
-    """(status, why) the task of ``body`` may not work on the branch it names, or None (none named included): its
-    repo is one of ``names``, the project's; the branch one a task may name (``task_runs.branch_problem``); and no
-    task run of the project that is not over works on it."""
+    """(status, why) the task of ``body`` may not work on the repos and the branches it names, or None (none named
+    included): its repos are some of ``names``, the project's, and its base one a task may start from
+    (``task_runs.base_problem``); the repo whose branch it names is one of ``names``, the branch one a task may name
+    (``task_runs.branch_problem``), and no task run of the project that is not over works on it."""
+    unknown = [name for name in body.repos or () if name not in names]
+    if unknown:
+        return 422, f"the project has no repo {unknown[0]}: a task names some of {', '.join(names) or 'none'}"
+    problem = task_runs.base_problem(body.base) if body.base is not None else None
+    if problem is not None:
+        return 422, problem
     if body.repo is None or body.branch is None:
         return None
     if body.repo not in names:
@@ -285,8 +319,11 @@ async def _queue(
     conn: AsyncConnection, enabled, row, body: TaskIn, left: float, names: list[str], for_id: int | None = None
 ) -> int:
     """Queue the task run of ``body`` for agent type ``row`` on the branch task/<its id> of each repo of ``names``,
-    the project's, but the repo whose branch the task names, on that one; its principal its run_as, or the person
-    ``for_id`` it is for, bounded by the run_as too (``run_autonomy``)."""
+    the project's, or of those of them the task names, but the repo whose branch the task names, on that one, each
+    from the task's base when it names one; its principal its run_as, or the person ``for_id`` it is for, bounded by
+    the run_as too (``run_autonomy``)."""
+    if body.repos is not None:
+        names = [name for name in names if name in body.repos]
     profile = await by_id(conn, row.profile_id)
     allow = profiles.allowed(profile.permissions, "model")
     values = {
@@ -311,7 +348,8 @@ async def _queue(
     run_id = await insert_run(conn, values, run_autonomy.For(user_id=for_id, also=also, repos=tuple(names)))
     branch = task_runs.branch_of(run_id)
     named = {body.repo: body.branch} if body.repo and body.branch else {}
-    repos = [{"repo": name, "branch": named.get(name, branch)} for name in names] or null()  # SQL NULL, not JSON null
+    based = {"base": body.base} if body.base is not None else {}
+    repos = [{"repo": name, "branch": named.get(name, branch), **based} for name in names] or null()  # SQL NULL
     r = tables.runs
     await conn.execute(update(r).values(branch=branch, repos=repos, pulls=[]).where(r.c.id == run_id))
     await notify_queued(conn, run_id)
@@ -371,6 +409,8 @@ async def hand_own_task(
             repo=repo,
             branch=branch,
             minutes=minutes,
+            repos=None,
+            base=None,
         )
     except ValidationError as exc:
         return None, "; ".join(str(error["msg"]) for error in exc.errors())
@@ -481,8 +521,8 @@ async def task_run_ended(conn: AsyncConnection, run_id: int, new: str) -> int:
 
 
 async def _pushed_run(conn: AsyncConnection, user, run_id: int, body: TaskPushed):
-    """(the run's title, the repo's origin) of a push of the task run ``run_id`` the worker reports; 404 or 422 when
-    it is not the run's."""
+    """(the run's title, the repo's origin, the base its task names or None) of a push of the task run ``run_id`` the
+    worker reports; 404 or 422 when it is not the run's."""
     worker_id = (await worker_of(conn, user))[0]
     r = tables.runs
     query = select(r.c.worker_id, r.c.state, r.c.kind, r.c.project_id, r.c.branch, r.c.repos, r.c.title)
@@ -503,7 +543,9 @@ async def _pushed_run(conn: AsyncConnection, user, run_id: int, body: TaskPushed
         raise HTTPException(422, f"run {run_id} pushes {own or row.branch} of {body.repo}, not {body.branch}")
     pr = tables.project_repos
     query = select(pr.c.origin).where(pr.c.project_id == row.project_id, pr.c.name == body.repo)
-    return row.title, (await conn.execute(query)).scalar_one_or_none()
+    held = [entry for entry in row.repos or [] if isinstance(entry, dict) and entry.get("repo") == body.repo]
+    base = held[0].get("base") if held else None
+    return row.title, (await conn.execute(query)).scalar_one_or_none(), base if isinstance(base, str) else None
 
 
 async def _keep(conn: AsyncConnection, run_id: int, pull: TaskPull) -> None:
@@ -527,7 +569,7 @@ async def _keep(conn: AsyncConnection, run_id: int, pull: TaskPull) -> None:
 async def pushed(request: Request, run_id: RunId, body: TaskPushed, user: CurrentUser) -> TaskPull:
     """The worker pushed the task run's branch of a repo: its draft pull request, kept on the run."""
     async with request.app.state.engine.begin() as conn:
-        title, origin = await _pushed_run(conn, user, run_id, body)
+        title, origin, base = await _pushed_run(conn, user, run_id, body)
         t, pl, r = tables.project_agent_types, tables.plugins, tables.runs
         query = select(t.c.name, pl.c.name).join_from(r, t, t.c.id == r.c.agent_type_id)
         agent_type, plugin = (
@@ -543,7 +585,7 @@ async def pushed(request: Request, run_id: RunId, body: TaskPushed, user: Curren
         try:
             where = f"github.com/{target[0]}/{target[1]}"
             title, text = guard.scrub(policy, where, (title or body.branch)[:240], text)
-            made, opened = await open_draft(app, target, body.branch, title, text)
+            made, opened = await open_draft(app, target, body.branch, title, text, base=base)
             url, number = made.get("html_url"), made.get("number")
         except (GitHubRefused, GitHubUnavailable) as exc:
             problem = str(exc)

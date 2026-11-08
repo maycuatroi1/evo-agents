@@ -8,7 +8,9 @@ hub told of each push (POST /v1/worker/runs/{id}/<kind>/pulls), which opens the 
 
 A task run may work in one repo on a branch its task names (``named``, from the run's repos), which is no default
 branch: that branch from origin when origin has it, else from the default branch, pushed back to it, never forced
-(``gitops.check_push`` takes it as ``named_branch``).
+(``gitops.check_push`` takes it as ``named_branch``). Its task may also name a base (``bases``, from the run's repos):
+a branch of origin each worktree starts from instead of the default branch, when origin does not have the run's
+branch yet; a repo whose origin lacks it fails the run.
 """
 
 from __future__ import annotations
@@ -49,12 +51,21 @@ class BranchWork:
     """The worktrees of a run on its ``branch`` in its ``directory``, and their push at its end, for a run of
     ``kind``."""
 
-    def __init__(self, run: Run, directory: RunDirectory, branch: str, kind: Kind, named: dict[str, str] | None = None):
+    def __init__(
+        self,
+        run: Run,
+        directory: RunDirectory,
+        branch: str,
+        kind: Kind,
+        named: dict[str, str] | None = None,
+        bases: dict[str, str] | None = None,
+    ):
         self.run = run
         self.directory = directory
         self.branch = branch
         self.kind = kind
         self.named = dict(named or {})  # repo -> the branch the run's task names for it, instead of ``branch``
+        self.bases = dict(bases or {})  # repo -> the branch of origin its worktree starts from, instead of the default
         self.left_out: list[str] = []  # repos of the run this worker has no checkout of
         self.no_origin: list[str] = []  # repos of the run the project lists no origin for
         # the step of the setup a fetch's note starts: the thread of a chat run shows the repo it opens
@@ -117,9 +128,10 @@ class BranchWork:
 
     async def make_worktree(self, name: str, checkout: Path, folder: str) -> gitops.Workspace:
         """A worktree of ``name`` at ``<directory>/<folder>`` on the run's branch: from origin's branch when the
-        run's branch was pushed already, else from origin's default branch; on evo-run/<run>/<folder> when the branch
-        is checked out elsewhere or has commits here that the start lacks."""
-        run, named = self.run, self.named.get(name)
+        run's branch was pushed already, else from origin's branch the task names as its base, else from origin's
+        default branch; on evo-run/<run>/<folder> when the branch is checked out elsewhere or has commits here that the
+        start lacks."""
+        run, named, start_from = self.run, self.named.get(name), self.bases.get(name)
         branch = named or self.branch
         path = self.directory.path / folder
         async with run.daemon.repo_lock(checkout):
@@ -132,6 +144,10 @@ class BranchWork:
             if named is not None and named in protected:
                 raise RunFailed(f"{named} is a default branch of {name}: the run never works on it")
             defaults = [f"refs/remotes/origin/{default}" for default in (remote_head, hub_default) if default]
+            if start_from is not None:
+                if await gitops.rev(checkout, f"refs/remotes/origin/{start_from}") is None:
+                    raise RunFailed(f"origin of {name} has no branch {start_from}, which the task names to start from")
+                defaults = [f"refs/remotes/origin/{start_from}"]
             refs = (f"refs/remotes/origin/{branch}", *defaults, "refs/remotes/origin/HEAD", "HEAD")
             start, base = await origin.start_point(checkout, refs)
             if base is None:

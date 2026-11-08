@@ -207,7 +207,7 @@ def test_plugin_events_of_srs_and_tasks_are_taken_with_their_permissions():
     with pytest.raises(ManifestError):
         read_manifest(manifest(contributes={"events": [{"name": "loop", "on": ["tasks.deleted"]}]}))
     with pytest.raises(ManifestError):
-        read_manifest(manifest(permissions=["tasks:write"]))
+        read_manifest(manifest(permissions=["tasks:delete"]))
 
 
 def test_plugin_points_core_tables_carry_the_prefix_and_routes_name_a_prefix_only_in_core():

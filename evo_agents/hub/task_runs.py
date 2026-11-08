@@ -6,9 +6,8 @@ A plugin contributes agent types (``contributes.agent_types``): each a template 
 description, instructions and permissions) with the agent packs, the environment, the jobs, the events and the pages
 of the same plugin it uses. An admin of a project enables one there (``evo_agents.hub.server.agent_types``): the hub
 creates its profile in the project from the template, or takes the one it made before, and the admin names the member
-whose name the type's runs go under (``run_as``, a writer of the project), the workers of that member they may run on
-(none named: any the profile allows) and the cap of what its runs may cost in BUDGET_HOURS (``daily_usd``, at most
-MAX_DAILY_USD).
+whose name the type's runs go under (``run_as``, a writer of the project), whose workers in the agent's own pool take
+them, and the cap of what its runs may cost in BUDGET_HOURS (``daily_usd``, at most MAX_DAILY_USD).
 
 A plugin granted DISPATCH_PERMISSION in the project hands a task to an agent type of its own that the project enabled,
 with its plugin token, through the API of the hub (POST /v1/plugin-api/projects/{p}/agent-types/{name}/tasks). The hub
@@ -27,6 +26,11 @@ branch of a draft another run or a person opened: the worker checks that branch 
 it from the default branch when origin lacks it), the agent works on it, and the worker pushes it back to that same
 branch, never forced; the other repos stay on ``task/<run>``. A task may also ask for up to MAX_MINUTES of agent time
 (``run_budget``, ``run_timeout``); its cost cap stays what is left of the type's cap.
+
+A task may name the repos of the project it needs (``repos``, default: every repo), and a branch of origin each of
+their worktrees starts from instead of the default branch (``base``, ``base_problem``), such as a branch the project
+deploys a test stack from; the draft pull request of each branch the run pushes goes into that base too. The worker
+fails the run when origin of one of the repos lacks it, rather than start from another branch.
 """
 
 from __future__ import annotations
@@ -47,8 +51,10 @@ MAX_TITLE_CHARS = 200
 MAX_PULLS = 50  # the draft pull requests a task run keeps (runs.pulls), one for each repo of its project at most
 MAX_MINUTES = 120  # the most agent time a task asks for; none asked: TIME_CAP_SECONDS
 MAX_BRANCH_CHARS = 200
+MAX_REPOS = 50  # the repos a task names, of its project
 # branches of other kinds of runs, which a task never names
 OTHER_RUN_PREFIXES = ("task/", "chat/", "curator/", "release/", "evo-run/")
+RUN_BRANCH_PREFIXES = ("task/", "chat/", "curator/", "evo-run/")  # branches a run makes, which no task starts from
 NAMED_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 BRANCH_PREFIX = "task/"
 BRANCH = re.compile(r"^task/[1-9][0-9]{0,18}$")
@@ -84,9 +90,8 @@ def run_timeout(minutes: int | None = None) -> int:
     return max(TIMEOUT_MIN * 60, (int(minutes) + 30) * 60)
 
 
-def branch_problem(branch: str, default_branch: str | None = None) -> str | None:
-    """Why a task may not name ``branch`` of a repo whose default branch is ``default_branch``, or None: a name git
-    takes, no default branch (main, master, HEAD or the repo's) and no branch of another kind of run."""
+def _name_problem(branch: str) -> str | None:
+    """Why ``branch`` is no branch name git takes (within MAX_BRANCH_CHARS), or None."""
     if (
         not isinstance(branch, str)
         or not branch
@@ -99,10 +104,30 @@ def branch_problem(branch: str, default_branch: str | None = None) -> str | None
         or "/." in branch
     ):
         return f"{branch!r} is not a branch name git takes"
+    return None
+
+
+def branch_problem(branch: str, default_branch: str | None = None) -> str | None:
+    """Why a task may not name ``branch`` of a repo whose default branch is ``default_branch``, or None: a name git
+    takes, no default branch (main, master, HEAD or the repo's) and no branch of another kind of run."""
+    problem = _name_problem(branch)
+    if problem is not None:
+        return problem
     if branch in ("main", "master", "HEAD") or (default_branch and branch == default_branch):
         return f"{branch} is a default branch: a task never works on one"
     if branch.startswith(OTHER_RUN_PREFIXES):
         return f"{branch} is a branch of another run: a task names a branch of its own, such as post/<slug>"
+    return None
+
+
+def base_problem(base: str) -> str | None:
+    """Why a task may not start its worktrees from ``base``, or None: a name git takes, not HEAD, and no branch of a
+    task, chat, Curator or plan run (RUN_BRANCH_PREFIXES); a default branch is the start a task has anyway."""
+    problem = _name_problem(base)
+    if problem is not None:
+        return problem
+    if base == "HEAD" or base.startswith(RUN_BRANCH_PREFIXES):
+        return f"{base} is no branch of the repo's own to start from, such as deploy/test"
     return None
 
 
@@ -124,8 +149,10 @@ def _repo_lines(repos: list, branch: str | None = None) -> list[str]:
         name = entry.get("repo") if isinstance(entry, dict) else entry
         if isinstance(name, str) and name:
             own = entry.get("branch") if isinstance(entry, dict) else None
+            base = entry.get("base") if isinstance(entry, dict) else None
             named = f" (on the branch {own}, which the task names, not {branch})" if own and own != branch else ""
-            lines.append(f"- {name}: {name}/{named}")
+            start = f" (from {base}, which its draft pull request goes into)" if base else ""
+            lines.append(f"- {name}: {name}/{named}{start}")
     return lines or ["- none: this run changes no code"]
 
 

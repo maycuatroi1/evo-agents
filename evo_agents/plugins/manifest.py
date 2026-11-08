@@ -109,6 +109,8 @@ PERMISSIONS = (
     "srs:read",
     "tasks:read",
     "records:use",
+    "tasks:write",
+    "docs:write",
 )
 # What each permission lets a plugin do on a project that enables it, as an admin of the project reads it before
 # granting it.
@@ -127,6 +129,10 @@ PERMISSION_TEXT = {
     "records:use": "keep the project's records for the people it serves: read and write the records of its own "
     "collections, each at a level the person it acts for reaches; its jobs and events, which act for no person, "
     "reach the levels up to the one the admin sets when enabling it",
+    "tasks:write": "create tasks in the project, each under a key of its own, and change and comment on the tasks it "
+    "created, in the name of the admin who granted it its permissions",
+    "docs:write": "save documents of the project whose slug starts with its id, with their images, in the name of the "
+    "admin who granted it its permissions",
 }
 
 

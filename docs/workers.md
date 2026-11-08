@@ -1030,13 +1030,14 @@ handed it through the hub's API (`docs/plugins.md`, Agent types). The hub queues
 task in `request`, the agent type (`agent_type_id`), the type's profile, dispatched by the member the project named
 for the type (`run_as`), the branch `task/<id>` (the id of the run the dispatch made) and the repos of its project
 (none when it has none). It is pinned to no worker: a worker of `run_as` claims it with `task` in its heartbeat's
-`run_kinds`. When the type names workers, the worker must be one of them, by name. When the run has repos, the worker
-needs a checkout of one of them. The claim hands the prompt the hub builds then (`task_runs.build_task_prompt`): the
+`run_kinds`, as a node of the agent's own pool. When the run has repos, the worker needs a checkout of one of them. The claim hands the prompt the hub builds then (`task_runs.build_task_prompt`): the
 rules, the repos and the task, which is cut first to keep the prompt within its bound. Its budget is what is left of
 the type's cap of cost for 24 hours, and 30 minutes of agent time.
 
 The daemon makes a writable worktree of each repo it has a checkout of on the run's branch, from origin's branch when
-an earlier attempt pushed it, else from origin's default branch (`runner/branch_work.py`, shared with chat runs). The
+an earlier attempt pushed it, else from the branch of origin the task names as its `base`, else from origin's default
+branch (`runner/branch_work.py`, shared with chat runs). A task whose `base` a repo's origin lacks fails before the
+agent starts. The task's `repos`, when it names them, are the repos of the run. The
 agent works in one headless turn, `EVO_RUN_KIND=task`, and asks nobody anything. At the end the daemon:
 
 - commits what the agent left in each worktree;

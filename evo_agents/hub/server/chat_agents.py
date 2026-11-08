@@ -419,20 +419,22 @@ async def create_chat(request: Request, run_id: RunId, body: AgentChatIn, user: 
 # The pull request of a chat run's branch
 
 
-async def open_draft(app, target, branch: str, title: str, text: str) -> tuple[dict, bool]:
-    """(the draft pull request of ``branch`` on ``target`` (owner, name), whether the hub opened it now). On a repo
-    whose GitHub takes no draft, a pull request whose title starts with ``chat_runs.DRAFT_TITLE``."""
+async def open_draft(app, target, branch: str, title: str, text: str, *, base: str | None = None) -> tuple[dict, bool]:
+    """(the draft pull request of ``branch`` on ``target`` (owner, name) into ``base``, else the repo's default branch,
+    whether the hub opened it now). On a repo whose GitHub takes no draft, a pull request whose title starts with
+    ``chat_runs.DRAFT_TITLE``."""
     owner, name = target
 
     async def opened(token: str) -> tuple[dict, bool]:
         found = await pulls.find_pull(app, token, owner, name, branch)
         if found is not None:
             return found, False
-        held = await pulls.repository(app, token, owner, name)
-        base = held.get("default_branch")
-        if not isinstance(base, str) or not base:
+        into = base
+        if into is None:
+            into = (await pulls.repository(app, token, owner, name)).get("default_branch")
+        if not isinstance(into, str) or not into:
             raise GitHubRefused(f"GitHub names no default branch of {owner}/{name}")
-        pull = {"branch": branch, "base": base, "body": text}
+        pull = {"branch": branch, "base": into, "body": text}
         try:
             return await pulls.open_pull(app, token, owner, name, title=title, draft=True, **pull), True
         except pulls.Refused as exc:

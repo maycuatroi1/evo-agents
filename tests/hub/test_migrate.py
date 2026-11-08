@@ -5820,3 +5820,28 @@ def test_migration_0223_lets_runs_into_the_run_reach_and_going_back_takes_it_out
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(update(u).values(run_reach=["runs"]).where(u.c.id == ids["user"]))
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0223") :]
+
+
+def test_migration_0224_grants_tasks_write_and_docs_write_and_going_back_takes_them_from_every_grant(hub_db):
+    move_to(hub_db, "0223")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="lumen-qa", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        granted = {"project_id": ids["project"], "plugin_id": plugin_id, "enabled_by": ids["user"]}
+        granted |= {"granted_by": ids["user"], "permissions": ["runs:dispatch"]}
+        conn.execute(insert(t.project_plugins).values(granted))
+    for permission in ("tasks:write", "docs:write"):  # 0223 knows neither
+        with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+            conn.execute(update(t.project_plugins).values(permissions=["runs:dispatch", permission]))
+    move_to(hub_db, "0224")
+    wanted = ["runs:dispatch", "tasks:write", "docs:write"]
+    with live.connect(hub_db) as conn:
+        conn.execute(update(t.project_plugins).values(permissions=wanted))
+    assert query(hub_db, select(t.project_plugins.c.permissions)) == [(wanted,)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(update(t.project_plugins).values(permissions=["docs:delete"]))
+    move_to(hub_db, "0223", down=True)
+    assert query(hub_db, select(t.project_plugins.c.permissions)) == [(["runs:dispatch"],)], "both go from grants"
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0224") :]

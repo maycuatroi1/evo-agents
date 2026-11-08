@@ -137,6 +137,49 @@ def test_a_task_run_works_on_the_branch_its_task_names_and_pushes_back_to_it(mac
     with_daemon(machine, body)
 
 
+def test_a_task_run_starts_from_the_base_its_task_names_and_pushes_its_own_branch(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            "task": [
+                {"sh": "git -C alpha symbolic-ref --short HEAD; cat alpha/draft.md"},
+                {"write": {"alpha/draft.md": "# Northwind launch\n\nFixed on the test stack.\n"}},
+                {"result": {"summary": "Fixed it on the base."}},
+                {"say": "Done."},
+            ]
+        }
+    )
+    base = "deploy/test"
+    tip = draft_branch(machine, "alpha", base)
+
+    async def body(hub, daemon):
+        run_id = hub.queue_task_run(["alpha"])
+        branch = task_runs.branch_of(run_id)
+        hub.runs[run_id]["spec"]["repos"][0]["base"] = base
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        (look,) = [entry for entry in machine.commands() if entry["run"] == run_id]
+        assert look["stdout"].splitlines() == [branch, "# Northwind launch"], "the worktree starts from the base"
+        head = machine.origin_rev("alpha", f"refs/heads/{branch}")
+        assert head is not None and machine.origin("alpha", "rev-parse", f"{head}~1") == tip, "on top of the base"
+        assert machine.origin_rev("alpha", f"refs/heads/{base}") == tip, "the base is never pushed"
+        assert task_pulls(hub) == [(run_id, "alpha", branch, head)]
+
+    with_daemon(machine, body)
+
+
+def test_a_task_run_fails_when_origin_lacks_the_base_its_task_names(machine):  # noqa: F811
+    machine.scenarios({"task": [{"result": {"summary": "Nothing."}}, {"say": "Nothing."}]})
+
+    async def body(hub, daemon):
+        run_id = hub.queue_task_run(["alpha"])
+        hub.runs[run_id]["spec"]["repos"][0]["base"] = "deploy/test"
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "failed"
+        said = "origin of alpha has no branch deploy/test, which the task names to start from"
+        assert any(said in text for text in hub.texts(run_id)), hub.texts(run_id)
+        assert machine.starts_path.exists() is False or machine.starts() == [], "the agent never started"
+
+    with_daemon(machine, body)
+
+
 def test_a_task_run_never_works_on_a_default_branch_its_task_names(machine):  # noqa: F811
     machine.scenarios({"task": [{"result": {"summary": "Nothing."}}, {"say": "Nothing."}]})
 
