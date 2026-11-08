@@ -19,6 +19,13 @@ import { ChatAvatar } from "./chat-avatar";
 import { ChatImageControl } from "./chat-image-control";
 import { ChatLabelControl } from "./chat-label-control";
 
+/**
+ * What a page that frames a chat puts in a direct chat's head: `title` draws the name (given the name's element, which
+ * keeps the id the chat's section is labelled by), in place of the agent's menu; `actions` stand before Details from
+ * 768 px.
+ */
+export type ChatHeadSlots = { title?: (name: ReactNode) => ReactNode; actions?: ReactNode };
+
 /** The levels of a chat's label, each once, as the hub sends them: every member clears them all. */
 function levelsOf(chat: Pick<Chat, "label">): string[] {
   const levels = chat.label.map((label) => (typeof label.level === "string" ? label.level : null)).filter((level): level is string => level !== null);
@@ -46,15 +53,18 @@ function BackLink() {
  * sheet without adding or taking out anyone; its face and its name open the agent's menu (`AgentMenu`), as a group
  * chat's agents' faces do; below 768 px Details and Direct are their icons, so the name, Direct and
  * Details share one row on a phone. Under 1024 px a back link to the list stands before the face, in the row of the face and the
- * title, so it stays beside them when the head wraps at 375 px.
+ * title, so it stays beside them when the head wraps at 375 px. A page that frames the chat with its own controls
+ * (`slots`, Home's agent picker and its Today link) puts them in a direct chat's head instead of a bar of its own, so
+ * the agent is named once: the name opens the picker (the face still opens the agent's menu), the actions stand before
+ * Details, and below 768 px they give their room to the name.
  */
-export function ChatHeader({ chat, me, onMembers }: { chat: Chat; me: string | null; onMembers: () => void }) {
+export function ChatHeader({ chat, me, onMembers, slots }: { chat: Chat; me: string | null; onMembers: () => void; slots?: ChatHeadSlots }) {
   const [problem, setProblem] = useState<WriteFailure | null>(null);
   const agent = chat.kind === "direct" ? (chat.agents[0] ?? null) : null;
   return (
     <div className="flex flex-col gap-3 border-b px-3 py-3 sm:px-4" data-testid="chat-head" data-kind={chat.kind}>
       {agent ? (
-        <DirectHead chat={chat} agent={agent} onDetails={onMembers} />
+        <DirectHead chat={chat} agent={agent} onDetails={onMembers} slots={slots} />
       ) : (
         <GroupHead
           chat={chat}
@@ -117,8 +127,13 @@ function GroupHead({ chat, me, onMembers, image, label }: { chat: Chat; me: stri
   );
 }
 
-function DirectHead({ chat, agent, onDetails }: { chat: Chat; agent: ChatAgent; onDetails: () => void }) {
+function DirectHead({ chat, agent, onDetails, slots }: { chat: Chat; agent: ChatAgent; onDetails: () => void; slots?: ChatHeadSlots }) {
   const t = useTranslations("chats.header");
+  const name = (
+    <span id="chat-title" data-testid="chat-title">
+      {agent.name}
+    </span>
+  );
   return (
     <header className="flex min-w-0 items-start gap-2 md:gap-3" data-testid="chat-header">
       <div className="flex shrink-0 items-center gap-2 md:gap-3">
@@ -130,11 +145,13 @@ function DirectHead({ chat, agent, onDetails }: { chat: Chat; agent: ChatAgent; 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex min-h-11 min-w-0 items-center gap-2 md:min-h-10">
           <h1 className="min-w-0 truncate text-xl font-semibold tracking-tight" title={agent.name}>
-            <AgentMenu agent={agent} shape="text" testId="agent-menu-name">
-              <span id="chat-title" data-testid="chat-title">
-                {agent.name}
-              </span>
-            </AgentMenu>
+            {slots?.title ? (
+              slots.title(name)
+            ) : (
+              <AgentMenu agent={agent} shape="text" testId="agent-menu-name">
+                {name}
+              </AgentMenu>
+            )}
           </h1>
           <Tag data-testid="chat-direct-tag">
             <Bot aria-hidden="true" />
@@ -158,7 +175,8 @@ function DirectHead({ chat, agent, onDetails }: { chat: Chat; agent: ChatAgent; 
           </span>
         </p>
       </div>
-      <div className="flex h-11 shrink-0 items-center md:h-10">
+      <div className="flex h-11 shrink-0 items-center gap-2 md:h-10">
+        {slots?.actions ? <div className="flex items-center gap-2 max-md:hidden">{slots.actions}</div> : null}
         <Button type="button" variant="outline" size="sm" onClick={onDetails} className="max-md:min-w-11" data-testid="chat-details-open">
           <Info aria-hidden="true" />
           <span className="max-md:sr-only">{t("details")}</span>

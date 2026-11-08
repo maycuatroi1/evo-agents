@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 import { AgentActionsContext, type AgentTab, type AgentTarget } from "./agent-menu";
 import type { AgentPanels } from "./agent-sheet";
 import { ChatComposer } from "./composer";
-import { ChatHeader } from "./chat-header";
+import { type ChatHeadSlots, ChatHeader } from "./chat-header";
 import { ChatDocPanel } from "./doc-panel";
 import type { Feed } from "./feed-model";
 import { useChatFailure, useMe } from "./hooks";
@@ -67,23 +67,26 @@ const useNothingUnder: UseUnder = () => undefined;
  * `?compose=1` (where an agent's avatar and its Chat button lead) focuses the composer, then leaves the address. In a
  * direct chat Reply answers a message from the chat's own composer, in its thread, so the agent's session goes on.
  * With `agentPanels`, an agent's face or name opens its menu (`agent-menu.tsx`), whose Workers and pools and Accounts
- * open the agent sheet (`agent-sheet.tsx`) on that tab, drawn by the page.
+ * open the agent sheet (`agent-sheet.tsx`) on that tab, drawn by the page. `headSlots` go to the head (`ChatHeader`):
+ * a page that frames the chat puts its own controls there instead of a bar over it.
  */
 export function ChatView({
   chatId,
   initialError,
   useUnder = useNothingUnder,
   agentPanels,
+  headSlots,
 }: {
   chatId: number;
   initialError: ApiErrorInfo | null;
   useUnder?: UseUnder;
   agentPanels?: AgentPanels;
+  headSlots?: ChatHeadSlots;
 }) {
   const state = useHubQuery(chatPageQuery(browserApi, chatId), initialError);
   return (
     <QueryView state={state} loading={<ChatLoading />}>
-      {(page) => <Conversation key={chatId} page={page} useUnder={useUnder} agentPanels={agentPanels} />}
+      {(page) => <Conversation key={chatId} page={page} useUnder={useUnder} agentPanels={agentPanels} headSlots={headSlots} />}
     </QueryView>
   );
 }
@@ -101,7 +104,7 @@ function numberParam(value: string | null): number | null {
   return value && /^[1-9][0-9]{0,17}$/.test(value) ? Number(value) : null;
 }
 
-function Conversation({ page, useUnder, agentPanels }: { page: ChatPage; useUnder: UseUnder; agentPanels?: AgentPanels }) {
+function Conversation({ page, useUnder, agentPanels, headSlots }: { page: ChatPage; useUnder: UseUnder; agentPanels?: AgentPanels; headSlots?: ChatHeadSlots }) {
   const t = useTranslations("chats.view");
   const tDoc = useTranslations("chats.doc");
   const queryClient = useQueryClient();
@@ -260,7 +263,7 @@ function Conversation({ page, useUnder, agentPanels }: { page: ChatPage; useUnde
     <div ref={frame} className="flex h-full min-h-0 w-full gap-4" data-testid="chat-view" data-chat-id={chatId} data-stream={live.status}>
       <section aria-labelledby="chat-title" className={`${CARD} min-w-0 flex-1`} hidden={threadColumn && thread !== null && threadFull}>
         <FileDropFrame className="flex min-h-0 flex-1 flex-col" data-testid="chat-drop">
-          <ChatHeader chat={chat} me={me} onMembers={() => setMembers(true)} />
+          <ChatHeader chat={chat} me={me} onMembers={() => setMembers(true)} slots={headSlots} />
           <MessageList
             chat={chat}
             me={me}

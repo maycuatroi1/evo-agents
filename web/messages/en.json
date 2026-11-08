@@ -673,6 +673,7 @@
     "todayLink": "Today",
     "picker": {
       "label": "Chatting with {name} of {project}. Choose another agent",
+      "choose": "Choose another agent",
       "heading": "{count, plural, one {# agent you can chat with} other {# agents you can chat with}}"
     },
     "start": {

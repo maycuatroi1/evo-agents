@@ -2,6 +2,7 @@
 
 import { ChevronsUpDown } from "lucide-react";
 import { useTranslations } from "next-intl";
+import type { ReactNode } from "react";
 
 import { AgentAvatar } from "@/components/data/agent-avatar";
 import { Button } from "@/components/ui/button";
@@ -24,41 +25,62 @@ export function agentKey(agent: Pick<ChatHomeAgent, "handle">): string {
 /**
  * The agent picker of the chat frame (web/DESIGN.md, Chat home): a button with the chosen agent's face, name and
  * project that opens a menu of the agents the visitor may chat with, one radio item each (face, name, @handle and
- * project), in the hub's order (the ones written to last first). Choosing one calls `onPick` with its handle.
+ * project), in the hub's order (the ones written to last first). Choosing one calls `onPick` with its handle. With
+ * `title`, the button is that title and `ChevronsUpDown`, drawn as the text it stands in (a chat's head names the agent
+ * there, so the name itself opens the menu), with "Choose another agent" for screen readers.
  */
 export function AgentPicker({
   agents,
   current,
   onPick,
+  title,
   className,
 }: {
   agents: readonly ChatHomeAgent[];
   current: ChatHomeAgent;
   onPick: (handle: string) => void;
+  title?: ReactNode;
   className?: string;
 }) {
   const t = useTranslations("chatHome.picker");
+  const label = t("label", { name: current.name, project: current.project });
   return (
     // Not modal: the page under the menu stays in the accessibility tree, as in the chat's other menus.
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          className={cn("h-auto min-h-11 max-w-full justify-start gap-2.5 px-2 py-1.5 text-left", className)}
-          aria-label={t("label", { name: current.name, project: current.project })}
-          data-testid="chat-home-picker"
-          data-agent={current.handle}
-        >
-          <AgentAvatar agent={current} />
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-semibold text-foreground">{current.name}</span>
-            <span className="truncate font-mono text-xs font-normal text-muted-foreground">
-              @{current.handle}, {current.project}
+        {title !== undefined ? (
+          <button
+            type="button"
+            className={cn(
+              "inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1 rounded-xs text-left outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
+              className,
+            )}
+            data-testid="chat-home-picker"
+            data-agent={current.handle}
+          >
+            <span className="min-w-0 truncate">{title}</span>
+            <span className="sr-only">{t("choose")}</span>
+            <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </button>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            className={cn("h-auto min-h-11 max-w-full justify-start gap-2.5 px-2 py-1.5 text-left", className)}
+            aria-label={label}
+            data-testid="chat-home-picker"
+            data-agent={current.handle}
+          >
+            <AgentAvatar agent={current} />
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate text-sm font-semibold text-foreground">{current.name}</span>
+              <span className="truncate font-mono text-xs font-normal text-muted-foreground">
+                @{current.handle}, {current.project}
+              </span>
             </span>
-          </span>
-          <ChevronsUpDown className="ml-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        </Button>
+            <ChevronsUpDown className="ml-1 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          </Button>
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="max-h-[min(28rem,70dvh)] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto" data-testid="chat-home-picker-menu">
         <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">{t("heading", { count: agents.length })}</DropdownMenuLabel>
