@@ -55,6 +55,7 @@ from evo_agents.hub.judges import codex_cleared as codex_cleared  # their home b
 from evo_agents.hub.judges import judge_runtime as judge_runtime
 from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, clip
 from evo_agents.hub.verify_words import programs as programs  # its home before evo_agents.hub.verify_words
+from evo_agents.hub.verify_words import shell_problem
 
 ChangeState = Literal[
     "planned",  # the plan is on the hub: the night shift may queue its Builder
@@ -259,6 +260,41 @@ def progress_free(body: dict) -> str:
             for step in steps
         ]
     return json.dumps(found, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+CLOSED_STEPS = ("done", "descoped")  # a step in one of these states keeps its verify as it is
+
+
+def verify_clauses(verify: str) -> list[str]:
+    """The commands of a ``verify``, split on ``&&``, ``;`` and line ends (as ``triage_rules.clauses`` reads them)."""
+    return [part.strip() for part in re.split(r"&&|;|\n", verify) if part.strip()]
+
+
+def mended_verify(old: dict, new: dict) -> dict:
+    """``new`` with the verify of each step put back as ``old`` has it where the write only mends it: the step is not
+    done or descoped, its verify in ``old`` is no shell command line (``verify_words.shell_problem``: prose the
+    preflight fails on every worker, so no Builder of the plan can pass it), and the new verify keeps each clause of
+    the old one that is runnable on its own. ``progress_free`` of the result then compares as if the verify were
+    unchanged; the new verify itself still has to be one command line (``plans.unrunnable_verify``)."""
+    was, now = old.get("steps") if isinstance(old, dict) else None, new.get("steps") if isinstance(new, dict) else None
+    if not isinstance(was, list) or not isinstance(now, list) or len(was) != len(now):
+        return new
+    steps = []
+    for before, after in zip(was, now, strict=True):
+        if (
+            isinstance(before, dict)
+            and isinstance(after, dict)
+            and isinstance(before.get("verify"), str)
+            and isinstance(after.get("verify"), str)
+            and before["verify"] != after["verify"]
+            and before.get("status") not in CLOSED_STEPS
+            and shell_problem(before["verify"]) is not None
+        ):
+            kept = verify_clauses(after["verify"])
+            if all(clause in kept for clause in verify_clauses(before["verify"]) if shell_problem(clause) is None):
+                after = {**after, "verify": before["verify"]}
+        steps.append(after)
+    return {**new, "steps": steps}
 
 
 def is_curator_plan_id(plan_id: str | None) -> bool:

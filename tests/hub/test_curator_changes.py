@@ -349,6 +349,31 @@ def test_curator_plan_never_names_a_default_branch_and_keeps_its_verify(world):
     assert world.client.put(f"/v1/projects/{PROJECT}/plans/{PLAN_ID}", json=put, headers=owner).status_code == 200
 
 
+def test_curator_plan_a_prose_verify_stored_before_the_check_is_mended_by_a_write(world, monkeypatch):
+    prose = f"{VERIFY}; and a unit test with a fake hub that checks it"
+    with monkeypatch.context() as before:  # the hub of 2026-11-07 took `and` for a program
+        before.setattr("evo_agents.hub.server.proposals.shell_problem", lambda command: None)
+        before.setattr("evo_agents.hub.plans.shell_problem", lambda command: None)
+        accepted(world, plan={**DRAFT, "steps": [{**DRAFT["steps"][0], "verify": prose}]})
+    owner = world.headers["owner"]
+    url = f"/v1/projects/{PROJECT}/plans/{PLAN_ID}"
+    plan = world.client.get(url, headers=owner).json()
+    assert plan["body"]["steps"][0]["verify"] == prose
+    for verify, code in (
+        ("true", 409),  # drops the clause a worker runs
+        (f"{VERIFY}; and still prose", 422),  # still no command line
+        (f"{VERIFY} && python -m pytest -q tests/test_kg.py -k timeout", 200),
+    ):
+        body = {**plan["body"], "steps": [{**plan["body"]["steps"][0], "verify": verify}]}
+        response = world.client.put(url, json={"body": body, "if_revision": plan["revision"]}, headers=owner)
+        assert response.status_code == code, (verify, response.text)
+    mended = world.client.get(url, headers=owner).json()
+    assert mended["body"]["steps"][0]["verify"] == f"{VERIFY} && python -m pytest -q tests/test_kg.py -k timeout"
+    body = {**mended["body"], "steps": [{**mended["body"]["steps"][0], "verify": VERIFY}]}  # now a command: locked
+    again = world.client.put(url, json={"body": body, "if_revision": mended["revision"]}, headers=owner)
+    assert again.status_code == 409 and "is the Curator's" in again.text
+
+
 def test_curator_plan_no_member_dispatches_it(world):
     accepted(world)
     owner = world.headers["owner"]

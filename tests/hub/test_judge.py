@@ -763,6 +763,33 @@ def test_curator_plan_progress_is_all_a_write_may_change():
     assert judge.is_curator_plan_id("curator-7-x") and not judge.is_curator_plan_id("my-curator")
 
 
+PROSE_VERIFY = "uv run pytest tests/hub/test_contract.py -q -k measure; and a unit test with a fake hub that checks it"
+MENDED = (
+    'uv run pytest tests/hub/test_contract.py -q -k measure && uv run pytest tests/hub/test_kg_settings.py -k "a and b"'
+)
+
+
+def curator_body(verify: str, status: str = "pending") -> dict:
+    return {"id": "curator-64-x", "goal": "g", "steps": [{"id": 1, "what": "w", "verify": verify, "status": status}]}
+
+
+def test_curator_plan_a_verify_that_is_no_command_may_be_mended_and_nothing_else():
+    old = curator_body(PROSE_VERIFY)
+    assert judge.progress_free(judge.mended_verify(old, curator_body(MENDED))) == judge.progress_free(old)
+    for new in (
+        curator_body("true"),  # drops the clause that runs
+        curator_body("uv run pytest tests/hub/test_contract.py -q"),  # changes it
+        {**curator_body(MENDED), "goal": "other"},  # the goal stays the hub's
+    ):
+        assert judge.progress_free(judge.mended_verify(old, new)) != judge.progress_free(old), new
+    runnable = curator_body("pytest -q")  # a verify a worker runs is the hub's to keep
+    assert judge.progress_free(judge.mended_verify(runnable, curator_body("pytest -q && true"))) != judge.progress_free(
+        runnable
+    )
+    done = curator_body(PROSE_VERIFY, status="done")  # a step done keeps what it was checked with
+    assert judge.progress_free(judge.mended_verify(done, curator_body(MENDED, "done"))) != judge.progress_free(done)
+
+
 # CI the ruleset requires
 
 

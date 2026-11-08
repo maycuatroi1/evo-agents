@@ -87,7 +87,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.harness import load_schema
 from evo_agents.hub import judge, review, runs, tables, tiers
 from evo_agents.hub.access import has_role
-from evo_agents.hub.plans import PlanProblem, check_body, check_json
+from evo_agents.hub.plans import VERIFY_RULE, PlanProblem, check_body, check_json
 from evo_agents.hub.probes import probe_paths
 from evo_agents.hub.server import (
     change_tiers,
@@ -121,6 +121,7 @@ from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, RunId
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.views import visible_plans
 from evo_agents.hub.server.security import MACHINE, WEB, CurrentUser, Principal
+from evo_agents.hub.verify_words import shell_problem
 from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
@@ -419,6 +420,9 @@ def _check_draft(plan: dict) -> None:
             )
         if not isinstance(step.get("verify"), str) or not step["verify"].strip():
             raise _refused(where, f"step {key} has no verify: an outcome step says how it is checked")
+        unrunnable = shell_problem(step["verify"])
+        if unrunnable is not None:
+            raise _refused(where, f"the verify of step {key} {unrunnable}; {VERIFY_RULE}")
 
 
 async def _charter_body(conn: AsyncConnection, project_id: int) -> dict:
