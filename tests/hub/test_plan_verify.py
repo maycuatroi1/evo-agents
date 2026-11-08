@@ -14,7 +14,7 @@ import copy
 import pytest
 
 from evo_agents.hub.plans import VERIFY_RULE, unrunnable_verify, verify_refusal
-from evo_agents.hub.verify_words import COMMAND_NAME, shell_problem
+from evo_agents.hub.verify_words import COMMAND_NAME, command_name, shell_problem
 from tests.hub.test_plans import counts, draft, needs_pg, plan_url, put, setup_project
 from tests.hub.test_plans_api import client  # noqa: F401 (a fixture)
 
@@ -40,6 +40,7 @@ COMMANDS = [
     "pytest -q  # don't skip\nruff check . &&\n  ruff format --check .",
     "python3 - <<'EOF'\nimport sys\nif not sys.argv[0].startswith('---'): sys.exit(0)\nEOF",
     'case "$x" in a) exit 0;; *) exit 1;; esac',
+    "which jq && yes | head -1 && more README.md && look abc && at -l",  # real programs named like English words
 ]
 
 PROSE = [
@@ -54,6 +55,14 @@ PROSE = [
     ("- chạy pytest", "`-`"),
     ("pytest -q\nsự thật nằm trong report", "`sự`"),
     ("Check the run's output by hand", "does not parse as shell"),
+    (  # curator-64's step 1 (runs #2659, #2664): the clause after ``;`` is prose, ``and`` passed for a program
+        "uv run pytest tests/hub/test_contract.py -q -k measure; and a unit test with a fake hub that checks cmd_measure"
+        " calls POST /v1/kg/{project}/measure with timeout=MEASURE_TIMEOUT",
+        "`and`",
+    ),
+    ("pytest -q && the tests pass", "`the`"),
+    ("ruff check . ; With a fake hub", "`With`"),
+    ("ensure the page loads", "`ensure`"),
 ]
 
 
@@ -76,6 +85,11 @@ def test_a_command_name_is_ascii_without_a_trailing_mark(name):
 @pytest.mark.parametrize("word", ["Từ", "tài", "evo-agents:", "hai,", "Done.", "-v", ".hidden", "a b", "{x}", ""])
 def test_a_word_of_prose_is_no_command_name(word):
     assert not COMMAND_NAME.fullmatch(word)
+
+
+@pytest.mark.parametrize("word", ["and", "And", "the", "with", "/usr/bin/and"])
+def test_an_english_word_of_prose_is_no_command_name(word):
+    assert COMMAND_NAME.fullmatch(word.rsplit("/", 1)[-1]) and not command_name(word)
 
 
 def plan(*verify: str, done: tuple[int, ...] = ()) -> dict:

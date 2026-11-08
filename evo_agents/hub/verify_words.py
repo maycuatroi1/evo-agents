@@ -67,6 +67,23 @@ HEREDOC = re.compile(r"""<<(-?)[ \t]*(?:'([^'\n]*)'|"([^"\n]*)"|\\?([^\s;&|()<>'
 # starting with a letter, a digit or _ and ending with one of them or + (g++). Not a word of prose: Từ, a word with a
 # trailing : , or ., a dash of a list.
 COMMAND_NAME = re.compile(r"[A-Za-z0-9_](?:[A-Za-z0-9_.+-]*[A-Za-z0-9_+])?")
+# English words that have a command name's shape but name no program a verify runs: a clause of prose after a command
+# (``pytest -q; and a unit test that checks ...``) starts with one of them. Compared lower case; words that are real
+# programs (which, at, yes, more, look, test, time) are not here.
+PROSE_WORDS = frozenset(
+    {
+        "a", "also", "an", "and", "are", "but", "by", "confirm", "confirms", "ensure", "ensures", "is", "it", "its",
+        "manually", "must", "of", "or", "plus", "should", "that", "the", "these", "this", "to", "via", "with",
+        "without",
+    }
+)  # fmt: skip
+
+
+def command_name(program: str) -> bool:
+    """Whether ``program`` (an absolute path is read by its last part) can be the name of a program a verify runs:
+    COMMAND_NAME's shape, and no word of PROSE_WORDS."""
+    name = program.rsplit("/", 1)[-1]
+    return COMMAND_NAME.fullmatch(name) is not None and name.lower() not in PROSE_WORDS
 
 
 def verify_paths(commands: list[str]) -> set[str]:
@@ -321,12 +338,12 @@ def programs(command: str) -> list[str]:
 def shell_problem(command: str) -> str | None:
     """Why ``command`` cannot be one runnable shell command line, read by its shape alone, or None when it can be: the
     shell would not read it (a quote left open, as an apostrophe of prose leaves one), or a program it runs
-    (``programs``) has no COMMAND_NAME, as Từ, ``Manual:`` or ``1.`` have not; an absolute path is read by its last part.
-    Whether a program is on a worker's PATH is the preflight's to see, not this. The phrase goes after "the verify of
-    step N"."""
+    (``programs``) has no command name (``command_name``), as Từ, ``Manual:``, ``1.`` or the ``and`` of ``pytest -q; and
+    a unit test ...`` have not; an absolute path is read by its last part. Whether a program is on a worker's PATH is
+    the preflight's to see, not this. The phrase goes after "the verify of step N"."""
     if _shell_words(command) is None:
         return "does not parse as shell: a quote is left open (an apostrophe in prose opens one)"
-    bad = [program for program in programs(command) if not COMMAND_NAME.fullmatch(program.rsplit("/", 1)[-1])]
+    bad = [program for program in programs(command) if not command_name(program)]
     if not bad:
         return None
     named = ", ".join(f"`{program}`" for program in bad)
