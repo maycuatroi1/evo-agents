@@ -54,7 +54,7 @@ from evo_agents.hub.server.chat_runs import chat_run
 from evo_agents.hub.server.loop.runs_of import use_case_author
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, member_principal
-from evo_agents.hub.server.srs import BA, checks, findings, markdown, notices, reviews, store
+from evo_agents.hub.server.srs import BA, checks, findings, markdown, notices, reviews, revisions, store
 from evo_agents.hub.server.srs.auto_review import review_entered
 from evo_agents.hub.server.srs.diff import diff as item_changes
 from evo_agents.hub.server.srs.diff import text_of
@@ -206,14 +206,29 @@ async def _documents(conn: AsyncConnection, who: Acting) -> str:
     return "\n".join(lines)
 
 
-def _item_text(doc: store.DocumentRow, row: store.VersionRow, content: Document, ref: str) -> str:
+def _rev_text(known: revisions.History | None, key: str, number: int) -> str:
+    """`` r5 (the approved baseline holds r4)`` for a use case, empty for another item."""
+    revision = known.at(key, number) if known is not None else None
+    if revision is None or revision.dropped:
+        return ""
+    held = known.baseline(key) if known is not None else None
+    if held == revision.rev:
+        return f" r{revision.rev} (approved)"
+    sent = ", sent to review on its own" if revision.submitted_at is not None else ""
+    return f" r{revision.rev} ({f'the approved baseline holds r{held}' if held else 'not approved yet'}{sent})"
+
+
+def _item_text(
+    doc: store.DocumentRow, row: store.VersionRow, content: Document, ref: str, known: revisions.History | None = None
+) -> str:
     found = content.item_index(ref, f"version {row.number} of {doc.slug}")
     item = content.items[found]
     path = " > ".join(content.items[at].title for at in reversed(content.ancestors(found)))
     aliases = f"; also {', '.join(item.aliases)}" if item.aliases else ""
+    rev = _rev_text(known, item.key or "", row.number) if item.kind == "use_case" else ""
     lines = [
         _version_line(doc, row),
-        f"Item {item.code or item.key} ({item.kind}), key {item.key}{aliases}; under: {path or 'the top'}",
+        f"Item {item.code or item.key} ({item.kind}){rev}, key {item.key}{aliases}; under: {path or 'the top'}",
         "",
         text_of(item),
     ]
@@ -244,7 +259,7 @@ async def _read(conn: AsyncConnection, who: Acting, args: dict) -> str:
     row = await store.version(conn, doc, args.get("version"))
     snap = await store.snapshot(conn, row)
     if args.get("item"):
-        return _item_text(doc, row, snap.doc, args["item"])
+        return _item_text(doc, row, snap.doc, args["item"], await revisions.history(conn, doc.id))
     problems = checks.problems(snap.doc, (await store.settings(conn, who.access)).template)
     lines = [_version_line(doc, row)]
     if problems:
@@ -443,7 +458,8 @@ def _finding_text(row: findings.FindingRow, slug: str, done: str) -> str:
         if row.resolution_sources:
             lines.append("Settled by: " + "; ".join(str(findings.Source(**s)) for s in row.resolution_sources))
     elif row.level == findings.DECIDE:
-        lines.append("While it is open, no version of the document is approved.")
+        held = "the use case it is about is not approved" if row.item else "no use case of the document is approved"
+        lines.append(f"While it is open, no version of the document is approved, and {held}.")
     if row.chat_link:
         lines.append(f"Chat: {row.chat_link}")
     return "\n".join(lines)

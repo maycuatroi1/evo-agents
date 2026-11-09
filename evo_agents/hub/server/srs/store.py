@@ -13,6 +13,7 @@ held in the project and its slug taken.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from urllib.parse import quote
@@ -428,6 +429,13 @@ def case_path(project: str, slug: str, number: int, key: str) -> str:
     return f"{review_path(project, slug, number)}/cases/{quote(key, safe='')}"
 
 
+def web_url(path: str) -> str:
+    """``path`` of the hub's web as a whole URL when the hub knows its public URL (EVO_HUB_PUBLIC_URL), for text read
+    outside the web (a notice on Telegram); the path alone otherwise."""
+    base = os.environ.get("EVO_HUB_PUBLIC_URL", "").strip().rstrip("/")
+    return f"{base}{path}" if base else path
+
+
 def queue_path(project: str) -> str:
     """The use cases waiting for review in a project, on the hub's web (``GET .../reviews``)."""
     return f"/p/{quote(project, safe='')}/x/srs/reviews"
@@ -482,6 +490,7 @@ __all__ = [
     "review_path",
     "case_path",
     "queue_path",
+    "web_url",
     "missing",
     "project_settings",
     "reader",

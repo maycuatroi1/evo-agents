@@ -56,6 +56,7 @@ from evo_agents.hub.server.loop.model import (
 )
 from evo_agents.hub.server.plugin_configs import stored_stacks
 from evo_agents.hub.srs_backlog import BACKLOG_METRIC
+from evo_agents.hub.tables_srs import PENDING_SPLIT
 from evo_agents.plugins import config as plugin_config
 
 TASKS = "tasks"  # the core plugin whose tasks a build waits on
@@ -349,22 +350,33 @@ async def _run_states(conn: AsyncConnection, ids: Iterable[int]) -> dict[int, st
 
 
 async def _approvals(conn: AsyncConnection, items: Sequence[ItemView]) -> dict[int, ApprovalView]:
-    """What the plugin srs did of the version each waiting build names, by the version's id."""
+    """What the plugin srs did of the version each waiting build names, by the version's id: the approval of the
+    version (srs_approval_tasks), or of the use cases approved on it (srs_use_case_releases, once handled), with the
+    runs that split their frame tasks. A release whose frame waits for the split run of the rest of its review holds
+    the split as not ended."""
     versions = {item.detail.get("version_id") for item in items if item.detail.get("version_id") is not None}
     if not versions:
         return {}
-    a = tables.srs.approval_tasks
-    rows = list(
-        await conn.execute(select(a.c.version_id, a.c.split_run_id).where(a.c.version_id.in_(sorted(versions))))
-    )
-    states = await _run_states(conn, (row.split_run_id for row in rows if row.split_run_id is not None))
+    a, e = tables.srs.approval_tasks, tables.srs.use_case_releases
+    runs: dict[int, list[int]] = {}
+    waiting: set[int] = set()
+    for row in await conn.execute(select(a.c.version_id, a.c.split_run_id).where(a.c.version_id.in_(sorted(versions)))):
+        runs.setdefault(row.version_id, []).extend([row.split_run_id] if row.split_run_id is not None else [])
+    released = select(e.c.version_id, e.c.tasks).where(e.c.version_id.in_(sorted(versions)), e.c.tasks.is_not(None))
+    for row in await conn.execute(released):
+        kept = row.tasks or {}
+        split = kept.get("split_run_id")
+        runs.setdefault(row.version_id, []).extend([split] if isinstance(split, int) else [])
+        if kept.get("created") and split is None and kept.get("no_split") == PENDING_SPLIT:
+            waiting.add(row.version_id)
+    states = await _run_states(conn, (run_id for found in runs.values() for run_id in found))
     return {
-        row.version_id: ApprovalView(
-            row.version_id,
-            row.split_run_id,
-            row.split_run_id is None or states.get(row.split_run_id) in RUN_ENDED,
+        version_id: ApprovalView(
+            version_id,
+            found[-1] if found else None,
+            version_id not in waiting and all(states.get(run_id) in RUN_ENDED for run_id in found),
         )
-        for row in rows
+        for version_id, found in runs.items()
     }
 
 

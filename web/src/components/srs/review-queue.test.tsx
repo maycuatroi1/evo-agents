@@ -39,7 +39,7 @@ const SHOP = queued({
   deciding: 2,
   review_run: { id: 40, state: "done" },
   use_cases: [
-    aQueuedCase({ key: "uc1", deciding: 2, intent: "Khách hàng **đặt** đơn từ giỏ hàng" }),
+    aQueuedCase({ key: "uc1", deciding: 2, held_by: "findings", intent: "Khách hàng **đặt** đơn từ giỏ hàng" }),
     aQueuedCase({ key: "uc2", code: "UC ORD-2", title: "Cancel an order", reviews: [caseReview({ reviewer: "bao" })] }),
   ],
 });
@@ -51,7 +51,7 @@ const BILLING = queued({
   author: "chi",
   held_by: "ba_review",
   review_run: { id: 431, state: "running" },
-  use_cases: [aQueuedCase({ key: "b1", code: "UC BIL-1", title: "Refund a payment", change: "added", intent: null })],
+  use_cases: [aQueuedCase({ key: "b1", code: "UC BIL-1", title: "Refund a payment", change: "added", intent: null, held_by: "ba_review" })],
 });
 
 describe("ReviewQueuePage", () => {
@@ -99,8 +99,13 @@ describe("ReviewQueuePage", () => {
     expect(screen.getByTestId("srs-queue-empty")).toHaveTextContent("Không có use case nào chờ bạn duyệt");
   });
 
+  it("names each use case with its revision, as UC ORD-1 r3", () => {
+    show([queued({ use_cases: [aQueuedCase({ rev: 3 })] })]);
+    expect(screen.getByTestId("srs-queue-case")).toHaveTextContent("UC ORD-1 r3");
+  });
+
   it("gives someone who may not review a View button and the status Waiting for someone else", () => {
-    show([queued({ may_review: false })], "reader");
+    show([queued({ may_review: false, use_cases: [aQueuedCase({ may_review: false })] })], "reader");
     const card = screen.getByTestId("srs-queue-case");
     expect(within(card).getByTestId("srs-queue-status")).toHaveTextContent("Chờ người khác");
     expect(within(card).getByTestId("srs-queue-review")).toHaveTextContent("Xem");

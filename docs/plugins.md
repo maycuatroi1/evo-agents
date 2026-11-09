@@ -379,10 +379,12 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   changed: the task's id, number and ref, the status and its group before (none for a new task) and after, a member or
   the hub with the member's login, the cause (`create`, `edit`, `import`, `srs_approval`, `steps_done`) with the ids
   of what made it, the parent, and the SRS items and plan steps it links), `srs.use_case.approved` with `srs:read` (one
-  use case of a version approved, by a review of it or of its version: the document's slug and id, the version's number
-  and id, the use case's code and key, the code or title of its parent item, its `claim` field and the approver's login;
-  emitted once for a use case of a version). The core plugin srs takes
-  `srs.version.approved`, and tasks takes `tasks.status`, with no grant: each kind is its own. A payload carries ids
+  use case approved into the document's approved baseline, by a review of it or of its version: the document's slug and
+  id, the version's number and id, the use case's code and key, its revision (`rev`) and the one released before it
+  (`previous_rev`, with `previous_version`), what the release did (`release`: added, changed, removed), the releases of
+  the same review (`batch`), the code or title of its parent item, its `claim` field and the approver's login; emitted
+  once for a revision of a use case). The core plugin srs takes
+  `srs.version.approved` and `srs.use_case.approved`, and tasks takes `tasks.status`, with no grant: each kind is its own. A payload carries ids
   and states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more. The last
   five and `plan.step` carry `v`, the version of their shape, and the hub also writes each into its own table
   `hub_events`, in the same transaction, which the Loop reads by cursor and the wait of a plan run wakes on

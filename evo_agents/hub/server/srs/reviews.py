@@ -12,13 +12,20 @@
   approved it in this round, or after one approval when it requires none. Approving it supersedes every older version
   but a withdrawn one, and emits ``srs.version.approved`` in the same transaction (``events.version_approved``), from
   which the plugin keeps the project's tasks in step (``auto_tasks``).
-- ``review_use_case``: the same writer approves or asks for changes on one use case of a version in review (plan
-  srs-use-case-review, ``use_case_reviews``), under the same conditions as the version's review, except that a later
-  review of theirs replaces the earlier one. An approval goes through the same gate; a request for changes needs a
-  note, is never held, and leaves the version in review, where it blocks every approval (a version-wide one is still
-  recorded). The version is approved by the review that makes every use case it adds, changes or drops since the
-  version approved last approved by the policy (a version-wide approval counts for each use case, for its role), and
-  none of them changes_requested; a version with no such use case is approved by version-wide reviews alone, as before.
+- ``review_use_case``: a writer approves or asks for changes on one use case of a version in review, or of a version
+  whose revision of it was sent to review on its own (plan srs-use-case-review, ``use_case_reviews``). The author rule
+  is the use case's: nobody who wrote a revision of it since its newest release reviews it, and writing one use case
+  bars nobody from the others. A later review of theirs replaces the earlier one. An approval goes through the gate
+  narrowed to the use case (``findings.Case``); a request for changes needs a note, is never held, takes a revision sent
+  on its own back out of review, and leaves the version in review, where it blocks every approval (a version-wide one is
+  still recorded). A review that makes the use case approved releases its revision into the approved baseline at once
+  (``events.use_cases_released``), whatever becomes of the version. The version is approved by the review that makes
+  every use case it adds, changes or drops since the version approved last approved or superseded, while nothing of the
+  whole document holds it (``findings.held_now``); a version with no such use case is approved by version-wide reviews
+  alone, as before.
+- ``submit_use_case``: a writer sends the revision a use case has in the latest version to review on its own, while
+  that version is not in review: a revision not approved yet, not in review already, with no error of the use case or
+  of a business rule under it.
 - ``withdraw``: the author of a version in review, or an admin of the project, takes it out of review for good: it is
   withdrawn, and never submitted, reviewed or approved again; a reason given is a comment on it. The agent of a run
   never withdraws one.
@@ -44,10 +51,19 @@ from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
-from evo_agents.hub.server.srs import ROLES, checks, events, findings, notices, store, use_case_reviews
-from evo_agents.hub.server.srs.doc import SrsError
+from evo_agents.hub.server.srs import ROLES, checks, events, findings, notices, revisions, store, use_case_reviews
+from evo_agents.hub.server.srs.doc import Document, SrsError
 from evo_agents.hub.server.srs.store import DocumentRow, ReviewRow, Settings, VersionRow
-from evo_agents.hub.server.srs.use_case_reviews import APPROVE, REQUEST_CHANGES, CaseReview, CaseState, approved_by
+from evo_agents.hub.server.srs.use_case_reviews import (
+    APPROVE,
+    APPROVED,
+    REQUEST_CHANGES,
+    SUPERSEDED,
+    CaseReview,
+    CaseState,
+    approved_by,
+    case_name,
+)
 
 WITHDRAWN = "withdrawn"
 LAST_STATES = ("superseded", WITHDRAWN)  # a version in one never changes state again
@@ -166,7 +182,7 @@ async def review(
     else:
         mine = ReviewRow(user.login, user.user_id, role, APPROVE, request.body, held.round, held.created_at)
         approves, cases = await _approves(conn, access, doc, held, settings, [*approvals, mine])
-        await events.use_cases_approved(conn, access.project_id, doc, held, user, cases)
+        await _released(conn, access, doc, held, user, cases)
         if approves:
             await _approve(conn, doc, held)
             await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)
@@ -192,6 +208,66 @@ async def _approves(
     return approved_by(settings.policy.get(doc.kind), approvals), cases
 
 
+async def _released(
+    conn: AsyncConnection, access: ProjectAccess, doc: DocumentRow, held: VersionRow, user: Principal, cases
+) -> list[events.Released]:
+    """Release each of ``cases`` a review of ``user`` just made approved, and tell the author of each revision."""
+    done = await events.use_cases_released(conn, access.project_id, doc, held, user, cases)
+    for released in done:
+        await notices.tell_case_author(conn, access.project_id, doc, held, (user.user_id, user.login), released.case)
+    return done
+
+
+def _subtree(content: Document, key: str) -> set[str]:
+    """The keys of use case ``key`` of ``content`` and of every item under it."""
+    at = next((index for index, item in enumerate(content.items) if item.key == key), None)
+    if at is None:
+        return {key}
+    return {key} | {item.key for index, item in enumerate(content.items) if at in content.ancestors(index) and item.key}
+
+
+async def _case_of(
+    conn: AsyncConnection, access: ProjectAccess, doc: DocumentRow, number: int, ref: str, cases: list[CaseState]
+) -> CaseState:
+    item_id = await store.item_id(conn, access, doc, ref)
+    key = await use_case_reviews.key_of(conn, item_id)
+    case = next((case for case in cases if case.key == key), None)
+    if case is None:
+        named = ", ".join(c.code or c.key for c in cases) or "none"
+        raise SrsError(
+            422,
+            f"{ref} is not a use case version {number} of {doc.slug} needs reviewed: a use case it adds, changes or "
+            f"drops since the version approved last is, and these are: {named}",
+        )
+    return case
+
+
+def _reviewable(access: ProjectAccess, user: Principal, doc: DocumentRow, held: VersionRow, case: CaseState, settings):
+    """Refuse ``user`` a review of use case ``case`` of version ``held``: the agent of a run always, a member without
+    writer, a version not in review whose revision of the use case was not sent on its own, a revision approved
+    already or superseded, a member who wrote a revision of it since its newest release (unless ``self_approval``)."""
+    if user.acts_for_run is not None:
+        raise SrsError(403, "the agent of a run never approves or returns a use case: a member of the project does")
+    writer(access, "reviewing a use case")
+    name = case_name(case)
+    if held.state != "in_review" and not case.submitted:
+        submit = f"evo-agents hub srs submit {doc.slug} --item '{case.code or case.key}' --project {access.name}"
+        raise SrsError(
+            409,
+            f"version {held.number} of {doc.slug} is {held.state} and {name} was not sent to review on its own: "
+            f"`{submit}` sends it, or submit the version",
+        )
+    if case.state == SUPERSEDED:
+        raise SrsError(409, f"{name} is superseded: r{case.released} of it is approved, which is newer")
+    if case.state == APPROVED and case.released is not None and case.released == case.rev:
+        raise SrsError(409, f"{name} is approved already")
+    if not settings.self_approval and user.user_id in case.authors:
+        since = f"r{case.released}, its last approved revision" if case.released else "it was first written"
+        raise SrsError(
+            403, f"{user.login} wrote a revision of {case.code or case.title} since {since}: another member reviews it"
+        )
+
+
 async def review_use_case(
     conn: AsyncConnection,
     access: ProjectAccess,
@@ -205,51 +281,84 @@ async def review_use_case(
     """Approve use case ``ref`` (code, alias or key) of version ``number`` of ``doc`` or ask for changes on it, as
     ``user``; the version's row and its use cases to review after. The caller holds the document's row lock."""
     held = await store.version(conn, doc, number, lock=True)
-    await _may_review(conn, access, user, doc, held, settings)
+    if user.acts_for_run is not None:
+        raise SrsError(403, "the agent of a run never approves or returns a use case: a member of the project does")
+    writer(access, "reviewing a use case")
+    content = (await store.snapshot(conn, held)).doc
     wide = use_case_reviews.round_approvals(held)
-    before = await use_case_reviews.states(
-        conn, access.project_id, doc, held, (await store.snapshot(conn, held)).doc, settings, wide
-    )
-    item_id = await store.item_id(conn, access, doc, ref)
-    key = await use_case_reviews.key_of(conn, item_id)
-    case = next((case for case in before if case.key == key), None)
-    if case is None:
-        named = ", ".join(c.code or c.key for c in before) or "none"
-        raise SrsError(
-            422,
-            f"{ref} is not a use case version {number} of {doc.slug} needs reviewed: a use case it adds, changes or "
-            f"drops since the version approved last is, and these are: {named}",
-        )
+    before = await use_case_reviews.states(conn, access.project_id, doc, held, content, settings, wide)
+    case = await _case_of(conn, access, doc, number, ref, before)
+    _reviewable(access, user, doc, held, case, settings)
     if request.decision == REQUEST_CHANGES and not request.body.strip():
         raise SrsError(422, "a request for changes on a use case needs a note saying what to change")
     if request.decision == APPROVE:
-        await findings.approval_hold(conn, access, doc, held)
+        hold = findings.Case(case.key, case_name(case), content, case.review_run_id)
+        await findings.approval_hold(conn, access, doc, held, hold)
     others = [r for r in case.reviews if r.reviewer_id != user.user_id and r.decision == APPROVE]
     role = role_for(settings, user.login, request.role, doc.kind, [*others, *wide])
+    item_id = await store.item_id(conn, access, doc, case.key)
     await use_case_reviews.record(conn, held, item_id, user.user_id, role, request.decision, request.body)
-    doc_now = (await store.snapshot(conn, held)).doc
-    after = await use_case_reviews.states(conn, access.project_id, doc, held, doc_now, settings, wide)
+    after = await use_case_reviews.states(conn, access.project_id, doc, held, content, settings, wide)
     reviewer = (user.user_id, user.login)
     if request.decision == APPROVE:
-        await events.use_cases_approved(conn, access.project_id, doc, held, user, after)
+        await _released(conn, access, doc, held, user, after)
     else:
-        name = case.code or case.title
-        await notices.tell_author(
-            conn,
-            access.project_id,
-            doc,
-            held,
-            reviewer,
-            notices.CHANGES,
-            use_case=name,
-            case_key=case.key,
-            note=request.body,
-        )
-    if request.decision == APPROVE and use_case_reviews.ready(after):
+        if case.submitted:
+            revision = (await revisions.history(conn, doc.id)).at(case.key, held.number)
+            if revision is not None:
+                await revisions.unsubmit(conn, revision)
+        await notices.tell_case_changes(conn, access.project_id, doc, held, reviewer, case, request.body)
+    after = await use_case_reviews.states(conn, access.project_id, doc, held, content, settings, wide)
+    if (
+        request.decision == APPROVE
+        and held.state == "in_review"
+        and use_case_reviews.ready(after)
+        and not await findings.held_now(conn, doc, held)
+    ):
         await _approve(conn, doc, held)
         await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)
         await notices.tell_author(conn, access.project_id, doc, held, reviewer, notices.APPROVED)
     return await store.version(conn, doc, number), after
+
+
+async def submit_use_case(
+    conn: AsyncConnection, access: ProjectAccess, user: Principal, doc: DocumentRow, ref: str, settings: Settings
+) -> tuple[VersionRow, list[CaseState], CaseState, revisions.Revision]:
+    """Send the revision use case ``ref`` (code, alias or key) has in the latest version of ``doc`` to review on its
+    own, as ``user``; the latest version, its use cases to review, the use case and its revision. The caller holds the
+    document's row lock."""
+    writer(access, "submitting a use case")
+    latest = await store.version(conn, doc)
+    if latest.state == "in_review":
+        raise SrsError(
+            409,
+            f"version {latest.number} of {doc.slug} is in review: its use cases are reviewed there, each on its own",
+        )
+    content = (await store.snapshot(conn, latest)).doc
+    key = await use_case_reviews.key_of(conn, await store.item_id(conn, access, doc, ref))
+    known = await revisions.history(conn, doc.id)
+    revision = known.at(key, latest.number)
+    if revision is None:
+        raise SrsError(422, f"{ref} is no use case of version {latest.number} of {doc.slug}")
+    name = f"{revision.code or ref} r{revision.rev}"
+    if revision.dropped and known.baseline(key) is None:
+        raise SrsError(422, f"{name}: version {latest.number} dropped a use case that was never approved")
+    release = known.release(key)
+    if release is not None and release.rev >= revision.rev:
+        raise SrsError(409, f"{name} is approved already: version {latest.number} does not change it")
+    if revision.submitted_at is not None:
+        raise SrsError(409, f"{name} is in review already, sent by {revision.submitted_by}")
+    if not revision.dropped:
+        under = _subtree(content, key)
+        errors = [p for p in checks.blocking(checks.problems(content, settings.template)) if p.item in under]
+        if errors:
+            raise SrsError(422, f"{name} is not submitted: {errors[0].message}", errors)
+    await revisions.submit(conn, revision, user.user_id)
+    cases = await use_case_reviews.states(conn, access.project_id, doc, latest, content, settings, [])
+    case = next((case for case in cases if case.key == key), None)
+    if case is None:
+        raise SrsError(409, f"{name} is no use case version {latest.number} of {doc.slug} needs reviewed")
+    return latest, cases, case, revision
 
 
 async def withdraw(
@@ -431,5 +540,6 @@ __all__ = [
     "review_use_case",
     "role_for",
     "submit",
+    "submit_use_case",
     "withdraw",
 ]

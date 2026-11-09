@@ -179,7 +179,9 @@ export function caseFindings(findings: readonly SrsFinding[], keys: ReadonlySet<
     advice: open
       .filter((finding) => about(finding) && !isDeciding(finding))
       .sort((a, b) => FINDING_LEVEL_ORDER[a.level] - FINDING_LEVEL_ORDER[b.level] || a.id - b.id),
-    elsewhere: open.filter((finding) => !about(finding) && isDeciding(finding)),
+    // Only a finding about no item (the whole document) holds this use case besides its own; one about another item
+    // holds that item's use case and the version, not this one.
+    elsewhere: open.filter((finding) => finding.item === null && isDeciding(finding)),
   };
 }
 

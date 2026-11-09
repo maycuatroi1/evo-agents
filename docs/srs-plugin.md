@@ -64,6 +64,13 @@ plugin off deletes nothing: its tables and rows stay for when it is on again.
 - **A use case review** (`srs_use_case_reviews`) is one approval, or one request for changes, of a writer on one use
   case of a version in review, with the role it counts for and a note. Rows are kept; the ones that count are worked
   out when read (section Approval, Reviewing a use case).
+- **A revision of a use case** (`srs_use_case_revisions`, `UC ORD-1 r3`) is how a use case reads from the version it
+  first appears in: r1 when it is added, one more each time a saved version changes its title, code, fields or body, or
+  a business rule under it (not its place), and a last one when a version drops it. Its author is that version's. A
+  writer may send a revision to review on its own (section Approval, Sending one use case).
+- **The approved baseline** (`srs_use_case_releases`) is the approved revision of each use case, kept apart from the
+  chain of versions: approving use case X at rN makes the baseline the previous one with X replaced by rN, whatever
+  becomes of the version it was approved on. The knowledge graph reads it.
 - **A code** (`UC ORD-3`, `BR ORD3-2`, `SCR-4`, `NFR-SEC-01`, `CBR 2`) names a coded item. A code and its aliases are
   unique in the project across every document, compared with whitespace runs as one space and case folded, so
   `UC ORD-1` and `uc  ord-1` are one code. A code stays when its item is renamed or moved, no save changes it, and
@@ -82,7 +89,9 @@ Markdown body once, by SHA-256), `srs_items`, `srs_codes`, `srs_item_versions`, 
 `decided_at`, the moment of the withdrawal; going back to 0063 makes every withdrawn version a draft again, without
 `decided_at`. Migration 0069 adds `srs_findings` and `srs_versions.review_run_id`, the task run of @ba's review of the
 version's current round; 0070 adds `srs_settle_chats`, the settle chat of a version, and `srs_findings.commit_authors`;
-0071 adds `srs_approval_tasks`, what the approval of a version did to the project's tasks. Going back past each drops
+0071 adds `srs_approval_tasks`, what the approval of a version did to the project's tasks. 0226 adds
+`srs_use_case_revisions` and `srs_use_case_releases`, filled from every version saved before (the revisions) and from
+the version each document approved last (its use cases, released at their revision there). Going back past each drops
 what it added.
 
 ## Who does what
@@ -92,7 +101,7 @@ The routes answer a member with a grant on a project that enabled the plugin, an
 | Who | May |
 | --- | --- |
 | a reader | read the documents, their versions, items, comparisons, exports, comments and findings (`srs findings`), archived documents included; settle a finding in its settle chat |
-| a writer | import Markdown, save a version, submit a draft, review a version (section Approval: one they wrote only with `self_approval` on), withdraw a version of their own in review, comment and close a thread |
+| a writer | import Markdown, save a version, submit a draft or one use case of the latest version, review a version (section Approval: one they wrote only with `self_approval` on) or a use case (one they wrote a revision of since its last approval only with `self_approval` on), withdraw a version of their own in review, comment and close a thread |
 | an admin | what a writer may, plus drop a coded item, retire items by their codes (`retire`), withdraw any version in review (`withdraw`), waive an open finding (`srs waive`), archive a document (`archive`) and open it again (`unarchive`), and give a new document a label of its own |
 | the agent of a run | what the tools of @ba allow (section @ba): record, resolve, waive and reopen findings with `srs__finding`; never approve, return or withdraw a version, waive a finding through the route, retire items, archive or unarchive a document |
 
@@ -174,17 +183,22 @@ when the version has one to review, else the list of what waits (`/p/{project}/x
   @ba's review of its round is no longer queued or running.
 
 The reviewers are the members the config's `reviewers` names, else every writer and admin of the project; of them,
-only those who may review the version now (a writer, the document's label visible to them, no version written since
-the one approved last unless `self_approval`). When none of the members named may, every writer who may is told. Each
-is told once per version and round. The author of a version gets the notice `srs_reviewed` when a reviewer asks for
-changes on it or on one of its use cases (the note is its body) and when it is approved; a reviewer is never told of
-their own review.
+only those who may review the version now (a writer, the document's label visible to them, and one who may review at
+least one of its use cases waiting, by the author rule of each; with none, no version written since the one approved
+last unless `self_approval`). When none of the members named may, every writer who may is told. Each is told once per
+version and round. The body names each use case waiting with its revision and the link of its review. The author of a
+version gets the notice `srs_reviewed` when a reviewer returns it to draft or approves it; the author of a use case's
+revision gets it when a reviewer asks for changes on that use case (the note is its body) or approves it, with the
+link of its review; a reviewer is never told of their own review.
 
 **Reviewing a use case.** A version in review has *use cases to review*: those it adds, those it changes (the use case
 itself, or a business rule under it added, changed or dropped) and those it drops, compared with the version approved
-last, every use case when none was approved yet. A use case that only moved needs no review; nothing else of the
-document is reviewed on its own. A writer approves one or asks for changes on one, under the rules above (writer, not a
-run's token, version in review, not an author since the last approval unless `self_approval`, a role from `roles`):
+last, every use case when none was approved yet, and a use case the approved baseline holds that the version dropped.
+A use case that only moved needs no review; nothing else of the document is reviewed on its own. A writer approves one
+or asks for changes on one, under these rules: writer, not a run's token, the version in review or the use case's
+revision sent to review on its own, a role from `roles`, and the author rule of the use case: nobody who wrote a
+revision of use case X since X's last approved revision (every revision when it was never approved) reviews X, unless
+`self_approval` is on; writing X bars nobody from the other use cases.
 
 ```sh
 curl -X POST "$HUB/v1/x/srs/evo-agents/documents/orders/versions/2/items/UC%20ORD-1/reviews" \
@@ -192,24 +206,44 @@ curl -X POST "$HUB/v1/x/srs/evo-agents/documents/orders/versions/2/items/UC%20OR
 ```
 
 - `ref` is a code, alias or key. A ref that is not a use case to review of that version is a 422 that lists them, and a
-  request for changes without a note is a 422. An approval goes through the findings gate; a request is never held.
-- A later review of the same person on the same use case replaces the earlier one when counted; the rows stay.
-- A use case is `changes_requested` while one counted review asks for changes, else `approved` when its counted
-  approvals and the version-wide approvals of the round satisfy the policy (a version-wide approval of role R counts
-  for every use case, for R), else `pending`.
-- The version is approved, with the event `srs.version.approved` and the knowledge build, by the review that makes
-  every use case to review `approved`. Submit never approves. A version with no use case to review is approved by
-  version-wide reviews alone.
+  request for changes without a note is a 422. An approval goes through the findings gate narrowed to the use case
+  (section Findings); a request is never held. A revision approved already, or one the baseline holds a newer revision
+  of, is a 409.
+- A later review of the same person on the same use case replaces the earlier one when counted; the rows stay. A
+  review counts for the revision the use case has in the version it was recorded on.
+- A use case is `approved` once the baseline holds its revision (or its removal, for one the version drops),
+  `superseded` when the baseline holds a newer revision of it; else `changes_requested` while one counted review asks
+  for changes, `approved` when its counted approvals and the version-wide approvals of the round satisfy the policy (a
+  version-wide approval of role R counts for every use case, for R), else `pending`.
+- The review that makes a use case approved releases its revision into the baseline at once and emits
+  `srs.use_case.approved`, and queues a knowledge build; the version stays as it is.
+- The version is approved, with the event `srs.version.approved`, by the review that makes every use case to review
+  `approved` or `superseded` while nothing of the whole document holds it (open findings of level `decide`, @ba's review
+  of its round). Submit never approves. A version with no use case to review is approved by version-wide reviews alone.
 - A request for changes on a use case keeps the version in review and blocks every approval, version-wide ones too
-  (those are still recorded). A version-wide request for changes still returns the version to `draft`.
-- A review carries to a later version while the use case reads the same there (title, fields, body and the business
-  rules under it; not its position), it was recorded on a version after the one approved last, and its reviewer may
-  still review. A version answers `use_cases` (`code`, `key`, `title`, `change`, `state` and the counted `reviews`, each
-  with the version it was recorded on) while it is a draft or in review, and as the version approved last (read against
-  the version approved before it, as its event says); the review route answers the same.
-- The Loop does not hand a use case again when only one use case is change-requested: it is handed use cases through
-  the event `srs.version.approved` (section Tasks when a version is approved), which a use case review emits only when
-  it approves the whole version, so a request for changes on one use case hands nothing.
+  (those are still recorded), and takes a revision sent on its own back out of review. A version-wide request for
+  changes still returns the version to `draft`.
+- A review carries to a later version while the use case has the same revision there, it was recorded on a version
+  after the one approved last, and its reviewer may still review. A version answers `use_cases` (`code`, `key`,
+  `title`, `change`, `state`, the counted `reviews`, each with the version it was recorded on, `rev`, `released` (the
+  revision the baseline holds), `submitted`, `author`, `authors` (who may not review it) and `link`, the path of its
+  review on the web) while it is a draft or in review, and as the version approved last (read against the version
+  approved before it, as its event says); the submit and review routes answer the same.
+- The Loop reads `srs.use_case.approved` to know which use cases are approved; a request for changes emits nothing.
+
+**Sending one use case.** A writer sends the revision a use case has in the latest version to review on its own, while
+that version is not in review:
+
+```sh
+evo-agents hub srs submit orders --item "UC ORD-1" --project evo-agents
+```
+
+The revision must not be approved already nor in review, and the use case and the business rules under it must have no
+error that blocks a submit (422 otherwise); a version in review answers 409, as its use cases are reviewed there. The
+revision goes to review in its next round, the version stays a draft, and only that use case of it is reviewed. @ba
+reviews it alone (skill srs-review, its findings name the use case or a business rule under it), and approving it waits
+for that run. Its reviewers, those who may review that use case, get the notice `srs_review` with the link of its review
+once nothing holds it, at once when @ba reviews nothing, else when @ba's run ends; each once per revision and round.
 
 **Withdrawing a version.** The author of a version in review, while they hold writer, or an admin of the project,
 takes it out of review for good:
@@ -288,8 +322,11 @@ A writer who is not an admin, and the agent of a run, get 403; a finding that is
 
 **The approval gate.** A version is not approved while its document has an open finding of level `decide`, whatever
 version it was found on, so a finding reopened after an approval holds the next one; nor while @ba's review of the
-version's current round (`srs_versions.review_run_id`) is queued or running. A review that failed, was cancelled or
-was lost holds nothing, nor does a round no review was handed for (the type off, or past its cap). Findings of level
+version's current round (`srs_versions.review_run_id`) is queued or running. One use case is not approved while an open
+finding of level `decide` is about it, a business rule under it, or no item at all (the whole document), nor while @ba's
+review of the version's round or of the use case's own round runs: a finding about another use case, a section, a
+screen, an NFR or a CBR holds that use case's approval no more, only the version's. A review that failed, was cancelled
+or was lost holds nothing, nor does a round no review was handed for (the type off, or past its cap). Findings of level
 `info` and `advisory` hold nothing, and neither do comments. The 409 names each finding that holds it (`#12
 (contradiction, UC ORD-2, chat /chats/7?message=31)`) and the waive command; `hub srs approve` prints those lines. A
 request for changes is never held.
@@ -317,7 +354,18 @@ member and the link of the message on the finding, and proposes the next version
 the chat is for, so whoever settled keeps the right to approve it. While a finding is open, its chat link is the first
 message of its chat; once settled, the message that settled it.
 
-## Tasks when a version is approved
+## Tasks when a use case is approved
+
+Each use case is approved on its own, and its tasks follow: the plugin srs takes `srs.use_case.approved` itself, with
+no grant, through its events contribution `releases`, and when the project enables the plugin tasks, does to the tasks
+what the release did to the use case (`evo_agents/hub/server/srs/auto_tasks.py`, `released`): a frame task when the use
+case is new to the baseline, as below (a use case with an open frame task of the document already gets a comment on
+it instead), a comment of the approver on the open tasks of a use case that changed, with the comparison of the version
+of its previous release and this one, and the cancellation of the open tasks of a use case removed. The releases one
+review made are a batch: the last one handled hands @ba one run that splits every frame task the batch made, for the
+approver. It is idempotent by release (`srs_use_case_releases.tasks`, claimed first). A version's approval comes after
+the approval of each use case it needs reviewed, so it touches no task any more: its row of `srs_approval_tasks` says
+so. What follows describes how a version's approval kept the tasks before, which a release now does for one use case.
 
 An approval emits the event `srs.version.approved` in its transaction (`evo_agents/hub/server/srs/events.py`): the
 document's slug and id, the version's number and id, the version approved before it (null the first time), the
@@ -327,13 +375,14 @@ reads it (`docs/plugins.md`, section Extension points). The plugin srs takes it 
 events contribution `approvals`; the job `hub.deliver_plugin_events` delivers it within a minute or so of the
 approval, and the approval's route does nothing more to tasks.
 
-A review also emits the event `srs.use_case.approved` (plan srs-backlog-loop), one for each use case it just made
-approved: the document's slug and id, the version's number and id, the use case's code and key, the code (or else the
-title) of its direct parent item, its `claim` field when it has one, and the approver's login. A use case of a version is
-emitted once, whatever reviews follow: a review of one use case emits its own, and a version approved emits those no
-event told of yet, before `srs.version.approved`. Plugins with `srs:read` get it as they get the version's; the hub keeps
-it in `hub_events`, where the Loop reads it to know which use cases are approved ahead of their version
-(`docs/loop.md`, SRS là nguồn).
+A review also emits the event `srs.use_case.approved` (plan srs-backlog-loop), one for each use case it just released
+into the baseline: the document's slug and id, the version's number and id, the use case's code and key, its revision
+(`rev`) and the one released before (`previous_rev`, `previous_version`), what the release did (`release`), the releases
+of the same review (`batch`), the code (or else the title) of its direct parent item, its `claim` field when it has one,
+and the approver's login. A revision is released and emitted once, whatever reviews follow: a review of one use case
+emits its own, and a version approved emits those no release told of yet, before `srs.version.approved`. Plugins with
+`srs:read` get it as they get the version's; the hub keeps it in `hub_events`, where the Loop reads it to know which use
+cases are approved ahead of their version (`docs/loop.md`, SRS là nguồn).
 
 When the project enables the plugin tasks, whether its Loop is on or off, that handler compares the version with the
 version approved before it (none the first time) and keeps the project's tasks in step with its use cases, in the
@@ -434,10 +483,13 @@ evo-agents hub srs import order-srs.md --project evo-agents --doc orders --summa
 evo-agents hub srs show orders --project evo-agents                   # its versions and the items of the latest
 evo-agents hub srs show orders --project evo-agents --item "UC ORD-1" # one item, its fields and children
 evo-agents hub srs submit orders 2 --project evo-agents               # a draft to review
+evo-agents hub srs submit orders --item "UC ORD-1" --project evo-agents # one use case of the latest version, alone
 evo-agents hub srs approve orders 2 --project evo-agents --role qa
 evo-agents hub srs approve orders 2 --project evo-agents --request-changes --comment "UC ORD-2 has no actor"
 evo-agents hub srs approve orders 2 --project evo-agents --item "UC ORD-1" --item "UC ORD-2"  # use cases one by one
-evo-agents hub srs reviews orders 2 --project evo-agents              # the use cases to review and their state
+evo-agents hub srs reviews orders 2 --project evo-agents              # use cases to review (UC ORD-1 r3), links
+evo-agents hub srs reviews orders --project evo-agents                # the same for the latest version
+evo-agents hub srs queue --project evo-agents                         # what waits, use case by use case, with links
 evo-agents hub srs withdraw orders 2 --project evo-agents --comment "Not ready" # out of review for good
 evo-agents hub srs findings orders --project evo-agents --status open # the conflicts @ba found
 evo-agents hub srs waive orders 12 --project evo-agents --reason "Kept on purpose" # an admin, an open finding
@@ -456,7 +508,7 @@ Under `/v1/x/srs/{project}/`:
 | Route | What |
 | --- | --- |
 | `GET documents` (`?all=true`) | the documents the caller sees, each with its latest and approved versions; the archived ones only with `all` |
-| `GET reviews` | the versions in review of the documents the caller sees, the one submitted first first: each with its `use_cases` to review, what holds its approval now (`held_by`: `ba_review` while @ba's review of its round is queued or running, then `findings` while a finding of level `decide` is open; null when none), the number of those findings (`deciding`) and whether the caller may review it (`may_review`); each use case also has its `intent` (or the `objective` of an older one) and its own open findings, about it or a business rule under it, by level (`deciding`, `noted`) |
+| `GET reviews` | the versions in review of the documents the caller sees, the one submitted first first: each with its `use_cases` to review, what holds its approval now (`held_by`: `ba_review` while @ba's review of its round is queued or running, then `findings` while a finding of level `decide` is open; null when none), the number of those findings (`deciding`) and whether the caller may review one of its use cases (`may_review`); also the latest version of a document when it is a draft whose use cases were sent to review on their own, listing those alone; each use case also has its `intent` (or the `objective` of an older one), its own open findings, about it or a business rule under it, by level (`deciding`, `noted`), what holds its own approval (`held_by`) and whether the caller may review it (`may_review`) |
 | `GET documents/{slug}` (`?version=N`) | a document with every version, the newest first, and one version whole |
 | `GET documents/{slug}/versions` | every version with its reviews |
 | `GET documents/{slug}/versions/{number}` | a version whole: its items, its problems and its `use_cases` to review |
@@ -465,7 +517,8 @@ Under `/v1/x/srs/{project}/`:
 | `GET documents/{slug}/export` (`?version=N&anchors=false`) | a version as Markdown |
 | `POST import` | Markdown as a new document or the next version of `document`; `dry_run` stops at the preview |
 | `POST documents/{slug}/versions` | changes made on `base_version` as the next version (201), 409 on a conflict |
-| `POST documents/{slug}/versions/{number}/submit` | a draft to review |
+| `POST documents/{slug}/versions/{number}/submit` | a draft to review; answers it with its `use_cases` |
+| `POST documents/{slug}/use-cases/{ref}/submit` | one use case of the latest version to review on its own (section Approval, Sending one use case); answers the latest version with its `use_cases`, the `use_case` and @ba's `use_case_review_run` |
 | `POST documents/{slug}/versions/{number}/reviews` | `{"decision": "approve" \| "request_changes", "role", "body"}` |
 | `POST documents/{slug}/versions/{number}/items/{ref}/reviews` | same body: one use case of a version in review; answers the version with its `use_cases` |
 | `POST documents/{slug}/versions/{number}/withdraw` | `{"comment"}`, optional: a version in review out of review for good |
@@ -485,8 +538,12 @@ import is reached from the documents.
 
 ## The knowledge graph
 
-The plugin is a source of the project's knowledge graph (extension point `kg_sources`, `docs/plugins.md`): the version
-of each document approved last, never a draft or a version in review, and nothing of an archived document. A document is
+The plugin is a source of the project's knowledge graph (extension point `kg_sources`, `docs/plugins.md`): the
+approved baseline of each document, never a draft or a version in review, and nothing of an archived document. The
+baseline is the version approved last with each use case approved since in place of its own (the revision its newest
+release holds, with the business rules under it as that revision reads), a use case approved but not in that version
+under its parent heading (at the top when that heading is not there), and none whose removal was approved. A
+UseCase node carries its `approval` and its revision (`rev`). A document is
 a Document node, each heading a Section, a use case a UseCase node (`usecase:UC ORD-1`) and a business rule, an NFR or a
 common business rule a Requirement node (`requirement:BR ORD1-2`), with the id a mention of the code anywhere in the
 graph gets, so a plan step or a document that names the code reaches the node. A section `defines` its coded items, a

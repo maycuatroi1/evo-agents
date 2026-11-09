@@ -53,7 +53,7 @@ const after: SrsItem = {
 function documents(): { latest: SrsDocument; approved: SrsDocument } {
   const doc = documentOf();
   const versions = [doc.versions[0], version(2, { state: "approved", round: 1, author: "chi", decided_at: "2026-10-10T09:00:00Z" }), doc.versions[2]];
-  const latest = { ...doc, versions, shown: { ...doc.shown!, items: ITEMS.map((one) => (one.key === "uc1" ? after : one)), use_cases: [aUseCase()] } };
+  const latest = { ...doc, versions, shown: { ...doc.shown!, items: ITEMS.map((one) => (one.key === "uc1" ? after : one)), use_cases: [aUseCase({ authors: ["alice"] })] } };
   return { latest, approved: { ...latest, shown: { ...latest.shown, ...versions[1], items: ITEMS, use_cases: [] } } };
 }
 
@@ -163,10 +163,12 @@ describe("CaseReviewPage", () => {
   });
 
   it("folds the advice and the points elsewhere, and says when @ba sees nothing", () => {
-    const { unmount } = show({ findings: [finding(4, { item: "nfr1" }), finding(5, { item: "uc1", level: "advisory" })], run: { id: 40, state: "done" } });
-    expect(screen.getByTestId("srs-case-elsewhere")).toHaveTextContent("1 điểm cần chốt ở phần khác của tài liệu");
+    const findings = [finding(4, { item: null }), finding(6, { item: "nfr1" }), finding(5, { item: "uc1", level: "advisory" })];
+    const { unmount } = show({ findings, run: { id: 40, state: "done" } });
+    // A point about another item (nfr1) holds its own use case and the version, not this use case.
+    expect(screen.getByTestId("srs-case-elsewhere")).toHaveTextContent("1 điểm cần chốt về cả tài liệu");
     expect(screen.getByTestId("srs-case-advice-list")).toHaveTextContent("Gợi ý thêm (1)");
-    expect(screen.getByTestId("srs-case-gate")).toHaveTextContent("Còn 1 điểm ở phần khác của tài liệu cần chốt");
+    expect(screen.getByTestId("srs-case-gate")).toHaveTextContent("Còn 1 điểm về cả tài liệu cần chốt");
     unmount();
 
     show({ findings: [], run: { id: 40, state: "done" } });

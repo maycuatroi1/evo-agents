@@ -6,11 +6,14 @@ plugins). The plugin's code is ``evo_agents.hub.server.srs``, which this client 
 prints a document's versions and the items of its latest version (``--version N`` another), ``--item CODE`` one item
 with its fields and children. ``import FILE`` reads Markdown (``-`` for stdin) whose headings follow the template, as
 a new document (``--slug``, ``--title``) or as the next version of ``--doc``; ``--dry-run`` prints the preview only.
-``export SLUG`` prints a version as Markdown (``--no-anchors`` leaves out the screens' code comments, ``--output``
-writes a file). ``submit SLUG N`` sends a draft to review; ``approve SLUG N`` approves it, ``--request-changes`` sends
-it back with ``--comment``; with ``--item CODE`` (repeatable) the review is of those use cases one by one, in order, and stops at
-the first the hub refuses. ``reviews SLUG N`` prints the version's state and the use cases it needs reviewed, with the
-reviews that count. ``withdraw SLUG N`` takes a version in review out of review for good, as its author or an
+``queue`` prints what waits for review in the project, use case by use case, with whether the caller may review each
+and the link of its review. ``export SLUG`` prints a version as Markdown (``--no-anchors`` leaves out the screens' code comments, ``--output``
+writes a file). ``submit SLUG N`` sends a draft to review; ``submit SLUG --item CODE`` sends one use case to review on
+its own, the revision it has in the latest version. ``approve SLUG N`` approves a version, ``--request-changes`` sends
+it back with ``--comment``; with ``--item CODE`` (repeatable) the review is of those use cases one by one, in order, and
+stops at the first the hub refuses (N left out: the latest version). ``reviews SLUG N`` prints the version's state and
+the use cases it needs reviewed (N left out: the latest), each with its revision (``UC ORD-1 r3``), the reviews that
+count and the link of its review. ``withdraw SLUG N`` takes a version in review out of review for good, as its author or an
 admin, with the reason as a comment on it (``--comment``). ``retire SLUG CODE...``, an admin's, saves the next version
 without the items holding those codes or aliases and their subtrees (POST .../documents/{slug}/retire), a draft, and
 prints its number and every item dropped; ``--dry-run`` prints the items only and writes nothing. ``archive SLUG``, an
@@ -48,8 +51,8 @@ SUMMARY_KEYS = (
     "archived_at",
 )
 DOCUMENT_KEYS = (*SUMMARY_KEYS, "versions", "shown")
-ITEM_KEYS = ("key", "kind", "code", "aliases", "title", "parent", "heading_level", "fields", "body", "refs")
-ITEM_DETAIL_KEYS = (*ITEM_KEYS, "document", "version", "path", "children")
+ITEM_KEYS = ("key", "kind", "code", "aliases", "title", "parent", "heading_level", "fields", "body", "refs", "rev")
+ITEM_DETAIL_KEYS = (*ITEM_KEYS, "document", "version", "path", "children", "released", "revisions")
 IMPORT_KEYS = ("document", "created", "version", "dry_run", "preview")
 RETIRE_KEYS = ("document", "version", "dry_run", "dropped")
 FINDING_STATUSES = ("open", "resolved", "waived")
@@ -87,6 +90,8 @@ VERSION_KEYS = (
     "reviews",
 )
 USE_CASE_VERSION_KEYS = (*VERSION_KEYS, "use_cases")
+SUBMITTED_KEYS = (*USE_CASE_VERSION_KEYS, "use_case", "use_case_review_run")
+QUEUE_KEYS = (*USE_CASE_VERSION_KEYS, "document", "document_title", "held_by", "deciding", "may_review")
 
 
 def _path(project: str, *parts: str, query: dict | None = None) -> str:
@@ -119,6 +124,27 @@ def _call(method: str, path: str, body: dict | None = None):
         raise
 
 
+def _object(method: str, path: str, body: dict | None = None) -> dict:
+    """``_call`` of a route that answers a JSON object."""
+    found = _call(method, path, body)
+    if not isinstance(found, dict):
+        raise HubError(f"the hub answered {method} {path} with no JSON object")
+    return found
+
+
+def _web(link: str) -> str:
+    """A path of the hub's web (``/p/...``) as a whole URL on the hub this client is signed in to."""
+    if not link:
+        return ""
+    _, credentials = signed_in()
+    return f"{credentials.url.rstrip('/')}{link}" if link.startswith("/") else link
+
+
+def _case_name(case: dict) -> str:
+    name = case.get("code") or case.get("key") or case.get("title") or ""
+    return f"{name} r{case['rev']}" if case.get("rev") else name
+
+
 @client_command
 def cmd_list(args) -> int:
     found = _call("GET", _path(args.project, "documents", query={"all": "true" if args.all else None}))
@@ -139,7 +165,17 @@ def cmd_list(args) -> int:
 
 
 def _print_item(item: dict) -> None:
-    print(f"{item['code'] or item['title']} ({item['kind'].replace('_', ' ')}, key {item['key']}): {item['title']}")
+    rev = f" r{item['rev']}" if item.get("rev") else ""
+    print(
+        f"{item['code'] or item['title']}{rev} ({item['kind'].replace('_', ' ')}, key {item['key']}): {item['title']}"
+    )
+    if item.get("rev"):
+        held = item.get("released")
+        print(f"  approved baseline: {'r' + str(held) if held else 'none yet'}")
+    for one in item.get("revisions") or []:
+        what = "dropped" if one["dropped"] else f"r{one['rev']}"
+        sent = f", sent to review by {one['submitted_by']}" if one.get("submitted_at") else ""
+        print(f"  {what} in v{one['version']} by {one['author']} {when(one['created_at'])}{sent}")
     if item["aliases"]:
         print(f"  also: {', '.join(item['aliases'])}")
     print(
@@ -171,7 +207,8 @@ def _print_document(doc: dict) -> None:
     depth = {}
     for item in shown["items"]:
         depth[item["key"]] = depth.get(item["parent"], -1) + 1 if item["parent"] else 0
-        name = f"{item['code']}: {item['title']}" if item["code"] else item["title"]
+        code = f"{item['code']} r{item['rev']}" if item.get("rev") else item["code"]
+        name = f"{code}: {item['title']}" if item["code"] else item["title"]
         print("  " + "  " * depth[item["key"]] + name)
     for problem in shown["problems"]:
         print(f"  {problem['level']}: {problem['check']} {problem['code'] or ''}: {problem['message']}")
@@ -259,11 +296,28 @@ def _print_version(slug: str, version: dict) -> None:
 
 @client_command
 def cmd_submit(args) -> int:
-    found = _call("POST", _path(args.project, "documents", args.slug, "versions", str(args.number), "submit"))
+    if args.item and args.number is not None:
+        print("error: --item sends a use case of the latest version: leave N out", file=sys.stderr)
+        return EXIT_USAGE
+    if args.item:
+        found = _object("POST", _path(args.project, "documents", args.slug, "use-cases", args.item, "submit"))
+    elif args.number is None:
+        print("error: submit needs N, the version to send, or --item CODE, a use case", file=sys.stderr)
+        return EXIT_USAGE
+    else:
+        found = _object("POST", _path(args.project, "documents", args.slug, "versions", str(args.number), "submit"))
     if args.json:
         print_json(found)
-    else:
-        _print_version(args.slug, found)
+        return 0
+    if args.item:
+        case = found["use_case"]
+        run = found.get("use_case_review_run")
+        ba = f"; @ba reviews it in run #{run['id']}" if run else ""
+        print(f"Sent {_case_name(case)} of {args.slug} to review on its own, from version {found['number']}{ba}.")
+        print(f"  review: {_web(case.get('link') or '')}")
+        return 0
+    _print_version(args.slug, found)
+    _print_use_cases(found)
     return 0
 
 
@@ -275,7 +329,11 @@ def cmd_approve(args) -> int:
     body = {"decision": "request_changes" if args.request_changes else "approve", "body": args.comment or ""}
     if args.role:
         body["role"] = args.role
-    version = ("documents", args.slug, "versions", str(args.number))
+    if args.number is None and not args.item:
+        print("error: approve needs N, the version, unless --item names use cases of the latest", file=sys.stderr)
+        return EXIT_USAGE
+    number = args.number if args.number is not None else _latest(args.project, args.slug)
+    version = ("documents", args.slug, "versions", str(number))
     if not args.item:
         found = _call("POST", _path(args.project, *version, "reviews"), body)
     for ref in args.item or ():
@@ -306,18 +364,65 @@ def _print_use_cases(version: dict) -> None:
     if not cases:
         print("  no use case to review")
         return
-    rows = [[c["code"] or c["key"], c["change"], c["state"].replace("_", " "), _counted(c["reviews"])] for c in cases]
-    table(("CODE", "CHANGE", "STATE", "REVIEWS"), rows)
+    rows = [
+        (
+            _case_name(c),
+            c["change"],
+            c["state"].replace("_", " ") + (" (sent alone)" if c.get("submitted") else ""),
+            f"r{c['released']}" if c.get("released") else "-",
+            _counted(c["reviews"]),
+            _web(c.get("link") or "") or "-",
+        )
+        for c in cases
+    ]
+    table(("USE CASE", "CHANGE", "STATE", "APPROVED", "REVIEWS", "REVIEW"), rows)
+
+
+def _latest(project: str, slug: str) -> int:
+    found = _object("GET", _path(project, "documents", slug))
+    if not found.get("latest_version"):
+        raise HubError(f"{slug} has no version yet")
+    return found["latest_version"]
 
 
 @client_command
 def cmd_reviews(args) -> int:
-    found = _call("GET", _path(args.project, "documents", args.slug, "versions", str(args.number)))
+    number = args.number if args.number is not None else _latest(args.project, args.slug)
+    found = _call("GET", _path(args.project, "documents", args.slug, "versions", str(number)))
     if args.json:
         print_json({key: found[key] for key in USE_CASE_VERSION_KEYS})
     else:
         _print_version(args.slug, found)
         _print_use_cases(found)
+    return 0
+
+
+@client_command
+def cmd_queue(args) -> int:
+    found = _call("GET", _path(args.project, "reviews"))
+    if args.json:
+        print_json(found)
+        return 0
+    if not found:
+        print(f"Nothing waits for review in {args.project}.")
+        return 0
+    for version in found:
+        held = f", held by {version['held_by'].replace('_', ' ')}" if version.get("held_by") else ""
+        print(
+            f"{version['document']} v{version['number']} ({version['state'].replace('_', ' ')}) by {version['author']}{held}"
+        )
+        rows = [
+            (
+                _case_name(c),
+                c["state"].replace("_", " ") + (" (sent alone)" if c.get("submitted") else ""),
+                "yes" if c.get("may_review") else "no",
+                (c.get("held_by") or "-").replace("_", " "),
+                _web(c.get("link") or "") or "-",
+            )
+            for c in version["use_cases"]
+        ]
+        if rows:
+            table(("USE CASE", "STATE", "YOU MAY", "HELD BY", "REVIEW"), rows)
     return 0
 
 
@@ -469,21 +574,37 @@ def _register_markdown(ssub) -> None:
     exported.set_defaults(func=cmd_export)
 
 
-def _version_command(ssub, name: str, what: str):
-    """The parser of a command on version N of document SLUG of --project; ``what`` is its help."""
+def _version_command(ssub, name: str, what: str, *, optional: bool = False):
+    """The parser of a command on version N of document SLUG of --project; ``what`` is its help. With ``optional``, N
+    may be left out."""
     parser = ssub.add_parser(name, help=what)
     parser.add_argument("slug", metavar="SLUG")
-    parser.add_argument("number", type=int, metavar="N")
+    if optional:
+        parser.add_argument("number", type=int, metavar="N", nargs="?", help="the version (default: see the command)")
+    else:
+        parser.add_argument("number", type=int, metavar="N")
     _project(parser)
     return parser
 
 
 def _register_review(ssub) -> None:
-    submit = _version_command(ssub, "submit", "send a draft to review")
-    json_option(submit, returns_object(*VERSION_KEYS, schema="SrsVersion"))
+    submit = _version_command(ssub, "submit", "send a draft to review, or one use case with --item", optional=True)
+    submit.add_argument(
+        "--item", metavar="CODE", help="send this use case alone: the revision it has in the latest version"
+    )
+    json_option(
+        submit,
+        returns_object(
+            *USE_CASE_VERSION_KEYS,
+            schema="SrsVersionCases",
+            variants=(("--item", returns_object(*SUBMITTED_KEYS, schema="SrsUseCaseSubmitted")),),
+        ),
+    )
     submit.set_defaults(func=cmd_submit)
 
-    approve = _version_command(ssub, "approve", "approve a version in review, or send it back with --request-changes")
+    approve = _version_command(
+        ssub, "approve", "approve a version in review, or send it back with --request-changes", optional=True
+    )
     approve.add_argument("--request-changes", action="store_true", help="send it back to draft instead")
     approve.add_argument("--comment", metavar="TEXT", help="what the review says; needed with --request-changes")
     approve.add_argument("--role", choices=ROLES, help="the role the review counts for (one you hold)")
@@ -500,7 +621,12 @@ def _register_review(ssub) -> None:
     )
     approve.set_defaults(func=cmd_approve)
 
-    reviews = _version_command(ssub, "reviews", "a version's state and the use cases it needs reviewed")
+    queue = ssub.add_parser("queue", help="what waits for review in the project, use case by use case, with links")
+    _project(queue)
+    json_option(queue, returns_array(*QUEUE_KEYS, schema="SrsQueuedVersion"))
+    queue.set_defaults(func=cmd_queue)
+
+    reviews = _version_command(ssub, "reviews", "a version's state and the use cases it needs reviewed", optional=True)
     json_option(reviews, returns_object(*USE_CASE_VERSION_KEYS, schema="SrsVersionCases"))
     reviews.set_defaults(func=cmd_reviews)
 

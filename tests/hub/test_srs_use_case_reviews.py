@@ -193,19 +193,32 @@ def test_use_case_reviews_a_version_with_no_use_case_to_review_is_approved_by_ve
     assert whole(client, hub["other"], 2).json()["state"] == "approved"
 
 
-def test_use_case_reviews_an_open_decide_finding_holds_an_approval_but_not_a_request_for_changes(client, hub, graph):
+def test_use_case_reviews_an_open_decide_finding_holds_its_own_use_case_and_never_a_request_for_changes(
+    client, hub, graph
+):
     billing(client, hub["chi"])
     studio, run_id, agent = reviewing(client, hub)
     held = one(client, hub["other"], 1, "UC ORD-1")
     assert held.status_code == 409 and f"(run #{run_id}) is running" in held.json()["message"], held.text
-    decide = recorded(client, agent, item="UC ORD-2")
-    moved(client, studio, run_id, "verifying", "done", summary="One finding.")
-    gated = one(client, hub["other"], 1, "UC ORD-1")
-    assert gated.status_code == 409 and f"#{decide} (contradiction, UC ORD-2)" in gated.json()["message"], gated.text
-    assert states(client, hub["chi"], 1)["UC ORD-1"] == "pending", "a held approval records nothing"
-    asked = one(client, hub["other"], 1, "UC ORD-1", "request_changes", body="Settle the retries first")
+    decide = recorded(client, agent, item="BR ORD2-1")  # a business rule of UC ORD-2
+    whole_doc = recorded(client, agent, item=None, summary="The whole document lacks a payment provider")
+    moved(client, studio, run_id, "verifying", "done", summary="Two findings.")
+    # a finding about no item holds every use case, until it is settled
+    held_all = one(client, hub["other"], 1, "UC RET-1")
+    assert held_all.status_code == 409 and "UC RET-1 r1 of version 1" in held_all.json()["message"], held_all.text
+    waived = client.post(f"{DOC}/findings/{whole_doc}/waive", json={"reason": "Chosen later"}, headers=hub["owner"])
+    assert waived.status_code == 200, waived.text
+    gated = one(client, hub["other"], 1, "UC ORD-2")
+    message = gated.json()["message"]
+    assert gated.status_code == 409 and f"#{decide} (contradiction, BR ORD2-1)" in message and "UC ORD-2 r1" in message
+    assert states(client, hub["chi"], 1)["UC ORD-2"] == "pending", "a held approval records nothing"
+    # the finding is about UC ORD-2: UC ORD-1 is approved, the version stays in review
+    free = one(client, hub["other"], 1, "UC ORD-1")
+    assert free.status_code == 200 and free.json()["state"] == "in_review", free.text
+    assert states(client, hub["chi"], 1)["UC ORD-1"] == "approved"
+    asked = one(client, hub["other"], 1, "UC ORD-2", "request_changes", body="Settle the retries first")
     assert asked.status_code == 200 and asked.json()["state"] == "in_review", asked.text
-    assert states(client, hub["chi"], 1)["UC ORD-1"] == "changes_requested"
+    assert states(client, hub["chi"], 1)["UC ORD-2"] == "changes_requested"
 
 
 def test_use_case_reviews_each_use_case_approved_emits_its_event_once_before_the_versions(client, hub, hub_db):
@@ -221,9 +234,16 @@ def test_use_case_reviews_each_use_case_approved_emits_its_event_once_before_the
         "someone-else",
     )
     assert first["parent"] and first["claim"] is None and first["approver_id"] and first["version_id"]
-    assert one(client, hub["owner"], 1, "UC ORD-1", "request_changes", body="Again").status_code == 200
-    assert states(client, hub["chi"], 1)["UC ORD-1"] == "changes_requested"
-    assert one(client, hub["owner"], 1, "UC ORD-1").status_code == 200  # approved again: no second event
+    assert (first["rev"], first["release"], first["previous_rev"], first["batch"]) == (
+        1,
+        "added",
+        None,
+        [first["release_id"]],
+    )
+    # approved into the baseline: no review of that revision is taken again, so no second event
+    again = one(client, hub["owner"], 1, "UC ORD-1", "request_changes", body="Again")
+    assert again.status_code == 409 and "UC ORD-1 r1 is approved already" in again.json()["message"], again.text
+    assert states(client, hub["chi"], 1)["UC ORD-1"] == "approved"
     assert one(client, hub["other"], 1, "UC ORD-2").status_code == 200
     assert one(client, hub["other"], 1, "UC RET-1").json()["state"] == "approved"
     assert [e["code"] for e in stored(hub_db, kind)] == CASES, "each once, in the order of the reviews"

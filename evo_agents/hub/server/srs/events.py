@@ -14,11 +14,18 @@ tasks, whether its Loop is on or off. The hub delivers it again after a failure;
 version, so a second delivery makes nothing. A delivery comes a minute or more after the approval: a project that
 enabled the plugin tasks only after the version was approved gets nothing from it, as the approval made nothing then.
 
-``use_cases_approved`` emits ``srs.use_case.approved`` (plan srs-backlog-loop, criterion a1) of each use case a review
-just made approved: the document, the version, the use case's code and key, the code (or else the title) of its direct
-parent item, its ``claim`` field when it has one, and the approver. A use case of a version is emitted once, whatever
-reviews follow; the event of the version stays as it is, and a version approved emits the use cases it needs reviewed
-that no event told of yet, before its own event.
+``use_cases_released`` releases each use case a review just made approved into the document's approved baseline
+(``revisions.release``: its revision there, never older than the one the baseline holds) and emits
+``srs.use_case.approved`` (plan srs-backlog-loop, criterion a1) for each release: the document, the version, the use
+case's code and key, its revision and the one released before it with the version that one was approved on, what the
+release did (added, changed, removed), the code (or else the title) of its direct parent item, its ``claim`` field when
+it has one, and the approver. A revision is released and emitted once, whatever reviews follow; the event of the
+version stays as it is, and a version approved emits the use cases it needs reviewed that no release told of yet,
+before its own event.
+
+``on_use_case_approved`` is the plugin's events contribution ``releases``: it calls ``auto_tasks.released`` with the
+release the event names, in a transaction of its own, so the frame task of a new use case, the comments on the tasks of
+one that changed and the cancellations of one removed come from each use case's approval, not from its version's.
 
 A payload carries ids, codes and states, never the text of a document: a plugin that needs more reads the document
 through the API with its grant. ``v`` is the version of its shape (``hub_events.VERSION``).
@@ -27,6 +34,7 @@ through the API with its grant. ``v`` is the version of its shape (``hub_events.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -34,7 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import feature_rule, hub_events, plugin_events, tables
 from evo_agents.hub.plugin_calls import CoreContext
 from evo_agents.hub.server.security import Principal
-from evo_agents.hub.server.srs import auto_tasks, store
+from evo_agents.hub.server.srs import auto_tasks, revisions, store
 from evo_agents.hub.server.srs.diff import diff
 from evo_agents.hub.server.srs.doc import Document, Item
 from evo_agents.hub.server.srs.store import DocumentRow, VersionRow
@@ -88,17 +96,6 @@ async def version_approved(
     return await plugin_events.emit(conn, APPROVED, project_id, payload)
 
 
-async def _emitted(conn: AsyncConnection, document_id: int, version: int) -> set[str]:
-    """The keys of the use cases of version ``version`` of document ``document_id`` an event told of already."""
-    e = tables.hub_events
-    query = select(e.c.payload["key"].astext).where(
-        e.c.kind == USE_CASE_APPROVED,
-        e.c.payload["document_id"].astext == str(document_id),
-        e.c.payload["version"].astext == str(version),
-    )
-    return set((await conn.execute(query)).scalars())
-
-
 def _parent(doc: Document, item: Item) -> str | None:
     """The code, else the title, of the direct parent of ``item`` in ``doc``."""
     if item.parent is None:
@@ -107,31 +104,62 @@ def _parent(doc: Document, item: Item) -> str | None:
     return parent.code or parent.title
 
 
-async def use_cases_approved(
+async def _home(conn: AsyncConnection, doc: DocumentRow, version: VersionRow, key: str) -> tuple[Document, Item] | None:
+    """The document a use case ``version`` dropped was in, and the use case there: the newest version before it that
+    holds it."""
+    v = tables.srs.versions
+    numbers = select(v.c.number).where(v.c.document_id == doc.id, v.c.number < version.number)
+    for number in sorted((await conn.execute(numbers)).scalars(), reverse=True):
+        content = (await store.snapshot(conn, await store.version(conn, doc, number))).doc
+        item = next((item for item in content.items if item.key == key), None)
+        if item is not None:
+            return content, item
+    return None
+
+
+@dataclass(frozen=True)
+class Released:
+    """A use case a review released: the case as the review left it, the release's id and revision."""
+
+    case: CaseState
+    release_id: int
+    rev: int
+
+
+async def use_cases_released(
     conn: AsyncConnection,
     project_id: int,
     doc: DocumentRow,
     version: VersionRow,
     approver: Principal,
     cases: Sequence[CaseState],
-) -> int:
-    """Emit ``srs.use_case.approved`` for each of ``cases``, the use cases of ``version`` to review as a review of
-    ``approver`` leaves them, that is approved and no event told of yet, in the review's transaction; how many were
-    emitted. A use case ``version`` dropped reads from the version approved before it, as it has no place in it."""
-    done = await _emitted(conn, doc.id, version.number)
-    found = [case for case in cases if case.state == APPROVED_STATE and case.key not in done]
+) -> list[Released]:
+    """Release each of ``cases``, the use cases of ``version`` to review as a review of ``approver`` leaves them, that is
+    approved at a revision newer than the one the baseline holds, and emit ``srs.use_case.approved`` of each, in the
+    review's transaction; what was released. A use case ``version`` dropped reads from the newest version that held
+    it."""
+    found = [case for case in cases if case.state == APPROVED_STATE and case.rev is not None]
     if not found:
-        return 0
+        return []
+    known = await revisions.history(conn, doc.id)
     now = (await store.snapshot(conn, version)).doc
-    before = (
-        (await store.snapshot(conn, await store.version(conn, doc, doc.approved_version))).doc
-        if doc.approved_version and any(case.change == REMOVED for case in found)
-        else None
-    )
+    made = []
     for case in found:
-        home = before if case.change == REMOVED else now  # the document the use case is in
-        item = next((item for item in home.items if item.key == case.key), None) if home else None
-        claim = item.fields.get("claim") if item else None
+        revision = known.at(case.key, version.number)
+        before = known.release(case.key)
+        if revision is None or (before is not None and before.rev >= revision.rev):
+            continue
+        change = known.change(case.key, revision)
+        release_id = await revisions.release(conn, doc.id, revision, version.id, change, approver.user_id)
+        if release_id is not None:
+            made.append((case, revision, before, change, release_id))
+    batch = [release_id for *_, release_id in made]  # the releases of this review: one split run for their frames
+    done = []
+    for case, revision, before, change, release_id in made:
+        held = (now, next((item for item in now.items if item.key == case.key), None))
+        if case.change == REMOVED or held[1] is None:
+            held = await _home(conn, doc, version, case.key) or (now, None)
+        home, item = held
         payload = {
             "v": hub_events.VERSION,
             "document": doc.slug,
@@ -141,13 +169,20 @@ async def use_cases_approved(
             "code": case.code,
             "key": case.key,
             "change": case.change,
+            "release": change,
+            "release_id": release_id,
+            "batch": batch,
+            "rev": revision.rev,
+            "previous_rev": before.rev if before is not None else None,
+            "previous_version": before.version if before is not None else None,
             "parent": _parent(home, item) if item else None,
-            "claim": claim,
+            "claim": item.fields.get("claim") if item else None,
             "approver": approver.login,
             "approver_id": approver.user_id,
         }
         await plugin_events.emit(conn, USE_CASE_APPROVED, project_id, payload)
-    return len(found)
+        done.append(Released(case, release_id, revision.rev))
+    return done
 
 
 def _ids(payload: dict) -> tuple[int, int, int | None, int] | None:
@@ -169,6 +204,24 @@ async def _tasks_since(conn: AsyncConnection, project_id: int, document_id: int,
     return since is not None and decided_at is not None and since > decided_at
 
 
+async def on_use_case_approved(params: dict, context: CoreContext) -> dict:
+    """The contribution ``releases``: ``params`` is plugin/1's ``event`` (the payload of ``use_cases_released``). A
+    document of another project than the delivery's is left alone, and an event of an older shape (no release) too."""
+    payload = params.get("payload") or {}
+    release_id, document_id = payload.get("release_id"), payload.get("document_id")
+    if params.get("kind") != USE_CASE_APPROVED or context.engine is None or context.project_id is None:
+        return {}
+    if not isinstance(release_id, int) or not isinstance(document_id, int):
+        return {}
+    d = tables.srs.documents
+    async with context.engine.begin() as conn:
+        if await conn.scalar(select(d.c.project_id).where(d.c.id == document_id)) != context.project_id:
+            return {}
+        batch = [one for one in payload.get("batch") or [] if isinstance(one, int)]
+        await auto_tasks.released(conn, release_id, batch or [release_id])
+    return {}
+
+
 async def on_version_approved(params: dict, context: CoreContext) -> dict:
     """The contribution ``approvals``: ``params`` is plugin/1's ``event`` (the payload of ``version_approved`` and
     its delivery). A document of another project than the delivery's is left alone."""
@@ -188,8 +241,10 @@ async def on_version_approved(params: dict, context: CoreContext) -> dict:
 __all__ = [
     "APPROVED",
     "USE_CASE_APPROVED",
+    "Released",
     "item_changes",
+    "on_use_case_approved",
     "on_version_approved",
-    "use_cases_approved",
+    "use_cases_released",
     "version_approved",
 ]

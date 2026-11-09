@@ -8069,6 +8069,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/srs/{project}/documents/{slug}/use-cases/{ref}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Use Case
+         * @description Send one use case to review on its own: the revision it has in the latest version, while that version is not in
+         *     review. 409 when the revision is approved already or in review, 422 when the use case or a business rule under it
+         *     has an error that blocks submitting. @ba reviews that use case alone when the project enabled the agent type ba;
+         *     its reviewers (not whoever wrote a revision of it since its newest release) get the notice srs_review once nothing
+         *     holds its approval, with the link of its review. Answers the latest version with its use cases and this one.
+         */
+        post: operations["submit_use_case_v1_x_srs__project__documents__slug__use_cases__ref__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/srs/{project}/documents/{slug}/versions/{number}/reviews": {
         parameters: {
             query?: never;
@@ -42424,7 +42448,7 @@ export interface components {
         /**
          * SrsItem
          * @description An item of a version: its key (fixed), kind, code and aliases, title, parent (key), heading level (null for a
-         *     table row), the fields its kind holds, its Markdown body and its links.
+         *     table row), the fields its kind holds, its Markdown body and its links; a use case its revision there.
          */
         SrsItem: {
             /** Key */
@@ -42452,10 +42476,16 @@ export interface components {
             body: string;
             /** Refs */
             refs: components["schemas"]["SrsRef"][];
+            /**
+             * Rev
+             * @description a use case's revision in this version (r1 and up); null for another item
+             */
+            rev?: number | null;
         };
         /**
          * SrsItemDetail
-         * @description An item of a version, with the items above it and those under it.
+         * @description An item of a version, with the items above it and those under it; a use case also the revision the approved
+         *     baseline holds and every revision it had.
          */
         SrsItemDetail: {
             /** Key */
@@ -42483,6 +42513,11 @@ export interface components {
             body: string;
             /** Refs */
             refs: components["schemas"]["SrsRef"][];
+            /**
+             * Rev
+             * @description a use case's revision in this version (r1 and up); null for another item
+             */
+            rev?: number | null;
             /** Document */
             document: string;
             /** Version */
@@ -42494,6 +42529,16 @@ export interface components {
             path: string[];
             /** Children */
             children: components["schemas"]["SrsItem"][];
+            /**
+             * Released
+             * @description of a use case: the revision the approved baseline holds
+             */
+            released?: number | null;
+            /**
+             * Revisions
+             * @description of a use case: its revisions, r1 first
+             */
+            revisions?: components["schemas"]["SrsRevision"][];
         };
         /** SrsNewItem */
         SrsNewItem: {
@@ -42617,11 +42662,44 @@ export interface components {
             change: "added" | "changed" | "removed";
             /**
              * State
+             * @description approved once the approved baseline holds its revision (or its removal), superseded when the baseline holds a newer revision, else changes_requested, approved or pending by the reviews that count
              * @enum {string}
              */
-            state: "pending" | "approved" | "changes_requested";
+            state: "pending" | "approved" | "changes_requested" | "superseded";
             /** Reviews */
             reviews: components["schemas"]["SrsUseCaseReview"][];
+            /**
+             * Rev
+             * @description its revision in this version: r1 and up, one more each time it changed
+             */
+            rev?: number | null;
+            /**
+             * Released
+             * @description the revision of it the approved baseline holds; null for none
+             */
+            released?: number | null;
+            /**
+             * Submitted
+             * @description whether its revision was sent to review on its own
+             * @default false
+             */
+            submitted: boolean;
+            /**
+             * Author
+             * @description who wrote its revision in this version
+             */
+            author?: string | null;
+            /**
+             * Authors
+             * @description who wrote a revision of it since its newest release, and so may not review it (empty when self_approval is on)
+             */
+            authors?: string[];
+            /**
+             * Link
+             * @description its review on the hub's web, a path
+             * @default
+             */
+            link: string;
             /**
              * Intent
              * @description what its actor wants (its Intent, or the Objective of an older use case), as the version reads; null for one it drops
@@ -42629,7 +42707,7 @@ export interface components {
             intent: string | null;
             /**
              * Deciding
-             * @description its open findings of level decide, which hold approval
+             * @description its open findings of level decide, which hold its approval
              */
             deciding: number;
             /**
@@ -42637,10 +42715,22 @@ export interface components {
              * @description its open findings of another level, advice only
              */
             noted: number;
+            /**
+             * Held By
+             * @description what holds its approval now: @ba's review of the version's round or of its own, then the open findings of level decide about it, a business rule under it or the whole document; null when none
+             */
+            held_by?: ("ba_review" | "findings") | null;
+            /**
+             * May Review
+             * @description whether the caller may review it: a writer who wrote no revision of it since its newest release, any writer when self_approval is on, never the agent of a run
+             * @default false
+             */
+            may_review: boolean;
         };
         /**
          * SrsQueuedVersion
-         * @description A version in review of a document the caller sees, with the use cases it needs reviewed, what holds its approval
+         * @description A version in review of a document the caller sees, or the latest version of one whose use cases were sent to
+         *     review on their own (a draft, listing those alone), with the use cases it needs reviewed, what holds its approval
          *     now and whether the caller may review it.
          */
         SrsQueuedVersion: {
@@ -42704,7 +42794,7 @@ export interface components {
             deciding: number;
             /**
              * May Review
-             * @description whether the caller may review it: a writer who wrote no version of the document since the one approved last, any writer when self_approval is on, never the agent of a run
+             * @description whether the caller may review one of its use cases (each says), or the version when it has none to review: a writer who wrote no version of the document since the one approved last
              */
             may_review: boolean;
         };
@@ -42842,6 +42932,33 @@ export interface components {
              */
             state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
         };
+        /**
+         * SrsRevision
+         * @description A revision of a use case: the version it first appears in, its author, and whether it was sent to review on
+         *     its own.
+         */
+        SrsRevision: {
+            /** Rev */
+            rev: number;
+            /** Version */
+            version: number;
+            /** Author */
+            author: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Dropped
+             * @description the revision of the version that dropped the use case
+             */
+            dropped: boolean;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Submitted By */
+            submitted_by: string | null;
+        };
         /** SrsSave */
         SrsSave: {
             /**
@@ -42875,7 +42992,7 @@ export interface components {
         };
         /**
          * SrsUseCase
-         * @description A use case a version needs reviewed, with its state and the reviews that count.
+         * @description A use case a version needs reviewed, with its state, its revision and the reviews that count.
          */
         SrsUseCase: {
             /** Key */
@@ -42892,11 +43009,44 @@ export interface components {
             change: "added" | "changed" | "removed";
             /**
              * State
+             * @description approved once the approved baseline holds its revision (or its removal), superseded when the baseline holds a newer revision, else changes_requested, approved or pending by the reviews that count
              * @enum {string}
              */
-            state: "pending" | "approved" | "changes_requested";
+            state: "pending" | "approved" | "changes_requested" | "superseded";
             /** Reviews */
             reviews: components["schemas"]["SrsUseCaseReview"][];
+            /**
+             * Rev
+             * @description its revision in this version: r1 and up, one more each time it changed
+             */
+            rev?: number | null;
+            /**
+             * Released
+             * @description the revision of it the approved baseline holds; null for none
+             */
+            released?: number | null;
+            /**
+             * Submitted
+             * @description whether its revision was sent to review on its own
+             * @default false
+             */
+            submitted: boolean;
+            /**
+             * Author
+             * @description who wrote its revision in this version
+             */
+            author?: string | null;
+            /**
+             * Authors
+             * @description who wrote a revision of it since its newest release, and so may not review it (empty when self_approval is on)
+             */
+            authors?: string[];
+            /**
+             * Link
+             * @description its review on the hub's web, a path
+             * @default
+             */
+            link: string;
         };
         /**
          * SrsUseCaseReview
@@ -42927,6 +43077,57 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * SrsUseCaseSubmitted
+         * @description The latest version of a document after one of its use cases was sent to review on its own: the use case, and
+         *     @ba's review of its round when the hub handed one.
+         */
+        SrsUseCaseSubmitted: {
+            /** Number */
+            number: number;
+            /**
+             * Parent Number
+             * @description the version it was built on
+             */
+            parent_number: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "in_review" | "approved" | "superseded" | "withdrawn";
+            /**
+             * Round
+             * @description how many times it was submitted
+             */
+            round: number;
+            /** Author */
+            author: string;
+            /**
+             * Drafted By Run
+             * @description the run of the agent that drafted it, when one did
+             */
+            drafted_by_run: number | null;
+            /** Summary */
+            summary: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /** @description @ba's review of the current round, when the hub handed one; none in a project without @ba */
+            review_run: components["schemas"]["SrsReviewRun"] | null;
+            /** Reviews */
+            reviews: components["schemas"]["SrsReview"][];
+            /** Use Cases */
+            use_cases: components["schemas"]["SrsUseCase"][];
+            use_case: components["schemas"]["SrsUseCase"];
+            /** @description @ba's review of the use case's round; none in a project without @ba */
+            use_case_review_run: components["schemas"]["SrsReviewRun"] | null;
         };
         /**
          * SrsVersion
@@ -77779,7 +77980,88 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SrsVersion"];
+                    "application/json": components["schemas"]["SrsVersionCases"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    submit_use_case_v1_x_srs__project__documents__slug__use_cases__ref__submit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                /** @description the use case's code, an alias or its key */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsUseCaseSubmitted"];
                 };
             };
             /** @description Unauthorized */

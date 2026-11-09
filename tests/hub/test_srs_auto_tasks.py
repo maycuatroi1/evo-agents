@@ -1,15 +1,15 @@
-"""The tasks of an approved version (``evo_agents.hub.server.srs.auto_tasks``), as criterion a8 of plan
-srs-conflicts-and-tasks names it.
+"""The tasks of an approved use case (``evo_agents.hub.server.srs.auto_tasks``), as criterion a8 of plan
+srs-conflicts-and-tasks names it, now that each use case is approved on its own.
 
-When a version is approved in a project that enables the plugin tasks, the hub compares it with the version approved
-before: each use case new in it gets a frame task linked to it (its external_key the document, the version and the
-code), the open tasks of a use case that changed (itself or a business rule under it) get a comment of the approver,
-and the open tasks of a use case it dropped move to the first status of group cancelled, their history naming the hub
-and why. Then @ba gets a task run that splits each open frame task with no child into child tasks, made with
-tasks__create for the approver: the tool takes ``parent``, answers that run as it answers a chat run, refuses a child
-whose title the frame task has already, and still refuses any other task run. A second call of ``approved`` for the
-same version, as a replayed event would make, adds no task, comment or run. The approval emits srs.version.approved
-and the plugin srs makes all that when the hub delivers it (``tests.hub.test_srs_events``), so each approval here is
+A review that approves use cases releases each into the approved baseline and emits srs.use_case.approved; when the hub
+delivers it in a project that enables the plugin tasks, a use case new to the baseline gets a frame task linked to it
+(its external_key the document, the version and the code), the open tasks of a use case that changed (itself or a
+business rule under it) get a comment of the approver, and the open tasks of a use case removed move to the first
+status of group cancelled, their history naming the hub and why. The last release of a review handled hands @ba one
+task run that splits the frame tasks of that review into child tasks, made with tasks__create for the approver: the
+tool takes ``parent``, answers that run as it answers a chat run, refuses a child whose title the frame task has
+already, and still refuses any other task run. A release handled again, as a replayed event would make, adds no task,
+comment or run, and the approval of the version itself touches no task (its row says so). Each approval here is
 followed by a pass of the job that delivers events.
 
 The stack is ``tests.hub.test_ba_agent``'s: owner runs @ba on the worker studio, chi writes the document, someone-else
@@ -60,7 +60,9 @@ from tests.hub.test_runs import PROJECT, moved
 
 TASKS = f"/v1/x/tasks/{PROJECT}"
 APPROVALS = tables.srs.approval_tasks
-SPLIT_V1 = "@ba splits the tasks of demo-shop v1"
+RELEASES = tables.srs.use_case_releases
+SPLIT_V1 = "@ba splits the tasks of 3 use cases of demo-shop"
+BY_USE_CASE = {"created": [], "commented": [], "cancelled": [], "no_split": auto_tasks.BY_USE_CASE}
 
 
 def tasks(client, headers) -> list[dict]:
@@ -100,6 +102,29 @@ def called_again(client, hub_db, number: int, previous: int | None) -> auto_task
     async def work():
         async with client.app.state.engine.begin() as conn:
             return await auto_tasks.approved(conn, document_id, number, previous, approver_id)
+
+    return client.portal.call(work)
+
+
+def release_rows(hub_db) -> list[tuple]:
+    """(code, rev, change, approver, tasks) of each release of a use case, oldest first."""
+    e, i, u = RELEASES, tables.srs.items, tables.users
+    query = (
+        select(i.c.code, e.c.rev, e.c.change, u.c.login, e.c.tasks)
+        .join_from(e, i, i.c.id == e.c.item_id)
+        .join(u, u.c.id == e.c.released_by)
+        .order_by(e.c.id)
+    )
+    return sql(hub_db, query)
+
+
+def released_again(client, hub_db) -> list:
+    """``auto_tasks.released`` once more for every release, as a replay of srs.use_case.approved would call it."""
+    ids = [row[0] for row in sql(hub_db, select(RELEASES.c.id).order_by(RELEASES.c.id))]
+
+    async def work():
+        async with client.app.state.engine.begin() as conn:
+            return [await auto_tasks.released(conn, one, ids) for one in ids]
 
     return client.portal.call(work)
 
@@ -151,33 +176,36 @@ def test_srs_auto_tasks_first_approval_makes_a_frame_task_of_each_use_case_and_h
     frame = task(client, hub["reader"], "T-1")
     assert frame["external_ref"] == {"source": "srs", "document": "demo-shop", "version": 1, "use_case": "UC ORD-1"}
     assert f"/p/{PROJECT}/x/srs/documents/demo-shop/items/UC%20ORD-1" in frame["description_md"]
-    cause = f"use case UC ORD-1 is new in version 1 of demo-shop, which {OTHER} approved"
+    cause = f"use case UC ORD-1 is new: {OTHER} approved UC ORD-1 r1 of demo-shop on version 1"
     assert [(e["actor"], e["field"], e["to_value"], e["cause"]) for e in frame["events"]] == [
         (None, "created", "T-1", cause),
         (None, "link", "srs_item UC ORD-1", cause),
     ]
-    # the split run: @ba on owner's worker, the frame tasks listed, the skill named
+    # one split run for the three use cases the review approved: @ba on owner's worker, the frame tasks listed
     split = done["split"]
     assert [row[1:] for row in runs_of(hub_db, "task")] == [
         ("ba", OWNER, "machine", "@ba reviews demo-shop v1"),
         ("ba", OWNER, "machine", SPLIT_V1),
     ]
     for said in (
-        f"Version 1 of it was approved by {OTHER}",
+        f"{OTHER} approved 3 use cases of it on version 1",
         "- T-1: UC ORD-1: Place an order (use case UC ORD-1)",
         "- T-3: UC RET-1: Return a book (use case UC RET-1)",
         "Follow the skill srs-tasks of your pack",
         "parent: the frame task's number (such as T-1)",
     ):
         assert said in split["prompt"], said
-    outcome = {"created": [1, 2, 3], "commented": [], "cancelled": [], "no_split": None}
-    assert approval_rows(hub_db) == [(1, None, OTHER, split["id"], outcome)]
-    # called again, as a replayed event would: no task, comment, history row or run more
+    rows = release_rows(hub_db)
+    assert [row[:4] for row in rows] == [(code, 1, "added", OTHER) for code in ("UC ORD-1", "UC ORD-2", "UC RET-1")]
+    assert [row[4]["created"] for row in rows] == [[1], [2], [3]]
+    assert [row[4]["split_run_id"] for row in rows] == [split["id"]] * 3, "the review's one split run, on each"
+    assert approval_rows(hub_db) == [(1, None, OTHER, None, BY_USE_CASE)]
+    # handled again, as a replayed event would: no task, comment, history row or run more
     before = counts(hub_db)
+    assert released_again(client, hub_db) == [None, None, None]
     again = called_again(client, hub_db, 1, None)
-    assert (again.again, again.created, again.split_run_id) == (True, [1, 2, 3], split["id"])
+    assert (again.again, again.created, again.split_run_id) == (True, [], None)
     assert counts(hub_db) == before == (3, 0, 6, 2)
-    assert approval_rows(hub_db) == [(1, None, OTHER, split["id"], outcome)]
 
 
 def test_srs_auto_tasks_split_run_makes_child_tasks_for_the_approver_and_no_twin(client, hub, hub_db):
@@ -245,7 +273,7 @@ def test_srs_auto_tasks_next_approval_frames_new_comments_changed_and_cancels_dr
     t = tables.tasks.items
     assert sql(hub_db, select(t.c.external_key).where(t.c.number == 5)) == [("srs:demo-shop:3:UC ORD-3",)]
     # the open tasks of UC ORD-1 get the approver's comment; T-2 is done, so UC ORD-2's change leaves it be
-    said = f"Use case UC ORD-1 changed in version 3 of demo-shop, which {OTHER} approved"
+    said = f"Use case UC ORD-1 changed: {OTHER} approved UC ORD-1 r2 of demo-shop on version 3"
     compare = f"/p/{PROJECT}/x/srs/documents/demo-shop/compare?from=1&to=3"
     for ref in ("T-1", "T-4"):
         ((comment,),) = [task(client, hub["reader"], ref)["comments"]]
@@ -254,21 +282,30 @@ def test_srs_auto_tasks_next_approval_frames_new_comments_changed_and_cancels_dr
     # the open task of UC RET-1, dropped, is cancelled; its history names the hub and why
     dropped = task(client, hub["reader"], "T-3")
     assert (dropped["status"], dropped["status_group"], dropped["comments"]) == ("cancelled", "cancelled", [])
-    cause = f"use case UC RET-1 was dropped in version 3 of demo-shop, which {OTHER} approved"
+    cause = f"use case UC RET-1 was dropped: {OTHER} approved UC RET-1 r2 of demo-shop on version 3"
     assert (None, "status", "backlog", "cancelled", cause) in [
         (e["actor"], e["field"], e["from_value"], e["to_value"], e["cause"]) for e in dropped["events"]
     ]
-    # the split run lists only the frame task that waits: T-1 has a child, T-2 is done, T-3 cancelled
-    ((split_v3, *_),) = [row for row in runs_of(hub_db, "task") if row[4] == "@ba splits the tasks of demo-shop v3"]
+    # the split run lists only the frame task the review made: T-1 has a child, T-2 is done, T-3 cancelled
+    ((split_v3, *_),) = [
+        row for row in runs_of(hub_db, "task") if row[4] == "@ba splits the tasks of 4 use cases of demo-shop"
+    ]
     prompt = running(client, studio, "task")
     assert prompt["id"] == split_v3 and "- T-5: UC ORD-3: Cancel an order (use case UC ORD-3)" in prompt["prompt"]
     assert "- T-1:" not in prompt["prompt"] and "- T-2:" not in prompt["prompt"] and "- T-3:" not in prompt["prompt"]
-    outcome = {"created": [5], "commented": [1, 4], "cancelled": [3], "no_split": None}
-    assert approval_rows(hub_db)[1] == (3, 1, OTHER, split_v3, outcome)
-    # a replay of version 3 does nothing more
+    later = {row[0]: row for row in release_rows(hub_db)[3:]}
+    assert {code: (row[1], row[2]) for code, row in later.items()} == {
+        "UC ORD-1": (2, "changed"),
+        "UC ORD-2": (2, "changed"),
+        "UC ORD-3": (1, "added"),
+        "UC RET-1": (2, "removed"),
+    }
+    assert (later["UC ORD-1"][4]["commented"], later["UC ORD-3"][4]["created"]) == ([1, 4], [5])
+    assert later["UC RET-1"][4]["cancelled"] == [3] and later["UC RET-1"][4]["split_run_id"] == split_v3
+    assert approval_rows(hub_db)[1] == (3, 1, OTHER, None, BY_USE_CASE)
+    # a replay does nothing more
     before = counts(hub_db)
-    again = called_again(client, hub_db, 3, 1)
-    assert (again.again, again.created, again.commented, again.cancelled) == (True, [5], [1, 4], [3])
+    assert set(released_again(client, hub_db)) == {None}
     assert counts(hub_db) == before
 
 
@@ -291,6 +328,10 @@ def test_srs_auto_tasks_need_the_plugin_tasks_and_make_frames_without_ba(client,
     assert review(client, hub["other"], 2).json()["state"] == "approved"
     delivered(client)
     assert [(t["ref"], t["title"]) for t in tasks(client, hub["reader"])] == [("T-1", "UC ORD-3: Cancel an order")]
-    ((number, previous, login, run_id, outcome),) = approval_rows(hub_db)
-    assert (number, previous, login, run_id, outcome["created"]) == (2, 1, OTHER, None, [1])
-    assert "agent type ba of plugin srs is not enabled" in outcome["no_split"], outcome
+    assert approval_rows(hub_db) == [(2, 1, OTHER, None, BY_USE_CASE)]
+    *first, last = release_rows(hub_db)
+    assert [row[4]["no_split"] for row in first] == [
+        "the project did not enable the plugin tasks when the use case was approved"
+    ] * 3
+    assert (last[0], last[4]["created"], last[4]["split_run_id"]) == ("UC ORD-3", [1], None)
+    assert "agent type ba of plugin srs is not enabled" in last[4]["no_split"], last

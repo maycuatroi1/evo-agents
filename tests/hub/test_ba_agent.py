@@ -357,7 +357,7 @@ def test_ba_agent_proposes_a_version_in_review_written_as_the_writer_who_asked_w
     assert not error and f"- demo-shop v1: UC ORD-2 (use_case) Pay for an order [key {pay['key']}]" in text, text
     retries = item(client, hub["chi"], "BR ORD2-1")
     text, error = tool(client, agent, "srs__read", document="demo-shop", item="UC ORD-2")
-    assert not error and f"Item UC ORD-2 (use_case), key {pay['key']}" in text
+    assert not error and "Item UC ORD-2 (use_case) r1 " in text and f", key {pay['key']}" in text, text
     assert f"BR ORD2-1 (business_rule) Payment retries [key {retries['key']}]" in text
     # a change of code, a drop, or a code another item holds is refused, and nothing is written
     for change in ({"key": pay["key"], "code": "UC ORD-9"}, {"key": retries["key"], "retire": True}):
@@ -510,11 +510,11 @@ def test_ba_agent_reads_an_item_by_its_code_without_the_kind_word_and_names_each
 
     for ref in ("ORD-2", "ord-2", "UC ORD-2", "uc  ord-2", "ORD-02", "OLD ORD-1", pay["key"]):
         text, error = read(ref)
-        assert not error and f"Item UC ORD-2 (use_case), key {pay['key']}" in text, (ref, text)
+        assert not error and "Item UC ORD-2 (use_case) r1 " in text and f", key {pay['key']}" in text, (ref, text)
         assert item(client, hub["chi"], ref)["key"] == pay["key"], ref
     for ref in ("UC ORD-1", order["key"]):
         text, error = read(ref)
-        assert not error and f"Item UC ORD-1 (use_case), key {order['key']}" in text, (ref, text)
+        assert not error and "Item UC ORD-1 (use_case) r1 " in text and f", key {order['key']}" in text, (ref, text)
     text, error = read("ORD2-1")
     assert not error and "Item BR ORD2-1 (business_rule)" in text, text
     # several items fit: a 404 that names each, and nothing read
@@ -592,7 +592,7 @@ def test_ba_agent_reviews_a_version_each_time_it_enters_review_and_its_comments_
     assert submitted(client, hub["other"], 2)["round"] == 2
     assert [row[4] for row in runs_of(hub_db, "task")] == [
         "@ba reviews demo-shop v1",
-        "@ba splits the tasks of demo-shop v1",
+        "@ba splits the tasks of 3 use cases of demo-shop",
         "@ba reviews demo-shop v2",
         "@ba reviews demo-shop v2, round 2",
     ]
@@ -606,7 +606,8 @@ def test_ba_agent_reviews_a_version_each_time_it_enters_review_and_its_comments_
     saved(client, hub["other"], 2, {"key": stock["key"], "body": "- Placing the order holds its stock for 20 minutes."})
     assert client.delete(TYPE, headers=hub["owner"]).status_code == 200
     assert submitted(client, hub["other"], 3)["state"] == "in_review"
-    assert len(runs_of(hub_db, "task")) == 5  # the approval of version 2 handed the split of the frames still waiting
+    # approving version 2 approved UC ORD-1 r2, which changed: a comment on its tasks, no frame task, no split run
+    assert len(runs_of(hub_db, "task")) == 4
 
 
 # Tasks of its use cases

@@ -10,7 +10,20 @@ export type CaseSummary = { total: number; approved: number; pending: number; as
 
 export function summarize(cases: readonly SrsUseCase[]): CaseSummary {
   const count = (state: SrsUseCase["state"]) => cases.filter((one) => one.state === state).length;
-  return { total: cases.length, approved: count("approved"), pending: count("pending"), asked: count("changes_requested") };
+  return { total: cases.length, approved: count("approved") + count("superseded"), pending: count("pending"), asked: count("changes_requested") };
+}
+
+/** Whether a use case needs no more review: the approved baseline holds its revision, or a newer one. */
+export function caseDone(useCase: Pick<SrsUseCase, "state">): boolean {
+  return useCase.state === "approved" || useCase.state === "superseded";
+}
+
+/**
+ * Whether `login` wrote a revision of the use case since its newest release, so the hub refuses their review of it
+ * (they may still review the other use cases). The hub sends nobody when the project turns self_approval on.
+ */
+export function wroteCase(useCase: Pick<SrsUseCase, "authors">, login: string | null): boolean {
+  return login !== null && (useCase.authors ?? []).includes(login);
 }
 
 /** Whether a use case holds the version: it is asked for changes, so no approval of the version goes through. */
@@ -27,8 +40,9 @@ export function caseBlock(block: ReviewBlock | null): Exclude<ReviewBlock, "revi
 }
 
 /** What a use case is called to a person: its code, else its title. */
-export function caseName(useCase: Pick<SrsUseCase, "code" | "title">): string {
-  return useCase.code ?? useCase.title;
+export function caseName(useCase: Pick<SrsUseCase, "code" | "title"> & { rev?: number | null }): string {
+  const name = useCase.code ?? useCase.title;
+  return useCase.rev ? `${name} r${useCase.rev}` : name;
 }
 
 /** The ref that names the use case to the hub and to its page: its code, else its key. */

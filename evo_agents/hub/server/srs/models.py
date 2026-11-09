@@ -18,7 +18,7 @@ from evo_agents.hub.server.srs.doc import Document, Item, Problem
 from evo_agents.hub.server.srs.findings import FindingRow
 from evo_agents.hub.server.srs.imports import MAX_MARKDOWN_BYTES, Preview
 from evo_agents.hub.server.srs.reviews import CommentRow
-from evo_agents.hub.server.srs.store import DocumentRow, ReviewRow, VersionRow
+from evo_agents.hub.server.srs.store import DocumentRow, ReviewRow, VersionRow, case_path
 from evo_agents.hub.server.srs.template import code_key
 from evo_agents.hub.server.srs.use_case_reviews import CaseState
 from evo_agents.hub.tables_srs import (
@@ -44,7 +44,7 @@ MAX_BODY_CHARS = 200_000  # of one item
 MAX_CHANGES = 500  # in one save
 CHANGES = ("added", "removed", "changed", "moved")
 USE_CASE_CHANGES = ("added", "changed", "removed")
-USE_CASE_STATES = ("pending", "approved", "changes_requested")
+USE_CASE_STATES = ("pending", "approved", "changes_requested", "superseded")
 
 
 class SrsDocumentSummary(BaseModel):
@@ -110,14 +110,27 @@ class SrsUseCaseReview(BaseModel):
 
 
 class SrsUseCase(BaseModel):
-    """A use case a version needs reviewed, with its state and the reviews that count."""
+    """A use case a version needs reviewed, with its state, its revision and the reviews that count."""
 
     key: str
     code: str | None
     title: str
     change: Literal[USE_CASE_CHANGES] = Field(description="what the version does to it since the version approved last")
-    state: Literal[USE_CASE_STATES]
+    state: Literal[USE_CASE_STATES] = Field(
+        description="approved once the approved baseline holds its revision (or its removal), superseded when the "
+        "baseline holds a newer revision, else changes_requested, approved or pending by the reviews that count"
+    )
     reviews: list[SrsUseCaseReview]
+    rev: int | None = Field(None, description="its revision in this version: r1 and up, one more each time it changed")
+    released: int | None = Field(None, description="the revision of it the approved baseline holds; null for none")
+    submitted: bool = Field(False, description="whether its revision was sent to review on its own")
+    author: str | None = Field(None, description="who wrote its revision in this version")
+    authors: list[str] = Field(
+        default_factory=list,
+        description="who wrote a revision of it since its newest release, and so may not review it (empty when "
+        "self_approval is on)",
+    )
+    link: str = Field("", description="its review on the hub's web, a path")
 
 
 class SrsVersionCases(SrsVersion):
@@ -136,12 +149,23 @@ class SrsQueuedUseCase(SrsUseCase):
         description="what its actor wants (its Intent, or the Objective of an older use case), as the version reads; "
         "null for one it drops"
     )
-    deciding: int = Field(description="its open findings of level decide, which hold approval")
+    deciding: int = Field(description="its open findings of level decide, which hold its approval")
     noted: int = Field(description="its open findings of another level, advice only")
+    held_by: Literal["ba_review", "findings"] | None = Field(
+        None,
+        description="what holds its approval now: @ba's review of the version's round or of its own, then the open "
+        "findings of level decide about it, a business rule under it or the whole document; null when none",
+    )
+    may_review: bool = Field(
+        False,
+        description="whether the caller may review it: a writer who wrote no revision of it since its newest "
+        "release, any writer when self_approval is on, never the agent of a run",
+    )
 
 
 class SrsQueuedVersion(SrsVersionCases):
-    """A version in review of a document the caller sees, with the use cases it needs reviewed, what holds its approval
+    """A version in review of a document the caller sees, or the latest version of one whose use cases were sent to
+    review on their own (a draft, listing those alone), with the use cases it needs reviewed, what holds its approval
     now and whether the caller may review it."""
 
     use_cases: list[SrsQueuedUseCase]  # pyright: ignore[reportIncompatibleVariableOverride]
@@ -153,8 +177,8 @@ class SrsQueuedVersion(SrsVersionCases):
     )
     deciding: int = Field(description="the open findings of level decide of the document")
     may_review: bool = Field(
-        description="whether the caller may review it: a writer who wrote no version of the document since the one "
-        "approved last, any writer when self_approval is on, never the agent of a run"
+        description="whether the caller may review one of its use cases (each says), or the version when it has none "
+        "to review: a writer who wrote no version of the document since the one approved last"
     )
 
 
@@ -166,7 +190,7 @@ class SrsRef(BaseModel):
 
 class SrsItem(BaseModel):
     """An item of a version: its key (fixed), kind, code and aliases, title, parent (key), heading level (null for a
-    table row), the fields its kind holds, its Markdown body and its links."""
+    table row), the fields its kind holds, its Markdown body and its links; a use case its revision there."""
 
     key: str
     kind: Literal[ITEM_KINDS]
@@ -178,6 +202,9 @@ class SrsItem(BaseModel):
     fields: dict[str, Any]
     body: str
     refs: list[SrsRef]
+    rev: int | None = Field(
+        None, description="a use case's revision in this version (r1 and up); null for another item"
+    )
 
 
 class SrsProblem(BaseModel):
@@ -205,13 +232,39 @@ class SrsDocument(SrsDocumentSummary):
     shown: SrsVersionDetail | None
 
 
+class SrsRevision(BaseModel):
+    """A revision of a use case: the version it first appears in, its author, and whether it was sent to review on
+    its own."""
+
+    rev: int
+    version: int
+    author: str
+    created_at: datetime
+    dropped: bool = Field(description="the revision of the version that dropped the use case")
+    submitted_at: datetime | None
+    submitted_by: str | None
+
+
 class SrsItemDetail(SrsItem):
-    """An item of a version, with the items above it and those under it."""
+    """An item of a version, with the items above it and those under it; a use case also the revision the approved
+    baseline holds and every revision it had."""
 
     document: str
     version: int
     path: list[str] = Field(description="the titles of the items above it, the top first")
     children: list[SrsItem]
+    released: int | None = Field(None, description="of a use case: the revision the approved baseline holds")
+    revisions: list[SrsRevision] = Field(default_factory=list, description="of a use case: its revisions, r1 first")
+
+
+class SrsUseCaseSubmitted(SrsVersionCases):
+    """The latest version of a document after one of its use cases was sent to review on its own: the use case, and
+    @ba's review of its round when the hub handed one."""
+
+    use_case: SrsUseCase
+    use_case_review_run: SrsReviewRun | None = Field(
+        description="@ba's review of the use case's round; none in a project without @ba"
+    )
 
 
 class SrsImport(BaseModel):
@@ -473,24 +526,43 @@ def version_model(row: VersionRow) -> SrsVersion:
     return SrsVersion(**values, review_run=run, reviews=[review_model(review) for review in row.reviews])
 
 
-def use_case_model(case: CaseState) -> SrsUseCase:
+def use_case_model(case: CaseState, link: str = "") -> SrsUseCase:
     reviews = [SrsUseCaseReview(**{n: getattr(r, n) for n in SrsUseCaseReview.model_fields}) for r in case.reviews]
     return SrsUseCase(
-        key=case.key, code=case.code, title=case.title, change=case.change, state=case.state, reviews=reviews
+        key=case.key,
+        code=case.code,
+        title=case.title,
+        change=case.change,
+        state=case.state,
+        reviews=reviews,
+        rev=case.rev,
+        released=case.released,
+        submitted=case.submitted,
+        author=case.author,
+        authors=list(case.author_logins),
+        link=link,
     )
 
 
-def cases_model(row: VersionRow, cases: list[CaseState]) -> SrsVersionCases:
-    return SrsVersionCases(**version_model(row).model_dump(), use_cases=[use_case_model(case) for case in cases])
+def cases_model(row: VersionRow, cases: list[CaseState], where: tuple[str, str] | None = None) -> SrsVersionCases:
+    """``row`` with its use cases to review; ``where`` (project, slug) gives each the link of its review."""
+
+    def link(case: CaseState) -> str:
+        return case_path(where[0], where[1], row.number, case.key) if where else ""
+
+    return SrsVersionCases(
+        **version_model(row).model_dump(), use_cases=[use_case_model(case, link(case)) for case in cases]
+    )
 
 
 def problem_model(problem: Problem) -> SrsProblem:
     return SrsProblem(**problem.as_json())
 
 
-def item_model(doc: Document, item: Item) -> SrsItem:
+def item_model(doc: Document, item: Item, revs: Mapping[str, int] | None = None) -> SrsItem:
     codes = {other.key: other.code for other in doc.items}
     return SrsItem(
+        rev=(revs or {}).get(item.key or ""),
         key=item.key or "",
         kind=item.kind,
         code=item.code,
@@ -505,25 +577,41 @@ def item_model(doc: Document, item: Item) -> SrsItem:
 
 
 def detail_model(
-    slug: str, row: VersionRow, doc: Document, problems: list[Problem], cases: list[CaseState]
+    slug: str,
+    row: VersionRow,
+    doc: Document,
+    problems: list[Problem],
+    cases: list[CaseState],
+    project: str | None = None,
+    revs: Mapping[str, int] | None = None,
 ) -> SrsVersionDetail:
     return SrsVersionDetail(
-        **cases_model(row, cases).model_dump(),
+        **cases_model(row, cases, (project, slug) if project else None).model_dump(),
         document=slug,
         preamble=doc.preamble,
-        items=[item_model(doc, item) for item in doc.items],
+        items=[item_model(doc, item, revs) for item in doc.items],
         problems=[problem_model(problem) for problem in problems],
     )
 
 
-def item_detail_model(slug: str, number: int, doc: Document, index: int) -> SrsItemDetail:
+def item_detail_model(
+    slug: str,
+    number: int,
+    doc: Document,
+    index: int,
+    revs: Mapping[str, int] | None = None,
+    released: int | None = None,
+    history: list[SrsRevision] | None = None,
+) -> SrsItemDetail:
     item = doc.items[index]
     return SrsItemDetail(
-        **item_model(doc, item).model_dump(),
+        **item_model(doc, item, revs).model_dump(),
         document=slug,
         version=number,
         path=[doc.items[at].title for at in reversed(doc.ancestors(index))],
-        children=[item_model(doc, doc.items[at]) for at in doc.children(index)],
+        children=[item_model(doc, doc.items[at], revs) for at in doc.children(index)],
+        released=released,
+        revisions=history or [],
     )
 
 

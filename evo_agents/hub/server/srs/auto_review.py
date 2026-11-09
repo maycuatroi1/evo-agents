@@ -20,7 +20,9 @@ the skill srs-review of @ba's pack tell it to:
   version settles, citing the version as the source.
 
 The run is kept as the review of the version's round (srs_versions.review_run_id, which a submit clears): approving
-the version waits until it ends (``findings.approval_hold``). When the type is not enabled, is turned off, its run_as
+the version waits until it ends (``findings.approval_hold``). A use case sent to review on its own gets the same review
+narrowed to it (``case_entered``, ``case_task``), kept on its revision (srs_use_case_revisions.review_run_id): approving
+that use case waits until it ends, and its findings name the use case or a business rule under it. When the type is not enabled, is turned off, its run_as
 no longer holds writer, or its runs spent the type's cap of the last 24 hours, the version goes to review all the
 same, without @ba's review: the log says why, and the round has no review run for approval to wait on.
 """
@@ -35,8 +37,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.server.projects import ProjectAccess
-from evo_agents.hub.server.srs import BA, findings
+from evo_agents.hub.server.srs import BA, findings, revisions
 from evo_agents.hub.server.srs.store import PLUGIN, DocumentRow, VersionRow
+from evo_agents.hub.server.srs.use_case_reviews import CaseState, case_name
 from evo_agents.hub.server.task_dispatch import hand_own_task
 
 log = logging.getLogger(__name__)
@@ -141,4 +144,71 @@ async def review_entered(conn: AsyncConnection, access: ProjectAccess, doc: Docu
     return run_id
 
 
-__all__ = ["CHECKLIST", "MAX_COMMENTS", "NAMED_FINDINGS", "review_entered", "review_task"]
+def case_task(
+    project: str, doc: DocumentRow, version: VersionRow, case: CaseState, author: str, open_ids: Sequence[int] = ()
+) -> str:
+    """The task of @ba's review of use case ``case`` of ``doc`` in ``project``, sent to review on its own from version
+    ``version`` by ``author``, whose open findings are ``open_ids``."""
+    number, slug, code, name = version.number, doc.slug, case.code or case.key, case_name(case)
+    again = f", round {case.round}: it was sent back and sent once more" if case.round > 1 else ""
+    if case.released:
+        base = (
+            f"The approved baseline holds r{case.released} of it: see what changed with srs__diff (document {slug}) "
+            "between the version that approved it and this one."
+        )
+    else:
+        base = "No revision of it was approved yet: all of it is new."
+    return "\n".join(
+        [
+            f'Review use case {name} ("{case.title}") of the SRS document {slug} ("{doc.title}") of project '
+            f"{project}, which {author} sent to review on its own{again}, as it reads in version {number}. {base}",
+            "",
+            "Follow the skill srs-review of your pack, for this use case and the business rules under it only:",
+            f"1. Read it with srs__read (document {slug}, version {number}, item {code}); srs__read without an item "
+            "lists the document's open findings.",
+            "2. Check it against the template (its actor, preconditions, steps, expectation or post-conditions, "
+            f"business rules and the screens it names) and write what is missing or wrong as comments with "
+            f"srs__comment (document {slug}, version {number}, item: its code or a business rule's), each starting with "
+            f'"Blocking:" or "Suggestion:", at most {MAX_COMMENTS}. Comments are advice: they block no approval.',
+            "3. Compare it with every use case of every document of the project (srs__search), with the glossary and "
+            "the non-functional requirements, then with the project's knowledge graph (kg_search, kg_context), going "
+            f"through this checklist in Vietnamese and in English: {', '.join(CHECKLIST)}.",
+            f"4. Record each conflict as one finding with srs__finding (action record, document {slug}, version "
+            f"{number}, item: {code} or the business rule it is about), with its kind, its level and the sources that "
+            "show it. A conflict with no source is no finding. A finding of level decide holds the approval of this "
+            "use case only.",
+            "5. Settle a finding from the graph when a source answers it (action resolve, no settled_by). "
+            f"{_open_text(open_ids)} Resolve those about {code} that this revision settles, citing version {number}.",
+            "",
+            "Your findings and comments are all you write. You approve, return and propose nothing, you create no "
+            "task, you open no chat, and you change no file of the repositories of this run.",
+        ]
+    )
+
+
+async def case_entered(
+    conn: AsyncConnection,
+    access: ProjectAccess,
+    doc: DocumentRow,
+    version: VersionRow,
+    case: CaseState,
+    revision: revisions.Revision,
+    author: str,
+):
+    """Hand @ba the review of use case ``case``, whose ``revision`` was sent to review on its own from ``version`` of
+    ``doc``, in the caller's transaction; the task run, or None when there is none to start."""
+    again = f", round {case.round}" if case.round > 1 else ""
+    title = f"@{BA} reviews {case_name(case)} of {doc.slug}{again}"
+    open_ids = [row.id for row in await findings.findings(conn, doc, findings.OPEN)]
+    task = case_task(access.name, doc, version, case, author, open_ids)
+    run_id, why = await hand_own_task(conn, PLUGIN, access.project_id, BA, task, title)
+    extra = {"project": access.name, "document": doc.slug, "use_case": case.code or case.key, "rev": case.rev}
+    if run_id is None:
+        log.info("no review by @ba of a use case", extra={**extra, "why": why})
+        return None
+    await revisions.review_run(conn, revision, run_id)
+    log.info("review by @ba of a use case queued", extra={**extra, "run_id": run_id})
+    return run_id
+
+
+__all__ = ["CHECKLIST", "MAX_COMMENTS", "NAMED_FINDINGS", "case_entered", "case_task", "review_entered", "review_task"]

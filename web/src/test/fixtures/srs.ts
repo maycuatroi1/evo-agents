@@ -146,12 +146,26 @@ export function caseReview(patch: Partial<SrsUseCaseReview> = {}): SrsUseCaseRev
 
 /** A use case of v3 in review that the version changes and nobody reviewed yet. */
 export function aUseCase(patch: Partial<SrsUseCase> = {}): SrsUseCase {
-  return { key: "uc1", code: "UC ORD-1", title: "Place an order", change: "changed", state: "pending", reviews: [], ...patch };
+  return {
+    key: "uc1",
+    code: "UC ORD-1",
+    title: "Place an order",
+    change: "changed",
+    state: "pending",
+    reviews: [],
+    rev: null,
+    released: null,
+    submitted: false,
+    author: "alice",
+    authors: [],
+    link: "/p/lumen/x/srs/documents/demo-shop/versions/3/cases/uc1",
+    ...patch,
+  };
 }
 
 /** A use case of v3 as the review queue lists it: what its actor wants, and no open finding about it. */
 export function aQueuedCase(patch: Partial<SrsQueuedUseCase> = {}): SrsQueuedUseCase {
-  return { ...aUseCase(), intent: "The customer turns a cart into an order", deciding: 0, noted: 0, ...patch };
+  return { ...aUseCase(), intent: "The customer turns a cart into an order", deciding: 0, noted: 0, held_by: null, may_review: true, ...patch };
 }
 
 /** v3 of demo-shop in review by alice as the review queue lists it: one use case to review, nothing holding it, and the visitor may review it. */

@@ -169,7 +169,7 @@ def test_srs_finding_is_recorded_by_ba_only_with_sources_the_hub_finds(client, h
     assert text.startswith(
         f"Finding {found['id']} of demo-shop is recorded: decide, contradiction, on version 1, about item BR ORD2-1."
     ), text
-    assert "While it is open, no version of the document is approved." in text
+    assert "While it is open, no version of the document is approved, and the use case it is about" in text
     retries = item(client, hub["chi"], "BR ORD2-1")
     assert (found["version"], found["item"], found["item_code"], found["status"]) == (
         1,
