@@ -52,6 +52,7 @@ from evo_agents.hub.server.srs import (
     reviews,
     revisions,
     store,
+    threads,
     use_case_reviews,
 )
 from evo_agents.hub.server.srs.auto_review import case_entered, review_entered
@@ -140,7 +141,8 @@ async def _detail(conn: AsyncConnection, access: ProjectAccess, doc: store.Docum
     known = await revisions.history(conn, doc.id)
     cases = await use_case_reviews.states(conn, access.project_id, doc, row, snap.doc, settings, wide, known)
     problems = checks.problems(snap.doc, settings.template)
-    return detail_model(doc.slug, row, snap.doc, problems, cases, access.name, _revs(known, row.number))
+    released = {key: rev for key in known.releases if (rev := known.baseline(key)) is not None}
+    return detail_model(doc.slug, row, snap.doc, problems, cases, access.name, _revs(known, row.number), released)
 
 
 # Reading
@@ -653,13 +655,37 @@ async def unarchive_document(request: Request, project: ProjectName, slug: Slug,
 
 
 @router.get("/{project}/documents/{slug}/comments", response_model=list[SrsComment])
-async def list_comments(request: Request, project: ProjectName, slug: Slug, user: CurrentUser, sink: Sink = None):
-    """The comments of a document, oldest first."""
+async def list_comments(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    user: CurrentUser,
+    version: Version = None,
+    item: Annotated[
+        str | None, Query(min_length=1, max_length=100, description="the threads of this item and the items under it")
+    ] = None,
+    status: Annotated[
+        Literal["open", "resolved"] | None, Query(description="only the threads open or resolved")
+    ] = None,
+    sink: Sink = None,
+):
+    """The comments of a document, oldest first: every thread, or the threads of ``item`` (and the items under it), and
+    only those open or resolved with ``status``. A passage's ``anchor`` is read in ``version``, the latest unless
+    asked."""
 
     async def work(conn):
         access = await project_access(conn, user, project)
         doc = await store.document(conn, access, slug, sink)
-        return [comment_model(row) for row in await reviews.comments(conn, doc)]
+        content = (
+            (await store.snapshot(conn, await store.version(conn, doc, version))).doc if doc.latest_version else None
+        )
+        keys = None
+        if item is not None:
+            at = content.item_index(item, f"{slug}") if content is not None else None
+            keys = threads.under(content, content.items[at].key or "") if at is not None and content else {item}
+        chosen = threads.chosen(threads.threads(await reviews.comments(conn, doc)), keys, status)
+        rows = sorted((row for one in chosen for row in (one.root, *one.replies)), key=lambda row: row.id)
+        return [comment_model(row, threads.anchor(content, row.item, row.quote)) for row in rows]
 
     return await _answer(request, work)
 
@@ -673,8 +699,27 @@ async def add_comment(
     async def work(conn):
         access = await project_access(conn, user, project)
         doc = await store.document(conn, access, slug, sink, lock=True)
-        asked = reviews.CommentRequest(body.body, body.version, body.item, body.parent_id)
-        return comment_model(await reviews.comment(conn, access, user, doc, asked))
+        asked = reviews.CommentRequest(**body.model_dump())
+        row = await reviews.comment(conn, access, user, doc, asked)
+        thread = next(
+            one
+            for one in threads.threads(await reviews.comments(conn, doc))
+            if one.root.id == (row.parent_id or row.id)
+        )
+        await threads.told(conn, access, doc, thread, row)
+        if await threads.asked(conn, access, doc, thread, row) is not None:
+            row = next(one for one in await reviews.comments(conn, doc) if one.id == row.id)  # with the run it asked
+        content = (await store.snapshot(conn, await store.version(conn, doc))).doc
+        return comment_model(row, threads.anchor(content, row.item, row.quote))
+
+    return await _answer(request, work)
+
+
+async def _resolved(request: Request, project: str, slug: str, comment_id: int, user, sink, *, reopen: bool):
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        doc = await store.document(conn, access, slug, sink, lock=True)
+        return comment_model(await reviews.resolve(conn, access, user, doc, comment_id, reopen=reopen))
 
     return await _answer(request, work)
 
@@ -688,14 +733,21 @@ async def resolve_comment(
     user: CurrentUser,
     sink: Sink = None,
 ):
-    """Close the thread of a comment."""
+    """Close the thread of a comment (its root, for an answer), as a member; never the agent of a run."""
+    return await _resolved(request, project, slug, comment_id, user, sink, reopen=False)
 
-    async def work(conn):
-        access = await project_access(conn, user, project)
-        doc = await store.document(conn, access, slug, sink, lock=True)
-        return comment_model(await reviews.resolve(conn, access, user, doc, comment_id))
 
-    return await _answer(request, work)
+@router.post("/{project}/documents/{slug}/comments/{comment_id}/reopen", response_model=SrsComment)
+async def reopen_comment(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    comment_id: Annotated[int, Path(ge=1)],
+    user: CurrentUser,
+    sink: Sink = None,
+):
+    """Open a resolved thread again (its root, for an answer), as a member; never the agent of a run."""
+    return await _resolved(request, project, slug, comment_id, user, sink, reopen=True)
 
 
 # Findings

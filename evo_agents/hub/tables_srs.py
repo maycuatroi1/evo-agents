@@ -16,7 +16,9 @@ the tables because its one chain of migrations creates them (``docs/plugins.md``
 - srs_item_versions: an item as one version has it: parent, position, heading level, title, fields and body.
 - srs_refs: links between the items of a version (uses_screen, refines, relates).
 - srs_reviews: an approval or a request for changes of a version in a review round, with the role it counts for.
-- srs_comments: threads of comments on a document, a version or an item.
+- srs_comments: threads of comments on a document, a version or an item; a thread on an item may be anchored to a
+  passage of it (0227: the part, the passage, the text around it, its offset) and keep the run of @ba it asked to
+  answer.
 - srs_findings (0069): each conflict @ba found in a document, with the version it was found on, the item it is about
   (null for the whole document), its kind and level, the sources that show it (at least one), a summary, its status
   (open, resolved, waived) and how it was settled: the resolution, who settled it (null when settled from the graph),
@@ -93,6 +95,9 @@ MAX_SUMMARY_CHARS = 500  # of a version
 MAX_CODE_CHARS = 100
 MAX_REVIEW_CHARS = 10_000
 MAX_COMMENT_CHARS = 20_000
+MAX_FIELD_CHARS = 100  # srs_comments.field
+MAX_QUOTE_CHARS = 2_000  # srs_comments.quote: the passage a thread is anchored to
+MAX_CONTEXT_CHARS = 200  # srs_comments.prefix and suffix
 FINDING_KINDS = ("duplicate", "contradiction", "kg_conflict", "overlap")  # srs_findings.kind
 FINDING_LEVELS = ("info", "advisory", "decide")  # srs_findings.level; an open decide finding holds approval
 FINDING_STATUSES = ("open", "resolved", "waived")  # srs_findings.status
@@ -335,6 +340,12 @@ def _comments(metadata: MetaData) -> Table:
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("resolved_by", BigInteger),
         Column("resolved_at", DateTime(timezone=True)),
+        Column("field", Text),  # 0227: the part of the item a passage is in (body, a field's name, steps)
+        Column("quote", Text),  # 0227: the passage as the reader selected it; null for a whole item
+        Column("prefix", Text),  # 0227: the text just before the passage
+        Column("suffix", Text),  # 0227: the text just after it
+        Column("start_offset", Integer),  # 0227: where the passage starts in its part
+        Column("ask_run_id", BigInteger),  # 0227: the run of @ba the comment asked to answer the thread
         _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
         _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
         _key(name, "item_id", "srs_items", ondelete="CASCADE"),
@@ -342,6 +353,7 @@ def _comments(metadata: MetaData) -> Table:
         _key(name, "author_id", "users", ondelete="RESTRICT"),
         _key(name, "run_id", "runs", ondelete="SET NULL"),
         _key(name, "resolved_by", "users", ondelete="RESTRICT"),
+        _key(name, "ask_run_id", "runs", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="srs_comments_pkey"),
         Index("srs_comments_document_idx", "document_id", "id"),
     )

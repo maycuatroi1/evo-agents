@@ -197,6 +197,18 @@ export async function resolveComment(api: ApiClient, project: string, slug: stri
   return call(api.POST("/v1/x/srs/{project}/documents/{slug}/comments/{comment_id}/resolve", { params, headers }));
 }
 
+export async function reopenComment(api: ApiClient, project: string, slug: string, commentId: number) {
+  const headers = await csrfHeaders(api);
+  const params = { path: { project, slug, comment_id: commentId } };
+  return call(api.POST("/v1/x/srs/{project}/documents/{slug}/comments/{comment_id}/reopen", { params, headers }));
+}
+
+/** Sends the revision a use case has in the latest version to review on its own. */
+export async function submitUseCase(api: ApiClient, project: string, slug: string, ref: string) {
+  const headers = await csrfHeaders(api);
+  return call(api.POST("/v1/x/srs/{project}/documents/{slug}/use-cases/{ref}/submit", { params: { path: { project, slug, ref } }, headers }));
+}
+
 export async function importMarkdown(api: ApiClient, project: string, body: SrsImport) {
   const headers = await csrfHeaders(api);
   return call(api.POST("/v1/x/srs/{project}/import", { params: { path: { project } }, body, headers }));

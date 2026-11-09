@@ -28,6 +28,9 @@ from evo_agents.hub.tables_srs import (
     FINDING_STATUSES,
     ITEM_KINDS,
     MAX_COMMENT_CHARS,
+    MAX_CONTEXT_CHARS,
+    MAX_FIELD_CHARS,
+    MAX_QUOTE_CHARS,
     MAX_RESOLUTION_CHARS,
     MAX_REVIEW_CHARS,
     MAX_SUMMARY_CHARS,
@@ -205,6 +208,9 @@ class SrsItem(BaseModel):
     rev: int | None = Field(
         None, description="a use case's revision in this version (r1 and up); null for another item"
     )
+    released: int | None = Field(
+        None, description="of a use case: the revision the approved baseline holds; null when it holds none"
+    )
 
 
 class SrsProblem(BaseModel):
@@ -253,7 +259,6 @@ class SrsItemDetail(SrsItem):
     version: int
     path: list[str] = Field(description="the titles of the items above it, the top first")
     children: list[SrsItem]
-    released: int | None = Field(None, description="of a use case: the revision the approved baseline holds")
     revisions: list[SrsRevision] = Field(default_factory=list, description="of a use case: its revisions, r1 first")
 
 
@@ -422,26 +427,49 @@ class SrsExport(BaseModel):
 
 
 class SrsComment(BaseModel):
+    """A comment: the root of a thread (no ``parent_id``) or an answer in it. A thread on an item may be anchored to a
+    passage of it."""
+
     id: int
-    version: int | None
+    version: int | None = Field(description="the version it was made on, when it names one")
     item: str | None = Field(description="the key of the item")
     item_code: str | None
-    parent_id: int | None
+    parent_id: int | None = Field(description="the root of its thread; null for a root")
     author: str
-    run_id: int | None
+    run_id: int | None = Field(description="the run of the agent that wrote it, when an agent did")
     body: str
     created_at: datetime
     resolved_by: str | None
     resolved_at: datetime | None
+    field: str | None = Field(None, description="of a passage: the part of the item it is in (body, a field, steps)")
+    quote: str | None = Field(None, description="the passage the thread is anchored to, as it was selected")
+    prefix: str | None = Field(None, description="the text just before the passage")
+    suffix: str | None = Field(None, description="the text just after the passage")
+    start_offset: int | None = Field(None, description="where the passage started in its part")
+    anchor: Literal["found", "changed"] | None = Field(
+        None,
+        description="of a passage, in the version read (the latest unless asked): found while the item still holds "
+        "its words, changed when not or the item is gone; null for a comment on no passage",
+    )
+    ask_run_id: int | None = Field(None, description="the run of @ba this comment asked to answer its thread")
 
 
 class SrsCommentIn(BaseModel):
+    """A comment to write: ``@ba`` in its body asks @ba to answer in the thread."""
+
     model_config = ConfigDict(extra="forbid")
 
     body: str = Field(min_length=1, max_length=MAX_COMMENT_CHARS)
     version: int | None = Field(None, ge=1)
     item: str | None = Field(None, min_length=1, max_length=100, description="the code or key of the item")
-    parent_id: int | None = Field(None, ge=1, description="the comment it answers")
+    parent_id: int | None = Field(None, ge=1, description="the comment it answers (its thread's root or an answer)")
+    field: str | None = Field(None, min_length=1, max_length=MAX_FIELD_CHARS, description="the part a passage is in")
+    quote: str | None = Field(
+        None, min_length=1, max_length=MAX_QUOTE_CHARS, description="a passage of the item the comment is on"
+    )
+    prefix: str | None = Field(None, max_length=MAX_CONTEXT_CHARS, description="the text just before the passage")
+    suffix: str | None = Field(None, max_length=MAX_CONTEXT_CHARS, description="the text just after the passage")
+    start_offset: int | None = Field(None, ge=0, description="where the passage starts in its part")
 
 
 class SrsFindingSource(BaseModel):
@@ -559,10 +587,13 @@ def problem_model(problem: Problem) -> SrsProblem:
     return SrsProblem(**problem.as_json())
 
 
-def item_model(doc: Document, item: Item, revs: Mapping[str, int] | None = None) -> SrsItem:
+def item_model(
+    doc: Document, item: Item, revs: Mapping[str, int] | None = None, released: Mapping[str, int] | None = None
+) -> SrsItem:
     codes = {other.key: other.code for other in doc.items}
     return SrsItem(
         rev=(revs or {}).get(item.key or ""),
+        released=(released or {}).get(item.key or ""),
         key=item.key or "",
         kind=item.kind,
         code=item.code,
@@ -584,12 +615,13 @@ def detail_model(
     cases: list[CaseState],
     project: str | None = None,
     revs: Mapping[str, int] | None = None,
+    released: Mapping[str, int] | None = None,
 ) -> SrsVersionDetail:
     return SrsVersionDetail(
         **cases_model(row, cases, (project, slug) if project else None).model_dump(),
         document=slug,
         preamble=doc.preamble,
-        items=[item_model(doc, item, revs) for item in doc.items],
+        items=[item_model(doc, item, revs, released) for item in doc.items],
         problems=[problem_model(problem) for problem in problems],
     )
 
@@ -604,13 +636,13 @@ def item_detail_model(
     history: list[SrsRevision] | None = None,
 ) -> SrsItemDetail:
     item = doc.items[index]
+    held = {item.key or "": released} if released is not None else None
     return SrsItemDetail(
-        **item_model(doc, item, revs).model_dump(),
+        **item_model(doc, item, revs, held).model_dump(),
         document=slug,
         version=number,
         path=[doc.items[at].title for at in reversed(doc.ancestors(index))],
         children=[item_model(doc, doc.items[at], revs) for at in doc.children(index)],
-        released=released,
         revisions=history or [],
     )
 
@@ -636,8 +668,9 @@ def retire_model(slug: str, number: int | None, dry_run: bool, dropped: list[Ite
     return SrsRetireResult(document=slug, version=number, dry_run=dry_run, dropped=items)
 
 
-def comment_model(row: CommentRow) -> SrsComment:
-    return SrsComment(**row.__dict__)
+def comment_model(row: CommentRow, anchor: str | None = None) -> SrsComment:
+    values = {name: value for name, value in row.__dict__.items() if name != "author_id"}
+    return SrsComment(**values, anchor=anchor)
 
 
 def finding_model(row: FindingRow, documents: Mapping[str, str] | None = None) -> SrsFinding:

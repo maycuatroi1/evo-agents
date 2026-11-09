@@ -438,6 +438,7 @@ NOTICE_KINDS = (
     "system_daily_cap",  # a system's hub agents reached limits.daily_usd today, to its owner (``server.hub_runtime``)
     "srs_review",  # a version of an SRS document waits for its reviewers, after @ba's review (``server.srs.notices``)
     "srs_reviewed",  # a reviewer asked for changes on a version, or approved it, told to its author (same)
+    "srs_comment",  # a comment reached a thread of an SRS document the member is in (``server.srs.threads``)
 )
 # The notices that only report what went as it should (plan hub-attention-runtime, criterion a4): a push or merge into a
 # default branch, a plan finished, a run's files. Stored read, delivered on the web alone (no channel, no device), and

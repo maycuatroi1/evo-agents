@@ -145,12 +145,13 @@ export function NotificationContent({ notification, onRead }: { notification: No
 const LINK = "inline-flex min-h-7 items-center gap-1 text-sm text-brand underline-offset-4 hover:underline max-md:min-h-11";
 
 /** The notices of no run that lead to a page of the hub, with the words of their link. */
-const PAGE_LINKS: ReadonlyMap<string, "openBaseline" | "openPluginNotice" | "openLogin" | "openReview"> = new Map([
+const PAGE_LINKS: ReadonlyMap<string, "openBaseline" | "openPluginNotice" | "openLogin" | "openReview" | "openThread"> = new Map([
   ["canvas_baseline", "openBaseline"],
   ["plugin_notice", "openPluginNotice"],
   ["browser_needs_login", "openLogin"],
   ["srs_review", "openReview"],
   ["srs_reviewed", "openReview"],
+  ["srs_comment", "openThread"],
 ]);
 
 /**

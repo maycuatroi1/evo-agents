@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import type { Route } from "next";
 import { ArrowUpRight, FileText, Pencil } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -19,13 +20,16 @@ import { ReaderNote } from "./banner";
 import { DocumentHead } from "./document-head";
 import { useSrsViewer } from "./hooks";
 import { ItemBody, type ItemLinks } from "./item-body";
+import { keysUnder } from "./case-review-model";
 import { ItemEditor } from "./item-editor";
 import { documentHref, itemHref } from "./links";
 import { canWrite, CODED_KINDS, findItem, firstItem, shownNumber, versionOf } from "./model";
+import { usePassageComments } from "./passage-comments";
 import { DraftBanner } from "./submit-banner";
 import { Toc, TocDisclosure } from "./toc";
 import { ChecksCard, CommentsCard, VersionCard } from "./version-rail";
 import { VersionMenu } from "./version-menu";
+import { UseCaseStatus } from "./use-case-status";
 
 type Asked = { version: number | null; item: string | null; edit: boolean };
 
@@ -43,9 +47,95 @@ function ItemHead({ item, change, actions }: { item: SrsItem; change: SrsDiffIte
   );
 }
 
-function DocumentBody({ project, latest, asked }: { project: string; latest: SrsDocument; asked: Asked }) {
+/**
+ * The three columns of the contents: the headings, the open item and the side column. A writer selects a passage of the
+ * item to comment on, and the threads of the item and the items under it lead the side column, above the version's
+ * facts, checks and the document's open threads. A use case's head says its revision and where its review stands, with
+ * its review and, for a writer, Send.
+ */
+function ReadGrid({
+  project,
+  latest,
+  shown,
+  doc,
+  item,
+  asked,
+  changes,
+  head,
+  links,
+  writer,
+  at,
+}: {
+  project: string;
+  latest: SrsDocument;
+  shown: number;
+  doc: SrsDocument;
+  item: SrsItem | null;
+  asked: Asked;
+  changes: Map<string, SrsDiffItem["change"]>;
+  head: ReactNode;
+  links: ItemLinks;
+  writer: boolean;
+  at: (key: string, more?: { edit?: boolean; v?: number | null }) => Route;
+}) {
   const t = useTranslations("srs.read");
   const router = useRouter();
+  const slug = latest.slug;
+  const items = useMemo(() => doc.shown?.items ?? [], [doc.shown]);
+  const keys = useMemo(() => (item ? keysUnder(items, item.key) : new Set<string>()), [items, item]);
+  const { attach, button, panel } = usePassageComments({ project, slug, version: shown, itemKey: item?.key ?? "", keys, writer });
+  const version = versionOf(latest, shown)!;
+  const newest = versionOf(latest, latest.latest_version);
+  const useCase = item ? (doc.shown?.use_cases.find((one) => one.key === item.key) ?? null) : null;
+  const editing = asked.edit && writer && item !== null;
+  return (
+    <div className="grid min-w-0 gap-6 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)_18rem]">
+      <div className="hidden lg:block">
+        <div className="sticky top-16 max-h-[calc(100dvh-5rem)] overflow-y-auto pr-1">
+          <Toc items={items} selected={item?.key ?? null} changes={changes} hrefOf={(key) => at(key)} />
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-col gap-4">
+        <div className="lg:hidden">
+          <TocDisclosure items={items} selected={item?.key ?? null} changes={changes} hrefOf={(key) => at(key)} />
+        </div>
+        {editing && item ? (
+          <ItemEditor
+            key={item.key}
+            project={project}
+            latest={latest}
+            itemKey={item.key}
+            cancelHref={at(item.key, { v: asked.version })}
+            onSaved={(number) => router.push(documentHref(project, slug, { v: number, s: item.key }), { scroll: false })}
+          />
+        ) : null}
+        {item ? (
+          <article className="flex min-w-0 flex-col gap-4 rounded-md border bg-card p-4 md:p-6" aria-labelledby="srs-item-title" data-testid="srs-item" data-item-key={item.key}>
+            {head}
+            {item.kind === "use_case" ? (
+              <UseCaseStatus project={project} slug={slug} item={item} useCase={useCase} shown={version} latest={newest} writer={writer} />
+            ) : null}
+            <div ref={attach} className="relative" data-testid="srs-passage-text">
+              <ItemBody items={items} item={item} links={links} />
+              {button}
+            </div>
+          </article>
+        ) : (
+          <EmptyState icon={FileText} title={t("emptyTitle")} description={t("emptyText")} />
+        )}
+      </div>
+      <div className="flex min-w-0 flex-col gap-4 lg:col-span-2 xl:col-span-1">
+        {item ? panel : null}
+        <VersionCard project={project} doc={latest} version={version} />
+        <ChecksCard problems={doc.shown?.problems ?? []} hrefOf={(key) => at(key)} />
+        <CommentsCard project={project} slug={slug} />
+      </div>
+    </div>
+  );
+}
+
+function DocumentBody({ project, latest, asked }: { project: string; latest: SrsDocument; asked: Asked }) {
+  const t = useTranslations("srs.read");
   const viewer = useSrsViewer(project);
   const writer = canWrite(viewer);
   const slug = latest.slug;
@@ -69,7 +159,6 @@ function DocumentBody({ project, latest, asked }: { project: string; latest: Srs
     <QueryView state={state} loading={<PageSkeleton />}>
       {(doc) => {
         const items = doc.shown?.items ?? [];
-        const version = versionOf(latest, shown)!;
         const item = (asked.item ? findItem(items, asked.item) : null) ?? firstItem(items);
         const links: ItemLinks = { item: (ref) => itemHref(project, slug, ref, asked.version === null ? null : shown), section: (key) => at(key) };
         const editing = asked.edit && writer && item !== null;
@@ -104,41 +193,19 @@ function DocumentBody({ project, latest, asked }: { project: string; latest: Srs
                 {shown === approved ? t("showingApproved") : approved ? t("showingOther", { version: approved }) : t("noneApproved")}
               </p>
             </div>
-            <div className="grid min-w-0 gap-6 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[15rem_minmax(0,1fr)_18rem]">
-              <div className="hidden lg:block">
-                <div className="sticky top-16 max-h-[calc(100dvh-5rem)] overflow-y-auto pr-1">
-                  <Toc items={items} selected={item?.key ?? null} changes={changes} hrefOf={(key) => at(key)} />
-                </div>
-              </div>
-              <div className="flex min-w-0 flex-col gap-4">
-                <div className="lg:hidden">
-                  <TocDisclosure items={items} selected={item?.key ?? null} changes={changes} hrefOf={(key) => at(key)} />
-                </div>
-                {editing && item ? (
-                  <ItemEditor
-                    key={item.key}
-                    project={project}
-                    latest={latest}
-                    itemKey={item.key}
-                    cancelHref={at(item.key, { v: asked.version })}
-                    onSaved={(number) => router.push(documentHref(project, slug, { v: number, s: item.key }), { scroll: false })}
-                  />
-                ) : null}
-                {item ? (
-                  <article className="flex min-w-0 flex-col gap-4 rounded-md border bg-card p-4 md:p-6" aria-labelledby="srs-item-title" data-testid="srs-item" data-item-key={item.key}>
-                    <ItemHead item={item} change={changes.get(item.key)} actions={actions} />
-                    <ItemBody items={items} item={item} links={links} />
-                  </article>
-                ) : (
-                  <EmptyState icon={FileText} title={t("emptyTitle")} description={t("emptyText")} />
-                )}
-              </div>
-              <div className="flex min-w-0 flex-col gap-4 lg:col-span-2 xl:col-span-1">
-                <VersionCard project={project} doc={latest} version={version} />
-                <ChecksCard problems={doc.shown?.problems ?? []} hrefOf={(key) => at(key)} />
-                <CommentsCard project={project} slug={slug} />
-              </div>
-            </div>
+            <ReadGrid
+              project={project}
+              latest={latest}
+              shown={shown}
+              doc={doc}
+              item={item}
+              asked={asked}
+              changes={changes}
+              head={item ? <ItemHead item={item} change={changes.get(item.key)} actions={actions} /> : null}
+              links={links}
+              writer={writer}
+              at={at}
+            />
           </div>
         );
       }}

@@ -180,7 +180,13 @@ READ_SCHEMA = {
         "item": {
             **_REF,
             "description": "an item's code (its kind word may be left out: ABC-1 for UC ABC-1), an alias or its key: "
-            "that item and the items under it",
+            "that item and the items under it, with its threads of comments",
+        },
+        "thread": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "a thread of comments by the id of any comment of it: the passage it is on, whether the "
+            "version still holds it, and every comment",
         },
     },
 }

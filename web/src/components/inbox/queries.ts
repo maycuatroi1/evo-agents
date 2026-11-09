@@ -62,6 +62,7 @@ export const NOTICE_KINDS = [
   "system_daily_cap",
   "srs_review",
   "srs_reviewed",
+  "srs_comment",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [

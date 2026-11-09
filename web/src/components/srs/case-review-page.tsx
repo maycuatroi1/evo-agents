@@ -21,6 +21,8 @@ import { CaseDecisionCard } from "./case-decision-card";
 import { CaseFindingsCard } from "./case-findings-card";
 import { approveGate, caseAccess, caseFindings, type CaseView, keysUnder, shownCase } from "./case-review-model";
 import { reviewHolds } from "./findings-model";
+import { usePassageComments } from "./passage-comments";
+import { UseCaseStatus } from "./use-case-status";
 import { useSrsViewer } from "./hooks";
 import { documentHref, itemHref, reviewsHref } from "./links";
 import { canWrite, caseReviewBlock, findItem, selfApprovalOf, versionOf } from "./model";
@@ -77,6 +79,9 @@ function CaseBody({ view, caseKey }: { view: CaseView; caseKey: string }) {
 
   const shown = shownCase(view)!;
   const keys = new Set([...keysUnder(view.items, shown.item.key), ...keysUnder(view.baseItems, shown.item.key)]);
+  const { attach, button, panel } = usePassageComments({ project, slug, version: version.number, itemKey: shown.item.key, keys, writer: canWrite(viewer) });
+  const newest = versionOf(latest, latest.latest_version);
+  const asItem = view.items.find((one) => one.key === shown.item.key) ?? null;
   const groups = findings.data ? caseFindings(findings.data, keys) : null;
   // A use case sent to review on its own is reviewed in a version that is not: its gate is its own findings.
   const open = version.state === "in_review" || (useCase?.submitted ?? false);
@@ -104,13 +109,20 @@ function CaseBody({ view, caseKey }: { view: CaseView; caseKey: string }) {
         {t("back")}
       </Link>
       <PageHeader title={shown.item.title} sub={sub} testId="srs-case-head" />
+      {asItem ? (
+        <UseCaseStatus project={project} slug={slug} item={asItem} useCase={useCase} shown={version} latest={newest} writer={canWrite(viewer)} onReview />
+      ) : null}
       <StepStrip />
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="flex min-w-0 flex-col gap-6">
-          <CaseContentCard view={view} />
+          <div ref={attach} className="relative" data-testid="srs-passage-text">
+            <CaseContentCard view={view} />
+            {button}
+          </div>
           <CaseChangesCard view={view} />
         </div>
         <div className="flex min-w-0 flex-col gap-6">
+          {panel}
           <CaseFindingsCard
             project={project}
             slug={slug}

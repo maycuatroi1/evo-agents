@@ -398,3 +398,46 @@ def test_srs_submit_item_sends_one_use_case_and_queue_prints_it_with_its_revisio
     shown = ok(srs(hub, monkeypatch, capsys, "bao", "show", "demo-shop", "--item", "UC ORD-1"))
     assert "UC ORD-1 r1 (use case" in shown.out and "approved baseline: r1" in shown.out
     assert "r1 in v1 by alice" in shown.out and "sent to review by alice" in shown.out
+
+
+@needs_pg
+def test_srs_comments_list_add_reply_resolve_and_reopen_from_the_command_line(hub, monkeypatch, capsys):
+    ok(srs(hub, monkeypatch, capsys, "alice", "import", str(SAMPLE), "--slug", "demo-shop"))
+    added = as_json(
+        srs(
+            hub,
+            monkeypatch,
+            capsys,
+            "bao",
+            "comments",
+            "add",
+            "demo-shop",
+            "Why 50?",
+            "--item",
+            "BR ORD1-1",
+            "--quote",
+            "holds at most 50 lines",
+            "--json",
+        )
+    )
+    assert_json_keys("hub srs comments add", added)
+    assert (added["quote"], added["anchor"], added["version"]) == ("holds at most 50 lines", "found", 1)
+    replied = ok(
+        srs(hub, monkeypatch, capsys, "alice", "comments", "reply", "demo-shop", str(added["id"]), "Warehouse")
+    )
+    assert f"in thread {added['id']} of demo-shop" in replied.out
+    printed = ok(srs(hub, monkeypatch, capsys, "bao", "comments", "list", "demo-shop", "--item", "UC ORD-1"))
+    assert (
+        f"thread {added['id']} on BR ORD1-1 (open)" in printed.out
+        and 'passage: "holds at most 50 lines"' in printed.out
+    )
+    assert "alice" in printed.out and "Warehouse" in printed.out
+    closed = ok(srs(hub, monkeypatch, capsys, "alice", "comments", "resolve", "demo-shop", str(added["id"])))
+    assert f"Thread {added['id']} of demo-shop is resolved." in closed.out
+    listed = as_json(
+        srs(hub, monkeypatch, capsys, "bao", "comments", "list", "demo-shop", "--status", "open", "--json")
+    )
+    assert_json_keys("hub srs comments list", listed)
+    assert listed == []
+    opened = ok(srs(hub, monkeypatch, capsys, "bao", "comments", "reopen", "demo-shop", str(added["id"])))
+    assert f"Thread {added['id']} of demo-shop is open." in opened.out
