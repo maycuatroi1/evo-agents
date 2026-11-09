@@ -89,7 +89,9 @@ PROJECT_POINTS = (
 )
 # the keys of an agent type that name contributions of the plugin's own, and the point of each
 AGENT_TYPE_POINTS = {"packs": "agent_packs", "jobs": "jobs", "events": "events", "pages": "pages"}
-CHANNEL_KIND = r"^[a-z][a-z0-9_-]{0,31}$"  # a kind of members' channel (notification_channels.kind), never "web"
+CHANNEL_KIND = r"^[a-z][a-z0-9_-]{0,31}$"  # a kind of members' channel (notification_channels.kind)
+# never a kind of channel: the web, and the via of a message an isolated plugin posted (evo_agents.hub.chats.PLUGIN_VIA)
+NOT_CHANNEL_KINDS = ("web", "plugin")
 MAX_LOOP_RULE_LISTS = {"on": 16, "emits": 16, "kinds": 8}  # the lists of a Loop rule
 MAX_COMMAND_ITEMS = 32  # the program and arguments of an ACP runtime's command
 MAX_RUNTIME_MODELS = 200  # the models an ACP runtime lists, as a worker's heartbeat bounds them
@@ -310,8 +312,13 @@ def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, c
         return [f"{where}.prefix: only a core plugin's route names the path its router is included under"]
     if point == "tables" and not item["name"].startswith(table_prefix(plugin_id)):
         return [f"{where}: table {item['name']!r} must start with {table_prefix(plugin_id)}, the plugin's prefix"]
-    if core and point == "channels" and (not re.fullmatch(CHANNEL_KIND, item["name"]) or item["name"] == "web"):
-        return [f"{where}: a core plugin's channel is a kind of members' channel: {CHANNEL_KIND}, not web"]
+    if (
+        core
+        and point == "channels"
+        and (not re.fullmatch(CHANNEL_KIND, item["name"]) or item["name"] in NOT_CHANNEL_KINDS)
+    ):
+        refused = " or ".join(NOT_CHANNEL_KINDS)
+        return [f"{where}: a core plugin's channel is a kind of members' channel: {CHANNEL_KIND}, not {refused}"]
     if point == "loop_rules":
         return _loop_rule_problems(where, item)
     if point == "pages":

@@ -363,10 +363,14 @@ async def deliver_message(
     *,
     via: str | None = None,
     via_bridge: int | None = None,
+    plugin: str | None = None,
 ) -> int:
     """Store the message with its mentions, the work they hand the agents, the hub's answer to what they refuse and
     the notices; its id. ``via`` names the kind of channel it came in by and ``via_bridge`` the bridge, which does
-    not get it back (``chat_bridge_events``)."""
+    not get it back (``chat_bridge_events``). ``plugin`` names the isolated plugin that posts it in ``user``'s name
+    (``plugin_chats_api``): the message comes ``via`` plugin, and its audit row ends with plugin:<id>."""
+    if plugin is not None:
+        via = chats.PLUGIN_VIA
     root = None
     if body.reply_to is not None:
         answered = await visible_message(conn, chat, body.reply_to)
@@ -414,7 +418,7 @@ async def deliver_message(
     for user_id in dict.fromkeys(people):
         if user_id != user.user_id:
             await notice_mention(conn, chat, user_id, message_id, body.body)
-    target = f"chat:{chat.chat_id} message:{message_id}"
+    target = f"chat:{chat.chat_id} message:{message_id}" + ("" if plugin is None else f" plugin:{plugin}")
     await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.CHAT_MESSAGE, target=target)
     return message_id
 

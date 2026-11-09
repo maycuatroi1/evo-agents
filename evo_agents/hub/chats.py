@@ -59,6 +59,9 @@ ATTENDED = (DIRECT, SETTLE)  # the kinds that name an agent (chats.direct_profil
 # How a mention reached its member; thread: no @, a chat of one person; direct: no @ of the agent, a direct chat;
 # settle: no @ of the agent, a settle chat; answer: sent from an interactive answer of the agent
 VIA = ("login", "handle", "project", "thread", DIRECT, SETTLE, ANSWER)
+# The ``via`` of a message an isolated plugin posted through the API for plugins; its audit row names the plugin. No
+# channel of a core plugin may take it as its kind (``evo_agents.plugins.manifest``)
+PLUGIN_VIA = "plugin"
 IMAGE_CHANGED = "image_changed"  # a member set the chat's image or took it off
 MESSAGE_CHANGED = "message_changed"  # a message reads otherwise now: outputs of its run went under it (0089)
 EVENT_KINDS = (

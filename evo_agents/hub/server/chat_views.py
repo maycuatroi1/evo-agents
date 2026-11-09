@@ -152,7 +152,9 @@ class GroupMessage(BaseModel):
         description="the files its author attached to it, in the order uploaded, each with the chat's URL of its bytes",
     )
     via: str | None = Field(
-        None, description="the kind of channel it came in by, from a group bridged to the chat; null when sent here"
+        None,
+        description="the kind of channel it came in by, from a group bridged to the chat, or plugin for a message an "
+        "isolated plugin posted in its author's name; null when sent here",
     )
     bridged_to: list[BridgedTo] = Field(
         default_factory=list, description="the bridges it went out on, to their groups, oldest first"

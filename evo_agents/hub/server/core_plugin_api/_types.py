@@ -215,7 +215,7 @@ class BridgeMessage:
     author: str | None  # a person's login, an agent's handle; None for the hub
     body: str
     run_id: int | None
-    via: str | None  # the kind of channel it came in by, None when sent on the hub
+    via: str | None  # the kind of channel it came in by, plugin from an isolated plugin, None when sent on the hub
     reply_to: str | None  # the group's message its thread started from, when the bridge carried it
     link: str  # the message's page on the hub, a path: ``web_url`` makes it absolute, for what the group does not carry
     created_at: datetime
