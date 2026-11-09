@@ -275,6 +275,25 @@ def test_a_hub_message_goes_out_redacted_threaded_and_once_while_the_channel_sin
 
 
 @on_pg
+def test_what_a_bridge_carries_queues_its_delivery_at_once_not_at_the_next_minute(bridged):
+    from sqlalchemy import Text, cast, column, table
+
+    from evo_agents.hub import jobs
+
+    queued = table("procrastinate_jobs", column("task_name"), column("status"))
+    waiting = select(queued.c.task_name).where(
+        queued.c.task_name == jobs.DELIVER_PLUGIN_EVENTS, cast(queued.c.status, Text) == "todo"
+    )
+    client, db, chat, headers = bridged.client, bridged.db, bridged.chat, bridged.headers
+    assert sql(db, waiting) == []
+    sent(client, headers["owner"], chat["id"], "one")
+    sent(client, headers["owner"], chat["id"], "two")
+    assert len(sql(db, waiting)) == 1  # its queueing lock: one job waits, and it takes both
+    core.deliver_events(client)
+    assert [item["text"] for item in out(bridged.fake)][-2:] == [f"{OWNER}: one", f"{OWNER}: two"]
+
+
+@on_pg
 def test_a_bridge_carries_reactions_and_run_progress_of_the_messages_it_carried(bridged):
     client, db, fake, chat, headers = bridged.client, bridged.db, bridged.fake, bridged.chat, bridged.headers
     assert core.said(client, text("go", group_id=ROOM, message_id="n-1")) == "bridged_in"

@@ -99,6 +99,8 @@ CUT_MARK = (  # and how to find them again: in the knowledge graph, then read wh
     "them, and chat_message or chat_thread (`evo-agents worker chat read MESSAGE [--thread]`) reads one or its thread]"
 )
 INBOX_TEXT = "{author} wrote in the thread (message #{id}):\n{body}"
+INBOX_ANSWERS = "\n\nIt answers message #{id} of {author}:\n{body}"  # after INBOX_TEXT, the message a reply answers
+QUOTE_BYTES = 2 * 1024  # of that message, as the inbox quotes it
 INBOX_HEAD = re.compile(r"[^\n]* wrote in the thread \(message #([0-9]+)\):\n")  # the first line of INBOX_TEXT
 # The first run's id of a chat branch (BRANCH) as SQL's substring(branch, pattern) takes it, within a bigint.
 SESSION_PATTERN = r"^chat/([1-9][0-9]{0,17})$"
@@ -295,9 +297,14 @@ def reading_rule(login: str) -> str:
     )
 
 
-def inbox_text(author: str, message_id: int, body: str) -> str:
-    """A message of the thread as the agent's inbox takes it, within MAX_MESSAGE_BYTES."""
-    return clip(INBOX_TEXT.format(author=author, id=message_id, body=body.strip()), MAX_MESSAGE_BYTES)
+def inbox_text(author: str, message_id: int, body: str, answers: tuple[int, str, str] | None = None) -> str:
+    """A message of the thread as the agent's inbox takes it, within MAX_MESSAGE_BYTES; with ``answers`` (id, author,
+    text), the message of the thread it answers, quoted after it within QUOTE_BYTES."""
+    text = INBOX_TEXT.format(author=author, id=message_id, body=body.strip())
+    if answers is not None:
+        quoted = "\n".join(f"> {line}" for line in clip(answers[2].strip(), QUOTE_BYTES).splitlines())
+        text += INBOX_ANSWERS.format(id=answers[0], author=answers[1], body=quoted)
+    return clip(text, MAX_MESSAGE_BYTES)
 
 
 def _when(value) -> str:

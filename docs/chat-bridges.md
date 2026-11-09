@@ -38,7 +38,9 @@ The plugin finds the member who wrote the group's message (a member links their 
 notifications) and calls `bridge_send(conn, member, bridge_id, body, external_id=, reply_to=, attachment_ids=)`. The
 message goes through the hub's chat path as the member wrote it there: the same checks of who may write, mentions and
 chat runs. It carries `via`, the bridge's kind. A group's message id is taken once, so a webhook delivered twice adds
-nothing. `reply_to`, a group's message the bridge carried, puts it in that message's thread. A file goes first through
+nothing. `reply_to`, a group's message the bridge carried, puts it in that message's thread; a reply
+to a message of an agent that mentions no one is work for that agent (`via` reply, `docs/hub.md`, Group chats), so a
+member answers the bot in the group without tagging it. A file goes first through
 `bridge_attach`, which stores it as the member's attachment. A sender who linked no account gets nothing into the chat.
 
 ## Out: the hub to the group

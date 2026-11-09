@@ -72,12 +72,27 @@ AGENT_REPLY_REFUSAL = f"an agent's @ in a message hands no work: it uses `{rules
 
 
 @dataclass(frozen=True)
+class Answered:
+    """The agent's message a person's message answers (``reply_to``): its id, the agent's profile and handle as the
+    thread names it, its text and label, and the run that wrote it. The inbox of a run quotes it unless that run's
+    session wrote it."""
+
+    message_id: int
+    profile_id: int
+    author: str
+    body: str
+    label: list  # as chat_messages.label holds it
+    run_id: int | None
+
+
+@dataclass(frozen=True)
 class Hand:
     """What one mention asks: work of ``profile`` for ``dispatcher_id`` (``dispatcher``), the person at the origin of
     the chain, at ``hop``, in the thread of ``root_id`` of ``chat``, woken by message ``message_id`` that ``author``
     wrote, with the credential kind ``via`` (runs.dispatched_via). ``route`` is set by ``hand_work`` for a profile
     whose agent type sends its chat runs under the name of its run_as. ``on_worker`` is the worker a new session goes to
-    when that worker can take it: the machine the work is about (a program to install, ``triage``)."""
+    when that worker can take it: the machine the work is about (a program to install, ``triage``). ``answers`` is the
+    agent's message the message answers, when it answers one."""
 
     chat: ChatAccess
     message_id: int
@@ -91,6 +106,7 @@ class Hand:
     body: str
     route: Route | None = None
     on_worker: int | None = None
+    answers: Answered | None = None
 
     @property
     def owner_id(self) -> int:
@@ -239,10 +255,30 @@ async def _session(conn: AsyncConnection, hand: Hand):
     return None
 
 
+async def _quote(conn: AsyncConnection, run_id: int, hand: Hand) -> tuple[int, str, str] | None:
+    """(id, author, text) of the agent's message ``hand``'s message answers, for the inbox of run ``run_id``: None when
+    it answers none, when a run of the same session wrote it (the agent has it already), or when a person the run is
+    cleared for (``_clearers``) does not clear its label."""
+    found = hand.answers
+    if found is None:
+        return None
+    if found.run_id is not None:
+        r = tables.runs
+        query = select(r.c.id, r.c.session_id).where(r.c.id.in_({run_id, found.run_id}))
+        sessions = {row.id: row.session_id for row in await conn.execute(query)}
+        if found.run_id == run_id or (sessions.get(run_id) and sessions.get(run_id) == sessions.get(found.run_id)):
+            return None
+    for user_id in dict.fromkeys([hand.dispatcher_id, hand.owner_id]):
+        if not (await label_reader(conn, user_id, [found.label])).sees(found.label):
+            return None
+    return found.message_id, found.author, found.body
+
+
 async def _to_inbox(conn: AsyncConnection, run_id: int, hand: Hand) -> None:
-    """Leave the message of ``hand`` in the inbox of run ``run_id``, which the worker hands to the agent."""
+    """Leave the message of ``hand`` in the inbox of run ``run_id``, which the worker hands to the agent, with the
+    agent's message it answers when another session wrote that (``_quote``)."""
     i = tables.run_inbox
-    text = rules.inbox_text(hand.author, hand.message_id, hand.body)
+    text = rules.inbox_text(hand.author, hand.message_id, hand.body, await _quote(conn, run_id, hand))
     left = insert(i).values(run_id=run_id, sent_by=hand.dispatcher_id, body=text).returning(i.c.id)
     inbox_id = (await conn.execute(left)).scalar_one()
     files = (await attachment_store.of_messages(conn, [hand.message_id])).get(hand.message_id, [])
@@ -317,7 +353,7 @@ async def _missed(conn: AsyncConnection, previous_id: int, hand: Hand) -> list[H
         .limit(MISSED_MESSAGES)
     )
     rows = (await conn.execute(query)).all()
-    return [replace(hand, message_id=row.id, body=row.body) for row in reversed(rows)]
+    return [replace(hand, message_id=row.id, body=row.body, answers=None) for row in reversed(rows)]
 
 
 async def _pooled(conn: AsyncConnection, previous_id: int, values: dict) -> dict:
