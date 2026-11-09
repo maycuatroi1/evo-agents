@@ -43051,6 +43051,83 @@
               "description": "Unprocessable Entity"
             }
           }
+        },
+        "delete": {
+          "tags": [
+            "worker pools"
+          ],
+          "summary": "Delete Pool",
+          "description": "Delete the caller's pool once it has no live node, with its join tokens; its revoked nodes stay revoked, in no\npool. The pool of an agent goes with its agent alone.",
+          "operationId": "delete_pool_v1_worker_pools__name__delete",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,105}$",
+                "description": "the pool's name",
+                "title": "Name"
+              },
+              "description": "the pool's name"
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
         }
       },
       "/v1/worker-pools/{name}/tokens": {

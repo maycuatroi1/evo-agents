@@ -196,6 +196,8 @@ def test_a_node_joined_to_an_agents_pool_is_the_token_creators_worker_though_the
     assert (node["owner"], node["pool"]) == (OTHER, "agent-helper")
     w = tables.workers
     assert sql(hub_db, select(w.c.pool_id).where(w.c.id == node["id"])) == [(pool_id(hub_db, "helper"),)]
+    deleted = client.delete(f"{POOLS}/agent-helper", headers=hub["other"])
+    assert deleted.status_code == 409, "the pool of an agent goes with its agent alone"
 
 
 # 422 for a machine nobody picks

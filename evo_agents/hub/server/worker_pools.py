@@ -7,7 +7,8 @@ the days a node stays offline before the hub revokes it (1 to 90, 7 by default).
 caller's pools, GET /v1/worker-pools/{name} shows one with its nodes, and PATCH /v1/worker-pools/{name} changes its
 settings: the nodes take the new slots and projects in their rows (``worker_projects.serve`` for each, with its
 refusals) and the new labels through ``node_labels``, so each daemon learns them from its next heartbeat answer as it
-learns a worker's settings. A pool belongs to the member who made it, as a worker does; only they see or change it, and
+learns a worker's settings. DELETE /v1/worker-pools/{name} deletes a pool with no live node, and its join tokens; its
+revoked nodes stay revoked, in no pool. A pool belongs to the member who made it, as a worker does; only they see or change it, and
 another member's pool is 404, as a name the hub never had. Each of its nodes is a worker of that member, shared or not
 by the rules of shared workers.
 
@@ -35,7 +36,7 @@ from datetime import timedelta
 
 import psycopg
 from fastapi import APIRouter, HTTPException, Path, Request, Response
-from sqlalchemy import case, func, insert, select, update
+from sqlalchemy import case, delete, func, insert, select, update
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -316,6 +317,31 @@ async def update_pool(request: Request, body: PoolUpdate, user: CurrentUser, nam
             await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
             log.info("worker pool changed", extra={"pool_id": row.id, "fields": sorted(changed)})
         return await _shown(conn, user, await _pool_row(conn, user, name))
+
+
+@router.delete("/{name}", status_code=204, responses=REFUSALS)
+async def delete_pool(request: Request, user: CurrentUser, name: str = PoolName) -> Response:
+    """Delete the caller's pool once it has no live node, with its join tokens; its revoked nodes stay revoked, in no
+    pool. The pool of an agent goes with its agent alone."""
+    p, w = tables.worker_pools, tables.workers
+    async with request.app.state.engine.begin() as conn:
+        row = await _pool_row(conn, user, name, lock=True)
+        if row.agent_id is not None:
+            raise HTTPException(409, f"pool {row.name} is the pool of an agent: it goes when its agent is deleted")
+        live = await _live_nodes(conn, row.id)
+        if live:
+            nodes = ", ".join(f"{node} (#{worker_id})" for worker_id, node in live)
+            raise HTTPException(
+                409, f"pool {row.name} still has live nodes: {nodes}; revoke them first (`evo-agents worker revoke`)"
+            )
+        await conn.execute(update(w).values(pool_id=None).where(w.c.pool_id == row.id))
+        await conn.execute(delete(p).where(p.c.id == row.id))
+        action = audit.WORKER_POOL_DELETE
+        await audit.record(
+            conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=_target(row.id, row.name)
+        )
+    log.info("worker pool deleted", extra={"pool_id": row.id})
+    return Response(status_code=204)
 
 
 # Join tokens

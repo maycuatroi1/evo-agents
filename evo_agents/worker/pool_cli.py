@@ -121,6 +121,11 @@ def cmd_set(args) -> int:
     return _printed(answer, args, text)
 
 
+def cmd_delete(args) -> int:
+    _hub().call("DELETE", _path(args.name))
+    return _printed({"deleted": args.name}, args, f"Deleted pool {args.name} and its join tokens.")
+
+
 def _token_text(token: dict) -> str:
     return (
         f"{token['id']}  {token['status']}  {token['uses']}/{token['max_uses']} used  expires {token['expires_at']}"
@@ -291,6 +296,10 @@ def register_pool(wsub) -> None:
     change.add_argument("name")
     _setting_options(change, create=False)
     change.set_defaults(func=worker_command(cmd_set))
+    gone = psub.add_parser("delete", help="delete a pool with no live node, and its join tokens")
+    gone.add_argument("name")
+    gone.add_argument("--json", action="store_true", help="print the hub's answer as JSON")
+    gone.set_defaults(func=worker_command(cmd_delete))
 
     token = psub.add_parser("token", help="the join tokens of a pool")
     tsub = token.add_subparsers(dest="token_command", required=True)

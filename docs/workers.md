@@ -222,6 +222,7 @@ evo-agents worker pool token create vps --hours 48 --max-uses 4  # evj_..., prin
 evo-agents worker pool token list vps                         # the tokens, never their values
 evo-agents worker pool token revoke vps 12                    # the nodes it joined stay
 evo-agents worker pool user-data vps --ttl 24 --max-nodes 1 > user-data.sh
+evo-agents worker pool delete vps                             # once no node is live, its tokens with it
 ```
 
 **A pool.** `POST /v1/worker-pools` (a web session with its CSRF header, or the machine token of `hub login`) names
@@ -235,8 +236,11 @@ changes its settings; a list given replaces the whole list, and `pool set --no-l
 (projects with the refusals of [The projects a worker serves](#the-projects-a-worker-serves)), and each daemon learns
 it from its next heartbeat answer. A pool belongs to the member who made it, as a worker does: only they see or
 change it, and another member's pool is 404. Each node is a worker of that member, shared or not by the rules of
-[Shared workers](#shared-workers). Each write is audited (`worker_pool.create`, `worker_pool.update`, `worker_pool.token` and
-`worker_pool.token_revoke`), naming the pool and the token's id, never the token.
+[Shared workers](#shared-workers). `DELETE /v1/worker-pools/{name}` deletes a pool of the caller that has no live node
+(409 naming the live ones), with its join tokens; its revoked nodes stay revoked, in no pool. The pool of an agent is
+not deleted this way: it goes with its agent. Each write is audited (`worker_pool.create`, `worker_pool.update`,
+`worker_pool.token`, `worker_pool.token_revoke` and `worker_pool.delete`), naming the pool and the token's id, never
+the token.
 
 **The pool of an agent.** Each agent has a pool named `agent-<handle>` (`GET /v1/worker-pools` lists those of the
 agents the caller administers; every one for a hub admin). The admin of the agent's project or of the hub, not its

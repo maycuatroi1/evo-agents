@@ -306,6 +306,22 @@ def test_a_join_refused_for_a_lost_writer_role_spends_no_use(client, hub, hub_db
     assert sql(hub_db, select(jt.c.uses)) == [(0,)]
 
 
+def test_a_pool_with_no_live_node_is_deleted_with_its_tokens_and_its_revoked_nodes_stay_in_no_pool(client, hub, hub_db):
+    pool = created(client, hub["owner"])
+    node = pool_joined(client, token_of(client, hub["owner"])["token"])["worker"]
+    token_of(client, hub["owner"])
+    refused = client.delete(f"{POOLS}/ci", headers=hub["owner"])
+    assert refused.status_code == 409 and f"#{node['id']}" in refused.text, refused.text
+    assert client.delete(f"{POOLS}/ci", headers=hub["other"]).status_code == 404  # another member's pool
+    assert client.post(f"/v1/workers/{node['id']}/revoke", headers=hub["owner"]).status_code == 200
+    assert client.delete(f"{POOLS}/ci", headers=hub["owner"]).status_code == 204
+    assert client.get(f"{POOLS}/ci", headers=hub["owner"]).status_code == 404
+    assert count(hub_db, tables.worker_join_tokens) == [(0,)]
+    w = tables.workers
+    assert sql(hub_db, select(w.c.pool_id, w.c.revoked_at.is_not(None)).where(w.c.id == node["id"])) == [(None, True)]
+    assert audit_rows(hub_db, audit.WORKER_POOL_DELETE) == [(f"pool:{pool['id']} name=ci", OWNER)]
+
+
 def test_joining_needs_a_code_or_a_token_and_a_pairing_code_joins_as_before(client, hub, hub_db):
     both = client.post("/v1/worker/join", json={"code": "ABCD-EFGH", "token": "evj_x", **HOST}, headers=PROTOCOL)
     neither = client.post("/v1/worker/join", json=HOST, headers=PROTOCOL)
