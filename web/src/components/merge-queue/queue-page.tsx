@@ -95,7 +95,7 @@ function QueueBody({ project, view, admin, reader }: { project: string; view: Me
 
   if (view.requests.length === 0 && view.breakers.length === 0 && view.samples.length === 0) {
     return (
-      <EmptyState icon={GitMerge} title={t("empty.title")} description={t("empty.description")}>
+      <EmptyState icon={GitMerge} title={t("empty.title")}>
         <Button asChild variant="secondary">
           <Link href={mergeQueueHref(project, "policy")} data-testid="merge-queue-empty-policy">
             <SlidersHorizontal aria-hidden="true" />

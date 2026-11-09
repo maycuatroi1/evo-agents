@@ -140,7 +140,7 @@ function Problems({ project, problems, writer, onNew }: { project: string; probl
   const counts = statusCounts(problems);
   if (problems.length === 0) {
     return (
-      <EmptyState icon={Bandage} title={t("emptyTitle")} description={t("emptyText")} testId="problems-empty">
+      <EmptyState icon={Bandage} title={t("emptyTitle")} testId="problems-empty">
         {writer ? (
           <Button type="button" onClick={onNew} data-testid="problems-new-empty">
             <Plus aria-hidden="true" />

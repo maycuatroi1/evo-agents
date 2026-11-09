@@ -86,7 +86,7 @@ export function MessageList({ chat, me, feed, highlight, loadOlder, onReact, onT
           <div className="flex h-full flex-col items-center justify-center gap-2 px-6 py-10 text-center" data-testid="chat-empty">
             <MessagesSquare className="size-5 text-muted-foreground" aria-hidden="true" />
             <p className="text-sm font-medium text-foreground">{t("emptyTitle")}</p>
-            <p className="max-w-md text-[13px] leading-[18px] text-pretty text-muted-foreground">{direct ? t("directEmptyBody", { name: agent }) : t("emptyBody")}</p>
+            {direct ? <p className="max-w-md text-[13px] leading-[18px] text-pretty text-muted-foreground">{t("directEmptyBody", { name: agent })}</p> : null}
           </div>
         ) : (
           <ol className="flex flex-col" data-testid="chat-messages">

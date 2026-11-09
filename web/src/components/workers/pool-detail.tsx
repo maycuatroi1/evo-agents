@@ -109,7 +109,7 @@ function NodeRow({ node }: { node: PoolNode }) {
 function Nodes({ pool, onAdd }: { pool: Pool; onAdd: () => void }) {
   const t = useTranslations("workers.pools.detail");
   return (
-    <SectionCard title={t("nodes")} count={pool.nodes.length} description={t("nodesDescription")} testId="pool-nodes">
+    <SectionCard title={t("nodes")} count={pool.nodes.length} testId="pool-nodes">
       {pool.nodes.length === 0 ? (
         <div className="flex flex-col items-start gap-3 rounded-md border border-dashed px-4 py-4 text-sm text-muted-foreground">
           <p>{t("noNodes")}</p>
@@ -140,7 +140,7 @@ function Scope({ pool }: { pool: Pool }) {
     [t("reap"), <span key="reap">{t("reapDays", { days: pool.reap_after_days })}</span>],
   ];
   return (
-    <SectionCard title={t("scope")} description={t("scopeDescription")} testId="pool-scope">
+    <SectionCard title={t("scope")} testId="pool-scope">
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-sm">
         {rows.map(([label, value]) => (
           <div key={label} className="contents">

@@ -60,7 +60,7 @@
     "openHub": "Open the hub",
     "start": {
       "title": "Get started",
-      "description": "Run these in a terminal on the machine where you work. Each command has a copy button.",
+      "description": "Run these in a terminal on the machine where you work.",
       "commands": "Commands",
       "install": {
         "title": "Install the evo-agents CLI",
@@ -276,7 +276,6 @@
     "trigger": "Choose a project, current: {name}",
     "triggerEmpty": "Choose a project",
     "placeholder": "No project selected",
-    "hint": "Open a project to see its content",
     "search": "Find a project",
     "searchLabel": "Find a project by name",
     "clear": "Clear the search",
@@ -574,7 +573,7 @@
     },
     "recent": {
       "title": "Recent",
-      "empty": "No run has ended yet. Runs show here once they finish, fail or are cancelled.",
+      "empty": "No run has ended yet.",
       "ranOn": "{duration} on {worker}",
       "ran": "{duration}",
       "cancelled": "Cancelled by {owner}",
@@ -591,7 +590,7 @@
       "heartbeat": "last heartbeat <time></time>",
       "never": "no heartbeat yet",
       "emptyTitle": "No worker of yours yet",
-      "emptyText": "A worker is a machine of yours that runs plan steps. Register one on the Workers page.",
+      "emptyText": "Register a machine on the Workers page.",
       "register": "Register a worker",
       "error": "Couldn't read your workers.",
       "retry": "Try again"
@@ -677,7 +676,6 @@
       "title": "Chat with {name}",
       "label": "Your first message to {name}",
       "placeholder": "Ask {name} anything",
-      "hint": "Your message opens your direct chat with {name}: every message goes to it, and it answers under yours.",
       "send": "Send",
       "sending": "Sending…",
       "blank": "Write a message first.",
@@ -703,7 +701,6 @@
     "adminWithoutGrant": "You are a hub administrator without a role in this project: you can manage it but cannot read its content.",
     "ladder": {
       "title": "Label ladder",
-      "description": "Lowest first. You see content labelled up to your visibility.",
       "visible": "Visible",
       "hidden": "Not visible",
       "default": "Default label",
@@ -711,7 +708,6 @@
     },
     "repos": {
       "title": "Repos",
-      "description": "The repos declared in the project's harness.",
       "empty": "The project declares no repos.",
       "name": "Repo",
       "branch": "Default branch",
@@ -720,7 +716,6 @@
     },
     "sinks": {
       "title": "Sinks",
-      "description": "Where the project's content may go, with the highest level each one may receive.",
       "empty": "The project declares no sinks.",
       "id": "Sink",
       "kind": "Kind",
@@ -735,7 +730,6 @@
     },
     "outputs": {
       "title": "Run outputs",
-      "description": "The files the agents of this project's runs make: those they send, those they leave in .evo-run/outputs/, and the images of tools' results.",
       "toolImages": "Keep images of tools' results",
       "toolImagesHint": "Screenshots and images a tool returns become files of the run, and go with the run's log. Off, the machines send none and the hub refuses them.",
       "adminOnly": "An admin of the project switches this.",
@@ -883,7 +877,6 @@
       "manage": "Manage {login}",
       "manageShort": "Details",
       "emptyTitle": "No users yet",
-      "emptyDescription": "People show up here after their first sign-in, or once you grant access to their GitHub login.",
       "noMatchTitle": "No user matches the filters",
       "columns": {
         "login": "User",
@@ -907,9 +900,7 @@
       "notFoundDescription": "The hub has no such user. The login may be misspelled, or the person has neither signed in nor been granted access.",
       "summary": "On the hub since {created}. Last seen: {lastSeen}.",
       "grantsTitle": "Project access",
-      "grantsDescription": "The role and visibility of this person in each project.",
       "grantsEmptyTitle": "No project access yet",
-      "grantsEmptyDescription": "{login} sees no project on the hub. Grant a role so they can read or write a project's content.",
       "columns": {
         "project": "Project",
         "role": "Role",
@@ -923,16 +914,13 @@
       "revoke": "Revoke",
       "revokeLabel": "Revoke the access of {login} to project {project}",
       "tokensTitle": "Active tokens and sessions",
-      "tokensDescription": "CLI machine tokens and web sessions of this person that still work.",
       "allTokens": "See every token of {login}",
       "activityTitle": "Recent activity",
-      "activityDescription": "The latest actions this person took on the hub.",
       "allActivity": "See all of it in the audit trail",
       "unknown": "unknown"
     },
     "grant": {
       "title": "Grant project access",
-      "description": "Pick the user, the project, the role and the visibility. You confirm on the next step.",
       "login": "GitHub login",
       "loginHint": "You can grant access to someone who has never signed in; it takes effect at their first sign-in.",
       "loginRequired": "Enter a GitHub login.",
@@ -947,7 +935,6 @@
         "admin": "Writer, plus registering the project again from its harness."
       },
       "visibility": "Visibility",
-      "visibilityHint": "The levels of the project's label ladder, lowest first. This person sees content labelled up to the one picked.",
       "visibilityRequired": "Pick a visibility.",
       "existing": "{login} is {role} with {level} visibility on this project. Saving replaces that with the new choice.",
       "unchanged": "{login} already has exactly this role and visibility. Nothing to change.",
@@ -955,7 +942,7 @@
       "cancel": "Cancel",
       "close": "Close",
       "confirmTitle": "Confirm the grant",
-      "confirmDescription": "Check before saving. The action is audited under your name.",
+      "confirmDescription": "The action is audited under your name.",
       "confirmChangeTitle": "Confirm the change",
       "summary": {
         "login": "User",
@@ -1025,7 +1012,6 @@
       "revokeLabel": "Revoke token {id} of {login}",
       "mobileTitle": "{kind} #{id}",
       "emptyTitle": "No live tokens",
-      "emptyDescription": "Tokens show here once someone signs in to the hub from a browser, the CLI or a worker.",
       "noMatchTitle": "No token matches the filters"
     },
     "revokeToken": {
@@ -1049,11 +1035,9 @@
     "invites": {
       "title": "Invite links",
       "caption": "Invite links",
-      "sub": "A link lets someone join a project, or register a project of their own, by signing in with GitHub. Each works once.",
       "count": "{count, plural, one {# link} other {# links}}",
       "new": "New invite link",
       "emptyTitle": "No invite links yet",
-      "emptyDescription": "Make one to bring someone onto a project, or to let them register a project of their own.",
       "columns": {
         "id": "ID",
         "kind": "Kind",
@@ -1085,7 +1069,7 @@
       "revokeLabel": "Revoke invite link {id}",
       "form": {
         "title": "New invite link",
-        "description": "Pick what the link gives. It works once, for whoever opens it first or for one GitHub login.",
+        "description": "The link works once, for whoever opens it first or for one GitHub login.",
         "kind": "The link gives",
         "kindHints": {
           "join": "A role on one project of this hub.",
@@ -1097,7 +1081,6 @@
         "noProjects": "The hub has no project yet. Make a register link instead, or register a project first.",
         "role": "Role",
         "visibility": "Visibility",
-        "visibilityHint": "The highest level of the project's ladder this person sees.",
         "days": "Expires after (days)",
         "daysHint": "From 1 to 30 days.",
         "daysInvalid": "Enter a whole number of days from 1 to 30.",
@@ -1153,7 +1136,6 @@
       "mobileMeta": "{actor}, {target}",
       "noProject": "No project",
       "emptyTitle": "No audit entries yet",
-      "emptyDescription": "Sign-ins, grants, and changes to projects, plans, memories and skills add entries here.",
       "noMatchTitle": "No audit entry matches the filters",
       "actions": {
         "auth_login": "Sign in",
@@ -1182,7 +1164,7 @@
       "version": "Version {version}",
       "unset": "Not set",
       "formTitle": "Name and colours",
-      "formDescription": "The product's name in the sidebar, the page titles and the sign-in page, and the colours of the four tokens a hub may set. A token left empty keeps the colour of the design system.",
+      "formDescription": "A token left empty keeps the colour of the design system.",
       "name": "Product name",
       "nameHint": "Empty: the web's own name, {name}.",
       "nameInvalid": "At most {max} characters, with no line break and no space at either end.",
@@ -1316,7 +1298,7 @@
     "settings": {
       "history": {
         "title": "History",
-        "description": "Every version, the newest first. Rolling back writes an older version again as the next one.",
+        "description": "Rolling back writes an older version again as the next one.",
         "empty": "Never changed: everything is as the web has it without settings.",
         "version": "Version {version}",
         "current": "Current",
@@ -1457,7 +1439,6 @@
       "canvas": "Graph of the plan's steps",
       "inspector": "Step details",
       "inspectorEmpty": "No step selected",
-      "inspectorEmptyHint": "Select a step, or focus one and press Enter, to see what it waits for, what waits for it and how it is verified.",
       "sheetDescription": "The details of step {key}, read only.",
       "previousStep": "Previous step, {key}",
       "nextStep": "Next step, {key}",
@@ -1736,7 +1717,7 @@
     },
     "history": {
       "title": "Revision history",
-      "description": "Every push or deletion makes a revision. Revisions labelled above your grant are not listed.",
+      "description": "Revisions labelled above your grant are not listed.",
       "revision": "Revision {revision}",
       "latest": "Latest",
       "viewing": "(viewing)",
@@ -1809,7 +1790,6 @@
       "admins": "Hub admins only",
       "adminsHint": "Only hub admins see, download and sync this skill",
       "title": "Who sees this skill",
-      "description": "A shared skill is for every signed-in member: they see it here, download it and sync it to their machines. You can keep it for hub admins alone. Only hub admins see this card.",
       "adminsOnly": "Hub admins only",
       "adminsOnlyHint": "On: members no longer see, download or sync it, and their next sync removes it from their machines after a backup. Off: every signed-in member has it again. Each change goes into the audit log.",
       "nowAdmins": "{name} is for hub admins alone now",
@@ -1868,7 +1848,6 @@
       "notFoundDescription": "This skill has not been published here, or its name is spelled differently.",
       "noVersions": "This skill has no versions yet.",
       "latestTitle": "Latest version: v{version}",
-      "latestDescription": "A bundle is the tar.gz of the skill directory, exactly as it was published.",
       "file": "File",
       "size": "Size",
       "source": "Source",
@@ -2000,7 +1979,6 @@
         "exploreHere": "Explore from here",
         "nodePage": "Node page",
         "relations": "{count, plural, one {# relation} other {# relations}}",
-        "relationsHint": "Pick one to show it in the graph.",
         "noRelations": "No relation you can read.",
         "outgoing": "outgoing",
         "incoming": "incoming",
@@ -2048,7 +2026,6 @@
           "showType": "Show {kind}",
           "hideType": "Hide {kind}",
           "isolated": "Without relations",
-          "isolatedHint": "Entities with no relation to another one shown, most mentioned first.",
           "docs": "Documents that mention it",
           "showFewer": "Show fewer",
           "showAllCount": "Show all {count}",
@@ -2197,7 +2174,6 @@
       "count": "{value, number}"
     },
     "builds": {
-      "description": "The hub rebuilds the graph after every push (<code>evo-agents hub kg push</code>); the web never queues a build.",
       "history": "Build history",
       "emptyTitle": "No builds yet",
       "emptyDescription": "The first build is queued when a member with the writer role pushes with <code>evo-agents hub kg push</code>.",
@@ -2206,7 +2182,6 @@
     },
     "search": {
       "title": "Find a node",
-      "description": "Search by name, id, path, code or words in the content. Results only include nodes labelled within your visibility.",
       "query": "Search for",
       "placeholder": "For example: runbook, KB-01, src/app.py",
       "kind": "Node kind",
@@ -2233,7 +2208,6 @@
     },
     "commits": {
       "title": "Commits read",
-      "description": "The commit each git source of this graph read, and how far behind its remote's default branch that commit was when the source synced.",
       "ref": "of {ref}",
       "behind": "{count, plural, one {# commit} other {# commits}} behind {base}",
       "upToDate": "up to date with {base}",
@@ -2264,7 +2238,6 @@
     },
     "evidence": {
       "title": "Evidence",
-      "description": "The items, revisions and spans the node was read from.",
       "empty": "This node has no evidence you can see.",
       "source": "source {source}",
       "rev": "revision {rev}",
@@ -2327,7 +2300,6 @@
     },
     "shape": {
       "title": "Shape of the graph",
-      "description": "How many edges of each type join each kind of node to another, counted over what you can read.",
       "columns": {
         "source": "From kind",
         "rel": "Edge type",
@@ -2341,7 +2313,6 @@
     },
     "map": {
       "title": "Map of clusters",
-      "description": "Groups of nodes that link to each other more than to the rest, counted over what you can read. Colour marks the cluster; click a point to open its cluster.",
       "noClusters": "No cluster to show: {reason}",
       "summary": "{clusters, plural, one {# cluster} other {# clusters}}, {nodes, plural, one {# node} other {# nodes}}, {links, plural, one {# link between clusters} other {# links between clusters}}",
       "canvasLabel": "Map of the graph's clusters; the table below lists the same clusters",
@@ -2365,7 +2336,6 @@
       },
       "matrix": {
         "title": "Links between clusters",
-        "description": "Each cell counts the edges joining two clusters; darker means more.",
         "cell": "{a} and {b}: {count, plural, one {# edge} other {# edges}}",
         "hidden": "{count, plural, one {# smaller cluster is} other {# smaller clusters are}} left out of the matrix.",
         "empty": "No edge you can read joins two clusters."
@@ -2396,7 +2366,7 @@
     },
     "review": {
       "title": "Review queue",
-      "intro": "What in the graph a person should look at, found by six rules after each build. A dismissed item stays dismissed in later builds.",
+      "intro": "A dismissed item stays dismissed in later builds.",
       "notComputed": "No review queue yet",
       "noItems": "No item matches this view.",
       "rules": {
@@ -2514,7 +2484,6 @@
       "default": "default (every source)",
       "manage": "Named graphs",
       "title": "Named graphs",
-      "description": "A named graph is a set of this project's sources. Picking one narrows the search to its sources; the graph is built once for every source.",
       "name": "Name",
       "namePlaceholder": "billing",
       "purpose": "What it is for",
@@ -2654,7 +2623,6 @@
     },
     "empty": {
       "title": "No worker yet",
-      "description": "Register a laptop or desktop to run plan steps for you; it calls the hub over HTTPS and opens no port.",
       "showRevoked": "Show revoked workers"
     },
     "noResults": {
@@ -2706,7 +2674,6 @@
       "neverSeen": "No heartbeat yet. Start the daemon on {hostname} with <code>evo-agents worker run</code>, or install it as a service.",
       "runtimes": {
         "title": "Detected runtimes",
-        "description": "What its last heartbeat found on the machine.",
         "empty": "Shown after its first heartbeat.",
         "none": "Its last heartbeat reported no runtime.",
         "version": "version {version}",
@@ -2716,7 +2683,6 @@
       },
       "scope": {
         "title": "Scope",
-        "description": "What it may run. Its projects are set when it is registered.",
         "projects": "Projects",
         "slots": "Slots",
         "slotsValue": "{held} of {slots} in use",
@@ -2743,7 +2709,6 @@
       },
       "checkouts": {
         "title": "Checkouts",
-        "description": "Repositories its last heartbeat found; a run works in a worktree of one of them.",
         "descriptionIn": "Repositories its last heartbeat found, all in <code>{path}</code>; a run works in a worktree of one of them.",
         "empty": "Shown after its first heartbeat.",
         "none": "Its last heartbeat reported no checkout.",
@@ -2853,7 +2818,6 @@
     },
     "version": {
       "title": "Version",
-      "description": "The evo-agents its daemon runs, as its last heartbeat said.",
       "release": "Release",
       "commit": "Commit",
       "noCommit": "Not reported",
@@ -2943,7 +2907,6 @@
     },
     "sharing": {
       "title": "Sharing",
-      "description": "Whom it takes runs from besides you, and what its doctor found the last time it ran.",
       "loading": "Loading",
       "loadFailed": "Couldn't load whom it is shared with. The page tries again shortly.",
       "noUnits": "Not narrowed: shared, it takes the runs of every writer of a project it serves.",
@@ -3005,7 +2968,6 @@
     "poolsButton": "Pools",
     "pools": {
       "title": "Pools",
-      "description": "A pool gives every machine that joins it the same projects, slots, labels and taints. A join token lets a fresh machine join with one command.",
       "count": "{count, plural, one {# pool} other {# pools}}",
       "createButton": "New pool",
       "caption": "Your pools",
@@ -3024,8 +2986,7 @@
         "taints": "Taints"
       },
       "empty": {
-        "title": "No pool yet",
-        "description": "Make a pool, then add machines to it with a join token: each one becomes a worker with the pool's settings."
+        "title": "No pool yet"
       },
       "form": {
         "name": "Name",
@@ -3061,7 +3022,7 @@
       },
       "create": {
         "title": "New pool",
-        "description": "What every node of the pool gets. You can change it later; nodes take the change at their next heartbeat.",
+        "description": "You can change it later; nodes take the change at their next heartbeat.",
         "cancel": "Cancel",
         "create": "Create pool",
         "creating": "Creating...",
@@ -3079,10 +3040,8 @@
         "never": "Never",
         "nodeLine": "{hostname}, version {version}",
         "nodes": "Nodes",
-        "nodesDescription": "The machines that joined with a join token and are not revoked, newest first.",
         "noNodes": "No machine has joined yet. Make a join token and run its command on a fresh Ubuntu machine.",
         "scope": "What every node gets",
-        "scopeDescription": "Each node has these on top of its own.",
         "projects": "Projects",
         "slots": "Slots",
         "labels": "Labels",
@@ -3095,7 +3054,7 @@
       },
       "join": {
         "title": "Join token for {pool}",
-        "description": "A machine that runs the command with this token joins the pool. The token is shown once.",
+        "description": "The token is shown once.",
         "hours": "Valid for (hours)",
         "hoursHint": "{min} to {max} hours.",
         "uses": "Machines",
@@ -3116,7 +3075,6 @@
       },
       "tokens": {
         "title": "Join tokens",
-        "description": "Newest first. The hub never shows a token again after it is made.",
         "failed": "Couldn't load the join tokens. They load again in a moment.",
         "empty": "No join token yet.",
         "create": "Create join token",
@@ -3180,7 +3138,7 @@
     "deleteLabel": "Delete secret {name}",
     "empty": {
       "title": "No secret yet",
-      "description": "The hub keeps a token sealed and hands it to the runs of your projects on your workers; a value goes in once and is never shown again. Add what a run needs, such as <code>CLAUDE_CODE_OAUTH_TOKEN</code> for Claude Code or a GitLab access token for git, here or with <code>evo-agents hub secret set</code>."
+      "description": "Add what a run needs, such as <code>CLAUDE_CODE_OAUTH_TOKEN</code> for Claude Code or a GitLab access token for git, here or with <code>evo-agents hub secret set</code>."
     },
     "errors": {
       "forbidden": "The hub refused: a secret needs the writer role on each project it names, and binds only to your own workers that are not revoked.",
@@ -3318,8 +3276,7 @@
     "fromSeat": "from seat #{id}",
     "fromUnit": "from {name}",
     "empty": {
-      "title": "No units yet",
-      "description": "The org chart holds the hub's teams and cohorts, who sits in each and the level each one works at. Create the first unit below the root to start."
+      "title": "No units yet"
     },
     "errors": {
       "forbidden": "The hub refused this change.",
@@ -3379,7 +3336,6 @@
       "createTitle": "New unit",
       "editTitle": "Edit {name}",
       "createDescription": "The unit goes below {parent}.",
-      "editDescription": "Change the unit's name, where it sits or when the cohort ends.",
       "save": "Save",
       "create": "Create unit",
       "saved": "{name} saved",
@@ -3409,7 +3365,6 @@
       "editTitle": "Edit the seat of {who}",
       "addTitle": "Add seat",
       "editDescription": "A seat in {unit}.",
-      "addDescription": "Place a person or an agent in a unit.",
       "save": "Save",
       "add": "Add seat",
       "unit": "Unit",
@@ -3675,15 +3630,12 @@
     "form": {
       "newTitle": "New agent",
       "editTitle": "Edit @{handle}",
-      "newDescription": "An agent of {project}: a name and a face, instructions for its runs, and what they may use.",
       "editDescription": "Saving makes the next version, and runs dispatched from then on go under it. This form opened on version {version}.",
       "close": "Close",
       "handle": "Handle",
       "handleHint": "Lowercase letters, digits and hyphens, unique on the hub. People mention the agent with it, and it never changes.",
       "name": "Name",
-      "nameHint": "How the agent shows in runs and chats.",
       "description": "Description",
-      "descriptionHint": "What the agent is for.",
       "starters": "Starters",
       "startersHint": "Questions the chat home offers before a first message to the agent, one a line: at most {max}, each of at most {chars} characters.",
       "startersProblems": {
@@ -3825,7 +3777,6 @@
       },
       "permissions": {
         "title": "Permissions",
-        "hint": "What runs under this agent may use. The hub holds a run to credentials, skills, workers, projects, models and runtimes; the worker holds its session to tools, skills and models.",
         "defaultHint": "The default agent has every permission, always.",
         "nothing": "Nothing allowed",
         "allowed": "{axis} allowed"
@@ -3902,7 +3853,6 @@
       },
       "packs": {
         "title": "Agent packs",
-        "hint": "Loaded into every run under this agent, each at the version it pins. Its skills and MCP servers count as allowed.",
         "none": "None: its runs get no agent pack.",
         "version": "v{version}"
       },
@@ -3911,7 +3861,6 @@
       }
     },
     "workers": {
-      "lead": "When someone hands @{handle} work, in a chat or as a run, it goes to one of their workers, or one shared with them, that this list lets through. Pick workers by name, by label, or a pool: a pool covers each of its nodes, those that join later too.",
       "conflict": "Someone changed this agent meanwhile. The panel now shows it as it is: choose again.",
       "saved": "Saved where @{handle} runs",
       "savedText": "Its next runs go only to workers this list lets through.",
@@ -3936,7 +3885,6 @@
       "runsOn": "Runs on",
       "worker": "Worker",
       "hub": "Hub",
-      "runsOnHint": "Where this agent's runs go: a worker machine or the hub.",
       "save": "Save new version",
       "saveHint": "Saving writes the version after v{version} and keeps v{version} in the history."
     }
@@ -3947,9 +3895,7 @@
     "systemMetaTitle": "{slug}, agent system of {project}",
     "count": "{count, plural, one {# system} other {# systems}}",
     "newButton": "New system",
-    "sub": "Agents, knowledge graphs, a curator and an orchestrator joined on one canvas, with the entry agent people talk to.",
     "emptyTitle": "No agent systems yet",
-    "emptyAdmin": "A system joins agents, graphs, a curator and an orchestrator on a canvas. New system starts one with its entry.",
     "emptyReader": "An admin of the project designs agent systems here.",
     "revision": "Revision {revision}",
     "entryAgent": "People talk to @{handle} first.",
@@ -4072,7 +4018,6 @@
       "existing": "Profile",
       "noFreeAgent": "Every profile of the project is on the canvas.",
       "agentHint": "The node pins the profile's current version.",
-      "orchestratorHint": "The orchestrator is a profile too; agents escalate to it.",
       "newAgent": "New agent",
       "addProfile": "Add",
       "existingGraph": "Graph",
@@ -4109,7 +4054,6 @@
     "builder": {
       "panel": "Builder",
       "title": "Design with @builder",
-      "description": "Tell @builder what system {slug} should do. What it proposes shows on the canvas, faded, until an admin accepts or discards it.",
       "close": "Close the Builder panel",
       "proposal": "Proposal {id}",
       "counts": "{added, plural, one {# node} other {# nodes}} added, {removed, plural, one {# node} other {# nodes}} dropped, {changed, plural, one {# change} other {# changes}}, {addedEdges, plural, one {# edge} other {# edges}} added, {removedEdges, plural, one {# edge} other {# edges}} dropped",
@@ -4132,7 +4076,6 @@
     "test": {
       "title": "Test @{handle}",
       "unsaved": "Tests revision {revision}. Unsaved changes are not in it.",
-      "description": "A message here goes to the entry agent of revision {revision} and opens a trace.",
       "backToChat": "Back to chat",
       "viewTrace": "View trace ({runs, plural, one {# run} other {# runs}})",
       "noTrace": "Send a message; its trace shows here.",
@@ -4261,7 +4204,6 @@
       "caption": "Your chats",
       "rowLabelUnread": "{title}, {count, plural, one {# unread message} other {# unread messages}}",
       "emptyTitle": "No chats yet",
-      "emptyBody": "A chat brings people and the agents of your projects together. Pick an agent above to chat with it one to one, or start a group chat with New chat, where an @ mention hands an agent work.",
       "noneOpenTitle": "Open a chat",
       "noneOpenBody": "Pick a chat from the list or an agent above it, or start a group chat with New chat.",
       "you": "You",
@@ -4275,7 +4217,7 @@
       "open": "Chat with {name}, @{handle} of {project}",
       "tooltip": "@{handle}, {project}",
       "loading": "Loading the agents you can chat with",
-      "empty": "The agents of the projects you write to show here, to chat with one to one.",
+      "empty": "No agent to chat with yet.",
       "failed": "Couldn't read the agents of {projects}.",
       "retry": "Try again",
       "openFailed": "Couldn't open the chat with @{handle}"
@@ -4287,14 +4229,11 @@
       "backToChats": "Back to chats",
       "composerLabel": "Message to {title}",
       "placeholder": "Write a message. Type @ to mention an agent, a project or a person.",
-      "hint": "Mention an agent with @ to hand it work: it answers in a thread under your message.",
       "threadSheet": "Thread",
       "threadSheetBody": "A thread of {title}",
       "notFoundTitle": "No such chat",
       "notFoundBody": "A chat's address is /chats followed by its number. Open it from the list of your chats.",
-      "directHint": "Every message goes to {name}, no @ needed: it answers under your message.",
-      "directPlaceholder": "Message {name}",
-      "directReplyHint": "Your reply goes on in the same session, so {name} picks up where it left off."
+      "directPlaceholder": "Message {name}"
     },
     "header": {
       "back": "Back to chats",
@@ -4338,7 +4277,6 @@
       "loadingOlder": "Loading earlier messages",
       "olderFailed": "Couldn't load earlier messages. Try again.",
       "emptyTitle": "No messages yet",
-      "emptyBody": "Say what you need. Mention an agent with @ to hand it work; it answers in a thread under your message.",
       "latest": "Jump to the latest",
       "directEmptyBody": "Say what you need: every message goes to {name}, and its answer shows right under yours."
     },
@@ -4446,17 +4384,13 @@
       "retry": "Try again",
       "loading": "Loading the thread",
       "replies": "{count, plural, =0 {No replies yet} one {# reply} other {# replies}}",
-      "empty": "Nobody answered yet. An agent mentioned above answers here.",
+      "empty": "Nobody answered yet.",
       "latest": "Jump to the latest",
       "composerLabel": "Reply in the thread",
-      "placeholder": "Reply in the thread",
-      "soloHint": "You are the only person in this chat: a reply without @ goes to the agent already working in this thread.",
-      "hint": "Mention an agent with @ to hand it this reply.",
-      "directHint": "Your reply goes on in the same session with {name}."
+      "placeholder": "Reply in the thread"
     },
     "members": {
       "title": "Members",
-      "description": "Who is in {title}. Everyone here reads the messages their grants clear.",
       "close": "Close the members",
       "agents": "Agents",
       "people": "People",
@@ -4491,7 +4425,7 @@
       "agentsFull": "A chat holds at most {max} agents.",
       "agentsFailed": "Couldn't read the agents of {projects}.",
       "noAgents": "Every agent of the projects you write to is in this chat already, or you write to none.",
-      "agentHint": "Agents of the projects you write to. Each answers when someone mentions it.",
+      "agentHint": "Agents of the projects you write to.",
       "addPerson": "Add a person",
       "peopleFull": "A chat holds at most {max} people.",
       "personHint": "People who share a project or a chat with you; type the login of someone else who signed in to the hub. Each needs a grant that clears the projects of this chat's agents.",
@@ -4501,7 +4435,6 @@
     },
     "create": {
       "title": "New chat",
-      "description": "People and the agents of your projects, in one conversation. You are in it anyway.",
       "titleLabel": "Title",
       "titlePlaceholder": "Release planning",
       "titleHint": "One line, at most 120 characters.",
@@ -4598,7 +4531,7 @@
     "title": "Accounts",
     "count": "{count, plural, one {# account} other {# accounts}}",
     "caption": "Your accounts",
-    "listSummary": "Your env secrets, by what they sign in to. Yours alone, and no value is ever shown.",
+    "listSummary": "Yours alone, and no value is ever shown.",
     "secrets": "Secrets",
     "add": "Add Claude account",
     "columns": {
@@ -4680,7 +4613,7 @@
     },
     "empty": {
       "title": "No model account yet",
-      "description": "An account is one of your env secrets, such as a token of <code>claude setup-token</code> for <code>CLAUDE_CODE_OAUTH_TOKEN</code>. Add one here or with <code>evo-agents hub account login</code>; with several for the same variable, runs take them in turn."
+      "description": "Add one here or with <code>evo-agents hub account login</code>; with several for the same variable, runs take them in turn."
     },
     "errors": {
       "forbidden": "The hub refused: a policy needs the writer role on its project.",
@@ -4820,7 +4753,6 @@
     },
     "policies": {
       "title": "Rotation by project",
-      "description": "How your runs in each project pick among your accounts, and what a run does when its account hits a usage limit. A project you set nothing for has the defaults.",
       "caption": "Your rotation policy by project",
       "columns": {
         "project": "Project",
@@ -4885,17 +4817,14 @@
     "groups": {
       "model": {
         "title": "Model accounts",
-        "description": "The sign-in of the model a run talks to. Runs take them in turn, and their cost is counted here.",
         "none": "No model account. Add a Claude account to give runs a model."
       },
       "service": {
         "title": "Service credentials",
-        "description": "Tokens and keys a run uses for something else: a repository, a workspace, a host. They have no cost.",
         "none": "No service credential. Add one as a secret bound to a project."
       },
       "agent": {
         "title": "Agent accounts",
-        "description": "Secrets an agent owns in the projects you belong to. Its admins change them on the agent's page.",
         "none": "No agent has an account of its own.",
         "agent": "Agent",
         "projectTitle": "Project {project}",
@@ -4904,9 +4833,7 @@
       },
       "pools": {
         "title": "Account pools",
-        "description": "Named sets of accounts for the agents of a project. An agent attached to a pool runs only on the accounts in it.",
         "none": "No pool in this project yet.",
-        "hint": "An agent has one account pool. With no usable account in it, its run waits in the queue.",
         "failed": "The account pool could not be changed.",
         "added": "{name} added to {pool}.",
         "inUse": "An agent uses this pool: attach it to another pool first.",
@@ -4945,7 +4872,6 @@
     },
     "costByPrincipal": {
       "title": "Cost by member",
-      "description": "The runs of the members your accounts are shared with, and what they cost, an estimate. Your own runs are in each account's row.",
       "empty": "No run of another member has used them yet.",
       "caption": "Runs and cost of each account by member",
       "gone": "A member now gone",
@@ -4960,7 +4886,6 @@
     },
     "agent": {
       "title": "Accounts",
-      "description": "Secrets this agent owns. A run under @{handle} takes them on the workers each one is bound to.",
       "readOnly": "Secrets this agent owns. Only an admin of {project} adds or changes them.",
       "add": "Add account",
       "full": "An agent has at most {max} accounts.",
@@ -4999,14 +4924,12 @@
         "priorityHint": "0 to {max}, the lower the sooner.",
         "add": {
           "title": "Add an account to @{handle}",
-          "description": "A secret of the agent: its runs get it as an environment variable on the workers you pick.",
           "save": "Add account",
           "done": "Account {name} added",
           "doneText": "The next run under @{handle} can take it."
         },
         "edit": {
           "title": "Edit account {name}",
-          "description": "Its workers, its end, and how a pool of the same variable picks it.",
           "save": "Save",
           "done": "Account {name} changed",
           "doneText": "The next run under @{handle} reads it."
@@ -5082,7 +5005,6 @@
         "unknown": "Unknown",
         "loadFailed": "The models your runs may ask for could not be loaded.",
         "emptyTitle": "No model to run yet",
-        "emptyText": "Add a provider: its models show here, and in the Model field of the run forms.",
         "add": "Add provider",
         "count": "{count, plural, one {# model} other {# models}}",
         "claudeTitle": "Claude Code",
@@ -5090,7 +5012,6 @@
       },
       "catalog": {
         "title": "Add provider",
-        "description": "Pick the provider your key is for. Claude signs in on a worker; any other provider takes a key and a base URL.",
         "search": "Search providers by name or id",
         "groups": "Provider groups",
         "filters": {
@@ -5301,9 +5222,7 @@
       "hours": "{hours} h {minutes} min"
     },
     "empty": {
-      "title": "No run yet",
-      "description": "Dispatch a ready step of a plan to one of your workers. Its log and result come back here.",
-      "readerDescription": "Writers of this project dispatch runs to their workers; each one shows here with its state."
+      "title": "No run yet"
     },
     "noResults": {
       "title": "No run matches"
@@ -5323,7 +5242,6 @@
     },
     "dispatch": {
       "title": "Dispatch runs",
-      "description": "Pick ready steps of a plan. The hub queues one run per step, and a worker of yours that matches claims each one.",
       "close": "Close",
       "plan": "Plan",
       "noPlans": "This project has no active plan to run.",
@@ -6673,7 +6591,6 @@
     "tableRegion": "{chart}, table",
     "empty": {
       "title": "No run ended in the last {days} days",
-      "description": "Runs count on the UTC day they ended done, failed, lost or cancelled. Dispatch a step from the runs page to see them here.",
       "runs": "Open runs",
       "longer": "Show 90 days"
     },
@@ -6974,7 +6891,6 @@
     },
     "empty": {
       "title": "No merge request in the queue yet",
-      "description": "The hub merges on its own the GitLab merge requests of each repo the project's policy sets to auto: it gates them, merges them one at a time and follows them to PROD.",
       "policy": "Open the policy"
     },
     "duration": {
@@ -7003,8 +6919,7 @@
       "range": "Window",
       "days": "{days} days",
       "empty": {
-        "title": "No merge in the last {days} days",
-        "description": "The figures count the merges of the queue on GitLab: how many, how many were reverted or rolled back, and how long they waited."
+        "title": "No merge in the last {days} days"
       }
     }
   },
@@ -7245,8 +7160,7 @@
       "clearRun": "Show every run, not only run #{id}"
     },
     "empty": {
-      "title": "Your inbox is empty",
-      "description": "When the agent of a plan run you dispatched asks you a decision, or pushes or merges into a default branch, or the Curator of your project proposes a change that needs a yes, it shows up here and on the bell in the top bar."
+      "title": "Your inbox is empty"
     },
     "noResults": {
       "title": "No notification matches",
@@ -7474,7 +7388,6 @@
     "telegram": {
       "button": "Telegram",
       "title": "Telegram",
-      "description": "Decisions, proposals and notices also come to a private chat with the hub's bot, where their buttons answer them.",
       "loadFailed": "Couldn't read your Telegram link from the hub.",
       "retry": "Try again",
       "close": "Close",
@@ -7698,7 +7611,6 @@
     },
     "empty": {
       "title": "No charter yet",
-      "description": "A charter tells the Curator when to work, within what budget, and what it may change. The night shift runs on the node of the default agent's pool. Each night it reviews the project and proposes changes, each with its evidence.",
       "admin": "Write the charter",
       "reader": "An admin of the project writes it, here or with <command></command>."
     },
@@ -7812,8 +7724,7 @@
       "mobileMeta": "#{id}, tier {tier}, {kind}, {lens}",
       "pagerLabel": "Pages of proposals",
       "empty": {
-        "title": "No proposal yet",
-        "description": "Each night the review run reads the project's runs, sessions and code, and proposes changes with the evidence behind them. They show here, with what each would change and why."
+        "title": "No proposal yet"
       },
       "noResults": {
         "title": "No proposal matches these filters"
@@ -8379,7 +8290,6 @@
       },
       "search": {
         "title": "Search the history",
-        "description": "Every transcript the hub holds, every run log and the group chats you are in, the best match first.",
         "label": "Search the project's history",
         "placeholder": "Words, \"a phrase\" or -excluded",
         "clear": "Clear the search",
@@ -8435,7 +8345,6 @@
       },
       "sessions": {
         "title": "Sessions and runs",
-        "description": "The whole history the hub has facets of, the latest first, with what the cheap model wrote of each.",
         "label": "Filter the sessions and runs",
         "total": "{count, plural, =0 {No session or run} one {# session or run} other {# sessions and runs}}",
         "kind": "Kind",
@@ -8500,7 +8409,6 @@
     "graph": {
       "empty": {
         "title": "No measure of the graph yet",
-        "description": "Every six hours the hub measures the knowledge graph of a project with a night shift and a knowledge config on the hub: how far each git source lags its default branch, which files the graph lacks or holds stale, and how well it answers the project's own plan steps.",
         "cli": "From a terminal: <command></command>."
       },
       "hidden": {
@@ -8531,7 +8439,6 @@
       "measureFailed": "The measure of {at} failed",
       "sources": {
         "title": "Sources against their default branch",
-        "sub": "Each git source of the latest measure: the commit the graph read, the branch's head, and the files that differ.",
         "caption": "Git sources of the graph",
         "empty": "The knowledge config names no git source.",
         "source": "Source",
@@ -8566,7 +8473,6 @@
       },
       "retrieval": {
         "title": "What agents got from the graph",
-        "sub": "From the traces of the night's sessions and runs.",
         "empty": "No session or run of the night's figures called the graph.",
         "used": "Sessions and runs that called it",
         "lookups": "Lookups",
@@ -8602,7 +8508,6 @@
       },
       "empty": {
         "title": "No night's figures yet",
-        "description": "The night shift counts the runtime and the harness with each night's figures, before its review run.",
         "olderFigures": "The nights of the range were counted before the hub counted the runtime and the harness."
       },
       "unread": "{count, plural, one {# night could not be read.} other {# nights could not be read.}}",
@@ -8717,7 +8622,7 @@
       "spent": "{cost} spent",
       "spentOf": "{cost} of {budget} spent",
       "noResults": "No probe was due this week: no merged change has an active probe yet.",
-      "explain": "Each probe gives an agent its task {k, plural, one {# time} other {# times}} with the change's rule in place and as often with the rule taken off. A failed session repeated the mistake.",
+      "explain": "A failed session repeated the mistake.",
       "caption": "The week's probes, with the change's rule and without it",
       "head": {
         "probe": "Probe",
@@ -8846,7 +8751,6 @@
     },
     "empty": {
       "title": "No release schedule yet",
-      "description": "A release schedule checks every day whether the packaged code changed since the newest release tag. When it did, an agent cuts the next version, the hub merges and tags it, follows its CI, and fixes a red tag forward until the version is published.",
       "command": "An admin of the project sets it with <command></command>."
     },
     "problems": {
@@ -9117,7 +9021,6 @@
       "latest": "Latest {version}",
       "untrusted": "a publisher the operator no longer trusts",
       "emptyTitle": "No plugin in the store yet",
-      "emptyDescription": "A plugin is a bundle its publisher signs. A hub admin publishes it with the CLI, then installs it here, and each project's admin enables it.",
       "publishCommand": "evo-agents hub plugin publish <bundle>",
       "publishers": {
         "title": "Trusted publishers",
@@ -9167,7 +9070,6 @@
     },
     "backend": {
       "title": "Backend",
-      "description": "The plugin's own process, outside the hub, as the plugin host last reported it.",
       "state": "State",
       "notReported": "Not reported yet",
       "states": {
@@ -9217,7 +9119,7 @@
       },
       "history": {
         "title": "History",
-        "description": "Every version of this layer, the newest first. Rolling back writes an older version again as the next one.",
+        "description": "Rolling back writes an older version again as the next one.",
         "empty": "Never written: the plugin's defaults and the layers below apply.",
         "version": "Version {version}",
         "current": "Current",
@@ -9268,7 +9170,7 @@
       "enabledCount": "{count} of {total} enabled",
       "readOnly": "Only an admin of the project enables, disables and configures its plugins.",
       "emptyTitle": "No plugin is installed on the hub",
-      "emptyDescription": "Plugins add pages, tools and channels to a project. A hub admin installs them (Administration, Plugins); an admin of the project then enables the ones it needs.",
+      "emptyDescription": "A hub admin installs plugins (Administration, Plugins); an admin of the project then enables the ones it needs.",
       "columns": {
         "plugin": "Plugin",
         "tier": "Tier",
@@ -9323,7 +9225,6 @@
       "tag": "Core plugin",
       "listLabel": "Notes of {project}",
       "emptyTitle": "No notes yet",
-      "emptyDescription": "Notes keep short lines for the whole project. Add the first one.",
       "by": "By {login}",
       "newNote": "New note",
       "hint": "At most {max} characters.",
@@ -9422,13 +9323,12 @@
       "import": "Import Markdown",
       "readerText": "Readers open documents, versions and comments. Writing, importing and reviewing take the writer role.",
       "emptyTitle": "No BA documents yet",
-      "emptyWriter": "An SRS or a specification lives here with its versions, reviews and codes that never change. Import a Markdown file whose headings follow the template.",
-      "emptyReader": "An SRS or a specification lives here with its versions, reviews and codes. A writer of the project imports the first one.",
+      "emptyWriter": "Import a Markdown file whose headings follow the template.",
+      "emptyReader": "A writer of the project imports the first document.",
       "reviews": "Waiting for review"
     },
     "queue": {
       "title": "Reviews waiting for you",
-      "intro": "Teammates sent the use cases below for you to read and decide: agree, or ask for changes. Each takes about 5 to 10 minutes.",
       "waitingCount": "{count, plural, one {# waits for you} other {# wait for you}}",
       "documents": "Documents",
       "mineTitle": "Waiting for you",
@@ -9461,8 +9361,7 @@
       "view": "View",
       "readFor": "Read and review {name}",
       "viewFor": "View {name}",
-      "emptyTitle": "No use case waits for your review",
-      "emptyText": "When a teammate sends you one, you get a notice and it shows here."
+      "emptyTitle": "No use case waits for your review"
     },
     "toc": {
       "label": "Contents",
@@ -9632,7 +9531,7 @@
       "from": "From",
       "to": "To",
       "compare": "Compare",
-      "compareHint": "Each save is a version. Approving one approves every change since the version approved before it.",
+      "compareHint": "Approving a version approves every change since the version approved before it.",
       "noReviews": "None",
       "approvedBy": "approved",
       "changesBy": "asked for changes",
@@ -9887,7 +9786,6 @@
       },
       "decide": {
         "title": "4. Decide",
-        "hint": "Agree when the use case reads right to you. When something is wrong or missing, ask for changes: the author gets your note.",
         "approve": "Agree",
         "approving": "Sending",
         "request": "Ask for changes",
@@ -9928,7 +9826,7 @@
     },
     "findings": {
       "title": "Findings",
-      "description": "Conflicts @ba found between this document, the project's other documents and its knowledge graph. An open finding to decide holds approval.",
+      "description": "An open finding to decide holds approval.",
       "counts": "{decide} to decide, {open} other open, {settled} settled",
       "groups": {
         "decide": "To decide",
@@ -9940,7 +9838,6 @@
       "reviewBroke": "@ba's review of round {round} did not finish",
       "reviewBrokeText": "Approval does not wait for it, but the list may miss conflicts it did not record.",
       "emptyTitle": "No conflict found",
-      "emptyText": "When @ba reviews a version, the conflicts it finds with other documents and the knowledge graph show here.",
       "emptyReviewing": "@ba has recorded none so far.",
       "failed": "The findings could not be read.",
       "retry": "Try again",
@@ -10006,7 +9903,6 @@
         "resolved": "No resolved thread",
         "all": "No thread yet"
       },
-      "emptyText": "Threads start from an item's page, or from the box below.",
       "onDocumentLabel": "New comment on {title}",
       "comment": "Comment"
     },
@@ -10175,8 +10071,8 @@
       "readerText": "Readers see the board, the backlog and every task. Moving, assigning and adding tasks take the writer role.",
       "emptyTitle": "No task outside a sprint",
       "emptySprintTitle": "No task in {sprint}",
-      "emptyWriter": "A task holds its people, status and links to SRS items, plan steps, runs and pull requests. Add one, or plan the sprint from the backlog.",
-      "emptyReader": "A task holds its people, status and links to SRS items, plan steps, runs and pull requests. A writer of the project adds them.",
+      "emptyWriter": "Add a task, or plan the sprint from the backlog.",
+      "emptyReader": "A writer of the project adds tasks.",
       "noResults": "No task matches the filters",
       "otherColumn": "Status not listed",
       "emptyColumn": "No task",
@@ -10210,8 +10106,8 @@
       "startFailed": "Couldn't start {sprint}",
       "close": "Close sprint",
       "emptyTitle": "No tasks yet",
-      "emptyWriter": "Tasks and sprints live here: who does what, by when, and what it implements. Add the first task, plan a sprint, or import tasks from JSON.",
-      "emptyReader": "Tasks and sprints live here: who does what, by when, and what it implements. A writer of the project adds them."
+      "emptyWriter": "Add the first task, plan a sprint, or import tasks from JSON.",
+      "emptyReader": "A writer of the project adds tasks."
     },
     "sprintDialog": {
       "newTitle": "New sprint",
@@ -10237,14 +10133,12 @@
       "closed": "Closed {sprint}"
     },
     "mine": {
-      "sub": "Tasks where {login} is an assignee or holds the BA, QA or Dev slot.",
       "count": "{count, plural, one {# task} other {# tasks}}",
       "open": "Open",
       "finished": "Done or cancelled",
       "noneOpen": "Nothing open.",
       "noneFinished": "None yet.",
       "emptyTitle": "No task is yours here",
-      "emptyText": "A task shows here once you are its assignee or its BA, QA or Dev.",
       "openBoard": "Open the board"
     },
     "page": {
@@ -10408,7 +10302,6 @@
       "backToBoard": "Back to the board"
     },
     "import": {
-      "sub": "One time: after it, the hub is where the tasks live. Nothing is written until you press Import.",
       "previewTitle": "Preview",
       "refused": "{count, plural, one {# error stops the import} other {# errors stop the import}}",
       "ready": "Ready to import",
@@ -10449,7 +10342,6 @@
       "new": "New document in {project}"
     },
     "documents": {
-      "sub": "Guides and notes of the project, Markdown with images. Every save keeps a version.",
       "new": "New document",
       "columns": {
         "document": "Document",
@@ -10461,7 +10353,6 @@
       "readerTitle": "You read the documents of {project}",
       "readerText": "Readers open every document and its history. Writing a document needs the writer role.",
       "emptyTitle": "No document yet",
-      "emptyWriter": "Write a guide or a note in Markdown, with images, and the project's members read it here.",
       "emptyReader": "A writer of the project writes the first one; it shows here."
     },
     "head": {
@@ -10519,8 +10410,7 @@
       "slugTaken": "A document with this slug exists already. Pick another slug.",
       "readerTitle": "Only writers edit the documents of {project}",
       "readerText": "You read every document and its history. Ask an admin of the project for the writer role to write.",
-      "newTitle": "New document",
-      "newSub": "A document of {project}: its title, a slug for its address, and its Markdown."
+      "newTitle": "New document"
     }
   },
   "canvas": {
@@ -10596,8 +10486,7 @@
       "settings": "Settings",
       "readerText": "Readers open canvases, claims, evidence and baselines. Editing claims, adding evidence and deciding baselines take the writer role.",
       "emptyTitle": "No canvas yet",
-      "emptyWriter": "Each product gets a living Lean Canvas: claims in nine cells, each with a status, a test card and evidence, and a baseline your team approves each week. Start with the product you know best.",
-      "emptyReader": "Each product gets a living Lean Canvas: claims in nine cells, each with a status, a test card and evidence. A writer of the project starts the first one."
+      "emptyReader": "A writer of the project starts the first canvas."
     },
     "newCanvas": {
       "title": "New canvas",
@@ -10974,7 +10863,7 @@
       "unknownKey": "The registry has no key {key}",
       "unknownKeyText": "It may have been archived. Pick a key from the list.",
       "emptyTitle": "No signal keys yet",
-      "emptyText": "A key names what a service measures, such as checkout.conversion. An admin adds keys with evo-agents hub signal keys add and an ingest key with evo-agents hub signal ingest create."
+      "emptyText": "An admin adds keys with evo-agents hub signal keys add and an ingest key with evo-agents hub signal ingest create."
     },
     "keys": {
       "caption": "Signal keys of {project}",
@@ -11200,7 +11089,6 @@
       "off": "Off",
       "stopped": "Stopped by its breaker",
       "emptyTitle": "The Loop is off",
-      "emptyText": "Turned on, the Loop turns each change of the project into work items toward its goals and hands them to agents, within the caps of the policy. People decide on the Decisions page.",
       "goals": "See the goals",
       "offTitle": "The Loop is off",
       "offText": "It makes no work item and hands out no run. Its work items stay as they ended.",
@@ -11268,7 +11156,7 @@
       "caption": "Goals of {project}",
       "decide": "Decisions",
       "emptyTitle": "No goal yet",
-      "emptyText": "A goal says what the project is for and how to tell it is reached: a signal, a window and a target. The Loop works toward its active goals. An admin sets one from the command line.",
+      "emptyText": "An admin sets goals from the command line.",
       "noMetric": "No metric: the Curator reads it, the Loop does nothing for it",
       "noSignal": "no signal yet",
       "now": "now {value, number}",
@@ -11357,7 +11245,6 @@
       "meta": "Decisions of {project}",
       "summary": "What waits for a person, by group",
       "emptyTitle": "Nothing waits for a person",
-      "emptyText": "The month's review of the goals, the canvas baselines, the policy proposals and tripped breakers show here, then what the Loop's chain waits on: its exceptions and the SRS versions to review.",
       "group": {
         "goal": "Goals",
         "canvas": "Canvas",
@@ -11498,7 +11385,6 @@
       "search": "Problems of the project",
       "new": "New problem",
       "emptyTitle": "No problem yet",
-      "emptyText": "A problem says what hurts, before any solution: who it hurts, when it happens and how they cope today. Goals, claims of the canvases and plans point back to it, and the Loop goes from it.",
       "all": "All",
       "statusLabel": "Status",
       "count": "{count, plural, one {# problem} other {# problems}}",
@@ -11740,7 +11626,6 @@
       "search": "Opportunities of the project",
       "new": "New opportunity",
       "emptyTitle": "No opportunity yet",
-      "emptyText": "An opportunity says what the project could win: who gains, what makes it reachable now and when the window closes. The problems it answers, the goals and the claims of the canvases point to it, and the Loop goes from it.",
       "all": "All",
       "statusLabel": "Status",
       "count": "{count, plural, one {# opportunity} other {# opportunities}}",
@@ -11938,12 +11823,10 @@
       "delete": "Delete"
     },
     "empty": {
-      "title": "No browser identities yet",
-      "description": "An identity keeps a signed-in browser profile on one worker. Create one, then log in through a live browser."
+      "title": "No browser identities yet"
     },
     "form": {
       "newTitle": "New browser identity",
-      "newDescription": "A profile that keeps the cookies of some sites. You sign in once, in a browser you see; runs reuse it.",
       "name": "Name",
       "nameHint": "Lower case letters, digits, dots, dashes and underscores.",
       "nameInvalid": "Use lower case letters, digits, dots, dashes and underscores, starting with a letter or digit.",
@@ -12008,7 +11891,7 @@
   },
   "sharing": {
     "title": "Shared with other members",
-    "description": "Members you share with may use a credential in their runs on the projects you pick, within the limits you set. Its value never leaves the hub: a run gets it for its duration.",
+    "description": "A credential's value never leaves the hub: a run gets it for its duration.",
     "share": "Share",
     "nothingToShare": "Only a credential bound to a project can be shared, and never a GitLab token for the hub.",
     "empty": "Nothing is shared.",
@@ -12018,7 +11901,6 @@
     },
     "dialog": {
       "title": "Share a credential",
-      "description": "Whom it is for, on which projects, and how far. Every field under Limits is optional.",
       "credential": "Credential",
       "grantee": "Share with",
       "kind": {
@@ -12027,7 +11909,6 @@
         "all": "Every member"
       },
       "login": "Member",
-      "loginHint": "Their login on the hub.",
       "unit": "Unit",
       "unitHint": "The members whose primary seat is in it or below it.",
       "unitPick": "Pick a unit",
@@ -12391,7 +12272,6 @@
       },
       "trusted": {
         "title": "Trusted from the market",
-        "description": "Signers a hub admin trusted while installing from a market. The operator's own publishers are on Administration, Plugins.",
         "locked": "The operator locked the publishers: no admin can trust another one from here.",
         "none": "No signer trusted from the market yet.",
         "addedBy": "Trusted by {login}",
@@ -12446,7 +12326,7 @@
     },
     "licenses": {
       "title": "Licences",
-      "description": "The paid plugins this hub ordered and where each licence stands. The hub checks every hour; Check now asks the sellers at once.",
+      "description": "The hub checks every hour.",
       "hub": "This hub's id:",
       "none": "The hub has bought no plugin.",
       "line": "{number} from {seller}, {months, plural, one {# month} other {# months}}, {total}",
@@ -12470,7 +12350,6 @@
     },
     "seller": {
       "title": "Selling plugins",
-      "sub": "Orders from buying hubs, the monthly revenue and its 80/20 split, and the key that signs licences.",
       "notSelling": "This hub cannot sell yet: set EVO_HUB_SELLER_ID and EVO_HUB_SELLER_KEY (written by `evo-agents hub market seller-key`) and restart it.",
       "keyTitle": "Licence key",
       "keyDescription": "List the key id and public key under this seller in the market's index. The private key never leaves the hub's environment.",
@@ -12525,7 +12404,6 @@
   },
   "kgUpload": {
     "title": "Upload data",
-    "intro": "Send an archive of documents into this project's knowledge graph. The hub reads it as a source of its own, then builds the graph.",
     "drop": {
       "title": "Drop an archive here",
       "hint": "A .zip, .tar, .tar.gz or .tgz file. Documents, sheets and text inside it become items of the graph.",
@@ -12577,7 +12455,6 @@
     "reports": {
       "title": "Uploads",
       "emptyTitle": "No archive uploaded yet",
-      "emptyDescription": "Archives uploaded to this project, and what the hub read from each, appear here.",
       "label": "Label {level}",
       "by": "Sent by {login}",
       "state": {
@@ -12622,7 +12499,6 @@
     },
     "newProject": {
       "title": "New project from data",
-      "intro": "Create a project from an archive of documents. The hub creates the project, reads the archive into its knowledge graph and builds it.",
       "name": "Project name",
       "nameHint": "Lowercase letters, digits and dashes, starting with a letter or digit.",
       "nameInvalid": "Use lowercase letters, digits and dashes, starting with a letter or digit, up to 100 characters.",
@@ -12661,7 +12537,6 @@
   },
   "kgAnswers": {
     "title": "Answer job #{id}",
-    "intro": "Questions sent with evo-agents hub kg answer, asked of this project's knowledge graph in batches, each batch an agent run that reads the graph. Nothing here is scored.",
     "job": "Answer job #{id}: {state}",
     "states": {
       "running": "running",

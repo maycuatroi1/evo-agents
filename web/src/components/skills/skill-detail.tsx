@@ -152,7 +152,6 @@ function Latest({
             {t("latestTitle", { version: latest.version })}
           </h2>
         </CardTitle>
-        <CardDescription>{t("latestDescription")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-x-8 gap-y-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <div className="flex flex-col gap-4">

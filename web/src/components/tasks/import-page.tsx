@@ -209,7 +209,7 @@ export function ImportPage({ project, title }: { project: string; title: string 
   return (
     <div className="flex flex-col gap-6" data-testid="tasks-import">
       <div className="flex flex-col gap-4">
-        <PageHeader title={title} sub={t("sub")} />
+        <PageHeader title={title} />
         <TasksTabs project={project} current="import" writer={writer} />
       </div>
       {viewer && !writer ? (

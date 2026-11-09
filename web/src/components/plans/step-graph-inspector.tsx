@@ -62,7 +62,6 @@ export function InspectorPanel({ node, onClose, ...rest }: Omit<FrameProps, "onC
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center" data-testid="inspector-empty">
           <MousePointerClick className="size-5 text-muted-foreground" aria-hidden="true" />
           <p className="text-sm font-medium">{t("inspectorEmpty")}</p>
-          <p className="text-xs text-muted-foreground">{t("inspectorEmptyHint")}</p>
         </div>
       )}
     </aside>

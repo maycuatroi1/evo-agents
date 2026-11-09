@@ -276,14 +276,13 @@ function InviteSteps({ write, projects }: { write: InviteWrite; projects: Projec
             )}
           </Field>
           <Choices name="role" legend={t("role")} values={ROLES} value={role} onChange={setRole} title={tRoles} hint={(value) => tGrant(`roleHints.${value}`)} />
-          <Field id={`${ids}-maxLevel`} label={t("visibility")} hint={t("visibilityHint")}>
+          <Field id={`${ids}-maxLevel`} label={t("visibility")}>
             <NativeSelect
               id={`${ids}-maxLevel`}
               value={maxLevel}
               onChange={(event) => setMaxLevel(event.target.value)}
               disabled={!selected}
               className="w-full md:[&_select]:h-9"
-              aria-describedby={`${ids}-maxLevel-hint`}
               data-testid="invite-max-level"
             >
               {(selected?.levels ?? []).map((level) => (

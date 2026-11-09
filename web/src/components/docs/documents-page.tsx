@@ -96,7 +96,7 @@ export function DocumentsPage({ project, title, initialError }: { project: strin
   ) : null;
   return (
     <div className="flex flex-col gap-6" data-testid="docs-documents">
-      <PageHeader title={title} sub={t("sub")} actions={create} />
+      <PageHeader title={title} actions={create} />
       {viewer && !writer ? (
         <Banner icon={BookOpen} title={t("readerTitle", { project })} testId="docs-read-only">
           {t("readerText")}
@@ -108,7 +108,7 @@ export function DocumentsPage({ project, title, initialError }: { project: strin
             <EmptyState
               icon={BookOpen}
               title={t("emptyTitle")}
-              description={writer ? t("emptyWriter") : t("emptyReader")}
+              description={writer ? undefined : t("emptyReader")}
               testId="docs-documents-empty"
             >
               {create}

@@ -6,7 +6,7 @@ import { useId } from "react";
 
 import { useWriteFailure } from "@/components/feedback/notice";
 import { notify, notifyFailure } from "@/components/feedback/toast";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { browserApi } from "@/lib/api/browser";
 import { whoamiQuery } from "@/lib/queries";
@@ -50,7 +50,6 @@ function AudienceSwitch({ skill }: { skill: SkillHistory }) {
         <CardTitle>
           <h2>{t("title")}</h2>
         </CardTitle>
-        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex items-start justify-between gap-4">

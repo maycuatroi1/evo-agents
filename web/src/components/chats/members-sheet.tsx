@@ -90,13 +90,19 @@ export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me:
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" showCloseButton={false} className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md" data-testid="chat-members">
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md"
+        {...(direct ? {} : { "aria-describedby": undefined })}
+        data-testid="chat-members"
+      >
         <SheetHeader className="flex-row items-start gap-3 border-b p-4">
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <SheetTitle className="text-[15px] leading-[22px] font-semibold">{direct ? t("detailsTitle") : t("title")}</SheetTitle>
-            <SheetDescription className="text-[13px] leading-[18px]">
-              {direct ? t("directDescription", { name: chat.agents[0]?.name ?? chat.title }) : t("description", { title: chat.title })}
-            </SheetDescription>
+            {direct ? (
+              <SheetDescription className="text-[13px] leading-[18px]">{t("directDescription", { name: chat.agents[0]?.name ?? chat.title })}</SheetDescription>
+            ) : null}
           </div>
           <Button type="button" variant="ghost" size="icon-sm" aria-label={t("close")} onClick={() => onOpenChange(false)}>
             <X aria-hidden="true" />

@@ -7,7 +7,7 @@ import { useId } from "react";
 import { useByteSize } from "@/components/data/byte-size";
 import { useWriteFailure } from "@/components/feedback/notice";
 import { notify, notifyFailure } from "@/components/feedback/toast";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { type ApiClient, call, type Project } from "@/lib/api/client";
@@ -62,7 +62,6 @@ export function OutputSettingsCard({ project }: { project: Project }) {
         <CardTitle>
           <h2>{t("title")}</h2>
         </CardTitle>
-        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {settings.isPending ? (

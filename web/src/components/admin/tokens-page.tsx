@@ -180,7 +180,7 @@ export function AdminTokens({ initialError }: { initialError: ApiErrorInfo | nul
                 hasFilters ? (
                   <NoResults title={t("noMatchTitle")} filters={inUse} onClear={() => go({}, "push")} />
                 ) : (
-                  <EmptyState icon={KeyRound} title={t("emptyTitle")} description={t("emptyDescription")} />
+                  <EmptyState icon={KeyRound} title={t("emptyTitle")} />
                 )
               ) : (
                 <TokensTable tokens={data.items} caption={t("caption")} onNotice={notify} />

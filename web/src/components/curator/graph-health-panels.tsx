@@ -59,7 +59,7 @@ export function GraphSources({ measure }: { measure: KgMeasure | null }) {
   const sources = sourcesOf(measure);
   const count = (value: number | null) => (value === null ? <span className="text-fg-subtle">-</span> : format.count(value));
   return (
-    <Panel title={t("title")} sub={t("sub")} testId="graph-sources">
+    <Panel title={t("title")} testId="graph-sources">
       {sources.length === 0 ? (
         <PanelLine testId="graph-sources-empty">{t("empty")}</PanelLine>
       ) : (
@@ -132,7 +132,7 @@ export function RetrievalPanel({ project, retrieval }: { project: string; retrie
   const format = useInsightFormat();
   const rate = (value: number | null) => (value === null ? t("noRate") : format.percent(value));
   return (
-    <Panel title={t("title")} sub={t("sub")} testId="graph-retrieval">
+    <Panel title={t("title")} testId="graph-retrieval">
       {retrieval === null || retrieval.used === 0 ? (
         <PanelLine testId="graph-retrieval-empty">{t("empty")}</PanelLine>
       ) : (

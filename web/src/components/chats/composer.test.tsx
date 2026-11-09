@@ -56,7 +56,7 @@ function setup(onSent = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   renderVi(
     <QueryClientProvider client={client}>
-      <ChatComposer chat={CHAT} me="octo" replyTo={null} onSent={onSent} label="Tin gửi tới Release" placeholder="Viết tin" hint="Gợi ý" testId="chat-composer" />
+      <ChatComposer chat={CHAT} me="octo" replyTo={null} onSent={onSent} label="Tin gửi tới Release" placeholder="Viết tin" testId="chat-composer" />
     </QueryClientProvider>,
   );
   return { user: userEvent.setup(), box: screen.getByTestId("chat-composer-text"), onSent };
@@ -113,7 +113,7 @@ describe("ChatComposer", () => {
     const client = new QueryClient();
     renderVi(
       <QueryClientProvider client={client}>
-        <ChatComposer chat={chat} me="octo" replyTo={null} onSent={vi.fn()} label="Tin" placeholder="Viết tin" hint="Gợi ý" testId="chat-composer" />
+        <ChatComposer chat={chat} me="octo" replyTo={null} onSent={vi.fn()} label="Tin" placeholder="Viết tin" testId="chat-composer" />
       </QueryClientProvider>,
     );
     await userEvent.setup().type(screen.getByTestId("chat-composer-text"), "@reviewer @fixer @demo @docs xem giúp ");
@@ -148,7 +148,7 @@ describe("ChatComposer keys", () => {
     api.answer = () => Response.json(message("dòng một\ndòng hai"), { status: 201 });
     const { user, box, onSent } = setup();
     expect(box).toHaveAttribute("aria-keyshortcuts", "Enter Meta+Enter Control+Enter");
-    expect(box).toHaveAccessibleDescription("Gợi ý Enter để gửi, Shift Enter để xuống dòng.");
+    expect(box).toHaveAccessibleDescription("Enter để gửi, Shift Enter để xuống dòng.");
     await user.type(box, "dòng một{Shift>}{Enter}{/Shift}dòng hai");
     expect(box).toHaveValue("dòng một\ndòng hai");
     fireEvent.keyDown(box, { key: "Enter", isComposing: true });
@@ -172,7 +172,7 @@ describe("ChatComposer keys", () => {
     api.answer = () => Response.json(message("dòng một\ndòng hai"), { status: 201 });
     const { user, box, onSent } = setup();
     expect(box).toHaveAttribute("aria-keyshortcuts", "Meta+Enter Control+Enter");
-    expect(box).toHaveAccessibleDescription("Gợi ý");
+    expect(box).not.toHaveAttribute("aria-describedby");
     await user.type(box, "dòng một{Enter}dòng hai");
     expect(box).toHaveValue("dòng một\ndòng hai");
     expect(posts()).toEqual([]);
@@ -198,7 +198,6 @@ describe("ChatComposer answering one message", () => {
           onSent={onSent}
           label="Tin"
           placeholder="Nhắn cho Code reviewer"
-          hint="Đi tiếp cùng session"
           testId="chat-composer"
           replying={{ name: "Code reviewer", text: "Đã sửa wait test.", onCancel }}
         />
@@ -207,7 +206,7 @@ describe("ChatComposer answering one message", () => {
     const user = userEvent.setup();
     const box = screen.getByTestId("chat-composer-text");
     expect(screen.getByTestId("chat-composer-replying")).toHaveTextContent("Đang trả lời Code reviewer Đã sửa wait test.");
-    expect(box).toHaveAccessibleDescription("Đang trả lời Code reviewer Đã sửa wait test. Đi tiếp cùng session Enter để gửi, Shift Enter để xuống dòng.");
+    expect(box).toHaveAccessibleDescription("Đang trả lời Code reviewer Đã sửa wait test. Enter để gửi, Shift Enter để xuống dòng.");
     await user.type(box, "còn retries?");
     await user.keyboard("{Control>}{Enter}{/Control}");
     await waitFor(() => expect(onSent).toHaveBeenCalledWith(sent));

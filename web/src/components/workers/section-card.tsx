@@ -16,7 +16,7 @@ export function SectionCard({
   className,
 }: {
   title: string;
-  description: ReactNode;
+  description?: ReactNode;
   children: ReactNode;
   testId: string;
   count?: number;
@@ -31,7 +31,7 @@ export function SectionCard({
             {count !== undefined ? <span className="ml-2 font-normal text-muted-foreground tabular-nums">{count}</span> : null}
           </h2>
         </CardTitle>
-        <CardDescription>{description}</CardDescription>
+        {description ? <CardDescription>{description}</CardDescription> : null}
       </CardHeader>
       <CardContent className="min-w-0">{children}</CardContent>
     </Card>

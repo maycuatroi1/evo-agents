@@ -10,7 +10,7 @@ import { AgentAvatar } from "@/components/data/agent-avatar";
 import { InlineError, type WriteFailure } from "@/components/feedback/notice";
 import { notify } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
@@ -45,6 +45,7 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl"
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
+        aria-describedby={undefined}
         data-testid="new-chat-dialog"
       >
         {open ? <NewChatForm onPending={setPending} onClose={() => onOpenChange(false)} /> : null}
@@ -108,13 +109,12 @@ function NewChatForm({ onPending, onClose }: { onPending: (pending: boolean) => 
 
   return (
     <form onSubmit={submit} noValidate className="flex min-h-0 flex-1 flex-col" data-testid="new-chat-form">
-      <DialogHeader className="flex-row items-start gap-3 border-b px-4 py-4 sm:px-5">
+      <DialogHeader className="flex-row items-center gap-3 border-b px-4 py-4 sm:px-5">
         <span className="grid size-8 shrink-0 place-items-center rounded-md bg-surface-sunken text-muted-foreground" aria-hidden="true">
           <MessagesSquare className="size-4" />
         </span>
         <div className="flex min-w-0 flex-col gap-1 text-left">
           <DialogTitle>{t("title")}</DialogTitle>
-          <DialogDescription>{t("description")}</DialogDescription>
         </div>
       </DialogHeader>
 

@@ -149,7 +149,7 @@ function TrustedCard({ publishers, locked, onRemove }: { publishers: PluginPubli
             {t("title")}
           </h2>
         </CardTitle>
-        <CardDescription>{locked ? t("locked") : t("description")}</CardDescription>
+        {locked ? <CardDescription>{t("locked")}</CardDescription> : null}
       </CardHeader>
       <CardContent className="min-w-0">
         {rows.length === 0 ? (

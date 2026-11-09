@@ -55,13 +55,18 @@ export function TestSheet({ project, slug, entry, revision, dirty, open, onOpenC
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl" data-testid="system-test-sheet">
+      <SheetContent
+        side="right"
+        className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-2xl"
+        {...(dirty ? {} : { "aria-describedby": undefined })}
+        data-testid="system-test-sheet"
+      >
         <div className="flex flex-col gap-1 border-b px-4 py-3 pr-12">
           <SheetTitle className="flex items-center gap-2 text-base font-semibold">
             <FlaskConical className="size-4 text-muted-foreground" aria-hidden="true" />
             {t("title", { handle: entry })}
           </SheetTitle>
-          <SheetDescription className="text-pretty">{dirty ? t("unsaved", { revision }) : t("description", { revision })}</SheetDescription>
+          {dirty ? <SheetDescription className="text-pretty">{t("unsaved", { revision })}</SheetDescription> : null}
           <div className="flex flex-wrap items-center gap-2 pt-1" aria-live="polite">
             {trace ? (
               <Button type="button" size="sm" variant={viewing === trace.id ? "secondary" : "outline"} onClick={() => setViewing(viewing === trace.id ? null : trace.id)} data-testid="system-test-trace">

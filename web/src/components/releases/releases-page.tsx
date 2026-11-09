@@ -26,18 +26,15 @@ function NoSchedule({ project }: { project: string }) {
       icon={Tags}
       title={t("title")}
       description={
-        <>
-          <p>{t("description")}</p>
-          <p className="mt-2">
-            {t.rich("command", {
+        <p>
+          {t.rich("command", {
               command: () => (
                 <code className="rounded-xs bg-muted px-1 font-mono text-xs [overflow-wrap:anywhere]" data-testid="release-set-command">
                   {SET_COMMAND} {project}
                 </code>
               ),
             })}
-          </p>
-        </>
+        </p>
       }
     />
   );

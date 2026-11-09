@@ -10,7 +10,7 @@ import { useNow } from "@/components/kg/use-now";
 import { notify } from "@/components/feedback/toast";
 import { CopyButton } from "@/components/kg/badges";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
@@ -284,6 +284,7 @@ export function TelegramDialog({
     <Dialog open={open} onOpenChange={close}>
       <DialogContent
         className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md"
+        aria-describedby={undefined}
         onCloseAutoFocus={(event) => {
           const target = returnFocus?.();
           if (!target) return;
@@ -295,7 +296,6 @@ export function TelegramDialog({
       >
         <DialogHeader>
           <DialogTitle className="pr-8">{t("title")}</DialogTitle>
-          <DialogDescription className="text-pretty">{t("description")}</DialogDescription>
         </DialogHeader>
         {body}
         {error ? <InlineError text={error.text} detail={error.detail} requestId={error.requestId} /> : null}

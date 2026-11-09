@@ -226,7 +226,7 @@ export function AdminAudit({ initialError }: { initialError: ApiErrorInfo | null
                 hasFilters ? (
                   <NoResults title={t("noMatchTitle")} filters={inUse} onClear={clear} />
                 ) : (
-                  <EmptyState icon={ScrollText} title={t("emptyTitle")} description={t("emptyDescription")} />
+                  <EmptyState icon={ScrollText} title={t("emptyTitle")} />
                 )
               ) : (
                 <AuditTable rows={data.items} caption={t("caption")} />

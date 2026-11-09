@@ -66,7 +66,6 @@ export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSen
     document.getElementById(`thread-message-${highlight}`)?.scrollIntoView({ block: "center" });
   }, [state, highlight]);
 
-  const solo = chat.people.length === 1;
   return (
     <section
       aria-labelledby="chat-thread-title"
@@ -181,7 +180,6 @@ export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSen
               onSent={onSent}
               label={t("composerLabel")}
               placeholder={t("placeholder")}
-              hint={chat.kind === "direct" ? t("directHint", { name: chat.agents[0]?.name ?? chat.title }) : solo ? t("soloHint") : t("hint")}
               testId="thread-composer"
             />
           </div>

@@ -180,7 +180,7 @@ function LoopBody({ project, loop, admin, reader, itemsError }: { project: strin
   const total = totalCount(loop.items);
   if (!loop.enabled && total === 0) {
     return (
-      <EmptyState icon={IterationCw} title={t("emptyTitle")} description={t("emptyText")} testId="loop-empty">
+      <EmptyState icon={IterationCw} title={t("emptyTitle")} testId="loop-empty">
         {admin ? <LoopSwitch project={project} loop={loop} /> : null}
         <Button asChild variant="secondary">
           <Link href={goalsHref(project)} data-testid="loop-empty-goals">

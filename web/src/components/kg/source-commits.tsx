@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 
 import { Identifier } from "@/components/data/identifier";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SourceRead } from "@/lib/kg/types";
 
 const SHORT_SHA = 7;
@@ -45,7 +45,6 @@ export function SourceCommits({ sources }: { sources: readonly SourceRead[] }) {
           <CardTitle>
             <h2 id="kg-commits-title">{t("title")}</h2>
           </CardTitle>
-          <CardDescription>{t("description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <ul className="flex flex-col divide-y" aria-label={t("title")}>

@@ -40,7 +40,7 @@ export function AgentPermissions({ agent }: { agent: Agent }) {
         <CardTitle>
           <h2>{t("title")}</h2>
         </CardTitle>
-        <CardDescription>{agent.is_default ? t("defaultHint") : t("hint")}</CardDescription>
+        {agent.is_default ? <CardDescription>{t("defaultHint")}</CardDescription> : null}
       </CardHeader>
       <CardContent className="p-0">
         <dl className="flex flex-col">

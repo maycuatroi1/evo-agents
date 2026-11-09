@@ -64,7 +64,7 @@ function SeatDialogBody({ target, open, onOpenChange, units, rights, logins }: P
       open={open}
       onOpenChange={onOpenChange}
       title={editing ? t("editTitle", { who }) : t("addTitle")}
-      description={editing ? t("editDescription", { unit: unitName }) : t("addDescription")}
+      description={editing ? t("editDescription", { unit: unitName }) : undefined}
       submitLabel={editing ? t("save") : t("add")}
       pending={pending}
       error={error}

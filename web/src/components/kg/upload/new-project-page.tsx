@@ -90,7 +90,6 @@ export function NewProjectPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title={t("newProject.title")} testId="kg-new-project-header" />
-      <p className="max-w-prose text-sm text-muted-foreground">{t("newProject.intro")}</p>
       <form
         className="flex flex-col gap-4 rounded-md border bg-card p-4 shadow-raised"
         noValidate

@@ -59,7 +59,7 @@ function PickAgent({ project, kind, spec, agents, slots, onPick }: { project: st
             <span className="text-sm font-normal text-muted-foreground">{t("noFreeAgent")}</span>
           )}
         </label>
-        <p className="text-xs text-pretty text-muted-foreground">{t(kind === "agent" ? "agentHint" : "orchestratorHint")}</p>
+        {kind === "agent" ? <p className="text-xs text-pretty text-muted-foreground">{t("agentHint")}</p> : null}
       </div>
       <DialogFooter className="sm:justify-between">
         <Button type="button" variant="ghost" onClick={() => setCreating(true)} data-testid="system-add-new-agent">

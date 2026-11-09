@@ -47,7 +47,7 @@ function Threads({ project, doc }: { project: string; doc: SrsDocument }) {
             filter === "all" ? true : filter === "open" ? thread.root.resolved_by === null : thread.root.resolved_by !== null,
           );
           return threads.length === 0 ? (
-            <EmptyState icon={MessageSquareText} title={t(`empty.${filter}`)} description={t("emptyText")} testId="srs-comments-empty" />
+            <EmptyState icon={MessageSquareText} title={t(`empty.${filter}`)} testId="srs-comments-empty" />
           ) : (
             <div className="flex flex-col gap-3" data-testid="srs-threads">
               {threads.map((thread) => (

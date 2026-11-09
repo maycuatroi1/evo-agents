@@ -279,7 +279,7 @@ function ProposalList({ project, state, stale, filters, setFilters }: {
               isFiltered(filters) || filters.page > 1 ? (
                 <NoResults title={t("noResults.title")} filters={inUse} onClear={() => setFilters(NO_PROPOSAL_FILTERS)} />
               ) : (
-                <EmptyState icon={Lightbulb} title={t("empty.title")} description={t("empty.description")} />
+                <EmptyState icon={Lightbulb} title={t("empty.title")} />
               )
             ) : (
               <ProposalsTable proposals={list.proposals} caption={caption} />

@@ -37,7 +37,6 @@ export function AdminInvites({ initialError }: { initialError: ApiErrorInfo | nu
     <>
       <PageHeader
         title={t("title")}
-        sub={t("sub")}
         tags={state.status === "success" ? <Badge variant="secondary">{t("count", { count: state.data.length })}</Badge> : null}
         actions={state.status === "success" ? create : null}
       />
@@ -45,7 +44,7 @@ export function AdminInvites({ initialError }: { initialError: ApiErrorInfo | nu
         <QueryView state={state} loading={<TableSkeleton rows={6} />}>
           {(invites) =>
             invites.length === 0 ? (
-              <EmptyState icon={Link2} title={t("emptyTitle")} description={t("emptyDescription")} />
+              <EmptyState icon={Link2} title={t("emptyTitle")} />
             ) : (
               <DataCard>
                 <InvitesTable invites={invites} caption={t("caption")} onNotice={notify} />

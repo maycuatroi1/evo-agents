@@ -46,6 +46,7 @@ export function FormDialog({ open, onOpenChange, title, description, submitLabel
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-5 overflow-y-auto sm:max-w-lg"
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
+        {...(description ? {} : { "aria-describedby": undefined })}
         data-testid={testId}
       >
         <DialogHeader>

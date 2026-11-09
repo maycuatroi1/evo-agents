@@ -7,7 +7,7 @@ import { type FormEvent, useId, useMemo, useState } from "react";
 import { InlineError, useWriteFailure, type WriteFailure } from "@/components/feedback/notice";
 import { notify } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { browserApi } from "@/lib/api/browser";
@@ -166,7 +166,7 @@ function ShareFormBody({ targets, initial, onChanged, onDone, pending, setPendin
           </NativeSelect>
         </ShareField>
         {form.granteeKind === "user" ? (
-          <ShareField id={`${ids}-login`} label={t("login")} hint={t("loginHint")} problem={shown("login")} testId="share-login">
+          <ShareField id={`${ids}-login`} label={t("login")} problem={shown("login")} testId="share-login">
             <Input
               id={`${ids}-login`}
               value={form.login}
@@ -177,7 +177,7 @@ function ShareFormBody({ targets, initial, onChanged, onDone, pending, setPendin
               disabled={pending}
               className="h-9 font-mono"
               aria-invalid={shown("login") ? true : undefined}
-              aria-describedby={describedBy(`${ids}-login`, shown("login"))}
+              aria-describedby={describedBy(`${ids}-login`, shown("login"), false)}
               data-testid="share-login"
             />
             <datalist id={`${ids}-logins`}>
@@ -353,11 +353,11 @@ export function ShareDialog({ open, onOpenChange, targets, initial = null, onCha
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-5 overflow-y-auto sm:max-w-xl"
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
+        aria-describedby={undefined}
         data-testid="share-dialog"
       >
         <DialogHeader>
           <DialogTitle>{t("title")}</DialogTitle>
-          <DialogDescription className="text-pretty">{t("description")}</DialogDescription>
         </DialogHeader>
         <ShareFormBody
           targets={targets}

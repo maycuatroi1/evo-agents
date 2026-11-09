@@ -221,7 +221,7 @@ export function IdentitiesPage({ project, login, initialError }: { project: stri
       <QueryView state={state} loading={<ListSkeleton rows={3} />}>
         {(identities) =>
           identities.length === 0 ? (
-            <EmptyState icon={Globe} title={t("empty.title")} description={<p>{t("empty.description")}</p>} />
+            <EmptyState icon={Globe} title={t("empty.title")} />
           ) : (
             <ul className="flex flex-col gap-3" data-testid="browser-identities">
               {identities.map((identity) => (

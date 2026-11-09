@@ -11,7 +11,7 @@ import { RoleBadge } from "@/components/shell/role-badge";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { browserApi } from "@/lib/api/browser";
 import type { Project } from "@/lib/api/client";
@@ -37,7 +37,6 @@ function Ladder({ project }: { project: Project }) {
         <CardTitle>
           <h2>{t("title")}</h2>
         </CardTitle>
-        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <ol className="flex flex-col gap-1.5" data-testid="label-ladder">
@@ -131,7 +130,6 @@ function Repos({ project }: { project: Project }) {
         <CardTitle>
           <h2>{t("title")}</h2>
         </CardTitle>
-        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <SimpleTable
@@ -160,7 +158,6 @@ function Sinks({ project }: { project: Project }) {
         <CardTitle>
           <h2>{t("title")}</h2>
         </CardTitle>
-        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <SimpleTable

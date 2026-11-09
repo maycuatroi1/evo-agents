@@ -9,7 +9,7 @@ import { InlineError, useWriteFailure, type WriteFailure } from "@/components/fe
 import { notify } from "@/components/feedback/toast";
 import { useHubQuery } from "@/components/states/query-view";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -120,10 +120,9 @@ function GraphManager({
   const t = useTranslations("kg.graphs");
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg" data-testid="kg-graph-manager">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg" aria-describedby={undefined} data-testid="kg-graph-manager">
         <DialogHeader>
           <DialogTitle>{t("title")}</DialogTitle>
-          <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
         <ul className="flex flex-col">
           {graphs.map((graph) => (

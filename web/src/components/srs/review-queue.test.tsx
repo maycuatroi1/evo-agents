@@ -55,10 +55,9 @@ const BILLING = queued({
 });
 
 describe("ReviewQueuePage", () => {
-  it("explains the page, then lists what waits for the reviewer first, each card in plain words", () => {
+  it("lists what waits for the reviewer first, each card in plain words", () => {
     show([SHOP, BILLING]);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Việc cần duyệt");
-    expect(screen.getByText(/Đồng đội gửi các use case dưới đây để bạn đọc và quyết định/)).toBeInTheDocument();
     expect(screen.getByTestId("srs-queue-waiting-count")).toHaveTextContent("1 mục chờ bạn");
 
     const mine = screen.getByTestId("srs-queue-mine");
@@ -90,7 +89,6 @@ describe("ReviewQueuePage", () => {
     const done = queued({ use_cases: [aQueuedCase({ reviews: [caseReview({ reviewer: "bao" })] })] });
     const { unmount } = show([done]);
     expect(screen.getByTestId("srs-queue-mine-empty")).toHaveTextContent("Không có use case nào chờ bạn duyệt");
-    expect(screen.getByTestId("srs-queue-mine-empty")).toHaveTextContent("bạn sẽ nhận thông báo");
     expect(within(screen.getByTestId("srs-queue-others")).getByTestId("srs-queue-status")).toHaveTextContent("Đã duyệt");
     expect(screen.queryByTestId("srs-queue-waiting-count")).toBeNull();
     unmount();

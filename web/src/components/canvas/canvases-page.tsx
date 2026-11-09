@@ -137,7 +137,7 @@ export function CanvasesPage({ project, title, initialError }: { project: string
       <QueryView state={state} loading={<TableSkeleton rows={3} />}>
         {(canvases) =>
           canvases.length === 0 ? (
-            <EmptyState icon={Table} title={t("emptyTitle")} description={writer ? t("emptyWriter") : t("emptyReader")} testId="canvases-empty">
+            <EmptyState icon={Table} title={t("emptyTitle")} description={writer ? undefined : t("emptyReader")} testId="canvases-empty">
               {writer ? newButton : null}
             </EmptyState>
           ) : (

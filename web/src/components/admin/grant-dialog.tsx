@@ -12,7 +12,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -195,7 +194,6 @@ function GrantSteps({
           <ShieldPlus className="size-4 text-muted-foreground" aria-hidden="true" />
           {t("title")}
         </DialogTitle>
-        <DialogDescription>{t("description")}</DialogDescription>
       </DialogHeader>
 
       {preset.lockLogin ? (
@@ -326,7 +324,7 @@ function GrantSteps({
           disabled={!selected}
           className="w-full md:[&_select]:h-9"
           aria-invalid={errors.maxLevel ? true : undefined}
-          aria-describedby={describedBy("maxLevel", true)}
+          aria-describedby={describedBy("maxLevel")}
           data-testid="grant-max-level"
         >
           {(selected?.levels ?? []).map((level) => (
@@ -335,9 +333,6 @@ function GrantSteps({
             </NativeSelectOption>
           ))}
         </NativeSelect>
-        <p id={`${ids}-maxLevel-hint`} className="text-xs text-muted-foreground">
-          {t("visibilityHint")}
-        </p>
         {errors.maxLevel ? (
           <p id={`${ids}-maxLevel-error`} className="text-xs font-medium text-danger">
             {errors.maxLevel}

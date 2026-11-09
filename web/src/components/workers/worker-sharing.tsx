@@ -183,7 +183,7 @@ export function WorkerSharing({ worker }: { worker: Worker }) {
   const verdict = entry ? doctorVerdict(entry, now) : ({ state: "ok" } as const);
   const blocked = useBlocked(verdict);
   return (
-    <SectionCard title={t("title")} description={t("description")} testId="worker-sharing">
+    <SectionCard title={t("title")} testId="worker-sharing">
       <div className="flex flex-col gap-4">
         <SharedSwitch worker={worker} locked={entry && entry.units.length > 0 ? blocked : null} className="mt-0 border-t-0 pt-0" />
         {query.isPending ? (

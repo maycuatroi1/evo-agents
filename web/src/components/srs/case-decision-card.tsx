@@ -158,7 +158,7 @@ export function CaseDecisionCard({
 
   const blocked = access === "waiting" ? null : access === "review" ? null : t(`blocked.${access}`);
   return (
-    <StepCard id="srs-step-decide" title={t("title")} note={access === "review" && !done ? t("hint") : undefined} testId="srs-case-decide">
+    <StepCard id="srs-step-decide" title={t("title")} testId="srs-case-decide">
       {access === "waiting" ? <ListSkeleton rows={1} /> : null}
       {blocked ? (
         <p className="text-[13px] text-muted-foreground" data-testid="srs-case-blocked" data-access={access}>

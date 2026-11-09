@@ -50,7 +50,7 @@ function QueueList({ project, queue, login }: { project: string; queue: SrsQueue
   const t = useTranslations("srs.queue");
   const { mine, others } = queueCards(queue, login);
   if (mine.length === 0 && others.length === 0) {
-    return <EmptyState icon={CircleCheck} title={t("emptyTitle")} description={t("emptyText")} testId="srs-queue-empty" />;
+    return <EmptyState icon={CircleCheck} title={t("emptyTitle")} testId="srs-queue-empty" />;
   }
   return (
     <div className="flex flex-col gap-8">
@@ -58,10 +58,7 @@ function QueueList({ project, queue, login }: { project: string; queue: SrsQueue
         {mine.length === 0 ? (
           <div className="flex items-start gap-2.5 rounded-md bg-surface-sunken px-4 py-3 text-[13px] leading-[18px]" data-testid="srs-queue-mine-empty">
             <CircleCheck className="mt-px size-4 shrink-0 text-success" aria-hidden="true" />
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <p className="font-medium text-foreground">{t("emptyTitle")}</p>
-              <p className="text-muted-foreground">{t("emptyText")}</p>
-            </div>
+            <p className="min-w-0 font-medium text-foreground">{t("emptyTitle")}</p>
           </div>
         ) : (
           <Cards project={project} cards={mine} primary />
@@ -78,9 +75,8 @@ function QueueList({ project, queue, login }: { project: string; queue: SrsQueue
 
 /**
  * The review queue of a project (/p/{project}/x/srs/reviews, the page `reviews` of the core plugin srs), written for a
- * reviewer who has never used the hub: one line saying what they are asked to do, then one card per use case waiting
- * for review, those waiting for the viewer first, then those waiting for @ba or someone else. A version that changes no
- * use case is one card. While @ba checks a version of the queue, the page reads it again, so the cards change when it
+ * reviewer who has never used the hub: one card per use case waiting for review, those waiting for the viewer first,
+ * then those waiting for @ba or someone else. A version that changes no use case is one card. While @ba checks a version of the queue, the page reads it again, so the cards change when it
  * ends.
  */
 export function ReviewQueuePage({ project, initialError }: { project: string; initialError: ApiErrorInfo | null }) {
@@ -99,7 +95,6 @@ export function ReviewQueuePage({ project, initialError }: { project: string; in
     <div className="flex flex-col gap-6" data-testid="srs-queue">
       <PageHeader
         title={t("title")}
-        sub={t("intro")}
         tags={
           waiting > 0 ? (
             <Badge variant="warning" data-testid="srs-queue-waiting-count" data-count={waiting}>

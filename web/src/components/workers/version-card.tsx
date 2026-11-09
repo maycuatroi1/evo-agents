@@ -131,7 +131,7 @@ function HubNightly({ nightly }: { nightly: Worker["nightly"] }) {
 export function VersionCard({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
   const t = useTranslations("workers.version");
   return (
-    <SectionCard title={t("title")} description={t("description")} testId="worker-version">
+    <SectionCard title={t("title")} testId="worker-version">
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-sm">
         <dt className="text-muted-foreground">{t("release")}</dt>
         <dd className="font-mono text-[13px] [overflow-wrap:anywhere]" data-testid="worker-agent-version">

@@ -140,7 +140,7 @@ function Opportunities({ project, opportunities, writer, onNew }: { project: str
   const counts = statusCounts(opportunities);
   if (opportunities.length === 0) {
     return (
-      <EmptyState icon={Telescope} title={t("emptyTitle")} description={t("emptyText")} testId="opportunities-empty">
+      <EmptyState icon={Telescope} title={t("emptyTitle")} testId="opportunities-empty">
         {writer ? (
           <Button type="button" onClick={onNew} data-testid="opportunities-new-empty">
             <Plus aria-hidden="true" />

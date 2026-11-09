@@ -56,7 +56,7 @@ export function ChatStart({
   };
 
   const keyShortcuts = touch ? "Meta+Enter Control+Enter" : "Enter Meta+Enter Control+Enter";
-  const describedBy = [`${ids}-hint`, problem ? `${ids}-problem` : null].filter(Boolean).join(" ");
+  const describedBy = problem ? `${ids}-problem` : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 overflow-y-auto" data-testid="chat-home-start" data-agent={agent.handle}>
@@ -101,9 +101,6 @@ export function ChatStart({
               data-testid="chat-home-composer-text"
             />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t p-2">
-              <p id={`${ids}-hint`} className="min-w-0 flex-1 basis-40 text-xs text-pretty text-fg-subtle">
-                {t("hint", { name: agent.name })}
-              </p>
               <Button type="submit" size="sm" className="ml-auto shrink-0" busy={pending} aria-keyshortcuts={keyShortcuts} data-testid="chat-home-composer-send">
                 <ArrowUp aria-hidden="true" />
                 {pending ? t("sending") : t("send")}

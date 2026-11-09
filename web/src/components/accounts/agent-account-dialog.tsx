@@ -114,7 +114,7 @@ function AgentAccountForm({ project, handle, kind, account, taken, open, onOpenC
       open={open}
       onOpenChange={onOpenChange}
       title={t(`${kind}.title`, { name, handle })}
-      description={t(`${kind}.description`, { handle })}
+      description={kind === "renew" ? t("renew.description") : undefined}
       pending={put.isPending || change.isPending}
       failure={failure}
       labels={{ save: t(`${kind}.save`), saving: t("saving"), cancel: t("cancel") }}

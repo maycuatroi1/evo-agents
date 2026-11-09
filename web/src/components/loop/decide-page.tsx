@@ -196,7 +196,7 @@ function Board({ project, board, login }: { project: string; board: DecisionBoar
   const t = useTranslations("loop.decide");
   const groups = boardGroups(board.items);
   if (board.items.length === 0) {
-    return <EmptyState icon={Signpost} title={t("emptyTitle")} description={t("emptyText")} testId="board-empty" />;
+    return <EmptyState icon={Signpost} title={t("emptyTitle")} testId="board-empty" />;
   }
   return (
     <>

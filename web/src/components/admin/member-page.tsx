@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { EmptyState, NotFoundState, PageSkeleton, TableSkeleton } from "@/components/states/states";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { browserApi } from "@/lib/api/browser";
 import type { Project } from "@/lib/api/client";
 import type { ApiErrorInfo } from "@/lib/api/errors";
@@ -49,27 +49,22 @@ function Section({
   id,
   icon: Icon,
   title,
-  description,
   action,
   children,
 }: {
   id: string;
   icon: typeof KeyRound;
   title: string;
-  description: string;
   action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <Card aria-labelledby={`${id}-title`} role="region" data-testid={id}>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-col gap-1">
-          <CardTitle className="flex items-center gap-2">
-            <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-            <h2 id={`${id}-title`}>{title}</h2>
-          </CardTitle>
-          <CardDescription>{description}</CardDescription>
-        </div>
+        <CardTitle className="flex items-center gap-2">
+          <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
+          <h2 id={`${id}-title`}>{title}</h2>
+        </CardTitle>
         {action ? <div className="shrink-0">{action}</div> : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">{children}</CardContent>
@@ -198,15 +193,9 @@ function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }
         id="member-grants-section"
         icon={FolderLock}
         title={t("grantsTitle")}
-        description={t("grantsDescription")}
       >
         {user.grants.length === 0 ? (
-          <EmptyState
-            icon={FolderLock}
-            title={t("grantsEmptyTitle")}
-            description={t("grantsEmptyDescription", { login: user.login })}
-            className="border-solid"
-          />
+          <EmptyState icon={FolderLock} title={t("grantsEmptyTitle")} className="border-solid" />
         ) : (
           <GrantsTable user={user} onChange={change} onRevoke={revoke} />
         )}
@@ -215,7 +204,6 @@ function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }
         id="member-tokens-section"
         icon={KeyRound}
         title={t("tokensTitle")}
-        description={t("tokensDescription")}
         action={
           <Button asChild variant="ghost">
             <Link href={tokensHref({ login: user.login, state: "any" })}>
@@ -239,7 +227,6 @@ function MemberView({ user, projects }: { user: AdminUser; projects: Project[] }
         id="member-activity-section"
         icon={ScrollText}
         title={t("activityTitle")}
-        description={t("activityDescription")}
         action={
           <Button asChild variant="ghost">
             <Link href={auditHref({ actor: user.login })}>

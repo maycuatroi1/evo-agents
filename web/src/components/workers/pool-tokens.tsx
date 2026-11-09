@@ -32,7 +32,7 @@ export function PoolTokens({ pool, onCreate }: { pool: string; onCreate: () => v
   const [revoking, setRevoking] = useState<JoinToken | null>(null);
 
   return (
-    <SectionCard title={t("title")} count={tokens.data?.length} description={t("description")} testId="pool-tokens">
+    <SectionCard title={t("title")} count={tokens.data?.length} testId="pool-tokens">
       {tokens.isPending ? (
         <div className="flex flex-col gap-2" aria-hidden="true">
           <Skeleton className="h-10 w-full" />

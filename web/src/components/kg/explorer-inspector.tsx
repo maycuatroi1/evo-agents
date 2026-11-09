@@ -185,10 +185,7 @@ function Relations({ detail, onPick }: { detail: NodeDetail; onPick: (relation: 
   if (groups.length === 0) return <p className="text-xs text-muted-foreground">{t("noRelations")}</p>;
   return (
     <div className="flex flex-col gap-3" data-testid="kg-inspector-relations">
-      <div className="flex flex-col gap-0.5">
-        <SubTitle>{t("relations", { count: detail.outgoing.length + detail.incoming.length })}</SubTitle>
-        <p className="text-xs text-fg-subtle">{t("relationsHint")}</p>
-      </div>
+      <SubTitle>{t("relations", { count: detail.outgoing.length + detail.incoming.length })}</SubTitle>
       {groups.map((group: RelationGroup) => {
         const all = open.has(group.key);
         const shown = all ? group.relations : group.relations.slice(0, RELATIONS_SHOWN);

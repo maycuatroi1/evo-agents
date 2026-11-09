@@ -91,14 +91,9 @@ export function NoCharter({ project }: { project: string }) {
       icon={MoonStar}
       title={t("title")}
       description={
-        <>
-          <p>{t("description")}</p>
-          {rights.charter ? null : (
-            <p className="mt-2">
-              {t.rich("reader", { command: () => <code className="rounded-xs bg-muted px-1 font-mono text-xs">{CHARTER_COMMAND}</code> })}
-            </p>
-          )}
-        </>
+        rights.charter ? undefined : (
+          <p>{t.rich("reader", { command: () => <code className="rounded-xs bg-muted px-1 font-mono text-xs">{CHARTER_COMMAND}</code> })}</p>
+        )
       }
     >
       {rights.charter ? (

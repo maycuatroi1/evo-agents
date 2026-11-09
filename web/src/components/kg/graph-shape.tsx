@@ -7,7 +7,7 @@ import { DataTable, dataTableColumns } from "@/components/data/data-table";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { TableSkeleton } from "@/components/states/states";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { browserApi } from "@/lib/api/browser";
 import { kgShapeQuery } from "@/lib/kg/queries";
 import type { ShapeRow } from "@/lib/kg/types";
@@ -114,7 +114,6 @@ export function GraphShapeSection({ project }: { project: string }) {
           <CardTitle>
             <h2 id="kg-shape-title">{t("title")}</h2>
           </CardTitle>
-          <CardDescription>{t("description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <QueryView state={shape} loading={<TableSkeleton rows={4} />}>

@@ -60,7 +60,7 @@
     "openHub": "Mở hub",
     "start": {
       "title": "Bắt đầu",
-      "description": "Chạy các lệnh này trong terminal trên máy bạn làm việc. Mỗi lệnh có nút sao chép.",
+      "description": "Chạy các lệnh này trong terminal trên máy bạn làm việc.",
       "commands": "Các lệnh",
       "install": {
         "title": "Cài CLI evo-agents",
@@ -276,7 +276,6 @@
     "trigger": "Chọn dự án, đang chọn {name}",
     "triggerEmpty": "Chọn dự án",
     "placeholder": "Chưa chọn dự án",
-    "hint": "Mở dự án để xem nội dung",
     "search": "Tìm dự án",
     "searchLabel": "Tìm dự án theo tên",
     "clear": "Xoá ô tìm",
@@ -574,7 +573,7 @@
     },
     "recent": {
       "title": "Vừa kết thúc",
-      "empty": "Chưa run nào kết thúc. Run hiện ở đây khi xong, thất bại hoặc bị huỷ.",
+      "empty": "Chưa run nào kết thúc.",
       "ranOn": "{duration} trên {worker}",
       "ran": "{duration}",
       "cancelled": "{owner} đã huỷ",
@@ -591,7 +590,7 @@
       "heartbeat": "heartbeat gần nhất <time></time>",
       "never": "chưa có heartbeat",
       "emptyTitle": "Bạn chưa có worker nào",
-      "emptyText": "Worker là máy của bạn chạy các bước của plan. Đăng ký một máy ở trang Worker.",
+      "emptyText": "Đăng ký một máy ở trang Worker.",
       "register": "Đăng ký worker",
       "error": "Không đọc được danh sách worker của bạn.",
       "retry": "Thử lại"
@@ -677,7 +676,6 @@
       "title": "Chat với {name}",
       "label": "Tin nhắn đầu tiên của bạn tới {name}",
       "placeholder": "Hỏi {name} bất cứ điều gì",
-      "hint": "Tin nhắn này mở direct chat của bạn với {name}: mọi tin đều tới agent, và agent trả lời ngay dưới tin của bạn.",
       "send": "Gửi",
       "sending": "Đang gửi…",
       "blank": "Hãy viết tin nhắn trước.",
@@ -703,7 +701,6 @@
     "adminWithoutGrant": "Bạn là quản trị viên hub nhưng chưa có vai trò trong dự án này: bạn quản lý được dự án nhưng không đọc nội dung của nó.",
     "ladder": {
       "title": "Thang nhãn",
-      "description": "Từ thấp tới cao. Bạn xem được nội dung có nhãn tới mức hiển thị của mình.",
       "visible": "Xem được",
       "hidden": "Không xem được",
       "default": "Nhãn mặc định",
@@ -711,7 +708,6 @@
     },
     "repos": {
       "title": "Kho mã",
-      "description": "Các repo khai trong harness của dự án.",
       "empty": "Dự án chưa khai repo nào.",
       "name": "Repo",
       "branch": "Nhánh mặc định",
@@ -720,7 +716,6 @@
     },
     "sinks": {
       "title": "Sink",
-      "description": "Nơi nội dung của dự án được phép đi tới, kèm mức cao nhất mỗi nơi được nhận.",
       "empty": "Dự án chưa khai sink nào.",
       "id": "Sink",
       "kind": "Loại",
@@ -735,7 +730,6 @@
     },
     "outputs": {
       "title": "Output của run",
-      "description": "File mà agent của các run trong dự án này tạo ra: file nó gửi, file nó để trong .evo-run/outputs/ và ảnh trong kết quả tool.",
       "toolImages": "Giữ ảnh trong kết quả tool",
       "toolImagesHint": "Screenshot và ảnh một tool trả về thành file của run, và bị xoá cùng log của run. Khi tắt, máy không gửi và hub từ chối các ảnh đó.",
       "adminOnly": "Admin của dự án bật hay tắt mục này.",
@@ -883,7 +877,6 @@
       "manage": "Quản lý {login}",
       "manageShort": "Chi tiết",
       "emptyTitle": "Chưa có người dùng nào",
-      "emptyDescription": "Người dùng xuất hiện ở đây sau lần đăng nhập đầu tiên, hoặc khi bạn cấp quyền cho tên đăng nhập GitHub của họ.",
       "noMatchTitle": "Không có người dùng khớp bộ lọc",
       "columns": {
         "login": "Người dùng",
@@ -907,9 +900,7 @@
       "notFoundDescription": "Hub không có người dùng này. Có thể tên đăng nhập bị gõ sai, hoặc người đó chưa đăng nhập và chưa được cấp quyền.",
       "summary": "Có trên hub từ {created}. Hoạt động lần cuối: {lastSeen}.",
       "grantsTitle": "Quyền theo dự án",
-      "grantsDescription": "Vai trò và mức hiển thị của người này trong từng dự án.",
       "grantsEmptyTitle": "Chưa có quyền ở dự án nào",
-      "grantsEmptyDescription": "{login} chưa thấy dự án nào trên hub. Cấp vai trò để họ đọc hoặc ghi nội dung của một dự án.",
       "columns": {
         "project": "Dự án",
         "role": "Vai trò",
@@ -923,16 +914,13 @@
       "revoke": "Thu hồi",
       "revokeLabel": "Thu hồi quyền của {login} trong dự án {project}",
       "tokensTitle": "Token và phiên đang hoạt động",
-      "tokensDescription": "Token máy của CLI và phiên web còn dùng được của người này.",
       "allTokens": "Xem mọi token của {login}",
       "activityTitle": "Hoạt động gần đây",
-      "activityDescription": "Những thao tác mới nhất người này đã làm trên hub.",
       "allActivity": "Xem toàn bộ trong audit",
       "unknown": "không rõ"
     },
     "grant": {
       "title": "Cấp quyền theo dự án",
-      "description": "Chọn người dùng, dự án, vai trò và mức hiển thị. Bạn sẽ xác nhận ở bước sau.",
       "login": "Tên đăng nhập GitHub",
       "loginHint": "Có thể cấp cho người chưa đăng nhập lần nào; quyền có hiệu lực từ lần đăng nhập đầu tiên của họ.",
       "loginRequired": "Nhập tên đăng nhập GitHub.",
@@ -947,7 +935,6 @@
         "admin": "Như Ghi, và đăng ký lại dự án từ harness của nó."
       },
       "visibility": "Mức hiển thị",
-      "visibilityHint": "Các mức trong thang nhãn của dự án, từ thấp tới cao. Người này xem được nội dung có nhãn tới mức được chọn.",
       "visibilityRequired": "Chọn một mức hiển thị.",
       "existing": "{login} đang có vai trò {role}, mức hiển thị {level} trong dự án này. Lưu sẽ thay bằng lựa chọn mới.",
       "unchanged": "{login} đã có đúng vai trò và mức hiển thị này. Không có gì để thay đổi.",
@@ -955,7 +942,7 @@
       "cancel": "Huỷ",
       "close": "Đóng",
       "confirmTitle": "Xác nhận cấp quyền",
-      "confirmDescription": "Kiểm tra lại trước khi lưu. Thao tác được ghi vào audit với tên của bạn.",
+      "confirmDescription": "Thao tác được ghi vào audit với tên của bạn.",
       "confirmChangeTitle": "Xác nhận đổi quyền",
       "summary": {
         "login": "Người dùng",
@@ -1025,7 +1012,6 @@
       "revokeLabel": "Thu hồi token {id} của {login}",
       "mobileTitle": "{kind} #{id}",
       "emptyTitle": "Không có token nào đang hoạt động",
-      "emptyDescription": "Token hiện ở đây khi có người đăng nhập hub từ trình duyệt, CLI hoặc worker.",
       "noMatchTitle": "Không có token nào khớp bộ lọc"
     },
     "revokeToken": {
@@ -1049,11 +1035,9 @@
     "invites": {
       "title": "Link mời",
       "caption": "Link mời",
-      "sub": "Link cho phép một người vào một dự án, hoặc đăng ký dự án của riêng họ, bằng cách đăng nhập GitHub. Mỗi link dùng một lần.",
       "count": "{count, plural, other {# link}}",
       "new": "Tạo link mời",
       "emptyTitle": "Chưa có link mời nào",
-      "emptyDescription": "Tạo một link để đưa ai đó vào dự án, hoặc để họ đăng ký dự án của riêng mình.",
       "columns": {
         "id": "ID",
         "kind": "Loại",
@@ -1085,7 +1069,7 @@
       "revokeLabel": "Thu hồi link mời {id}",
       "form": {
         "title": "Tạo link mời",
-        "description": "Chọn quyền link cấp. Link dùng được một lần, cho người mở trước hoặc cho một tên đăng nhập GitHub.",
+        "description": "Link dùng được một lần, cho người mở trước hoặc cho một tên đăng nhập GitHub.",
         "kind": "Link cấp",
         "kindHints": {
           "join": "Một vai trò trong một dự án của hub này.",
@@ -1097,7 +1081,6 @@
         "noProjects": "Hub chưa có dự án nào. Hãy tạo link đăng ký dự án, hoặc đăng ký một dự án trước.",
         "role": "Vai trò",
         "visibility": "Mức hiển thị",
-        "visibilityHint": "Mức cao nhất trong thang nhãn của dự án mà người này được xem.",
         "days": "Hết hạn sau (ngày)",
         "daysHint": "Từ 1 đến 30 ngày.",
         "daysInvalid": "Nhập số ngày nguyên từ 1 đến 30.",
@@ -1153,7 +1136,6 @@
       "mobileMeta": "{actor}, {target}",
       "noProject": "Không thuộc dự án",
       "emptyTitle": "Chưa có dòng audit nào",
-      "emptyDescription": "Mỗi lần đăng nhập, cấp quyền, hay thay đổi dự án, plan, memory và skill thêm một dòng ở đây.",
       "noMatchTitle": "Không có dòng audit nào khớp bộ lọc",
       "actions": {
         "auth_login": "Đăng nhập",
@@ -1182,7 +1164,7 @@
       "version": "Phiên bản {version}",
       "unset": "Chưa đặt",
       "formTitle": "Tên và màu",
-      "formDescription": "Tên sản phẩm ở thanh bên, tiêu đề trang và trang đăng nhập, cùng màu của bốn token mà hub được đặt. Token để trống giữ màu của hệ thiết kế.",
+      "formDescription": "Token để trống giữ màu của hệ thiết kế.",
       "name": "Tên sản phẩm",
       "nameHint": "Để trống: dùng tên của web, {name}.",
       "nameInvalid": "Tối đa {max} ký tự, không xuống dòng và không có khoảng trắng ở hai đầu.",
@@ -1316,7 +1298,7 @@
     "settings": {
       "history": {
         "title": "Lịch sử",
-        "description": "Mọi phiên bản, mới nhất trước. Lùi về một phiên bản cũ ghi lại nó thành phiên bản kế tiếp.",
+        "description": "Lùi về một phiên bản cũ ghi lại nó thành phiên bản kế tiếp.",
         "empty": "Chưa từng đổi: mọi thứ như web khi chưa có cài đặt.",
         "version": "Phiên bản {version}",
         "current": "Hiện tại",
@@ -1457,7 +1439,6 @@
       "canvas": "Đồ thị các bước của plan",
       "inspector": "Chi tiết bước",
       "inspectorEmpty": "Chưa chọn bước nào",
-      "inspectorEmptyHint": "Chọn một bước, hoặc focus vào bước rồi bấm Enter, để xem nó chờ gì, bước nào chờ nó và cách kiểm.",
       "sheetDescription": "Chi tiết của bước {key}, chỉ để đọc.",
       "previousStep": "Bước trước, {key}",
       "nextStep": "Bước sau, {key}",
@@ -1736,7 +1717,7 @@
     },
     "history": {
       "title": "Lịch sử revision",
-      "description": "Mỗi lần đẩy lên hoặc xoá tạo một revision. Revision có nhãn cao hơn grant của bạn không hiện ở đây.",
+      "description": "Revision có nhãn cao hơn grant của bạn không hiện ở đây.",
       "revision": "Revision {revision}",
       "latest": "Mới nhất",
       "viewing": "(đang xem)",
@@ -1809,7 +1790,6 @@
       "admins": "Chỉ quản trị viên hub",
       "adminsHint": "Chỉ quản trị viên hub thấy, tải về và đồng bộ skill này",
       "title": "Ai thấy skill này",
-      "description": "Skill dùng chung là của mọi thành viên đã đăng nhập: họ thấy nó ở đây, tải về và đồng bộ về máy. Bạn có thể giữ nó cho riêng quản trị viên hub. Chỉ quản trị viên hub thấy thẻ này.",
       "adminsOnly": "Chỉ quản trị viên hub",
       "adminsOnlyHint": "Bật: thành viên không còn thấy, tải về hay đồng bộ skill này, và lần đồng bộ sau gỡ nó khỏi máy họ sau khi sao lưu. Tắt: mọi thành viên đã đăng nhập lại có nó. Mỗi lần đổi được ghi vào audit.",
       "nowAdmins": "{name} giờ chỉ dành cho quản trị viên hub",
@@ -1868,7 +1848,6 @@
       "notFoundDescription": "Skill này chưa được xuất bản ở đây, hoặc tên được viết khác.",
       "noVersions": "Skill chưa có phiên bản nào.",
       "latestTitle": "Phiên bản mới nhất: v{version}",
-      "latestDescription": "Bundle là tệp tar.gz của thư mục skill, đúng như lúc xuất bản.",
       "file": "Tệp",
       "size": "Kích thước",
       "source": "Nguồn",
@@ -2000,7 +1979,6 @@
         "exploreHere": "Khám phá từ đây",
         "nodePage": "Trang node",
         "relations": "{count, plural, other {# quan hệ}}",
-        "relationsHint": "Chọn một node để hiện nó trên graph.",
         "noRelations": "Không có quan hệ nào bạn đọc được.",
         "outgoing": "đi ra",
         "incoming": "đi vào",
@@ -2048,7 +2026,6 @@
           "showType": "Hiện {kind}",
           "hideType": "Ẩn {kind}",
           "isolated": "Không có quan hệ",
-          "isolatedHint": "Thực thể không có quan hệ với thực thể nào đang hiện, nhiều tài liệu nhắc nhất trước.",
           "docs": "Số tài liệu nhắc tới",
           "showFewer": "Thu gọn",
           "showAllCount": "Hiện cả {count}",
@@ -2197,7 +2174,6 @@
       "count": "{value, number}"
     },
     "builds": {
-      "description": "Hub dựng lại đồ thị sau mỗi lượt đẩy (<code>evo-agents hub kg push</code>); web không bao giờ xếp build.",
       "history": "Lịch sử build",
       "emptyTitle": "Chưa có build nào",
       "emptyDescription": "Build đầu tiên được xếp khi một thành viên có quyền ghi đẩy dữ liệu bằng <code>evo-agents hub kg push</code>.",
@@ -2206,7 +2182,6 @@
     },
     "search": {
       "title": "Tìm node",
-      "description": "Tìm theo tên, id, đường dẫn, mã hoặc từ trong nội dung. Kết quả chỉ gồm node có nhãn trong mức hiển thị của bạn.",
       "query": "Từ khoá",
       "placeholder": "Ví dụ: runbook, KB-01, src/app.py",
       "kind": "Loại node",
@@ -2233,7 +2208,6 @@
     },
     "commits": {
       "title": "Commit đã đọc",
-      "description": "Commit mà mỗi nguồn git của đồ thị này đã đọc, và commit đó chậm nhánh mặc định của remote bao nhiêu commit lúc nguồn được đồng bộ.",
       "ref": "của {ref}",
       "behind": "chậm {base} {count, plural, other {# commit}}",
       "upToDate": "khớp với {base}",
@@ -2264,7 +2238,6 @@
     },
     "evidence": {
       "title": "Bằng chứng",
-      "description": "Mục, phiên bản và đoạn mà node được đọc ra.",
       "empty": "Node này không có bằng chứng nào bạn xem được.",
       "source": "nguồn {source}",
       "rev": "phiên bản {rev}",
@@ -2327,7 +2300,6 @@
     },
     "shape": {
       "title": "Hình dạng đồ thị",
-      "description": "Số cạnh mỗi loại nối mỗi loại node với loại khác, chỉ đếm phần bạn đọc được.",
       "columns": {
         "source": "Từ loại",
         "rel": "Loại cạnh",
@@ -2341,7 +2313,6 @@
     },
     "map": {
       "title": "Bản đồ cụm",
-      "description": "Các nhóm node liên kết với nhau nhiều hơn với phần còn lại, đếm trên những gì bạn được đọc. Màu cho biết cụm; bấm một điểm để mở cụm của nó.",
       "noClusters": "Không có cụm để hiện: {reason}",
       "summary": "{clusters, plural, other {# cụm}}, {nodes, plural, other {# node}}, {links, plural, other {# liên kết giữa các cụm}}",
       "canvasLabel": "Bản đồ các cụm của graph; bảng bên dưới liệt kê cùng các cụm đó",
@@ -2365,7 +2336,6 @@
       },
       "matrix": {
         "title": "Liên kết giữa các cụm",
-        "description": "Mỗi ô đếm số cạnh nối hai cụm; càng đậm càng nhiều.",
         "cell": "{a} và {b}: {count, plural, other {# cạnh}}",
         "hidden": "{count, plural, other {# cụm nhỏ hơn}} không có trong ma trận.",
         "empty": "Không có cạnh nào bạn đọc được nối hai cụm."
@@ -2396,7 +2366,7 @@
     },
     "review": {
       "title": "Hàng đợi rà duyệt",
-      "intro": "Những gì trong đồ thị cần người xem lại, do sáu luật tìm ra sau mỗi lần dựng. Mục đã bỏ qua vẫn được bỏ qua ở các lần dựng sau.",
+      "intro": "Mục đã bỏ qua vẫn được bỏ qua ở các lần dựng sau.",
       "notComputed": "Chưa có hàng đợi rà duyệt",
       "noItems": "Không có mục nào khớp với cách xem này.",
       "rules": {
@@ -2514,7 +2484,6 @@
       "default": "default (mọi nguồn)",
       "manage": "Graph có tên",
       "title": "Graph có tên",
-      "description": "Một graph có tên là một tập nguồn của project này. Chọn một graph thì tìm kiếm chỉ trả kết quả từ các nguồn đó; graph vẫn được build một lần cho mọi nguồn.",
       "name": "Tên",
       "namePlaceholder": "billing",
       "purpose": "Dùng để làm gì",
@@ -2654,7 +2623,6 @@
     },
     "empty": {
       "title": "Chưa có worker nào",
-      "description": "Đăng ký một laptop hoặc máy bàn để chạy các bước plan cho bạn; worker gọi hub qua HTTPS và không mở cổng nào.",
       "showRevoked": "Xem worker đã thu hồi"
     },
     "noResults": {
@@ -2706,7 +2674,6 @@
       "neverSeen": "Chưa có heartbeat. Chạy daemon trên {hostname} bằng <code>evo-agents worker run</code>, hoặc cài nó thành service.",
       "runtimes": {
         "title": "Runtime tìm thấy",
-        "description": "Những gì heartbeat gần nhất tìm thấy trên máy.",
         "empty": "Hiện sau heartbeat đầu tiên.",
         "none": "Heartbeat gần nhất không báo runtime nào.",
         "version": "phiên bản {version}",
@@ -2716,7 +2683,6 @@
       },
       "scope": {
         "title": "Phạm vi",
-        "description": "Những gì worker được chạy. Dự án được đặt lúc đăng ký.",
         "projects": "Dự án",
         "slots": "Slot",
         "slotsValue": "Đang dùng {held} trên {slots}",
@@ -2743,7 +2709,6 @@
       },
       "checkouts": {
         "title": "Checkout",
-        "description": "Các repo heartbeat gần nhất tìm thấy; mỗi run làm việc trong một worktree của một repo.",
         "descriptionIn": "Các repo heartbeat gần nhất tìm thấy, đều nằm trong <code>{path}</code>; mỗi run làm việc trong một worktree của một repo.",
         "empty": "Hiện sau heartbeat đầu tiên.",
         "none": "Heartbeat gần nhất không báo checkout nào.",
@@ -2853,7 +2818,6 @@
     },
     "version": {
       "title": "Phiên bản",
-      "description": "Bản evo-agents daemon đang chạy, theo heartbeat gần nhất.",
       "release": "Bản phát hành",
       "commit": "Commit",
       "noCommit": "Chưa báo",
@@ -2943,7 +2907,6 @@
     },
     "sharing": {
       "title": "Chia sẻ",
-      "description": "Worker nhận run của ai ngoài bạn, và doctor của nó tìm thấy gì ở lần chạy gần nhất.",
       "loading": "Đang tải",
       "loadFailed": "Không tải được thông tin chia sẻ. Trang sẽ thử lại sau ít phút.",
       "noUnits": "Chưa thu hẹp: khi được chia sẻ, nó nhận run của mọi writer của dự án nó phục vụ.",
@@ -3005,7 +2968,6 @@
     "poolsButton": "Pool",
     "pools": {
       "title": "Pool",
-      "description": "Pool cho mọi máy tham gia cùng dự án, slot, label và taint. Join token cho một máy mới tham gia bằng một lệnh.",
       "count": "{count, plural, other {# pool}}",
       "createButton": "Pool mới",
       "caption": "Pool của bạn",
@@ -3024,8 +2986,7 @@
         "taints": "Taint"
       },
       "empty": {
-        "title": "Chưa có pool nào",
-        "description": "Tạo một pool, rồi thêm máy vào bằng join token: mỗi máy trở thành một worker với thiết lập của pool."
+        "title": "Chưa có pool nào"
       },
       "form": {
         "name": "Tên",
@@ -3061,7 +3022,7 @@
       },
       "create": {
         "title": "Pool mới",
-        "description": "Những gì mọi node của pool nhận được. Bạn có thể đổi về sau; các node nhận thay đổi ở heartbeat kế tiếp.",
+        "description": "Bạn có thể đổi về sau; các node nhận thay đổi ở heartbeat kế tiếp.",
         "cancel": "Hủy",
         "create": "Tạo pool",
         "creating": "Đang tạo...",
@@ -3079,10 +3040,8 @@
         "never": "Chưa bao giờ",
         "nodeLine": "{hostname}, phiên bản {version}",
         "nodes": "Node",
-        "nodesDescription": "Các máy đã tham gia bằng join token và chưa bị thu hồi, mới nhất trước.",
         "noNodes": "Chưa có máy nào tham gia. Hãy tạo join token và chạy lệnh của nó trên một máy Ubuntu mới.",
         "scope": "Mọi node nhận được",
-        "scopeDescription": "Mỗi node có những thứ này, cộng thêm thiết lập riêng.",
         "projects": "Dự án",
         "slots": "Slot",
         "labels": "Label",
@@ -3095,7 +3054,7 @@
       },
       "join": {
         "title": "Join token cho {pool}",
-        "description": "Máy chạy lệnh với token này sẽ tham gia pool. Token chỉ hiện một lần.",
+        "description": "Token chỉ hiện một lần.",
         "hours": "Hiệu lực (giờ)",
         "hoursHint": "Từ {min} đến {max} giờ.",
         "uses": "Số máy",
@@ -3116,7 +3075,6 @@
       },
       "tokens": {
         "title": "Join token",
-        "description": "Mới nhất trước. Hub không bao giờ hiện lại token sau khi tạo.",
         "failed": "Không tải được join token. Chúng sẽ tải lại sau ít phút.",
         "empty": "Chưa có join token nào.",
         "create": "Tạo join token",
@@ -3180,7 +3138,7 @@
     "deleteLabel": "Xoá secret {name}",
     "empty": {
       "title": "Chưa có secret nào",
-      "description": "Hub giữ kín token và giao cho run của các dự án bạn chọn, trên worker của bạn; value chỉ gửi lên một lần và không bao giờ hiện lại. Thêm thứ run cần, như <code>CLAUDE_CODE_OAUTH_TOKEN</code> cho Claude Code hay access token GitLab cho git, ở đây hoặc bằng <code>evo-agents hub secret set</code>."
+      "description": "Thêm thứ run cần, như <code>CLAUDE_CODE_OAUTH_TOKEN</code> cho Claude Code hay access token GitLab cho git, ở đây hoặc bằng <code>evo-agents hub secret set</code>."
     },
     "errors": {
       "forbidden": "Hub từ chối: secret cần vai trò writer ở mọi dự án nó gắn với, và chỉ gắn được với worker của chính bạn chưa bị thu hồi.",
@@ -3318,8 +3276,7 @@
     "fromSeat": "từ vị trí #{id}",
     "fromUnit": "từ {name}",
     "empty": {
-      "title": "Chưa có đơn vị",
-      "description": "Sơ đồ tổ chức gồm các nhóm và khóa của hub, ai ngồi ở đâu và mỗi vị trí làm việc ở cấp nào. Hãy tạo đơn vị đầu tiên dưới gốc để bắt đầu."
+      "title": "Chưa có đơn vị"
     },
     "errors": {
       "forbidden": "Hub từ chối thay đổi này.",
@@ -3379,7 +3336,6 @@
       "createTitle": "Đơn vị mới",
       "editTitle": "Sửa {name}",
       "createDescription": "Đơn vị nằm dưới {parent}.",
-      "editDescription": "Đổi tên đơn vị, nơi nó thuộc về hoặc ngày khóa kết thúc.",
       "save": "Lưu",
       "create": "Tạo đơn vị",
       "saved": "Đã lưu {name}",
@@ -3409,7 +3365,6 @@
       "editTitle": "Sửa vị trí của {who}",
       "addTitle": "Thêm vị trí",
       "editDescription": "Một vị trí trong {unit}.",
-      "addDescription": "Xếp một người hoặc một agent vào đơn vị.",
       "save": "Lưu",
       "add": "Thêm vị trí",
       "unit": "Đơn vị",
@@ -3675,15 +3630,12 @@
     "form": {
       "newTitle": "Agent mới",
       "editTitle": "Sửa @{handle}",
-      "newDescription": "Một agent của {project}: tên và gương mặt, chỉ dẫn cho các run của nó, và những gì run được dùng.",
       "editDescription": "Lưu sẽ tạo phiên bản kế tiếp, và các run giao từ lúc đó chạy theo phiên bản ấy. Form này mở từ phiên bản {version}.",
       "close": "Đóng",
       "handle": "Handle",
       "handleHint": "Chữ thường, chữ số và dấu gạch ngang, duy nhất trên hub. Mọi người @ agent bằng handle này, và nó không bao giờ đổi.",
       "name": "Tên",
-      "nameHint": "Tên agent hiện trong run và chat.",
       "description": "Mô tả",
-      "descriptionHint": "Agent dùng để làm gì.",
       "starters": "Câu gợi ý",
       "startersHint": "Các câu hỏi màn chat gợi ý trước tin nhắn đầu tiên gửi agent, mỗi dòng một câu: tối đa {max} câu, mỗi câu tối đa {chars} ký tự.",
       "startersProblems": {
@@ -3825,7 +3777,6 @@
       },
       "permissions": {
         "title": "Quyền",
-        "hint": "Những gì run dưới agent này được dùng. Hub giữ run trong giới hạn credential, skill, worker, dự án, model và runtime; worker giữ phiên trong giới hạn tool, skill và model.",
         "defaultHint": "Agent mặc định luôn có mọi quyền.",
         "nothing": "Không cho phép gì",
         "allowed": "{axis} được phép"
@@ -3902,7 +3853,6 @@
       },
       "packs": {
         "title": "Gói agent",
-        "hint": "Được nạp vào mọi run dưới agent này, mỗi gói ở phiên bản đã ghim. Skill và MCP server của gói được tính là đã cho phép.",
         "none": "Không có: các run của nó không nhận gói agent nào.",
         "version": "v{version}"
       },
@@ -3911,7 +3861,6 @@
       }
     },
     "workers": {
-      "lead": "Khi có người giao việc cho @{handle}, trong chat hay bằng một run, việc đó chạy trên một worker của người ấy, hoặc worker được chia sẻ cho họ, mà danh sách này cho phép. Chọn worker theo tên, theo label, hoặc một pool: pool gồm mọi node của nó, cả node vào sau.",
       "conflict": "Agent này vừa được người khác sửa. Bảng đã hiện bản mới nhất: hãy chọn lại.",
       "saved": "Đã lưu nơi @{handle} chạy",
       "savedText": "Các run tiếp theo chỉ chạy trên worker mà danh sách này cho phép.",
@@ -3936,7 +3885,6 @@
       "runsOn": "Chạy trên",
       "worker": "Worker",
       "hub": "Hub",
-      "runsOnHint": "Nơi các lượt chạy của agent diễn ra: máy worker hoặc hub.",
       "save": "Lưu phiên bản mới",
       "saveHint": "Lưu tạo phiên bản sau v{version} và giữ v{version} trong lịch sử."
     }
@@ -3947,9 +3895,7 @@
     "systemMetaTitle": "{slug}, hệ agent của {project}",
     "count": "{count, plural, other {# hệ}}",
     "newButton": "Hệ mới",
-    "sub": "Agent, knowledge graph, curator và orchestrator nối trên một canvas, cùng agent lối vào mà mọi người trò chuyện.",
     "emptyTitle": "Chưa có hệ agent nào",
-    "emptyAdmin": "Một hệ nối agent, graph, curator và orchestrator trên canvas. Hệ mới tạo một hệ với lối vào.",
     "emptyReader": "Admin của dự án thiết kế hệ agent ở đây.",
     "revision": "Bản {revision}",
     "entryAgent": "Mọi người trò chuyện với @{handle} trước.",
@@ -4072,7 +4018,6 @@
       "existing": "Hồ sơ",
       "noFreeAgent": "Mọi hồ sơ của dự án đã ở trên canvas.",
       "agentHint": "Nút ghim phiên bản hiện tại của hồ sơ.",
-      "orchestratorHint": "Orchestrator cũng là một hồ sơ; các agent chuyển việc lên nó.",
       "newAgent": "Agent mới",
       "addProfile": "Thêm",
       "existingGraph": "Graph",
@@ -4109,7 +4054,6 @@
     "builder": {
       "panel": "Builder",
       "title": "Thiết kế cùng @builder",
-      "description": "Nói với @builder hệ thống {slug} cần làm gì. Đề xuất của nó hiện mờ trên canvas cho tới khi admin chấp nhận hoặc bỏ.",
       "close": "Đóng bảng Builder",
       "proposal": "Đề xuất {id}",
       "counts": "Thêm {added, plural, other {# node}}, bỏ {removed, plural, other {# node}}, {changed, plural, other {# thay đổi}}, thêm {addedEdges, plural, other {# cạnh}}, bỏ {removedEdges, plural, other {# cạnh}}",
@@ -4132,7 +4076,6 @@
     "test": {
       "title": "Thử @{handle}",
       "unsaved": "Thử bản {revision}. Thay đổi chưa lưu không nằm trong đó.",
-      "description": "Tin nhắn ở đây đến agent lối vào của bản {revision} và mở một trace.",
       "backToChat": "Về khung chat",
       "viewTrace": "Xem trace ({runs, plural, other {# lượt chạy}})",
       "noTrace": "Gửi một tin nhắn; trace của nó hiện ở đây.",
@@ -4261,7 +4204,6 @@
       "caption": "Chat của bạn",
       "rowLabelUnread": "{title}, {count, plural, other {# tin chưa đọc}}",
       "emptyTitle": "Chưa có chat nào",
-      "emptyBody": "Chat gom người và agent của các dự án vào một cuộc trò chuyện. Chọn một agent ở trên để chat riêng với agent đó, hoặc bấm Chat mới để tạo group chat, nơi gõ @ tên agent là giao việc cho agent.",
       "noneOpenTitle": "Mở một chat",
       "noneOpenBody": "Chọn một chat trong danh sách hay một agent ở trên danh sách, hoặc bấm Chat mới để tạo group chat.",
       "you": "Bạn",
@@ -4275,7 +4217,7 @@
       "open": "Chat với {name}, @{handle} của {project}",
       "tooltip": "@{handle}, {project}",
       "loading": "Đang tải các agent bạn chat được",
-      "empty": "Agent của các dự án bạn có quyền ghi hiện ở đây để chat riêng.",
+      "empty": "Chưa có agent nào để chat.",
       "failed": "Không đọc được agent của {projects}.",
       "retry": "Thử lại",
       "openFailed": "Không mở được chat với @{handle}"
@@ -4287,14 +4229,11 @@
       "backToChats": "Về danh sách chat",
       "composerLabel": "Tin gửi tới {title}",
       "placeholder": "Viết tin nhắn. Gõ @ để nhắc một agent, một dự án hoặc một người.",
-      "hint": "Gõ @ tên agent để giao việc: agent trả lời trong thread dưới tin của bạn.",
       "threadSheet": "Thread",
       "threadSheetBody": "Một thread của {title}",
       "notFoundTitle": "Không có chat này",
       "notFoundBody": "Địa chỉ của một chat là /chats rồi tới số của chat. Hãy mở chat từ danh sách chat của bạn.",
-      "directHint": "Mọi tin đều tới {name}, không cần @: agent trả lời ngay dưới tin của bạn.",
-      "directPlaceholder": "Nhắn cho {name}",
-      "directReplyHint": "Câu trả lời của bạn đi tiếp cùng session, nên {name} làm tiếp từ chỗ đã dừng."
+      "directPlaceholder": "Nhắn cho {name}"
     },
     "header": {
       "back": "Về danh sách chat",
@@ -4338,7 +4277,6 @@
       "loadingOlder": "Đang tải tin cũ hơn",
       "olderFailed": "Không tải được tin cũ hơn. Hãy thử lại.",
       "emptyTitle": "Chưa có tin nào",
-      "emptyBody": "Hãy nói điều bạn cần. Gõ @ tên agent để giao việc; agent trả lời trong thread dưới tin của bạn.",
       "latest": "Tới tin mới nhất",
       "directEmptyBody": "Hãy nói điều bạn cần: mọi tin đều tới {name}, và câu trả lời hiện ngay dưới tin của bạn."
     },
@@ -4446,17 +4384,13 @@
       "retry": "Thử lại",
       "loading": "Đang tải thread",
       "replies": "{count, plural, =0 {Chưa có trả lời} other {# trả lời}}",
-      "empty": "Chưa ai trả lời. Agent được nhắc ở trên sẽ trả lời tại đây.",
+      "empty": "Chưa ai trả lời.",
       "latest": "Tới tin mới nhất",
       "composerLabel": "Trả lời trong thread",
-      "placeholder": "Trả lời trong thread",
-      "soloHint": "Chat này chỉ có mình bạn: tin trả lời không có @ sẽ tới agent đang làm trong thread này.",
-      "hint": "Gõ @ tên agent để giao cho agent tin trả lời này.",
-      "directHint": "Câu trả lời của bạn đi tiếp cùng session với {name}."
+      "placeholder": "Trả lời trong thread"
     },
     "members": {
       "title": "Thành viên",
-      "description": "Những ai trong {title}. Mỗi người ở đây đọc được các tin mà grant của họ cho phép.",
       "close": "Đóng danh sách thành viên",
       "agents": "Agent",
       "people": "Người",
@@ -4491,7 +4425,7 @@
       "agentsFull": "Một chat có tối đa {max} agent.",
       "agentsFailed": "Không đọc được agent của {projects}.",
       "noAgents": "Mọi agent của các dự án bạn có quyền ghi đã ở trong chat, hoặc bạn không có quyền ghi ở dự án nào.",
-      "agentHint": "Agent của các dự án bạn có quyền ghi. Mỗi agent trả lời khi có người nhắc tới nó.",
+      "agentHint": "Agent của các dự án bạn có quyền ghi.",
       "addPerson": "Thêm người",
       "peopleFull": "Một chat có tối đa {max} người.",
       "personHint": "Người chung dự án hay chung chat với bạn; gõ login để thêm người khác đã đăng nhập hub. Mỗi người cần grant đủ cho các dự án của agent trong chat này.",
@@ -4501,7 +4435,6 @@
     },
     "create": {
       "title": "Chat mới",
-      "description": "Người và agent của các dự án, trong một cuộc trò chuyện. Bạn luôn có trong chat.",
       "titleLabel": "Tiêu đề",
       "titlePlaceholder": "Lên kế hoạch phát hành",
       "titleHint": "Một dòng, tối đa 120 ký tự.",
@@ -4598,7 +4531,7 @@
     "title": "Tài khoản",
     "count": "{count, plural, other {# tài khoản}}",
     "caption": "Tài khoản của bạn",
-    "listSummary": "Các env secret của bạn, theo nơi chúng đăng nhập. Chỉ mình bạn thấy, và không giá trị nào được hiển thị.",
+    "listSummary": "Chỉ mình bạn thấy, và không giá trị nào được hiển thị.",
     "secrets": "Secret",
     "add": "Thêm tài khoản Claude",
     "columns": {
@@ -4680,7 +4613,7 @@
     },
     "empty": {
       "title": "Chưa có tài khoản mô hình",
-      "description": "Một tài khoản là một env secret của bạn, chẳng hạn token của <code>claude setup-token</code> cho <code>CLAUDE_CODE_OAUTH_TOKEN</code>. Thêm ở đây hoặc bằng <code>evo-agents hub account login</code>; có vài cái cho cùng một biến thì các run lần lượt dùng chúng."
+      "description": "Thêm ở đây hoặc bằng <code>evo-agents hub account login</code>; có vài tài khoản cho cùng một biến thì các run lần lượt dùng chúng."
     },
     "errors": {
       "forbidden": "Hub từ chối: một policy cần quyền writer trên dự án của nó.",
@@ -4820,7 +4753,6 @@
     },
     "policies": {
       "title": "Xoay vòng theo dự án",
-      "description": "Cách các run của bạn trong mỗi dự án chọn giữa các tài khoản, và việc run làm khi tài khoản của nó chạm giới hạn. Dự án bạn chưa đặt gì sẽ dùng mặc định.",
       "caption": "Policy xoay vòng của bạn theo dự án",
       "columns": {
         "project": "Dự án",
@@ -4885,17 +4817,14 @@
     "groups": {
       "model": {
         "title": "Tài khoản model",
-        "description": "Đăng nhập của model mà run nói chuyện cùng. Các run lần lượt dùng chúng, và chi phí được tính ở đây.",
         "none": "Chưa có tài khoản model. Thêm tài khoản Claude để run có model."
       },
       "service": {
         "title": "Thông tin đăng nhập dịch vụ",
-        "description": "Token và key mà run dùng cho việc khác: một repository, một workspace, một máy chủ. Chúng không có chi phí.",
         "none": "Chưa có thông tin đăng nhập dịch vụ. Thêm một secret gắn với dự án."
       },
       "agent": {
         "title": "Tài khoản của agent",
-        "description": "Các secret mà agent sở hữu trong những dự án bạn tham gia. Admin của dự án đổi chúng trên trang agent.",
         "none": "Chưa agent nào có tài khoản riêng.",
         "agent": "Agent",
         "projectTitle": "Dự án {project}",
@@ -4904,9 +4833,7 @@
       },
       "pools": {
         "title": "Nhóm tài khoản",
-        "description": "Các nhóm tài khoản có tên dành cho agent của một dự án. Agent gắn với pool chỉ chạy bằng các tài khoản trong pool đó.",
         "none": "Dự án này chưa có pool nào.",
-        "hint": "Mỗi agent có một nhóm tài khoản. Khi nhóm không có tài khoản dùng được, lần chạy chờ trong hàng đợi.",
         "failed": "Không đổi được nhóm tài khoản.",
         "added": "Đã thêm {name} vào {pool}.",
         "inUse": "Có agent đang dùng pool này: gắn agent đó sang pool khác trước.",
@@ -4945,7 +4872,6 @@
     },
     "costByPrincipal": {
       "title": "Chi phí theo member",
-      "description": "Run của các member được chia sẻ account của bạn, và chi phí ước tính của chúng. Run của chính bạn nằm ở dòng của từng account.",
       "empty": "Chưa có run nào của member khác dùng chúng.",
       "caption": "Run và chi phí của từng account theo member",
       "gone": "Một member không còn nữa",
@@ -4960,7 +4886,6 @@
     },
     "agent": {
       "title": "Tài khoản",
-      "description": "Các secret của agent này. Run dưới @{handle} nhận chúng trên những worker mà mỗi tài khoản gắn vào.",
       "readOnly": "Các secret của agent này. Chỉ admin của {project} thêm hoặc đổi chúng.",
       "add": "Thêm tài khoản",
       "full": "Một agent có tối đa {max} tài khoản.",
@@ -4999,14 +4924,12 @@
         "priorityHint": "Từ 0 đến {max}, càng thấp càng sớm.",
         "add": {
           "title": "Thêm tài khoản cho @{handle}",
-          "description": "Một secret của agent: run của nó nhận secret thành biến môi trường trên các worker bạn chọn.",
           "save": "Thêm tài khoản",
           "done": "Đã thêm tài khoản {name}",
           "doneText": "Run tiếp theo dưới @{handle} có thể dùng nó."
         },
         "edit": {
           "title": "Sửa tài khoản {name}",
-          "description": "Worker, ngày hết hạn, và cách một nhóm cùng biến chọn nó.",
           "save": "Lưu",
           "done": "Đã đổi tài khoản {name}",
           "doneText": "Run tiếp theo dưới @{handle} đọc thay đổi này."
@@ -5082,7 +5005,6 @@
         "unknown": "Không rõ",
         "loadFailed": "Không tải được các mô hình mà lần chạy của bạn có thể dùng.",
         "emptyTitle": "Chưa có mô hình nào để chạy",
-        "emptyText": "Thêm một nhà cung cấp: các mô hình của nó hiện ở đây và trong ô Mô hình của các biểu mẫu chạy.",
         "add": "Thêm nhà cung cấp",
         "count": "{count, plural, other {# mô hình}}",
         "claudeTitle": "Claude Code",
@@ -5090,7 +5012,6 @@
       },
       "catalog": {
         "title": "Thêm nhà cung cấp",
-        "description": "Chọn nhà cung cấp của khóa. Claude đăng nhập trên worker; nhà cung cấp khác cần một khóa và một base URL.",
         "search": "Tìm nhà cung cấp theo tên hoặc id",
         "groups": "Nhóm nhà cung cấp",
         "filters": {
@@ -5301,9 +5222,7 @@
       "hours": "{hours} giờ {minutes} phút"
     },
     "empty": {
-      "title": "Chưa có run nào",
-      "description": "Dispatch một bước plan đã sẵn sàng tới một worker của bạn. Log và kết quả của nó gửi về đây.",
-      "readerDescription": "Người có quyền ghi trên dự án này dispatch run tới worker của họ; mỗi run hiện ở đây kèm trạng thái."
+      "title": "Chưa có run nào"
     },
     "noResults": {
       "title": "Không có run nào khớp"
@@ -5323,7 +5242,6 @@
     },
     "dispatch": {
       "title": "Dispatch run",
-      "description": "Chọn các bước đã sẵn sàng của một plan. Hub xếp mỗi bước thành một run trong queue, và một worker phù hợp của bạn sẽ nhận từng run.",
       "close": "Đóng",
       "plan": "Plan",
       "noPlans": "Dự án này không có plan đang chạy nào để dispatch.",
@@ -6673,7 +6591,6 @@
     "tableRegion": "{chart}, dạng bảng",
     "empty": {
       "title": "Không run nào kết thúc trong {days} ngày qua",
-      "description": "Run được đếm vào ngày UTC nó kết thúc: xong, thất bại, mất lease hay đã huỷ. Dispatch một bước từ trang run để thấy chúng ở đây.",
       "runs": "Mở trang run",
       "longer": "Xem 90 ngày"
     },
@@ -6974,7 +6891,6 @@
     },
     "empty": {
       "title": "Hàng đợi chưa có merge request nào",
-      "description": "Hub tự merge các merge request trên GitLab của mỗi repo mà policy của dự án đặt auto: qua gate, merge lần lượt từng cái và theo dõi tới PROD.",
       "policy": "Mở policy"
     },
     "duration": {
@@ -7003,8 +6919,7 @@
       "range": "Khoảng thời gian",
       "days": "{days} ngày",
       "empty": {
-        "title": "Không có lần merge nào trong {days} ngày qua",
-        "description": "Số liệu đếm các lần merge của hàng đợi trên GitLab: bao nhiêu lần, bao nhiêu lần bị revert hay rollback, và đã chờ bao lâu."
+        "title": "Không có lần merge nào trong {days} ngày qua"
       }
     }
   },
@@ -7245,8 +7160,7 @@
       "clearRun": "Hiện mọi run, không chỉ run #{id}"
     },
     "empty": {
-      "title": "Inbox đang trống",
-      "description": "Khi agent của một plan run bạn giao hỏi bạn một quyết định, push hoặc merge vào nhánh mặc định, hay Curator của dự án đề xuất một thay đổi cần đồng ý, thông báo sẽ hiện ở đây và trên chuông ở thanh trên cùng."
+      "title": "Inbox đang trống"
     },
     "noResults": {
       "title": "Không có thông báo nào khớp",
@@ -7474,7 +7388,6 @@
     "telegram": {
       "button": "Telegram",
       "title": "Telegram",
-      "description": "Quyết định, đề xuất và thông báo cũng tới một cuộc trò chuyện riêng với bot của hub, nơi các nút của chúng trả lời được.",
       "loadFailed": "Không đọc được liên kết Telegram của bạn từ hub.",
       "retry": "Thử lại",
       "close": "Đóng",
@@ -7698,7 +7611,6 @@
     },
     "empty": {
       "title": "Chưa có charter",
-      "description": "Charter cho Curator biết khi nào làm việc, trong ngân sách bao nhiêu và được đổi những gì. Ca đêm chạy trên node thuộc pool của agent mặc định. Mỗi đêm Curator xem xét dự án và đề xuất thay đổi, mỗi đề xuất kèm bằng chứng.",
       "admin": "Viết charter",
       "reader": "Admin của dự án viết charter, tại đây hoặc bằng <command></command>."
     },
@@ -7812,8 +7724,7 @@
       "mobileMeta": "#{id}, tầng {tier}, {kind}, {lens}",
       "pagerLabel": "Các trang đề xuất",
       "empty": {
-        "title": "Chưa có đề xuất",
-        "description": "Mỗi đêm review run đọc run, phiên và code của dự án rồi đề xuất thay đổi kèm bằng chứng. Đề xuất hiện ở đây, cùng thứ nó định đổi và lý do."
+        "title": "Chưa có đề xuất"
       },
       "noResults": {
         "title": "Không đề xuất nào khớp bộ lọc"
@@ -8379,7 +8290,6 @@
       },
       "search": {
         "title": "Tìm trong lịch sử",
-        "description": "Mọi transcript hub giữ, mọi log của run và các group chat bạn tham gia, khớp nhất trước.",
         "label": "Tìm trong lịch sử của dự án",
         "placeholder": "Từ, \"cụm từ\" hoặc -loại trừ",
         "clear": "Xoá ô tìm",
@@ -8435,7 +8345,6 @@
       },
       "sessions": {
         "title": "Phiên và run",
-        "description": "Toàn bộ lịch sử hub có facet, mới nhất trước, kèm những gì model rẻ viết về từng mục.",
         "label": "Lọc phiên và run",
         "total": "{count, plural, =0 {Không có} other {# phiên và run}}",
         "kind": "Loại",
@@ -8500,7 +8409,6 @@
     "graph": {
       "empty": {
         "title": "Chưa có số đo nào của graph",
-        "description": "Cứ sáu giờ, hub đo knowledge graph của dự án có ca đêm và cấu hình knowledge trên hub: mỗi nguồn git chậm bao xa so với nhánh mặc định, graph thiếu hay giữ bản cũ của file nào, và graph trả lời các bước plan của chính dự án tốt đến đâu.",
         "cli": "Từ terminal: <command></command>."
       },
       "hidden": {
@@ -8531,7 +8439,6 @@
       "measureFailed": "Lần đo lúc {at} bị lỗi",
       "sources": {
         "title": "Các nguồn so với nhánh mặc định",
-        "sub": "Mỗi nguồn git ở lần đo mới nhất: commit graph đã đọc, đầu nhánh, và các file khác nhau giữa hai bên.",
         "caption": "Các nguồn git của graph",
         "empty": "Cấu hình knowledge không có nguồn git nào.",
         "source": "Nguồn",
@@ -8566,7 +8473,6 @@
       },
       "retrieval": {
         "title": "Agent lấy được gì từ graph",
-        "sub": "Từ trace của các phiên và run trong số liệu đêm.",
         "empty": "Không phiên hay run nào trong số liệu đêm gọi graph.",
         "used": "Phiên và run đã gọi graph",
         "lookups": "Lượt tra",
@@ -8602,7 +8508,6 @@
       },
       "empty": {
         "title": "Chưa có số liệu đêm nào",
-        "description": "Ca đêm đếm runtime và harness cùng số liệu mỗi đêm, trước review run.",
         "olderFigures": "Các đêm trong khoảng này được đếm trước khi hub đếm runtime và harness."
       },
       "unread": "{count} đêm không đọc được.",
@@ -8717,7 +8622,7 @@
       "spent": "Đã tiêu {cost}",
       "spentOf": "Đã tiêu {cost} trên {budget}",
       "noResults": "Tuần này không có probe nào đến hạn: chưa thay đổi đã merge nào có probe đang chạy.",
-      "explain": "Mỗi probe giao tác vụ của nó cho một agent {k} lần khi luật của thay đổi còn nguyên và chừng ấy lần khi gỡ luật ra. Phiên thất bại là phiên lặp lại lỗi.",
+      "explain": "Phiên thất bại là phiên lặp lại lỗi.",
       "caption": "Các probe của tuần, có luật của thay đổi và không có",
       "head": {
         "probe": "Probe",
@@ -8846,7 +8751,6 @@
     },
     "empty": {
       "title": "Chưa có lịch phát hành",
-      "description": "Lịch phát hành mỗi ngày kiểm xem code đóng gói có đổi từ tag phát hành mới nhất hay không. Có đổi thì một agent cắt bản kế tiếp, hub merge và gắn tag, theo dõi CI, và sửa forward tag đỏ cho tới khi bản đó được phát hành.",
       "command": "Admin của dự án đặt lịch bằng <command></command>."
     },
     "problems": {
@@ -9117,7 +9021,6 @@
       "latest": "Mới nhất {version}",
       "untrusted": "publisher mà operator không còn tin cậy",
       "emptyTitle": "Kho chưa có plugin nào",
-      "emptyDescription": "Plugin là một bundle do publisher của nó ký. Quản trị viên hub publish bằng CLI, cài ở đây, rồi admin của từng dự án bật nó.",
       "publishCommand": "evo-agents hub plugin publish <bundle>",
       "publishers": {
         "title": "Publisher tin cậy",
@@ -9167,7 +9070,6 @@
     },
     "backend": {
       "title": "Backend",
-      "description": "Process riêng của plugin, ngoài hub, theo lần báo gần nhất của plugin host.",
       "state": "Trạng thái",
       "notReported": "Chưa báo",
       "states": {
@@ -9217,7 +9119,7 @@
       },
       "history": {
         "title": "Lịch sử",
-        "description": "Mọi phiên bản của lớp này, mới nhất trước. Lùi về một phiên bản cũ ghi lại nó thành phiên bản kế tiếp.",
+        "description": "Lùi về một phiên bản cũ ghi lại nó thành phiên bản kế tiếp.",
         "empty": "Chưa từng ghi: giá trị mặc định của plugin và các lớp bên dưới được dùng.",
         "version": "Phiên bản {version}",
         "current": "Hiện tại",
@@ -9268,7 +9170,7 @@
       "enabledCount": "Đã bật {count} trên {total}",
       "readOnly": "Chỉ admin của dự án bật, tắt và cấu hình plugin của nó.",
       "emptyTitle": "Hub chưa cài plugin nào",
-      "emptyDescription": "Plugin thêm trang, tool và kênh thông báo cho một dự án. Quản trị viên hub cài chúng (Quản trị, Plugin); rồi admin của dự án bật những plugin cần.",
+      "emptyDescription": "Quản trị viên hub cài plugin (Quản trị, Plugin), rồi admin của dự án bật những plugin cần.",
       "columns": {
         "plugin": "Plugin",
         "tier": "Hạng",
@@ -9323,7 +9225,6 @@
       "tag": "Plugin core",
       "listLabel": "Ghi chú của {project}",
       "emptyTitle": "Chưa có ghi chú",
-      "emptyDescription": "Ghi chú giữ những dòng ngắn cho cả dự án. Thêm ghi chú đầu tiên.",
       "by": "Bởi {login}",
       "newNote": "Ghi chú mới",
       "hint": "Nhiều nhất {max} ký tự.",
@@ -9422,13 +9323,12 @@
       "import": "Nhập Markdown",
       "readerText": "Người đọc mở được tài liệu, version và bình luận. Viết, nhập và duyệt cần vai trò ghi.",
       "emptyTitle": "Chưa có tài liệu BA",
-      "emptyWriter": "SRS hay tài liệu đặc tả nằm ở đây cùng các version, lượt duyệt và mã không bao giờ đổi. Nhập một file Markdown có heading theo template.",
-      "emptyReader": "SRS hay tài liệu đặc tả nằm ở đây cùng các version, lượt duyệt và mã. Người có vai trò ghi của dự án nhập tài liệu đầu tiên.",
+      "emptyWriter": "Nhập một file Markdown có heading theo template.",
+      "emptyReader": "Người có vai trò ghi của dự án nhập tài liệu đầu tiên.",
       "reviews": "Chờ duyệt"
     },
     "queue": {
       "title": "Việc cần duyệt",
-      "intro": "Đồng đội gửi các use case dưới đây để bạn đọc và quyết định: đồng ý, hoặc yêu cầu sửa. Mỗi mục mất khoảng 5 đến 10 phút.",
       "waitingCount": "{count, plural, other {# mục chờ bạn}}",
       "documents": "Tài liệu",
       "mineTitle": "Chờ bạn",
@@ -9461,8 +9361,7 @@
       "view": "Xem",
       "readFor": "Đọc và duyệt {name}",
       "viewFor": "Xem {name}",
-      "emptyTitle": "Không có use case nào chờ bạn duyệt",
-      "emptyText": "Khi đồng đội gửi use case cho bạn duyệt, bạn sẽ nhận thông báo và mục đó hiện ở đây."
+      "emptyTitle": "Không có use case nào chờ bạn duyệt"
     },
     "toc": {
       "label": "Mục lục",
@@ -9632,7 +9531,7 @@
       "from": "Từ",
       "to": "Tới",
       "compare": "So sánh",
-      "compareHint": "Mỗi lần lưu là một version. Duyệt một version là duyệt mọi thay đổi kể từ version được duyệt trước nó.",
+      "compareHint": "Duyệt một version là duyệt mọi thay đổi kể từ version được duyệt trước nó.",
       "noReviews": "Chưa có",
       "approvedBy": "đã duyệt",
       "changesBy": "yêu cầu sửa",
@@ -9887,7 +9786,6 @@
       },
       "decide": {
         "title": "4. Quyết định",
-        "hint": "Đồng ý nếu use case đã đúng với bạn. Nếu có chỗ sai hoặc thiếu, chọn Yêu cầu sửa, người viết sẽ nhận ghi chú của bạn.",
         "approve": "Đồng ý",
         "approving": "Đang gửi",
         "request": "Yêu cầu sửa",
@@ -9928,7 +9826,7 @@
     },
     "findings": {
       "title": "Phát hiện",
-      "description": "Các xung đột @ba tìm thấy giữa tài liệu này, các tài liệu khác của dự án và knowledge graph của dự án. Một phát hiện cần quyết định còn mở thì chặn việc duyệt.",
+      "description": "Một phát hiện cần quyết định còn mở thì chặn việc duyệt.",
       "counts": "{decide} cần quyết định, {open} mở khác, {settled} đã chốt",
       "groups": {
         "decide": "Cần quyết định",
@@ -9940,7 +9838,6 @@
       "reviewBroke": "@ba chưa rà soát xong vòng {round}",
       "reviewBrokeText": "Việc duyệt không chờ run này nữa, nhưng danh sách có thể thiếu xung đột mà nó chưa ghi.",
       "emptyTitle": "Không thấy xung đột nào",
-      "emptyText": "Khi @ba rà soát một version, các xung đột nó tìm thấy với tài liệu khác và knowledge graph hiện ở đây.",
       "emptyReviewing": "@ba chưa ghi phát hiện nào.",
       "failed": "Không đọc được các phát hiện.",
       "retry": "Thử lại",
@@ -10006,7 +9903,6 @@
         "resolved": "Không có luồng nào đã đóng",
         "all": "Chưa có luồng nào"
       },
-      "emptyText": "Luồng bắt đầu từ trang của một mục, hay từ ô bên dưới.",
       "onDocumentLabel": "Bình luận mới về {title}",
       "comment": "Bình luận"
     },
@@ -10175,8 +10071,8 @@
       "readerText": "Người đọc xem được bảng, backlog và mọi task. Chuyển, giao và thêm task cần vai trò ghi.",
       "emptyTitle": "Không có task nào ngoài sprint",
       "emptySprintTitle": "Chưa có task nào trong {sprint}",
-      "emptyWriter": "Một task giữ người làm, trạng thái và liên kết tới mục SRS, bước plan, run và pull request. Thêm một task, hay lên kế hoạch sprint từ backlog.",
-      "emptyReader": "Một task giữ người làm, trạng thái và liên kết tới mục SRS, bước plan, run và pull request. Người có vai trò ghi của dự án thêm task.",
+      "emptyWriter": "Thêm một task, hay lên kế hoạch sprint từ backlog.",
+      "emptyReader": "Người có vai trò ghi của dự án thêm task.",
       "noResults": "Không task nào khớp bộ lọc",
       "otherColumn": "Trạng thái ngoài danh sách",
       "emptyColumn": "Không có task",
@@ -10210,8 +10106,8 @@
       "startFailed": "Không bắt đầu được {sprint}",
       "close": "Đóng sprint",
       "emptyTitle": "Chưa có task nào",
-      "emptyWriter": "Task và sprint nằm ở đây: ai làm gì, hạn khi nào, và hiện thực điều gì. Thêm task đầu tiên, lên kế hoạch một sprint, hay nhập task từ JSON.",
-      "emptyReader": "Task và sprint nằm ở đây: ai làm gì, hạn khi nào, và hiện thực điều gì. Người có vai trò ghi của dự án thêm chúng."
+      "emptyWriter": "Thêm task đầu tiên, lên kế hoạch một sprint, hay nhập task từ JSON.",
+      "emptyReader": "Người có vai trò ghi của dự án thêm task."
     },
     "sprintDialog": {
       "newTitle": "Sprint mới",
@@ -10237,14 +10133,12 @@
       "closed": "Đã đóng {sprint}"
     },
     "mine": {
-      "sub": "Các task mà {login} là người phụ trách hay giữ vai BA, QA hoặc Dev.",
       "count": "{count, plural, other {# task}}",
       "open": "Đang mở",
       "finished": "Đã xong hoặc đã huỷ",
       "noneOpen": "Không có việc đang mở.",
       "noneFinished": "Chưa có.",
       "emptyTitle": "Bạn chưa có task nào ở đây",
-      "emptyText": "Một task hiện ở đây khi bạn là người phụ trách, hay là BA, QA hoặc Dev của nó.",
       "openBoard": "Mở bảng"
     },
     "page": {
@@ -10408,7 +10302,6 @@
       "backToBoard": "Quay lại bảng"
     },
     "import": {
-      "sub": "Nhập một lần: sau đó, task nằm trên hub. Không có gì được ghi cho tới khi bạn bấm Nhập.",
       "previewTitle": "Xem trước",
       "refused": "{count, plural, other {# lỗi chặn việc nhập}}",
       "ready": "Sẵn sàng nhập",
@@ -10449,7 +10342,6 @@
       "new": "Tài liệu mới trong {project}"
     },
     "documents": {
-      "sub": "Hướng dẫn và ghi chú của dự án, Markdown có ảnh. Mỗi lần lưu giữ một version.",
       "new": "Tài liệu mới",
       "columns": {
         "document": "Tài liệu",
@@ -10461,7 +10353,6 @@
       "readerTitle": "Bạn đọc tài liệu của {project}",
       "readerText": "Người đọc mở được mọi tài liệu và lịch sử của nó. Viết tài liệu cần vai trò ghi.",
       "emptyTitle": "Chưa có tài liệu",
-      "emptyWriter": "Viết một hướng dẫn hay ghi chú bằng Markdown, có ảnh, để thành viên dự án đọc ở đây.",
       "emptyReader": "Người có vai trò ghi của dự án viết tài liệu đầu tiên; nó sẽ hiện ở đây."
     },
     "head": {
@@ -10519,8 +10410,7 @@
       "slugTaken": "Đã có tài liệu dùng slug này. Chọn slug khác.",
       "readerTitle": "Chỉ người có vai trò ghi mới sửa tài liệu của {project}",
       "readerText": "Bạn đọc được mọi tài liệu và lịch sử. Muốn viết, nhờ admin của dự án cấp vai trò ghi.",
-      "newTitle": "Tài liệu mới",
-      "newSub": "Một tài liệu của {project}: tiêu đề, slug làm địa chỉ, và nội dung Markdown."
+      "newTitle": "Tài liệu mới"
     }
   },
   "canvas": {
@@ -10596,8 +10486,7 @@
       "settings": "Cài đặt",
       "readerText": "Người đọc mở được canvas, claim, bằng chứng và baseline. Sửa claim, thêm bằng chứng và duyệt baseline cần vai trò ghi.",
       "emptyTitle": "Chưa có canvas",
-      "emptyWriter": "Mỗi sản phẩm có một Lean Canvas sống: các claim trong chín ô, mỗi claim có trạng thái, test card và bằng chứng, cùng baseline cả nhóm duyệt mỗi tuần. Bắt đầu với sản phẩm bạn hiểu rõ nhất.",
-      "emptyReader": "Mỗi sản phẩm có một Lean Canvas sống: các claim trong chín ô, mỗi claim có trạng thái, test card và bằng chứng. Người có vai trò ghi của dự án tạo canvas đầu tiên."
+      "emptyReader": "Người có vai trò ghi của dự án tạo canvas đầu tiên."
     },
     "newCanvas": {
       "title": "Canvas mới",
@@ -10974,7 +10863,7 @@
       "unknownKey": "Registry không có khoá {key}",
       "unknownKeyText": "Có thể khoá đã được lưu trữ. Chọn một khoá trong danh sách.",
       "emptyTitle": "Chưa có khoá tín hiệu",
-      "emptyText": "Một khoá đặt tên cho thứ dịch vụ đo, như checkout.conversion. Admin thêm khoá bằng evo-agents hub signal keys add và tạo ingest key bằng evo-agents hub signal ingest create."
+      "emptyText": "Admin thêm khoá bằng evo-agents hub signal keys add và tạo ingest key bằng evo-agents hub signal ingest create."
     },
     "keys": {
       "caption": "Khoá tín hiệu của {project}",
@@ -11200,7 +11089,6 @@
       "off": "Đang tắt",
       "stopped": "Cầu dao đã dừng",
       "emptyTitle": "Loop đang tắt",
-      "emptyText": "Khi bật, Loop biến mỗi thay đổi của dự án thành work item hướng tới goal và giao cho agent, trong trần của policy. Người quyết ở trang Quyết định.",
       "goals": "Xem các goal",
       "offTitle": "Loop đang tắt",
       "offText": "Nó không tạo work item và không giao run. Các work item giữ nguyên như lúc kết thúc.",
@@ -11268,7 +11156,7 @@
       "caption": "Goal của dự án {project}",
       "decide": "Quyết định",
       "emptyTitle": "Chưa có goal",
-      "emptyText": "Goal nói dự án để làm gì và cách biết đã đạt: một signal, một khoảng thời gian và một đích. Loop làm việc cho các goal đang chạy. Admin đặt goal từ dòng lệnh.",
+      "emptyText": "Admin đặt goal từ dòng lệnh.",
       "noMetric": "Không có chỉ số: Curator đọc nó, Loop không làm gì cho nó",
       "noSignal": "chưa có signal",
       "now": "hiện {value, number}",
@@ -11357,7 +11245,6 @@
       "meta": "Quyết định của {project}",
       "summary": "Những việc chờ người, theo nhóm",
       "emptyTitle": "Không có gì chờ người",
-      "emptyText": "Việc rà goal hằng tháng, baseline của canvas, đề xuất đổi policy và cầu dao đã nhảy hiện ở đây, rồi tới những gì chuỗi của Loop đang chờ: ngoại lệ của nó và version SRS cần duyệt.",
       "group": {
         "goal": "Goal",
         "canvas": "Canvas",
@@ -11498,7 +11385,6 @@
       "search": "Bài toán của dự án",
       "new": "Bài toán mới",
       "emptyTitle": "Chưa có bài toán",
-      "emptyText": "Bài toán nói điều gì đang gây khó, trước mọi giải pháp: ai chịu thiệt, khi nào xảy ra và hiện họ xoay xở ra sao. Goal, claim của canvas và plan trỏ về nó, và Loop đi từ nó.",
       "all": "Tất cả",
       "statusLabel": "Trạng thái",
       "count": "{count, plural, other {# bài toán}}",
@@ -11740,7 +11626,6 @@
       "search": "Cơ hội của dự án",
       "new": "Cơ hội mới",
       "emptyTitle": "Chưa có cơ hội",
-      "emptyText": "Cơ hội nói dự án có thể thắng điều gì: ai hưởng lợi, điều gì giúp với tới được ngay bây giờ và khi nào hạn đóng. Bài toán nó trả lời, goal và claim của canvas trỏ về nó, và Loop đi từ nó.",
       "all": "Tất cả",
       "statusLabel": "Trạng thái",
       "count": "{count, plural, other {# cơ hội}}",
@@ -11938,12 +11823,10 @@
       "delete": "Xóa"
     },
     "empty": {
-      "title": "Chưa có danh tính trình duyệt",
-      "description": "Một danh tính giữ hồ sơ trình duyệt đã đăng nhập trên một worker. Tạo một danh tính, rồi đăng nhập qua trình duyệt trực tiếp."
+      "title": "Chưa có danh tính trình duyệt"
     },
     "form": {
       "newTitle": "Danh tính trình duyệt mới",
-      "newDescription": "Một hồ sơ giữ cookie của vài trang web. Bạn đăng nhập một lần trong trình duyệt bạn nhìn thấy; các run dùng lại hồ sơ đó.",
       "name": "Tên",
       "nameHint": "Chữ thường, chữ số, dấu chấm, gạch ngang và gạch dưới.",
       "nameInvalid": "Dùng chữ thường, chữ số, dấu chấm, gạch ngang và gạch dưới, bắt đầu bằng chữ hoặc số.",
@@ -12008,7 +11891,7 @@
   },
   "sharing": {
     "title": "Chia sẻ với member khác",
-    "description": "Member bạn chia sẻ dùng được credential trong run của họ trên các dự án bạn chọn, trong giới hạn bạn đặt. Value không bao giờ rời hub: một run chỉ nhận nó trong lúc chạy.",
+    "description": "Value của credential không bao giờ rời hub: một run chỉ nhận nó trong lúc chạy.",
     "share": "Chia sẻ",
     "nothingToShare": "Chỉ chia sẻ được credential đã gắn với một dự án, và không bao giờ chia sẻ token GitLab của hub.",
     "empty": "Chưa chia sẻ gì.",
@@ -12018,7 +11901,6 @@
     },
     "dialog": {
       "title": "Chia sẻ một credential",
-      "description": "Chia sẻ cho ai, trên dự án nào, và tới mức nào. Mọi ô trong phần Giới hạn đều không bắt buộc.",
       "credential": "Credential",
       "grantee": "Chia sẻ với",
       "kind": {
@@ -12027,7 +11909,6 @@
         "all": "Mọi member"
       },
       "login": "Member",
-      "loginHint": "Login của họ trên hub.",
       "unit": "Đơn vị",
       "unitHint": "Các member có seat chính nằm trong đơn vị này hoặc bên dưới.",
       "unitPick": "Chọn một đơn vị",
@@ -12391,7 +12272,6 @@
       },
       "trusted": {
         "title": "Tin từ chợ",
-        "description": "Các chủ thể ký mà quản trị viên hub đã tin khi cài từ chợ. Nhà phát hành của người vận hành nằm ở Quản trị, Plugin.",
         "locked": "Người vận hành đã khóa danh sách nhà phát hành: không quản trị viên nào tin thêm được từ đây.",
         "none": "Chưa tin chủ thể ký nào từ chợ.",
         "addedBy": "Tin bởi {login}",
@@ -12446,7 +12326,7 @@
     },
     "licenses": {
       "title": "Giấy phép",
-      "description": "Các plugin trả phí hub này đã đặt và tình trạng giấy phép. Hub kiểm tra mỗi giờ; Kiểm tra ngay hỏi người bán lập tức.",
+      "description": "Hub kiểm tra mỗi giờ.",
       "hub": "Mã của hub này:",
       "none": "Hub chưa mua plugin nào.",
       "line": "{number} từ {seller}, {months} tháng, {total}",
@@ -12470,7 +12350,6 @@
     },
     "seller": {
       "title": "Bán plugin",
-      "sub": "Đơn từ các hub mua, doanh thu hằng tháng và phần chia 80/20, cùng khóa ký giấy phép.",
       "notSelling": "Hub này chưa bán được: đặt EVO_HUB_SELLER_ID và EVO_HUB_SELLER_KEY (do `evo-agents hub market seller-key` tạo) rồi khởi động lại.",
       "keyTitle": "Khóa giấy phép",
       "keyDescription": "Ghi mã khóa và khóa công khai dưới người bán này trong chỉ mục của market. Khóa bí mật không bao giờ rời môi trường của hub.",
@@ -12525,7 +12404,6 @@
   },
   "kgUpload": {
     "title": "Tải dữ liệu lên",
-    "intro": "Gửi một tệp nén chứa tài liệu vào knowledge graph của dự án này. Hub đọc nó thành một nguồn riêng rồi dựng lại graph.",
     "drop": {
       "title": "Thả tệp nén vào đây",
       "hint": "Tệp .zip, .tar, .tar.gz hoặc .tgz. Tài liệu, bảng tính và văn bản bên trong trở thành mục của graph.",
@@ -12577,7 +12455,6 @@
     "reports": {
       "title": "Lượt tải lên",
       "emptyTitle": "Chưa có tệp nén nào được tải lên",
-      "emptyDescription": "Các tệp nén tải lên dự án này, và những gì hub đọc được từ mỗi tệp, hiện ở đây.",
       "label": "Nhãn {level}",
       "by": "Gửi bởi {login}",
       "state": {
@@ -12622,7 +12499,6 @@
     },
     "newProject": {
       "title": "Dự án mới từ dữ liệu",
-      "intro": "Tạo dự án từ một tệp nén chứa tài liệu. Hub tạo dự án, đọc tệp nén vào knowledge graph của nó rồi dựng graph.",
       "name": "Tên dự án",
       "nameHint": "Chữ thường, chữ số và dấu gạch ngang, bắt đầu bằng chữ hoặc số.",
       "nameInvalid": "Dùng chữ thường, chữ số và dấu gạch ngang, bắt đầu bằng chữ hoặc số, tối đa 100 ký tự.",
@@ -12661,7 +12537,6 @@
   },
   "kgAnswers": {
     "title": "Lượt trả lời #{id}",
-    "intro": "Các câu hỏi gửi bằng evo-agents hub kg answer, được hỏi trên đồ thị tri thức của dự án theo từng lô, mỗi lô là một lượt chạy agent đọc đồ thị. Không có chấm điểm ở đây.",
     "job": "Lượt trả lời #{id}: {state}",
     "states": {
       "running": "đang chạy",

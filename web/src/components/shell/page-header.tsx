@@ -7,8 +7,7 @@ import { cn } from "@/lib/utils";
  * names (`status`, a `StatusBadge`), its tags and chips (`tags`: a kind, a role, an identifier, a count), then the
  * page's actions on the right. `leading` stands before the h1, outside it, such as an agent's avatar. `sub` is one
  * optional line under the row that links the parent objects (a run's plan and step, a step's plan) or says where the
- * object stands. There is no eyebrow, no description paragraph and no rule under the head: what a page is for is said
- * once, in its empty state.
+ * object stands. There is no eyebrow, no description paragraph and no rule under the head: the page shows what it is for.
  *
  * The row wraps instead of squeezing: when the actions do not fit beside the title they move to a line of their own,
  * still on the right, and a long title wraps inside its own group; so nothing pushes the page sideways at 375 px.

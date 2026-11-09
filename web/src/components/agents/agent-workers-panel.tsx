@@ -81,7 +81,6 @@ function WorkersForm({
 
   return (
     <div className="flex flex-col gap-4" data-testid="agent-workers" data-handle={agent.handle} data-editable={editable}>
-      <p className="text-[13px] leading-[18px] text-pretty text-muted-foreground">{t("lead", { handle: agent.handle })}</p>
       {admin && !agent.is_default ? <AgentPlacement agent={agent} /> : null}
       {editable ? null : <ReadOnly project={project} agent={agent} admin={admin} />}
       {editable ? (

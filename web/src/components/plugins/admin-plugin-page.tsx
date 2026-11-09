@@ -48,7 +48,7 @@ function BackendCard({ name }: { name: string }) {
     word === null ? t("notReported") : BACKEND_STATES.includes(word as BackendState) ? t(`states.${word as BackendState}`) : word;
   return (
     <Card className="min-w-0" data-testid="plugin-backend">
-      <CardHead icon={Activity} title={t("title")} description={t("description")} />
+      <CardHead icon={Activity} title={t("title")} />
       <CardContent>
         <QueryView state={state} loading={<ListSkeleton rows={2} />}>
           {(status) => (

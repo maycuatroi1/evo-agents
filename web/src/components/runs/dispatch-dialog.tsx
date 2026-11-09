@@ -7,7 +7,7 @@ import { type FormEvent, useId, useState } from "react";
 
 import { InlineError, useWriteFailure } from "@/components/feedback/notice";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { workersQuery } from "@/components/workers/queries";
@@ -77,6 +77,7 @@ export function DispatchDialog({ project, open, onOpenChange, onDispatched, plan
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
         onCloseAutoFocus={onCloseAutoFocus}
+        aria-describedby={undefined}
         data-testid="dispatch-dialog"
       >
         <DispatchForm
@@ -206,7 +207,6 @@ function DispatchForm({
             <Send className="size-5 text-muted-foreground" aria-hidden="true" />
             {t("title")}
           </DialogTitle>
-          <DialogDescription className="sr-only">{t("description")}</DialogDescription>
         </div>
         <DialogClose asChild>
           <Button type="button" variant="ghost" size="icon-lg" className="-mt-1 -mr-1 shrink-0" aria-label={t("close")} disabled={pending}>
