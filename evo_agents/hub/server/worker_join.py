@@ -2,8 +2,9 @@
 token (``worker_pools``) for the ``evw_`` token of a new worker, shown once.
 
 Both refuse alike: an unknown, wrong, expired, used or locked code and an unknown, expired, revoked or used-up token
-get 403, whose message names none of these, and every refusal counts against the address in the one ``RefusalLimit``
-of the process (``request.app.state.join_refusals``), so an address refused JOIN_REFUSALS times within JOIN_WINDOW
+get 403, whose message names none of these, and every refusal counts against the address in the app's sliding window
+(``request.app.state.join_limit``: on Redis when the cache is shared, else the process's ``RefusalLimit``), so an
+address refused JOIN_REFUSALS times within JOIN_WINDOW
 gets 429 with Retry-After, whichever it sent. A code joins the worker its pairing describes; a token joins a new node
 of its pool, named by ``worker_pools.node_name``, with the pool's slots and projects. Either way the owner must still
 hold the writer role on every project the worker serves (409 otherwise), and the join adds an audit row naming the
@@ -19,7 +20,7 @@ from sqlalchemy import BigInteger, any_, func, literal, select, update
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub import cache, tables
 from evo_agents.hub.server import audit, worker_pools
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
@@ -31,7 +32,6 @@ from evo_agents.hub.server.workers import (
     REFUSED_CODE,
     SELECTOR_LENGTH,
     WRITER_ROLES,
-    RefusalLimit,
     client_address,
     code_hash,
     create_worker,
@@ -88,9 +88,9 @@ def _find_pairing(selector: str):
 )
 async def join(request: Request, body: JoinRequest, response: Response) -> WorkerCredential:
     """Trade a pairing code, or a pool's join token, for the token of a new worker; the token is shown once."""
-    limit: RefusalLimit = request.app.state.join_refusals
+    limit: cache.Window = request.app.state.join_limit
     client = client_address(request)
-    wait = limit.retry_after(client)
+    wait = await limit.retry_after(client)
     if wait is not None:
         raise HTTPException(
             429,
@@ -103,8 +103,8 @@ async def join(request: Request, body: JoinRequest, response: Response) -> Worke
         else:
             credential = await _join_pairing(request, body)
     except Refused as refused:
-        limit.refuse(client)
-        if limit.retry_after(client) is not None:
+        await limit.hit(client)
+        if await limit.retry_after(client) is not None:
             log.warning("pairing joins limited", extra={"refusals": limit.limit, "window_s": limit.window})
         raise HTTPException(403, refused.message) from None
     response.headers.update(NO_STORE)

@@ -44,7 +44,7 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
 async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser) -> HeartbeatAnswer:
     """Record the machine, extend the leases of the runs it holds, and say what it should do with them."""
     state = request.app.state
-    return await record_heartbeat(state.engine, user, body, lease_of(request), state.terminals)
+    return await record_heartbeat(state.engine, user, body, lease_of(request), state.terminals, state.cache)
 
 
 @router.post("/runs/{run_id}/state", response_model=Run, responses=REFUSALS)

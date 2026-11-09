@@ -120,6 +120,10 @@ The event bus is optional as well (``evo_agents.hub.bus``). EVO_HUB_BROKER_URL, 
 RabbitMQ whose password is registered as a secret, turns it on: what a commit stores for plugins and notification
 channels goes out through the broker and ``evo-agents hub deliver`` within seconds. Without it nothing connects to a
 broker and the hub delivers through its jobs, as before.
+
+So is Redis (``evo_agents.hub.cache``). EVO_HUB_REDIS_URL, a redis://, rediss:// or unix:// URL whose password is
+registered as a secret, makes the hub's cache and its rate limits shared by its processes. Without it each process
+keeps both in its memory.
 """
 
 from __future__ import annotations
@@ -341,6 +345,7 @@ class HubConfig:
     seller_signal_project: str | None = None  # the project of the signals of its sales
     gateway_secret: str | None = None  # the root secret the api and the gateway share; never logged or returned
     broker_url: str | None = None  # the event bus's RabbitMQ, None while it is off; holds a password, never logged
+    redis_url: str | None = None  # the shared cache's Redis, None while each process keeps its own; never logged
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
         return f"HubConfig(data_dir={str(self.data_dir)!r}, host={self.host!r}, port={self.port})"
@@ -885,6 +890,19 @@ def _gateway(env: Mapping[str, str]) -> dict:
     return {"gateway_secret": secret, "gateway_url": (url or DEFAULT_GATEWAY_URL) if secret else None}
 
 
+def _redis(env: Mapping[str, str]) -> str | None:
+    """The shared cache's Redis (``evo_agents.hub.cache``), its password registered as a secret."""
+    from evo_agents.hub import cache
+
+    try:
+        url = cache.redis_url(env)
+    except cache.RedisUrlError as exc:
+        raise ConfigError(cache.REDIS_VARIABLE, str(exc)) from None
+    if url is not None:
+        register_secret(urlsplit(url).password)
+    return url
+
+
 def _broker(env: Mapping[str, str]) -> str | None:
     """The event bus's broker (``evo_agents.hub.bus``), its password registered as a secret."""
     from evo_agents.hub import bus
@@ -986,4 +1004,5 @@ def load_config(
         **_gateway(env),
         **_seller(env),
         broker_url=_broker(env),
+        redis_url=_redis(env),
     )

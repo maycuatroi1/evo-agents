@@ -43,6 +43,7 @@ class Listener:
         self._broker_url = broker_url
         self._handlers: dict[str, list[Handler]] = {}
         self._task: asyncio.Task | None = None
+        self.up = False  # whether it listens now: from its (re)connection until the connection fails
 
     def on(self, channel: str, handler: Handler) -> None:
         """Call ``handler`` with the payload of each notification on ``channel``; before the listener starts."""
@@ -72,12 +73,13 @@ class Listener:
                 async with conn:
                     for channel in self._handlers:
                         await conn.execute(sql.SQL("LISTEN {}").format(sql.Identifier(channel)))
-                    backoff = BACKOFF[0]
+                    backoff, self.up = BACKOFF[0], True
                     for channel in self._handlers:  # what was notified while nobody listened is found by a look
                         self._dispatch(channel, None)
                     async for notify in conn.notifies():
                         self._dispatch(notify.channel, notify.payload)
             except (psycopg.Error, OSError) as exc:
+                self.up = False
                 log.warning(
                     "cannot listen for notifications; claims and run streams look every few seconds instead",
                     extra={"error": type(exc).__name__, "retry_s": backoff},
@@ -98,7 +100,7 @@ class Listener:
                     queue = await channel.declare_queue(exclusive=True, auto_delete=True)
                     for name in self._handlers:
                         await queue.bind(exchange, routing_key=name)
-                    backoff = BACKOFF[0]
+                    backoff, self.up = BACKOFF[0], True
                     for name in self._handlers:  # what was published while nobody listened is found by a look
                         self._dispatch(name, None)
                     async with queue.iterator(no_ack=True) as messages:
@@ -107,6 +109,7 @@ class Listener:
                 error = "closed"
             except Exception as exc:  # the broker away or the connection lost: try again
                 error = type(exc).__name__
+            self.up = False
             log.warning(
                 "cannot take wake-ups from the broker; claims and run streams look every few seconds instead",
                 extra={"error": error, "retry_s": backoff},
@@ -115,6 +118,7 @@ class Listener:
             backoff = min(backoff * 2, BACKOFF[1])
 
     async def close(self) -> None:
+        self.up = False
         if self._task is not None:
             self._task.cancel()
             try:

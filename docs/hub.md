@@ -4131,6 +4131,40 @@ exclusive and deleted with its connection, to the exchange, so a run that `worke
 api process is claimed in another within a second or two, and the wake-ups can be watched on the broker. A wake-up
 the broker cannot take is logged and dropped: claims and streams look again on their own every few seconds.
 
+### Cache
+
+The hub keeps a cache and its rate limits in each api process's memory, or on Redis, shared by its processes, when
+`EVO_HUB_REDIS_URL` names one (`redis://`, `rediss://` or `unix://`, for example `redis://redis:6379/0`; the URL may
+hold a password, which the hub never logs). The client, redis.asyncio, comes with the `hub-server` extra. The code is
+`evo_agents/hub/cache.py`: get, set with a TTL and a drop by key prefix, each under a namespace (a project's name, or
+`~hub` for what belongs to none), and every Redis key under `evo:cache:`.
+
+Two read paths use it, chosen by measuring the api's reads on a local hub with sample data:
+
+- the guard policy (`evo_agents/hub/guard.py`, `cached_policy`), which the heartbeat of every worker reads every 15
+  seconds and GET /v1/guard/policy and /v1/worker/guard/policy answer: its two reads took about 3 ms of SQL a call,
+  kept 300 seconds;
+- a member's notification count (GET /v1/me/notifications/count), which every open page of the web asks every 10
+  seconds, kept 60 seconds.
+
+Postgres stays what is true. Each area of the cache names the tables it is read from (`cache.watch`): the guard's
+terms, targets, plugins and enablements, and the notifications, decisions, proposals and grants. A transaction that
+writes one of them, through any engine of the hub (also a write inside a CTE, and a delete of a table whose rows go or
+change with it by ON DELETE CASCADE or SET NULL), drops the area when it commits: in its own process at once, and in
+every api process by a wake-up on the channel `hub_cache` (Postgres's NOTIFY, or the event bus when it is on) that the
+process's listener takes. A value read while a write dropped its area is answered and not kept. While the process's
+listener does not listen, the cache is bypassed; when the listener connects again, or Redis comes back after a
+failure, everything kept before is dropped, since a write may have been missed meanwhile. Who may read what (sign-in,
+grants, project access) is never cached.
+
+When Redis does not answer within 250 ms the call counts as a miss, the hub reads Postgres, and the process leaves Redis
+alone for 5 seconds: the hub answers the same, only slower. `GET /v1/health` reports `cache`: `off` without the
+variable, `ok` when Redis answers a PING and `error` when it does not; an `error` leaves `status` ok.
+
+The limit on refused joins (`POST /v1/worker/join`: 10 per client address in 10 minutes, then 429; `docs/workers.md`,
+Joining) is a sliding window: on Redis one sorted set per client, counted by one script on Redis's clock, so every api
+process sees the same count; without Redis, or while it fails, each process counts in its memory as before.
+
 ## Data access
 
 The api and the worker each hold one psycopg 3 connection pool and a SQLAlchemy 2.1 engine on it

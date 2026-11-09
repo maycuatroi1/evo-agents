@@ -23717,6 +23717,12 @@ export interface components {
              */
             broker: "ok" | "error" | "off";
             /**
+             * Cache
+             * @description the shared cache's Redis, by a PING; its error leaves the status ok
+             * @enum {string}
+             */
+            cache: "ok" | "error" | "off";
+            /**
              * Failed
              * @description components that did not answer
              */

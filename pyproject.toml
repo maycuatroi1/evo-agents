@@ -75,6 +75,8 @@ hub-server = [
     "sigstore>=4.5,<5",
     # The optional event bus on RabbitMQ (EVO_HUB_BROKER_URL, evo_agents.hub.bus): publisher confirms, quorum queues.
     "aio-pika>=9.5,<10",
+    # The optional shared cache and rate limits on Redis (EVO_HUB_REDIS_URL, evo_agents.hub.cache): redis.asyncio.
+    "redis>=8.1,<9",
 ]
 # `evo-agents worker`, the daemon that runs plan steps on a member's machine: aiohttp for its HTTP and websocket,
 # and the SDKs of the runtimes its adapters drive.

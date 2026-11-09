@@ -13,8 +13,9 @@ which takes a pool's join token instead of a code too (``worker_pools``): the hu
 pairing by the selector and compares the HMAC of the whole code, so a wrong rest counts against that pairing, and
 MAX_WRONG_TRIES wrong tries lock it for good. Unknown, wrong, expired, used and locked codes all get the same 403,
 which names none of them, and an address with JOIN_REFUSALS of them within JOIN_WINDOW gets 429 with Retry-After
-until the oldest leaves the window (``RefusalLimit``, in this process's memory; behind a reverse proxy the address is
-the one it forwards only for a proxy listed in EVO_HUB_FORWARDED_ALLOW_IPS). A code that matches makes the worker and
+until the oldest leaves the window (``RefusalLimit`` in this process's memory, or on Redis when the cache is shared:
+``cache.Window``; behind a reverse proxy the address is the one it forwards only for a proxy listed in
+EVO_HUB_FORWARDED_ALLOW_IPS). A code that matches makes the worker and
 its ``evw_`` token, which the answer carries once; the pairing is used from then on. A machine signed in with
 ``evo-agents hub login`` registers directly instead, with POST /v1/workers and its machine token.
 
@@ -68,10 +69,8 @@ a log line.
 from __future__ import annotations
 
 import logging
-import math
 import secrets
 import time
-from collections import deque
 from datetime import timedelta
 from typing import Annotated
 
@@ -83,7 +82,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import cache, runs, tables
 from evo_agents.hub.access import ROLES, has_role
 from evo_agents.hub.server import audit, browser_install, credentials, update_now
 from evo_agents.hub.server.auth import NO_STORE
@@ -182,10 +181,10 @@ def pairing_secret(request: Request) -> str:
 # Refused joins
 
 
-class RefusalLimit:
-    """Refusals per client address in a sliding window, in this process's memory: an address refused ``limit``
-    times within ``window`` seconds waits until the oldest of those refusals leaves the window. At most
-    ``max_clients`` addresses are tracked; past that the one refused least recently is forgotten."""
+class RefusalLimit(cache.LocalWindow):
+    """Refused joins per client address in a sliding window, in this process's memory (``cache.LocalWindow``): an
+    address refused JOIN_REFUSALS times within JOIN_WINDOW waits until the oldest of those refusals leaves the window.
+    The app counts on Redis instead when the cache is shared (``app.state.join_limit``, a ``cache.Window`` over it)."""
 
     def __init__(
         self,
@@ -194,35 +193,11 @@ class RefusalLimit:
         max_clients: int = MAX_JOIN_CLIENTS,
         clock=time.monotonic,
     ):
-        self.limit, self.window, self.max_clients, self.clock = limit, window, max_clients, clock
-        self._refused: dict[str, deque[float]] = {}  # oldest refused first
-
-    def _recent(self, client: str, now: float) -> deque[float] | None:
-        times = self._refused.get(client)
-        while times and times[0] <= now - self.window:
-            times.popleft()
-        if times is not None and not times:
-            del self._refused[client]
-            return None
-        return times
-
-    def retry_after(self, client: str) -> int | None:
-        """Whole seconds until ``client`` may try again; None while it is under the limit."""
-        now = self.clock()
-        times = self._recent(client, now)
-        if times is None or len(times) < self.limit:
-            return None
-        return max(1, math.ceil(times[0] + self.window - now))
+        super().__init__(limit, window, max_clients, clock)
 
     def refuse(self, client: str) -> None:
         """Count one refusal of ``client``."""
-        now = self.clock()
-        times = self._recent(client, now) or deque(maxlen=self.limit)
-        self._refused.pop(client, None)
-        times.append(now)
-        self._refused[client] = times  # moved to the end: refused most recently
-        while len(self._refused) > self.max_clients:
-            del self._refused[next(iter(self._refused))]
+        self.hit(client)
 
 
 def client_address(request: Request) -> str:

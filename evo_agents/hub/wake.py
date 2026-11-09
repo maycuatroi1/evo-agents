@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 from evo_agents.hub import bus
 
 if TYPE_CHECKING:
+    from sqlalchemy.engine import Connection
     from sqlalchemy.ext.asyncio import AsyncConnection
 
 log = logging.getLogger(__name__)
@@ -42,15 +43,31 @@ _DUE = "hub_wake_due"  # ...and those of a transaction that committed, to go out
 async def notify(conn: AsyncConnection, channel: str, payload: str) -> None:
     """Wake whoever waits on ``channel`` with ``payload`` once ``conn``'s transaction commits."""
     if not bus.on():
-        from sqlalchemy import func, select
-
-        await conn.execute(select(func.pg_notify(channel, payload)))
+        await conn.execute(_pg_notify(channel, payload))
         return
-    _watch(conn.sync_engine)
-    if not conn.in_transaction():
+    _keep(conn.sync_connection, channel, payload)
+
+
+def notify_sync(connection: Connection, channel: str, payload: str) -> None:
+    """``notify`` on the sync side of a connection, for an engine event (``evo_agents.hub.cache``)."""
+    if not bus.on():
+        connection.execute(_pg_notify(channel, payload))
+        return
+    _keep(connection, channel, payload)
+
+
+def _pg_notify(channel: str, payload: str):
+    from sqlalchemy import func, select
+
+    return select(func.pg_notify(channel, payload))
+
+
+def _keep(connection: Connection, channel: str, payload: str) -> None:
+    _watch(connection.engine)
+    if not connection.in_transaction():
         _publish({(channel, payload)})
         return
-    conn.sync_connection.info.setdefault(_KEPT, set()).add((channel, payload))
+    connection.info.setdefault(_KEPT, set()).add((channel, payload))
 
 
 def _watch(engine) -> None:
