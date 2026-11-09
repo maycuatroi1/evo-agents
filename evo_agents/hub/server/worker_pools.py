@@ -7,7 +7,8 @@ the days a node stays offline before the hub revokes it (1 to 90, 7 by default).
 caller's pools, GET /v1/worker-pools/{name} shows one with its nodes, and PATCH /v1/worker-pools/{name} changes its
 settings: the nodes take the new slots and projects in their rows (``worker_projects.serve`` for each, with its
 refusals) and the new labels through ``node_labels``, so each daemon learns them from its next heartbeat answer as it
-learns a worker's settings. A pool belongs to the member who made it, as a worker does; only they see or change it, and
+learns a worker's settings. DELETE /v1/worker-pools/{name} deletes a pool with no live node, and its join tokens; its
+revoked nodes stay revoked, in no pool. A pool belongs to the member who made it, as a worker does; only they see or change it, and
 another member's pool is 404, as a name the hub never had. Each of its nodes is a worker of that member, shared or not
 by the rules of shared workers.
 
@@ -16,9 +17,10 @@ keeps its hex SHA-256 alone. It lasts 1 hour to 30 days, takes 1 to 100 machines
 .../tokens/{id}/revoke; the nodes that joined with it stay. A machine sends it to POST /v1/worker/join instead of a code
 (``worker_join``): ``take_token`` finds it, locks it and its pool, and counts the join; a token that is unknown,
 expired, revoked or used up gets the same 403 as a wrong code, counted against the address as wrong codes are. The node
-is a new worker of the pool's owner with an ``evw_`` token of its own, named ``node_name`` (the pool's name and the
-machine's hostname, with a suffix when a live worker of the owner has that name already), with the pool's slots and
-projects; its labels are its own (none at first), the pool's and ``pool=<name>``.
+is a new worker of the pool's owner (of the token's creator, an admin of the agent's project, for the pool of an
+agent) with an ``evw_`` token of its own, named ``node_name`` (the pool's name and the machine's hostname, with a
+suffix when a live worker of the owner has that name already), with the pool's slots and projects; its labels are its
+own (none at first), the pool's and ``pool=<name>``.
 
 Every pool created or changed and every join token created or revoked adds an audit row naming the pool and the
 token's id, never the token, which never reaches a log line either.
@@ -34,8 +36,8 @@ from datetime import timedelta
 
 import psycopg
 from fastapi import APIRouter, HTTPException, Path, Request, Response
+from sqlalchemy import case, delete, func, insert, select, update
 from sqlalchemy import exc as sa_exc
-from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
@@ -317,6 +319,31 @@ async def update_pool(request: Request, body: PoolUpdate, user: CurrentUser, nam
         return await _shown(conn, user, await _pool_row(conn, user, name))
 
 
+@router.delete("/{name}", status_code=204, responses=REFUSALS)
+async def delete_pool(request: Request, user: CurrentUser, name: str = PoolName) -> Response:
+    """Delete the caller's pool once it has no live node, with its join tokens; its revoked nodes stay revoked, in no
+    pool. The pool of an agent goes with its agent alone."""
+    p, w = tables.worker_pools, tables.workers
+    async with request.app.state.engine.begin() as conn:
+        row = await _pool_row(conn, user, name, lock=True)
+        if row.agent_id is not None:
+            raise HTTPException(409, f"pool {row.name} is the pool of an agent: it goes when its agent is deleted")
+        live = await _live_nodes(conn, row.id)
+        if live:
+            nodes = ", ".join(f"{node} (#{worker_id})" for worker_id, node in live)
+            raise HTTPException(
+                409, f"pool {row.name} still has live nodes: {nodes}; revoke them first (`evo-agents worker revoke`)"
+            )
+        await conn.execute(update(w).values(pool_id=None).where(w.c.pool_id == row.id))
+        await conn.execute(delete(p).where(p.c.id == row.id))
+        action = audit.WORKER_POOL_DELETE
+        await audit.record(
+            conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=_target(row.id, row.name)
+        )
+    log.info("worker pool deleted", extra={"pool_id": row.id})
+    return Response(status_code=204)
+
+
 # Join tokens
 
 
@@ -439,8 +466,11 @@ async def take_token(conn: AsyncConnection, token: str) -> Joining | None:
     if not token.startswith(TOKEN_PREFIX):
         return None
     t, p = tables.worker_join_tokens, tables.worker_pools
+    # a node of an agent's pool is the token creator's worker: an admin of the agent's project, while the member who
+    # created the agent may hold no grant on it any more
+    owner = case((p.c.agent_id.is_(None), p.c.owner_id), else_=t.c.created_by).label("owner_id")
     statement = (
-        select(t.c.id, p.c.id.label("pool_id"), p.c.name, p.c.owner_id, p.c.slots)
+        select(t.c.id, p.c.id.label("pool_id"), p.c.name, owner, p.c.slots)
         .join_from(t, p, p.c.id == t.c.pool_id)
         .where(
             t.c.token_hash == hash_token(token),

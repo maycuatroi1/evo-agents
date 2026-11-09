@@ -177,6 +177,29 @@ def test_the_default_agent_runs_in_the_same_way_in_pool_mode(client, hub, hub_db
     assert claim(client, node)["id"] == run["id"]
 
 
+def test_a_node_joined_to_an_agents_pool_is_the_token_creators_worker_though_the_agents_creator_left(
+    client, hub, hub_db
+):
+    """The member who created the agent owns its pool; once they hold no grant on the project, another admin of the
+    project creates a join token and the machine joins as that admin's worker, which takes the agent's runs."""
+    from tests.hub.test_workers import HOST, PROTOCOL
+
+    make_agent(client, hub["owner"], "helper", db=hub_db)
+    grant_admin(client, hub, OTHER)
+    gone = client.delete(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", headers=hub["admin"])
+    assert gone.status_code in (200, 204), gone.text
+    issued = client.post(f"{POOLS}/agent-helper/tokens", json={}, headers=hub["other"])
+    assert issued.status_code == 201, issued.text
+    joined = client.post("/v1/worker/join", json={"token": issued.json()["token"], **HOST}, headers=PROTOCOL)
+    assert joined.status_code == 201, joined.text
+    node = joined.json()["worker"]
+    assert (node["owner"], node["pool"]) == (OTHER, "agent-helper")
+    w = tables.workers
+    assert sql(hub_db, select(w.c.pool_id).where(w.c.id == node["id"])) == [(pool_id(hub_db, "helper"),)]
+    deleted = client.delete(f"{POOLS}/agent-helper", headers=hub["other"])
+    assert deleted.status_code == 409, "the pool of an agent goes with its agent alone"
+
+
 # 422 for a machine nobody picks
 
 

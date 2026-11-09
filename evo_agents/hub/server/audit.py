@@ -83,11 +83,12 @@ WORKER_DISPATCH_FROM = "worker.dispatch_from"
 WORKER_UPDATE = "worker.update"
 # Worker pools (evo_agents.hub.server.worker_pools), "pool:<id> name=<n>" first: a member created one, changed its
 # settings ("<field>=<was>-><is>" as WORKER_UPDATE), created a join token of it ("join_token:<id> hours=<h>
-# max_uses=<n>") or revoked one ("join_token:<id>"); never the token.
+# max_uses=<n>") or revoked one ("join_token:<id>"), or deleted the pool; never the token.
 WORKER_POOL_CREATE = "worker_pool.create"
 WORKER_POOL_UPDATE = "worker_pool.update"
 WORKER_POOL_TOKEN = "worker_pool.token"
 WORKER_POOL_TOKEN_REVOKE = "worker_pool.token_revoke"
+WORKER_POOL_DELETE = "worker_pool.delete"
 # A hub admin named the shared KG pool, "pool:<id> name=<n> owner=<login>", or cleared it, "pool:<id> name=<n>
 # kg_shared=off"; the hub added a project to it, "pool:<id> name=<n> project=<name>" (evo_agents.hub.server.kg_shared_pool)
 WORKER_POOL_KG_SHARED = "worker_pool.kg_shared"

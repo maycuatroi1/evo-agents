@@ -222,6 +222,7 @@ evo-agents worker pool token create vps --hours 48 --max-uses 4  # evj_..., prin
 evo-agents worker pool token list vps                         # the tokens, never their values
 evo-agents worker pool token revoke vps 12                    # the nodes it joined stay
 evo-agents worker pool user-data vps --ttl 24 --max-nodes 1 > user-data.sh
+evo-agents worker pool delete vps                             # once no node is live, its tokens with it
 ```
 
 **A pool.** `POST /v1/worker-pools` (a web session with its CSRF header, or the machine token of `hub login`) names
@@ -235,8 +236,11 @@ changes its settings; a list given replaces the whole list, and `pool set --no-l
 (projects with the refusals of [The projects a worker serves](#the-projects-a-worker-serves)), and each daemon learns
 it from its next heartbeat answer. A pool belongs to the member who made it, as a worker does: only they see or
 change it, and another member's pool is 404. Each node is a worker of that member, shared or not by the rules of
-[Shared workers](#shared-workers). Each write is audited (`worker_pool.create`, `worker_pool.update`, `worker_pool.token` and
-`worker_pool.token_revoke`), naming the pool and the token's id, never the token.
+[Shared workers](#shared-workers). `DELETE /v1/worker-pools/{name}` deletes a pool of the caller that has no live node
+(409 naming the live ones), with its join tokens; its revoked nodes stay revoked, in no pool. The pool of an agent is
+not deleted this way: it goes with its agent. Each write is audited (`worker_pool.create`, `worker_pool.update`,
+`worker_pool.token`, `worker_pool.token_revoke` and `worker_pool.delete`), naming the pool and the token's id, never
+the token.
 
 **The pool of an agent.** Each agent has a pool named `agent-<handle>` (`GET /v1/worker-pools` lists those of the
 agents the caller administers; every one for a hub admin). The admin of the agent's project or of the hub, not its
@@ -244,6 +248,8 @@ owner, shows it, makes and revokes its join tokens and changes its slots, labels
 routes of this section and `evo-agents worker pool`; the pool serves the agent's project alone. See "Routes and
 commands" under the agent profiles in `docs/hub.md` for the placement that sends an agent's runs to it.
 A node of an agent's pool claims the runs of that agent alone, and only while it is ready; no other worker claims them.
+A machine that joins an agent's pool becomes a worker of the member who made the join token, not of the pool's owner,
+so an admin of the project adds nodes even after the member who created the agent lost every grant on it.
 
 **A join token.** `POST /v1/worker-pools/{name}/tokens` makes one: `evj_` and 32 random bytes in base64url, shown
 once; the hub keeps its SHA-256 alone. It works for `hours` (1 to 720, 24 by default) and joins `max_uses` machines
@@ -252,8 +258,9 @@ once; the hub keeps its SHA-256 alone. It works for `hours` (1 to 720, 24 by def
 evj_...` sends it to `POST /v1/worker/join` instead of a code; `EVO_JOIN_TOKEN` gives it without putting it on the
 command line, where the shell's history and the process list would see it. A token that is unknown, expired, revoked
 or used up gets a 403 that names none of these, and counts against the client address in the same limit as a wrong
-code, so the 429 after 10 refusals in 10 minutes covers both ([Joining](#joining)). When the owner has lost the
-writer role on one of the pool's projects, the join gets 409 and uses none of the token.
+code, so the 429 after 10 refusals in 10 minutes covers both ([Joining](#joining)). When the owner (the token's
+maker for an agent's pool) has lost the writer role on one of the pool's projects, the join gets 409 and uses none of
+the token.
 
 **Name and labels.** A node is named `<pool>-<host>`, the host being the first DNS label of the machine's hostname,
 lowercased and cut to what a worker name takes; a hostname that already starts with `<pool>-` is kept as it is. When
