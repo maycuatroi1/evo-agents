@@ -22,11 +22,13 @@ import {
 } from "./content-model";
 import {
   authorsSince,
+  caseReviewBlock,
   codeKey,
   comparePair,
   findItem,
   firstItem,
   kgNodeId,
+  mayDecide,
   outline,
   pathOf,
   policyOf,
@@ -38,6 +40,7 @@ import {
   slots,
   threadsOf,
   versionParam,
+  waitForBaOf,
 } from "./model";
 import { planStepOf, shortChange, traceOf } from "./trace-model";
 
@@ -335,5 +338,26 @@ describe("comments", () => {
 describe("fixtures", () => {
   it("builds items with defaults", () => {
     expect(item("x").kind).toBe("section");
+  });
+});
+
+describe("owners of a group of use cases and the wait for @ba", () => {
+  const writer = { login: "bao", role: "writer" } as const;
+  const inReview = { state: "in_review" } as const;
+
+  it("lets an owner, any case of login, or an admin decide a use case of a group with owners", () => {
+    expect(mayDecide([], writer)).toBe(true);
+    expect(mayDecide(["Bao"], writer)).toBe(true);
+    expect(mayDecide(["alice"], writer)).toBe(false);
+    expect(mayDecide(["alice"], { login: "chi", role: "admin" })).toBe(true);
+    expect(caseReviewBlock(writer, inReview, { owners: ["alice"] })).toBe("owner");
+    expect(caseReviewBlock(writer, inReview, { owners: ["alice"], authors: ["bao"] })).toBe("author");
+    expect(caseReviewBlock(writer, inReview, { owners: ["bao"], authors: ["bao"] }, true)).toBeNull();
+  });
+
+  it("waits for @ba unless the config turns wait_for_ba off", () => {
+    expect(waitForBaOf([])).toBe(true);
+    expect(waitForBaOf([{ name: "wait_for_ba", value: true }])).toBe(true);
+    expect(waitForBaOf([{ name: "wait_for_ba", value: false }])).toBe(false);
   });
 });

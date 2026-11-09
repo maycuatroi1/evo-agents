@@ -16,7 +16,10 @@ version would (``reviews``). The reviews that *count* for a version V of a use c
 - of a reviewer, the latest one, which replaces their earlier ones (all stay in the table);
 - of a reviewer who may still review that use case: a writer of the project who wrote no revision of it since its newest
   release (``revisions.History.authors``), unless the config's ``self_approval`` is on. Writing a revision of one use
-  case bars nobody from the others.
+  case bars nobody from the others;
+- of a reviewer who may decide it when the config's ``owners`` names owners of its group (``ORD`` of ``UC ORD-3``,
+  ``code_group``): one of those owners, or an admin of the project (``may_decide``). A version-wide approval counts
+  for such a use case under the same rule.
 
 A use case is ``approved`` when the approved baseline holds it at the revision it has at V (or holds a removal of it,
 for one V drops), ``superseded`` when the baseline holds a newer revision of it, else ``changes_requested`` while one
@@ -30,6 +33,7 @@ version-wide reviews alone. Nothing here writes a version's state: ``reviews`` d
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -50,6 +54,26 @@ ADDED, CHANGED, REMOVED = "added", "changed", "removed"
 PENDING, APPROVED, CHANGES_REQUESTED, SUPERSEDED = "pending", "approved", "changes_requested", "superseded"
 DONE = (APPROVED, SUPERSEDED)  # the states of a use case that no longer holds its version
 REVIEWED_STATES = ("draft", "in_review")  # a version in another state lists no use case to review
+_GROUP = re.compile(r"([A-Za-z][A-Za-z0-9_]*)-\d+$")  # the group of a code, before its number: ORD of UC ORD-3
+
+
+def code_group(code: str | None) -> str | None:
+    """The group of a use case's code, upper case: ``ORD`` of ``UC ORD-3``; None for no code or one without a
+    number."""
+    found = _GROUP.search(code.strip()) if code else None
+    return found.group(1).upper() if found else None
+
+
+def owners_of(settings: Settings, code: str | None) -> tuple[str, ...]:
+    """The owners the config's ``owners`` names for the group of use case code ``code``; empty for none."""
+    group = code_group(code)
+    return settings.owners.get(group, ()) if group else ()
+
+
+def may_decide(owners: Sequence[str], login: str, admin: bool) -> bool:
+    """Whether member ``login`` (an admin of the project or not) may review a use case whose owners are ``owners``:
+    anyone when it has none, else one of them (logins are case-insensitive) or an admin."""
+    return not owners or admin or login.lower() in {owner.lower() for owner in owners}
 
 
 @dataclass(frozen=True)
@@ -96,6 +120,7 @@ class CaseState:
     author_id: int | None = None
     authors: frozenset[int] = frozenset()
     author_logins: tuple[str, ...] = ()
+    owners: tuple[str, ...] = ()  # who alone, with the project's admins, review it (the config's owners); empty: anyone
 
 
 def case_name(case: Case | CaseState) -> str:
@@ -201,10 +226,16 @@ async def _rows(conn: AsyncConnection, doc: DocumentRow, number: int) -> list[tu
     ]
 
 
-async def _writers(conn: AsyncConnection, project_id: int, ids: set[int]) -> set[int]:
+async def _roles(conn: AsyncConnection, project_id: int, ids: set[int]) -> dict[int, str]:
+    """The role on project ``project_id`` of each of the members ``ids`` who has a grant on it."""
     g = tables.grants
     query = select(g.c.user_id, g.c.role).where(g.c.project_id == project_id, g.c.user_id.in_(ids or [0]))
-    return {row.user_id for row in await conn.execute(query) if has_role(row.role, "writer")}
+    return {row.user_id: row.role for row in await conn.execute(query)}
+
+
+def _decides(owners: Sequence[str], admins: set[int], review: CaseReview | ReviewRow) -> bool:
+    """Whether ``review`` counts for a use case whose owners are ``owners`` (``may_decide``)."""
+    return may_decide(owners, review.reviewer, review.reviewer_id in admins)
 
 
 def _same(one: Revision | None, other: Revision | None) -> bool:
@@ -275,13 +306,17 @@ async def states(
     if not cases:
         return []
     rows = await _rows(conn, doc, held.number)
-    writers = await _writers(conn, project_id, {review.reviewer_id for _, review in rows})
+    ids = {review.reviewer_id for _, review in rows} | {review.reviewer_id for review in version_wide}
+    roles = await _roles(conn, project_id, ids)
+    writers = {user_id for user_id, role in roles.items() if has_role(role, "writer")}
+    admins = {user_id for user_id, role in roles.items() if has_role(role, "admin")}
     latest = {(key, review.reviewer_id): review for key, review in rows}  # a later review replaces the earlier one
     policy = settings.policy.get(doc.kind)
     found = []
     for case in cases:
         revision = known.at(case.key, held.number)
         barred = frozenset() if settings.self_approval else frozenset(known.authors(case.key))
+        owners = owners_of(settings, case.code)
         counted = sorted(
             (
                 review
@@ -289,11 +324,12 @@ async def states(
                 if key == case.key
                 and reviewer_id in writers
                 and reviewer_id not in barred
+                and _decides(owners, admins, review)
                 and _same(known.at(key, review.version), revision)
             ),
             key=lambda review: (review.created_at, review.version),
         )
-        reviewed = _state(policy, counted, version_wide)
+        reviewed = _state(policy, counted, [review for review in version_wide if _decides(owners, admins, review)])
         found.append(
             CaseState(
                 **case.__dict__,
@@ -310,6 +346,7 @@ async def states(
                 author_logins=()
                 if settings.self_approval
                 else tuple(dict.fromkeys(revision.author for revision in known.since_release(case.key))),
+                owners=owners,
             )
         )
     return found
@@ -358,9 +395,12 @@ __all__ = [
     "approved_by",
     "authors_since",
     "case_name",
+    "code_group",
     "fingerprints",
     "key_of",
+    "may_decide",
     "needed",
+    "owners_of",
     "ready",
     "record",
     "round_approvals",

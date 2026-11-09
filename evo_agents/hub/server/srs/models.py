@@ -130,6 +130,11 @@ class SrsUseCase(BaseModel):
         description="who wrote a revision of it since its newest release, and so may not review it (empty when "
         "self_approval is on)",
     )
+    owners: list[str] = Field(
+        default_factory=list,
+        description="the members the config's owners names for its group (ORD of UC ORD-3): they and the project's "
+        "admins alone review it; empty when the config names none, and anyone may",
+    )
     link: str = Field("", description="its review on the hub's web, a path")
 
 
@@ -149,17 +154,21 @@ class SrsQueuedUseCase(SrsUseCase):
         description="what its actor wants (its Intent, or the Objective of an older use case), as the version reads; "
         "null for one it drops"
     )
-    deciding: int = Field(description="its open findings of level decide, which hold its approval")
+    deciding: int = Field(
+        description="its open findings of level decide, which hold its approval unless wait_for_ba is off"
+    )
     noted: int = Field(description="its open findings of another level, advice only")
     held_by: Literal["ba_review", "findings"] | None = Field(
         None,
         description="what holds its approval now: @ba's review of the version's round or of its own, then the open "
-        "findings of level decide about it, a business rule under it or the whole document; null when none",
+        "findings of level decide about it, a business rule under it or the whole document; null when none, and "
+        "always when the config's wait_for_ba is off",
     )
     may_review: bool = Field(
         False,
         description="whether the caller may review it: a writer who wrote no revision of it since its newest "
-        "release, any writer when self_approval is on, never the agent of a run",
+        "release (any writer when self_approval is on) and, when it has owners, one of them or an admin; never the "
+        "agent of a run",
     )
 
 
@@ -173,7 +182,7 @@ class SrsQueuedVersion(SrsVersionCases):
     document_title: str
     held_by: Literal["ba_review", "findings"] | None = Field(
         description="what holds an approval now: @ba's review of the round while it is queued or running, then the open "
-        "findings of level decide of the document; null when it may be approved"
+        "findings of level decide of the document; null when it may be approved, and always when wait_for_ba is off"
     )
     deciding: int = Field(description="the open findings of level decide of the document")
     may_review: bool = Field(
@@ -540,6 +549,7 @@ def use_case_model(case: CaseState, link: str = "") -> SrsUseCase:
         submitted=case.submitted,
         author=case.author,
         authors=list(case.author_logins),
+        owners=list(case.owners),
         link=link,
     )
 

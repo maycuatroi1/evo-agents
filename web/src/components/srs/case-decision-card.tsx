@@ -156,7 +156,8 @@ export function CaseDecisionCard({
     void send("request_changes");
   };
 
-  const blocked = access === "waiting" ? null : access === "review" ? null : t(`blocked.${access}`);
+  const blocked =
+    access === "waiting" || access === "review" ? null : t(`blocked.${access}`, { owners: (useCase?.owners ?? []).join(", ") });
   return (
     <StepCard id="srs-step-decide" title={t("title")} testId="srs-case-decide">
       {access === "waiting" ? <ListSkeleton rows={1} /> : null}

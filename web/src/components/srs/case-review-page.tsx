@@ -23,7 +23,7 @@ import { approveGate, caseAccess, caseFindings, type CaseView, keysUnder, shownC
 import { reviewHolds } from "./findings-model";
 import { useSrsViewer } from "./hooks";
 import { documentHref, itemHref, reviewsHref } from "./links";
-import { canWrite, caseReviewBlock, findItem, selfApprovalOf, versionOf } from "./model";
+import { canWrite, caseReviewBlock, findItem, selfApprovalOf, versionOf, waitForBaOf } from "./model";
 import { nextCard, QUEUE_REFRESH_MS } from "./review-queue-model";
 import { caseBlock } from "./use-case-model";
 
@@ -80,8 +80,9 @@ function CaseBody({ view, caseKey }: { view: CaseView; caseKey: string }) {
   const groups = findings.data ? caseFindings(findings.data, keys) : null;
   // A use case sent to review on its own is reviewed in a version that is not: its gate is its own findings.
   const open = version.state === "in_review" || (useCase?.submitted ?? false);
-  const gate = open ? approveGate(version.state === "in_review" ? version.review_run : null, groups) : null;
   const fields = config.data?.fields ?? [];
+  const waitForBa = waitForBaOf(fields);
+  const gate = open ? approveGate(version.state === "in_review" ? version.review_run : null, groups, waitForBa) : null;
   const block = viewer ? caseReviewBlock(viewer, version, useCase, selfApprovalOf(fields)) : null;
   const access = caseAccess({ signedIn: viewer !== null, block: caseBlock(block), configPending: config.isPending, toReview: useCase !== null });
   const next = queue.data ? nextCard(queue.data, login, { document: slug, number: version.number, key: useCase?.key ?? caseKey }) : null;
@@ -119,6 +120,7 @@ function CaseBody({ view, caseKey }: { view: CaseView; caseKey: string }) {
             findings={findings}
             groups={groups}
             writer={canWrite(viewer)}
+            waitForBa={waitForBa}
           />
           <CaseDecisionCard
             project={project}

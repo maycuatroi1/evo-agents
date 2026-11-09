@@ -8060,7 +8060,7 @@ export interface paths {
          * @description Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it
          *     when the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it
          *     records holds approval. The reviewers get the notice srs_review once nothing holds approval: at once when @ba
-         *     reviews nothing, else when its review ends (``notices``).
+         *     reviews nothing or the config's wait_for_ba is off, else when its review ends (``notices``).
          */
         post: operations["submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post"];
         delete?: never;
@@ -42695,6 +42695,11 @@ export interface components {
              */
             authors?: string[];
             /**
+             * Owners
+             * @description the members the config's owners names for its group (ORD of UC ORD-3): they and the project's admins alone review it; empty when the config names none, and anyone may
+             */
+            owners?: string[];
+            /**
              * Link
              * @description its review on the hub's web, a path
              * @default
@@ -42707,7 +42712,7 @@ export interface components {
             intent: string | null;
             /**
              * Deciding
-             * @description its open findings of level decide, which hold its approval
+             * @description its open findings of level decide, which hold its approval unless wait_for_ba is off
              */
             deciding: number;
             /**
@@ -42717,12 +42722,12 @@ export interface components {
             noted: number;
             /**
              * Held By
-             * @description what holds its approval now: @ba's review of the version's round or of its own, then the open findings of level decide about it, a business rule under it or the whole document; null when none
+             * @description what holds its approval now: @ba's review of the version's round or of its own, then the open findings of level decide about it, a business rule under it or the whole document; null when none, and always when the config's wait_for_ba is off
              */
             held_by?: ("ba_review" | "findings") | null;
             /**
              * May Review
-             * @description whether the caller may review it: a writer who wrote no revision of it since its newest release, any writer when self_approval is on, never the agent of a run
+             * @description whether the caller may review it: a writer who wrote no revision of it since its newest release (any writer when self_approval is on) and, when it has owners, one of them or an admin; never the agent of a run
              * @default false
              */
             may_review: boolean;
@@ -42784,7 +42789,7 @@ export interface components {
             document_title: string;
             /**
              * Held By
-             * @description what holds an approval now: @ba's review of the round while it is queued or running, then the open findings of level decide of the document; null when it may be approved
+             * @description what holds an approval now: @ba's review of the round while it is queued or running, then the open findings of level decide of the document; null when it may be approved, and always when wait_for_ba is off
              */
             held_by: ("ba_review" | "findings") | null;
             /**
@@ -43041,6 +43046,11 @@ export interface components {
              * @description who wrote a revision of it since its newest release, and so may not review it (empty when self_approval is on)
              */
             authors?: string[];
+            /**
+             * Owners
+             * @description the members the config's owners names for its group (ORD of UC ORD-3): they and the project's admins alone review it; empty when the config names none, and anyone may
+             */
+            owners?: string[];
             /**
              * Link
              * @description its review on the hub's web, a path

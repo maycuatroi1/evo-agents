@@ -55,6 +55,7 @@ export function CaseFindingsCard({
   findings,
   groups,
   writer,
+  waitForBa = true,
 }: {
   project: string;
   slug: string;
@@ -63,12 +64,15 @@ export function CaseFindingsCard({
   findings: FindingsRead;
   groups: CaseFindings | null;
   writer: boolean;
+  /** The config's `wait_for_ba`: off, @ba's points are advice and Agree does not wait for them. */
+  waitForBa?: boolean;
 }) {
   const t = useTranslations("srs.caseReview");
   const reviewing = reviewHolds(run);
   const empty = groups !== null && groups.decide.length === 0 && groups.elsewhere.length === 0 && groups.advice.length === 0;
+  const intro = waitForBa ? t("ba.intro") : t("ba.introAdvice");
   return (
-    <StepCard id="srs-step-ba" title={t("step.ba")} note={groups && groups.decide.length > 0 ? t("ba.intro") : undefined} testId="srs-case-ba">
+    <StepCard id="srs-step-ba" title={t("step.ba")} note={groups && groups.decide.length > 0 ? intro : undefined} testId="srs-case-ba">
       {reviewing ? (
         <Banner icon={Bot} role="status" title={t("ba.reviewing")} testId="srs-case-ba-reviewing">
           {t("ba.reviewingText")}
@@ -92,7 +96,7 @@ export function CaseFindingsCard({
             </ul>
           ) : null}
           {groups.elsewhere.length > 0 ? (
-            <Fold title={t("ba.elsewhere", { count: groups.elsewhere.length })} text={t("ba.elsewhereText")} tone="attention" testId="srs-case-elsewhere">
+            <Fold title={t("ba.elsewhere", { count: groups.elsewhere.length })} text={waitForBa ? t("ba.elsewhereText") : t("ba.adviceText")} tone="attention" testId="srs-case-elsewhere">
               <ul className="flex flex-col divide-y" role="list">
                 {groups.elsewhere.map((finding) => (
                   <FindingChoice key={finding.id} project={project} slug={slug} caseKey={caseKey} finding={finding} writer={writer} />

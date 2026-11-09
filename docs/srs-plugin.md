@@ -24,6 +24,9 @@ evo-agents hub plugin config srs --project evo-agents \
   --set 'approval_policy={"srs": {"required": ["ba", "qa"], "optional": ["dev"]}}'
 evo-agents hub plugin config srs --project evo-agents --set self_approval=true   # authors may approve their versions
 evo-agents hub plugin config srs --project evo-agents \
+  --set 'owners={"ORD": ["alice"], "PAY": ["bao"]}'                              # who reviews UC ORD-n and UC PAY-n
+evo-agents hub plugin config srs --project evo-agents --set wait_for_ba=false   # @ba's review is advice
+evo-agents hub plugin config srs --project evo-agents \
   --set 'required_use_case_fields=["intent", "context", "expectation"]'          # use cases fill these before review
 evo-agents hub plugin config srs --project evo-agents --effective                # each field, the layer that set it
 ```
@@ -39,6 +42,8 @@ It asks for no permission. Its config, in the project's layer (`docs/hub.md`, Pl
 | `required_use_case_fields` | the fields every use case fills, besides its actor, before its version is submitted: `intent`, `context`, `expectation`, `objective`, `trigger`, `pre_condition`, `post_condition`, `status` or `id` | `[]`: the actor alone |
 | `self_approval` | `true` lets the author of a version review it, approve it or ask for changes, as any writer of the project (section Approval) | `false`: another member reviews it |
 | `reviewers` | the members, by login, told when a version waits for review (section Approval, Notices) | every writer who may review the version |
+| `owners` | per group of use case codes (`ORD` of `UC ORD-3`, any case), the members, by login, who alone review those use cases with the project's admins, and are told they wait (section Approval, Owners) | anyone reviews any use case |
+| `wait_for_ba` | `false` makes @ba's review advice: an approval waits neither for its review run nor for an open finding of level `decide`, and reviewers are told at submit (section Approval) | `true`: an approval waits for @ba |
 
 The headings a template reads stay the template's; a client changes only the patterns of its codes. Only an admin of the
 project writes the config, with the commands above or on the plugin's page of the project on the web
@@ -163,7 +168,8 @@ approves it or asks for changes, with these rules:
   waited for.
 - A request for changes sends the version back to `draft`. Submitted again, it is a new round.
 - An approval goes through the gate first (section Findings): no open finding of level `decide` in the document, and
-  no review of @ba of the version's current round still queued or running. Otherwise it is a 409 that names each
+  no review of @ba of the version's current round still queued or running. With the config's `wait_for_ba` off, there
+  is no gate: @ba's review and its findings are advice the reviewer reads, and the queue's `held_by` is always null. Otherwise it is a 409 that names each
   finding, with its chat link, and the command that waives one. A request for changes is never held.
 - A version answers its `review_run`: the id and state of @ba's review of its current round, null when none was
   handed. The submit route answers it too, queued, once the hub handed one.
@@ -171,6 +177,14 @@ approves it or asks for changes, with these rules:
   the hub, queues a build of its knowledge graph. It emits the event `srs.version.approved` in the same transaction;
   when the project enables the plugin tasks, the plugin keeps the project's tasks in step once the hub delivers that
   event (section Tasks when a version is approved).
+
+**Owners.** The config's `owners` maps a group of use case codes, the letters before the number (`ORD` of `UC ORD-3`),
+to logins. A use case of a group it names is reviewed by those owners and the project's admins alone: anyone else gets
+403 on its review, its use case in the queue says `may_review` false and lists its `owners`, and their reviews,
+version-wide approvals included, do not count for it. A version-wide review of a member who is no admin and owns none of
+the use cases the version needs reviewed is 403. The author rule and `self_approval` still apply to owners. A group the
+config leaves out is reviewed as before. Every review stays a row of its own, so who approved a revision stays readable
+on that use case of the version it was approved in (`reviews`).
 
 **Notices.** The reviewers of a version learn that it waits for them once nothing holds its approval, so nobody is
 asked to look at a version @ba is still reviewing. The hub sends the notice `srs_review` (Inbox, and every channel of
@@ -182,7 +196,13 @@ when the version has one to review, else the list of what waits (`/p/{project}/x
 - when the last open finding of level `decide` of the document is settled or waived while the version is in review and
   @ba's review of its round is no longer queued or running.
 
-The reviewers are the members the config's `reviewers` names, else every writer and admin of the project; of them,
+With `wait_for_ba` off, nothing holds it: the reviewers learn at submit, @ba's review handed or not, and the body says
+when @ba is still reviewing.
+
+The reviewers of a use case whose group has owners are those owners (not who `reviewers` names), less an owner barred
+by the author rule; when no owner may, the project's admins who may are told. Each member's notice names, and links,
+only the use cases they may decide. For the other use cases, the reviewers are the members the config's `reviewers`
+names, else every writer and admin of the project; of them,
 only those who may review the version now (a writer, the document's label visible to them, and one who may review at
 least one of its use cases waiting, by the author rule of each; with none, no version written since the one approved
 last unless `self_approval`). When none of the members named may, every writer who may is told. Each is told once per

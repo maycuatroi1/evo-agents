@@ -14,8 +14,9 @@ version, archiving a document and unarchiving it queue a build of the project's 
 approved versions of the documents not archived. Readers read the conflicts @ba found in a document (GET
 .../documents/{slug}/findings, ``status`` to keep one status), and an admin waives an open one (POST
 .../findings/{id}/waive) with a reason. Approving a version answers 409 while the document has an open finding of level
-decide, or @ba's review of the version's round is queued or running (``findings.approval_hold``); a request for changes
-is never held. Approving a version emits ``srs.version.approved`` in the same transaction (``events``); in a project
+decide, or @ba's review of the version's round is queued or running (``findings.approval_hold``), unless the config's
+``wait_for_ba`` is off; a request for changes is never held. With the config's ``owners``, a use case of a group named
+there is reviewed by its owners and the project's admins alone. Approving a version emits ``srs.version.approved`` in the same transaction (``events``); in a project
 that enables the plugin tasks, the plugin's handler of that event keeps its tasks in step when the hub delivers it
 (``auto_tasks.approved``, with the version approved before it and the approver): frame tasks of its new use cases,
 comments and cancellations, and @ba's split run. A writer sends one use case to review on its own (POST
@@ -165,6 +166,14 @@ async def list_documents(
     return await _answer(request, work)
 
 
+def _held_by(settings: store.Settings, running, deciding) -> str | None:
+    """What holds an approval now: @ba's review of the round, else open findings to decide; nothing of @ba holds one
+    with the config's ``wait_for_ba`` off."""
+    if not settings.wait_for_ba:
+        return None
+    return "ba_review" if running is not None else "findings" if deciding else None
+
+
 async def _queued_cases(
     conn: AsyncConnection,
     access: ProjectAccess,
@@ -172,11 +181,14 @@ async def _queued_cases(
     row: store.VersionRow,
     content,
     cases,
-    reviewer: int | None,
+    reviewer: Principal | None,
+    settings: store.Settings,
 ) -> list[SrsQueuedUseCase]:
     """The use cases to review of version ``row``, whose content is ``content``, each with its intent as the version
     reads, the open findings of the document about it or a business rule under it, by level, what holds its approval
-    and whether ``reviewer`` (None: nobody, the caller is no writer) may review it."""
+    (nothing of @ba with ``wait_for_ba`` off) and whether ``reviewer`` (None: nobody, the caller is no writer) may
+    review it."""
+    admin = has_role(access.role, "admin")
     under = findings.use_case_of(content)
     intents = {  # Intent, or the Objective it replaced in older use cases
         item.key: item.fields.get("intent") or item.fields.get("objective")
@@ -199,10 +211,11 @@ async def _queued_cases(
                 intent=intents.get(case.key) or None,
                 deciding=counts.get(case.key, [0, 0])[0],
                 noted=counts.get(case.key, [0, 0])[1],
-                held_by="ba_review" if running is not None else "findings" if deciding else None,
+                held_by=_held_by(settings, running, deciding),
                 may_review=reviewer is not None
                 and case.state not in use_case_reviews.DONE
-                and reviewer not in case.authors
+                and reviewer.user_id not in case.authors
+                and use_case_reviews.may_decide(case.owners, reviewer.login, admin)
                 and (row.state == "in_review" or case.submitted),
             )
         )
@@ -233,14 +246,14 @@ async def review_queue(request: Request, project: ProjectName, user: CurrentUser
                     if not cases:
                         continue
                 deciding, running = await findings.holds(conn, doc, row)
-                reviewer = user.user_id if writer else None
-                use_cases = await _queued_cases(conn, access, doc, row, snap.doc, cases, reviewer)
+                reviewer = user if writer else None
+                use_cases = await _queued_cases(conn, access, doc, row, snap.doc, cases, reviewer, settings)
                 if cases:
                     may = any(case.may_review for case in use_cases)
                 else:
                     authors = await use_case_reviews.authors_since(conn, doc, row.number)
                     may = writer and (settings.self_approval or user.user_id not in authors)
-                held_by = "ba_review" if running is not None else "findings" if deciding else None
+                held_by = _held_by(settings, running, deciding)
                 version = cases_model(row, cases).model_dump(exclude={"use_cases"})
                 queued.append(
                     SrsQueuedVersion(
@@ -482,7 +495,7 @@ async def submit_version(
     """Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it
     when the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it
     records holds approval. The reviewers get the notice srs_review once nothing holds approval: at once when @ba
-    reviews nothing, else when its review ends (``notices``)."""
+    reviews nothing or the config's wait_for_ba is off, else when its review ends (``notices``)."""
 
     async def work(conn):
         access = await project_access(conn, user, project)
@@ -491,6 +504,8 @@ async def submit_version(
         sent = await reviews.submit(conn, access, doc, number, settings)
         if await review_entered(conn, access, doc, sent) is not None:
             sent = await store.version(conn, doc, number)  # with @ba's review run of the round
+            if not settings.wait_for_ba:  # @ba's review is advice: the reviewers need not wait for it
+                await notices.tell_reviewers(conn, access.project_id, doc, sent)
         else:
             await notices.tell_reviewers(conn, access.project_id, doc, sent)
         content = (await store.snapshot(conn, sent)).doc
@@ -521,7 +536,7 @@ async def submit_use_case(
         settings = await store.settings(conn, access)
         latest, cases, case, revision = await reviews.submit_use_case(conn, access, user, doc, ref, settings)
         run_id = await case_entered(conn, access, doc, latest, case, revision, user.login)
-        if run_id is None:
+        if run_id is None or not settings.wait_for_ba:
             await notices.tell_case_reviewers(conn, access.project_id, doc, latest, case.key)
         run = None
         if run_id is not None:
