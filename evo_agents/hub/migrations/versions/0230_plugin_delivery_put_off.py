@@ -1,7 +1,7 @@
 """The tries of a plugin delivery the plugin asked to put off: plugin_deliveries.put_off.
 
-Revision ID: 0229
-Revises: 0228
+Revision ID: 0230
+Revises: 0229
 Create Date: 2026-11-09
 
 A core plugin whose exception carries ``retry_after`` asks for its delivery to be tried again that many seconds later
@@ -16,8 +16,8 @@ Going back drops the column: every try counts as a failed one again.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0229"
-down_revision = "0228"
+revision = "0230"
+down_revision = "0229"
 branch_labels = None
 depends_on = None
 

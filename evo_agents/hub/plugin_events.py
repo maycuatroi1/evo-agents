@@ -116,7 +116,7 @@ TIMEOUT = 30.0
 PASS_SECONDS = 40.0  # a pass starts no call after this: with TIMEOUT, it ends within the minute after the next
 CLAIM_SECONDS = TIMEOUT + 60  # a claimed delivery is not due again for this long, unless its try is written first
 MAX_ERROR_CHARS = 2000
-REPUBLISH_SECONDS = 45  # a delivery the bus carried and nobody claimed since is published again (published_at, 0230)
+REPUBLISH_SECONDS = 45  # a delivery the bus carried and nobody claimed since is published again (published_at, 0231)
 BUS_GRACE_SECONDS = 120  # while the bus is on, the minute's pass takes only deliveries due this long
 
 

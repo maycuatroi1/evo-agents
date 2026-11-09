@@ -1,7 +1,7 @@
 """When the event bus last carried a plugin delivery: plugin_deliveries.published_at.
 
-Revision ID: 0230
-Revises: 0229
+Revision ID: 0231
+Revises: 0230
 Create Date: 2026-11-09
 
 With the event bus on (EVO_HUB_BROKER_URL, ``evo_agents.hub.bus``), the delivery process publishes the id of each
@@ -16,8 +16,8 @@ Going back drops the column: the bus publishes every due delivery again.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0230"
-down_revision = "0229"
+revision = "0231"
+down_revision = "0230"
 branch_labels = None
 depends_on = None
 

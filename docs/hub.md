@@ -4117,7 +4117,7 @@ keep each delivery's state, due time and tries. The broker only carries the news
 
 - A commit that stores a delivery sends a Postgres notification on the channel `hub_bus` instead of queueing a job.
   `hub deliver` listens on it, takes the plugin deliveries that are due and not yet published, marks them with
-  `published_at` (schema 0230) and publishes their ids on the topic exchange `hub.events`, with the routing key
+  `published_at` (schema 0231) and publishes their ids on the topic exchange `hub.events`, with the routing key
   `plugin.<plugin>.<kind>` and publisher confirms, in the order they fell due. A pass of the notifications goes with
   the key `notifications`.
 - Each plugin has a quorum queue, `hub.plugin.<plugin>`, with a single active consumer, so one consumer at a time
