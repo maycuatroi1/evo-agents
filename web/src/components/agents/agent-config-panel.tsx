@@ -123,7 +123,6 @@ export function AgentConfigPanel({ project, agent, canChange, onSaved }: Props) 
         ) : (
           <span className="text-sm">{runsOn === "hub" ? tc("hub") : tc("worker")}</span>
         )}
-        <p className="text-xs text-pretty text-muted-foreground">{tc("runsOnHint")}</p>
       </div>
       {agent.is_default
         ? null

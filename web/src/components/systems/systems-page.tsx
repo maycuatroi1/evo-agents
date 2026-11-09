@@ -150,7 +150,6 @@ export function SystemsPage({ project, initialError }: { project: string; initia
       <PageHeader
         title={t("title")}
         tags={systems ? <Badge variant="secondary">{t("count", { count: systems.length })}</Badge> : null}
-        sub={t("sub")}
         actions={newButton}
       />
       <QueryView state={state} loading={<TableSkeleton rows={3} />}>
@@ -165,7 +164,7 @@ export function SystemsPage({ project, initialError }: { project: string; initia
               </DataCard>
             </section>
           ) : (
-            <EmptyState icon={Workflow} title={t("emptyTitle")} description={admin ? t("emptyAdmin") : t("emptyReader")} testId="systems-empty">
+            <EmptyState icon={Workflow} title={t("emptyTitle")} description={admin ? undefined : t("emptyReader")} testId="systems-empty">
               {newButton}
             </EmptyState>
           )

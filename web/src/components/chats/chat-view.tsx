@@ -300,7 +300,6 @@ function Conversation({ page, useUnder, agentPanels, headSlots }: { page: ChatPa
                 }}
                 label={t("composerLabel", { title: chat.title })}
                 placeholder={direct ? t("directPlaceholder", { name: agentName }) : t("placeholder")}
-                hint={direct ? t(replying ? "directReplyHint" : "directHint", { name: agentName }) : t("hint")}
                 testId="chat-composer"
                 focusKey={replying ? `reply-${replyFocus}` : compose}
                 replying={replying ? { name: authorLabel(replying.author, me), text: plainMentions(preview(replying.body), chatMentionMarks(chat)), onCancel: () => setReplying(null) } : null}

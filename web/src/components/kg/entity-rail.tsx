@@ -208,7 +208,6 @@ export function IsolatedList({ nodes, selected, onPick }: { nodes: EntityGraphNo
   const shown = all ? nodes : nodes.slice(0, ISOLATED_SHOWN);
   return (
     <RailSection title={t("isolated")} aside={<span className="text-xs text-muted-foreground tabular-nums">{format.number(nodes.length)}</span>} testId="kg-entity-isolated">
-      <p className="text-xs text-muted-foreground">{t("isolatedHint")}</p>
       <ul className="-mx-2 flex flex-col">
         {shown.map((node) => (
           <li key={node.id} className={cn(node.id === selected && "rounded-sm bg-accent")}>

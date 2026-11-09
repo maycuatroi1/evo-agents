@@ -159,7 +159,7 @@ function UploadList({ project, error }: { project: string; error: ApiErrorInfo |
       <QueryView state={uploads} loading={<ListSkeleton rows={3} />}>
         {({ uploads: rows }) =>
           rows.length === 0 ? (
-            <EmptyState icon={FileArchive} title={t("emptyTitle")} description={t("emptyDescription")} testId="kg-uploads-empty" />
+            <EmptyState icon={FileArchive} title={t("emptyTitle")} testId="kg-uploads-empty" />
           ) : (
             <ul className="rounded-md border bg-card shadow-raised">
               {rows.map((upload, index) => (
@@ -196,11 +196,9 @@ export function KgUploadPage({ project, errors }: { project: string; errors: KgU
   // The upload this page is sending is not one left unfinished.
   const inFlight = state.phase === "sending" || state.phase === "completing" ? state.started.id : null;
   const pending = records.filter((record) => record.id !== inFlight);
-  const t = useTranslations("kgUpload");
   return (
     <div className="flex flex-col gap-6">
       <KgHeader project={project} current="upload" />
-      <p className="max-w-prose text-sm text-muted-foreground">{t("intro")}</p>
       <PendingNotice records={pending} onForget={(id) => forgetUpload(project, id)} />
       <QueryView state={info} loading={<Skeleton className="h-64 w-full rounded-md" />}>
         {(data) => <UploadCard project={project} info={data} upload={upload} />}

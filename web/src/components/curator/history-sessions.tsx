@@ -210,12 +210,9 @@ export function HistorySessionsSection({
   }
   return (
     <section aria-labelledby="history-sessions-title" className="flex min-w-0 flex-col gap-3" data-testid="history-sessions">
-      <div className="flex flex-col gap-0.5">
-        <h2 id="history-sessions-title" className="text-[15px] leading-[22px] font-semibold">
-          {t("title")}
-        </h2>
-        <p className="text-[13px] text-pretty text-muted-foreground">{t("description")}</p>
-      </div>
+      <h2 id="history-sessions-title" className="text-[15px] leading-[22px] font-semibold">
+        {t("title")}
+      </h2>
       <DataCard
         busy={found.isPlaceholderData}
         toolbar={

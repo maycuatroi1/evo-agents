@@ -30,7 +30,7 @@ export function FormDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
-  description: string;
+  description?: string;
   pending: boolean;
   failure: Failure | null;
   labels: { save: string; saving: string; cancel: string };
@@ -52,11 +52,12 @@ export function FormDialog({
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-5 overflow-y-auto sm:max-w-lg"
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
+        {...(description ? {} : { "aria-describedby": undefined })}
         data-testid={testId}
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription className="text-pretty">{description}</DialogDescription>
+          {description ? <DialogDescription className="text-pretty">{description}</DialogDescription> : null}
         </DialogHeader>
         <form className="flex flex-col gap-5" onSubmit={submit} noValidate>
           {children}

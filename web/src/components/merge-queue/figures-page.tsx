@@ -95,7 +95,7 @@ function FiguresBody({ figures }: { figures: MergeFigures }) {
   const t = useTranslations("mergeQueue.figures");
   const sum = (key: "merged" | "reverted" | "rolled_back" | "judge_misses") => figures.figures.reduce((total, row) => total + row[key], 0);
   if (figures.figures.length === 0) {
-    return <EmptyState icon={ChartNoAxesColumn} title={t("empty.title", { days: figures.days })} description={t("empty.description")} />;
+    return <EmptyState icon={ChartNoAxesColumn} title={t("empty.title", { days: figures.days })} />;
   }
   return (
     <>

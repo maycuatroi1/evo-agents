@@ -61,7 +61,7 @@ export function MinePage({ project, title, initialError }: { project: string; ti
   return (
     <div className="flex flex-col gap-6" data-testid="tasks-mine-page">
       <div className="flex flex-col gap-4">
-        <PageHeader title={title} sub={viewer ? t("sub", { login: viewer.login }) : null} />
+        <PageHeader title={title} />
         <TasksTabs project={project} current="mine" writer={canWrite(viewer)} />
       </div>
       <QueryView state={settings} loading={<TableSkeleton rows={4} />}>
@@ -69,7 +69,7 @@ export function MinePage({ project, title, initialError }: { project: string; ti
           <QueryView state={tasks} loading={<TableSkeleton rows={4} />}>
             {(mine) =>
               mine.length === 0 ? (
-                <EmptyState icon={ClipboardList} title={t("emptyTitle")} description={t("emptyText")} testId="tasks-mine-empty">
+                <EmptyState icon={ClipboardList} title={t("emptyTitle")} testId="tasks-mine-empty">
                   <Button asChild variant="secondary">
                     <Link href={boardHref(project)}>
                       <Columns3 aria-hidden="true" />

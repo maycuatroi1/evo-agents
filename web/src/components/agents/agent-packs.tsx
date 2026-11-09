@@ -4,7 +4,7 @@ import { Package } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Tag } from "@/components/data/identifier";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Agent } from "@/lib/agents";
 
 /**
@@ -21,7 +21,6 @@ export function AgentPacks({ agent }: { agent: Agent }) {
         <CardTitle>
           <h2>{t("title")}</h2>
         </CardTitle>
-        <CardDescription>{t("hint")}</CardDescription>
       </CardHeader>
       <CardContent>
         {packs.length === 0 ? (

@@ -243,9 +243,7 @@ export function ProjectSwitcher() {
                 <span className="truncate text-[13px] leading-[18px] font-semibold text-foreground">
                   {selected ? selected.name : t("placeholder")}
                 </span>
-                <span className="truncate text-xs leading-4 font-normal text-fg-subtle">
-                  {selected ? tRoles(roleLabelKey(selected.role)) : t("hint")}
-                </span>
+                {selected ? <span className="truncate text-xs leading-4 font-normal text-fg-subtle">{tRoles(roleLabelKey(selected.role))}</span> : null}
               </span>
               <ChevronsUpDown className="ml-auto text-fg-subtle group-data-[collapsible=icon]:hidden" aria-hidden="true" />
             </SidebarMenuButton>

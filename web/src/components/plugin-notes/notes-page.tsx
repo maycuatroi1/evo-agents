@@ -67,7 +67,7 @@ export function NotesPage({ project, title }: { project: string; title: string }
         <QueryView state={state} loading={<ListSkeleton rows={3} />}>
           {(notes) =>
             notes.length === 0 ? (
-              <EmptyState icon={NotebookPen} title={t("emptyTitle")} description={t("emptyDescription")} testId="notes-empty" />
+              <EmptyState icon={NotebookPen} title={t("emptyTitle")} testId="notes-empty" />
             ) : (
               <Card className="min-w-0">
                 <CardContent>

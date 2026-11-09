@@ -100,7 +100,7 @@ export function ModelsTab({ accounts, onCatalog }: { accounts: Account[]; onCata
   }
   if (groups.length === 0 && !claude) {
     return (
-      <EmptyState icon={Boxes} title={t("emptyTitle")} description={t("emptyText")} testId="accounts-models-empty">
+      <EmptyState icon={Boxes} title={t("emptyTitle")} testId="accounts-models-empty">
         <Button onClick={onCatalog} data-testid="accounts-models-add">
           <Plus aria-hidden="true" />
           {t("add")}

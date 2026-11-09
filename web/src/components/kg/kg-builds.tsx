@@ -97,14 +97,9 @@ function History({ project, data, failedError }: { project: string; data: KgBuil
   return (
     <section aria-labelledby={BUILD_HISTORY_ID} className="flex flex-col gap-3" data-testid="kg-history" data-filter={filter}>
       <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
-        <div className="flex min-w-0 flex-col gap-1">
-          <h2 id={BUILD_HISTORY_ID} className="scroll-mt-20 text-[15px] leading-[22px] font-semibold">
-            {tBuilds("history")}
-          </h2>
-          <p className="text-[13px] leading-[18px] text-pretty text-muted-foreground">
-            {tBuilds.rich("description", { code: (chunks) => <code className="font-mono text-xs">{chunks}</code> })}
-          </p>
-        </div>
+        <h2 id={BUILD_HISTORY_ID} className="min-w-0 scroll-mt-20 text-[15px] leading-[22px] font-semibold">
+          {tBuilds("history")}
+        </h2>
         <Segmented
           label={t("filter")}
           value={filter}

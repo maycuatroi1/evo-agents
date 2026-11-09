@@ -227,7 +227,7 @@ export function AdminMembers({ initialError }: { initialError: ApiErrorInfo | nu
       <QueryView state={state} loading={<TableSkeleton rows={6} toolbar />}>
         {(all) =>
           all.length === 0 ? (
-            <EmptyState icon={Users} title={t("emptyTitle")} description={t("emptyDescription")} />
+            <EmptyState icon={Users} title={t("emptyTitle")} />
           ) : (
             <section aria-labelledby={`${ids}-list`}>
               <h2 id={`${ids}-list`} className="sr-only">

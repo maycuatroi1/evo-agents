@@ -48,7 +48,7 @@ export function NewDocumentPage({ project }: { project: string }) {
   const viewer = useDocsViewer(project);
   return (
     <div className={DOCUMENT_COLUMN} data-testid="docs-new-page">
-      <PageHeader title={t("newTitle")} sub={t("newSub", { project })} />
+      <PageHeader title={t("newTitle")} />
       {viewer && !canWrite(viewer) ? <ReadersRead project={project} /> : <DocumentEditor project={project} doc={null} />}
     </div>
   );

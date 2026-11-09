@@ -161,10 +161,10 @@ describe("the row of agents", () => {
     expect(screen.queryByTestId("agent-strip-failed")).toBeNull();
   });
 
-  it("says where the agents come from while there are none", async () => {
+  it("says there is no agent to chat with while there are none", async () => {
     api.grants = [{ project: "archive", role: "reader" }];
     setup();
-    expect(await screen.findByTestId("agent-strip-empty")).toHaveTextContent("Agent của các dự án bạn có quyền ghi hiện ở đây để chat riêng.");
+    expect(await screen.findByTestId("agent-strip-empty")).toHaveTextContent("Chưa có agent nào để chat.");
     expect(screen.getByTestId("agent-strip")).toHaveAttribute("data-state", "empty");
   });
 });

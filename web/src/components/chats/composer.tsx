@@ -47,8 +47,6 @@ type Props = {
   onSent: (message: GroupMessage) => void;
   label: string;
   placeholder: string;
-  /** What a message sent here does, under the box when it hands no work. */
-  hint: string;
   testId: string;
   /** The text area takes the focus each time this turns non-null: the chat was opened to write in it. */
   focusKey?: string | null;
@@ -68,7 +66,7 @@ export type Replying = { name: string; text: string; onCancel: () => void };
  * refused here with the reason; a refusal of the hub shows here too, with its words. Answering one message (`replying`,
  * a direct chat's Reply), the box says which above the text, with Cancel the reply (Escape too).
  */
-export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hint, testId, focusKey = null, replying = null }: Props) {
+export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, testId, focusKey = null, replying = null }: Props) {
   const t = useTranslations("chats.composer");
   const tFiles = useTranslations("attachments");
   const format = useFormatter();
@@ -173,7 +171,9 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
   const bytes = utf8Bytes(text);
   const handed = handedAgents(text, chat);
   const over = handed.slice(MAX_RUNS_PER_MESSAGE);
-  const describedBy = [replying ? `${ids}-replying` : null, `${ids}-hint`, touch ? null : `${ids}-keys`, problem ? `${ids}-problem` : null].filter(Boolean).join(" ");
+  const describedBy =
+    [replying ? `${ids}-replying` : null, handed.length ? `${ids}-hint` : null, touch ? null : `${ids}-keys`, problem ? `${ids}-problem` : null].filter(Boolean).join(" ") ||
+    undefined;
   const keyShortcuts = touch ? "Meta+Enter Control+Enter" : "Enter Meta+Enter Control+Enter";
 
   return (
@@ -243,21 +243,17 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
         />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t p-2">
           <AttachButton onFiles={files.add} testId={testId} />
-          <p id={`${ids}-hint`} className="flex min-w-0 flex-1 basis-40 items-start gap-1.5 text-xs text-pretty text-fg-subtle" data-testid={`${testId}-hint`}>
-            {handed.length ? (
-              <>
-                <Bot className="mt-px size-3.5 shrink-0 text-running" aria-hidden="true" />
-                <span>
-                  {t("hands", { handles: format.list(handed.slice(0, MAX_RUNS_PER_MESSAGE).map((agent) => `@${agent.handle}`), { type: "conjunction" }) })}
-                  {over.length ? (
-                    <span className="text-attention"> {t("over", { max: MAX_RUNS_PER_MESSAGE, handles: format.list(over.map((agent) => `@${agent.handle}`), { type: "conjunction" }) })}</span>
-                  ) : null}
-                </span>
-              </>
-            ) : (
-              <span>{hint}</span>
-            )}
-          </p>
+          {handed.length ? (
+            <p id={`${ids}-hint`} className="flex min-w-0 flex-1 basis-40 items-start gap-1.5 text-xs text-pretty text-fg-subtle" data-testid={`${testId}-hint`}>
+              <Bot className="mt-px size-3.5 shrink-0 text-running" aria-hidden="true" />
+              <span>
+                {t("hands", { handles: format.list(handed.slice(0, MAX_RUNS_PER_MESSAGE).map((agent) => `@${agent.handle}`), { type: "conjunction" }) })}
+                {over.length ? (
+                  <span className="text-attention"> {t("over", { max: MAX_RUNS_PER_MESSAGE, handles: format.list(over.map((agent) => `@${agent.handle}`), { type: "conjunction" }) })}</span>
+                ) : null}
+              </span>
+            </p>
+          ) : null}
           {touch ? null : (
             <span id={`${ids}-keys`} className="sr-only">
               {t("keys")}

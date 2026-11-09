@@ -121,7 +121,7 @@ export function AgentAccountsCard({ project, handle }: { project: string; handle
             </Badge>
           ) : null}
         </CardTitle>
-        <CardDescription className="text-pretty">{t(admin ? "agent.description" : "agent.readOnly", { handle, project })}</CardDescription>
+        {admin ? null : <CardDescription className="text-pretty">{t("agent.readOnly", { handle, project })}</CardDescription>}
         {admin ? (
           <CardAction>
             <Button

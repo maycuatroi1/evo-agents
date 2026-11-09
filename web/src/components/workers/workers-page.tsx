@@ -254,7 +254,7 @@ function WorkerList({ workers, onRegister }: { workers: Worker[]; onRegister: ()
   // No live worker, and no filter asking for the revoked ones: the page is empty, with what to do next.
   if (workers.length === revoked && filters.status === null && !filters.q) {
     return (
-      <EmptyState icon={Server} title={t("empty.title")} description={t("empty.description")}>
+      <EmptyState icon={Server} title={t("empty.title")}>
         <Button onClick={onRegister} data-testid="workers-empty-register">
           <Plus aria-hidden="true" />
           {t("registerButton")}

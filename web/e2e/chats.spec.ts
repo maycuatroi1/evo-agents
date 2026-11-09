@@ -431,7 +431,7 @@ test("the row of agents opens the member's direct chat with an agent, its compos
   const box = main(page).getByTestId("chat-composer-text");
   await expect(box).toBeFocused();
   await expect(box).toHaveAttribute("placeholder", "Message Code reviewer");
-  await expect(main(page).getByTestId("chat-composer-hint")).toHaveText("Every message goes to Code reviewer, no @ needed: it answers under your message.");
+  await expect(main(page).getByTestId("chat-composer-hint")).toHaveCount(0);
   const head = main(page).getByTestId("chat-head");
   await expect(head).toHaveAttribute("data-kind", "direct");
   await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Code reviewer");
@@ -600,7 +600,7 @@ test("a direct chat reads as a chat app: the member's messages on the right, the
   await expect(replying).toContainText("Replying to Code reviewer");
   await expect(replying).toContainText("Not flaky: it waits on the clock.");
   await expect(box).toBeFocused();
-  await expect(main(page).getByTestId("chat-composer-hint")).toHaveText("Your reply goes on in the same session, so Code reviewer picks up where it left off.");
+  await expect(main(page).getByTestId("chat-composer-hint")).toHaveCount(0);
   await box.press("Escape");
   await expect(replying).toHaveCount(0);
   await answer.hover();

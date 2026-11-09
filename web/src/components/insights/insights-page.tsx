@@ -202,7 +202,7 @@ function Charts({ stats, project, range, onRange }: { stats: RunStats; project: 
   const span = { first: format.shortDay(stats.first_day), last: format.shortDay(stats.last_day) };
   if (total.ended === 0) {
     return (
-      <EmptyState icon={ChartColumn} title={t("empty.title", { days: stats.days })} description={t("empty.description")}>
+      <EmptyState icon={ChartColumn} title={t("empty.title", { days: stats.days })}>
         <Button asChild variant="secondary">
           <Link href={projectHref(project, "runs")}>{t("empty.runs")}</Link>
         </Button>

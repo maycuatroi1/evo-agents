@@ -124,7 +124,7 @@ function OrgChartView({ chart, all, act }: { chart: OrgChart; all: boolean; act:
 
   if (!tree || (tree.seats.length === 0 && tree.children.length === 0)) {
     return (
-      <EmptyState icon={Building2} title={t("empty.title")} description={t("empty.description")} testId="org-empty">
+      <EmptyState icon={Building2} title={t("empty.title")} testId="org-empty">
         {root && rights.createUnder(root) ? (
           <Button onClick={() => act({ kind: "createUnit", parent: root })} data-testid="org-empty-create">
             <FolderPlus aria-hidden="true" />

@@ -207,7 +207,7 @@ function Runtimes({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
   const t = useTranslations("workers.detail.runtimes");
   const runtimes = readRuntimes(worker.runtimes);
   return (
-    <SectionCard title={t("title")} description={t("description")} testId="worker-runtimes">
+    <SectionCard title={t("title")} testId="worker-runtimes">
       {runtimes.length === 0 ? (
         <p className="text-sm text-muted-foreground">{worker.last_heartbeat_at ? t("none") : t("empty")}</p>
       ) : (
@@ -239,7 +239,7 @@ function Scope({ worker, isOwner, className }: { worker: Worker; isOwner: boolea
   const t = useTranslations("workers.detail.scope");
   const webOnly = worker.dispatch_from === "web";
   return (
-    <SectionCard title={t("title")} description={t("description")} testId="worker-scope" className={className}>
+    <SectionCard title={t("title")} testId="worker-scope" className={className}>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-sm">
         {worker.pool ? (
           <>

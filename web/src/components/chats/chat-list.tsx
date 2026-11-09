@@ -86,7 +86,7 @@ export function ChatList({ activeId, initialError, className }: { activeId: numb
           <QueryView state={state} loading={<ListLoading />}>
             {(data) =>
               data.length === 0 ? (
-                <EmptyState icon={MessagesSquare} title={t("emptyTitle")} description={t("emptyBody")} testId="chats-empty">
+                <EmptyState icon={MessagesSquare} title={t("emptyTitle")} testId="chats-empty">
                   <Button onClick={() => setCreating(true)} data-testid="chats-empty-new">
                     <Plus aria-hidden="true" />
                     {t("new")}

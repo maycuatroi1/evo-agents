@@ -127,7 +127,6 @@ export function NodeEvidence({ project, node, evidence }: { project: string; nod
         <CardTitle>
           <h2>{t("title")}</h2>
         </CardTitle>
-        <CardDescription>{t("description")}</CardDescription>
       </CardHeader>
       <CardContent>
         {evidence.length === 0 ? (

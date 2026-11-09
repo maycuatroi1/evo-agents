@@ -53,6 +53,7 @@ export function ProviderDialog({
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-5 overflow-y-auto sm:max-w-2xl"
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
+        {...(target ? {} : { "aria-describedby": undefined })}
         data-testid="provider-dialog"
         data-step={target ? "form" : "catalog"}
       >

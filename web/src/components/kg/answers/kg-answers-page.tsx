@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleAlert, Clock, Download, MessagesSquare } from "lucide-react";
+import { CircleAlert, Clock, Download } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -109,15 +109,10 @@ function JobCard({ project, job }: { project: string; job: KgAnswerJob }) {
  * button saves the answers so far, or all of them once it ended, as answers.jsonl in the file's order.
  */
 export function KgAnswersPage({ project, id, error }: { project: string; id: number; error: ApiErrorInfo | null }) {
-  const t = useTranslations("kgAnswers");
   const job = useHubQuery(kgAnswerJobQuery(browserApi, project, id), error);
   return (
     <div className="flex flex-col gap-6">
       <KgHeader project={project} current="answers" />
-      <p className="flex max-w-prose items-start gap-2 text-sm text-muted-foreground">
-        <MessagesSquare className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-        {t("intro")}
-      </p>
       <QueryView state={job} loading={<Skeleton className="h-64 w-full rounded-md" />}>
         {(data) => <JobCard project={project} job={data} />}
       </QueryView>

@@ -141,12 +141,9 @@ export function PolicySection({ rows }: { rows: PolicyRow[] }) {
 
   return (
     <section aria-labelledby="account-policies-title" className="flex flex-col gap-3" data-testid="account-policies">
-      <div className="flex flex-col gap-1">
-        <h2 id="account-policies-title" className="text-[15px] leading-[22px] font-semibold">
-          {t("title")}
-        </h2>
-        <p className="text-sm text-pretty text-muted-foreground">{t("description")}</p>
-      </div>
+      <h2 id="account-policies-title" className="text-[15px] leading-[22px] font-semibold">
+        {t("title")}
+      </h2>
       {rows.length === 0 ? (
         <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="account-policies-empty">
           {t("empty")}

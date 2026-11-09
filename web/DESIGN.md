@@ -464,10 +464,14 @@ Shared pieces built on them:
   `ListSkeleton` puts the metric strip's 78 px cells above it. A 401 sends the visitor to `/login`; 403 shows the no-access
   state, 404 the not-found state, 5xx or no answer the error state with the request id and a retry button. Every
   state is the kit's EmptyState: the icon in a 40 px `surface-sunken` square (`danger-soft` or `attention-soft` for
-  errors and no access), a one-line title in 15 px 600, one sentence in `fg-muted` and the actions, the primary one
-  first, centred with 48 px above and below; alone it is a card, inside a `DataCard` it draws no frame. First use
-  (`EmptyState`) says what the page is for, the explanation its head no longer carries, and offers the one thing
-  to do next; no results (`NoResults`) lists the filters in use as tags ("State: Done", "Search: deploy") and
+  errors and no access), a one-line title in 15 px 600, at most one sentence in `fg-muted` and the actions, the
+  primary one first, centred with 48 px above and below; alone it is a card, inside a `DataCard` it draws no frame.
+  First use (`EmptyState`) names what is missing and offers the one thing to do next; its sentence, when it has one,
+  carries only what the button cannot: the CLI command that fills the page, or who may act when the visitor cannot. It
+  never explains what the feature is or how it works: the page, its controls and the first object made show that. The
+  same holds everywhere: no subtitle, section description, dialog description or field hint that restates the
+  title, the label or what the control plainly does. A hint stays when it carries a constraint (format, range, limit),
+  a consequence (shown once, cannot be undone, audited) or a security fact. No results (`NoResults`) lists the filters in use as tags ("State: Done", "Search: deploy") and
   offers Clear filters.
 - `components/data/data-card.tsx` and `data-table.tsx`: a list is one card (`DataCard`, `border`, `shadow-raised`):
   the toolbar on top, then the table, or the no-results, empty or loading state in its place, then the pager as its
@@ -632,8 +636,7 @@ Shared pieces built on them:
   `tags` its kind, role, counts and identifier chips, `actions` the page's buttons on the right (`ml-auto`), and `sub`
   one optional line under the row (`small`, `fg-muted`) that links the parent objects: a run's plan and step, a step's
   plan, or where the object stands (who changed a plan last, a worker's machine, a member's first and last visit).
-  There is no eyebrow, no description paragraph and no rule under the head; what a page is for is said once, in its
-  `EmptyState`, and parent pages are reached from the breadcrumb. The row wraps instead of squeezing: actions that do
+  There is no eyebrow, no description paragraph and no rule under the head; the page shows what it is for, and parent pages are reached from the breadcrumb. The row wraps instead of squeezing: actions that do
   not fit beside the title move to their own line, still on the right, so a run's five controls never push the page
   sideways at 375 px. A plan's pages add their tabs under the head (`PlanHeader`). `leading` stands before the h1 and
   outside it, so the heading's text stays the name: an agent's avatar.
@@ -932,7 +935,7 @@ Shared pieces built on them:
   or the https prefix and the user git sends as its second line, the kind as a tag (`Variable` or `GitBranch` and a
   word), the projects, the workers or "Any of yours", the end with an Expired pill once past, and when the value was
   last written; Replace (ghost) and Delete (`quiet-danger`) are the row's actions. With none, the empty state says what
-  a secret is and offers Add secret and `evo-agents hub secret set`. Add and Replace open one form
+  to add and offers Add secret and `evo-agents hub secret set`. Add and Replace open one form
   (`secret-dialog.tsx`): the name (adding only), the kind as two radio cards, the variable or the URL prefix and
   username, the projects the visitor writes to, their own workers that are not revoked, an optional end day (00:00
   UTC, as the CLI's `--expires`) and the value. The value is write-only: a password field without a `name`, never

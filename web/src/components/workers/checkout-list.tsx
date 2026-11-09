@@ -32,7 +32,7 @@ export function CheckoutList({ worker }: { worker: Worker }) {
         path: base,
         code: (chunks) => <code className="font-mono text-xs text-foreground">{chunks}</code>,
       })
-    : t("description");
+    : undefined;
   return (
     <SectionCard title={t("title")} description={description} testId="worker-checkouts" count={checkouts.length || undefined}>
       {checkouts.length === 0 ? (

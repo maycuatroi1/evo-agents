@@ -336,7 +336,7 @@ function InboxList({
             </Button>
           </EmptyState>
         ) : (
-          <EmptyState icon={Inbox} title={t("empty.title")} description={t("empty.description")} />
+          <EmptyState icon={Inbox} title={t("empty.title")} />
         )
       ) : (
         <>

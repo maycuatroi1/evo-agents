@@ -141,7 +141,6 @@ export function PoolsPage({ initialError }: { initialError: ApiErrorInfo | null 
     <>
       <PageHeader
         title={t("title")}
-        sub={t("description")}
         tags={state.status === "success" ? <Badge variant="secondary">{t("count", { count: state.data.length })}</Badge> : null}
         actions={
           <Button onClick={() => setCreating(true)} data-testid="pools-create">
@@ -153,7 +152,7 @@ export function PoolsPage({ initialError }: { initialError: ApiErrorInfo | null 
       <QueryView state={state} loading={<ListSkeleton />}>
         {(pools) =>
           pools.length === 0 ? (
-            <EmptyState icon={Boxes} title={t("empty.title")} description={t("empty.description")}>
+            <EmptyState icon={Boxes} title={t("empty.title")}>
               <Button onClick={() => setCreating(true)} data-testid="pools-empty-create">
                 <Plus aria-hidden="true" />
                 {t("createButton")}

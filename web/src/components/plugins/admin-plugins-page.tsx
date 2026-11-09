@@ -200,7 +200,7 @@ export function AdminPluginsPage({ initialError }: { initialError: ApiErrorInfo 
         <QueryView state={state} loading={<TableSkeleton rows={3} />}>
           {(list) =>
             list.length === 0 ? (
-              <EmptyState icon={Puzzle} title={t("emptyTitle")} description={t("emptyDescription")} testId="plugins-empty">
+              <EmptyState icon={Puzzle} title={t("emptyTitle")} testId="plugins-empty">
                 <code className="rounded-xs bg-surface-sunken px-2 py-1 font-mono text-xs">{t("publishCommand")}</code>
               </EmptyState>
             ) : (

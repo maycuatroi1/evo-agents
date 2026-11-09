@@ -347,7 +347,7 @@ export function SellerPage({ initialError }: { initialError: ApiErrorInfo | null
   const state = useHubQuery(sellerInfoQuery(browserApi), initialError);
   return (
     <>
-      <PageHeader title={t("title")} sub={t("sub")} />
+      <PageHeader title={t("title")} />
       <QueryView state={state} loading={<ListSkeleton rows={4} />}>
         {(info) => <SellerBody info={info} />}
       </QueryView>

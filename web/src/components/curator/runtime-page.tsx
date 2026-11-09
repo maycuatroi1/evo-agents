@@ -172,7 +172,7 @@ function RuntimeBody({ project, nights }: { project: string; nights: string[] })
   const format = useInsightFormat();
   const reads = useQueries({ queries: nights.map((night) => figuresQuery(browserApi, project, night)) });
   if (nights.length === 0) {
-    return <EmptyState icon={Layers} title={t("empty.title")} description={t("empty.description")} testId="runtime-empty" />;
+    return <EmptyState icon={Layers} title={t("empty.title")} testId="runtime-empty" />;
   }
   if (reads.some((read) => read.isPending)) return <TrendSkeleton cards={4} />;
   const failed = reads.find((read) => read.isError)?.error;

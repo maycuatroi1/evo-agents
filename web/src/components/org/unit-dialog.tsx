@@ -52,7 +52,7 @@ function UnitDialogBody({ target, open, onOpenChange, units, rights }: Props & {
       open={open}
       onOpenChange={onOpenChange}
       title={editing ? t("editTitle", { name: editing.name }) : t("createTitle")}
-      description={editing ? t("editDescription") : t("createDescription", { parent: target.parent?.name ?? "" })}
+      description={editing ? undefined : t("createDescription", { parent: target.parent?.name ?? "" })}
       submitLabel={editing ? t("save") : t("create")}
       pending={pending}
       error={error}

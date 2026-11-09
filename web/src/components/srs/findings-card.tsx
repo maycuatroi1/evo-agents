@@ -105,7 +105,7 @@ export function FindingsCard({
               <SearchCheck className="mt-px size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <div className="flex min-w-0 flex-col gap-0.5">
                 <p className="font-medium text-foreground">{t("emptyTitle")}</p>
-                <p className="text-muted-foreground">{reviewHolds(run) ? t("emptyReviewing") : t("emptyText")}</p>
+                {reviewHolds(run) ? <p className="text-muted-foreground">{t("emptyReviewing")}</p> : null}
               </div>
             </div>
           ) : (

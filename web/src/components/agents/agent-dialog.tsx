@@ -54,6 +54,7 @@ export function AgentDialog({ project, agent, open, onOpenChange, onSaved }: Pro
         className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
         onEscapeKeyDown={guard}
         onInteractOutside={guard}
+        {...(agent ? {} : { "aria-describedby": undefined })}
         data-testid="agent-dialog"
         data-mode={agent ? "edit" : "create"}
       >
@@ -155,7 +156,7 @@ function AgentForm({
             <Bot className="size-5 text-muted-foreground" aria-hidden="true" />
             {creating ? t("newTitle") : t("editTitle", { handle: agent.handle })}
           </DialogTitle>
-          <DialogDescription className="text-pretty">{creating ? t("newDescription", { project }) : t("editDescription", { version: agent.version })}</DialogDescription>
+          {creating ? null : <DialogDescription className="text-pretty">{t("editDescription", { version: agent.version })}</DialogDescription>}
         </div>
         <DialogClose asChild>
           <Button type="button" variant="ghost" size="icon-lg" className="-mt-1 -mr-1 shrink-0" aria-label={t("close")} disabled={pending}>
@@ -188,7 +189,7 @@ function AgentForm({
               )}
             </Field>
           ) : null}
-          <Field label={t("name")} hint={t("nameHint")} error={fieldText(shown.name, MAX_NAME_CHARS)} testId="agent-name">
+          <Field label={t("name")} error={fieldText(shown.name, MAX_NAME_CHARS)} testId="agent-name">
             {({ id, describedBy, invalid }) => (
               <Input
                 id={id}
@@ -205,7 +206,7 @@ function AgentForm({
         <Field
           label={t("description")}
           optional={t("optional")}
-          hint={`${t("descriptionHint")} ${count(draft.description, MAX_DESCRIPTION_CHARS)}`}
+          hint={count(draft.description, MAX_DESCRIPTION_CHARS)}
           error={fieldText(shown.description, MAX_DESCRIPTION_CHARS)}
           testId="agent-description"
         >

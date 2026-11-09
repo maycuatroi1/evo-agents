@@ -305,7 +305,6 @@ function ProjectPools({ project }: { project: string }) {
  * runs on. Nothing shows for anyone else.
  */
 export function AccountPoolsGroup() {
-  const t = useTranslations("accounts.groups.pools");
   const me = useQuery(whoamiQuery(browserApi));
   const projects = me.data?.grants.filter((grant) => grant.role === "admin").map((grant) => grant.project) ?? [];
   if (projects.length === 0) return null;
@@ -315,7 +314,6 @@ export function AccountPoolsGroup() {
         {projects.map((project) => (
           <ProjectPools key={project} project={project} />
         ))}
-        <p className="px-4 py-3 text-xs text-fg-muted">{t("hint")}</p>
       </div>
     </AccountGroup>
   );

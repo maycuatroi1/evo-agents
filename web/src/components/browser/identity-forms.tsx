@@ -100,10 +100,9 @@ export function NewIdentityDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (pending ? undefined : onOpenChange(next))}>
-      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-5 overflow-y-auto sm:max-w-lg" data-testid="browser-new-dialog">
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-5 overflow-y-auto sm:max-w-lg" aria-describedby={undefined} data-testid="browser-new-dialog">
         <DialogHeader>
           <DialogTitle>{t("newTitle")}</DialogTitle>
-          <DialogDescription>{t("newDescription")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} noValidate className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">

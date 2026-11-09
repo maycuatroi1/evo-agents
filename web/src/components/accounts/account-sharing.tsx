@@ -112,12 +112,9 @@ function CostByPrincipal({ accounts, shared }: { accounts: Account[]; shared: bo
   if (!shared && rows.length === 0) return null;
   return (
     <section aria-labelledby="accounts-cost-title" className="flex flex-col gap-3" data-testid="accounts-cost-by-principal">
-      <div className="flex flex-col gap-1">
-        <h2 id="accounts-cost-title" className="text-[15px] leading-[22px] font-semibold">
-          {t("title")}
-        </h2>
-        <p className="text-sm text-pretty text-muted-foreground">{t("description")}</p>
-      </div>
+      <h2 id="accounts-cost-title" className="text-[15px] leading-[22px] font-semibold">
+        {t("title")}
+      </h2>
       {rows.length === 0 ? (
         <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="accounts-cost-empty">
           {t("empty")}

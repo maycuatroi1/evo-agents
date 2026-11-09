@@ -104,7 +104,6 @@ export function BuilderPanel({ project, slug, revision, canChange, proposal, dif
           <Sparkles className="size-4 text-muted-foreground" aria-hidden="true" />
           {t("title")}
         </h2>
-        <p className="text-xs text-pretty text-muted-foreground">{t("description", { slug })}</p>
         <Button type="button" variant="ghost" size="icon-sm" className="absolute top-3 right-3" aria-label={t("close")} onClick={onClose}>
           <X aria-hidden="true" />
         </Button>

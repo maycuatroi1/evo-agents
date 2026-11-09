@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
@@ -39,7 +39,6 @@ export function ProviderCatalog({ onPick }: { onPick: (entry: CatalogProvider) =
     <>
       <DialogHeader>
         <DialogTitle className="text-lg font-semibold">{t("title")}</DialogTitle>
-        <DialogDescription className="text-pretty">{t("description")}</DialogDescription>
       </DialogHeader>
       <div className="flex flex-col gap-3">
         <div className="relative">

@@ -66,10 +66,7 @@ function GraphBody({ project, view, sync, retrieval }: { project: string; view: 
         icon={Network}
         title={t("empty.title")}
         description={
-          <>
-            <p>{t("empty.description")}</p>
-            <p className="mt-2">{t.rich("empty.cli", { command: () => <code className="rounded-xs bg-muted px-1 font-mono text-xs">{`${HEALTH_COMMAND} ${project}`}</code> })}</p>
-          </>
+          <p>{t.rich("empty.cli", { command: () => <code className="rounded-xs bg-muted px-1 font-mono text-xs">{`${HEALTH_COMMAND} ${project}`}</code> })}</p>
         }
         testId="graph-empty"
       />

@@ -268,12 +268,8 @@ export function RunsPage({ project, initialError }: { project: string; initialEr
       <QueryView state={summary} loading={<ListSkeleton metrics={4} />}>
         {(active) =>
           facetCount(active.counts, null) === 0 ? (
-            // No run in the project yet, in any state: what a run is, and how to start one.
-            <EmptyState
-              icon={Play}
-              title={t("empty.title")}
-              description={canDispatch ? t("empty.description") : t("empty.readerDescription")}
-            >
+            // No run in the project yet, in any state: how to start one.
+            <EmptyState icon={Play} title={t("empty.title")}>
               {canDispatch ? (
                 <Button onClick={() => setDispatching(true)} data-testid="runs-empty-dispatch">
                   <Send aria-hidden="true" />
