@@ -173,10 +173,11 @@ async def _reattached(
 
 
 async def record_heartbeat(
-    engine, user: Principal, body: HeartbeatRequest, lease: timedelta, terminals
+    engine, user: Principal, body: HeartbeatRequest, lease: timedelta, terminals, cache=None
 ) -> HeartbeatAnswer:
     """Record the machine, extend the leases of the runs it holds by ``lease``, and say what it should do with them;
-    ``terminals`` says which runs a browser waits to drive (``terminal.Terminals.waiting``)."""
+    ``terminals`` says which runs a browser waits to drive (``terminal.Terminals.waiting``), and the guard's policy is
+    read through ``cache`` (``evo_agents.hub.cache``) when there is one."""
     reported = list(dict.fromkeys(body.runs))
     runtimes, checkouts = body.stored()
     async with engine.begin() as conn:
@@ -212,7 +213,9 @@ async def record_heartbeat(
         fields = dict(held.one()._mapping)
         fields["labels"] = list(dict.fromkeys(fields["labels"]))  # its own, then its pool's (worker_pools)
         served_names = list((await conn.execute(served)).scalars())
-        settings = WorkerSettings(**fields, projects=served_names, guard=guard.digest_of(await guard.policy(conn)))
+        settings = WorkerSettings(
+            **fields, projects=served_names, guard=guard.digest_of(await guard.cached_policy(conn, cache))
+        )
         nightly, asked, install, declared, duties = await _extras(conn, worker_id, body, settings)
         # a drained worker claims the run that resumes one it parked, which no other worker can take
         resuming = drained_at is not None and await resume_waits(conn, worker_id)

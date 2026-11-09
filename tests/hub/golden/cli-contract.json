@@ -7986,6 +7986,28 @@
         "schema": "Decision"
       }
     },
+    "hub deliver": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--dsn"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--data-dir"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "hub docs history": {
       "positionals": [
         {
@@ -24323,6 +24345,366 @@
         "schema": "SrsDocumentSummary"
       }
     },
+    "hub srs comments add": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "body",
+          "metavar": "TEXT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--item"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--quote"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--field"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--version"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "version",
+          "item",
+          "item_code",
+          "parent_id",
+          "author",
+          "run_id",
+          "body",
+          "created_at",
+          "resolved_by",
+          "resolved_at",
+          "field",
+          "quote",
+          "prefix",
+          "suffix",
+          "start_offset",
+          "anchor",
+          "ask_run_id"
+        ],
+        "schema": "SrsComment"
+      }
+    },
+    "hub srs comments list": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--item"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "open",
+            "resolved"
+          ]
+        },
+        {
+          "flags": [
+            "--version"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "version",
+          "item",
+          "item_code",
+          "parent_id",
+          "author",
+          "run_id",
+          "body",
+          "created_at",
+          "resolved_by",
+          "resolved_at",
+          "field",
+          "quote",
+          "prefix",
+          "suffix",
+          "start_offset",
+          "anchor",
+          "ask_run_id"
+        ],
+        "schema": "SrsComment"
+      }
+    },
+    "hub srs comments reopen": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "comment",
+          "metavar": "COMMENT",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "version",
+          "item",
+          "item_code",
+          "parent_id",
+          "author",
+          "run_id",
+          "body",
+          "created_at",
+          "resolved_by",
+          "resolved_at",
+          "field",
+          "quote",
+          "prefix",
+          "suffix",
+          "start_offset",
+          "anchor",
+          "ask_run_id"
+        ],
+        "schema": "SrsComment"
+      }
+    },
+    "hub srs comments reply": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "comment",
+          "metavar": "COMMENT",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "body",
+          "metavar": "TEXT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "version",
+          "item",
+          "item_code",
+          "parent_id",
+          "author",
+          "run_id",
+          "body",
+          "created_at",
+          "resolved_by",
+          "resolved_at",
+          "field",
+          "quote",
+          "prefix",
+          "suffix",
+          "start_offset",
+          "anchor",
+          "ask_run_id"
+        ],
+        "schema": "SrsComment"
+      }
+    },
+    "hub srs comments resolve": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "comment",
+          "metavar": "COMMENT",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "version",
+          "item",
+          "item_code",
+          "parent_id",
+          "author",
+          "run_id",
+          "body",
+          "created_at",
+          "resolved_by",
+          "resolved_at",
+          "field",
+          "quote",
+          "prefix",
+          "suffix",
+          "start_offset",
+          "anchor",
+          "ask_run_id"
+        ],
+        "schema": "SrsComment"
+      }
+    },
     "hub srs export": {
       "positionals": [
         {
@@ -24813,11 +25195,11 @@
               "body",
               "refs",
               "rev",
+              "released",
               "document",
               "version",
               "path",
               "children",
-              "released",
               "revisions"
             ],
             "schema": "SrsItemDetail"
@@ -75658,7 +76040,7 @@
             "plugins"
           ],
           "summary": "List Comments",
-          "description": "The comments of a document, oldest first.",
+          "description": "The comments of a document, oldest first: every thread, or the threads of ``item`` (and the items under it), and\nonly those open or resolved with ``status``. A passage's ``anchor`` is read in ``version``, the latest unless\nasked.",
           "operationId": "list_comments_v1_x_srs__project__documents__slug__comments_get",
           "parameters": [
             {
@@ -75680,6 +76062,67 @@
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Slug"
               }
+            },
+            {
+              "name": "version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a version's number; the latest when left out",
+                "title": "Version"
+              },
+              "description": "a version's number; the latest when left out"
+            },
+            {
+              "name": "item",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the threads of this item and the items under it",
+                "title": "Item"
+              },
+              "description": "the threads of this item and the items under it"
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "open",
+                      "resolved"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the threads open or resolved",
+                "title": "Status"
+              },
+              "description": "only the threads open or resolved"
             },
             {
               "name": "X-Evo-Sink",
@@ -75910,8 +76353,138 @@
             "plugins"
           ],
           "summary": "Resolve Comment",
-          "description": "Close the thread of a comment.",
+          "description": "Close the thread of a comment (its root, for an answer), as a member; never the agent of a run.",
           "operationId": "resolve_comment_v1_x_srs__project__documents__slug__comments__comment_id__resolve_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "comment_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Comment Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsComment"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/comments/{comment_id}/reopen": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Reopen Comment",
+          "description": "Open a resolved thread again (its root, for an answer), as a member; never the agent of a run.",
+          "operationId": "reopen_comment_v1_x_srs__project__documents__slug__comments__comment_id__reopen_post",
           "parameters": [
             {
               "name": "project",
@@ -129272,6 +129845,26 @@
               "title": "Gateway",
               "description": "the model gateway, by its health check"
             },
+            "broker": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "error",
+                "off"
+              ],
+              "title": "Broker",
+              "description": "the event bus's broker, by a connection; its error leaves the status ok"
+            },
+            "cache": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "error",
+                "off"
+              ],
+              "title": "Cache",
+              "description": "the shared cache's Redis, by a PING; its error leaves the status ok"
+            },
             "failed": {
               "items": {
                 "type": "string"
@@ -129288,7 +129881,9 @@
             "schema",
             "db",
             "r2",
-            "gateway"
+            "gateway",
+            "broker",
+            "cache"
           ],
           "title": "Health"
         },
@@ -142847,7 +143442,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 38,
+              "maxItems": 39,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -171491,7 +172086,8 @@
                   "type": "null"
                 }
               ],
-              "title": "Version"
+              "title": "Version",
+              "description": "the version it was made on, when it names one"
             },
             "item": {
               "anyOf": [
@@ -171525,7 +172121,8 @@
                   "type": "null"
                 }
               ],
-              "title": "Parent Id"
+              "title": "Parent Id",
+              "description": "the root of its thread; null for a root"
             },
             "author": {
               "type": "string",
@@ -171540,7 +172137,8 @@
                   "type": "null"
                 }
               ],
-              "title": "Run Id"
+              "title": "Run Id",
+              "description": "the run of the agent that wrote it, when an agent did"
             },
             "body": {
               "type": "string",
@@ -171573,6 +172171,94 @@
                 }
               ],
               "title": "Resolved At"
+            },
+            "field": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field",
+              "description": "of a passage: the part of the item it is in (body, a field, steps)"
+            },
+            "quote": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Quote",
+              "description": "the passage the thread is anchored to, as it was selected"
+            },
+            "prefix": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prefix",
+              "description": "the text just before the passage"
+            },
+            "suffix": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Suffix",
+              "description": "the text just after the passage"
+            },
+            "start_offset": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Offset",
+              "description": "where the passage started in its part"
+            },
+            "anchor": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "found",
+                    "changed"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Anchor",
+              "description": "of a passage, in the version read (the latest unless asked): found while the item still holds its words, changed when not or the item is gone; null for a comment on no passage"
+            },
+            "ask_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ask Run Id",
+              "description": "the run of @ba this comment asked to answer its thread"
             }
           },
           "type": "object",
@@ -171589,7 +172275,8 @@
             "resolved_by",
             "resolved_at"
           ],
-          "title": "SrsComment"
+          "title": "SrsComment",
+          "description": "A comment: the root of a thread (no ``parent_id``) or an answer in it. A thread on an item may be anchored to a\npassage of it."
         },
         "SrsCommentIn": {
           "properties": {
@@ -171636,7 +172323,74 @@
                 }
               ],
               "title": "Parent Id",
-              "description": "the comment it answers"
+              "description": "the comment it answers (its thread's root or an answer)"
+            },
+            "field": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Field",
+              "description": "the part a passage is in"
+            },
+            "quote": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Quote",
+              "description": "a passage of the item the comment is on"
+            },
+            "prefix": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prefix",
+              "description": "the text just before the passage"
+            },
+            "suffix": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Suffix",
+              "description": "the text just after the passage"
+            },
+            "start_offset": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Offset",
+              "description": "where the passage starts in its part"
             }
           },
           "additionalProperties": false,
@@ -171644,7 +172398,8 @@
           "required": [
             "body"
           ],
-          "title": "SrsCommentIn"
+          "title": "SrsCommentIn",
+          "description": "A comment to write: ``@ba`` in its body asks @ba to answer in the thread."
         },
         "SrsDiff": {
           "properties": {
@@ -172476,6 +173231,18 @@
               ],
               "title": "Rev",
               "description": "a use case's revision in this version (r1 and up); null for another item"
+            },
+            "released": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Released",
+              "description": "of a use case: the revision the approved baseline holds; null when it holds none"
             }
           },
           "type": "object",
@@ -172587,6 +173354,18 @@
               "title": "Rev",
               "description": "a use case's revision in this version (r1 and up); null for another item"
             },
+            "released": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Released",
+              "description": "of a use case: the revision the approved baseline holds; null when it holds none"
+            },
             "document": {
               "type": "string",
               "title": "Document"
@@ -172609,18 +173388,6 @@
               },
               "type": "array",
               "title": "Children"
-            },
-            "released": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Released",
-              "description": "of a use case: the revision the approved baseline holds"
             },
             "revisions": {
               "items": {
@@ -179085,7 +179852,8 @@
                 "kg_pipeline",
                 "system_daily_cap",
                 "srs_review",
-                "srs_reviewed"
+                "srs_reviewed",
+                "srs_comment"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -179157,7 +179925,8 @@
                 "kg_pipeline",
                 "system_daily_cap",
                 "srs_review",
-                "srs_reviewed"
+                "srs_reviewed",
+                "srs_comment"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"

@@ -27,7 +27,7 @@ from sqlalchemy import DateTime, exists, func, insert, literal, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, runs, tables
+from evo_agents.hub import bus, curator, jobs, runs, tables
 from evo_agents.hub.config import DEFAULT_WEB_TIME_ZONE
 from evo_agents.hub.server import push_store, push_tiers, today
 from evo_agents.hub.server.security import MACHINE, Principal
@@ -110,6 +110,7 @@ async def _push(conn: AsyncConnection, user_id: int, found: today.Today) -> int:
     )
     notification_id = (await conn.execute(stored.returning(n.c.id))).scalar_one()
     await conn.execute(push_store.device_deliveries(notification_id, user_id))
+    await bus.soon(jobs.DELIVER_NOTIFICATIONS, conn)
     return notification_id
 
 

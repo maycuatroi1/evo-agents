@@ -9,8 +9,9 @@ A bridge's plugin gets one delivery per bridge, in the transaction that wrote wh
   (``person``, ``agent`` or ``hub``) and ``by`` (a person's login, an agent's handle; None for the hub).
 
 The payload carries ids and states, as every event does (``plugin_events``): the bridge, the chat, the message, the
-run, the emoji. A transaction that stores any also queues the job hub.deliver_plugin_events (``deliver_soon``), so what
-a bridge carries goes out once it commits rather than at the job's next minute. The plugin reads the message through the API (``core_plugin_api.bridge_message``), which checks the
+run, the emoji. A transaction that stores any also queues the job hub.deliver_plugin_events
+(``plugin_events.deliver_soon``), so what a bridge carries goes out once it commits rather than at the job's next
+minute. The plugin reads the message through the API (``core_plugin_api.bridge_message``), which checks the
 channel's sinks of the projects its label names then. ``plugin_events.emit`` stores the delivery for the bridge's
 plugin alone, in the first project of the chat's agents that enables it and grants it ``chats:read``; with none,
 nothing goes out (fail closed), and delivering it checks the grant again.
@@ -55,15 +56,6 @@ async def _bridges(conn: AsyncConnection, chat_id: int, *, carried: int | None =
     return list((await conn.execute(query)).all())
 
 
-async def deliver_soon(conn: AsyncConnection) -> None:
-    """Queue the job hub.deliver_plugin_events in ``conn``'s transaction, so it runs once that commits; a job of it
-    that waits already takes what the transaction stored (its queueing lock)."""
-    from evo_agents.hub import jobs  # procrastinate is read only when a bridge carries something
-
-    queue = jobs.JobQueue.in_transaction()
-    await queue.defer(jobs.DELIVER_PLUGIN_EVENTS, queueing_lock=jobs.DELIVER_PLUGIN_EVENTS, connection=conn)
-
-
 async def _emit(conn: AsyncConnection, chat_id: int, bridges: list, payload: dict, projects=None) -> int:
     if not bridges:
         return 0
@@ -76,7 +68,7 @@ async def _emit(conn: AsyncConnection, chat_id: int, bridges: list, payload: dic
                 stored += 1
                 break
     if stored:
-        await deliver_soon(conn)
+        await plugin_events.deliver_soon(conn)
     return stored
 
 

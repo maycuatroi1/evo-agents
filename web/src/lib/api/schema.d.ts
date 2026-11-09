@@ -23711,6 +23711,18 @@ export interface components {
              */
             gateway: "ok" | "error" | "off";
             /**
+             * Broker
+             * @description the event bus's broker, by a connection; its error leaves the status ok
+             * @enum {string}
+             */
+            broker: "ok" | "error" | "off";
+            /**
+             * Cache
+             * @description the shared cache's Redis, by a PING; its error leaves the status ok
+             * @enum {string}
+             */
+            cache: "ok" | "error" | "off";
+            /**
              * Failed
              * @description components that did not answer
              */

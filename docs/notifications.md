@@ -423,7 +423,9 @@ Every member has the web channel without a row of `notification_channels`: a del
 web's. A channel of another kind is a row, with what it needs in `config` (for Telegram, the chat it sends to).
 
 The job `hub.deliver_notifications` runs every minute in the hub's worker, through the same procrastinate queue as
-the other jobs (`docs/hub.md`). It takes the pending deliveries whose `next_at` has passed, with `FOR UPDATE SKIP
+the other jobs (`docs/hub.md`), and the transaction that stores a notification queues it too, so the notification goes
+out once that commits. With the event bus on (`docs/hub.md`, Event bus), that transaction wakes `evo-agents hub
+deliver` instead, which runs the same pass within seconds. A pass takes the pending deliveries whose `next_at` has passed, with `FOR UPDATE SKIP
 LOCKED`, and hands each to the class `CHANNELS` names for its channel's kind. The web's class marks a delivery
 delivered at once, since the web reads notifications from the table. A class that fails leaves the delivery pending
 with `last_error` and a later `next_at`, backing off (1 minute after the first failure, doubling up to an hour), and

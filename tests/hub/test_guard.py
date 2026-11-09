@@ -52,6 +52,10 @@ def client(hub_db, tmp_path, github, app_key, guard_core):  # noqa: F811
 
 @pytest.fixture
 def hub(client, github) -> dict:
+    return guarded_project(client, github)
+
+
+def guarded_project(client, github) -> dict:
     """The project of ``test_credentials_api`` with plugin guard enabled, owner its admin and someone-else a writer."""
     headers = {
         "admin": bearer(live.sign_in(client, github, ADMIN, credentials_api.ADMIN_ID)["token"]),

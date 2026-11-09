@@ -368,8 +368,11 @@ def test_lease_recovery_not_starved_its_jobs_alone_go_to_the_lease_queue():
         "default",
         jobs.KG_QUEUE,
         jobs.HUB_QUEUE,
+        jobs.DELIVERY_QUEUE,
     }
     assert {name for name, task in hub_tasks.items() if task.queue == jobs.HUB_QUEUE} == {jobs.HUB_TURN}
+    delivering = {name for name, task in hub_tasks.items() if task.queue == jobs.DELIVERY_QUEUE}
+    assert delivering == {jobs.DELIVER_PLUGIN_EVENTS}
     assert all(jobs.queue_of(name) == task.queue for name, task in hub_tasks.items())
 
 

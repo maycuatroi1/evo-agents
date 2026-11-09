@@ -4,12 +4,13 @@ The hub is one server a team shares for four things that otherwise live on singl
 files, the plans of each harness, skill directories, and knowledge graphs. Machines talk to it with
 `evo-agents hub ...` commands and through the `evo-hub` Claude Code plugin; people read it in a browser.
 
-A deployment has five parts:
+A deployment has five parts, and an optional sixth:
 
 | Part | What it runs | State |
 | --- | --- | --- |
 | api | `evo-agents hub serve`: the HTTP API under `/v1` and the MCP endpoint `/mcp` | none; `/cache` is a cache |
 | worker | `evo-agents hub worker`: background jobs from a queue in Postgres | none; `/cache` is a cache |
+| deliver (optional) | `evo-agents hub deliver`: the event bus's relay and consumers, with `EVO_HUB_BROKER_URL` (Worker and queue, Event bus) | none |
 | web | the Next.js server of `web/` | none |
 | Postgres | users, tokens, projects, grants, memories, plans, skills, graph builds, workers and runs, the decisions of plan runs and the notifications of members, the job queue, the audit trail | all of it |
 | blob store | Cloudflare R2 (any S3 API works): skill bundles, run logs, source files and built graphs | content-addressed bytes |
@@ -3991,8 +3992,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   queued again, or fail on their third attempt; runs past their timeout fail; a run that waited 10 minutes for an
   answer, or waits only for a time or an event of the hub, is parked, and one parked for 7 days cancelled
   (`docs/workers.md`).
-- `hub.deliver_notifications`, every minute: hands each notification delivery that is due to its channel's class, or
-  to the sender of its push device after the member's quiet hours, and tries a failing one again with a backoff,
+- `hub.deliver_notifications`, every minute and once each transaction that stores a notification commits: hands each
+  notification delivery that is due to its channel's class, or to the sender of its push device after the member's
+  quiet hours, and tries a failing one again with a backoff,
   failing it after 5 tries (`docs/notifications.md`).
 - `hub.today_digest`, every minute: the summary push of Today to each member with a push device who has been away from
   the hub for 8 hours, at their `digest_at` in their time zone (07:30 until they choose), once a local day, when
@@ -4087,12 +4089,96 @@ go to the queue `kg` (`jobs.KG_QUEUE`), so the compose file runs them on `worker
 time, and `worker` takes `default`: a long build never holds back the merge queue, notifications or schedules, and
 two projects build at once (one build of a project at a time, under its lock). A worker that takes `default` keeps,
 beside its slots, one for `hub.recover_runs` and `hub.deliver_notifications` alone (queue `lease`), so they run every
-minute while a long plugin job holds the others. On SIGTERM a worker takes no
+minute while a long plugin job holds the others, and two for `hub.deliver_plugin_events` alone (queue `deliveries`),
+so what a commit stores for a plugin goes out within seconds. On SIGTERM a worker takes no
 new job and gives running ones 25 seconds, so give its container a stop grace period above that (the compose file
 uses 40 s). It exits 1 when it loses Postgres, which lets the restart policy bring it back. Graph builds use CPU and
 memory, so the compose file caps `worker` and each `worker-kg` with `EVO_HUB_WORKER_CPUS` and `EVO_HUB_WORKER_MEMORY`. With
 `EVO_KG_EMBEDDINGS=openrouter` the embedding of a build goes to OpenRouter and takes none of those CPUs. The worker
 refuses to start without a blob store, since builds read from it and write to it.
+
+### Event bus
+
+The event bus is optional. Without it, what a commit stores for a plugin or a member goes out through the jobs above:
+the commit queues `hub.deliver_plugin_events` or `hub.deliver_notifications`, and the minute's cron catches what a job
+missed. That works, but a busy queue delays it. Set `EVO_HUB_BROKER_URL` to a RabbitMQ URL (`amqp://` or `amqps://`,
+for example `amqp://user:password@rabbitmq:5672/`) on the api, the worker and a new process, `evo-agents hub
+deliver`, and the same events go through the broker within seconds (`evo_agents/hub/bus.py`,
+`evo_agents/hub/deliverer.py`). The hub never logs the URL's password.
+
+How long an event takes to go out, from its commit to the plugin or the channel: without the bus, from a few seconds
+when a job slot is free to a minute or more, when the job waits for the minute's cron or behind long jobs; with it,
+within seconds. Either way the fallback is the same: the jobs and the minute's cron deliver whatever the bus did not,
+so a hub whose broker is down, or that never had one, loses nothing. `docs/hub-deployment.md`, section The event bus
+and the cache, turns both on with the compose profile `bus`.
+
+The outbox in Postgres stays the record of what is due either way: `plugin_deliveries` and `notification_deliveries`
+keep each delivery's state, due time and tries. The broker only carries the news that something is due:
+
+- A commit that stores a delivery sends a Postgres notification on the channel `hub_bus` instead of queueing a job.
+  `hub deliver` listens on it, takes the plugin deliveries that are due and not yet published, marks them with
+  `published_at` (schema 0231) and publishes their ids on the topic exchange `hub.events`, with the routing key
+  `plugin.<plugin>.<kind>` and publisher confirms, in the order they fell due. A pass of the notifications goes with
+  the key `notifications`.
+- Each plugin has a quorum queue, `hub.plugin.<plugin>`, with a single active consumer, so one consumer at a time
+  delivers a plugin's events and they stay in order. Notifications have the queue `hub.notifications`.
+- A consumer takes a message, claims the delivery by its id with `FOR UPDATE SKIP LOCKED`, calls the plugin, writes
+  the result and only then acks. A message that comes twice, or whose delivery a job already sent, is acked and
+  dropped, so a delivery goes out once.
+- Every few seconds a sweep publishes again the due deliveries nobody claimed for 45 seconds, so a message the broker
+  lost still goes out.
+- When a publish fails, or the broker is away, `hub deliver` queues the job instead, and the minute's cron still takes
+  every delivery that has been due for two minutes. Nothing is lost while the broker is down; it is only slower.
+
+Several copies of `hub deliver` may run: the single active consumer keeps each plugin in order, and the claim in
+Postgres keeps each delivery to one of them. `hub deliver` refuses to start without `EVO_HUB_BROKER_URL` (exit 2).
+`GET /v1/health` reports `broker`: `off` without the variable, `ok` when the broker takes a connection and `error`
+when it does not. An `error` leaves `status` ok, since the jobs still deliver. Without the variable the hub opens no
+connection to a broker and runs as before. The broker's client, aio-pika, comes with the `hub-server` extra.
+
+The same variable moves the hub's wake-ups onto the broker (`evo_agents/hub/wake.py`): a run queued for the claims
+waiting (`evo_runs`), an event of a run for its streams (`evo_run_events`), a change of a chat for its streams and a
+span of a system's trace for its trace streams. Without the variable each is a Postgres NOTIFY in the writing
+transaction and every api process's one LISTEN connection takes it, as before. With it, the write keeps the wake-up on
+its connection and publishes it once the transaction committed, on the direct exchange `hub.wake` with the channel as
+routing key and the id as body; one that rolled back never goes out. Each api process binds a queue of its own,
+exclusive and deleted with its connection, to the exchange, so a run that `worker agent ask` or a mention queues in one
+api process is claimed in another within a second or two, and the wake-ups can be watched on the broker. A wake-up
+the broker cannot take is logged and dropped: claims and streams look again on their own every few seconds.
+
+### Cache
+
+The hub keeps a cache and its rate limits in each api process's memory, or on Redis, shared by its processes, when
+`EVO_HUB_REDIS_URL` names one (`redis://`, `rediss://` or `unix://`, for example `redis://redis:6379/0`; the URL may
+hold a password, which the hub never logs). The client, redis.asyncio, comes with the `hub-server` extra. The code is
+`evo_agents/hub/cache.py`: get, set with a TTL and a drop by key prefix, each under a namespace (a project's name, or
+`~hub` for what belongs to none), and every Redis key under `evo:cache:`.
+
+Two read paths use it, chosen by measuring the api's reads on a local hub with sample data:
+
+- the guard policy (`evo_agents/hub/guard.py`, `cached_policy`), which the heartbeat of every worker reads every 15
+  seconds and GET /v1/guard/policy and /v1/worker/guard/policy answer: its two reads took about 3 ms of SQL a call,
+  kept 300 seconds;
+- a member's notification count (GET /v1/me/notifications/count), which every open page of the web asks every 10
+  seconds, kept 60 seconds.
+
+Postgres stays what is true. Each area of the cache names the tables it is read from (`cache.watch`): the guard's
+terms, targets, plugins and enablements, and the notifications, decisions, proposals and grants. A transaction that
+writes one of them, through any engine of the hub (also a write inside a CTE, and a delete of a table whose rows go or
+change with it by ON DELETE CASCADE or SET NULL), drops the area when it commits: in its own process at once, and in
+every api process by a wake-up on the channel `hub_cache` (Postgres's NOTIFY, or the event bus when it is on) that the
+process's listener takes. A value read while a write dropped its area is answered and not kept. While the process's
+listener does not listen, the cache is bypassed; when the listener connects again, or Redis comes back after a
+failure, everything kept before is dropped, since a write may have been missed meanwhile. Who may read what (sign-in,
+grants, project access) is never cached.
+
+When Redis does not answer within 250 ms the call counts as a miss, the hub reads Postgres, and the process leaves Redis
+alone for 5 seconds: the hub answers the same, only slower. `GET /v1/health` reports `cache`: `off` without the
+variable, `ok` when Redis answers a PING and `error` when it does not; an `error` leaves `status` ok.
+
+The limit on refused joins (`POST /v1/worker/join`: 10 per client address in 10 minutes, then 429; `docs/workers.md`,
+Joining) is a sliding window: on Redis one sorted set per client, counted by one script on Redis's clock, so every api
+process sees the same count; without Redis, or while it fails, each process counts in its memory as before.
 
 ## Data access
 
@@ -4242,12 +4328,16 @@ environment, never in a committed file.
 | `EVO_HUB_PLUGIN_HOST_TOKEN` | api, worker, plugins | the secret the api and the plugin host share, at least 32 random characters, refused when it is a value an example showed; the `plugins` service takes it and nothing else of the hub's |
 | `EVO_HUB_GATEWAY_SECRET` | api, gateway | the root secret of the model gateway, at least 32 random characters: the `gateway` service derives OmniRoute's secrets and dashboard password from it and the api signs in with the same password; unset, the gateway is off and the hub runs without it (section Model gateway). The worker does not get it |
 | `EVO_HUB_GATEWAY_URL` | api | where the api reaches the gateway; empty is `http://evo-agents-hub-gateway:20128`, the service on its own network |
+| `EVO_HUB_BROKER_URL` | api, worker, deliver | optional: the RabbitMQ the event bus runs on, `amqp://` or `amqps://`, such as `amqp://hub:<password>@evo-agents-hub-rabbitmq:5672/` with the compose profile `bus`; plugin events, notifications and wake-ups then go out within seconds of their commit instead of within a minute, and the jobs remain the fallback while it is down (section Event bus) |
+| `EVO_HUB_REDIS_URL` | api, worker, deliver | optional: the Redis the cache and the shared rate limits use, `redis://`, `rediss://` or `unix://`, such as `redis://:<password>@evo-agents-hub-redis:6379/0` with the profile `bus`; unset, each process caches in its memory (section Cache) |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_KG_EMBEDDINGS`, `OPENROUTER_API_KEY` | api, worker | where graph rows and `kg_search` queries are embedded: `openrouter` calls OpenRouter's embeddings API (`baai/bge-m3`, batches of 64, four requests at once) with the key and loads no model; empty uses the local `BAAI/bge-m3` on the worker's CPUs (docs/kg-semantic.md) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |
 | `EVO_HUB_GATEWAY_CPUS`, `EVO_HUB_GATEWAY_MEMORY` | compose | limits of the `gateway` service, default `1` and `1536m` |
 | `EVO_HUB_GATEWAY_SUBNET` | compose | the subnet of the `gateway` network, default `10.231.128.0/28`, outside Docker's default address pools so the network is created on a host whose pools are all taken; change it when it overlaps a network of the host |
+| `EVO_HUB_RABBITMQ_USER`, `EVO_HUB_RABBITMQ_PASSWORD`, `EVO_HUB_REDIS_PASSWORD`, `EVO_HUB_REDIS_MAXMEMORY` | compose | the profile `bus`: RabbitMQ's user (default `hub`) and password, Redis's password and its memory before it drops the least recently used keys (default `256mb`); `rabbitmq` and `redis` refuse to start without their password |
+| `EVO_HUB_RABBITMQ_CPUS`, `EVO_HUB_RABBITMQ_MEMORY`, `EVO_HUB_REDIS_CPUS`, `EVO_HUB_REDIS_MEMORY`, `EVO_HUB_DELIVER_CPUS`, `EVO_HUB_DELIVER_MEMORY` | compose | limits of the profile `bus`'s services, default `1` CPU each and `1g`, `512m` and `1g` |
 | `EVO_HUB_EXTRA_CORE_PLUGINS` | build | a hub's own core plugins, beside those `deploy/hub/core-plugins.txt` pins: requirements `name==version --hash=sha256:<64 hex>` separated by spaces or line breaks, every dependency the image lacks among them; a build argument, never a variable of a service (`docs/hub-deployment.md`, section Core plugins in the image) |
 | `EVO_HUB_CORE_PLUGIN_INDEX_URL` | build | the index those come from, one or more URLs separated by spaces, a credential in the URL if it wants one; it reaches the build as the secret `core_plugin_index` alone, and no layer of the image keeps it; unset is PyPI |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |

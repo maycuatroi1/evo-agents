@@ -10,7 +10,9 @@ outbox (``evo_agents.hub.plugin_events``). A notification of the interrupt tier 
 (``evo_agents.hub.server.push_tiers``) also gets one delivery on each push device of its member that reaches them (a
 delivery with a ``device_id``, ``evo_agents.hub.server.push_store``).
 
-``deliver_notifications`` is the job hub.deliver_notifications, every minute. It takes the pending deliveries whose
+``deliver_notifications`` is the job hub.deliver_notifications, every minute, and queued by each transaction that
+stores a notification (``bus.soon``), so it goes out once that commits; with the event bus on, the delivery process
+(``evo-agents hub deliver``) runs that pass instead, as soon as the broker carries the news of the commit. It takes the pending deliveries whose
 ``next_at`` has passed, each in a transaction of its own with ``FOR UPDATE SKIP LOCKED``, and hands each to an
 instance of the class CHANNELS names for its channel's kind (WEB for a delivery without a channel). The web's class
 sends nothing, since the web reads notifications from the table, so its deliveries are delivered at once. A class
@@ -50,7 +52,9 @@ hold). The hub sends ``plan_finished`` and ``run_failed`` itself when a plan run
 
 A member reads their own notifications: GET /v1/me/notifications (open decisions and proposals first, then newest
 first; filtered by unread, kind, project, run and words of the title or body, a page at a time), GET /v1/me/notifications/count (the unread ones, and
-the decisions and the proposals still waiting for an answer, for the bell), and POST /v1/me/notifications/read (by ids,
+the decisions and the proposals still waiting for an answer, for the bell, which every page of the web asks every 10
+seconds: the hub's cache keeps it COUNT_TTL seconds and drops it when a transaction that wrote a notification, a
+decision, a proposal or a grant commits, ``cache.watch``), and POST /v1/me/notifications/read (by ids,
 or all), audited as notification.read with the ids, never the text. A notification of a project the member no longer
 holds a grant on is not shown. Answering a decision reads its notification too (``decisions``). A notification of kind
 proposal is a tier 2 proposal of the Curator in the member's Inbox (``proposals``), and answering it reads it too.
@@ -87,7 +91,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import plugin_events, review, runs, tables
+from evo_agents.hub import bus, cache, jobs, plugin_events, review, runs, tables
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.plugin_calls import core_registry, load
 from evo_agents.hub.server import audit, output_views, push_store, push_tiers
@@ -112,6 +116,9 @@ SEND_TIMEOUT_SECONDS = 30.0  # a channel's send that takes longer counts as fail
 BACKOFF_SECONDS = 60  # after the first failed try; doubled after each next one
 BACKOFF_MAX_SECONDS = 3600
 MAX_LIST = 200
+COUNT_TTL = 60.0  # seconds the cache keeps a member's count; a write of what it is read from drops it before
+
+cache.watch("notifications", tables.notifications, tables.decisions, tables.proposals, tables.grants)
 MAX_OFFSET = 100_000
 MAX_READ_IDS = 500
 MAX_QUERY_CHARS = 200  # the words GET /v1/me/notifications searches the titles and bodies for
@@ -221,6 +228,7 @@ async def notify(
     if await push_tiers.interrupts(conn, user_id=user_id, kind=kind, **tier):
         await conn.execute(push_store.device_deliveries(notification_id, user_id))
     await plugin_events.emit_notification(conn, notification_id, project_id)  # the channels of isolated plugins
+    await bus.soon(jobs.DELIVER_NOTIFICATIONS, conn)  # goes out once the transaction commits
     return notification_id
 
 
@@ -927,9 +935,13 @@ async def list_notifications(
 @router.get("/notifications/count", response_model=NotificationCount)
 async def count_notifications(request: Request, user: CurrentUser) -> NotificationCount:
     """How many of the caller's notifications are unread, and how many decisions wait for their answer."""
-    async with request.app.state.engine.begin() as conn:
-        counted = (await conn.execute(_counts(user.user_id))).one()
-    return NotificationCount(**counted._mapping)
+
+    async def load() -> dict:
+        async with request.app.state.engine.begin() as conn:
+            return dict((await conn.execute(_counts(user.user_id))).one()._mapping)
+
+    key = f"notifications:count:{user.user_id}"
+    return NotificationCount(**await request.app.state.cache.fetch(cache.HUB, key, COUNT_TTL, load))
 
 
 @router.post("/notifications/read", response_model=ReadResult, responses={422: {"model": ErrorBody}})

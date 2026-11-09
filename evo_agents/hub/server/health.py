@@ -5,7 +5,12 @@ after a HeadBucket on its bucket. It answers 503 naming the component that faile
 within HEALTH_TIMEOUT or the bucket does not answer; both are checked at the same time. A hub without the
 EVO_HUB_S3_* variables reports ``r2: unconfigured`` and stays healthy, as it was configured. ``gateway`` is the model
 gateway (``gateway_client``): ``off`` without EVO_HUB_GATEWAY_SECRET, else ``ok`` when its health check answers and
-``error``, which fails the check, when it does not. ``/v1/health/live``
+``error``, which fails the check, when it does not. ``broker`` is the event bus (``evo_agents.hub.bus``): ``off``
+without EVO_HUB_BROKER_URL, else ``ok`` when the broker takes a connection and ``error`` when it does not, which leaves
+the status ``ok``: the hub still delivers through Postgres and its jobs. ``cache`` is the shared cache
+(``evo_agents.hub.cache``): ``off`` without EVO_HUB_REDIS_URL, each process keeping its own, else ``ok`` when Redis
+answers a PING and ``error`` when it does not, which leaves the status ``ok`` too: the hub reads Postgres instead.
+``/v1/health/live``
 only says the process serves requests: it is the container healthcheck, and a database or R2 outage must not
 get the container restarted.
 """
@@ -23,6 +28,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import exc as sa_exc
 
 from evo_agents import __version__
+from evo_agents.hub import bus
 from evo_agents.hub.db import schema_revision
 
 log = logging.getLogger(__name__)
@@ -40,6 +46,12 @@ class Health(BaseModel):
     db: Literal["ok", "unavailable"]
     r2: Literal["ok", "unavailable", "unconfigured"] = Field(description="the blob store, by a HeadBucket")
     gateway: Literal["ok", "error", "off"] = Field(description="the model gateway, by its health check")
+    broker: Literal["ok", "error", "off"] = Field(
+        description="the event bus's broker, by a connection; its error leaves the status ok"
+    )
+    cache: Literal["ok", "error", "off"] = Field(
+        description="the shared cache's Redis, by a PING; its error leaves the status ok"
+    )
     failed: list[str] = Field(default_factory=list, description="components that did not answer")
 
 
@@ -57,6 +69,11 @@ async def health(request: Request, response: Response):
     r2 = asyncio.ensure_future(store.status()) if store is not None else None
     gateway = getattr(request.app.state, "gateway", None)
     gateway_up = asyncio.ensure_future(gateway.healthy()) if gateway is not None else None
+    config = getattr(request.app.state, "config", None)
+    broker_url = getattr(config, "broker_url", None)
+    broker = asyncio.ensure_future(bus.check(broker_url)) if broker_url is not None else None
+    shared = getattr(request.app.state, "cache", None)
+    cached = asyncio.ensure_future(shared.check()) if shared is not None else None
     try:
         schema, db = await schema_revision(request.app.state.engine, HEALTH_TIMEOUT), "ok"
     except (psycopg.Error, sa_exc.DBAPIError, OSError, TimeoutError) as exc:  # PoolTimeout arrives as a DBAPIError
@@ -68,6 +85,8 @@ async def health(request: Request, response: Response):
     gateway_status = "off" if gateway_up is None else "ok" if await gateway_up else "error"
     if gateway_status == "error":
         log.warning("health check failed: model gateway unavailable", extra={"url": gateway.url})
+    broker_status = "off" if broker is None else await broker  # an error is logged, and fails nothing
+    cache_status = "off" if cached is None else await cached  # ...and so is the cache's
     statuses = (("db", db), ("r2", r2_status), ("gateway", gateway_status))
     failed = [name for name, status in statuses if status in ("unavailable", "error")]
     body = Health(
@@ -77,6 +96,8 @@ async def health(request: Request, response: Response):
         db=db,
         r2=r2_status,
         gateway=gateway_status,
+        broker=broker_status,
+        cache=cache_status,
         failed=failed,
     )
     if failed:

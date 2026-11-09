@@ -73,6 +73,11 @@ x-hub-environment: &hub-environment
   EVO_HUB_SELLER_SIGNAL_PROJECT: ${EVO_HUB_SELLER_SIGNAL_PROJECT:-}
   EVO_HUB_PLUGIN_HOST_URL: ${EVO_HUB_PLUGIN_HOST_URL:-}
   EVO_HUB_PLUGIN_HOST_TOKEN: ${EVO_HUB_PLUGIN_HOST_TOKEN:-}
+  # The event bus and the shared cache, both optional (docs/hub-deployment.md, section The event bus and the cache):
+  # with the profile bus, amqp://hub:PASSWORD@evo-agents-hub-rabbitmq:5672/ and
+  # redis://:PASSWORD@evo-agents-hub-redis:6379/0. Empty, the hub delivers through its jobs and caches in memory.
+  EVO_HUB_BROKER_URL: ${EVO_HUB_BROKER_URL:-}
+  EVO_HUB_REDIS_URL: ${EVO_HUB_REDIS_URL:-}
   # Read by evo_agents.kg.semantic, not config.py: "openrouter" embeds the graphs' rows through OpenRouter's API with
   # OPENROUTER_API_KEY instead of the local BAAI/bge-m3 on the worker's CPUs; empty keeps the local model.
   EVO_KG_EMBEDDINGS: ${EVO_KG_EMBEDDINGS:-}
@@ -310,12 +315,116 @@ services:
       api:
         condition: service_started
 
+  # The event bus and the shared cache, under the profile bus: `docker compose --profile bus up -d` starts them, and a
+  # deploy without the profile starts exactly the services above (docs/hub-deployment.md, section The event bus and
+  # the cache). They join the stack's own network alone and publish no port, so only its services reach them, and
+  # each refuses to start without its password (EVO_HUB_RABBITMQ_PASSWORD, EVO_HUB_REDIS_PASSWORD), which the
+  # operator also writes into EVO_HUB_BROKER_URL and EVO_HUB_REDIS_URL. The hub turns either on only when its URL is
+  # set, and keeps working, slower, while either is down: Postgres stays the record of every delivery.
+  #
+  # RabbitMQ 4. The hub declares its delivery queues as quorum queues itself (evo_agents/hub/bus.py); the volume keeps
+  # them, and a message lost with it is published again from Postgres. Runs as the image's own user, so the
+  # entrypoint needs neither chown nor setuid.
+  rabbitmq:
+    <<: *hardening
+    image: rabbitmq:4-alpine
+    profiles: [bus]
+    restart: unless-stopped
+    user: rabbitmq
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        test -n "$$RABBITMQ_DEFAULT_PASS" || { echo "EVO_HUB_RABBITMQ_PASSWORD is not set" >&2; exit 1; };
+        exec docker-entrypoint.sh rabbitmq-server
+    environment:
+      RABBITMQ_DEFAULT_USER: ${EVO_HUB_RABBITMQ_USER:-hub}
+      RABBITMQ_DEFAULT_PASS: ${EVO_HUB_RABBITMQ_PASSWORD:-}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      default:
+        aliases: [evo-agents-hub-rabbitmq]
+    cpus: ${EVO_HUB_RABBITMQ_CPUS:-1}
+    mem_limit: ${EVO_HUB_RABBITMQ_MEMORY:-1g}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    stop_grace_period: 30s
+
+  # Redis as a cache alone: nothing on disk (no RDB snapshot, no append-only file), at most EVO_HUB_REDIS_MAXMEMORY,
+  # and the least recently used keys go first when it is full. A restart empties it, which the hub only reads as
+  # misses. The password reaches redis-server on its standard input, never its command line.
+  redis:
+    <<: *hardening
+    image: redis:8-alpine
+    profiles: [bus]
+    restart: unless-stopped
+    user: redis
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        test -n "$$REDISCLI_AUTH" || { echo "EVO_HUB_REDIS_PASSWORD is not set" >&2; exit 1; };
+        printf 'requirepass "%s"\n' "$$REDISCLI_AUTH" |
+        exec redis-server - --save "" --appendonly no
+        --maxmemory "$$REDIS_MAXMEMORY" --maxmemory-policy allkeys-lru
+    environment:
+      # redis-cli of the healthcheck reads the password from REDISCLI_AUTH.
+      REDISCLI_AUTH: ${EVO_HUB_REDIS_PASSWORD:-}
+      REDIS_MAXMEMORY: ${EVO_HUB_REDIS_MAXMEMORY:-256mb}
+    networks:
+      default:
+        aliases: [evo-agents-hub-redis]
+    cpus: ${EVO_HUB_REDIS_CPUS:-1}
+    mem_limit: ${EVO_HUB_REDIS_MEMORY:-512m}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    stop_grace_period: 10s
+
+  # The event bus's relay, sweeper and consumers (`evo-agents hub deliver`, docs/hub.md section Event bus): the same
+  # image and environment as the worker, the gateway's left out, since a plugin it calls runs in it. Several replicas
+  # may run; it exits 2 without EVO_HUB_BROKER_URL.
+  deliver:
+    <<: *hardening
+    image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
+    build: *hub-build
+    profiles: [bus]
+    command: ["evo-agents", "hub", "deliver", "--data-dir", "/cache"]
+    restart: unless-stopped
+    environment: *hub-environment
+    volumes:
+      - worker-cache:/cache
+    networks:
+      default: {}
+      platform: {}
+    cpus: ${EVO_HUB_DELIVER_CPUS:-1}
+    mem_limit: ${EVO_HUB_DELIVER_MEMORY:-1g}
+    # It serves no HTTP; it exits non-zero when it loses Postgres and the restart policy brings it back.
+    healthcheck:
+      disable: true
+    stop_grace_period: 30s
+    depends_on:
+      api:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
 volumes:
   api-cache:
   worker-cache:
   models:
   plugins-cache:
   gateway-data:
+  # RabbitMQ's queues and definitions (profile bus).
+  rabbitmq-data:
 
 # The build's only secret, from the environment compose reads (the platform's, or .env next to this file); unset, the
 # build finds no secret and pip uses PyPI.

@@ -17,14 +17,23 @@ only async connector is psycopg's, gets the psycopg connection under it through 
 engine's ``begin_nested()``. This is the one place the hub hands out that psycopg connection.
 
 The jobs that keep runs and notifications moving (``LEASE_JOBS``) go to the queue ``LEASE``, the turns of the hub
-runtime to HUB_QUEUE, kg builds to KG_QUEUE, every other job to DEFAULT_QUEUE. A worker that takes the default queue
-runs a worker of its own on ``LEASE`` and one on HUB_QUEUE, so a long plugin job on the default queue never holds them
-back, and the turns of the agents of a system, up to 180 seconds each, run beside each other instead of one at a time
-behind every other job; ``queue_of`` names a task's queue, and ``JobQueue.defer``
-uses it unless the caller names one.
+runtime to HUB_QUEUE, the deliveries to plugins (DELIVER_PLUGIN_EVENTS) to DELIVERY_QUEUE, kg builds to KG_QUEUE, every
+other job to DEFAULT_QUEUE. A worker that takes the default queue runs a worker of its own on ``LEASE``, one on
+HUB_QUEUE and one on DELIVERY_QUEUE, so a long plugin job on the default queue never holds them back, the turns of the
+agents of a system, up to 180 seconds each, run beside each other instead of one at a time behind every other job, and
+a message of a bridged group chat goes out within seconds of its commit; ``queue_of`` names a task's queue, and
+``JobQueue.defer`` uses it unless the caller names one.
+
+A job that delivers what a transaction stored is queued in that transaction (``soon``), under the task's own queueing
+lock, the one its periodic job takes too: it runs once the transaction commits, and a job of it that waits already takes
+what the transaction stored. A pass of DELIVER_PLUGIN_EVENTS queues the next one for when the soonest delivery it left
+is due (``schedule_at``), under a queueing lock of that second (``at_lock``), so a try a plugin asked for in a few
+seconds runs then, not at the next minute, and a pass so scheduled never refuses the job ``soon`` queues.
 """
 
 from __future__ import annotations
+
+from datetime import datetime
 
 from procrastinate import PsycopgConnector, exceptions
 from procrastinate.manager import JobManager
@@ -37,6 +46,7 @@ from evo_agents.hub.db import driver
 DEFAULT_QUEUE = "default"  # every job but the kg ones: periodic, short, on their own worker
 KG_QUEUE = "kg"  # the kg jobs of defer_kg: knowledge graph builds, on workers of their own
 HUB_QUEUE = "hub"  # the turns of the hub runtime (HUB_TURN), on a worker of their own beside the default queue's
+DELIVERY_QUEUE = "deliveries"  # DELIVER_PLUGIN_EVENTS, on a worker of its own beside the default queue's
 
 PING = "hub.ping"  # does nothing for a moment: proves a worker takes jobs
 CLEANUP_UPLOADS = "hub.cleanup_uploads"  # hourly: uploads never committed, after 24 hours
@@ -47,7 +57,7 @@ PRUNE_KG_ARTIFACTS = "hub.prune_kg_artifacts"  # hourly: artifacts of graphs old
 RECOVER_RUNS = "hub.recover_runs"  # every minute: runs whose lease ran out become lost and are queued again
 PRUNE_RUN_EVENTS = "hub.prune_run_events"  # daily: events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago
 PRUNE_AUDIT = "hub.prune_audit"  # daily: audit rows older than EVO_HUB_AUDIT_DAYS
-DELIVER_NOTIFICATIONS = "hub.deliver_notifications"  # every minute: notifications due on their channels, retried
+DELIVER_NOTIFICATIONS = "hub.deliver_notifications"  # every minute and on each commit: notifications due, retried
 FIRE_SCHEDULES = "hub.fire_schedules"  # every minute: the night shift of each charter queues its next run
 PRUNE_DIGESTS = "hub.prune_digests"  # daily: session digests not pushed again for 90 days
 PRUNE_TRANSCRIPTS = "hub.prune_transcripts"  # daily: the content of transcripts past EVO_HUB_TRANSCRIPT_DAYS
@@ -65,7 +75,7 @@ CURATOR_OUTCOMES = "curator.outcomes"  # every 10 minutes: the figures of merged
 REPLAY_SUITE = "curator.replay_suite"  # hourly: each charter's suite of replay tasks, from the plans' steps done
 PLUGIN_JOBS = "hub.plugin_jobs"  # every minute: the plugins' jobs whose cron takes this minute, each queued once
 PLUGIN_JOB = "hub.plugin_job"  # one run of one plugin's job (evo_agents.hub.plugin_jobs)
-DELIVER_PLUGIN_EVENTS = "hub.deliver_plugin_events"  # every minute: events and notifications due for plugins, retried
+DELIVER_PLUGIN_EVENTS = "hub.deliver_plugin_events"  # every minute, on commit and when due: what is due for plugins
 READ_NIGHTLY = "hub.read_nightly"  # every minute: where the tag nightly points, for every heartbeat answer
 VALUE_CHECK = "hub.value_check"  # on a batch of a project's signals: its plugins' value_check jobs, for it alone
 RELEASE_SCHEDULES = "hub.release_schedules"  # every minute: the daily check of each release schedule, at its time
@@ -96,7 +106,14 @@ def queue_of(task: str) -> str:
         return LEASE
     if task == HUB_TURN:
         return HUB_QUEUE
+    if task == DELIVER_PLUGIN_EVENTS:
+        return DELIVERY_QUEUE
     return KG_QUEUE if task == KG_BUILD else DEFAULT_QUEUE
+
+
+def at_lock(task: str, when: datetime) -> str:
+    """The queueing lock of a job of ``task`` scheduled for ``when``: one per second, apart from the task's own."""
+    return f"{task}@{int(when.timestamp())}"
 
 
 def kg_lock(project: str) -> str:
@@ -143,11 +160,12 @@ class JobQueue:
         queueing_lock: str | None = None,
         queue: str | None = None,
         connection: AsyncConnection | None = None,
+        schedule_at: datetime | None = None,
         **kwargs,
     ) -> int | None:
         """Queue a job of ``task`` with ``kwargs`` (JSON values); its id, or None when a job with the same
         ``queueing_lock`` waits already, which counts as queued. With ``connection``, the job is queued in that
-        connection's transaction and exists only if it commits."""
+        connection's transaction and exists only if it commits. With ``schedule_at``, no worker takes it before then."""
         if connection is None:
             deferrer = configure_task(
                 name=task,
@@ -155,6 +173,7 @@ class JobQueue:
                 lock=lock,
                 queueing_lock=queueing_lock,
                 queue=queue or queue_of(task),
+                schedule_at=schedule_at,
             )
             try:
                 return await deferrer.defer_async(**kwargs)
@@ -167,6 +186,7 @@ class JobQueue:
             queueing_lock=queueing_lock,
             queue=queue or queue_of(task),
             connection=await driver(connection),
+            schedule_at=schedule_at,
         )
         # The refusal is an error in Postgres, which would abort the caller's whole transaction without the
         # savepoint; leaving the block with it rolls back to the savepoint.
@@ -184,3 +204,9 @@ class JobQueue:
         too."""
         key = kg_lock(project)
         return await self.defer(task, lock=key, queueing_lock=key, queue=KG_QUEUE, connection=connection, **kwargs)
+
+
+async def soon(task: str, connection: AsyncConnection) -> None:
+    """Queue a job of ``task`` in ``connection``'s transaction under the task's own queueing lock, so it runs once that
+    commits; a job of it that waits already takes what the transaction stored."""
+    await JobQueue.in_transaction().defer(task, queueing_lock=task, connection=connection)

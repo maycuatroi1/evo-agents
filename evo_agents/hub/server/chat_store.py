@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_bridge_events, chats, kg_sources, plugin_events, tables
+from evo_agents.hub import wake as wakeups
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.chat_access import ChatAccess
@@ -52,9 +53,9 @@ async def write_event(conn: AsyncConnection, chat_id: int, kind: str, body: dict
 
 async def wake(conn: AsyncConnection, chat_id: int) -> None:
     """Wake the streams of chat ``chat_id`` once the caller's transaction commits: one that writes no event, such as
-    a move of a chat run, changes what they show (``chat_progress``). Postgres folds a channel's equal notifications of
-    one transaction into one."""
-    await conn.execute(select(func.pg_notify(CHANNEL, str(chat_id))))
+    a move of a chat run, changes what they show (``chat_progress``). The equal wake-ups of one transaction go out as one
+    (``evo_agents.hub.wake``)."""
+    await wakeups.notify(conn, CHANNEL, str(chat_id))
 
 
 async def wake_run_chat(conn: AsyncConnection, run_id: int) -> None:

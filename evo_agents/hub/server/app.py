@@ -36,6 +36,7 @@ from fastapi import Depends, FastAPI
 from starlette.datastructures import MutableHeaders
 
 from evo_agents import __version__
+from evo_agents.hub import cache, wake
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import make_engine, open_pool
@@ -250,6 +251,8 @@ async def _close(app: FastAPI, pool) -> None:
     await app.state.terminals.close_all()
     await app.state.browser_views.close_all()
     await app.state.listener.close()
+    await app.state.cache.close()
+    await wake.close()
     await app.state.github.aclose()
     for opened in (app.state.gateway_run, app.state.github_app, app.state.curator_app, app.state.plugin_host):
         if opened is not None:
@@ -385,7 +388,6 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     app.include_router(workers.router)
     app.include_router(worker_pools.router)
     app.include_router(worker_join.worker_router)
-    app.state.join_refusals = workers.RefusalLimit()  # refused pairing codes per client address, this process only
 
     from evo_agents.hub.server import author_chat, chat_events, listen, run_events, runs, tool_stats
 
@@ -397,7 +399,8 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
     app.include_router(author_chat.router)
     app.include_router(author_chat.worker_router)
     app.include_router(tool_stats.router)
-    app.state.listener = listen.Listener(config.dsn)  # the process's one LISTEN, opened by the first claim or stream
+    # the process's one LISTEN, or queue on the event bus, opened by the first claim or stream
+    app.state.listener = listen.Listener(config.dsn, config.broker_url)
     app.state.run_wakeups = runs.RunWakeups(app.state.listener)  # the claims waiting for a queued run
     # the event streams of runs, and of group chats
     app.state.run_streams, app.state.chat_streams = (
@@ -405,6 +408,10 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         chat_events.ChatStreams(app.state.listener),
     )
     app.state.trace_streams = system_trace_views.TraceStreams(app.state.listener)  # the live traces of systems
+    # the cache, on Redis with EVO_HUB_REDIS_URL, else this process's; dropped by the listener's wake-ups
+    app.state.cache = cache.Cache(config.redis_url, listener=app.state.listener)
+    app.state.join_refusals = workers.RefusalLimit()  # refused pairing codes per client address, this process only
+    app.state.join_limit = cache.Window(app.state.cache, "join", app.state.join_refusals)  # ...or shared on Redis
 
     from evo_agents.hub.server import (
         attachments,

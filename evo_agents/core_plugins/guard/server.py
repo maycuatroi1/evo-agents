@@ -275,7 +275,7 @@ async def policy(request: Request, user: CurrentUser) -> Response | GuardPolicy:
     """The policy of the hub: the private names of every project that enables the plugin, hashed, and the repos they
     publish; 304 when ``If-None-Match`` names its digest."""
     async with request.app.state.engine.connect() as conn:
-        found = await guard.policy(conn)
+        found = await guard.cached_policy(conn, getattr(request.app.state, "cache", None))
     data = found.to_json()
     data["digest"] = guard.digest_of(found)
     etag = f'"{data["digest"] or "none"}"'

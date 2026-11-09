@@ -276,15 +276,17 @@ def test_a_hub_message_goes_out_redacted_threaded_and_once_while_the_channel_sin
 
 @on_pg
 def test_what_a_bridge_carries_queues_its_delivery_at_once_not_at_the_next_minute(bridged):
-    from sqlalchemy import Text, cast, column, table
+    from sqlalchemy import Text, cast, column, delete, table
 
     from evo_agents.hub import jobs
 
-    queued = table("procrastinate_jobs", column("task_name"), column("status"))
+    queued = table("procrastinate_jobs", column("task_name"), column("status"), column("queueing_lock"))
+    task = jobs.DELIVER_PLUGIN_EVENTS
     waiting = select(queued.c.task_name).where(
-        queued.c.task_name == jobs.DELIVER_PLUGIN_EVENTS, cast(queued.c.status, Text) == "todo"
-    )
+        queued.c.task_name == task, queued.c.queueing_lock == task, cast(queued.c.status, Text) == "todo"
+    )  # the passes a pass scheduled for later deliveries hold a lock of their own (jobs.at_lock)
     client, db, chat, headers = bridged.client, bridged.db, bridged.chat, bridged.headers
+    sql(db, delete(queued).where(queued.c.task_name == task))  # what the setup queued (a notification's channel)
     assert sql(db, waiting) == []
     sent(client, headers["owner"], chat["id"], "one")
     sent(client, headers["owner"], chat["id"], "two")

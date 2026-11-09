@@ -73,6 +73,10 @@ hub-server = [
     "mcp==2.3.0",
     # Keyless Sigstore signatures of plugin bundles (evo_agents.plugins.signing): the Verifier and policy API of 4.x.
     "sigstore>=4.5,<5",
+    # The optional event bus on RabbitMQ (EVO_HUB_BROKER_URL, evo_agents.hub.bus): publisher confirms, quorum queues.
+    "aio-pika>=9.5,<10",
+    # The optional shared cache and rate limits on Redis (EVO_HUB_REDIS_URL, evo_agents.hub.cache): redis.asyncio.
+    "redis>=8.1,<9",
 ]
 # `evo-agents worker`, the daemon that runs plan steps on a member's machine: aiohttp for its HTTP and websocket,
 # and the SDKs of the runtimes its adapters drive.
@@ -228,6 +232,8 @@ ignore_imports = [
     "evo_agents.hub.openapi -> evo_agents.hub.server.app",
     # The audit row of a pruned graph build.
     "evo_agents.hub.kg_prune -> evo_agents.hub.server.audit",
+    # `hub deliver`, the event bus's delivery process, runs the pass of the notifications.
+    "evo_agents.hub.deliverer -> evo_agents.hub.server.notifications",
     # `hub worker`, the hub's job runner, runs jobs whose code lives with the server.
     "evo_agents.hub.worker -> evo_agents.hub.server.brief",
     "evo_agents.hub.worker -> evo_agents.hub.server.changes",
