@@ -49,6 +49,7 @@ DEFAULT_WAIT = 1800.0
 FINISHED = ("succeeded", "failed")
 PRUNE_TIMEOUT = 600.0  # seconds a prune may take: it deletes objects in the blob store
 SCRUB_TIMEOUT = 600.0  # seconds one page of a scrub, or one purge, may take: it reads objects in the blob store
+MEASURE_TIMEOUT = 600.0  # seconds a measure may take: the hub opens the graph and asks the questions twice
 PURGE_BATCH = 500  # hashes in one purge request; the hub takes 1000
 SCRUB_SHOWN = 20  # objects listed per project in text; --json lists them all
 

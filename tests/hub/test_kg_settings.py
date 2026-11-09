@@ -221,6 +221,24 @@ def test_a_measure_asks_with_the_current_and_the_candidate_tuning_and_leaves_bui
     assert found["build_id"] == 3 and found["questions"] == 2 and found["candidate"]["n"] == 2
 
 
+def test_a_measure_waits_the_measure_timeout_not_the_hub_default(monkeypatch, capsys):
+    from evo_agents.hub import kg_cli, kg_settings_cli
+
+    calls = []
+
+    class FakeHub:
+        def call(self, method, path, body=None, *, timeout=None):
+            calls.append((method, path, timeout))
+            return {"build_id": 3, "split": "tune", "questions": 5, "current": {}, "candidate": {}}
+
+    monkeypatch.setattr(kg_settings_cli, "signed_in", lambda: (FakeHub(), None))
+    args = SimpleNamespace(project="evo-agents", settings=None, split="tune", max_questions=5, json=True)
+    assert kg_settings_cli.cmd_measure(args) == 0
+    assert calls == [("POST", "/v1/kg/evo-agents/measure", kg_cli.MEASURE_TIMEOUT)]
+    assert kg_cli.MEASURE_TIMEOUT >= 600
+    assert json.loads(capsys.readouterr().out)["build_id"] == 3
+
+
 def test_a_hub_build_reads_the_ontology_of_the_strategy_its_settings_name():
     """A strategy set on the hub changes no file of the harness: the build adds the strategy's node kinds and relations
     to the project's ontology itself, else the entities step of entity-graph-api would drop every relation."""
