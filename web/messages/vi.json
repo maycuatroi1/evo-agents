@@ -9836,7 +9836,13 @@
         "steps": "Các bước",
         "rules": "Quy tắc",
         "noRules": "Không có.",
-        "openItem": "Mở toàn bộ use case"
+        "openItem": "Mở toàn bộ use case",
+        "rewritten": "Đoạn này được viết lại nhiều, dưới đây là bản mới.",
+        "showOld": "Xem bản đang dùng",
+        "hideOld": "Ẩn bản đang dùng",
+        "showWords": "Xem từng chỗ đổi",
+        "hideWords": "Xem bản mới",
+        "oldLabel": "Bản đang dùng"
       },
       "changes": {
         "note": "Lời nhắn của {author}",

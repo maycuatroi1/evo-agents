@@ -7,6 +7,7 @@ import { Fragment } from "react";
 
 import { adminCrumbs } from "@/components/admin/crumbs";
 import { InboxBell } from "@/components/inbox/inbox-bell";
+import { usePageCrumbLabel } from "@/components/shell/page-crumb";
 import { LiveIndicator } from "@/components/live/live-indicator";
 import { PaletteTrigger } from "@/components/palette/palette-trigger";
 import {
@@ -61,6 +62,7 @@ function useCrumbs(): Crumb[] {
   const tAdmin = useTranslations("admin.nav");
   const tMenu = useTranslations("userMenu");
   const pathname = usePathname();
+  const named = usePageCrumbLabel(pathname);
   const parts = pathname.split("/").filter(Boolean);
   const workerName = useWorkerName(parts[0] === "workers" ? parts[1] : undefined);
   const chatTitle = useChatTitle(parts[0] === "chats" ? parts[1] : undefined);
@@ -81,7 +83,7 @@ function useCrumbs(): Crumb[] {
     // object below it goes by its id and links to itself from deeper pages, and an item at the end goes by its id too.
     const base = `/${parts.slice(0, 5).join("/")}`;
     crumbs.push({ ...page, href: base }, { label: itemLabel(rest[0]), href: rest.length > 1 ? `${base}/${rest[0]}` : undefined });
-    if (rest.length > 2) crumbs.push({ label: itemLabel(rest[rest.length - 1]) });
+    if (rest.length > 2) crumbs.push({ label: named ?? itemLabel(rest[rest.length - 1]) });
     return crumbs;
   }
   if (parts[0] === "p" && parts[1]) {

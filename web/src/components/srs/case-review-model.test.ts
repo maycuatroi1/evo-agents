@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { finding, item, ITEMS } from "@/test/fixtures/srs";
 
 import type { SrsItem } from "./api";
-import { approveGate, caseAccess, caseFindings, fieldParts, fieldRows, keysUnder, optionKey, ruleRows, shownCase, stepsChanged } from "./case-review-model";
+import { approveGate, caseAccess, caseFindings, fieldParts, fieldRows, fieldView, keysUnder, optionKey, ruleRows, shownCase, stepsChanged } from "./case-review-model";
 
 const before = ITEMS.find((one) => one.key === "uc1")!;
 /** The use case as the version under review reads it: an intent and a context written, the actor reworded, a step added. */
@@ -52,6 +52,14 @@ describe("a use case's review", () => {
       { kind: "del", text: "Customer" },
       { kind: "add", text: "Signed-in shopper" },
     ]);
+  });
+
+  it("reads a long rewrite as rewritten, and a short field or a small change word by word", () => {
+    const long = "The shopper picks the items, the address and the payment, and the shop holds the stock until it is paid. ".repeat(3);
+    const rewrite = "Northwind Billing sends the invoice once the payment clears, then the warehouse ships the parcel and tells the buyer. ".repeat(3);
+    expect(fieldView(long, rewrite)).toEqual({ kind: "rewritten" });
+    expect(fieldView(long, long.replace("the address", "the delivery address")).kind).toBe("words");
+    expect(fieldView("Customer", "Signed-in shopper").kind).toBe("words");
   });
 
   it("marks the business rules added, changed and removed, and the steps changed", () => {
