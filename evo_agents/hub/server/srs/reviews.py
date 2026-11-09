@@ -6,8 +6,11 @@
   approved last (the version under review included) reviews it, admins included, unless the config's ``self_approval``
   is on: then the author reviews it as any writer does. The agent of a run never reviews one, the switch on or off.
   An approval goes through the gate of ``findings.approval_hold`` first: no open finding of level decide in the
-  document, and no review of @ba of the version's current round still queued or running (409 otherwise). A request for
-  changes is never held, and sends the version back to draft. An approval counts for a role the reviewer holds in the
+  document, and no review of @ba of the version's current round still queued or running (409 otherwise), unless the
+  config's ``wait_for_ba`` is off: then nothing of @ba holds an approval. A request for changes is never held, and
+  sends the version back to draft. When the config's ``owners`` names owners of the groups of the use cases the version
+  needs reviewed, a member who is not an admin and may decide none of them (``use_case_reviews.may_decide``) does not
+  review the version, and a version-wide approval counts for a use case only as its owner's or an admin's would. An approval counts for a role the reviewer holds in the
   config's ``roles``; the version is approved once every role the ``approval_policy`` of the document's kind requires
   approved it in this round, or after one approval when it requires none. Approving it supersedes every older version
   but a withdrawn one, and emits ``srs.version.approved`` in the same transaction (``events.version_approved``), from
@@ -15,8 +18,9 @@
 - ``review_use_case``: a writer approves or asks for changes on one use case of a version in review, or of a version
   whose revision of it was sent to review on its own (plan srs-use-case-review, ``use_case_reviews``). The author rule
   is the use case's: nobody who wrote a revision of it since its newest release reviews it, and writing one use case
-  bars nobody from the others. A later review of theirs replaces the earlier one. An approval goes through the gate
-  narrowed to the use case (``findings.Case``); a request for changes needs a note, is never held, takes a revision sent
+  bars nobody from the others. With the config's ``owners`` naming owners of its group, only those owners and the
+  project's admins review it. A later review of theirs replaces the earlier one. An approval goes through the gate
+  narrowed to the use case (``findings.Case``), unless ``wait_for_ba`` is off; a request for changes needs a note, is never held, takes a revision sent
   on its own back out of review, and leaves the version in review, where it blocks every approval (a version-wide one is
   still recorded). A review that makes the use case approved releases its revision into the approved baseline at once
   (``events.use_cases_released``), whatever becomes of the version. The version is approved by the review that makes
@@ -161,7 +165,8 @@ async def review(
     document's row lock."""
     held = await store.version(conn, doc, number, lock=True)
     await _checked_reviewer(conn, access, user, doc, held, settings)
-    if request.decision == APPROVE:
+    await _owns_some(conn, access, user, doc, held, settings)
+    if request.decision == APPROVE and settings.wait_for_ba:
         await findings.approval_hold(conn, access, doc, held)
     approvals = [r for r in held.reviews if r.round == held.round and r.decision == APPROVE]
     role = role_for(settings, user.login, request.role, doc.kind, approvals)
@@ -188,6 +193,29 @@ async def review(
             await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)
             await notices.tell_author(conn, access.project_id, doc, held, reviewer, notices.APPROVED)
     return await store.version(conn, doc, number)
+
+
+async def _owns_some(
+    conn: AsyncConnection,
+    access: ProjectAccess,
+    user: Principal,
+    doc: DocumentRow,
+    held: VersionRow,
+    settings: Settings,
+) -> None:
+    """Refuse ``user``, no admin, a review of ``held`` when the config's ``owners`` leaves them none of the use cases it
+    needs reviewed to decide."""
+    if not settings.owners or has_role(access.role, "admin"):
+        return
+    content = (await store.snapshot(conn, held)).doc
+    cases = await use_case_reviews.states(conn, access.project_id, doc, held, content, settings, [])
+    if cases and not any(use_case_reviews.may_decide(case.owners, user.login, False) for case in cases):
+        owned = sorted({owner for case in cases for owner in case.owners})
+        raise SrsError(
+            403,
+            f"{user.login} owns none of the use cases version {held.number} of {doc.slug} needs reviewed: their owners "
+            f"({', '.join(owned)}) or an admin of {access.name} review it",
+        )
 
 
 async def _approves(
@@ -245,7 +273,8 @@ async def _case_of(
 def _reviewable(access: ProjectAccess, user: Principal, doc: DocumentRow, held: VersionRow, case: CaseState, settings):
     """Refuse ``user`` a review of use case ``case`` of version ``held``: the agent of a run always, a member without
     writer, a version not in review whose revision of the use case was not sent on its own, a revision approved
-    already or superseded, a member who wrote a revision of it since its newest release (unless ``self_approval``)."""
+    already or superseded, a member who wrote a revision of it since its newest release (unless ``self_approval``), and one who is neither an
+    owner of its group (the config's ``owners``) nor an admin of the project when the config names owners of it."""
     if user.acts_for_run is not None:
         raise SrsError(403, "the agent of a run never approves or returns a use case: a member of the project does")
     writer(access, "reviewing a use case")
@@ -265,6 +294,13 @@ def _reviewable(access: ProjectAccess, user: Principal, doc: DocumentRow, held: 
         since = f"r{case.released}, its last approved revision" if case.released else "it was first written"
         raise SrsError(
             403, f"{user.login} wrote a revision of {case.code or case.title} since {since}: another member reviews it"
+        )
+    if not use_case_reviews.may_decide(case.owners, user.login, has_role(access.role, "admin")):
+        group = use_case_reviews.code_group(case.code)
+        raise SrsError(
+            403,
+            f"{name} is of group {group}, which {', '.join(case.owners)} own: they or an admin of {access.name} "
+            "review it",
         )
 
 
@@ -291,7 +327,7 @@ async def review_use_case(
     _reviewable(access, user, doc, held, case, settings)
     if request.decision == REQUEST_CHANGES and not request.body.strip():
         raise SrsError(422, "a request for changes on a use case needs a note saying what to change")
-    if request.decision == APPROVE:
+    if request.decision == APPROVE and settings.wait_for_ba:
         hold = findings.Case(case.key, case_name(case), content, case.review_run_id)
         await findings.approval_hold(conn, access, doc, held, hold)
     others = [r for r in case.reviews if r.reviewer_id != user.user_id and r.decision == APPROVE]
@@ -313,7 +349,7 @@ async def review_use_case(
         request.decision == APPROVE
         and held.state == "in_review"
         and use_case_reviews.ready(after)
-        and not await findings.held_now(conn, doc, held)
+        and not (settings.wait_for_ba and await findings.held_now(conn, doc, held))
     ):
         await _approve(conn, doc, held)
         await events.version_approved(conn, access.project_id, doc, held, doc.approved_version, user)

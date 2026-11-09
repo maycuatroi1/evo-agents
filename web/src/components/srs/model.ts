@@ -142,7 +142,7 @@ export function canWrite(viewer: Viewer | null): boolean {
 }
 
 /** Why `viewer` cannot review `version` now, as the hub would refuse it; null when they can. */
-export type ReviewBlock = "reader" | "not_in_review" | "author" | "reviewed";
+export type ReviewBlock = "reader" | "not_in_review" | "author" | "owner" | "reviewed";
 
 /**
  * `selfApproval` is the config's `self_approval`: on, an author of a version since the one approved last reviews it as
@@ -163,20 +163,28 @@ export function reviewBlock(
 
 /**
  * Why `viewer` cannot review one use case of `version`: they only read; the version is not in review and the use case
- * was not sent to review on its own; or they wrote a revision of it since its newest release (the hub's author rule is
- * the use case's, so writing another use case bars nothing here). A use case reviewed already blocks nothing: a later
- * review replaces the earlier one.
+ * was not sent to review on its own; they wrote a revision of it since its newest release (the hub's author rule is
+ * the use case's, so writing another use case bars nothing here); or the config's `owners` names owners of its group
+ * and they are neither one of them nor an admin. A use case reviewed already blocks nothing: a later review replaces
+ * the earlier one.
  */
 export function caseReviewBlock(
   viewer: Viewer,
   version: Pick<SrsVersion, "state">,
-  useCase: { submitted?: boolean; authors?: string[] } | null,
+  useCase: { submitted?: boolean; authors?: string[]; owners?: string[] } | null,
   selfApproval = false,
 ): ReviewBlock | null {
   if (!canWrite(viewer)) return "reader";
   if (version.state !== "in_review" && !useCase?.submitted) return "not_in_review";
   if (!selfApproval && (useCase?.authors ?? []).includes(viewer.login)) return "author";
+  if (!mayDecide(useCase?.owners ?? [], viewer)) return "owner";
   return null;
+}
+
+/** Whether `viewer` may decide a use case whose owners are `owners`: anyone when none, else an owner or an admin. */
+export function mayDecide(owners: readonly string[], viewer: Viewer): boolean {
+  const login = viewer.login.toLowerCase();
+  return owners.length === 0 || viewer.role === "admin" || owners.some((owner) => owner.toLowerCase() === login);
 }
 
 // The plugin's config: roles and the approval policy
@@ -199,6 +207,11 @@ export function policyOf(fields: readonly ConfigField[], kind: string): Policy {
 /** Whether the effective config turns `self_approval` on: the author of a version may approve it. Off unless it is `true`. */
 export function selfApprovalOf(fields: readonly ConfigField[]): boolean {
   return fields.find((field) => field.name === "self_approval")?.value === true;
+}
+
+/** Whether an approval waits for @ba (the config's `wait_for_ba`): on unless it is `false`. */
+export function waitForBaOf(fields: readonly ConfigField[]): boolean {
+  return fields.find((field) => field.name === "wait_for_ba")?.value !== false;
 }
 
 /** The roles `login` holds in the config's `roles`. */

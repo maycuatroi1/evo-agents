@@ -113,6 +113,9 @@ describe("a use case's review", () => {
     expect(approveGate(null, caseFindings([finding(4, { item: "nfr1" })], keysUnder(ITEMS, "uc1")))).toBeNull();
     expect(approveGate(null, caseFindings([], new Set()))).toBeNull();
     expect(approveGate({ id: 9, state: "failed" }, null)).toBeNull();
+    // the project's config makes @ba advice: neither its review nor its points hold Agree
+    expect(approveGate({ id: 9, state: "running" }, groups, false)).toBeNull();
+    expect(approveGate({ id: 9, state: "done" }, groups, false)).toBeNull();
   });
 
   it("says why the viewer may not review, in the hub's order", () => {
@@ -123,6 +126,7 @@ describe("a use case's review", () => {
     expect(caseAccess({ ...base, block: "not_in_review" })).toBe("closed");
     expect(caseAccess({ ...base, block: "author", configPending: true })).toBe("waiting");
     expect(caseAccess({ ...base, block: "author" })).toBe("author");
+    expect(caseAccess({ ...base, block: "owner", configPending: true })).toBe("owner");
     expect(caseAccess({ ...base, toReview: false })).toBe("unchanged");
   });
 

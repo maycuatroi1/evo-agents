@@ -192,7 +192,8 @@ export function caseFindings(findings: readonly SrsFinding[], keys: ReadonlySet<
  */
 export type ApproveGate = { kind: "ba" } | { kind: "findings"; here: number; elsewhere: number } | null;
 
-export function approveGate(run: SrsReviewRun | null, findings: CaseFindings | null): ApproveGate {
+export function approveGate(run: SrsReviewRun | null, findings: CaseFindings | null, waitForBa = true): ApproveGate {
+  if (!waitForBa) return null; // the project's config makes @ba advice: nothing of it holds the decision
   if (reviewHolds(run)) return { kind: "ba" };
   const here = findings?.decide.length ?? 0;
   const elsewhere = findings?.elsewhere.length ?? 0;
@@ -201,10 +202,11 @@ export function approveGate(run: SrsReviewRun | null, findings: CaseFindings | n
 
 /**
  * What the viewer may do on the use case: review it; wait while their account or the config loads; or why not: they
- * only read the project, they wrote a version since the one approved last, the version is no longer in review, or this
- * version does not change the use case, so it needs no review of its own.
+ * only read the project, they wrote a version since the one approved last, its group has owners and they are none of
+ * them nor an admin, the version is no longer in review, or this version does not change the use case, so it needs no
+ * review of its own.
  */
-export type CaseAccessKind = "review" | "waiting" | "reader" | "author" | "closed" | "unchanged";
+export type CaseAccessKind = "review" | "waiting" | "reader" | "author" | "owner" | "closed" | "unchanged";
 
 export function caseAccess({
   signedIn,
@@ -222,6 +224,7 @@ export function caseAccess({
   if (block === "not_in_review") return "closed";
   // An author waits for the config before being told they cannot review: self_approval may let them.
   if (block === "author") return configPending ? "waiting" : "author";
+  if (block === "owner") return "owner";
   return toReview ? "review" : "unchanged";
 }
 

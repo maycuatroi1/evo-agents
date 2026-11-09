@@ -9764,6 +9764,7 @@
         "none": "@ba không thấy điểm nào cần chốt.",
         "noneWithout": "Không có điểm nào cần chốt.",
         "intro": "Chọn một hướng cho mỗi điểm. Nút Đồng ý mở khi mọi điểm đã chốt.",
+        "introAdvice": "Chọn một hướng cho mỗi điểm nếu được. Trong dự án này, điểm @ba nêu chỉ để tham khảo: bạn đồng ý hoặc yêu cầu sửa mà không cần chốt hết.",
         "decideLabel": "Các điểm cần chốt",
         "elsewhere": "{count, plural, other {# điểm cần chốt về cả tài liệu}}",
         "elsewhereText": "Nút Đồng ý chờ cả các điểm này.",
@@ -9807,6 +9808,7 @@
         "blocked": {
           "reader": "Bạn chỉ có quyền đọc trong dự án này nên không duyệt được.",
           "author": "Bạn viết bản sửa này nên không tự duyệt được, người khác trong nhóm sẽ duyệt.",
+          "owner": "Use case nhóm này do {owners} hoặc quản trị viên dự án duyệt.",
           "closed": "Bản sửa này không còn chờ duyệt.",
           "unchanged": "Lần gửi này không sửa use case này nên không cần duyệt riêng."
         },

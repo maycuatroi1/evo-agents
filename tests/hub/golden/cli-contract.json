@@ -24178,7 +24178,7 @@
           "name": "number",
           "metavar": "N",
           "value": "integer",
-          "required": true,
+          "required": false,
           "repeatable": false
         }
       ],
@@ -24574,6 +24574,51 @@
         "schema": "SrsDocumentSummary"
       }
     },
+    "hub srs queue": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "number",
+          "parent_number",
+          "state",
+          "round",
+          "author",
+          "drafted_by_run",
+          "summary",
+          "created_at",
+          "submitted_at",
+          "decided_at",
+          "review_run",
+          "reviews",
+          "use_cases",
+          "document",
+          "document_title",
+          "held_by",
+          "deciding",
+          "may_review"
+        ],
+        "schema": "SrsQueuedVersion"
+      }
+    },
     "hub srs retire": {
       "positionals": [
         {
@@ -24649,7 +24694,7 @@
           "name": "number",
           "metavar": "N",
           "value": "integer",
-          "required": true,
+          "required": false,
           "repeatable": false
         }
       ],
@@ -24767,10 +24812,13 @@
               "fields",
               "body",
               "refs",
+              "rev",
               "document",
               "version",
               "path",
-              "children"
+              "children",
+              "released",
+              "revisions"
             ],
             "schema": "SrsItemDetail"
           }
@@ -24790,7 +24838,7 @@
           "name": "number",
           "metavar": "N",
           "value": "integer",
-          "required": true,
+          "required": false,
           "repeatable": false
         }
       ],
@@ -24801,6 +24849,14 @@
           ],
           "value": "string",
           "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--item"
+          ],
+          "value": "string",
+          "required": false,
           "repeatable": false
         },
         {
@@ -24826,9 +24882,33 @@
           "submitted_at",
           "decided_at",
           "review_run",
-          "reviews"
+          "reviews",
+          "use_cases"
         ],
-        "schema": "SrsVersion"
+        "schema": "SrsVersionCases",
+        "with": {
+          "--item": {
+            "kind": "object",
+            "keys": [
+              "number",
+              "parent_number",
+              "state",
+              "round",
+              "author",
+              "drafted_by_run",
+              "summary",
+              "created_at",
+              "submitted_at",
+              "decided_at",
+              "review_run",
+              "reviews",
+              "use_cases",
+              "use_case",
+              "use_case_review_run"
+            ],
+            "schema": "SrsUseCaseSubmitted"
+          }
+        }
       }
     },
     "hub srs unarchive": {
@@ -74635,7 +74715,7 @@
             "plugins"
           ],
           "summary": "Submit Version",
-          "description": "Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it\nwhen the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it\nrecords holds approval. The reviewers get the notice srs_review once nothing holds approval: at once when @ba\nreviews nothing, else when its review ends (``notices``).",
+          "description": "Send a draft to review, once it has no error. Each time a version goes to review, in every round, @ba reviews it\nwhen the project enabled the agent type ba: its comments block nothing, and an open finding of level decide it\nrecords holds approval. The reviewers get the notice srs_review once nothing holds approval: at once when @ba\nreviews nothing or the config's wait_for_ba is off, else when its review ends (``notices``).",
           "operationId": "submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post",
           "parameters": [
             {
@@ -74691,7 +74771,140 @@
               "content": {
                 "application/json": {
                   "schema": {
-                    "$ref": "#/components/schemas/SrsVersion"
+                    "$ref": "#/components/schemas/SrsVersionCases"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/use-cases/{ref}/submit": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Submit Use Case",
+          "description": "Send one use case to review on its own: the revision it has in the latest version, while that version is not in\nreview. 409 when the revision is approved already or in review, 422 when the use case or a business rule under it\nhas an error that blocks submitting. @ba reviews that use case alone when the project enabled the agent type ba;\nits reviewers (not whoever wrote a revision of it since its newest release) get the notice srs_review once nothing\nholds its approval, with the link of its review. Answers the latest version with its use cases and this one.",
+          "operationId": "submit_use_case_v1_x_srs__project__documents__slug__use_cases__ref__submit_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "the use case's code, an alias or its key",
+                "title": "Ref"
+              },
+              "description": "the use case's code, an alias or its key"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsUseCaseSubmitted"
                   }
                 }
               }
@@ -172250,6 +172463,18 @@
               },
               "type": "array",
               "title": "Refs"
+            },
+            "rev": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rev",
+              "description": "a use case's revision in this version (r1 and up); null for another item"
             }
           },
           "type": "object",
@@ -172266,7 +172491,7 @@
             "refs"
           ],
           "title": "SrsItem",
-          "description": "An item of a version: its key (fixed), kind, code and aliases, title, parent (key), heading level (null for a\ntable row), the fields its kind holds, its Markdown body and its links."
+          "description": "An item of a version: its key (fixed), kind, code and aliases, title, parent (key), heading level (null for a\ntable row), the fields its kind holds, its Markdown body and its links; a use case its revision there."
         },
         "SrsItemDetail": {
           "properties": {
@@ -172349,6 +172574,18 @@
               "type": "array",
               "title": "Refs"
             },
+            "rev": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rev",
+              "description": "a use case's revision in this version (r1 and up); null for another item"
+            },
             "document": {
               "type": "string",
               "title": "Document"
@@ -172371,6 +172608,26 @@
               },
               "type": "array",
               "title": "Children"
+            },
+            "released": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Released",
+              "description": "of a use case: the revision the approved baseline holds"
+            },
+            "revisions": {
+              "items": {
+                "$ref": "#/components/schemas/SrsRevision"
+              },
+              "type": "array",
+              "title": "Revisions",
+              "description": "of a use case: its revisions, r1 first"
             }
           },
           "type": "object",
@@ -172391,7 +172648,7 @@
             "children"
           ],
           "title": "SrsItemDetail",
-          "description": "An item of a version, with the items above it and those under it."
+          "description": "An item of a version, with the items above it and those under it; a use case also the revision the approved\nbaseline holds and every revision it had."
         },
         "SrsNewItem": {
           "properties": {
@@ -172734,9 +172991,11 @@
               "enum": [
                 "pending",
                 "approved",
-                "changes_requested"
+                "changes_requested",
+                "superseded"
               ],
-              "title": "State"
+              "title": "State",
+              "description": "approved once the approved baseline holds its revision (or its removal), superseded when the baseline holds a newer revision, else changes_requested, approved or pending by the reviews that count"
             },
             "reviews": {
               "items": {
@@ -172744,6 +173003,70 @@
               },
               "type": "array",
               "title": "Reviews"
+            },
+            "rev": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rev",
+              "description": "its revision in this version: r1 and up, one more each time it changed"
+            },
+            "released": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Released",
+              "description": "the revision of it the approved baseline holds; null for none"
+            },
+            "submitted": {
+              "type": "boolean",
+              "title": "Submitted",
+              "description": "whether its revision was sent to review on its own",
+              "default": false
+            },
+            "author": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Author",
+              "description": "who wrote its revision in this version"
+            },
+            "authors": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Authors",
+              "description": "who wrote a revision of it since its newest release, and so may not review it (empty when self_approval is on)"
+            },
+            "owners": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Owners",
+              "description": "the members the config's owners names for its group (ORD of UC ORD-3): they and the project's admins alone review it; empty when the config names none, and anyone may"
+            },
+            "link": {
+              "type": "string",
+              "title": "Link",
+              "description": "its review on the hub's web, a path",
+              "default": ""
             },
             "intent": {
               "anyOf": [
@@ -172760,12 +173083,34 @@
             "deciding": {
               "type": "integer",
               "title": "Deciding",
-              "description": "its open findings of level decide, which hold approval"
+              "description": "its open findings of level decide, which hold its approval unless wait_for_ba is off"
             },
             "noted": {
               "type": "integer",
               "title": "Noted",
               "description": "its open findings of another level, advice only"
+            },
+            "held_by": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "ba_review",
+                    "findings"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Held By",
+              "description": "what holds its approval now: @ba's review of the version's round or of its own, then the open findings of level decide about it, a business rule under it or the whole document; null when none, and always when the config's wait_for_ba is off"
+            },
+            "may_review": {
+              "type": "boolean",
+              "title": "May Review",
+              "description": "whether the caller may review it: a writer who wrote no revision of it since its newest release (any writer when self_approval is on) and, when it has owners, one of them or an admin; never the agent of a run",
+              "default": false
             }
           },
           "type": "object",
@@ -172914,7 +173259,7 @@
                 }
               ],
               "title": "Held By",
-              "description": "what holds an approval now: @ba's review of the round while it is queued or running, then the open findings of level decide of the document; null when it may be approved"
+              "description": "what holds an approval now: @ba's review of the round while it is queued or running, then the open findings of level decide of the document; null when it may be approved, and always when wait_for_ba is off"
             },
             "deciding": {
               "type": "integer",
@@ -172924,7 +173269,7 @@
             "may_review": {
               "type": "boolean",
               "title": "May Review",
-              "description": "whether the caller may review it: a writer who wrote no version of the document since the one approved last, any writer when self_approval is on, never the agent of a run"
+              "description": "whether the caller may review one of its use cases (each says), or the version when it has none to review: a writer who wrote no version of the document since the one approved last"
             }
           },
           "type": "object",
@@ -172949,7 +173294,7 @@
             "may_review"
           ],
           "title": "SrsQueuedVersion",
-          "description": "A version in review of a document the caller sees, with the use cases it needs reviewed, what holds its approval\nnow and whether the caller may review it."
+          "description": "A version in review of a document the caller sees, or the latest version of one whose use cases were sent to\nreview on their own (a draft, listing those alone), with the use cases it needs reviewed, what holds its approval\nnow and whether the caller may review it."
         },
         "SrsRef": {
           "properties": {
@@ -173265,6 +173610,67 @@
           "title": "SrsReviewRun",
           "description": "@ba's review of a version's current round: the task run the hub handed when the version entered review."
         },
+        "SrsRevision": {
+          "properties": {
+            "rev": {
+              "type": "integer",
+              "title": "Rev"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "author": {
+              "type": "string",
+              "title": "Author"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "dropped": {
+              "type": "boolean",
+              "title": "Dropped",
+              "description": "the revision of the version that dropped the use case"
+            },
+            "submitted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Submitted At"
+            },
+            "submitted_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Submitted By"
+            }
+          },
+          "type": "object",
+          "required": [
+            "rev",
+            "version",
+            "author",
+            "created_at",
+            "dropped",
+            "submitted_at",
+            "submitted_by"
+          ],
+          "title": "SrsRevision",
+          "description": "A revision of a use case: the version it first appears in, its author, and whether it was sent to review on\nits own."
+        },
         "SrsSave": {
           "properties": {
             "base_version": {
@@ -173373,9 +173779,11 @@
               "enum": [
                 "pending",
                 "approved",
-                "changes_requested"
+                "changes_requested",
+                "superseded"
               ],
-              "title": "State"
+              "title": "State",
+              "description": "approved once the approved baseline holds its revision (or its removal), superseded when the baseline holds a newer revision, else changes_requested, approved or pending by the reviews that count"
             },
             "reviews": {
               "items": {
@@ -173383,6 +173791,70 @@
               },
               "type": "array",
               "title": "Reviews"
+            },
+            "rev": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rev",
+              "description": "its revision in this version: r1 and up, one more each time it changed"
+            },
+            "released": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Released",
+              "description": "the revision of it the approved baseline holds; null for none"
+            },
+            "submitted": {
+              "type": "boolean",
+              "title": "Submitted",
+              "description": "whether its revision was sent to review on its own",
+              "default": false
+            },
+            "author": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Author",
+              "description": "who wrote its revision in this version"
+            },
+            "authors": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Authors",
+              "description": "who wrote a revision of it since its newest release, and so may not review it (empty when self_approval is on)"
+            },
+            "owners": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Owners",
+              "description": "the members the config's owners names for its group (ORD of UC ORD-3): they and the project's admins alone review it; empty when the config names none, and anyone may"
+            },
+            "link": {
+              "type": "string",
+              "title": "Link",
+              "description": "its review on the hub's web, a path",
+              "default": ""
             }
           },
           "type": "object",
@@ -173395,7 +173867,7 @@
             "reviews"
           ],
           "title": "SrsUseCase",
-          "description": "A use case a version needs reviewed, with its state and the reviews that count."
+          "description": "A use case a version needs reviewed, with its state, its revision and the reviews that count."
         },
         "SrsUseCaseReview": {
           "properties": {
@@ -173454,6 +173926,150 @@
           ],
           "title": "SrsUseCaseReview",
           "description": "A review of a use case that counts for the version, with the version it was recorded on."
+        },
+        "SrsUseCaseSubmitted": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "parent_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Number",
+              "description": "the version it was built on"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "in_review",
+                "approved",
+                "superseded",
+                "withdrawn"
+              ],
+              "title": "State"
+            },
+            "round": {
+              "type": "integer",
+              "title": "Round",
+              "description": "how many times it was submitted"
+            },
+            "author": {
+              "type": "string",
+              "title": "Author"
+            },
+            "drafted_by_run": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Drafted By Run",
+              "description": "the run of the agent that drafted it, when one did"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "submitted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Submitted At"
+            },
+            "decided_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided At"
+            },
+            "review_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SrsReviewRun"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "@ba's review of the current round, when the hub handed one; none in a project without @ba"
+            },
+            "reviews": {
+              "items": {
+                "$ref": "#/components/schemas/SrsReview"
+              },
+              "type": "array",
+              "title": "Reviews"
+            },
+            "use_cases": {
+              "items": {
+                "$ref": "#/components/schemas/SrsUseCase"
+              },
+              "type": "array",
+              "title": "Use Cases"
+            },
+            "use_case": {
+              "$ref": "#/components/schemas/SrsUseCase"
+            },
+            "use_case_review_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SrsReviewRun"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "@ba's review of the use case's round; none in a project without @ba"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "parent_number",
+            "state",
+            "round",
+            "author",
+            "drafted_by_run",
+            "summary",
+            "created_at",
+            "submitted_at",
+            "decided_at",
+            "review_run",
+            "reviews",
+            "use_cases",
+            "use_case",
+            "use_case_review_run"
+          ],
+          "title": "SrsUseCaseSubmitted",
+          "description": "The latest version of a document after one of its use cases was sent to review on its own: the use case, and\n@ba's review of its round when the hub handed one."
         },
         "SrsVersion": {
           "properties": {

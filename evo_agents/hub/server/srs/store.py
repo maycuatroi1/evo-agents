@@ -98,14 +98,18 @@ class Snapshot:
 @dataclass(frozen=True)
 class Settings:
     """The plugin's effective config in a project: the template, the members of each role, the approval policy,
-    whether the author of a version may approve it (``self_approval``, off unless an admin turns it on), and the members
-    told when a version waits for its reviewers (``reviewers``, every writer who may review it when empty)."""
+    whether the author of a version may approve it (``self_approval``, off unless an admin turns it on), the members
+    told when a version waits for its reviewers (``reviewers``, every writer who may review it when empty), the owners
+    of each group of use case codes (``owners``: ``ORD`` of ``UC ORD-3`` to logins, who alone review those use cases with
+    the project's admins), and whether an approval waits for @ba (``wait_for_ba``, on unless an admin turns it off)."""
 
     template: Template
     roles: dict = field(default_factory=dict)
     policy: dict = field(default_factory=dict)
     self_approval: bool = False
     reviewers: tuple[str, ...] = ()
+    owners: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    wait_for_ba: bool = True
 
 
 def sink_of(access: ProjectAccess, sink: str | None) -> str | None:
@@ -468,7 +472,30 @@ async def project_settings(conn: AsyncConnection, project_id: int, project: str)
     roles, policy = dict(values.get("roles") or {}), dict(values.get("approval_policy") or {})
     listed = values.get("reviewers")
     reviewers = tuple(dict.fromkeys(str(login) for login in listed)) if isinstance(listed, list | tuple) else ()
-    return Settings(template, roles, policy, self_approval=values.get("self_approval") is True, reviewers=reviewers)
+    return Settings(
+        template,
+        roles,
+        policy,
+        self_approval=values.get("self_approval") is True,
+        reviewers=reviewers,
+        owners=owners_of_config(values.get("owners")),
+        wait_for_ba=values.get("wait_for_ba") is not False,
+    )
+
+
+def owners_of_config(value) -> dict[str, tuple[str, ...]]:
+    """The config's ``owners`` as groups of use case codes, upper case, each to its logins; a group with none is left
+    out."""
+    if not isinstance(value, dict):
+        return {}
+    found = {}
+    for group, logins in value.items():
+        if not isinstance(logins, list | tuple):
+            continue
+        named = tuple(dict.fromkeys(str(login).strip() for login in logins if str(login).strip()))
+        if named:
+            found[str(group).strip().upper()] = named
+    return found
 
 
 __all__ = [

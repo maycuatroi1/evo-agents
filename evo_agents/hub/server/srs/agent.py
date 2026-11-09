@@ -386,7 +386,7 @@ async def _propose(conn: AsyncConnection, who: Acting, args: dict) -> str:
     doc = await store.document(conn, access, slug, who.sink)
     sent = await reviews.submit(conn, access, doc, made, settings)
     review = await review_entered(conn, access, doc, sent)
-    if review is None:  # no review of @ba to wait for: the reviewers learn of it now (``notices``)
+    if review is None or not settings.wait_for_ba:  # nothing of @ba to wait for: the reviewers learn of it now
         await notices.tell_reviewers(conn, access.project_id, doc, sent)
     new = await store.snapshot(conn, sent)
     since = latest.version.number

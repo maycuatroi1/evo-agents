@@ -9764,6 +9764,7 @@
         "none": "@ba sees nothing to settle.",
         "noneWithout": "Nothing to settle.",
         "intro": "Pick one answer for each point. Agree opens once every point is settled.",
+        "introAdvice": "Pick one answer for each point if you can. @ba's points are advice in this project: you may agree or ask for changes without settling them.",
         "decideLabel": "Points to settle",
         "elsewhere": "{count, plural, one {# point about the whole document to settle} other {# points about the whole document to settle}}",
         "elsewhereText": "Agree waits for these too.",
@@ -9807,6 +9808,7 @@
         "blocked": {
           "reader": "You can only read this project, so you cannot review.",
           "author": "You wrote this change, so someone else in the team reviews it.",
+          "owner": "Use cases of this group are decided by {owners} or an admin of the project.",
           "closed": "This change no longer waits for review.",
           "unchanged": "This change does not touch this use case, so it needs no review of its own."
         },

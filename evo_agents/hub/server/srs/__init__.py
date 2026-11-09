@@ -156,6 +156,24 @@ CONFIG = {
             "type": "boolean",
             "default": False,
         },
+        "owners": {
+            "title": "Use case owners",
+            "description": "The members (logins) who own each group of use case codes, the letters before the number "
+            'of a code, such as {"ORD": ["alice"], "PAY": ["bao"]} for UC ORD-3 and UC PAY-1: only an owner of its '
+            "group or an admin of the project reviews a use case of a group named here, only their reviews count for "
+            "it, and they are the members told it waits for review. A group left out is reviewed as before.",
+            "type": "object",
+            "additionalProperties": _LOGINS,
+        },
+        "wait_for_ba": {
+            "title": "Wait for @ba",
+            "description": "Whether an approval waits for @ba: on, a version or a use case is approved only once "
+            "@ba's review of its round ended and no finding of level decide is open, and its reviewers are told then. "
+            "Off, @ba's review and findings are advice: reviewers are told as soon as it is submitted and approve it "
+            "while @ba still reviews or a finding is open. On by default.",
+            "type": "boolean",
+            "default": True,
+        },
     },
 }
 

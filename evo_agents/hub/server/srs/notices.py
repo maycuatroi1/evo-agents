@@ -11,11 +11,19 @@ a version @ba is still reviewing or whose findings to decide are still open:
 - when the last open finding of level decide of the document is settled or waived (``findings_settled``) while the
   version is in review and @ba's review of its round is no longer queued or running.
 
+With the config's ``wait_for_ba`` off, nothing of @ba holds an approval, so the reviewers are told as soon as the version
+or the use case enters review, @ba's review handed or not; the body says when @ba is still reviewing.
+
 The reviewers are the members the config's ``reviewers`` names, else every writer and admin of the project; of them,
 only those who may review the version now: a grant of writer, the document's label visible through the project's hub
 sink, and no version written since the one approved last unless ``self_approval`` is on. When the config names members
 of whom none may review it now, every writer who may is told instead, so the version never waits for nobody. Each is
 told once per version and round: the details keep the version's id and round, and a later call finds them.
+
+When the config's ``owners`` names owners of the group of a use case to review, those owners are its reviewers, not the
+members ``reviewers`` names, and an owner who wrote a revision of it since its newest release is left out unless
+``self_approval`` is on; the use cases of no group named keep the rule above. When no owner may review any of them, the
+project's admins who may are told. Each member's notice then names, and links, the use cases they may decide.
 
 A use case sent to review on its own (``reviews.submit_use_case``) tells its reviewers the same way
 (``tell_case_reviewers``): when it is sent and @ba reviews nothing, or when @ba's review of its round ends, once no
@@ -36,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import signals, tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.runs import ACTIVE_STATES
 from evo_agents.hub.server.notifications import notify
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.srs import findings, store, use_case_reviews
@@ -95,28 +104,95 @@ async def reviewers(
     """The members to tell that ``held`` of ``doc`` waits for them (see the module), by id: of its use cases ``cases``
     when given, those who may review one of them."""
     rules = await signals.project_rules(conn, project_id)
+    g = tables.grants
+    grants = await conn.execute(
+        select(g.c.user_id, g.c.role, g.c.max_level).where(g.c.project_id == project_id).order_by(g.c.user_id)
+    )
+    seen = {}  # the writers who read the document, by id, with their role
+    for user_id, role, max_level in grants:
+        if not has_role(role, "writer"):
+            continue
+        access = ProjectAccess(project_id, rules, role, max_level)
+        through = store.sink_of(access, None)
+        if through is not None and access.visible(doc.label, through):
+            seen[user_id] = role
+    owned = [case for case in cases or [] if case.owners]
+    if not owned:
+        return await _without_owners(conn, doc, held, settings, cases, seen)
+    logins = {user_id: login.lower() for user_id, (login, _) in (await _people(conn, project_id, set(seen))).items()}
+    found = []
+    for case in owned:
+        named = {owner.lower() for owner in case.owners}
+        found += [user_id for user_id in seen if logins.get(user_id) in named and user_id not in case.authors]
+    if not found:  # no owner may review them: the admins who may
+        found = [
+            user_id
+            for user_id, role in seen.items()
+            if has_role(role, "admin") and any(user_id not in case.authors for case in owned)
+        ]
+    unowned = [case for case in cases or [] if not case.owners]
+    if unowned:
+        found += await _without_owners(conn, doc, held, settings, unowned, seen)
+    return list(dict.fromkeys(found))
+
+
+async def _without_owners(
+    conn: AsyncConnection,
+    doc: DocumentRow,
+    held: VersionRow,
+    settings: Settings,
+    cases: list[CaseState] | None,
+    seen: dict[int, str],
+) -> list[int]:
+    """Of the writers ``seen``, those to tell of ``cases`` (the version when None), none of a group the config's
+    ``owners`` names: the members ``reviewers`` names who may review one of them, else every writer who may."""
     if settings.self_approval:
         barred = set()
     elif cases:  # barred from every one of them
         barred = set.intersection(*(set(case.authors) for case in cases))
     else:
         barred = await use_case_reviews.authors_since(conn, doc, held.number)
-    g = tables.grants
-    grants = await conn.execute(
-        select(g.c.user_id, g.c.role, g.c.max_level).where(g.c.project_id == project_id).order_by(g.c.user_id)
-    )
-    eligible = []
-    for user_id, role, max_level in grants:
-        if user_id in barred or not has_role(role, "writer"):
-            continue
-        access = ProjectAccess(project_id, rules, role, max_level)
-        through = store.sink_of(access, None)
-        if through is not None and access.visible(doc.label, through):
-            eligible.append(user_id)
+    eligible = [user_id for user_id in seen if user_id not in barred]
     if not settings.reviewers:
         return eligible
     named = await _named(conn, settings.reviewers)
     return [user_id for user_id in eligible if user_id in named] or eligible
+
+
+async def _shares(
+    conn: AsyncConnection,
+    project_id: int,
+    doc: DocumentRow,
+    held: VersionRow,
+    settings: Settings,
+    waiting: list[CaseState],
+    ids: list[int],
+) -> dict[int, list[CaseState]]:
+    """With owners named for some of ``waiting``, the use cases each member ``ids`` is told of: those of the groups
+    they own, those of no group when they are among the reviewers of those, and, for an admin told because no owner
+    may, the owned ones. Empty when no use case waiting has owners: everyone is told of them all."""
+    owned = [case for case in waiting if case.owners]
+    if not owned:
+        return {}
+    unowned = [case for case in waiting if not case.owners]
+    open_to = set(await reviewers(conn, project_id, doc, held, settings, unowned)) if unowned else set()
+    shares = {}
+    for user_id, (login, admin) in (await _people(conn, project_id, set(ids))).items():
+        mine = [case for case in owned if login.lower() in {owner.lower() for owner in case.owners}]
+        mine += unowned if user_id in open_to else []
+        shares[user_id] = mine or ([case for case in owned if user_id not in case.authors] if admin else [])
+    return shares
+
+
+async def _people(conn: AsyncConnection, project_id: int, ids: set[int]) -> dict[int, tuple[str, bool]]:
+    """The login of each member ``ids`` names, and whether they are an admin of project ``project_id``."""
+    u, g = tables.users, tables.grants
+    query = (
+        select(u.c.id, u.c.login, g.c.role)
+        .join_from(u, g, (g.c.user_id == u.c.id) & (g.c.project_id == project_id), isouter=True)
+        .where(u.c.id.in_(ids or [0]))
+    )
+    return {row.id: (row.login, has_role(row.role, "admin")) for row in await conn.execute(query)}
 
 
 def _body(project: str, doc: DocumentRow, held: VersionRow, cases: list[CaseState], run, deciding_settled: bool) -> str:
@@ -133,6 +209,8 @@ def _body(project: str, doc: DocumentRow, held: VersionRow, cases: list[CaseStat
         lines.append("@ba did not review this round.")
     elif run.state == "done":
         lines.append(f"@ba reviewed it (run #{run.id}).")
+    elif run.state in ACTIVE_STATES:  # told before @ba ends: the config's wait_for_ba is off
+        lines.append(f"@ba is still reviewing it (run #{run.id}): you may decide without waiting for its findings.")
     else:
         lines.append(f"@ba's review (run #{run.id}) ended {run.state}: review it without @ba's findings.")
     if deciding_settled:
@@ -147,11 +225,12 @@ async def tell_reviewers(
     approval now; the ids of the members told this time. ``settled`` says the last finding to decide was just settled."""
     if held.state != IN_REVIEW or doc.archived_at is not None:
         return []
-    deciding, running = await findings.holds(conn, doc, held)
-    if deciding or running is not None:
-        return []
     rules = await signals.project_rules(conn, project_id)
     settings = await store.project_settings(conn, project_id, rules.name)
+    if settings.wait_for_ba:
+        deciding, running = await findings.holds(conn, doc, held)
+        if deciding or running is not None:
+            return []
     snap = await store.snapshot(conn, held)
     wide = use_case_reviews.round_approvals(held)
     cases = await use_case_reviews.states(conn, project_id, doc, held, snap.doc, settings, wide)
@@ -166,16 +245,19 @@ async def tell_reviewers(
     else:
         link = store.queue_path(rules.name)
     told = []
-    for user_id in await reviewers(conn, project_id, doc, held, settings, waiting or None):
+    ids = await reviewers(conn, project_id, doc, held, settings, waiting or None)
+    shares = await _shares(conn, project_id, doc, held, settings, waiting, ids)
+    for user_id in ids:
         if await _told(conn, user_id, held):
             continue
+        mine = shares.get(user_id) or waiting
         await notify(
             conn,
             user_id=user_id,
             kind="notice",
             notice_kind=REVIEW,
             title=title,
-            body=body,
+            body=body if mine is waiting else _body(rules.name, doc, held, mine, run, settled),
             project_id=project_id,
             details=_details(
                 doc,
@@ -186,7 +268,9 @@ async def tell_reviewers(
                 links=links,
                 review_run=run.id if run else None,
             ),
-            link=link,
+            link=link
+            if mine is waiting or len(mine) > 1
+            else store.case_path(rules.name, doc.slug, held.number, mine[0].key),
         )
         told.append(user_id)
     return told
@@ -225,10 +309,11 @@ async def tell_case_reviewers(
     case = next((case for case in cases if case.key == key), None)
     if case is None or not case.submitted or case.state in use_case_reviews.DONE:
         return []
-    hold = findings.Case(key, case_name(case), snap.doc, case.review_run_id)
-    deciding, running = await findings.holds(conn, doc, held, hold)
-    if deciding or running is not None:
-        return []
+    if settings.wait_for_ba:
+        hold = findings.Case(key, case_name(case), snap.doc, case.review_run_id)
+        deciding, running = await findings.holds(conn, doc, held, hold)
+        if deciding or running is not None:
+            return []
     path = store.case_path(rules.name, doc.slug, held.number, key)
     title = f"{case_name(case)} of {doc.slug} in {rules.name} waits for your review"
     body = "\n".join(
