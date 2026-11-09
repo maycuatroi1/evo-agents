@@ -445,3 +445,11 @@
 .system-graph .react-flow__attribution a {
   color: var(--muted-foreground);
 }
+
+/* A passage of an SRS item a thread is on (web/src/components/srs/passage-comments.tsx), and the one in view. */
+::highlight(srs-comment) {
+  background-color: var(--attention-soft);
+}
+::highlight(srs-comment-active) {
+  background-color: color-mix(in oklab, var(--attention) 35%, transparent);
+}

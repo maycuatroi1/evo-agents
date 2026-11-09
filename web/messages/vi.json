@@ -7230,7 +7230,8 @@
       "kg_pipeline": "Knowledge graph của một lượt tải lên đã sẵn sàng hoặc thất bại",
       "system_daily_cap": "Một hệ thống agent đã chạm mức chi tiêu trong ngày",
       "srs_review": "Một version SRS chờ bạn duyệt",
-      "srs_reviewed": "Có lượt duyệt mới cho version SRS của bạn"
+      "srs_reviewed": "Có lượt duyệt mới cho version SRS của bạn",
+      "srs_comment": "Có bình luận mới trên tài liệu SRS"
     },
     "item": {
       "unread": "Chưa đọc",
@@ -7258,7 +7259,8 @@
       "viewProposalLabel": "Xem đề xuất #{id}",
       "openProposal": "Mở đề xuất #{id}",
       "openTriage": "Mở thread xử lý lỗi",
-      "openLogin": "Đăng nhập"
+      "openLogin": "Đăng nhập",
+      "openThread": "Mở thread"
     },
     "sheet": {
       "title": "Quyết định #{id}",
@@ -9952,6 +9954,30 @@
       "noPreviewText": "Dán hay đọc Markdown từ file, rồi bấm Xem trước: hub liệt kê những gì file có và những chỗ sai, mà không ghi gì.",
       "readerTitle": "Nhập vào {project} cần vai trò ghi",
       "backToDocuments": "Về danh sách tài liệu"
+    },
+    "useCaseLine": {
+      "approvedRev": "Đã duyệt: r{rev}",
+      "notApproved": "Chưa được duyệt",
+      "sentAlone": "đã gửi duyệt riêng",
+      "review": "Duyệt UC này",
+      "send": "Gửi duyệt UC này",
+      "sent": "Đã gửi {name} đi duyệt",
+      "sendFailed": "Không gửi duyệt được UC này"
+    },
+    "passages": {
+      "title": "Bình luận trên mục này",
+      "hint": "Bôi đen chữ trong mục rồi bấm Bình luận. Viết @ba để nhờ @ba trả lời trong thread.",
+      "hintReader": "Các thread trên đoạn chữ của mục này. Cần quyền writer để bình luận.",
+      "none": "Mục này chưa có thread nào.",
+      "comment": "Bình luận",
+      "newLabel": "Bình luận của bạn về đoạn đã chọn",
+      "send": "Gửi bình luận",
+      "cancel": "Huỷ",
+      "changed": "Đoạn đã đổi",
+      "resolvedBy": "{login} đã đóng thread",
+      "reopen": "Mở lại",
+      "reopened": "Đã mở lại thread",
+      "reopenFailed": "Không mở lại được thread"
     }
   },
   "tasks": {

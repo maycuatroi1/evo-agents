@@ -2,9 +2,9 @@
 
 import {
   AtSign,
+  Boxes,
   CalendarClock,
   CalendarDays,
-  Boxes,
   CircleCheck,
   CirclePause,
   CircleX,
@@ -20,14 +20,14 @@ import {
   Hourglass,
   Images,
   IterationCw,
-  LogIn,
   KeyRound,
-  type LucideIcon,
+  LogIn,
   MessageCircleQuestionMark,
   MessageSquare,
-  Puzzle,
+  MessageSquareText,
   OctagonPause,
   PowerOff,
+  Puzzle,
   Rocket,
   Send,
   ShieldAlert,
@@ -39,6 +39,7 @@ import {
   Target,
   Trash2,
   TriangleAlert,
+  type LucideIcon,
   Unplug,
   Upload,
   UserPlus,
@@ -127,6 +128,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   system_daily_cap: { icon: Wallet },
   srs_review: { icon: ClipboardCheck },
   srs_reviewed: { icon: FileCheck },
+  srs_comment: { icon: MessageSquareText },
 };
 
 /** Whether the web has a name and an icon for a kind of notice; a core plugin's own kind may have none. */

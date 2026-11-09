@@ -8218,7 +8218,9 @@ export interface paths {
         };
         /**
          * List Comments
-         * @description The comments of a document, oldest first.
+         * @description The comments of a document, oldest first: every thread, or the threads of ``item`` (and the items under it), and
+         *     only those open or resolved with ``status``. A passage's ``anchor`` is read in ``version``, the latest unless
+         *     asked.
          */
         get: operations["list_comments_v1_x_srs__project__documents__slug__comments_get"];
         put?: never;
@@ -8244,9 +8246,29 @@ export interface paths {
         put?: never;
         /**
          * Resolve Comment
-         * @description Close the thread of a comment.
+         * @description Close the thread of a comment (its root, for an answer), as a member; never the agent of a run.
          */
         post: operations["resolve_comment_v1_x_srs__project__documents__slug__comments__comment_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/comments/{comment_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen Comment
+         * @description Open a resolved thread again (its root, for an answer), as a member; never the agent of a run.
+         */
+        post: operations["reopen_comment_v1_x_srs__project__documents__slug__comments__comment_id__reopen_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -42108,11 +42130,18 @@ export interface components {
             retire: boolean;
             new?: components["schemas"]["SrsNewItem"] | null;
         };
-        /** SrsComment */
+        /**
+         * SrsComment
+         * @description A comment: the root of a thread (no ``parent_id``) or an answer in it. A thread on an item may be anchored to a
+         *     passage of it.
+         */
         SrsComment: {
             /** Id */
             id: number;
-            /** Version */
+            /**
+             * Version
+             * @description the version it was made on, when it names one
+             */
             version: number | null;
             /**
              * Item
@@ -42121,11 +42150,17 @@ export interface components {
             item: string | null;
             /** Item Code */
             item_code: string | null;
-            /** Parent Id */
+            /**
+             * Parent Id
+             * @description the root of its thread; null for a root
+             */
             parent_id: number | null;
             /** Author */
             author: string;
-            /** Run Id */
+            /**
+             * Run Id
+             * @description the run of the agent that wrote it, when an agent did
+             */
             run_id: number | null;
             /** Body */
             body: string;
@@ -42138,8 +42173,46 @@ export interface components {
             resolved_by: string | null;
             /** Resolved At */
             resolved_at: string | null;
+            /**
+             * Field
+             * @description of a passage: the part of the item it is in (body, a field, steps)
+             */
+            field?: string | null;
+            /**
+             * Quote
+             * @description the passage the thread is anchored to, as it was selected
+             */
+            quote?: string | null;
+            /**
+             * Prefix
+             * @description the text just before the passage
+             */
+            prefix?: string | null;
+            /**
+             * Suffix
+             * @description the text just after the passage
+             */
+            suffix?: string | null;
+            /**
+             * Start Offset
+             * @description where the passage started in its part
+             */
+            start_offset?: number | null;
+            /**
+             * Anchor
+             * @description of a passage, in the version read (the latest unless asked): found while the item still holds its words, changed when not or the item is gone; null for a comment on no passage
+             */
+            anchor?: ("found" | "changed") | null;
+            /**
+             * Ask Run Id
+             * @description the run of @ba this comment asked to answer its thread
+             */
+            ask_run_id?: number | null;
         };
-        /** SrsCommentIn */
+        /**
+         * SrsCommentIn
+         * @description A comment to write: ``@ba`` in its body asks @ba to answer in the thread.
+         */
         SrsCommentIn: {
             /** Body */
             body: string;
@@ -42152,9 +42225,34 @@ export interface components {
             item?: string | null;
             /**
              * Parent Id
-             * @description the comment it answers
+             * @description the comment it answers (its thread's root or an answer)
              */
             parent_id?: number | null;
+            /**
+             * Field
+             * @description the part a passage is in
+             */
+            field?: string | null;
+            /**
+             * Quote
+             * @description a passage of the item the comment is on
+             */
+            quote?: string | null;
+            /**
+             * Prefix
+             * @description the text just before the passage
+             */
+            prefix?: string | null;
+            /**
+             * Suffix
+             * @description the text just after the passage
+             */
+            suffix?: string | null;
+            /**
+             * Start Offset
+             * @description where the passage starts in its part
+             */
+            start_offset?: number | null;
         };
         /** SrsDiff */
         SrsDiff: {
@@ -42481,6 +42579,11 @@ export interface components {
              * @description a use case's revision in this version (r1 and up); null for another item
              */
             rev?: number | null;
+            /**
+             * Released
+             * @description of a use case: the revision the approved baseline holds; null when it holds none
+             */
+            released?: number | null;
         };
         /**
          * SrsItemDetail
@@ -42518,6 +42621,11 @@ export interface components {
              * @description a use case's revision in this version (r1 and up); null for another item
              */
             rev?: number | null;
+            /**
+             * Released
+             * @description of a use case: the revision the approved baseline holds; null when it holds none
+             */
+            released?: number | null;
             /** Document */
             document: string;
             /** Version */
@@ -42529,11 +42637,6 @@ export interface components {
             path: string[];
             /** Children */
             children: components["schemas"]["SrsItem"][];
-            /**
-             * Released
-             * @description of a use case: the revision the approved baseline holds
-             */
-            released?: number | null;
             /**
              * Revisions
              * @description of a use case: its revisions, r1 first
@@ -45222,7 +45325,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed" | "srs_comment";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier; null: back to the hub's default
@@ -45236,7 +45339,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed" | "srs_comment";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier
@@ -78544,7 +78647,14 @@ export interface operations {
     };
     list_comments_v1_x_srs__project__documents__slug__comments_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description a version's number; the latest when left out */
+                version?: number | null;
+                /** @description the threads of this item and the items under it */
+                item?: string | null;
+                /** @description only the threads open or resolved */
+                status?: ("open" | "resolved") | null;
+            };
             header?: {
                 "X-Evo-Sink"?: string | null;
             };
@@ -78705,6 +78815,86 @@ export interface operations {
         };
     };
     resolve_comment_v1_x_srs__project__documents__slug__comments__comment_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                comment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsComment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reopen_comment_v1_x_srs__project__documents__slug__comments__comment_id__reopen_post: {
         parameters: {
             query?: never;
             header?: {

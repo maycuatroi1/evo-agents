@@ -84,7 +84,8 @@ plugin off deletes nothing: its tables and rows stay for when it is on again.
 - **Links** between the items of a version: `uses_screen` (a use case to a screen), `refines` and `relates`. They are
   set by a save of changes (the web, the API or @ba); Markdown does not carry them.
 - **Reviews** approve a version in review or ask for changes, per round, each counting for a role.
-- **Comments** are threads on a document, a version or an item. A comment @ba wrote names its run.
+- **Comments** are threads on a document, a version or an item, or on a passage of an item (section Comments). A
+  comment @ba wrote names its run.
 - **Findings** are the conflicts @ba found in a document, each with the sources that show it, a level and a status
   (section Findings).
 
@@ -96,8 +97,9 @@ Markdown body once, by SHA-256), `srs_items`, `srs_codes`, `srs_item_versions`, 
 version's current round; 0070 adds `srs_settle_chats`, the settle chat of a version, and `srs_findings.commit_authors`;
 0071 adds `srs_approval_tasks`, what the approval of a version did to the project's tasks. 0226 adds
 `srs_use_case_revisions` and `srs_use_case_releases`, filled from every version saved before (the revisions) and from
-the version each document approved last (its use cases, released at their revision there). Going back past each drops
-what it added.
+the version each document approved last (its use cases, released at their revision there). 0227 adds the passage a
+comment is on and the run of @ba it asked to `srs_comments` (section Comments). Going back past each drops what it
+added.
 
 ## Who does what
 
@@ -433,6 +435,40 @@ the approver: the event's payload. It is idempotent by document and version: `sr
 version, claimed first, so a delivery again makes no task, comment or run. A project that enabled the plugin tasks
 only after the version was approved gets nothing from that version, as when the approval made the tasks itself.
 
+## Comments
+
+A comment is the root of a thread, on the document, a version or an item, or an answer in a thread; an answer to an
+answer joins its root's thread. A thread on an item may be anchored to a passage of it (migration 0227): the part of
+the item it is in (`field`: the body, a field's name, the steps), the passage as the reader selected it (`quote`), a
+little of the text before and after it (`prefix`, `suffix`) and where it started (`start_offset`), with the version it
+was made on. A later version finds the passage again by its words: the item's title, fields and body and the passage
+compared once Markdown marks, table bars and runs of white space are left out. `anchor` is `found` while the item still
+holds them, `changed` when not or the item is gone; the thread stays either way.
+
+After a comment the hub sends the notice `srs_comment` to the people of its thread (the author of each comment but an
+agent's, and who resolved it), to the members it names (`@login`) and to the author of the item's revision (the use
+case's, or the latest version's for an item under no use case), never to its own author. Its link opens the thread on
+the item (`/p/{project}/x/srs/documents/{slug}?s={key}&c={thread}`).
+
+A member's comment that names `@ba` hands @ba a task run (when the project enabled the agent type ba): it reads the
+thread with `srs__read` (`thread`) and answers once in it with `srs__comment` (`parent_id`). The comment keeps the run
+(`ask_run_id`). An agent's comment asks nothing, and no agent resolves or reopens a thread.
+
+On the web, the contents of an item and the review of a use case let a writer select text and press **Comment**: the
+first comment of a thread on that passage. The threads of the item and the items under it stand beside it, each passage
+of an open thread highlighted where it is still found and marked "passage changed" where not; anyone in the thread
+answers it, a writer resolves it or opens it again. The head of a use case's contents says its revision, where its
+review stands and the revision approved, links its review while it waits for one, and offers a writer **Send this use
+case to review** when the latest version, a draft, holds a revision of it not approved yet.
+
+```sh
+evo-agents hub srs comments list orders --project evo-agents --item "UC ORD-1" --status open
+evo-agents hub srs comments add orders "Why 50? @ba" --project evo-agents --item "BR ORD1-1" --quote "at most 50 lines"
+evo-agents hub srs comments reply orders 12 "The warehouse limit" --project evo-agents
+evo-agents hub srs comments resolve orders 12 --project evo-agents
+evo-agents hub srs comments reopen orders 12 --project evo-agents
+```
+
 ## Archiving a document
 
 An admin of the project archives a document that is no longer in use, and opens it again; nothing is deleted:
@@ -544,7 +580,9 @@ Under `/v1/x/srs/{project}/`:
 | `POST documents/{slug}/versions/{number}/withdraw` | `{"comment"}`, optional: a version in review out of review for good |
 | `POST documents/{slug}/retire` | `{"codes", "summary", "dry_run"}`: the next version without those items; `dropped` lists each item |
 | `POST documents/{slug}/archive`, `POST documents/{slug}/unarchive` | archive a document, open it again; the document's summary |
-| `GET` and `POST documents/{slug}/comments`, `POST .../comments/{id}/resolve` | threads on a document, a version or an item |
+| `GET documents/{slug}/comments` (`?item=REF&status=open\|resolved&version=N`) | the comments, oldest first: every thread, or those of an item and the items under it, open or resolved; each passage's `anchor` read in `version`, the latest unless asked |
+| `POST documents/{slug}/comments` | `{"body", "version", "item", "parent_id", "field", "quote", "prefix", "suffix", "start_offset"}`: a thread, on a passage with `quote`, or an answer (`parent_id`, any comment of the thread); `@ba` in a member's body asks @ba to answer |
+| `POST .../comments/{id}/resolve`, `POST .../comments/{id}/reopen` | close a thread, or open it again (its root, for an answer); a member, never the agent of a run |
 | `GET documents/{slug}/findings` (`?status=open`) | the findings of a document, oldest first, each with its sources and how it was settled; a code source names the `document` whose item holds it, when the caller sees that document |
 | `POST documents/{slug}/findings/{id}/settle` | `{"option", "note"}`: a writer settles an open finding from the review of a use case, by picking one of its `options` (0 for A), which becomes its resolution with the note, or, for a finding with no option, by the note alone; never a run's token |
 | `POST documents/{slug}/findings/{id}/waive` | `{"reason"}`: an admin waives an open finding |
@@ -604,11 +642,11 @@ as for any agent.
 
 | Tool | What it does | Who may call it |
 | --- | --- | --- |
-| `srs__read` | the documents; a version as Markdown with its state and problems; an item and the items under it, by code (its kind word may be left out), alias or key | anyone with a grant |
+| `srs__read` | the documents; a version as Markdown with its state and problems; an item and the items under it, by code (its kind word may be left out), alias or key, with their open threads; a thread (`thread`): its passage, whether the version still holds it, every comment | anyone with a grant |
 | `srs__search` | items of the latest versions by code, alias or words | anyone with a grant |
 | `srs__diff` | what changed between two versions, item by item | anyone with a grant |
 | `srs__propose` | changes on `base_version` as the document's next version, sent to review at once | the agent of a chat run of @ba, or of a task run of @ba the Loop handed out for a use case |
-| `srs__comment` | a comment on a document, a version or an item | the agent of a run of @ba |
+| `srs__comment` | a comment on a document, a version or an item, or an answer in a thread (`parent_id`), which tells the people of the thread | the agent of a run of @ba |
 | `srs__finding` | record a finding with its sources; resolve, waive or reopen one (section Findings) | the agent of a run of @ba |
 | `kg_search`, `kg_context` | nodes of the project's knowledge graph by words, and a node with what it links to | the agent of any run, as the hub's /mcp offers them |
 | `tasks__create` | a task linked to the items it names by code, under `parent` when named (plugin tasks, `docs/tasks-plugin.md`) | the agent of a chat run, or a member's own session, for a writer; the split run of @ba, for the approver |

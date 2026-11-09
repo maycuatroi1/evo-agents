@@ -56,13 +56,15 @@ function fieldName(name: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-function Facts({ rows }: { rows: { label: string; value: ReactNode }[] }) {
+function Facts({ rows }: { rows: { label: string; value: ReactNode; field?: string }[] }) {
   return (
     <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-[minmax(7rem,auto)_1fr]" data-testid="srs-facts">
       {rows.map((row) => (
         <div key={row.label} className="contents">
           <dt className="text-[13px] text-muted-foreground max-sm:mt-1">{row.label}</dt>
-          <dd className="min-w-0 [overflow-wrap:anywhere]">{row.value}</dd>
+          <dd className="min-w-0 [overflow-wrap:anywhere]" data-srs-field={row.field}>
+            {row.value}
+          </dd>
         </div>
       ))}
     </dl>
@@ -74,7 +76,7 @@ export function Rule({ rule, links, codes, mark }: { rule: SrsItem; links: ItemL
   const t = useTranslations("srs.item");
   const steps = stepRefs(rule);
   return (
-    <article className="rounded-md border p-4" aria-labelledby={`rule-${rule.key}`} data-testid="srs-rule">
+    <article className="rounded-md border p-4" aria-labelledby={`rule-${rule.key}`} data-testid="srs-rule" data-srs-item={rule.key} data-srs-field="body">
       <header className="mb-2 flex flex-wrap items-center gap-2">
         {mark}
         {steps.length ? <span className="text-xs text-muted-foreground">{t("atSteps", { steps: steps.join(", "), count: steps.length })}</span> : null}
@@ -98,7 +100,7 @@ export function StepsTable({ items, item, links }: Props) {
   const steps = stepsOf(item);
   if (steps.rows.length === 0) return <p className="text-[13px] text-muted-foreground">{t("noSteps")}</p>;
   return (
-    <div role="region" aria-label={t("stepsLabel", { code: item.code ?? item.title })} tabIndex={0} className="overflow-x-auto rounded-md border">
+    <div role="region" aria-label={t("stepsLabel", { code: item.code ?? item.title })} tabIndex={0} className="overflow-x-auto rounded-md border" data-srs-field="steps">
       <table className="w-full border-collapse text-sm" data-testid="srs-steps">
         <caption className="sr-only">{t("stepsLabel", { code: item.code ?? item.title })}</caption>
         <thead>
@@ -147,13 +149,14 @@ function UseCase({ items, item, links }: Props) {
             .map((fact) => ({
               label: fact.known ? tField(fact.name as never) : fieldName(fact.name),
               value: <CodeText text={fact.value} items={items} links={links} />,
+              field: fact.name,
             })),
         ]}
       />
       <h3 className={H3}>{t("activityFlow")}</h3>
       <StepsTable items={items} item={item} links={links} />
       {prose ? (
-        <div className="mt-4">
+        <div className="mt-4" data-srs-field="body">
           <SafeMarkdown testId="srs-markdown" codes={codes}>
             {prose}
           </SafeMarkdown>

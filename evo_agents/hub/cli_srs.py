@@ -6,7 +6,8 @@ plugins). The plugin's code is ``evo_agents.hub.server.srs``, which this client 
 prints a document's versions and the items of its latest version (``--version N`` another), ``--item CODE`` one item
 with its fields and children. ``import FILE`` reads Markdown (``-`` for stdin) whose headings follow the template, as
 a new document (``--slug``, ``--title``) or as the next version of ``--doc``; ``--dry-run`` prints the preview only.
-``queue`` prints what waits for review in the project, use case by use case, with whether the caller may review each
+``comments list|add|reply|resolve|reopen SLUG`` reads and writes threads of comments, one on a passage of an item with
+``--item`` and ``--quote``; ``@ba`` in a comment asks @ba to answer in its thread. ``queue`` prints what waits for review in the project, use case by use case, with whether the caller may review each
 and the link of its review. ``export SLUG`` prints a version as Markdown (``--no-anchors`` leaves out the screens' code comments, ``--output``
 writes a file). ``submit SLUG N`` sends a draft to review; ``submit SLUG --item CODE`` sends one use case to review on
 its own, the revision it has in the latest version. ``approve SLUG N`` approves a version, ``--request-changes`` sends
@@ -51,8 +52,21 @@ SUMMARY_KEYS = (
     "archived_at",
 )
 DOCUMENT_KEYS = (*SUMMARY_KEYS, "versions", "shown")
-ITEM_KEYS = ("key", "kind", "code", "aliases", "title", "parent", "heading_level", "fields", "body", "refs", "rev")
-ITEM_DETAIL_KEYS = (*ITEM_KEYS, "document", "version", "path", "children", "released", "revisions")
+ITEM_KEYS = (
+    "key",
+    "kind",
+    "code",
+    "aliases",
+    "title",
+    "parent",
+    "heading_level",
+    "fields",
+    "body",
+    "refs",
+    "rev",
+    "released",
+)
+ITEM_DETAIL_KEYS = (*ITEM_KEYS, "document", "version", "path", "children", "revisions")
 IMPORT_KEYS = ("document", "created", "version", "dry_run", "preview")
 RETIRE_KEYS = ("document", "version", "dry_run", "dropped")
 FINDING_STATUSES = ("open", "resolved", "waived")
@@ -426,6 +440,80 @@ def cmd_queue(args) -> int:
     return 0
 
 
+COMMENT_KEYS = (
+    "id",
+    "version",
+    "item",
+    "item_code",
+    "parent_id",
+    "author",
+    "run_id",
+    "body",
+    "created_at",
+    "resolved_by",
+    "resolved_at",
+    "field",
+    "quote",
+    "prefix",
+    "suffix",
+    "start_offset",
+    "anchor",
+    "ask_run_id",
+)
+
+
+def _print_threads(slug: str, comments: list[dict]) -> None:
+    roots = [c for c in comments if c["parent_id"] is None]
+    if not roots:
+        print(f"{slug} has no thread of comments that fits.")
+        return
+    for root in roots:
+        about = root["item_code"] or root["item"] or "the document"
+        state = "open" if root["resolved_by"] is None else f"resolved by {root['resolved_by']}"
+        print(f"thread {root['id']} on {about} ({state})")
+        if root.get("quote"):
+            changed = " [passage changed]" if root.get("anchor") == "changed" else ""
+            print(f'  passage: "{root["quote"]}"{changed}')
+        for one in [root, *(c for c in comments if c["parent_id"] == root["id"])]:
+            by = f"{one['author']} (run #{one['run_id']})" if one["run_id"] else one["author"]
+            asked = f" [asked @ba: run #{one['ask_run_id']}]" if one.get("ask_run_id") else ""
+            print(f"  #{one['id']} {by} {when(one['created_at'])}{asked}: {one['body']}")
+
+
+@client_command
+def cmd_comments(args) -> int:
+    path = ("documents", args.slug, "comments")
+    if args.comments_command == "list":
+        query = {"item": args.item, "status": args.status, "version": args.version}
+        found = _call("GET", _path(args.project, *path, query=query))
+        if args.json:
+            print_json(found)
+        else:
+            _print_threads(args.slug, found)
+        return 0
+    if args.comments_command in ("resolve", "reopen"):
+        found = _object("POST", _path(args.project, *path, str(args.comment), args.comments_command))
+    else:
+        body: dict = {"body": args.body}
+        if args.comments_command == "reply":
+            body["parent_id"] = args.comment
+        else:
+            for name in ("item", "version", "quote", "field"):
+                if getattr(args, name) is not None:
+                    body[name] = getattr(args, name)
+        found = _object("POST", _path(args.project, *path), body)
+    if args.json:
+        print_json(found)
+        return 0
+    root = found["parent_id"] or found["id"]
+    if args.comments_command in ("resolve", "reopen"):
+        print(f"Thread {root} of {args.slug} is {'resolved' if found['resolved_by'] else 'open'}.")
+    else:
+        asked = f"; @ba answers it in run #{found['ask_run_id']}" if found.get("ask_run_id") else ""
+        print(f"Comment {found['id']} in thread {root} of {args.slug}{asked}.")
+    return 0
+
+
 @client_command
 def cmd_withdraw(args) -> int:
     body = {"comment": args.comment} if args.comment else {}
@@ -674,6 +762,41 @@ def _register_findings(ssub) -> None:
     waive.set_defaults(func=cmd_waive)
 
 
+def _register_comments(ssub) -> None:
+    comments = ssub.add_parser("comments", help="threads of comments: list, add, reply, resolve, reopen")
+    csub = comments.add_subparsers(dest="comments_command", required=True)
+    listed = csub.add_parser("list", help="the threads of a document, of one item, open or resolved")
+    listed.add_argument("slug", metavar="SLUG")
+    _project(listed)
+    listed.add_argument("--item", metavar="CODE", help="the threads of this item and the items under it")
+    listed.add_argument("--status", choices=("open", "resolved"), help="only the threads open or resolved")
+    listed.add_argument("--version", type=int, metavar="N", help="read the passages in this version (default: latest)")
+    json_option(listed, returns_array(*COMMENT_KEYS, schema="SrsComment"))
+    added = csub.add_parser("add", help="a new thread; @ba in the text asks @ba to answer in it")
+    added.add_argument("slug", metavar="SLUG")
+    added.add_argument("body", metavar="TEXT")
+    _project(added)
+    added.add_argument("--item", metavar="CODE", help="the item it is on")
+    added.add_argument("--quote", metavar="TEXT", help="the passage of the item it is on (needs --item)")
+    added.add_argument("--field", metavar="NAME", help="the part of the item the passage is in")
+    added.add_argument("--version", type=int, metavar="N", help="the version it is on")
+    json_option(added, returns_object(*COMMENT_KEYS, schema="SrsComment"))
+    for name, what in (
+        ("reply", "answer a thread, by the id of any comment of it"),
+        ("resolve", "resolve a thread (a member, never an agent)"),
+        ("reopen", "open a resolved thread again"),
+    ):
+        parser = csub.add_parser(name, help=what)
+        parser.add_argument("slug", metavar="SLUG")
+        parser.add_argument("comment", type=int, metavar="COMMENT", help="the id of a comment of the thread")
+        if name == "reply":
+            parser.add_argument("body", metavar="TEXT")
+        _project(parser)
+        json_option(parser, returns_object(*COMMENT_KEYS, schema="SrsComment"))
+    for parser in (listed, added, *(csub.choices[name] for name in ("reply", "resolve", "reopen"))):
+        parser.set_defaults(func=cmd_comments)
+
+
 def register_srs(hsub) -> None:
     srs = hsub.add_parser("srs", help="BA documents of a project: versions, coded items, approval (plugin srs)")
     ssub = srs.add_subparsers(dest="srs_command", required=True)
@@ -682,3 +805,4 @@ def register_srs(hsub) -> None:
     _register_review(ssub)
     _register_documents(ssub)
     _register_findings(ssub)
+    _register_comments(ssub)

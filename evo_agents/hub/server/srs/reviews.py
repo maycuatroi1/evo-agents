@@ -462,6 +462,13 @@ class CommentRow:
     created_at: datetime
     resolved_by: str | None
     resolved_at: datetime | None
+    field: str | None = None
+    quote: str | None = None
+    prefix: str | None = None
+    suffix: str | None = None
+    start_offset: int | None = None
+    ask_run_id: int | None = None
+    author_id: int | None = None
 
 
 def _comments_query(document_id: int):
@@ -481,6 +488,13 @@ def _comments_query(document_id: int):
             c.c.created_at,
             resolver.c.login.label("resolved_by"),
             c.c.resolved_at,
+            c.c.field,
+            c.c.quote,
+            c.c.prefix,
+            c.c.suffix,
+            c.c.start_offset,
+            c.c.ask_run_id,
+            c.c.author_id,
         )
         .select_from(
             c.join(author, author.c.id == c.c.author_id)
@@ -500,19 +514,31 @@ async def comments(conn: AsyncConnection, doc: DocumentRow) -> list[CommentRow]:
 
 @dataclass(frozen=True)
 class CommentRequest:
+    """A comment: on the document, a version, an item, or an answer to a thread; on an item, a passage of it
+    (``quote``, in ``field``, with the text around it and its offset)."""
+
     body: str
     version: int | None = None
     item: str | None = None
     parent_id: int | None = None
+    field: str | None = None
+    quote: str | None = None
+    prefix: str | None = None
+    suffix: str | None = None
+    start_offset: int | None = None
 
 
-async def _parent_checked(conn: AsyncConnection, doc: DocumentRow, parent_id: int | None) -> None:
+async def _parent_checked(conn: AsyncConnection, doc: DocumentRow, parent_id: int | None) -> int | None:
+    """The root of the thread comment ``parent_id`` is in (an answer joins its root's thread); 422 when ``doc`` has no
+    such comment."""
     if parent_id is None:
-        return
+        return None
     c = tables.srs.comments
-    held = select(c.c.id).where(c.c.id == parent_id, c.c.document_id == doc.id)
-    if (await conn.execute(held)).first() is None:
+    held = select(c.c.id, c.c.parent_id).where(c.c.id == parent_id, c.c.document_id == doc.id)
+    row = (await conn.execute(held)).first()
+    if row is None:
         raise SrsError(422, f"document {doc.slug} has no comment {parent_id}")
+    return row.parent_id or row.id
 
 
 async def comment(
@@ -523,40 +549,66 @@ async def comment(
     request: CommentRequest,
     run_id: int | None = None,
 ) -> CommentRow:
-    """Add a comment to ``doc`` as ``user``; the comment."""
+    """Add a comment to ``doc`` as ``user``; the comment. An answer joins the thread of the comment it answers, at its
+    root; a passage (``quote``) needs an item, and keeps the version it was read in (the latest when none is named)."""
     writer(access, "commenting on a document")
-    version_id = (await store.version(conn, doc, request.version)).id if request.version is not None else None
+    quote = (request.quote or "").strip() or None
+    if quote is not None and not request.item:
+        raise SrsError(422, "a comment on a passage names the item the passage is in")
+    number = request.version if request.version is not None or quote is None else doc.latest_version
+    version_id = (await store.version(conn, doc, number)).id if number is not None else None
     item_id = await store.item_id(conn, access, doc, request.item) if request.item else None
-    await _parent_checked(conn, doc, request.parent_id)
+    root = await _parent_checked(conn, doc, request.parent_id)
     c = tables.srs.comments
     values = {
         "document_id": doc.id,
         "version_id": version_id,
         "item_id": item_id,
-        "parent_id": request.parent_id,
+        "parent_id": root,
         "author_id": user.user_id,
         "run_id": run_id,
         "body": request.body,
+        "field": (request.field or None) if quote else None,
+        "quote": quote,
+        "prefix": (request.prefix or None) if quote else None,
+        "suffix": (request.suffix or None) if quote else None,
+        "start_offset": request.start_offset if quote else None,
     }
     comment_id = (await conn.execute(insert(c).values(values).returning(c.c.id))).scalar_one()
     return CommentRow(**(await conn.execute(_comments_query(doc.id).where(c.c.id == comment_id))).one()._mapping)
 
 
 async def resolve(
-    conn: AsyncConnection, access: ProjectAccess, user: Principal, doc: DocumentRow, comment_id: int
+    conn: AsyncConnection,
+    access: ProjectAccess,
+    user: Principal,
+    doc: DocumentRow,
+    comment_id: int,
+    *,
+    reopen: bool = False,
 ) -> CommentRow:
-    """Close the thread of comment ``comment_id`` as ``user``; the comment."""
-    writer(access, "closing a thread of comments")
+    """Close the thread of comment ``comment_id`` as ``user``, or open it again (``reopen``); the comment. A member
+    does, never the agent of a run."""
+    if user.acts_for_run is not None:
+        raise SrsError(403, "the agent of a run never resolves or reopens a thread: a member of the project does")
+    writer(access, "reopening a thread of comments" if reopen else "closing a thread of comments")
     c = tables.srs.comments
     held = and_(c.c.id == comment_id, c.c.document_id == doc.id)
-    done = await conn.execute(
-        update(c).where(held, c.c.resolved_at.is_(None)).values(resolved_by=user.user_id, resolved_at=func.now())
-    )
+    above = (await conn.execute(select(c.c.parent_id).where(held))).scalar()
+    if above is not None:  # an answer: its thread is its root's
+        comment_id = above
+        held = and_(c.c.id == comment_id, c.c.document_id == doc.id)
+    if reopen:
+        change = update(c).where(held, c.c.resolved_at.is_not(None)).values(resolved_by=None, resolved_at=None)
+    else:
+        values = {"resolved_by": user.user_id, "resolved_at": func.now()}
+        change = update(c).where(held, c.c.resolved_at.is_(None)).values(values)
+    done = await conn.execute(change)
     row = (await conn.execute(_comments_query(doc.id).where(c.c.id == comment_id))).first()
     if row is None:
         raise SrsError(404, f"document {doc.slug} has no comment {comment_id}")
-    if not done.rowcount and row.resolved_at is None:
-        raise SrsError(409, f"comment {comment_id} could not be resolved")
+    if not done.rowcount and (row.resolved_at is None) != reopen:
+        raise SrsError(409, f"comment {comment_id} could not be {'reopened' if reopen else 'resolved'}")
     return CommentRow(**row._mapping)
 
 

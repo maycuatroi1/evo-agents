@@ -3802,6 +3802,8 @@ evo-agents hub srs show orders --project evo-agents --item "UC ORD-1"
 evo-agents hub srs submit orders 1 --project evo-agents
 evo-agents hub srs submit orders --item "UC ORD-1" --project evo-agents # one use case alone, the latest version's revision
 evo-agents hub srs queue --project evo-agents                           # what waits for review, use case by use case
+evo-agents hub srs comments list orders --project evo-agents --item "UC ORD-1" # threads, on passages too
+evo-agents hub srs comments add orders "Why? @ba" --project evo-agents --item "BR ORD1-1" --quote "at most 50 lines"
 evo-agents hub srs approve orders 1 --project evo-agents                # by another writer, or the author with self_approval
 evo-agents hub srs export orders --project evo-agents --output orders.md
 evo-agents hub srs withdraw orders 2 --project evo-agents --comment "Not ready" # its author or an admin

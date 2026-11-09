@@ -7230,7 +7230,8 @@
       "kg_pipeline": "The knowledge graph of an upload is ready or failed",
       "system_daily_cap": "An agent system reached its daily spending cap",
       "srs_review": "An SRS version waits for your review",
-      "srs_reviewed": "A review of your SRS version"
+      "srs_reviewed": "A review of your SRS version",
+      "srs_comment": "A comment on an SRS document"
     },
     "item": {
       "unread": "Unread",
@@ -7258,7 +7259,8 @@
       "viewProposalLabel": "View proposal #{id}",
       "openProposal": "Open proposal #{id}",
       "openTriage": "Open triage thread",
-      "openLogin": "Log in"
+      "openLogin": "Log in",
+      "openThread": "Open the thread"
     },
     "sheet": {
       "title": "Decision #{id}",
@@ -9952,6 +9954,30 @@
       "noPreviewText": "Paste or read the Markdown, then Preview: the hub lists what it holds and what is wrong, and writes nothing.",
       "readerTitle": "Importing into {project} takes the writer role",
       "backToDocuments": "Back to the documents"
+    },
+    "useCaseLine": {
+      "approvedRev": "Approved: r{rev}",
+      "notApproved": "Not approved yet",
+      "sentAlone": "sent to review on its own",
+      "review": "Review this use case",
+      "send": "Send this use case to review",
+      "sent": "{name} sent to review",
+      "sendFailed": "Couldn't send the use case to review"
+    },
+    "passages": {
+      "title": "Comments on this item",
+      "hint": "Select text in the item, then press Comment. Write @ba to ask @ba to answer in the thread.",
+      "hintReader": "Threads on passages of this item. Commenting takes the writer role.",
+      "none": "No thread on this item yet.",
+      "comment": "Comment",
+      "newLabel": "Your comment on the selected text",
+      "send": "Comment",
+      "cancel": "Cancel",
+      "changed": "Passage changed",
+      "resolvedBy": "Resolved by {login}",
+      "reopen": "Reopen",
+      "reopened": "Thread reopened",
+      "reopenFailed": "Couldn't reopen the thread"
     }
   },
   "tasks": {

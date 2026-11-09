@@ -54,7 +54,7 @@ from evo_agents.hub.server.chat_runs import chat_run
 from evo_agents.hub.server.loop.runs_of import use_case_author
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import Principal, member_principal
-from evo_agents.hub.server.srs import BA, checks, findings, markdown, notices, reviews, revisions, store
+from evo_agents.hub.server.srs import BA, checks, findings, markdown, notices, reviews, revisions, store, threads
 from evo_agents.hub.server.srs.auto_review import review_entered
 from evo_agents.hub.server.srs.diff import diff as item_changes
 from evo_agents.hub.server.srs.diff import text_of
@@ -252,14 +252,45 @@ def _open_lines(slug: str, rows: list[findings.FindingRow]) -> list[str]:
     return lines
 
 
+def _threads_lines(found: list[threads.Thread], content: Document) -> list[str]:
+    """The open threads of an item and the items under it, one line each."""
+    lines = []
+    for thread in found:
+        root = thread.root
+        state = threads.anchor(content, root.item, root.quote)
+        passage = (
+            f' on "{root.quote[:80]}"' + (" (passage changed)" if state == threads.CHANGED else "")
+            if root.quote
+            else ""
+        )
+        lines.append(
+            f"- thread {root.id} by {root.author}{passage}, {len(thread.replies)} answer(s): {root.body[:120]}"
+        )
+    return ["", "Open threads (srs__read with thread to read one):", *lines] if lines else []
+
+
+async def _thread(conn: AsyncConnection, doc: store.DocumentRow, row: store.VersionRow, content: Document, ref: int):
+    found = threads.threads(await reviews.comments(conn, doc))
+    thread = next((one for one in found if ref in {one.root.id, *(reply.id for reply in one.replies)}), None)
+    if thread is None:
+        raise SrsError(404, f"document {doc.slug} has no comment {ref}")
+    state = threads.anchor(content, thread.root.item, thread.root.quote)
+    return threads.thread_text(doc.slug, thread, state, row.number)
+
+
 async def _read(conn: AsyncConnection, who: Acting, args: dict) -> str:
     if not args.get("document"):
         return await _documents(conn, who)
     doc = await _document(conn, who, args["document"])
     row = await store.version(conn, doc, args.get("version"))
     snap = await store.snapshot(conn, row)
+    if args.get("thread"):
+        return await _thread(conn, doc, row, snap.doc, int(args["thread"]))
     if args.get("item"):
-        return _item_text(doc, row, snap.doc, args["item"], await revisions.history(conn, doc.id))
+        text = _item_text(doc, row, snap.doc, args["item"], await revisions.history(conn, doc.id))
+        key = snap.doc.items[snap.doc.item_index(args["item"], f"version {row.number} of {doc.slug}")].key or ""
+        found = threads.chosen(threads.threads(await reviews.comments(conn, doc)), threads.under(snap.doc, key), "open")
+        return "\n".join([text, *_threads_lines(found, snap.doc)])
     problems = checks.problems(snap.doc, (await store.settings(conn, who.access)).template)
     lines = [_version_line(doc, row)]
     if problems:
@@ -415,6 +446,9 @@ async def _comment(conn: AsyncConnection, who: Acting, args: dict) -> str:
     doc = await _document(conn, who, args["document"], lock=True)
     asked = reviews.CommentRequest(args["body"], args.get("version"), args.get("item"), args.get("parent_id"))
     row = await reviews.comment(conn, who.access, who.person, doc, asked, run_id=who.run_id)
+    if row.parent_id is not None:  # an answer: the people of the thread learn of it
+        thread = next(one for one in threads.threads(await reviews.comments(conn, doc)) if one.root.id == row.parent_id)
+        await threads.told(conn, who.access, doc, thread, row)
     where = f"item {row.item_code or row.item}" if row.item else f"version {row.version}" if row.version else "it"
     return f"Comment {row.id} on {where} of {doc.slug}, as {who.person.login}, drafted by run #{who.run_id}."
 
