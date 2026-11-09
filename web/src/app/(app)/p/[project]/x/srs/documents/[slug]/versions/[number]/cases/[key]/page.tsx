@@ -24,7 +24,14 @@ async function names(params: Props["params"]) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const t = await getTranslations("srs.meta");
-  return { title: t("caseReview", await names(params)) };
+  const found = await names(params);
+  // The tab names the use case by its code, as the page does; its key until the version is read.
+  const api = await serverApi();
+  const client = getQueryClient();
+  const shown = srsDocumentQuery(() => api, found.project, found.slug, found.number);
+  await prefetch(client, shown);
+  const item = client.getQueryData(shown.queryKey)?.shown?.items.find((each) => each.key === found.key);
+  return { title: t("caseReview", { ...found, key: item?.code ?? item?.title ?? found.key }) };
 }
 
 /**

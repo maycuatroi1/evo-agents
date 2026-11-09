@@ -3,9 +3,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { useEffect, useRef } from "react";
 
+import { usePageCrumb } from "@/components/shell/page-crumb";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
@@ -58,6 +60,7 @@ function CaseBody({ view, caseKey }: { view: CaseView; caseKey: string }) {
   const t = useTranslations("srs.caseReview");
   const format = useFormatter();
   const { project, slug, latest, version, useCase } = view;
+  const pathname = usePathname();
   const viewer = useSrsViewer(project);
   const login = viewer?.login ?? null;
   const config = useQuery({ ...srsConfigQuery(browserApi, project), retry: false });
@@ -83,6 +86,7 @@ function CaseBody({ view, caseKey }: { view: CaseView; caseKey: string }) {
 
   const day = (value: string) => format.dateTime(new Date(value), { dateStyle: "medium" });
   const code = shown.item.code ?? useCase?.code ?? shown.item.key;
+  usePageCrumb(pathname, code);
   const sent = { code, author: version.author, date: day(version.submitted_at ?? version.created_at) };
   const inUse = latest.approved_version === null ? null : versionOf(latest, latest.approved_version);
   const sub = [

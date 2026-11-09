@@ -85,6 +85,25 @@ export function fieldRows(before: SrsItem | null, after: SrsItem | null): FieldR
   });
 }
 
+/**
+ * A field longer than REWRITE_MIN_CHARS (its two texts together) that keeps less than REWRITE_SHARED of them, or changes
+ * more than REWRITE_RUNS runs, reads as rewritten (`fieldView`); a short one reads word by word whatever it changed.
+ */
+export const REWRITE_MIN_CHARS = 200;
+export const REWRITE_SHARED = 0.7;
+export const REWRITE_RUNS = 8;
+
+/**
+ * How a changed field reads best: word by word when the change is small, else as rewritten, its new text shown whole
+ * and the word-by-word view one click away; a long rewrite marked word by word is a wall of tints nobody reads.
+ */
+export function fieldView(before: string, after: string): { kind: "words"; parts: WordPart[] } | { kind: "rewritten" } {
+  const parts = fieldParts(before, after);
+  if (before.length + after.length <= REWRITE_MIN_CHARS) return { kind: "words", parts };
+  const runs = parts.filter((part) => part.kind !== "same").length;
+  return sharedShare(parts) >= REWRITE_SHARED && runs <= REWRITE_RUNS ? { kind: "words", parts } : { kind: "rewritten" };
+}
+
 /** The words of a changed field: kept, removed and added runs; the whole text replaced when they share too little. */
 export function fieldParts(before: string, after: string): WordPart[] {
   const parts = diffWords(before, after);

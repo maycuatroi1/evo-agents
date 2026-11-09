@@ -9836,7 +9836,13 @@
         "steps": "Steps",
         "rules": "Rules",
         "noRules": "None.",
-        "openItem": "Open the whole use case"
+        "openItem": "Open the whole use case",
+        "rewritten": "Rewritten in this change: this is the new text.",
+        "showOld": "Show the text in use",
+        "hideOld": "Hide the text in use",
+        "showWords": "Show each change",
+        "hideWords": "Show the new text",
+        "oldLabel": "Text in use"
       },
       "changes": {
         "note": "{author}'s note",
