@@ -232,6 +232,9 @@ BROWSER_CONTROL = "browser.control"  # in a view, the dispatcher got the browser
 CHAT_CREATE = "chat.create"  # a member created a chat, with the people and agents it started with
 CHAT_ADD = "chat.add"  # a member added a person or an agent
 CHAT_REMOVE = "chat.remove"  # a member removed one, or left
+# A writer on a project shared its part of a chat's label with people of the chat who hold no grant that clears it, in
+# the project: "chat:<id> shared:<login>,<login>" (evo_agents.hub.server.chat_access).
+CHAT_SHARE = "chat.share"
 CHAT_MESSAGE = "chat.message"  # a member sent a message, or the agent of a run did for its dispatcher
 # A member set the image of a group chat or took it off: "chat:<id> image:<the first 16 of its SHA-256>|none".
 CHAT_IMAGE = "chat.image"

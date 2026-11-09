@@ -26,7 +26,7 @@ from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_store import insert_message, status_reaction
 from evo_agents.hub.server.security import Principal
 from tests.hub.account_pool_setup import give_account_pool
-from tests.hub.live import sql
+from tests.hub.live import ADMIN, sql
 from tests.hub.test_plans import registration
 from tests.hub.test_run_stream import PUBLIC_READER
 from tests.hub.test_run_stream import members as stream_members
@@ -181,24 +181,98 @@ def test_adding_an_agent_to_a_chat_needs_the_writer_role_on_its_project(client, 
     assert hidden.status_code == 404 and "no agent @outsider that you can see" in hidden.json()["message"]
 
 
-def test_adding_a_person_to_a_chat_needs_a_grant_that_clears_every_agent_project(client, hub):
+def user_id(db, login: str) -> int:
+    return principal(db, login).user_id
+
+
+def shares(db, chat_id: int) -> list[tuple[str, str]]:
+    """(person, who shared it) of each share of chat ``chat_id``, by person."""
+    s, u, by = tables.chat_label_shares, tables.users, tables.users.alias("by")
+    query = select(u.c.login, by.c.login).join_from(s, u, u.c.id == s.c.user_id).join(by, by.c.id == s.c.shared_by)
+    return sorted(sql(db, query.where(s.c.chat_id == chat_id)))
+
+
+def test_a_writer_shares_the_chats_label_with_the_people_they_add(client, hub, hub_db):
     chat = created(client, hub["owner"], agents=["reviewer"])
-    for login, why in ((STRANGER, "no grant on project evo-agents"), (PUBLIC_READER, "up to public, below its")):
-        refused = client.put(f"/v1/chats/{chat['id']}/people/{login}", headers=hub["owner"])
-        assert refused.status_code == 409 and why in refused.json()["message"], refused.text
-        assert create(client, hub["owner"], people=[login], agents=["reviewer"]).status_code == 409
+    for login in (STRANGER, PUBLIC_READER):  # no grant, and a grant below the label: the writer shares it with both
+        added = client.put(f"/v1/chats/{chat['id']}/people/{login}", headers=hub["owner"])
+        assert added.status_code == 200, added.text
+    assert shares(hub_db, chat["id"]) == [(PUBLIC_READER, OWNER), (STRANGER, OWNER)]
+    outside = sorted([user_id(hub_db, STRANGER), user_id(hub_db, PUBLIC_READER)])
+    view = client.get(f"/v1/chats/{chat['id']}", headers=hub["stranger"])
+    assert view.status_code == 200 and view.json()["label"][0]["shared_with"] == outside, view.text
+    said = sent(client, hub["stranger"], chat["id"], "hello from outside")
+    assert said["label"][0]["shared_with"] == outside
+    for who in ("stranger", "public", "owner"):
+        assert [m["id"] for m in page(client, hub[who], chat["id"])["messages"]] == [said["id"]]
     nobody = client.put(f"/v1/chats/{chat['id']}/people/nobody-at-all", headers=hub["owner"])
     assert nobody.status_code == 404 and "nobody signed in to this hub" in nobody.json()["message"]
-    added = client.put(f"/v1/chats/{chat['id']}/people/{READER}", headers=hub["owner"])
-    assert added.status_code == 200 and [p["login"] for p in added.json()["people"]] == [OWNER, READER]
-    # a chat of people takes anyone; an agent then needs every one of them to clear its project's label
-    people = created(client, hub["owner"], people=[STRANGER, OTHER])
-    raised = client.put(f"/v1/chats/{people['id']}/agents/reviewer", headers=hub["owner"])
-    assert raised.status_code == 409 and f"{STRANGER} (no grant on project evo-agents)" in raised.json()["message"]
+    added = client.put(f"/v1/chats/{chat['id']}/people/{READER}", headers=hub["owner"])  # cleared by a grant: no share
+    assert added.status_code == 200 and READER not in dict(shares(hub_db, chat["id"]))
+    # a person cleared by a share alone shares nothing, nor does a reader: someone without a grant they add is refused
+    for headers in (hub["stranger"], hub["reader"]):
+        refused = client.put(f"/v1/chats/{chat['id']}/people/{ADMIN}", headers=headers)
+        assert refused.status_code == 409 and f"{ADMIN} (no grant on project evo-agents)" in refused.json()["message"]
+        assert "A writer on the project" in refused.json()["message"]
+    # a share goes with its person: the stranger left, and only a writer brings them back
+    assert client.delete(f"/v1/chats/{chat['id']}/people/{STRANGER}", headers=hub["stranger"]).status_code == 204
+    assert STRANGER not in dict(shares(hub_db, chat["id"]))
+    assert client.put(f"/v1/chats/{chat['id']}/people/{STRANGER}", headers=hub["reader"]).status_code == 409
+    assert client.put(f"/v1/chats/{chat['id']}/people/{OTHER}", headers=hub["owner"]).status_code == 200
+    assert client.put(f"/v1/chats/{chat['id']}/people/{STRANGER}", headers=hub["other"]).status_code == 200
+    assert (STRANGER, OTHER) in shares(hub_db, chat["id"])
+    # the creator of a chat shares it with the people it starts with
+    started = created(client, hub["owner"], people=[STRANGER], agents=["reviewer"])
+    assert shares(hub_db, started["id"]) == [(STRANGER, OWNER)]
+    shared = [(t, who) for a, t, who, project in audit_rows(hub_db, "chat") if a == "chat.share" and project == PROJECT]
+    assert shared[:2] == [
+        (f"chat:{chat['id']} shared:{STRANGER}", OWNER),
+        (f"chat:{chat['id']} shared:{PUBLIC_READER}", OWNER),
+    ]
     # a person and an agent of the same name cannot be in one chat: @name would name either
     agent(client, hub["owner"], READER)
     clash = client.put(f"/v1/chats/{chat['id']}/agents/{READER}", headers=hub["owner"])
     assert clash.status_code == 409 and "would name either" in clash.json()["message"]
+
+
+def test_a_writer_adds_the_agent_to_a_chat_of_people_outside_the_project(client, hub, hub_db):
+    people = created(client, hub["owner"], people=[STRANGER, OTHER])
+    added = client.put(f"/v1/chats/{people['id']}/agents/reviewer", headers=hub["owner"])
+    assert added.status_code == 200 and [a["handle"] for a in added.json()["agents"]] == ["reviewer"], added.text
+    assert shares(hub_db, people["id"]) == [(STRANGER, OWNER)]  # someone-else clears it by their grant
+    assert client.get(f"/v1/chats/{people['id']}", headers=hub["stranger"]).status_code == 200
+    said = sent(client, hub["owner"], people["id"], "for everyone here")
+    assert [m["id"] for m in page(client, hub["stranger"], people["id"])["messages"]] == [said["id"]]
+    # the agent left: its project's shares go, and an agent added back is shared again by whoever adds it
+    assert client.delete(f"/v1/chats/{people['id']}/agents/reviewer", headers=hub["stranger"]).status_code == 204
+    assert shares(hub_db, people["id"]) == []
+    assert client.put(f"/v1/chats/{people['id']}/agents/reviewer", headers=hub["other"]).status_code == 200
+    assert shares(hub_db, people["id"]) == [(STRANGER, OTHER)]
+    # a writer whose own grant does not clear the label shares nothing: they are refused, naming who
+    low = {"role": "writer", "max_level": "public"}
+    assert client.put(f"/v1/admin/projects/{PROJECT}/grants/{OTHER}", json=low, headers=hub["admin"]).status_code == 200
+    second = created(client, hub["other"], people=[STRANGER])
+    raised = client.put(f"/v1/chats/{second['id']}/agents/reviewer", headers=hub["other"])
+    assert raised.status_code == 409 and f"{STRANGER} (no grant on project evo-agents)" in raised.json()["message"]
+    assert f"{OTHER} (a grant on project evo-agents up to public" in raised.json()["message"]
+    assert shares(hub_db, second["id"]) == []
+    # fail closed: the writer who shared it no longer clears the label, so whom they shared it with is refused
+    for refused in (
+        client.get(f"/v1/chats/{people['id']}", headers=hub["stranger"]),
+        send(client, hub["stranger"], people["id"], "still here?"),
+    ):
+        assert refused.status_code == 403 and "no longer clear its label" in refused.json()["message"]
+    assert [m["id"] for m in page(client, hub["owner"], people["id"])["messages"]] == [said["id"]]
+
+
+def test_a_chats_level_is_set_and_taken_off_with_the_people_it_was_shared_with_in_it(client, hub, hub_db):
+    chat = created(client, hub["owner"], people=[STRANGER], agents=["reviewer"])
+    lowered = set_label(client, hub["owner"], chat["id"], "public")
+    assert lowered.status_code == 200 and lowered.json()["label"][0]["level"] == "public", lowered.text
+    assert lowered.json()["label"][0]["shared_with"] == [user_id(hub_db, STRANGER)]
+    said = sent(client, hub["stranger"], chat["id"], "at public now")
+    assert [m["id"] for m in page(client, hub["stranger"], chat["id"])["messages"]] == [said["id"]]
+    assert set_label(client, hub["owner"], chat["id"], None).status_code == 200
 
 
 def test_a_chat_member_who_no_longer_clears_its_label_is_refused(client, hub):
@@ -253,13 +327,15 @@ def test_chat_candidates_are_the_people_one_shares_a_project_or_a_chat_with(clie
     assert list(shared) == [PUBLIC_READER, READER, OTHER]  # by login; the caller, the admin and the stranger left out
     assert all(p["why"] is None and p["avatar_url"].startswith(chats.GITHUB_AVATARS) for p in shared.values())
     # the agents given say who could not be in the chat, in the words of the hub's refusal; unknown handles count not
-    picked = candidates(client, hub["owner"], "reviewer", "no-such-agent", "Not A Handle")
+    picked = candidates(client, hub["reader"], "reviewer", "no-such-agent", "Not A Handle")
     assert {login: p["why"] for login, p in picked.items() if p["why"]} == {
         PUBLIC_READER: "a grant on project evo-agents up to public, below its label internal"
     }
+    # a writer whose grant clears the label shares it with whom they add: nobody is held back for its project
+    assert all(p["why"] is None for p in candidates(client, hub["owner"], "reviewer").values())
     # a chat adds its people; the stranger, sharing no project, sees the owner and no agent of evo-agents
     created(client, hub["owner"], people=[STRANGER])
-    assert candidates(client, hub["owner"], "reviewer")[STRANGER]["why"] == "no grant on project evo-agents"
+    assert candidates(client, hub["owner"], "reviewer")[STRANGER]["why"] is None
     assert {login: p["why"] for login, p in candidates(client, hub["stranger"], "reviewer").items()} == {OWNER: None}
     too_many = client.get("/v1/chats/people", params={"agents": [f"a{n}" for n in range(11)]}, headers=hub["owner"])
     assert too_many.status_code == 422

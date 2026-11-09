@@ -131,6 +131,8 @@ def test_an_owner_the_projects_chat_cannot_take_gets_the_thread_in_the_chat_of_t
     project_chat = chat_of(hub_db, first)
     added = client.put(f"/v1/chats/{project_chat}/agents/lumen-bot", headers=hub["other"])
     assert added.status_code == 200, added.text  # the chat's label now names lumen, which the owner holds no grant on
+    # someone-else shared lumen's part with the owner; once they hold reader there, the share clears nothing
+    granted(client, hub, LUMEN, OTHER, "reader", "internal")
     mine = chat_worker(client, hub["owner"], "mac-mini", slots=4, pool=PROJECT)
     second = failed_step(client, hub, mine, 4)
     ((chat_id, root_id, *_),) = row_of(hub_db, second)

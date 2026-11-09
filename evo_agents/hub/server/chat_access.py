@@ -7,11 +7,23 @@ A chat's label is the labels of the projects of its agents: for each project wit
 default label, the label its runs on no plan read as (``runs.service.views.sees_unplanned``), by names, naming that
 project alone. A chat without agents has an empty label: it holds no project's work. A person clears a label when they
 hold a grant on every project it names, whose max level reaches that project's label on the project's own ladder
-(``ProjectRules.visible_by_grant``). Every person in a chat clears its label: adding an agent whose project would take
-it past someone in the chat is refused, and so is adding someone who does not clear it. The hub checks it again on
-every read and write, from the projects and grants as they are then, so someone whose grant was lowered or revoked is
-refused (403), fail closed. A message carries the label the chat had when it was sent (``LabelReader``): once an agent
-left and the label went down, a person who joined since does not read what was written before.
+(``ProjectRules.visible_by_grant``), or when a writer on the project shared its part with them in that chat.
+
+A writer on project P shares P's part of a chat's label with the people of the chat who do not clear it when they add
+an agent of P to it, and with a person they add to a chat with an agent of P (chat_label_shares), so a member of P
+brings people outside P into a chat with P's agent. The writer must clear the part by their own grant, as must whoever
+shares it: a person cleared by a share alone shares nothing, and someone they add who holds no grant is refused. The
+part names the people it was shared with (``shared_with``, their ids), while the writer who shared it still holds the
+writer role on P and a grant that clears the part; a share goes with its person when they leave the chat, and with P
+when P has no agent left in it (``chat_store.unshare``).
+
+Every person in a chat clears its label: adding an agent whose project would take it past someone in the chat is
+refused, and so is adding someone who does not clear it, unless the one adding shares the part as above. The hub
+checks it again on every read and write, from the projects, grants and shares as they are then, so someone whose grant
+was lowered or revoked, or whose share's writer lost theirs, is refused (403), fail closed. A message carries the label
+the chat had when it was sent (``LabelReader``), the people its parts were shared with included: once an agent left and
+the label went down, a person who joined since does not read what was written before, nor what was written before a
+part was shared with them.
 
 An admin of every project with an agent in a group chat may set the chat's own level (``chat_labels``): at or below
 each project's default level, it replaces the level of the part of each project in the chat when it was set
@@ -44,6 +56,16 @@ from evo_agents.hub.db import one_of
 from evo_agents.hub.server.security import Principal
 
 NOT_A_MEMBER = "no chat {id} that you are a member of: see `evo-agents hub chat list`"
+SHARED_WITH = "shared_with"  # the key of a label's part that names the people it was shared with, by id
+
+
+def shared_with(item) -> frozenset[int]:
+    """The people a part of a label was shared with (``SHARED_WITH``); none for a part that names none or not as a list
+    of ids."""
+    found = item.get(SHARED_WITH) if isinstance(item, Mapping) else None
+    if not isinstance(found, list):
+        return frozenset()
+    return frozenset(person for person in found if isinstance(person, int) and not isinstance(person, bool))
 
 
 @dataclass(frozen=True)
@@ -59,6 +81,7 @@ class LabelProject:
     clearance: dict | None
     channels: dict = field(default_factory=dict)
     chat_level: str | None = None
+    shared_with: tuple[int, ...] = ()  # the people of the chat a writer on the project shared its part with
 
     @property
     def rules(self) -> access.ProjectRules:
@@ -83,6 +106,8 @@ class LabelProject:
         found = {**self.default_label, "projects": [self.name]}
         if self.chat_level is not None and self.lowers_to(self.chat_level):
             found["level"] = self.chat_level
+        if self.shared_with:
+            found[SHARED_WITH] = sorted(set(self.shared_with))
         return found
 
     @property
@@ -158,6 +183,8 @@ class LabelReader:
             project = self.projects.get(named[0]) if isinstance(named, list) and len(named) == 1 else None
             if project is None:
                 return "the label names a project that is not on this hub any more"
+            if self.user_id in shared_with(item):
+                continue
             grant = self.grants.get((self.user_id, project.id))
             if grant is None:
                 return f"no grant on project {project.name}"
@@ -274,14 +301,57 @@ async def label_override(conn: AsyncConnection, chat_id: int) -> dict | None:
     return (await conn.execute(select(c.c.label_override).where(c.c.id == chat_id))).scalar_one_or_none()
 
 
+async def label_shares(conn: AsyncConnection, chat_ids: Iterable[int]) -> list:
+    """The shares of chats ``chat_ids`` (chat_label_shares) with the role and max level the writer who shared each holds
+    on its project now, None for none: rows (chat_id, project_id, user_id, role, max_level)."""
+    wanted = sorted(set(chat_ids))
+    if not wanted:
+        return []
+    s, g = tables.chat_label_shares, tables.grants
+    held = and_(g.c.user_id == s.c.shared_by, g.c.project_id == s.c.project_id)
+    query = select(s.c.chat_id, s.c.project_id, s.c.user_id, g.c.role, g.c.max_level).select_from(s.outerjoin(g, held))
+    return list(await conn.execute(query.where(one_of(s.c.chat_id, wanted))))
+
+
+def shares_part(project: LabelProject, role: str | None, max_level: str | None) -> bool:
+    """Whether a person holding ``role`` up to ``max_level`` on ``project`` may share its part of a chat's label: the
+    writer role and a grant that clears the part, shared with nobody else counted."""
+    bare = replace(project, shared_with=())
+    return access.has_role(role, "writer") and bare.rules.visible_by_grant(bare.label, max_level)
+
+
+def with_shares(projects: Iterable[LabelProject], shares: Iterable, chat_id: int) -> list[LabelProject]:
+    """``projects`` of chat ``chat_id`` with the people each was shared with there (``label_shares``), counting only a
+    share whose writer still holds the writer role on the project and a grant that clears its part, fail closed."""
+    found = []
+    for project in projects:
+        people = {
+            row.user_id
+            for row in shares
+            if row.chat_id == chat_id and row.project_id == project.id and shares_part(project, row.role, row.max_level)
+        }
+        found.append(replace(project, shared_with=tuple(sorted(people))))
+    return found
+
+
+async def chat_projects(conn: AsyncConnection, chat_id: int, project_ids: Iterable[int]) -> list[LabelProject]:
+    """The projects ``project_ids`` as chat ``chat_id`` holds their parts now: at the level the chat set for each, if
+    any, with the people each was shared with there."""
+    ids = sorted(set(project_ids))
+    if not ids:
+        return []
+    found = with_override(await projects_by_id(conn, ids), await label_override(conn, chat_id))
+    return with_shares(found, await label_shares(conn, [chat_id]), chat_id)
+
+
 async def agent_projects(conn: AsyncConnection, chat_id: int) -> tuple[LabelProject, ...]:
-    """The projects of the agents in chat ``chat_id`` now, at the level the chat set for each, if any."""
+    """The projects of the agents in chat ``chat_id`` now, at the level the chat set for each, if any, with the people
+    each was shared with there."""
     m, ap = tables.chat_members, tables.agent_profiles
     query = select(ap.c.project_id).join_from(m, ap, ap.c.id == m.c.profile_id)
     query = query.where(m.c.chat_id == chat_id, m.c.removed_at.is_(None))
     ids = (await conn.execute(query)).scalars().all()
-    found = with_override(await projects_by_id(conn, ids), await label_override(conn, chat_id)) if ids else []
-    return tuple(sorted(found, key=lambda p: p.name))
+    return tuple(sorted(await chat_projects(conn, chat_id, ids), key=lambda p: p.name))
 
 
 async def cleared_chats(conn: AsyncConnection, user_id: int) -> list[int]:
@@ -303,11 +373,13 @@ async def cleared_chats(conn: AsyncConnection, user_id: int) -> list[int]:
     c = tables.chats
     query = select(c.c.id, c.c.label_override).where(one_of(c.c.id, chat_ids), c.c.label_override.is_not(None))
     overrides = {row.id: row.label_override for row in await conn.execute(query)}
+    shares = await label_shares(conn, chat_ids)
     reader = LabelReader(user_id, {p.name: p for p in projects.values()}, grants)
     return [
         chat_id
         for chat_id, found in by_chat.items()
-        if reader.why_not(chat_label(with_override(found, overrides.get(chat_id)))) is None
+        if reader.why_not(chat_label(with_shares(with_override(found, overrides.get(chat_id)), shares, chat_id)))
+        is None
     ]
 
 

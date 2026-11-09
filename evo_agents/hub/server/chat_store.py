@@ -93,7 +93,8 @@ async def add_member(
 
 
 async def remove_member(conn: AsyncConnection, chat_id: int, *, user_id=None, profile_id=None) -> bool:
-    """Take a person or an agent out of the chat; whether they were in it."""
+    """Take a person or an agent out of the chat, with the shares that go with them (``unshare``); whether they were in
+    it."""
     m = tables.chat_members
     key = m.c.user_id == user_id if user_id is not None else m.c.profile_id == profile_id
     statement = (
@@ -102,7 +103,43 @@ async def remove_member(conn: AsyncConnection, chat_id: int, *, user_id=None, pr
         .where(m.c.chat_id == chat_id, key, m.c.removed_at.is_(None))
         .returning(m.c.id)
     )
-    return (await conn.execute(statement)).scalar_one_or_none() is not None
+    removed = (await conn.execute(statement)).scalar_one_or_none() is not None
+    if removed:
+        await unshare(conn, chat_id, user_id=user_id, profile_id=profile_id)
+    return removed
+
+
+async def share_label(
+    conn: AsyncConnection, chat_id: int, project_id: int, user_ids: list[int], shared_by: int
+) -> list[int]:
+    """Share project ``project_id``'s part of the chat's label with the people ``user_ids`` (chat_label_shares,
+    ``chat_access``), as ``shared_by``; the people it was not shared with before."""
+    if not user_ids:
+        return []
+    s = tables.chat_label_shares
+    rows = [
+        {"chat_id": chat_id, "project_id": project_id, "user_id": user_id, "shared_by": shared_by}
+        for user_id in user_ids
+    ]
+    statement = pg_insert(s).values(rows).on_conflict_do_nothing().returning(s.c.user_id)
+    return sorted((await conn.execute(statement)).scalars())
+
+
+async def unshare(conn: AsyncConnection, chat_id: int, *, user_id=None, profile_id=None) -> None:
+    """Drop the shares that go when a member leaves the chat: a person's own, or, once the agent ``profile_id`` left,
+    those of its project when the chat has no agent of that project any more."""
+    s, m, ap = tables.chat_label_shares, tables.chat_members, tables.agent_profiles
+    if user_id is not None:
+        await conn.execute(delete(s).where(s.c.chat_id == chat_id, s.c.user_id == user_id))
+        return
+    project_id = select(ap.c.project_id).where(ap.c.id == profile_id).scalar_subquery()
+    others = (
+        select(m.c.id)
+        .join(ap, ap.c.id == m.c.profile_id)
+        .where(m.c.chat_id == chat_id, m.c.removed_at.is_(None), ap.c.project_id == s.c.project_id)
+        .exists()
+    )
+    await conn.execute(delete(s).where(s.c.chat_id == chat_id, s.c.project_id == project_id, ~others))
 
 
 async def member_event(conn: AsyncConnection, chat_id: int, kind: str, member: ChatAuthor, by: str | None) -> int:
