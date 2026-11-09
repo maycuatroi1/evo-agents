@@ -4097,6 +4097,12 @@ for example `amqp://user:password@rabbitmq:5672/`) on the api, the worker and a 
 deliver`, and the same events go through the broker within seconds (`evo_agents/hub/bus.py`,
 `evo_agents/hub/deliverer.py`). The hub never logs the URL's password.
 
+How long an event takes to go out, from its commit to the plugin or the channel: without the bus, from a few seconds
+when a job slot is free to a minute or more, when the job waits for the minute's cron or behind long jobs; with it,
+within seconds. Either way the fallback is the same: the jobs and the minute's cron deliver whatever the bus did not,
+so a hub whose broker is down, or that never had one, loses nothing. `docs/hub-deployment.md`, section The event bus
+and the cache, turns both on with the compose profile `bus`.
+
 The outbox in Postgres stays the record of what is due either way: `plugin_deliveries` and `notification_deliveries`
 keep each delivery's state, due time and tries. The broker only carries the news that something is due:
 
@@ -4313,12 +4319,16 @@ environment, never in a committed file.
 | `EVO_HUB_PLUGIN_HOST_TOKEN` | api, worker, plugins | the secret the api and the plugin host share, at least 32 random characters, refused when it is a value an example showed; the `plugins` service takes it and nothing else of the hub's |
 | `EVO_HUB_GATEWAY_SECRET` | api, gateway | the root secret of the model gateway, at least 32 random characters: the `gateway` service derives OmniRoute's secrets and dashboard password from it and the api signs in with the same password; unset, the gateway is off and the hub runs without it (section Model gateway). The worker does not get it |
 | `EVO_HUB_GATEWAY_URL` | api | where the api reaches the gateway; empty is `http://evo-agents-hub-gateway:20128`, the service on its own network |
+| `EVO_HUB_BROKER_URL` | api, worker, deliver | optional: the RabbitMQ the event bus runs on, `amqp://` or `amqps://`, such as `amqp://hub:<password>@evo-agents-hub-rabbitmq:5672/` with the compose profile `bus`; plugin events, notifications and wake-ups then go out within seconds of their commit instead of within a minute, and the jobs remain the fallback while it is down (section Event bus) |
+| `EVO_HUB_REDIS_URL` | api, worker, deliver | optional: the Redis the cache and the shared rate limits use, `redis://`, `rediss://` or `unix://`, such as `redis://:<password>@evo-agents-hub-redis:6379/0` with the profile `bus`; unset, each process caches in its memory (section Cache) |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_KG_EMBEDDINGS`, `OPENROUTER_API_KEY` | api, worker | where graph rows and `kg_search` queries are embedded: `openrouter` calls OpenRouter's embeddings API (`baai/bge-m3`, batches of 64, four requests at once) with the key and loads no model; empty uses the local `BAAI/bge-m3` on the worker's CPUs (docs/kg-semantic.md) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |
 | `EVO_HUB_GATEWAY_CPUS`, `EVO_HUB_GATEWAY_MEMORY` | compose | limits of the `gateway` service, default `1` and `1536m` |
 | `EVO_HUB_GATEWAY_SUBNET` | compose | the subnet of the `gateway` network, default `10.231.128.0/28`, outside Docker's default address pools so the network is created on a host whose pools are all taken; change it when it overlaps a network of the host |
+| `EVO_HUB_RABBITMQ_USER`, `EVO_HUB_RABBITMQ_PASSWORD`, `EVO_HUB_REDIS_PASSWORD`, `EVO_HUB_REDIS_MAXMEMORY` | compose | the profile `bus`: RabbitMQ's user (default `hub`) and password, Redis's password and its memory before it drops the least recently used keys (default `256mb`); `rabbitmq` and `redis` refuse to start without their password |
+| `EVO_HUB_RABBITMQ_CPUS`, `EVO_HUB_RABBITMQ_MEMORY`, `EVO_HUB_REDIS_CPUS`, `EVO_HUB_REDIS_MEMORY`, `EVO_HUB_DELIVER_CPUS`, `EVO_HUB_DELIVER_MEMORY` | compose | limits of the profile `bus`'s services, default `1` CPU each and `1g`, `512m` and `1g` |
 | `EVO_HUB_EXTRA_CORE_PLUGINS` | build | a hub's own core plugins, beside those `deploy/hub/core-plugins.txt` pins: requirements `name==version --hash=sha256:<64 hex>` separated by spaces or line breaks, every dependency the image lacks among them; a build argument, never a variable of a service (`docs/hub-deployment.md`, section Core plugins in the image) |
 | `EVO_HUB_CORE_PLUGIN_INDEX_URL` | build | the index those come from, one or more URLs separated by spaces, a credential in the URL if it wants one; it reaches the build as the secret `core_plugin_index` alone, and no layer of the image keeps it; unset is PyPI |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |

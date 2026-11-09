@@ -284,6 +284,45 @@ only when it leaked, and tell the members when you do. Two hubs never share a ke
 the FCM service account can be replaced without that cost, since a device's token does not depend on them; revoke the
 old one at Apple or Google once the hub runs with the new one.
 
+## The event bus and the cache
+
+Both are optional. Without them the hub sends what a commit stores for a plugin, a channel or a bridged group chat
+through its jobs, which take from a few seconds to a minute or more, and caches in each api process's memory. With the
+event bus (RabbitMQ) the same events go out within seconds of their commit, and a run or an agent's turn queued in one
+api process wakes the claim waiting in another; with Redis, the api processes share one cache and one count of
+refused joins (`docs/hub.md`, sections Event bus and Cache).
+
+The compose file runs both under the profile `bus`, beside `deliver`, the process that relays and consumes the bus
+(`evo-agents hub deliver`). A deploy without the profile starts the same services as before. The three services join
+the stack's own network and publish no port: only the stack's services reach them, by the aliases
+`evo-agents-hub-rabbitmq` and `evo-agents-hub-redis`. RabbitMQ keeps its queues on the volume `rabbitmq-data`; Redis
+keeps nothing on disk, holds at most `EVO_HUB_REDIS_MAXMEMORY` (default `256mb`) and drops the least recently used
+keys when full, so a restart only empties the cache.
+
+To turn them on:
+
+1. Generate two passwords (`python -c 'import secrets; print(secrets.token_urlsafe(32))'`) and set them in the
+   platform's environment as `EVO_HUB_RABBITMQ_PASSWORD` and `EVO_HUB_REDIS_PASSWORD`. Each service refuses to start
+   without its own; no file holds a default.
+2. Set the URLs the hub reads, with the same passwords:
+
+   ```sh
+   EVO_HUB_BROKER_URL=amqp://hub:<rabbitmq password>@evo-agents-hub-rabbitmq:5672/
+   EVO_HUB_REDIS_URL=redis://:<redis password>@evo-agents-hub-redis:6379/0
+   ```
+
+   One alone works too: the broker without Redis, or Redis without the broker (then `deliver` is not needed).
+3. Deploy with the profile: `docker compose --profile bus up -d`, or `COMPOSE_PROFILES=bus` in the platform's
+   environment, which the platform's own `docker compose up -d --build` then reads.
+4. Check `GET /v1/health`: `broker` and `cache` read `ok`. `off` means the hub did not get the URL; `error` means it
+   got the URL but cannot reach the service, or the password is wrong. Either `error` leaves `status` ok, since the
+   hub keeps working without them, only slower.
+
+To turn them off, empty `EVO_HUB_BROKER_URL` and `EVO_HUB_REDIS_URL`, deploy again, then stop the profile's services
+(`docker compose --profile bus stop rabbitmq redis deliver`) and drop `COMPOSE_PROFILES`. Nothing is lost:
+Postgres holds every delivery's state, and the jobs deliver what the bus had not. `/v1/health` then reads `off` for
+both. The volume `rabbitmq-data` may be removed once the services are gone.
+
 ## Starting and setting it up
 
 1. Start the stack and check `GET /v1/health`: `status` ok, `db` ok, `r2` ok, and the schema of the release.
