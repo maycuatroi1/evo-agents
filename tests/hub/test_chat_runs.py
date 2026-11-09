@@ -508,6 +508,77 @@ def test_a_run_that_goes_on_in_a_session_takes_the_persons_messages_that_woke_no
     ]
 
 
+def inbox(client, worker: dict, run_id: int) -> list[str]:
+    """The texts of the run's inbox, each taken (acked), so the run that ends leaves none untaken."""
+    held = client.post(f"/v1/worker/runs/{run_id}/inbox", json={}, headers=worker["headers"]).json()["messages"]
+    for item in held:
+        client.post(f"/v1/worker/runs/{run_id}/inbox", json={"ack": item["id"]}, headers=worker["headers"])
+    return [item["text"] for item in held]
+
+
+def test_a_reply_to_an_agents_message_that_mentions_no_one_wakes_that_agent_in_the_senders_session(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "studio", slots=3)
+    chat = created(client, hub["owner"], people=[OTHER])
+    mention, spec = started(client, hub, worker, chat)
+    reply(client, worker, spec["id"], "Nobody holds a task this week.")
+    said = thread(client, hub["owner"], chat["id"], mention["id"])[-1]
+    ended(client, worker, spec["id"])
+    sent(client, hub["other"], chat["id"], "hm", mention["id"])  # another person wrote: the thread rule stays quiet
+    assert sent(client, hub["owner"], chat["id"], "thanks", mention["id"])["mentions"] == []
+
+    # the owner answers the agent's message: their session goes on, and its inbox quotes nothing it wrote itself
+    mine = sent(client, hub["owner"], chat["id"], "not right, Linh holds two", said["id"])
+    assert [(m["name"], m["via"]) for m in mine["mentions"]] == [("reviewer", chats.REPLY)]
+    goes_on = claim(client, worker)
+    assert (goes_on["id"], goes_on["resume_of_run_id"]) == (mine["mentions"][0]["run_id"], spec["id"])
+    assert inbox(client, worker, goes_on["id"])[-1] == (
+        f"{OWNER} wrote in the thread (message #{mine['id']}):\nnot right, Linh holds two"
+    )
+    moved(client, worker, goes_on["id"], "running", session_id="sess-1")
+    ended(client, worker, goes_on["id"])
+
+    # the other person answers it: a session of their own, whose next turn quotes the message another session wrote
+    theirs = sent(client, hub["other"], chat["id"], "who holds T-48?", said["id"])
+    assert [(m["name"], m["via"]) for m in theirs["mentions"]] == [("reviewer", chats.REPLY)]
+    first = claim(client, worker)
+    assert (first["id"], first["resume_of_run_id"], run_of(client, hub["owner"], first["id"])["dispatched_by"]) == (
+        theirs["mentions"][0]["run_id"],
+        None,
+        OTHER,
+    )
+    moved(client, worker, first["id"], "running", session_id="sess-2")
+    ended(client, worker, first["id"])
+    again = sent(client, hub["other"], chat["id"], "and T-49?", said["id"])
+    next_turn = claim(client, worker)
+    assert next_turn["resume_of_run_id"] == first["id"]
+    assert inbox(client, worker, next_turn["id"])[-1] == (
+        f"{OTHER} wrote in the thread (message #{again['id']}):\nand T-49?\n\n"
+        f"It answers message #{said['id']} of @reviewer:\n> Nobody holds a task this week."
+    )
+    moved(client, worker, next_turn["id"], "running", session_id="sess-2")
+    ended(client, worker, next_turn["id"])
+
+    # a reply that mentions a person is theirs; a reply to a person's message wakes no one
+    to_person = sent(client, hub["owner"], chat["id"], f"@{OTHER} see this", said["id"])
+    assert [(m["name"], m["via"]) for m in to_person["mentions"]] == [(OTHER, "login")]
+    assert sent(client, hub["owner"], chat["id"], "ok", mention["id"])["mentions"] == []
+    assert len(chat_runs_of(hub_db)) == 4
+
+
+def test_a_reply_to_the_message_of_an_agent_that_left_the_chat_wakes_no_one(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "studio", slots=2)
+    chat = created(client, hub["owner"], people=[OTHER], agents=("reviewer", "fixer"))
+    mention, spec = started(client, hub, worker, chat)
+    reply(client, worker, spec["id"], "Done.")
+    said = thread(client, hub["owner"], chat["id"], mention["id"])[-1]
+    ended(client, worker, spec["id"])
+    sent(client, hub["other"], chat["id"], "hm", mention["id"])  # another person wrote: the thread rule stays quiet
+    removed = client.delete(f"/v1/chats/{chat['id']}/agents/reviewer", headers=hub["owner"])
+    assert removed.status_code in (200, 204), removed.text
+    assert sent(client, hub["owner"], chat["id"], "and the docs?", said["id"])["mentions"] == []
+    assert len(chat_runs_of(hub_db)) == 1
+
+
 def test_another_person_mentioning_the_agent_in_the_thread_starts_a_chat_session_of_their_own(client, hub, hub_db):
     mine = chat_worker(client, hub["owner"], "studio")
     theirs = chat_worker(client, hub["other"], "laptop")

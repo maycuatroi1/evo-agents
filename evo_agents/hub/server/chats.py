@@ -18,8 +18,10 @@ the mention keeps why, and the hub answers in the message's thread, naming it. A
 chat run for the sender (``chat_runs.hand_mentions``, at most ``chat_runs.MAX_RUNS_PER_MESSAGE`` agents a message),
 and the mention keeps the run it made or woke, or why it made none, which the hub's answer names too. In a chat of one
 person, a message in a thread without a mention goes to the one agent whose session the sender has in that thread
-(the mention ``via`` thread). In a direct chat (``chat_direct``) a message whose mentions do not reach its agent goes to
-it all the same: in the thread of the sender's session with it as above, else ``via`` direct, which for a message
+(the mention ``via`` thread). In a group chat, a message that mentions no one and answers a message of an agent of
+the chat goes to that agent (``via`` reply), as a reply to the bot's message in a bridged group does; the run's inbox
+quotes the message it answers when another session of the agent wrote it. In a direct chat (``chat_direct``) a
+message whose mentions do not reach its agent goes to it all the same: in the thread of the sender's session with it as above, else ``via`` direct, which for a message
 outside a thread starts a new session. In a settle chat (``chats.SETTLE``, which the hub opens) every message of a
 person whose mentions do not reach the chat's agent goes to it ``via`` settle, in the sender's session of the message's
 thread, a member who reads the agent's project alone included (``chat_runs.hand_work``). Elsewhere a message that
@@ -68,7 +70,7 @@ from evo_agents.hub.server.chat_members import (
 )
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_progress import by_message, chat_progress
-from evo_agents.hub.server.chat_runs import Hand, hand_mentions, hub_reply, thread_session
+from evo_agents.hub.server.chat_runs import Answered, Hand, hand_mentions, hub_reply, thread_session
 from evo_agents.hub.server.chat_store import (
     add_member,
     emoji_kinds,
@@ -345,6 +347,36 @@ async def _thread_agent(conn: AsyncConnection, chat: ChatAccess, user: Principal
     return [{"name": handle, "via": "thread", "user_id": None, "profile_id": profile_id, "refusal": None}]
 
 
+async def _answered(conn: AsyncConnection, answered) -> Answered | None:
+    """The agent's message ``answered`` (a row of ``message_select``) that a message answers, as the inbox of the run
+    it wakes quotes it; None for a message of a person or of the hub, or none."""
+    if answered is None or answered.author_profile_id is None:
+        return None
+    ap = tables.agent_profiles
+    handle = (await conn.execute(select(ap.c.handle).where(ap.c.id == answered.author_profile_id))).scalar_one()
+    return Answered(
+        answered.id, answered.author_profile_id, f"@{handle}", answered.body, answered.label, answered.run_id
+    )
+
+
+async def _replied_agent(conn: AsyncConnection, chat: ChatAccess, answered: Answered | None, kept: list[dict]):
+    """The mention, ``via`` reply, of the agent that wrote ``answered``, the message a message of a group chat that
+    mentions no one (``kept`` is empty) answers; none otherwise, or when that agent left the chat or was deleted."""
+    if chat.kind != chats.GROUP or answered is None or kept:
+        return []
+    m, ap = tables.chat_members, tables.agent_profiles
+    query = (
+        select(ap.c.handle)
+        .join_from(m, ap, ap.c.id == m.c.profile_id)
+        .where(m.c.chat_id == chat.chat_id, m.c.profile_id == answered.profile_id, m.c.removed_at.is_(None))
+        .where(ap.c.deleted_at.is_(None))
+    )
+    handle = (await conn.execute(query)).scalar_one_or_none()
+    if handle is None:
+        return []
+    return [{"name": handle, "via": chats.REPLY, "user_id": None, "profile_id": answered.profile_id, "refusal": None}]
+
+
 async def _direct_agent(
     conn: AsyncConnection, chat: ChatAccess, user: Principal, root: int | None, kept: list[dict]
 ) -> list[dict]:
@@ -371,10 +403,11 @@ async def deliver_message(
     (``plugin_chats_api``): the message comes ``via`` plugin, and its audit row ends with plugin:<id>."""
     if plugin is not None:
         via = chats.PLUGIN_VIA
-    root = None
+    root, answered = None, None
     if body.reply_to is not None:
-        answered = await visible_message(conn, chat, body.reply_to)
-        root = answered.thread_root_id or answered.id
+        replied = await visible_message(conn, chat, body.reply_to)
+        root = replied.thread_root_id or replied.id
+        answered = await _answered(conn, replied)
     answer = None
     if body.from_answer is not None:  # a question asked from an interactive answer (``chat_answers``)
         answer = await chat_answers.answer_of(conn, chat, body.from_answer)
@@ -403,9 +436,21 @@ async def deliver_message(
     elif chat.kind == chats.SETTLE:
         kept += await direct_mention(conn, chat, kept)
     elif not any(mention["profile_id"] is not None for mention in kept):
-        kept += await _thread_agent(conn, chat, user, root)
+        kept += await _replied_agent(conn, chat, answered, kept) or await _thread_agent(conn, chat, user, root)
     via = dispatch_credential(user.kind)
-    hand = Hand(chat, message_id, root or message_id, None, user.user_id, user.login, via, 1, user.login, body.body)
+    hand = Hand(
+        chat,
+        message_id,
+        root or message_id,
+        None,
+        user.user_id,
+        user.login,
+        via,
+        1,
+        user.login,
+        body.body,
+        answers=answered,
+    )
     await hand_mentions(conn, hand, kept)
     await insert_mentions(conn, message_id, kept)
     refusals = [mention["refusal"] for mention in kept if mention["refusal"]]

@@ -18912,7 +18912,7 @@ export interface components {
              * Via
              * @description how it reached a member; null: it reached none
              */
-            via: ("login" | "handle" | "project" | "thread" | "direct" | "settle" | "answer") | null;
+            via: ("login" | "handle" | "project" | "thread" | "direct" | "settle" | "answer" | "reply") | null;
             /**
              * Login
              * @description the person it reached

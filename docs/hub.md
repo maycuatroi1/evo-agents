@@ -1068,7 +1068,10 @@ only because origin declined its push (`push_declined`: a hook, a protected bran
 way, so the next run pushes the commits it left on the session's branch; after any other failure the next message opens
 a new session. Another person's mention starts a session of their own, on their own worker. In a chat of one person, a
 message in a thread without a mention goes to the one agent whose session that person has there (`via` thread); with two
-people or more, they mention it. The run's reactions follow it as above, a run that failed says why in the thread, and
+people or more, they mention it, or answer the agent's message: in a group chat, a message that mentions no one and
+answers (`reply_to`) a message an agent of the chat wrote goes to that agent (`via` reply), in the sender's session of
+the thread, as a reply to the bot's message does in a bridged group (`docs/chat-bridges.md`). When another session of
+the agent wrote the message it answers, the run's inbox quotes that message after it. The run's reactions follow it as above, a run that failed says why in the thread, and
 the agent's reply at the end of each turn is its message in the thread, with the run that wrote it.
 
 **A run starts fast.** The worker prepares the repos of a run several at a time, at most 8, and a run that goes on in
