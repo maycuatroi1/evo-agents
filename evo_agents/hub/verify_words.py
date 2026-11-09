@@ -1,5 +1,6 @@
 """What a plan's verify commands run, read from their shell words without running them: the files they name
-(``verify_paths``), the files that say what a runner they call runs and the package.json scripts they run
+(``verify_paths``), those of them a reader such as grep only reads (``verify_read_paths``), the files that say what a
+runner they call runs and the package.json scripts they run
 (``verify_runners``), the programs they call from PATH (``programs``), and whether a line can be a shell command at all
 (``shell_problem``). Pure functions, standard library only, so the hub, the worker daemon and the tests share them;
 ``evo_agents.hub.judge`` reads a diff with the first two, the worker's preflight (``evo_agents.worker.preflight``) looks
@@ -31,6 +32,28 @@ PACKAGE_RUNNERS = ("npm", "pnpm", "yarn", "bun")  # their scripts live in packag
 WRAPPERS = {"uv": ("run",), "poetry": ("run",), "pipenv": ("run",), "hatch": ("run",), "pdm": ("run",)}
 PASS_THROUGH = ("env", "time", "nice", "exec", "command", "npx", "timeout", "xvfb-run")
 SHELL_OPERATOR = re.compile(r"&&|\|\||[;|&\n()]")
+# Programs that read the files they name and run none of them: a step whose verify is ``grep -n WORD docs/x.md`` is
+# done by writing WORD into docs/x.md, so changing that file is the work, not a change of what the verify runs. The
+# options of each whose value is a file of patterns, which says what the reader matches, so a file the verify runs.
+READERS: dict[str, frozenset[str]] = {
+    "grep": frozenset({"-f", "--file"}),
+    "egrep": frozenset({"-f", "--file"}),
+    "fgrep": frozenset({"-f", "--file"}),
+    "rg": frozenset({"-f", "--file"}),
+    **{
+        name: frozenset()
+        for name in ("cat", "head", "tail", "wc", "ls", "test", "[", "stat", "file", "diff", "cmp", "sha256sum",
+                     "shasum", "md5sum")
+    },
+}  # fmt: skip
+# Programs that run the text or the names handed to them (``cat x.sh | sh``, ``ls | xargs rm``): a line that calls one
+# has none of its files only read.
+EXECUTORS = frozenset(
+    {
+        "sh", "bash", "zsh", "dash", "ksh", "fish", "source", ".", "eval", "xargs", "parallel", "python", "python3",
+        "node", "deno", "bun", "ruby", "perl", "php", "Rscript", "lua",
+    }
+)  # fmt: skip
 # What ``programs`` reads in a command line. The shell's builtins and the words that end a compound command run no
 # program from PATH; after a keyword that starts one (if, while, !, ...) the next word is the program; a simple command
 # that may change PATH (source, ., eval, export PATH=..., PATH=... alone) ends the reading of the line.
@@ -86,6 +109,16 @@ def command_name(program: str) -> bool:
     return COMMAND_NAME.fullmatch(name) is not None and name.lower() not in PROSE_WORDS
 
 
+def _path_word(word: str) -> str | None:
+    """The path a verify command's word names, without a leading ``./``; None for a word that names none."""
+    word = word.split("::", 1)[0]  # pytest's tests/test_x.py::test_y
+    if word.startswith("-") or "=" in word or "$" in word:
+        return None
+    if "/" in word or re.search(r"\.[A-Za-z0-9]{1,5}$", word) or word in ("Makefile", "justfile"):
+        return tiers.normalize_path(word)
+    return None
+
+
 def verify_paths(commands: list[str]) -> set[str]:
     """The files the verify commands name: each word that looks like a path, without a leading ``./``."""
     found = set()
@@ -94,15 +127,36 @@ def verify_paths(commands: list[str]) -> set[str]:
             words = shlex.split(command)
         except ValueError:
             words = command.split()
-        for word in words:
-            word = word.split("::", 1)[0]  # pytest's tests/test_x.py::test_y
-            if word.startswith("-") or "=" in word or "$" in word:
-                continue
-            if "/" in word or re.search(r"\.[A-Za-z0-9]{1,5}$", word) or word in ("Makefile", "justfile"):
-                normal = tiers.normalize_path(word)
-                if normal is not None:
-                    found.add(normal)
+        found.update(path for path in map(_path_word, words) if path is not None)
     return found
+
+
+def _program(words: list[str]) -> tuple[str | None, list[str]]:
+    """(the program a simple command runs, its arguments), past the keywords that lead a compound command (``if``,
+    ``!``) and the wrappers that run another program (``_runner``)."""
+    while words and words[0] in SHELL_LEADS:
+        words = words[1:]
+    return _runner(words)
+
+
+def verify_read_paths(commands: list[str]) -> set[str]:
+    """The files the verify commands name only as what a reader (READERS) reads, such as ``docs/x.md`` of ``grep -n
+    WORD docs/x.md``. A file a command also names elsewhere, the pattern file of ``grep -f``, and every file of a line
+    that calls a program which runs what it is handed (EXECUTORS) are not."""
+    read: set[str] = set()
+    other: set[str] = set()
+    for command in commands or []:
+        found = [_program(words) for words in _simple_commands(command)]
+        runs_text = any(program in EXECUTORS for program, _ in found)
+        for program, args in found:
+            options = READERS.get(program or "") if not runs_text else None
+            for index, word in enumerate(args):
+                path = _path_word(word)
+                if path is None:
+                    continue
+                reads = options is not None and not (index and args[index - 1] in options)
+                (read if reads else other).add(path)
+    return read - other
 
 
 def _simple_commands(command: str) -> list[list[str]]:

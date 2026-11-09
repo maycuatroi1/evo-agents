@@ -10,7 +10,8 @@ changed does not), a skip or an xfail added (aliased or
 imported on its own included), a test removed (one renamed, its definition the same but for its name, is not), a
 number changed on an assertion's line of a test, an expected value of a test changed on a line of its own, a golden or
 snapshot file of the tests changed, an assertion's failure caught, a file the plan's verify runs or a plan's copy
-changed (the Makefile, justfile, noxfile or script of package.json a verify command runs included), a CI workflow or
+changed (the Makefile, justfile, noxfile or script of package.json a verify command runs included; a file it names only
+for a reader such as grep to read is the work, not one), a CI workflow or
 the configuration of lint, types and tests changed, a lint warning silenced, ``__eq__`` overloaded, the process exited
 from a test, a file of the charter's protected paths touched, an instruction of a harness (a skill's file, an AGENTS.md
 or a CLAUDE.md) to test or verify weakened (``weakened``: a line added that lets an agent skip them, or more lines about
@@ -29,7 +30,7 @@ from typing import Literal
 
 from evo_agents.hub import tiers
 from evo_agents.hub.replay import harness_path
-from evo_agents.hub.verify_words import verify_paths, verify_runners
+from evo_agents.hub.verify_words import verify_paths, verify_read_paths, verify_runners
 
 MAX_SIGNS = 50
 MAX_SIGN_TEXT = 200
@@ -618,7 +619,7 @@ def hack_signs(
             signs.append({"kind": kind, "path": path, "line": line, "text": " ".join(text.split())[:MAX_SIGN_TEXT]})
 
     commands = list(verify_commands or [])
-    named = verify_paths(commands)
+    named = verify_paths(commands) - verify_read_paths(commands)  # what grep only reads is the work
     runner_globs, scripts = verify_runners(commands)
     script_key = (
         re.compile(r"\"(?:" + "|".join(re.escape(name) for name in sorted(scripts)) + r")\"\s*:") if scripts else None
