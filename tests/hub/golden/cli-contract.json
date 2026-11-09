@@ -27988,7 +27988,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.61.4"
+      "version": "0.61.7"
     },
     "paths": {
       "/v1/health": {
@@ -87959,6 +87959,229 @@
           }
         }
       },
+      "/v1/plugin-api/projects/{project}/chats/{chat_id}/messages": {
+        "post": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Post Message",
+          "description": "Post a message to the chat in the name of the admin who granted the plugin its permissions, in the thread of\n``reply_to`` when given, as their own message goes.",
+          "operationId": "post_message_v1_plugin_api_projects__project__chats__chat_id__messages_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginMessageIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginChatMessage"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Read Thread",
+          "description": "The latest ``limit`` messages of the thread of message ``thread`` before ``before``, oldest first.",
+          "operationId": "read_thread_v1_plugin_api_projects__project__chats__chat_id__messages_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "thread",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "description": "a message of the thread, its first or a reply",
+                "title": "Thread"
+              },
+              "description": "a message of the thread, its first or a reply"
+            },
+            {
+              "name": "before",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "messages before this seq",
+                "title": "Before"
+              },
+              "description": "messages before this seq"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginThread"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/task/pulls": {
         "post": {
           "tags": [
@@ -128406,7 +128629,7 @@
                 }
               ],
               "title": "Via",
-              "description": "the kind of channel it came in by, from a group bridged to the chat; null when sent here"
+              "description": "the kind of channel it came in by, from a group bridged to the chat, or plugin for a message an isolated plugin posted in its author's name; null when sent here"
             },
             "bridged_to": {
               "items": {
@@ -148310,6 +148533,178 @@
           ],
           "title": "Plugin"
         },
+        "PluginChatMessage": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "chat_id": {
+              "type": "integer",
+              "title": "Chat Id"
+            },
+            "seq": {
+              "type": "integer",
+              "title": "Seq",
+              "description": "the chat event that brought it: events?after= and Last-Event-ID take it"
+            },
+            "thread_root_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Root Id",
+              "description": "the first message of its thread; null when it starts none"
+            },
+            "reply_count": {
+              "type": "integer",
+              "title": "Reply Count",
+              "description": "the messages of the thread it starts"
+            },
+            "author": {
+              "$ref": "#/components/schemas/ChatAuthor"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of the agent that wrote it"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body"
+            },
+            "mentions": {
+              "items": {
+                "$ref": "#/components/schemas/ChatMention"
+              },
+              "type": "array",
+              "title": "Mentions"
+            },
+            "reactions": {
+              "items": {
+                "$ref": "#/components/schemas/ChatReaction"
+              },
+              "type": "array",
+              "title": "Reactions"
+            },
+            "label": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Label",
+              "description": "the labels of the projects of the chat's agents when it was sent"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "progress": {
+              "items": {
+                "$ref": "#/components/schemas/ChatProgress"
+              },
+              "type": "array",
+              "title": "Progress",
+              "description": "the agents' runs that took it and are on their way, as the reader may read those runs, when it was read; a stream asked for progress keeps it current. Empty in what the worker's routes answer"
+            },
+            "outputs": {
+              "items": {
+                "$ref": "#/components/schemas/RunOutput"
+              },
+              "type": "array",
+              "title": "Outputs",
+              "description": "the files of its run it carries, oldest first, each with the chat's URL of its bytes"
+            },
+            "attachments": {
+              "items": {
+                "$ref": "#/components/schemas/LinkedAttachment"
+              },
+              "type": "array",
+              "title": "Attachments",
+              "description": "the files its author attached to it, in the order uploaded, each with the chat's URL of its bytes"
+            },
+            "via": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Via",
+              "description": "the kind of channel it came in by, from a group bridged to the chat, or plugin for a message an isolated plugin posted in its author's name; null when sent here"
+            },
+            "bridged_to": {
+              "items": {
+                "$ref": "#/components/schemas/BridgedTo"
+              },
+              "type": "array",
+              "title": "Bridged To",
+              "description": "the bridges it went out on, to their groups, oldest first"
+            },
+            "from_answer": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Answer",
+              "description": "the interactive answer (an output a message of the chat carries) a person sent it from; null when sent otherwise"
+            },
+            "forwarded_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Forwarded By",
+              "description": "the @handle of the agent that forwarded it verbatim from the run of its author (evo-agents worker agent forward); null when its author's run wrote it"
+            },
+            "thread": {
+              "type": "integer",
+              "title": "Thread",
+              "description": "the first message of its thread, its own id when it starts one: what reply_to and ?thread= take"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "chat_id",
+            "seq",
+            "thread_root_id",
+            "reply_count",
+            "author",
+            "run_id",
+            "body",
+            "mentions",
+            "reactions",
+            "label",
+            "created_at",
+            "thread"
+          ],
+          "title": "PluginChatMessage",
+          "description": "A message the plugin posted, as its author reads it, with the first message of its thread."
+        },
         "PluginConfigLayer": {
           "properties": {
             "plugin": {
@@ -148699,6 +149094,36 @@
           },
           "type": "object",
           "title": "PluginInstallIn"
+        },
+        "PluginMessageIn": {
+          "properties": {
+            "body": {
+              "type": "string",
+              "title": "Body",
+              "description": "some text, at most 16384 bytes of UTF-8, whose mentions read as a member's"
+            },
+            "reply_to": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reply To",
+              "description": "the message it answers, of the chat: it goes in that message's thread"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "body"
+          ],
+          "title": "PluginMessageIn",
+          "description": "A message of the plugin: its text, and the message it answers."
         },
         "PluginNoticeIn": {
           "properties": {
@@ -149373,6 +149798,40 @@
           ],
           "title": "PluginTaskIn",
           "description": "A new task of the plugin, under a key of its own; its type and status are the config's first when left out."
+        },
+        "PluginThread": {
+          "properties": {
+            "chat_id": {
+              "type": "integer",
+              "title": "Chat Id"
+            },
+            "thread": {
+              "type": "integer",
+              "title": "Thread",
+              "description": "the first message of the thread"
+            },
+            "messages": {
+              "items": {
+                "$ref": "#/components/schemas/GroupMessage"
+              },
+              "type": "array",
+              "title": "Messages"
+            },
+            "more": {
+              "type": "boolean",
+              "title": "More",
+              "description": "the thread has older messages: ask again with before, the seq of the first here"
+            }
+          },
+          "type": "object",
+          "required": [
+            "chat_id",
+            "thread",
+            "messages",
+            "more"
+          ],
+          "title": "PluginThread",
+          "description": "A page of the messages of one thread, oldest first."
         },
         "PluginVersion": {
           "properties": {

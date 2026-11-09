@@ -1035,6 +1035,12 @@ that kind clears their label, redacted and without files, with a run's progress 
 hub admin in the chat does it the same way, and any hub admin through the plugin's admin route. Each link and unlink is audited, `chat.bridge` and `chat.unbridge`, the
 target `chat:<id> bridge:<id> kind:<kind>`, an unlink with `via=<web|cli|bot|admin>`.
 
+**From a plugin.** An isolated plugin a project granted `chats:write` posts a message, or a reply in a thread, to a
+chat that holds an agent of that project, in the name of the admin who granted it its permissions, a member of the
+chat (`docs/plugins.md`, section Messages of a plugin). The message goes the way the admin's own does, mentions, runs
+and traces included; its `via` is `plugin`, and the target of its audit row `chat.message` ends with `plugin:<id>`,
+the plugin's id.
+
 **Messages and mentions.** A message has at most 16 KiB of UTF-8; `reply_to` puts it in the thread of the message it
 answers, and a thread has one level: `thread_root_id` always names its first message. The hub reads a message's
 mentions once, when it is sent, and keeps them with it (at most 20 names): `@` then `[a-z0-9-]`, not right after a

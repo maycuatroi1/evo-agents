@@ -222,6 +222,7 @@ def test_plugin_points_core_tables_carry_the_prefix_and_routes_name_a_prefix_onl
         ({**core, "tier": "isolated", "contributes": {"tables": [{"name": "srs_docs_x"}]}}, "only a core plugin"),
         (manifest(contributes={"routes": [{"name": "hello", "prefix": "/v1"}]}), "only a core plugin's route"),
         ({**core, "contributes": {"channels": [{"name": "web", "python": "m:C"}]}}, "kind of members' channel"),
+        ({**core, "contributes": {"channels": [{"name": "plugin", "python": "m:C"}]}}, "not web or plugin"),
     ]
     for data, problem in cases:
         with pytest.raises(ManifestError, match=problem):

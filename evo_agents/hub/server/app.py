@@ -570,6 +570,7 @@ def _include_member_routes(app: FastAPI) -> None:
         opportunities,
         opportunity_evidence,
         orchestrator_actions,
+        plugin_chats_api,
         plugin_cli,
         plugin_docs_api,
         plugin_host,
@@ -637,6 +638,7 @@ def _include_member_routes(app: FastAPI) -> None:
         plugin_docs_api.router,  # docs:write
         plugin_runs_api.router,  # the summary and outputs of the plugin's task runs, with runs:dispatch
         plugin_srs_api.router,  # srs:read
+        plugin_chats_api.router,  # chats:write and chats:read, in the chats of the project's agents
         task_dispatch.worker_router,
         chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
         chats.router,

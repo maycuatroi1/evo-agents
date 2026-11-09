@@ -10166,6 +10166,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/plugin-api/projects/{project}/chats/{chat_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Thread
+         * @description The latest ``limit`` messages of the thread of message ``thread`` before ``before``, oldest first.
+         */
+        get: operations["read_thread_v1_plugin_api_projects__project__chats__chat_id__messages_get"];
+        put?: never;
+        /**
+         * Post Message
+         * @description Post a message to the chat in the name of the admin who granted the plugin its permissions, in the thread of
+         *     ``reply_to`` when given, as their own message goes.
+         */
+        post: operations["post_message_v1_plugin_api_projects__project__chats__chat_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/task/pulls": {
         parameters: {
             query?: never;
@@ -23441,7 +23466,7 @@ export interface components {
             attachments?: components["schemas"]["LinkedAttachment"][];
             /**
              * Via
-             * @description the kind of channel it came in by, from a group bridged to the chat; null when sent here
+             * @description the kind of channel it came in by, from a group bridged to the chat, or plugin for a message an isolated plugin posted in its author's name; null when sent here
              */
             via?: string | null;
             /**
@@ -31912,6 +31937,95 @@ export interface components {
             created_at: string;
         };
         /**
+         * PluginChatMessage
+         * @description A message the plugin posted, as its author reads it, with the first message of its thread.
+         */
+        PluginChatMessage: {
+            /** Id */
+            id: number;
+            /** Chat Id */
+            chat_id: number;
+            /**
+             * Seq
+             * @description the chat event that brought it: events?after= and Last-Event-ID take it
+             */
+            seq: number;
+            /**
+             * Thread Root Id
+             * @description the first message of its thread; null when it starts none
+             */
+            thread_root_id: number | null;
+            /**
+             * Reply Count
+             * @description the messages of the thread it starts
+             */
+            reply_count: number;
+            author: components["schemas"]["ChatAuthor"];
+            /**
+             * Run Id
+             * @description the run of the agent that wrote it
+             */
+            run_id: number | null;
+            /** Body */
+            body: string;
+            /** Mentions */
+            mentions: components["schemas"]["ChatMention"][];
+            /** Reactions */
+            reactions: components["schemas"]["ChatReaction"][];
+            /**
+             * Label
+             * @description the labels of the projects of the chat's agents when it was sent
+             */
+            label: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Progress
+             * @description the agents' runs that took it and are on their way, as the reader may read those runs, when it was read; a stream asked for progress keeps it current. Empty in what the worker's routes answer
+             */
+            progress?: components["schemas"]["ChatProgress"][];
+            /**
+             * Outputs
+             * @description the files of its run it carries, oldest first, each with the chat's URL of its bytes
+             */
+            outputs?: components["schemas"]["RunOutput"][];
+            /**
+             * Attachments
+             * @description the files its author attached to it, in the order uploaded, each with the chat's URL of its bytes
+             */
+            attachments?: components["schemas"]["LinkedAttachment"][];
+            /**
+             * Via
+             * @description the kind of channel it came in by, from a group bridged to the chat, or plugin for a message an isolated plugin posted in its author's name; null when sent here
+             */
+            via?: string | null;
+            /**
+             * Bridged To
+             * @description the bridges it went out on, to their groups, oldest first
+             */
+            bridged_to?: components["schemas"]["BridgedTo"][];
+            /**
+             * From Answer
+             * @description the interactive answer (an output a message of the chat carries) a person sent it from; null when sent otherwise
+             */
+            from_answer?: number | null;
+            /**
+             * Forwarded By
+             * @description the @handle of the agent that forwarded it verbatim from the run of its author (evo-agents worker agent forward); null when its author's run wrote it
+             */
+            forwarded_by?: string | null;
+            /**
+             * Thread
+             * @description the first message of its thread, its own id when it starts one: what reply_to and ?thread= take
+             */
+            thread: number;
+        };
+        /**
          * PluginConfigLayer
          * @description One stored layer of a plugin's config at one version.
          */
@@ -32077,6 +32191,22 @@ export interface components {
              * @description default: the newest that runs on this hub
              */
             version?: string | null;
+        };
+        /**
+         * PluginMessageIn
+         * @description A message of the plugin: its text, and the message it answers.
+         */
+        PluginMessageIn: {
+            /**
+             * Body
+             * @description some text, at most 16384 bytes of UTF-8, whose mentions read as a member's
+             */
+            body: string;
+            /**
+             * Reply To
+             * @description the message it answers, of the chat: it goes in that message's thread
+             */
+            reply_to?: number | null;
         };
         /** PluginNoticeIn */
         PluginNoticeIn: {
@@ -32427,6 +32557,26 @@ export interface components {
             assignees?: string[];
             roles?: components["schemas"]["TasksRolesIn"];
             links?: components["schemas"]["TasksLinksIn"];
+        };
+        /**
+         * PluginThread
+         * @description A page of the messages of one thread, oldest first.
+         */
+        PluginThread: {
+            /** Chat Id */
+            chat_id: number;
+            /**
+             * Thread
+             * @description the first message of the thread
+             */
+            thread: number;
+            /** Messages */
+            messages: components["schemas"]["GroupMessage"][];
+            /**
+             * More
+             * @description the thread has older messages: ask again with before, the seq of the first here
+             */
+            more: boolean;
         };
         /** PluginVersion */
         PluginVersion: {
@@ -86698,6 +86848,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_thread_v1_plugin_api_projects__project__chats__chat_id__messages_get: {
+        parameters: {
+            query: {
+                /** @description a message of the thread, its first or a reply */
+                thread: number;
+                /** @description messages before this seq */
+                before?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginThread"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    post_message_v1_plugin_api_projects__project__chats__chat_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginMessageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginChatMessage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

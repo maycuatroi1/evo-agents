@@ -1,5 +1,6 @@
 """Who a call of the plugin API acts as when it writes or reads what a member would (``docs/plugins.md``, section
-Permissions): the routes of ``plugin_tasks_api``, ``plugin_docs_api`` and ``plugin_runs_api``.
+Permissions): the routes of ``plugin_tasks_api``, ``plugin_docs_api``, ``plugin_runs_api`` and
+``plugin_chats_api``.
 
 A route under /v1/plugin-api/ takes the token of a plugin's backend and no other credential (``task_dispatch``). Each
 of these routes acts in a project that enabled the plugin and granted it the permission the route needs, among what
@@ -8,7 +9,8 @@ it writes and reads goes through the code a member's request runs, in the name o
 permissions last (project_plugins.granted_by, ``acting``): their grant on the project as it is now, read through the
 project's hub sink, as a member's request without X-Evo-Sink is. A plugin writes nothing once that admin holds less
 than writer on the project (403): an admin of the project enables the plugin again, which grants it in their name.
-A route of a feature (tasks, docs, srs) answers 404 in a project that does not have it on (``feature_on``).
+A route of a feature (tasks, docs, srs) answers 404 in a project that does not have it on (``feature_on``); the
+routes of chats, a feature of the whole hub, answer 404 while the hub has it off.
 """
 
 from __future__ import annotations

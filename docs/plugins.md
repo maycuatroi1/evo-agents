@@ -218,11 +218,11 @@ project is what the project granted that its installed version still asks for, c
 | --- | --- | --- |
 | `runs:read` | read the project's runs, their events and their outcomes | the `run.state` events; the bridge's `runs.list` and `runs.get` |
 | `plans:read` | read the project's plans | the `plan.step` events; the bridge's `plans.list` and `plans.get` |
-| `chats:read` | read the project's group chats | the `chat.message` events; a core plugin's `read_message` and `chat_history_items` (section The core plugin API) |
+| `chats:read` | read the project's group chats | the `chat.message` events; a core plugin's `read_message` and `chat_history_items` (section The core plugin API); `GET /v1/plugin-api/projects/{project}/chats/{chat}/messages?thread=`, the messages of a thread (section Messages of a plugin) |
 | `memories:read` | read the project's memories | the bridge's `memories.list` |
 | `notifications:send` | send notifications to the project's members | an isolated plugin's channel, which gets the project's notifications; `POST /v1/plugin-api/projects/{project}/notifications`, which sends a notice to members (section Notifications from a plugin) |
 | `runs:dispatch` | dispatch runs in the project | handing tasks to the plugin's own agent types the project enabled, through the hub's API for plugins, the `task.result` events, and the summary and outputs of those task runs (section Agent types) |
-| `chats:write` | post messages in the project's group chats | a core plugin's `open_direct_chat` and `send_message`, as a member whose channel it is (section The core plugin API); no route of the hub posts an isolated plugin's message |
+| `chats:write` | post messages in the project's group chats | a core plugin's `open_direct_chat` and `send_message`, as a member whose channel it is (section The core plugin API); `POST /v1/plugin-api/projects/{project}/chats/{chat}/messages`, an isolated plugin's message in the name of the admin who granted it its permissions (section Messages of a plugin) |
 | `canvas:read` | read the project's Lean Canvases: each claim's revs and each approved baseline | the `canvas.claim` and `canvas.baseline` events |
 | `signals:read` | read the project's signals: each batch the hub takes | the `signal.posted` events |
 | `srs:read` | read the project's SRS documents: each version approved, with the codes of the items it changed, and each use case approved | the `srs.version.approved` and `srs.use_case.approved` events; `GET /v1/plugin-api/projects/{project}/srs/{slug}/use-cases` (section Tasks and documents of a plugin) |
@@ -684,6 +684,46 @@ cases of the version of document `slug` approved last, identifiers only: `{"docu
 change. No text of the document leaves this way; an agent the plugin hands a task reads the text through its own run. A
 document with no approved version, or whose label is above what the granting admin reads through the hub sink, is a
 404.
+
+### Messages of a plugin
+
+A backend granted `chats:write` posts a message to a group chat through the hub's API for plugins, with the token of
+its backend and no other credential, in the name of the admin of the project who granted the plugin its permissions
+last, as tasks and documents are (section Tasks and documents of a plugin, `evo_agents/hub/server/plugin_chats_api.py`):
+
+```http
+POST /v1/plugin-api/projects/northwind/chats/42/messages
+Authorization: Bearer evp_...
+Content-Type: application/json
+
+{"body": "@triage-lead Login fails on Safari since round 12: task T-31, evidence in run 4812."}
+```
+
+- **Body.** `body` is some text, at most 16 KiB of UTF-8. `reply_to`, a message of the chat, puts it in that message's
+  thread, a reply's included. A thread has one level, as for a member (`docs/hub.md`, section Group chats).
+- **The same path as a member's message.** The message goes through the code of `POST /v1/chats/{id}/messages`: its
+  mentions resolve among the chat's members, a person mentioned gets the notice `chat_mention`, an agent mentioned gets
+  a chat run dispatched by the admin, on a worker of theirs or one shared with them, and a message that wakes the entry
+  agent of an agent system opens a trace of that system (`docs/hub.md`, section Traces). What a mention refuses, the hub
+  answers in the thread.
+- **It says it came from a plugin.** The message's author is the admin, and its `via` is `plugin`, which every reader
+  of the chat and every bridge gets with it; no channel of a core plugin may be of kind `plugin`. The audit row
+  `chat.message` names the admin, and its target ends with the plugin's id: `chat:42 message:1207 plugin:lumen-qa`
+  for plugin `lumen-qa`.
+- **The answer** (201) is the message as the admin reads it on the hub, the shape of a member's `POST`, with
+  `thread`, the first message of its thread (its own id when it starts one): the `reply_to` of a later reply in that
+  thread, and the `thread` of a read.
+- **Refusals.** 401: no live token, or the plugin was removed or turned off. 403: the project did not enable the
+  plugin or grant `chats:write`; the admin holds less than writer on the project; the chat holds no agent of the
+  project, or holds an agent of another project that does not grant the plugin `chats:write`; the admin no longer
+  clears the chat's label. 404: the hub has the feature chats off; the admin is not in the chat; `reply_to` is no
+  message of the chat they can read. 422: a wrong body. Nothing is written.
+
+A backend granted `chats:read` reads one thread of such a chat: `GET .../chats/{chat}/messages?thread=M` answers
+`{"chat_id", "thread", "messages", "more"}`, the messages of the thread message M is in, oldest first, each as `GET
+/v1/chats/{id}/messages` shows it to the admin, the latest `limit` (50, at most 200) before `before` (a seq); `more`
+says older ones are left. It needs the admin to hold reader on the project, and the chat's every project of an agent
+to grant `chats:read`; M not in the chat, or a label the admin does not clear, is a 404.
 
 ### Lean Canvas
 
