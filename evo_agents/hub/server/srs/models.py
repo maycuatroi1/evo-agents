@@ -144,7 +144,7 @@ class SrsQueuedVersion(SrsVersionCases):
     """A version in review of a document the caller sees, with the use cases it needs reviewed, what holds its approval
     now and whether the caller may review it."""
 
-    use_cases: list[SrsQueuedUseCase]
+    use_cases: list[SrsQueuedUseCase]  # pyright: ignore[reportIncompatibleVariableOverride]
     document: str = Field(description="the document's slug")
     document_title: str
     held_by: Literal["ba_review", "findings"] | None = Field(
@@ -562,5 +562,8 @@ def finding_model(row: FindingRow, documents: Mapping[str, str] | None = None) -
             for source in listed
         ]
 
-    values = row.__dict__ | {"sources": sources(row.sources), "resolution_sources": sources(row.resolution_sources)}
+    values: dict[str, Any] = row.__dict__ | {
+        "sources": sources(row.sources),
+        "resolution_sources": sources(row.resolution_sources),
+    }
     return SrsFinding(**values)
