@@ -7,7 +7,9 @@ outside both is still added by login (``chat_members.person``); the list only sp
 
 Given the handles of a chat's agents (``agents``, those it starts with or has), each person says why they could not be
 in it (``why``): the words ``chat_access.uncleared`` gives when the hub refuses it, which name only projects the caller
-holds a grant on. A handle of no agent, or of one whose project the caller holds no grant on, counts for nothing.
+holds a grant on. A handle of no agent, or of one whose project the caller holds no grant on, counts for nothing, and
+neither does a project whose part the caller would share with the person they add (``chat_access.shares_part``: the
+writer role and a grant that clears it).
 Reading the list changes nothing and is not audited.
 """
 
@@ -22,7 +24,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, profiles, tables
-from evo_agents.hub.server.chat_access import LabelReader, chat_label, grants_of, projects_by_id
+from evo_agents.hub.server.chat_access import LabelReader, chat_label, grants_of, projects_by_id, shares_part
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.security import CurrentUser, Principal
@@ -67,6 +69,8 @@ async def candidates(conn: AsyncConnection, user: Principal, handles: list[str])
     )
     rows = (await conn.execute(query)).all()
     projects = await _projects(conn, user, handles)
+    held = await grants_of(conn, [user.user_id], [project.id for project in projects])
+    projects = [p for p in projects if not shares_part(p, *held.get((user.user_id, p.id), (None, None)))]
     label = chat_label(projects)
     named = {project.name: project for project in projects}
     grants = await grants_of(conn, [row.id for row in rows], [project.id for project in projects])

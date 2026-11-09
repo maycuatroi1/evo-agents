@@ -4,9 +4,15 @@
 Any member adds a person or an agent. Adding an agent of project P needs the writer role on P; a deleted agent is
 refused (409), and an agent the caller cannot see is the 404 of one that does not exist. Adding a person needs them to
 clear the chat's label, and adding an agent needs every person in the chat to clear the label it takes the chat to
-(``chat_access``): otherwise 409 names who does not, and why. A chat holds no person and agent of the same name, so
-that @name names one member (409), at most ``chats.MAX_PEOPLE`` people and ``chats.MAX_AGENTS`` agents. Adding someone
-already in the chat changes nothing. A person added gets the notice chat_added.
+(``chat_access``): otherwise 409 names who does not, and why. A person who is a writer on P and clears P's part by their own
+grant shares that part with whom it would pass (``share_part``): adding an agent of P, with the people of the chat;
+adding a person, with them, for each project of the chat's agents they are a writer on; creating a chat, with the
+people it starts with. So a member of P brings people outside P into a chat with P's agent, and only the parts the one
+adding cannot share still refuse. The hub's own flows (triage, settle, the Orchestrator) and the agents of runs share
+nothing: they add only whom the label clears. A chat holds no person and
+agent of the same name, so that @name names one member (409), at most ``chats.MAX_PEOPLE`` people and
+``chats.MAX_AGENTS`` agents. Adding someone already in the chat changes nothing. A person added gets the notice
+chat_added.
 
 A person leaves a chat, or its creator removes them; any member removes an agent. Each change is audited (chat.add,
 chat.remove; for an agent in its project) and is an event of the chat's stream.
@@ -30,14 +36,17 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.chat_access import (
     ChatAccess,
+    LabelProject,
+    LabelReader,
     agent_projects,
     chat_access,
-    projects_by_id,
+    chat_projects,
+    grants_of,
+    shares_part,
     uncleared,
-    with_override,
 )
 from evo_agents.hub.server.chat_notices import notice_added
-from evo_agents.hub.server.chat_store import add_member, member_event, remove_member
+from evo_agents.hub.server.chat_store import add_member, member_event, remove_member, share_label
 from evo_agents.hub.server.chat_views import Chat, agent_author, chat_view, person_author
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.profile_store import Profile, by_handle
@@ -110,12 +119,18 @@ def refuse_direct(chat: ChatAccess, doing: str) -> None:
         )
 
 
-def refuse_uncleared(found: list[str], doing: str) -> None:
+SHARE_HINT = (
+    "A writer on the project whose own grant clears its label adds them, or its agent, and shares the project's part "
+    "of the chat's label with them"
+)
+
+
+def refuse_uncleared(found: list[str], doing: str, hint: str = "") -> None:
     if found:
         raise HTTPException(
             409,
             f"{doing} would put work of a project in front of people who do not clear its label: {'; '.join(found)}. "
-            "Nothing changed",
+            f"Nothing changed{'. ' + hint if hint else ''}",
         )
 
 
@@ -145,18 +160,54 @@ async def _record(conn, user: Principal, action: str, target: str, project_id: i
 # Adding
 
 
+async def share_part(
+    conn: AsyncConnection, user: Principal, chat_id: int, project: LabelProject, people: dict[int, str]
+) -> list[str]:
+    """Share ``project``'s part of chat ``chat_id``'s label, as ``user``, with the people of ``people`` (id: login) who
+    do not clear it, when ``user`` holds the writer role on it and a grant that clears the part (``shares_part``),
+    audited in the project; the logins it was shared with now, in order, none when ``user`` may not share it."""
+    grants = await grants_of(conn, [user.user_id, *people], [project.id])
+    held = grants.get((user.user_id, project.id))
+    if held is None or not shares_part(project, *held):
+        return []
+    reader = {project.name: project}
+    outside = {
+        user_id: login
+        for user_id, login in people.items()
+        if user_id != user.user_id and LabelReader(user_id, reader, grants).why_not([project.label]) is not None
+    }
+    shared = [
+        outside[user_id] for user_id in await share_label(conn, chat_id, project.id, sorted(outside), user.user_id)
+    ]
+    if shared:
+        logins = ",".join(sorted(shared, key=str.lower))
+        await _record(conn, user, audit.CHAT_SHARE, f"chat:{chat_id} shared:{logins}", project.id)
+    return sorted(shared, key=str.lower)
+
+
+async def _with_agent(conn: AsyncConnection, chat: ChatAccess, project_id: int) -> list[LabelProject]:
+    """The projects of ``chat``'s agents with an agent of project ``project_id`` in it too, as the chat holds their
+    parts now."""
+    (project,) = await chat_projects(conn, chat.chat_id, [project_id])
+    return [*(p for p in chat.projects if p.id != project_id), project]
+
+
 async def label_problems(conn: AsyncConnection, chat: ChatAccess, profile: Profile) -> list[str]:
-    """Who of the chat would not clear its label with agent ``profile`` in it, as ``uncleared`` says, one line each;
-    none when it is in the chat already or everyone clears it. Changes nothing."""
+    """Who of the chat would not clear its label with agent ``profile`` in it, as ``uncleared`` says, one line each,
+    shares the one adding it would make left out; none when it is in the chat already or everyone clears it. Changes
+    nothing."""
     people, agents = await _members(conn, chat.chat_id)
     if profile.handle in agents:
         return []
-    projects = with_override([*chat.projects, *await projects_by_id(conn, [profile.project_id])], chat.label_override)
-    return await uncleared(conn, people, projects)
+    return await uncleared(conn, people, await _with_agent(conn, chat, profile.project_id))
 
 
-async def put_agent(conn: AsyncConnection, user: Principal, chat: ChatAccess, profile: Profile) -> bool:
-    """Add agent ``profile`` to ``chat`` once the checks pass; whether it was not in it."""
+async def put_agent(
+    conn: AsyncConnection, user: Principal, chat: ChatAccess, profile: Profile, *, share: bool = False
+) -> bool:
+    """Add agent ``profile`` to ``chat`` once the checks pass; whether it was not in it. With ``share``, a person adding
+    it themselves, ``user`` shares its project's part with the people of the chat (``share_part``); the hub's own flows
+    and the agents of runs share nothing."""
     refuse_direct(chat, f"adding @{profile.handle}")
     people, agents = await _members(conn, chat.chat_id)
     if profile.handle in agents:
@@ -164,8 +215,15 @@ async def put_agent(conn: AsyncConnection, user: Principal, chat: ChatAccess, pr
     refuse_clash(people.values(), [profile.handle])
     if len(agents) >= chats.MAX_AGENTS:
         raise HTTPException(409, f"chat {chat.chat_id} has {len(agents)} agents, the most a chat holds")
-    projects = with_override([*chat.projects, *await projects_by_id(conn, [profile.project_id])], chat.label_override)
-    refuse_uncleared(await uncleared(conn, people, projects), f"adding @{profile.handle} of {profile.project}")
+    if share:
+        (project,) = await chat_projects(conn, chat.chat_id, [profile.project_id])
+        await share_part(conn, user, chat.chat_id, project, people)
+    projects = await _with_agent(conn, chat, profile.project_id)
+    refuse_uncleared(
+        await uncleared(conn, people, projects),
+        f"adding @{profile.handle} of {profile.project}",
+        SHARE_HINT if share else "",
+    )
     added_at = await add_member(conn, chat.chat_id, profile_id=profile.id, added_by=user.user_id)
     if added_at is None:
         return False
@@ -174,8 +232,12 @@ async def put_agent(conn: AsyncConnection, user: Principal, chat: ChatAccess, pr
     return True
 
 
-async def put_person(conn: AsyncConnection, user: Principal, chat: ChatAccess, user_id: int, login: str) -> bool:
-    """Add person ``login`` to ``chat`` once the checks pass, with their notice; whether they were not in it."""
+async def put_person(
+    conn: AsyncConnection, user: Principal, chat: ChatAccess, user_id: int, login: str, *, share: bool = False
+) -> bool:
+    """Add person ``login`` to ``chat`` once the checks pass, with their notice; whether they were not in it. With
+    ``share``, a person adding them themselves, ``user`` shares with them the part of each project of the chat's agents
+    they may share (``share_part``); the hub's own flows share nothing."""
     refuse_direct(chat, f"adding {login}")
     people, agents = await _members(conn, chat.chat_id)
     if user_id in people:
@@ -183,7 +245,10 @@ async def put_person(conn: AsyncConnection, user: Principal, chat: ChatAccess, u
     refuse_clash([login], agents)
     if len(people) >= chats.MAX_PEOPLE:
         raise HTTPException(409, f"chat {chat.chat_id} has {len(people)} people, the most a chat holds")
-    refuse_uncleared(await uncleared(conn, {user_id: login}, chat.projects), f"adding {login}")
+    projects = chat.projects
+    if share and any([await share_part(conn, user, chat.chat_id, p, {user_id: login}) for p in chat.projects]):
+        projects = await agent_projects(conn, chat.chat_id)
+    refuse_uncleared(await uncleared(conn, {user_id: login}, projects), f"adding {login}", SHARE_HINT if share else "")
     added_at = await add_member(conn, chat.chat_id, user_id=user_id, added_by=user.user_id)
     if added_at is None:
         return False
@@ -201,7 +266,7 @@ async def add_person(request: Request, chat_id: ChatId, login: LoginPath, user: 
         chat = await chat_access(conn, user, chat_id, lock=True)
         refuse_direct(chat, f"adding {login}")
         user_id, found = await person(conn, login)
-        added = await put_person(conn, user, chat, user_id, found)
+        added = await put_person(conn, user, chat, user_id, found, share=True)
         view = await chat_view(conn, chat)
     log.info("chat person added", extra={"chat_id": chat_id, "login": found, "added": added})
     return view
@@ -214,7 +279,7 @@ async def add_agent(request: Request, chat_id: ChatId, handle: HandlePath, user:
         chat = await chat_access(conn, user, chat_id, lock=True)
         refuse_direct(chat, f"adding @{handle}")
         profile = await addable_agent(conn, user, handle)
-        added = await put_agent(conn, user, chat, profile)
+        added = await put_agent(conn, user, chat, profile, share=True)
         view = await chat_view(conn, await label_now(conn, chat))
     log.info("chat agent added", extra={"chat_id": chat_id, "handle": handle, "added": added})
     return view

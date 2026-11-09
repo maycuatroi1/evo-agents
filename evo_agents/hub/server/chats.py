@@ -188,7 +188,8 @@ async def _starting(conn: AsyncConnection, user: Principal, body: ChatCreate):
     people = dict([await person(conn, login) for login in body.people if login.lower() != user.login.lower()])
     refuse_clash([user.login, *people.values()], [agent.handle for agent in agents])
     projects = await projects_by_id(conn, [agent.project_id for agent in agents])
-    refuse_uncleared(await uncleared(conn, {user.user_id: user.login, **people}, projects), "the chat")
+    # the creator clears every part, so as a writer on each agent's project they share it with the people they name
+    refuse_uncleared(await uncleared(conn, {user.user_id: user.login}, projects), "the chat")
     return agents, people
 
 
@@ -204,10 +205,10 @@ async def create_chat(request: Request, body: ChatCreate, user: CurrentUser) -> 
         await member_event(conn, chat_id, "member_added", person_author(user.login), user.login)
         chat = await chat_access(conn, user, chat_id)
         for agent in agents:
-            await put_agent(conn, user, chat, agent)
+            await put_agent(conn, user, chat, agent, share=True)
             chat = await label_now(conn, chat)
         for user_id, login in people.items():
-            await put_person(conn, user, chat, user_id, login)
+            await put_person(conn, user, chat, user_id, login, share=True)
         await audit.record(
             conn, actor_id=user.user_id, token_id=user.token_id, action=audit.CHAT_CREATE, target=f"chat:{chat_id}"
         )

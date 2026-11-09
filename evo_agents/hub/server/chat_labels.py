@@ -29,9 +29,11 @@ from evo_agents.hub.server.chat_access import (
     ChatAccess,
     chat_access,
     label_admin,
+    label_shares,
     projects_by_id,
     uncleared,
     with_override,
+    with_shares,
 )
 from evo_agents.hub.server.chat_members import ChatId, refuse_uncleared
 from evo_agents.hub.server.chat_views import Chat, chat_view
@@ -97,6 +99,7 @@ async def _change(conn: AsyncConnection, user: Principal, chat: ChatAccess, leve
     query = select(u.c.id, u.c.login).join_from(m, u, u.c.id == m.c.user_id)
     people = dict((await conn.execute(query.where(m.c.chat_id == chat.chat_id, m.c.removed_at.is_(None)))).all())
     projects = with_override(await projects_by_id(conn, [p.id for p in chat.projects]), override)
+    projects = with_shares(projects, await label_shares(conn, [chat.chat_id]), chat.chat_id)  # as the new level reads
     refuse_uncleared(await uncleared(conn, people, projects), f"setting the level of chat {chat.chat_id}")
     c = tables.chats
     await conn.execute(

@@ -999,16 +999,25 @@ name, so that `@name` names one member.
 for a chat without typing a login: everyone who holds a grant on a project the caller holds one on, and everyone in a
 chat the caller is in, the caller left out, by login, at most 500. Given the handles of a chat's agents (`agents`,
 repeated), each says why they could not be in it (`why`, the words of the hub's refusal; null when they could); a
-handle of no agent, or of one whose project the caller holds no grant on, counts for nothing. Someone outside the list
+handle of no agent, or of one whose project the caller holds no grant on, counts for nothing, and so does a project
+whose part the caller would share (see Label). Someone outside the list
 who signed in once is still added by login. The web's New chat and Members search this list.
 
 **Label.** A chat's label is the labels of the projects of its agents: for each project, its default label, the one
-its runs on no plan read as. Every person in the chat holds a grant on each of those projects whose max level reaches
-that project's label, on the project's own ladder: adding an agent that would take the label past someone in the chat
-is refused (409, naming who and why), and so is adding someone who does not clear it. The hub checks it again on every
-read and write, so someone whose grant was lowered or revoked gets 403. Each message keeps the label the chat had when
-it was sent, as a run's events read as its project's: once an agent left and the label went down, a person who joined
-since does not read what was written before. A chat is restricted when a project of its agents is (its hub sink cleared
+its runs on no plan read as. Every person in the chat clears it: they hold a grant on each of those projects whose max
+level reaches that project's label, on the project's own ladder, or a writer on the project shared its part with them
+in that chat. A person who is a writer on project P and whose own grant clears P's part shares it with whom it would
+pass: adding an agent of P, with the people of the chat; adding a person, or creating a chat with people, with them
+(table `chat_label_shares`, migration 0229; audited as `chat.share` in P, its target `chat:<id> shared:<logins>`). So
+a member of P brings people outside P into a chat with P's agent. A person cleared by a share alone shares nothing,
+nor does a reader, and the hub's own flows (triage, settle, the Orchestrator) and the agents of runs share nothing:
+what nobody may share is refused (409, naming who and why). The label's part names whom it was shared with
+(`shared_with`, their ids) while the writer who shared it still holds the writer role and clears the part; a share
+goes when its person leaves the chat, and with P's agents when the last one leaves. The hub checks it again on every
+read and write, so someone whose grant was lowered or revoked, or whose share's writer lost theirs, gets 403. Each
+message keeps the label the chat had when it was sent, as a run's events read as its project's: once an agent left
+and the label went down, a person who joined since does not read what was written before. A person a part was shared
+with does not wake the project's agent: a run still needs its person to be a writer on the project. A chat is restricted when a project of its agents is (its hub sink cleared
 at or above `customer` or `domestic-only`, as Telegram reads it: `docs/notifications.md`).
 
 **The chat's own level.** An admin of every project with an agent in a group chat may set the chat's level, at or below
