@@ -390,9 +390,16 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   `hub_events`, in the same transaction, which the Loop reads by cursor and the wait of a plan run wakes on
   (`evo_agents.hub.hub_events`, `docs/notifications.md`, A wait).
   The hub writes one delivery per plugin in the transaction that made the event (table `plugin_deliveries`), and the
-  job `hub.deliver_plugin_events` hands each to its plugin every minute, **at least once**: a delivery counts only once
-  the plugin answered, a failed try is tried again after 1, 2, 4 minutes and so on up to an hour, and the eighth fails
-  it; before each try the hub checks again that the project enables the plugin and grants the kind. The `delivery` id
+  job `hub.deliver_plugin_events` hands each to its plugin, **at least once**: every minute, as soon as the transaction
+  that stored what a bridge carries or a notification commits, and when the soonest delivery left pending is due (the
+  job runs on a queue and a worker of its own, `deliveries`, never behind the long jobs of `default`). A delivery counts
+  only once the plugin answered, a failed try is tried again after 1, 2, 4 minutes and so on up to an hour, and the
+  eighth fails it. A core plugin that is not ready yet, such as telegram when a group is at its pace or Telegram
+  answered 429, raises an exception of its own class with a number attribute `retry_after` (seconds): the delivery is
+  tried again that long after, at least 1 second and at most an hour, and the hub logs it without a traceback. Such a
+  try counts in the delivery's attempts but not among the eight failed ones; the 240th fails it. The API of core
+  plugins exports no class for it: the hub reads the attribute. Before each try the hub checks again that the project
+  enables the plugin and grants the kind. The `delivery` id
   stays the same on every try, so a plugin that must act once keeps the ids it has seen. Deliveries that ended are kept
   14 days.
 - **Channels.** A core plugin's channel is a kind of members' channel, sent with the notifications' own outbox and

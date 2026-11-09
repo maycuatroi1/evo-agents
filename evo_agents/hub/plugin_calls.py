@@ -7,7 +7,10 @@ result the hub cannot use never reaches a caller (``checked``). A core plugin's 
 (``python``, ``module:attribute``), which runs here: ``handler(params, context)``, awaited when it returns an
 awaitable, with a ``CoreContext`` (the plugin, the hub's engine and config, the project). An isolated plugin's runs in
 its backend, which the plugin host runs apart from the hub (``PluginHostClient``): the host answers within the
-timeout, a 503 when the backend is down (``PluginHostUnavailable``), the backend's error as ``PluginCallError``. The
+timeout, a 503 when the backend is down (``PluginHostUnavailable``), the backend's error as ``PluginCallError``. A
+core plugin's exception becomes a ``PluginCallError`` too, logged with its traceback, unless it carries a number
+``retry_after``: the plugin asks to be tried again that many seconds later, which the error keeps and the log says
+without a traceback. The
 503 carries why a backend is down, a failed start's text included; the client keeps it out of the message a project
 member reads (``DOWN``), and a hub admin reads it in the backend's status.
 
@@ -30,6 +33,7 @@ import asyncio
 import importlib
 import inspect
 import logging
+import math
 from dataclasses import dataclass
 from functools import cache
 
@@ -62,11 +66,24 @@ class PluginHostUnavailable(RuntimeError):
 
 
 class PluginCallError(RuntimeError):
-    """The plugin answered an error, or a result plugin/1 does not allow."""
+    """The plugin answered an error, or a result plugin/1 does not allow. ``retry_after``: the seconds a core plugin
+    asked to wait before the next try (``retry_after_of``), None when it asked nothing."""
 
-    def __init__(self, code: int, message: str):
+    def __init__(self, code: int, message: str, *, retry_after: float | None = None):
         super().__init__(message)
         self.code = code
+        self.retry_after = retry_after
+
+
+def retry_after_of(exc: BaseException) -> float | None:
+    """The seconds the exception of a core plugin asks the hub to wait before trying again: its attribute
+    ``retry_after`` when that is a finite number of at least 0, else None. A plugin asks so with any exception class of
+    its own (the core plugin telegram's ``Later``, when a group is at its pace or Telegram answered 429): the API of
+    core plugins exports no class for it."""
+    value = getattr(exc, "retry_after", None)
+    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value) or value < 0:
+        return None
+    return float(value)
 
 
 class PluginHostClient:
@@ -322,6 +339,12 @@ async def call(
     except PluginCallError:
         raise
     except Exception as exc:  # a core plugin's own code may raise anything; it fails the call, never the hub
+        wait = retry_after_of(exc)
+        if wait is not None:  # the plugin asked for a later try: no fault of its code, so no traceback
+            contribution = f"{plugin}:{point}:{item['name']}"
+            log.info("core plugin asks to try later", extra={"contribution": contribution, "retry_after_s": wait})
+            said = f"plugin {plugin} asks to be tried again in {wait:g}s: {type(exc).__name__}"
+            raise PluginCallError(INTERNAL_ERROR, said, retry_after=wait) from None
         log.exception("core plugin failed", extra={"contribution": f"{plugin}:{point}:{item['name']}"})
         raise PluginCallError(INTERNAL_ERROR, f"plugin {plugin} failed: {type(exc).__name__}") from None
     return checked(method, answer)
@@ -346,4 +369,5 @@ __all__ = [
     "enablements",
     "load",
     "manifest_of",
+    "retry_after_of",
 ]

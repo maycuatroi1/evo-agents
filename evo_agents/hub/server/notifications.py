@@ -10,7 +10,8 @@ outbox (``evo_agents.hub.plugin_events``). A notification of the interrupt tier 
 (``evo_agents.hub.server.push_tiers``) also gets one delivery on each push device of its member that reaches them (a
 delivery with a ``device_id``, ``evo_agents.hub.server.push_store``).
 
-``deliver_notifications`` is the job hub.deliver_notifications, every minute. It takes the pending deliveries whose
+``deliver_notifications`` is the job hub.deliver_notifications, every minute, and queued by each transaction that
+stores a notification (``jobs.soon``), so it goes out once that commits. It takes the pending deliveries whose
 ``next_at`` has passed, each in a transaction of its own with ``FOR UPDATE SKIP LOCKED``, and hands each to an
 instance of the class CHANNELS names for its channel's kind (WEB for a delivery without a channel). The web's class
 sends nothing, since the web reads notifications from the table, so its deliveries are delivered at once. A class
@@ -87,7 +88,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import plugin_events, review, runs, tables
+from evo_agents.hub import jobs, plugin_events, review, runs, tables
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.plugin_calls import core_registry, load
 from evo_agents.hub.server import audit, output_views, push_store, push_tiers
@@ -221,6 +222,7 @@ async def notify(
     if await push_tiers.interrupts(conn, user_id=user_id, kind=kind, **tier):
         await conn.execute(push_store.device_deliveries(notification_id, user_id))
     await plugin_events.emit_notification(conn, notification_id, project_id)  # the channels of isolated plugins
+    await jobs.soon(jobs.DELIVER_NOTIFICATIONS, conn)  # goes out once the transaction commits
     return notification_id
 
 

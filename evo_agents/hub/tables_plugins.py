@@ -304,6 +304,7 @@ def _deliveries(metadata: MetaData) -> Table:
         Column("payload", JSONB, nullable=False),
         Column("state", Text, nullable=False, server_default="pending"),
         Column("attempts", SmallInteger, nullable=False, server_default="0"),
+        Column("put_off", SmallInteger, nullable=False, server_default="0"),  # tries the plugin put off (0229)
         _stamp("next_at"),
         Column("last_error", Text),
         _stamp("created_at"),

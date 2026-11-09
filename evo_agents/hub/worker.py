@@ -4,7 +4,9 @@ The worker migrates the database like the api (under the advisory lock), then ta
 queue in Postgres, ``concurrency`` at a time, until SIGTERM or SIGINT. A second procrastinate worker in the same
 process takes only the queue ``jobs.LEASE`` (recovering runs, delivering notifications), one job at a time, so those
 run every minute even while long jobs fill the ``concurrency`` slots; a third takes only ``jobs.HUB_QUEUE``, the turns
-of the hub runtime, HUB_CONCURRENCY at a time. On the first signal it takes no new job and
+of the hub runtime, HUB_CONCURRENCY at a time; a fourth only ``jobs.DELIVERY_QUEUE``, the deliveries to plugins,
+DELIVERY_CONCURRENCY at a time, so what a commit queues for a plugin goes out within seconds. On the first signal it
+takes no new job and
 waits up to SHUTDOWN_GRACE for the running ones; procrastinate aborts what is still running after that, and a second
 signal kills the process. Stopped by a signal, it exits 0; stopped by anything else, such as losing Postgres, it
 exits 1, so the container is restarted and the failure shows. It needs the blob store: what it builds lives in R2,
@@ -39,8 +41,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
   is parked, and one parked for 7 days cancelled
   (``evo_agents.hub.server.run_state``). The runs that end give back their leases, and the GitHub tokens of every lease
   given back and not revoked at GitHub yet are revoked there (``evo_agents.hub.server.credentials``).
-- ``hub.deliver_notifications``, every minute: the notification deliveries that are due, each handed to its
-  channel's class, tried again with a backoff and failed after 5 tries (``evo_agents.hub.server.notifications``).
+- ``hub.deliver_notifications``, every minute, and queued by each transaction that stores a notification: the
+  notification deliveries that are due, each handed to its channel's class, tried again with a backoff and failed
+  after 5 tries (``evo_agents.hub.server.notifications``).
 - ``hub.prune_run_events``, daily: the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, the outputs of
   source tool of those runs that no question or chat message carries (``evo_agents.hub.output_prune``), and the sealed
   values of the GitHub tokens leased to runs that are past their end.
@@ -59,8 +62,10 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.value_check``: deferred with each batch of a project's signals that stored any (``evo_agents.hub.signals``),
   one at a time per project and at most one waiting: the plugins' jobs named value_check of that project, for it alone
   (``evo_agents.hub.plugin_jobs.run_on_signals``).
-- ``hub.deliver_plugin_events``, every minute: the events and notifications due for plugins, at least once, tried
-  again with a backoff (``evo_agents.hub.plugin_events``).
+- ``hub.deliver_plugin_events``, every minute, on ``jobs.DELIVERY_QUEUE``: the events and notifications due for
+  plugins, at least once, tried again with a backoff, or when a core plugin asked (``retry_after``); also queued by
+  each transaction that stores what a bridge carries or a notification for a plugin, and by each pass for the soonest
+  delivery it left pending, at its time (``evo_agents.hub.plugin_events``).
 - ``hub.read_nightly``, every minute: the commit the tag nightly of evo-agents points to, once for the whole hub
   whatever its number of workers, kept in hub_nightly with the time of the read for the api to hand every daemon in
   its heartbeat answer; a read that fails keeps the last one and logs a line (``evo_agents.hub.nightly``).
@@ -174,6 +179,8 @@ STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT)
 SIDE_CONNECTIONS = 3  # the pool serves the jobs plus procrastinate's fetching, heartbeat and periodic deferrer
 LEASE_CONCURRENCY = 1  # jobs the worker on jobs.LEASE runs at a time, beside the ``concurrency`` of the others
 HUB_CONCURRENCY = 4  # turns of the hub runtime the worker on jobs.HUB_QUEUE takes at a time: they wait on the gateway
+DELIVERY_CONCURRENCY = 2  # passes of hub.deliver_plugin_events at a time: one a commit queued beside one scheduled
+SIDE_WORKERS_CONCURRENCY = LEASE_CONCURRENCY + HUB_CONCURRENCY + DELIVERY_CONCURRENCY
 
 queue = App(connector=PsycopgConnector())  # never opened as is: ``run`` swaps in a connector with the DSN
 
@@ -477,7 +484,12 @@ async def value_check(context: JobContext, project_id: int) -> dict:
 
 
 @queue.periodic(cron="* * * * *")
-@queue.task(name=jobs.DELIVER_PLUGIN_EVENTS, pass_context=True, queueing_lock=jobs.DELIVER_PLUGIN_EVENTS)
+@queue.task(
+    name=jobs.DELIVER_PLUGIN_EVENTS,
+    pass_context=True,
+    queueing_lock=jobs.DELIVER_PLUGIN_EVENTS,
+    queue=jobs.DELIVERY_QUEUE,
+)
 async def deliver_plugin_events(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.plugin_events import deliver
 
@@ -666,12 +678,12 @@ async def prune_jobs(context: JobContext, timestamp: int | None = None) -> None:
 
 
 def connector(config: HubConfig, concurrency: int) -> PsycopgConnector:
-    """A connector whose pool procrastinate opens and closes, sized for ``concurrency`` jobs, the lease worker's and
-    the hub worker's."""
+    """A connector whose pool procrastinate opens and closes, sized for ``concurrency`` jobs, the lease worker's, the
+    hub worker's and the delivery worker's."""
     return PsycopgConnector(
         conninfo=config.dsn,
         min_size=1,
-        max_size=max(config.pool_max_size, concurrency + LEASE_CONCURRENCY + HUB_CONCURRENCY + 3 * SIDE_CONNECTIONS),
+        max_size=max(config.pool_max_size, concurrency + SIDE_WORKERS_CONCURRENCY + 4 * SIDE_CONNECTIONS),
         timeout=config.pool_timeout,
         kwargs={"application_name": APPLICATION_NAME, "connect_timeout": CONNECT_TIMEOUT},
         name="evo-hub-worker",
@@ -680,9 +692,10 @@ def connector(config: HubConfig, concurrency: int) -> PsycopgConnector:
 
 
 async def workers(**options) -> None:
-    """Three procrastinate workers on the one App: one with ``options``, one on jobs.LEASE alone, so recovering runs
-    and delivering notifications never wait behind a long job, and one on jobs.HUB_QUEUE alone, HUB_CONCURRENCY turns
-    of the hub runtime at a time. A worker whose ``queues`` leave out the default queue (``--queue kg``) runs the
+    """Four procrastinate workers on the one App: one with ``options``, one on jobs.LEASE alone, so recovering runs
+    and delivering notifications never wait behind a long job, one on jobs.HUB_QUEUE alone, HUB_CONCURRENCY turns
+    of the hub runtime at a time, and one on jobs.DELIVERY_QUEUE alone, so a delivery to a plugin never waits behind a
+    long job either. A worker whose ``queues`` leave out the default queue (``--queue kg``) runs the
     first alone. All stop when one does, the error of the one that stopped first raised; cancelled, they stop and
     wait for their running jobs."""
     queues = options.get("queues")
@@ -701,9 +714,15 @@ async def workers(**options) -> None:
         "queues": [jobs.HUB_QUEUE],
         "concurrency": HUB_CONCURRENCY,
     }
+    deliveries = {
+        **options,
+        "name": f"{options.get('name') or 'worker'}-{jobs.DELIVERY_QUEUE}",
+        "queues": [jobs.DELIVERY_QUEUE],
+        "concurrency": DELIVERY_CONCURRENCY,
+    }
     running = [
         asyncio.ensure_future(queue.run_worker_async(install_signal_handlers=False, **each))
-        for each in (options, lease, turns)
+        for each in (options, lease, turns, deliveries)
     ]
     try:
         done, _ = await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)

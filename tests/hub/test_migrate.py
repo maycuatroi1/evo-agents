@@ -5871,3 +5871,24 @@ def test_migration_0225_gives_srs_findings_their_choices_and_going_back_drops_th
     move_to(hub_db, "0224", down=True)
     assert "options" not in columns(hub_db, "srs_findings")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0225") :]
+
+
+def test_0229_counts_the_tries_a_plugin_put_off_within_its_attempts_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0228")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="sandbox", publisher="acme").returning(t.plugins.c.id))
+        delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "kind": "run.state", "contribution": "runs"}
+        conn.execute(insert(t.plugin_deliveries).values(**delivery, payload={"run_id": 1}, attempts=3))
+    move_to(hub_db, "0229")
+    d = t.plugin_deliveries
+    assert query(hub_db, select(d.c.attempts, d.c.put_off)) == [(3, 0)], "a try before put off nothing"
+    with live.connect(hub_db) as conn:
+        conn.execute(update(d).values(put_off=3))
+        for wrong in (4, -1):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(update(d).values(put_off=wrong))
+    move_to(hub_db, "0228", down=True)
+    assert "put_off" not in columns(hub_db, "plugin_deliveries")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0229") :]

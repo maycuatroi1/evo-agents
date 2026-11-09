@@ -3982,8 +3982,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   queued again, or fail on their third attempt; runs past their timeout fail; a run that waited 10 minutes for an
   answer, or waits only for a time or an event of the hub, is parked, and one parked for 7 days cancelled
   (`docs/workers.md`).
-- `hub.deliver_notifications`, every minute: hands each notification delivery that is due to its channel's class, or
-  to the sender of its push device after the member's quiet hours, and tries a failing one again with a backoff,
+- `hub.deliver_notifications`, every minute and once each transaction that stores a notification commits: hands each
+  notification delivery that is due to its channel's class, or to the sender of its push device after the member's
+  quiet hours, and tries a failing one again with a backoff,
   failing it after 5 tries (`docs/notifications.md`).
 - `hub.today_digest`, every minute: the summary push of Today to each member with a push device who has been away from
   the hub for 8 hours, at their `digest_at` in their time zone (07:30 until they choose), once a local day, when
@@ -4078,7 +4079,8 @@ go to the queue `kg` (`jobs.KG_QUEUE`), so the compose file runs them on `worker
 time, and `worker` takes `default`: a long build never holds back the merge queue, notifications or schedules, and
 two projects build at once (one build of a project at a time, under its lock). A worker that takes `default` keeps,
 beside its slots, one for `hub.recover_runs` and `hub.deliver_notifications` alone (queue `lease`), so they run every
-minute while a long plugin job holds the others. On SIGTERM a worker takes no
+minute while a long plugin job holds the others, and two for `hub.deliver_plugin_events` alone (queue `deliveries`),
+so what a commit stores for a plugin goes out within seconds. On SIGTERM a worker takes no
 new job and gives running ones 25 seconds, so give its container a stop grace period above that (the compose file
 uses 40 s). It exits 1 when it loses Postgres, which lets the restart policy bring it back. Graph builds use CPU and
 memory, so the compose file caps `worker` and each `worker-kg` with `EVO_HUB_WORKER_CPUS` and `EVO_HUB_WORKER_MEMORY`. With
