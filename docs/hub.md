@@ -4121,6 +4121,16 @@ Postgres keeps each delivery to one of them. `hub deliver` refuses to start with
 when it does not. An `error` leaves `status` ok, since the jobs still deliver. Without the variable the hub opens no
 connection to a broker and runs as before. The broker's client, aio-pika, comes with the `hub-server` extra.
 
+The same variable moves the hub's wake-ups onto the broker (`evo_agents/hub/wake.py`): a run queued for the claims
+waiting (`evo_runs`), an event of a run for its streams (`evo_run_events`), a change of a chat for its streams and a
+span of a system's trace for its trace streams. Without the variable each is a Postgres NOTIFY in the writing
+transaction and every api process's one LISTEN connection takes it, as before. With it, the write keeps the wake-up on
+its connection and publishes it once the transaction committed, on the direct exchange `hub.wake` with the channel as
+routing key and the id as body; one that rolled back never goes out. Each api process binds a queue of its own,
+exclusive and deleted with its connection, to the exchange, so a run that `worker agent ask` or a mention queues in one
+api process is claimed in another within a second or two, and the wake-ups can be watched on the broker. A wake-up
+the broker cannot take is logged and dropped: claims and streams look again on their own every few seconds.
+
 ## Data access
 
 The api and the worker each hold one psycopg 3 connection pool and a SQLAlchemy 2.1 engine on it

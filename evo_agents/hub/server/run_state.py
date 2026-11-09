@@ -71,7 +71,7 @@ from sqlalchemy import Integer, case, cast, extract, func, insert, null, or_, se
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import plugin_events, review, runs, tables
+from evo_agents.hub import plugin_events, review, runs, tables, wake
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
@@ -194,13 +194,13 @@ async def notify_queued(conn: AsyncConnection, run_id: int) -> None:
         queue = jobs.JobQueue.in_transaction()
         await queue.defer(jobs.HUB_TURN, queueing_lock=f"hub-turn:{run_id}", connection=conn, run_id=run_id)
         return
-    await conn.execute(select(func.pg_notify(RUNS_CHANNEL, str(run_id))))
+    await wake.notify(conn, RUNS_CHANNEL, str(run_id))
 
 
 async def notify_events(conn: AsyncConnection, run_id: int) -> None:
     """Wake the streams of run ``run_id`` on EVENTS_CHANNEL once the caller's transaction commits; the notifications
     of one transaction with the same run arrive as one."""
-    await conn.execute(select(func.pg_notify(EVENTS_CHANNEL, str(run_id))))
+    await wake.notify(conn, EVENTS_CHANNEL, str(run_id))
 
 
 async def move_run(

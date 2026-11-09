@@ -30,7 +30,7 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import system_context, system_spec, tables
+from evo_agents.hub import system_context, system_spec, tables, wake
 from evo_agents.hub.server import system_store
 from evo_agents.kg.sessions import READ_META
 
@@ -85,7 +85,7 @@ class _Span:
 
 async def notify(conn: AsyncConnection, system_id: int | None) -> None:
     if system_id is not None:
-        await conn.execute(select(func.pg_notify(CHANNEL, str(system_id))))
+        await wake.notify(conn, CHANNEL, str(system_id))
 
 
 async def _system_row(conn: AsyncConnection, query) -> SystemRef | None:
