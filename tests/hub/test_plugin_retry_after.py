@@ -8,6 +8,10 @@ import logging
 import math
 from datetime import timedelta
 
+import pytest
+
+pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
+
 from sqlalchemy import Text, cast, column, func, select, table
 
 from evo_agents.hub import jobs, plugin_calls, plugin_events, tables

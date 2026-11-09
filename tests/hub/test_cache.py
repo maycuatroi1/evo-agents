@@ -18,6 +18,9 @@ import time
 import uuid
 
 import pytest
+
+pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
+
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.dialects import postgresql
 

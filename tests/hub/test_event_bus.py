@@ -14,6 +14,10 @@ import time
 from datetime import timedelta
 
 import pytest
+
+pytest.importorskip("fastapi", reason="the hub extras are not installed")
+pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
+
 from fastapi.testclient import TestClient
 from sqlalchemy import Text, cast, func, select, update
 
