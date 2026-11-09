@@ -14,9 +14,13 @@ import secrets
 import threading
 import time
 
+import pytest
+
+pytest.importorskip("psycopg", reason="the hub's listener needs the hub-server extra, evo-ak[hub-server]")
+pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
+
 import httpx
 import psycopg
-import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
