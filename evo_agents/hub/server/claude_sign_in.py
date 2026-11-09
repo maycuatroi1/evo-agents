@@ -217,6 +217,10 @@ async def finish_sign_in(request: Request, body: SignInFinish, user: CurrentUser
     write = SecretWrite(
         kind="env",
         env_var=OAUTH_ENV_VAR,
+        url_prefix=None,
+        username=None,
+        environment=None,
+        oauth=None,
         projects=projects,
         workers=workers,
         pools=pools,

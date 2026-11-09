@@ -458,7 +458,8 @@ async def project_settings(conn: AsyncConnection, project_id: int, project: str)
     except TemplateError as exc:
         raise SrsError(409, f"the config of plugin {PLUGIN} in project {project}: {exc}") from None
     roles, policy = dict(values.get("roles") or {}), dict(values.get("approval_policy") or {})
-    reviewers = tuple(dict.fromkeys(str(login) for login in values.get("reviewers") or ()))
+    listed = values.get("reviewers")
+    reviewers = tuple(dict.fromkeys(str(login) for login in listed)) if isinstance(listed, list | tuple) else ()
     return Settings(template, roles, policy, self_approval=values.get("self_approval") is True, reviewers=reviewers)
 
 

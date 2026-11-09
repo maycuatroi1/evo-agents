@@ -307,8 +307,8 @@ def exchange_setup_token(code: str, pkce: Pkce, now: datetime | None = None) -> 
         raise OAuthError("the token endpoint gave no token")
     if isinstance(lifetime, bool) or not isinstance(lifetime, int | float) or lifetime <= 0:
         lifetime = SETUP_TOKEN_SECONDS
-    account = answer.get("account") if isinstance(answer.get("account"), dict) else {}
-    email = account.get("email_address")
+    account = answer.get("account")
+    email = account.get("email_address") if isinstance(account, dict) else None
     return SetupToken(
         token, (now or datetime.now(UTC)) + timedelta(seconds=lifetime), email if isinstance(email, str) else None
     )
