@@ -31,6 +31,10 @@ kind of channel a message came in by. ``bridge_tables`` adds them.
 
 Revision 0213 gives chat_messages ``from_output_id``, the interactive answer (an output of a run) a person sent the
 message from, which the message keeps as its source and the hub's rate limit counts (``chat_answers``).
+
+Revision 0229 adds chat_label_shares: a person of a chat who clears a project's part of its label because a writer on
+that project shared it with them there (``shared_by``), not by a grant of their own (``chat_access``). ``share_table``
+adds it.
 """
 
 from __future__ import annotations
@@ -221,6 +225,25 @@ def chat_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, T
     found = (*_chats(metadata), *_messages(metadata), *_reactions(metadata))
     _chat_runs(runs)
     return found
+
+
+def share_table(metadata: MetaData) -> Table:
+    """chat_label_shares of revision 0229, added to ``metadata``: one row per chat, project and person it was shared
+    with."""
+    return Table(
+        "chat_label_shares",
+        metadata,
+        Column("chat_id", BigInteger, nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("user_id", BigInteger, nullable=False),
+        Column("shared_by", BigInteger, nullable=False),
+        _stamp("shared_at"),
+        _fk("chat_label_shares", "chat_id", "chats.id", ondelete="CASCADE"),
+        _fk("chat_label_shares", "project_id", "projects.id", ondelete="CASCADE"),
+        _fk("chat_label_shares", "user_id", "users.id", ondelete="CASCADE"),
+        _fk("chat_label_shares", "shared_by", "users.id", ondelete="CASCADE"),
+        PrimaryKeyConstraint("chat_id", "project_id", "user_id", name="chat_label_shares_pkey"),
+    )
 
 
 def bridge_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
