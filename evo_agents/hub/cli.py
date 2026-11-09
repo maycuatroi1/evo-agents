@@ -136,6 +136,28 @@ def cmd_worker(args) -> int:
 
 
 @server_command
+def cmd_deliver(args) -> int:
+    from evo_agents.hub.config import ConfigError, load_config
+
+    try:
+        config = load_config(dsn=args.dsn, data_dir=args.data_dir)
+    except ConfigError as exc:
+        return _config_error(exc)
+    if config.broker_url is None:
+        message = "EVO_HUB_BROKER_URL is not set: hub deliver carries what the event bus carries, and the bus is off"
+        return _config_error(ConfigError("EVO_HUB_BROKER_URL", message))
+    try:
+        import aio_pika  # noqa: F401
+
+        from evo_agents.hub import deliverer
+        from evo_agents.hub.server.app import init_sentry
+    except ImportError as exc:
+        return missing_extra(exc, args)
+    init_sentry(config)
+    return deliverer.main(config)
+
+
+@server_command
 def cmd_plugin_host(args) -> int:
     try:
         from evo_agents.hub.plugin_host_service import load_host_config, run_service
@@ -422,6 +444,7 @@ def register(sub) -> None:
     hsub = hub.add_subparsers(dest="hub_command", required=True)
     _register_serve(hsub)
     _register_worker(hsub)
+    _register_deliver(hsub)
     _register_migrate(hsub)
     _register_plugin_host(hsub)
     _register_storage(hsub)
@@ -476,6 +499,21 @@ def _register_worker(hsub) -> None:
         "(knowledge graph builds); without it, every queue",
     )
     worker.set_defaults(func=cmd_worker)
+
+
+def _register_deliver(hsub) -> None:
+    deliver = hsub.add_parser(
+        "deliver",
+        help="deliver plugin events and notifications through the event bus within seconds of their commit "
+        "(needs the hub-server extra, Postgres and EVO_HUB_BROKER_URL); several may run",
+    )
+    deliver.add_argument("--dsn", help=_DSN_HELP)
+    deliver.add_argument(
+        "--data-dir",
+        help="cache directory, rebuilt from Postgres and the blob store when lost "
+        "(default: $EVO_HUB_DATA_DIR or ~/.evo/hub-server/cache)",
+    )
+    deliver.set_defaults(func=cmd_deliver)
 
 
 def _register_migrate(hsub) -> None:

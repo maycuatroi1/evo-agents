@@ -32,7 +32,7 @@ environment axis of its agent profile; NULL for a run on the worker's host.
 
 plugin_deliveries (0038) is the outbox of the extension points (``evo_agents.hub.plugin_events``): one event or
 notification for one plugin in one project, its kind, the contribution it goes to, its payload, its state, tries, when
-it is due, the last error, when it was made and delivered. 0038 also records the core plugins of the hub's image in
+it is due, the last error, when it was made and delivered, and when the event bus last carried it (0230). 0038 also records the core plugins of the hub's image in
 plugins and plugin_versions: signature kind ``image``, published and installed by nobody.
 
 project_agent_types (0042) holds each agent type of a plugin a project enabled (``evo_agents.hub.task_runs``): the
@@ -309,6 +309,7 @@ def _deliveries(metadata: MetaData) -> Table:
         Column("last_error", Text),
         _stamp("created_at"),
         Column("delivered_at", DateTime(timezone=True)),
+        Column("published_at", DateTime(timezone=True)),  # when the event bus last carried it (0230)
         _fkey("plugin_id", "plugins.id", "plugin_deliveries", "CASCADE"),
         _fkey("project_id", "projects.id", "plugin_deliveries", "CASCADE"),
         PrimaryKeyConstraint("id", name="plugin_deliveries_pkey"),

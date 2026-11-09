@@ -392,7 +392,9 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   The hub writes one delivery per plugin in the transaction that made the event (table `plugin_deliveries`), and the
   job `hub.deliver_plugin_events` hands each to its plugin, **at least once**: every minute, as soon as the transaction
   that stored what a bridge carries or a notification commits, and when the soonest delivery left pending is due (the
-  job runs on a queue and a worker of its own, `deliveries`, never behind the long jobs of `default`). A delivery counts
+  job runs on a queue and a worker of its own, `deliveries`, never behind the long jobs of `default`). With the event
+  bus on (`EVO_HUB_BROKER_URL`, `docs/hub.md`, Event bus), `evo-agents hub deliver` hands them over instead, within
+  seconds, one consumer per plugin at a time and in order, and the job is the fallback. A delivery counts
   only once the plugin answered, a failed try is tried again after 1, 2, 4 minutes and so on up to an hour, and the
   eighth fails it. A core plugin that is not ready yet, such as telegram when a group is at its pace or Telegram
   answered 429, raises an exception of its own class with a number attribute `retry_after` (seconds): the delivery is

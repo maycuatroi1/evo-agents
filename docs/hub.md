@@ -4,12 +4,13 @@ The hub is one server a team shares for four things that otherwise live on singl
 files, the plans of each harness, skill directories, and knowledge graphs. Machines talk to it with
 `evo-agents hub ...` commands and through the `evo-hub` Claude Code plugin; people read it in a browser.
 
-A deployment has five parts:
+A deployment has five parts, and an optional sixth:
 
 | Part | What it runs | State |
 | --- | --- | --- |
 | api | `evo-agents hub serve`: the HTTP API under `/v1` and the MCP endpoint `/mcp` | none; `/cache` is a cache |
 | worker | `evo-agents hub worker`: background jobs from a queue in Postgres | none; `/cache` is a cache |
+| deliver (optional) | `evo-agents hub deliver`: the event bus's relay and consumers, with `EVO_HUB_BROKER_URL` (Worker and queue, Event bus) | none |
 | web | the Next.js server of `web/` | none |
 | Postgres | users, tokens, projects, grants, memories, plans, skills, graph builds, workers and runs, the decisions of plan runs and the notifications of members, the job queue, the audit trail | all of it |
 | blob store | Cloudflare R2 (any S3 API works): skill bundles, run logs, source files and built graphs | content-addressed bytes |
@@ -4086,6 +4087,39 @@ uses 40 s). It exits 1 when it loses Postgres, which lets the restart policy bri
 memory, so the compose file caps `worker` and each `worker-kg` with `EVO_HUB_WORKER_CPUS` and `EVO_HUB_WORKER_MEMORY`. With
 `EVO_KG_EMBEDDINGS=openrouter` the embedding of a build goes to OpenRouter and takes none of those CPUs. The worker
 refuses to start without a blob store, since builds read from it and write to it.
+
+### Event bus
+
+The event bus is optional. Without it, what a commit stores for a plugin or a member goes out through the jobs above:
+the commit queues `hub.deliver_plugin_events` or `hub.deliver_notifications`, and the minute's cron catches what a job
+missed. That works, but a busy queue delays it. Set `EVO_HUB_BROKER_URL` to a RabbitMQ URL (`amqp://` or `amqps://`,
+for example `amqp://user:password@rabbitmq:5672/`) on the api, the worker and a new process, `evo-agents hub
+deliver`, and the same events go through the broker within seconds (`evo_agents/hub/bus.py`,
+`evo_agents/hub/deliverer.py`). The hub never logs the URL's password.
+
+The outbox in Postgres stays the record of what is due either way: `plugin_deliveries` and `notification_deliveries`
+keep each delivery's state, due time and tries. The broker only carries the news that something is due:
+
+- A commit that stores a delivery sends a Postgres notification on the channel `hub_bus` instead of queueing a job.
+  `hub deliver` listens on it, takes the plugin deliveries that are due and not yet published, marks them with
+  `published_at` (schema 0230) and publishes their ids on the topic exchange `hub.events`, with the routing key
+  `plugin.<plugin>.<kind>` and publisher confirms, in the order they fell due. A pass of the notifications goes with
+  the key `notifications`.
+- Each plugin has a quorum queue, `hub.plugin.<plugin>`, with a single active consumer, so one consumer at a time
+  delivers a plugin's events and they stay in order. Notifications have the queue `hub.notifications`.
+- A consumer takes a message, claims the delivery by its id with `FOR UPDATE SKIP LOCKED`, calls the plugin, writes
+  the result and only then acks. A message that comes twice, or whose delivery a job already sent, is acked and
+  dropped, so a delivery goes out once.
+- Every few seconds a sweep publishes again the due deliveries nobody claimed for 45 seconds, so a message the broker
+  lost still goes out.
+- When a publish fails, or the broker is away, `hub deliver` queues the job instead, and the minute's cron still takes
+  every delivery that has been due for two minutes. Nothing is lost while the broker is down; it is only slower.
+
+Several copies of `hub deliver` may run: the single active consumer keeps each plugin in order, and the claim in
+Postgres keeps each delivery to one of them. `hub deliver` refuses to start without `EVO_HUB_BROKER_URL` (exit 2).
+`GET /v1/health` reports `broker`: `off` without the variable, `ok` when the broker takes a connection and `error`
+when it does not. An `error` leaves `status` ok, since the jobs still deliver. Without the variable the hub opens no
+connection to a broker and runs as before. The broker's client, aio-pika, comes with the `hub-server` extra.
 
 ## Data access
 

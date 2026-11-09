@@ -65,7 +65,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.deliver_plugin_events``, every minute, on ``jobs.DELIVERY_QUEUE``: the events and notifications due for
   plugins, at least once, tried again with a backoff, or when a core plugin asked (``retry_after``); also queued by
   each transaction that stores what a bridge carries or a notification for a plugin, and by each pass for the soonest
-  delivery it left pending, at its time (``evo_agents.hub.plugin_events``).
+  delivery it left pending, at its time (``evo_agents.hub.plugin_events``). With the event bus on
+  (``evo_agents.hub.bus``) the delivery process carries them instead, and the minute's pass takes only what has been due
+  for BUS_GRACE_SECONDS, unless the delivery process queued it because the broker could not be reached.
 - ``hub.read_nightly``, every minute: the commit the tag nightly of evo-agents points to, once for the whole hub
   whatever its number of workers, kept in hub_nightly with the time of the read for the api to hand every daemon in
   its heartbeat answer; a read that fails keeps the last one and logs a line (``evo_agents.hub.nightly``).
@@ -491,10 +493,16 @@ async def value_check(context: JobContext, project_id: int) -> dict:
     queue=jobs.DELIVERY_QUEUE,
 )
 async def deliver_plugin_events(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.plugin_events import deliver
+    from evo_agents.hub import bus
+    from evo_agents.hub.plugin_events import BUS_GRACE_SECONDS, deliver
 
     found = hub(context)
-    return await deliver(found.engine, config=found.config)
+    if not bus.on():
+        return await deliver(found.engine, config=found.config)
+    # The bus carries what falls due; the minute's pass takes what it left a while, and a pass the delivery process
+    # queued while the broker could not be reached takes everything due, as without the bus.
+    grace = BUS_GRACE_SECONDS if timestamp is not None else 0.0
+    return await deliver(found.engine, config=found.config, schedule=False, grace=grace)
 
 
 @queue.periodic(cron="* * * * *")

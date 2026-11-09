@@ -97,10 +97,22 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 30
+      # The broker of the hub's event bus (docs/hub.md, section Event bus): tests/hub/test_event_bus.py runs its
+      # RabbitMQ tests against it and skips them without EVO_HUB_TEST_BROKER_URL.
+      rabbitmq:
+        image: rabbitmq:4-alpine
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s
+          --health-timeout 10s
+          --health-retries 30
     env:
       EVO_HUB_TEST_DSN: postgresql://postgres:test@localhost:5432/postgres
       # A hub test fails rather than skips when EVO_HUB_TEST_DSN is missing (tests/hub/pg.py).
       EVO_HUB_TEST_REQUIRE_DSN: "1"
+      EVO_HUB_TEST_BROKER_URL: amqp://guest:guest@localhost:5672/
     steps:
       - name: Postgres without fsync
         run: >-

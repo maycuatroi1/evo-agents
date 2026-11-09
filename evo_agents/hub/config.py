@@ -115,6 +115,11 @@ gateway derives its own secrets and its dashboard password from it, and the api 
 it. EVO_HUB_GATEWAY_URL is where the api reaches it, http://evo-agents-hub-gateway:20128 on the compose network by
 default. Without the secret the gateway is off: the hub runs as before, and whatever needs the gateway says it is not
 configured.
+
+The event bus is optional as well (``evo_agents.hub.bus``). EVO_HUB_BROKER_URL, an amqp:// or amqps:// URL of a
+RabbitMQ whose password is registered as a secret, turns it on: what a commit stores for plugins and notification
+channels goes out through the broker and ``evo-agents hub deliver`` within seconds. Without it nothing connects to a
+broker and the hub delivers through its jobs, as before.
 """
 
 from __future__ import annotations
@@ -335,6 +340,7 @@ class HubConfig:
     seller_payment_instructions: str | None = None  # how a buyer pays an order
     seller_signal_project: str | None = None  # the project of the signals of its sales
     gateway_secret: str | None = None  # the root secret the api and the gateway share; never logged or returned
+    broker_url: str | None = None  # the event bus's RabbitMQ, None while it is off; holds a password, never logged
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
         return f"HubConfig(data_dir={str(self.data_dir)!r}, host={self.host!r}, port={self.port})"
@@ -879,6 +885,19 @@ def _gateway(env: Mapping[str, str]) -> dict:
     return {"gateway_secret": secret, "gateway_url": (url or DEFAULT_GATEWAY_URL) if secret else None}
 
 
+def _broker(env: Mapping[str, str]) -> str | None:
+    """The event bus's broker (``evo_agents.hub.bus``), its password registered as a secret."""
+    from evo_agents.hub import bus
+
+    try:
+        url = bus.broker_url(env)
+    except bus.BrokerUrlError as exc:
+        raise ConfigError(bus.BROKER_VARIABLE, str(exc)) from None
+    if url is not None:
+        register_secret(urlsplit(url).password)
+    return url
+
+
 def load_log_level(env: Mapping[str, str] | None = None) -> str:
     env = os.environ if env is None else env
     level = (_text(env, "EVO_HUB_LOG_LEVEL") or "INFO").upper()
@@ -966,4 +985,5 @@ def load_config(
         **_plugins(env),
         **_gateway(env),
         **_seller(env),
+        broker_url=_broker(env),
     )

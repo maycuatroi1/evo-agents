@@ -7986,6 +7986,28 @@
         "schema": "Decision"
       }
     },
+    "hub deliver": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--dsn"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--data-dir"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "hub docs history": {
       "positionals": [
         {
@@ -129272,6 +129294,16 @@
               "title": "Gateway",
               "description": "the model gateway, by its health check"
             },
+            "broker": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "error",
+                "off"
+              ],
+              "title": "Broker",
+              "description": "the event bus's broker, by a connection; its error leaves the status ok"
+            },
             "failed": {
               "items": {
                 "type": "string"
@@ -129288,7 +129320,8 @@
             "schema",
             "db",
             "r2",
-            "gateway"
+            "gateway",
+            "broker"
           ],
           "title": "Health"
         },

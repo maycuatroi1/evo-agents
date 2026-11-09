@@ -5892,3 +5892,19 @@ def test_0229_counts_the_tries_a_plugin_put_off_within_its_attempts_and_going_ba
     move_to(hub_db, "0228", down=True)
     assert "put_off" not in columns(hub_db, "plugin_deliveries")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0229") :]
+
+
+def test_0230_notes_when_the_bus_carried_a_plugin_delivery_null_before_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0229")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="sandbox", publisher="acme").returning(t.plugins.c.id))
+        delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "kind": "run.state", "contribution": "runs"}
+        conn.execute(insert(t.plugin_deliveries).values(**delivery, payload={"run_id": 1}))
+    move_to(hub_db, "0230")
+    d = t.plugin_deliveries
+    assert query(hub_db, select(d.c.published_at)) == [(None,)], "a delivery made before was never carried"
+    move_to(hub_db, "0229", down=True)
+    assert "published_at" not in columns(hub_db, "plugin_deliveries")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0230") :]
