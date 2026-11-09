@@ -244,6 +244,8 @@ owner, shows it, makes and revokes its join tokens and changes its slots, labels
 routes of this section and `evo-agents worker pool`; the pool serves the agent's project alone. See "Routes and
 commands" under the agent profiles in `docs/hub.md` for the placement that sends an agent's runs to it.
 A node of an agent's pool claims the runs of that agent alone, and only while it is ready; no other worker claims them.
+A machine that joins an agent's pool becomes a worker of the member who made the join token, not of the pool's owner,
+so an admin of the project adds nodes even after the member who created the agent lost every grant on it.
 
 **A join token.** `POST /v1/worker-pools/{name}/tokens` makes one: `evj_` and 32 random bytes in base64url, shown
 once; the hub keeps its SHA-256 alone. It works for `hours` (1 to 720, 24 by default) and joins `max_uses` machines
@@ -252,8 +254,9 @@ once; the hub keeps its SHA-256 alone. It works for `hours` (1 to 720, 24 by def
 evj_...` sends it to `POST /v1/worker/join` instead of a code; `EVO_JOIN_TOKEN` gives it without putting it on the
 command line, where the shell's history and the process list would see it. A token that is unknown, expired, revoked
 or used up gets a 403 that names none of these, and counts against the client address in the same limit as a wrong
-code, so the 429 after 10 refusals in 10 minutes covers both ([Joining](#joining)). When the owner has lost the
-writer role on one of the pool's projects, the join gets 409 and uses none of the token.
+code, so the 429 after 10 refusals in 10 minutes covers both ([Joining](#joining)). When the owner (the token's
+maker for an agent's pool) has lost the writer role on one of the pool's projects, the join gets 409 and uses none of
+the token.
 
 **Name and labels.** A node is named `<pool>-<host>`, the host being the first DNS label of the machine's hostname,
 lowercased and cut to what a worker name takes; a hostname that already starts with `<pool>-` is kept as it is. When

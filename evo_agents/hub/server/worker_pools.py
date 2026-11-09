@@ -16,9 +16,10 @@ keeps its hex SHA-256 alone. It lasts 1 hour to 30 days, takes 1 to 100 machines
 .../tokens/{id}/revoke; the nodes that joined with it stay. A machine sends it to POST /v1/worker/join instead of a code
 (``worker_join``): ``take_token`` finds it, locks it and its pool, and counts the join; a token that is unknown,
 expired, revoked or used up gets the same 403 as a wrong code, counted against the address as wrong codes are. The node
-is a new worker of the pool's owner with an ``evw_`` token of its own, named ``node_name`` (the pool's name and the
-machine's hostname, with a suffix when a live worker of the owner has that name already), with the pool's slots and
-projects; its labels are its own (none at first), the pool's and ``pool=<name>``.
+is a new worker of the pool's owner (of the token's creator, an admin of the agent's project, for the pool of an
+agent) with an ``evw_`` token of its own, named ``node_name`` (the pool's name and the machine's hostname, with a
+suffix when a live worker of the owner has that name already), with the pool's slots and projects; its labels are its
+own (none at first), the pool's and ``pool=<name>``.
 
 Every pool created or changed and every join token created or revoked adds an audit row naming the pool and the
 token's id, never the token, which never reaches a log line either.
@@ -34,8 +35,8 @@ from datetime import timedelta
 
 import psycopg
 from fastapi import APIRouter, HTTPException, Path, Request, Response
+from sqlalchemy import case, func, insert, select, update
 from sqlalchemy import exc as sa_exc
-from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
@@ -439,8 +440,11 @@ async def take_token(conn: AsyncConnection, token: str) -> Joining | None:
     if not token.startswith(TOKEN_PREFIX):
         return None
     t, p = tables.worker_join_tokens, tables.worker_pools
+    # a node of an agent's pool is the token creator's worker: an admin of the agent's project, while the member who
+    # created the agent may hold no grant on it any more
+    owner = case((p.c.agent_id.is_(None), p.c.owner_id), else_=t.c.created_by).label("owner_id")
     statement = (
-        select(t.c.id, p.c.id.label("pool_id"), p.c.name, p.c.owner_id, p.c.slots)
+        select(t.c.id, p.c.id.label("pool_id"), p.c.name, owner, p.c.slots)
         .join_from(t, p, p.c.id == t.c.pool_id)
         .where(
             t.c.token_hash == hash_token(token),
