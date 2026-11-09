@@ -288,6 +288,35 @@ def test_hack_a_plans_verify_changed_is_a_sign():
     assert signs_of(new_script, verify=["bash scripts/check.sh"]) == []  # a verify's file the change makes is fine
 
 
+def test_hack_a_file_the_verify_only_greps_is_the_work_not_a_sign():
+    # Curator change 64 (evo-agents PR 554): the step's work is a sentence in the doc its verify greps.
+    doc = file_diff("docs/kg-strategies.md", " measure it first.", "+One call can take minutes.")
+    assert signs_of(doc, verify=['grep -n "hub kg measure" docs/kg-strategies.md']) == []
+    source = file_diff("app/limits.py", "-TIMEOUT = 30", "+TIMEOUT = 600")
+    assert signs_of(source, verify=["uv run pytest -q && grep -n TIMEOUT app/limits.py"]) == []
+    assert signs_of(source, verify=["[ -f app/limits.py ] && ! grep -q 'TIMEOUT = 30' app/limits.py"]) == []
+    script = file_diff("scripts/check.sh", "-pytest -q", "+exit 0")
+    for verify in (
+        "cat scripts/check.sh | bash",  # the text grep or cat reads is run
+        "grep -q pytest scripts/check.sh && bash scripts/check.sh",  # read, and run as well
+        "grep -f scripts/check.sh app/limits.py",  # a pattern file says what grep matches
+    ):
+        assert kinds(signs_of(script, verify=[verify])) == ["verify_changed"], verify
+
+
+def test_the_files_a_verify_only_reads():
+    assert verify_words.verify_read_paths(
+        [
+            "grep -n WORD docs/a.md && wc -l docs/b.md",
+            "sh -c 'head -5 docs/c.md'",
+            "if ! grep -q x -f docs/patterns.txt docs/d.md; then exit 1; fi",
+            "cat docs/e.md | python",
+            "grep -q x docs/f.md",
+            "bash docs/f.md",
+        ]
+    ) == {"docs/a.md", "docs/b.md", "docs/c.md", "docs/d.md"}
+
+
 def test_hack_a_ci_workflow_or_the_lint_configuration_changed_is_a_sign():
     workflow = file_diff(".github/workflows/ci.yml", "-      - run: pytest", "+      - run: true")
     assert {"ci_changed", "protected_path"} <= set(kinds(signs_of(workflow)))
