@@ -3800,6 +3800,8 @@ evo-agents hub srs import order-srs.md --project evo-agents --slug orders
 evo-agents hub srs list --project evo-agents
 evo-agents hub srs show orders --project evo-agents --item "UC ORD-1"
 evo-agents hub srs submit orders 1 --project evo-agents
+evo-agents hub srs submit orders --item "UC ORD-1" --project evo-agents # one use case alone, the latest version's revision
+evo-agents hub srs queue --project evo-agents                           # what waits for review, use case by use case
 evo-agents hub srs approve orders 1 --project evo-agents                # by another writer, or the author with self_approval
 evo-agents hub srs export orders --project evo-agents --output orders.md
 evo-agents hub srs withdraw orders 2 --project evo-agents --comment "Not ready" # its author or an admin

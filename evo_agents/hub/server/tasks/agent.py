@@ -5,9 +5,10 @@ approval made (criterion a8 of plan srs-conflicts-and-tasks).
 The hub lists it in a session whose project enabled the plugin, and checks its arguments against the manifest's
 schema first. It acts for a person: the agent of a chat run for the person who mentioned the agent, the origin of the
 chain (``chat_runs.ChatRun.dispatcher_id``), also when the run went to the worker of its agent type's run_as; the agent
-of the task run of @ba that splits the frame tasks of an approved SRS version (``hub.server.srs.auto_tasks``) for
-the member whose approval made the version approved, whom the hub keeps for that run (srs_approval_tasks.approved_by,
-by split_run_id, the task's first run, which a lost attempt's next goes on from); a member's own session (no run) for
+of the task run of @ba that splits the frame tasks of an approved SRS version or use case
+(``hub.server.srs.auto_tasks``) for the member whose approval made it approved, whom the hub keeps for that run
+(srs_approval_tasks.approved_by by split_run_id, or srs_use_case_releases.released_by by the split run its ``tasks``
+keeps; the task's first run, which a lost attempt's next goes on from); a member's own session (no run) for
 that member. The agent of any other run gets a refusal: nobody asked it for a task. The person must hold writer on
 the project when the tool runs. The task is theirs, carries the project's label, takes the config's first type and
 status unless named, and links the SRS items it names by code while the project enables srs, through the session's
@@ -51,13 +52,18 @@ def _text(text: str, *, error: bool = False) -> dict:
 
 async def _approver(conn: AsyncConnection, run_id: int) -> int | None:
     """The member task run ``run_id`` acts for when it is the run of @ba that splits the frame tasks of an approved
-    SRS version (or the next attempt of one): who approved that version; None for any other run."""
-    r, a = tables.runs, tables.srs.approval_tasks
+    SRS version or use case (or the next attempt of one): who approved that version, or that use case
+    (srs_use_case_releases.released_by, by the split run its ``tasks`` keeps); None for any other run."""
+    r, a, e = tables.runs, tables.srs.approval_tasks, tables.srs.use_case_releases
     found = (await conn.execute(select(r.c.kind, r.c.branch).where(r.c.id == run_id))).first()
     if found is None or found.kind != "task":
         return None
     first = task_of(found.branch) or run_id
-    return await conn.scalar(select(a.c.approved_by).where(a.c.split_run_id == first))
+    approver = await conn.scalar(select(a.c.approved_by).where(a.c.split_run_id == first))
+    if approver is None:
+        released = select(e.c.released_by).where(e.c.tasks["split_run_id"].astext == str(first)).limit(1)
+        approver = await conn.scalar(released)
+    return approver
 
 
 async def _person(conn: AsyncConnection, params: dict, context: CoreContext) -> tuple[Principal, bool]:

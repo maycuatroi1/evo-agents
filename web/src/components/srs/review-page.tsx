@@ -112,10 +112,11 @@ function ReviewBody({ project, latest, version }: { project: string; latest: Srs
         : block === "author"
           ? t("blocked.author", { versions: written.join(", "), since: approved ? `v${approved}` : t("firstVersion"), version: version.number })
           : t("blocked.reviewed", { version: version.number });
-  // A use case is reviewed again and again, each review replacing the person's last, so "reviewed" blocks nothing here.
-  const cases = caseBlock(block);
+  // A use case is reviewed again and again, each review replacing the person's last, so "reviewed" blocks nothing here;
+  // and the author rule is each use case's (who wrote a revision of it since its newest release), so each row says.
+  const cases = block === "author" ? null : caseBlock(block);
   const access: CaseAccess =
-    !viewer || (cases === "author" && awaitingConfig)
+    !viewer || (block === "author" && awaitingConfig)
       ? { kind: "waiting" }
       : cases !== null
         ? { kind: "blocked", reason }

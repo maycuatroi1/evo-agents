@@ -251,7 +251,7 @@ export function UseCaseRow({
       data-key={useCase.key}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
-        <CodeChip code={ref} href={itemHref(project, slug, ref, caseVersion(useCase, version, approved))} />
+        <CodeChip code={useCase.rev ? `${ref} r${useCase.rev}` : ref} href={itemHref(project, slug, ref, caseVersion(useCase, version, approved))} />
         <h3 id={titleId} className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
           {useCase.title}
         </h3>

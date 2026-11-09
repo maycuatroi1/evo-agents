@@ -69,6 +69,7 @@ export const CASE_LOOKS = {
   pending: { tone: "neutral", icon: CircleDashed },
   approved: { tone: "success", icon: CircleCheck },
   changes_requested: { tone: "attention", icon: Undo2 },
+  superseded: { tone: "neutral", icon: CircleMinus },
 } as const satisfies Record<UseCaseState, StatusLook>;
 
 export function CaseStateBadge({ state, ...props }: StatusPillProps & { state: UseCaseState }) {

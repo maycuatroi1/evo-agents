@@ -60,7 +60,7 @@ from evo_agents.hub.server.chat_views import person_author
 from evo_agents.hub.server.chats import resolve_mentions
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.security import MACHINE, Principal
-from evo_agents.hub.server.srs import BA, findings, notices, store
+from evo_agents.hub.server.srs import BA, findings, notices, revisions, store
 from evo_agents.hub.server.srs.doc import SrsError
 from evo_agents.hub.server.srs.store import PLUGIN
 from evo_agents.hub.server.user_emails import logins_of_emails
@@ -133,9 +133,17 @@ async def review_ended(params: dict, context: CoreContext) -> dict:
 
 async def _tell_reviewers(conn: AsyncConnection, project_id: int, review_run_id: int) -> None:
     """The reviewers of the version whose current round's review was run ``review_run_id`` learn that it waits for them,
-    unless an open finding of level decide still holds it (``notices``); a second delivery tells nobody again."""
+    unless an open finding of level decide still holds it (``notices``); a second delivery tells nobody again. For the
+    review of a use case sent on its own, the reviewers of that use case, in the latest version."""
     version = await _version(conn, project_id, review_run_id)
-    if version is None or version.state != "in_review" or version.archived:
+    if version is None:
+        reviewed = await revisions.reviewed_by(conn, review_run_id)
+        doc = await store.document_by_id(conn, project_id, reviewed.document_id) if reviewed else None
+        if reviewed is not None and doc is not None and doc.latest_version is not None:
+            latest = await store.version(conn, doc, doc.latest_version)
+            await notices.tell_case_reviewers(conn, project_id, doc, latest, reviewed.key)
+        return
+    if version.state != "in_review" or version.archived:
         return
     doc = await store.document_by_id(conn, project_id, version.document_id)
     if doc is not None:

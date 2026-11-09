@@ -85,7 +85,7 @@ describe("a use case's review", () => {
     expect(shownCase({ item: null, items: [], base: null, baseItems: [] })).toBeNull();
   });
 
-  it("keeps the findings about the use case or a rule under it, and those to decide elsewhere", () => {
+  it("keeps the findings about the use case or a rule under it, and those to decide about the whole document", () => {
     const keys = keysUnder(ITEMS, "uc1");
     expect([...keys].sort()).toEqual(["br1", "uc1"]);
     const groups = caseFindings(
@@ -96,18 +96,21 @@ describe("a use case's review", () => {
         finding(5, { item: null, level: "info" }),
         finding(6, { item: "br1", level: "info" }),
         finding(1, { item: "uc1", status: "resolved" }),
+        finding(7, { item: null }),
       ],
       keys,
     );
     expect(groups.decide.map((one) => one.id)).toEqual([2]);
     expect(groups.advice.map((one) => one.id)).toEqual([3, 6]);
-    expect(groups.elsewhere.map((one) => one.id)).toEqual([4]);
+    // One about another item (nfr1) holds that item's use case and the version, not this use case.
+    expect(groups.elsewhere.map((one) => one.id)).toEqual([7]);
   });
 
   it("says what holds Agree: @ba still checking first, then the points to settle", () => {
-    const groups = caseFindings([finding(2), finding(4, { item: "nfr1" })], keysUnder(ITEMS, "uc1"));
+    const groups = caseFindings([finding(2), finding(4, { item: "nfr1" }), finding(5, { item: null })], keysUnder(ITEMS, "uc1"));
     expect(approveGate({ id: 9, state: "running" }, groups)).toEqual({ kind: "ba" });
     expect(approveGate({ id: 9, state: "done" }, groups)).toEqual({ kind: "findings", here: 1, elsewhere: 1 });
+    expect(approveGate(null, caseFindings([finding(4, { item: "nfr1" })], keysUnder(ITEMS, "uc1")))).toBeNull();
     expect(approveGate(null, caseFindings([], new Set()))).toBeNull();
     expect(approveGate({ id: 9, state: "failed" }, null)).toBeNull();
   });

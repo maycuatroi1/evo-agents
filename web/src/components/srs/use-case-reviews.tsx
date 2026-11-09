@@ -13,7 +13,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import type { ApproveLock } from "./findings-model";
 import type { ReviewRole, SrsUseCase } from "./api";
 import { LockNote } from "./review-form";
-import { holdsVersion, summarize } from "./use-case-model";
+import { holdsVersion, summarize, wroteCase } from "./use-case-model";
 import { UseCaseRow } from "./use-case-row";
 
 /** What the viewer can do on the use cases: review them (as which roles), wait for the config, or why they cannot. */
@@ -96,7 +96,11 @@ export function UseCaseReviews({
                 version={version}
                 approved={approved}
                 useCase={useCase}
-                actions={reviewing ? { login: access.login, role, locked: access.lock !== null, lockId } : null}
+                actions={
+                  reviewing && !wroteCase(useCase, access.login) && useCase.state !== "superseded"
+                    ? { login: access.login, role, locked: access.lock !== null, lockId }
+                    : null
+                }
               />
             ))}
           </ul>

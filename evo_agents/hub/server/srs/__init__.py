@@ -405,6 +405,8 @@ TABLES = (
     ("srs_settle_chats", "The chat where members settle the conflicts of a version with @ba"),
     ("srs_approval_tasks", "What the approval of a version did to the project's tasks, and @ba's run that splits them"),
     ("srs_use_case_reviews", "Approvals and requests for changes of single use cases of a version"),
+    ("srs_use_case_revisions", "Each revision of a use case, r1 and up, and whether it was sent to review on its own"),
+    ("srs_use_case_releases", "Each approved revision of a use case: the newest of each is the approved baseline"),
 )
 
 # The native pages of the hub's web (web/src/app/(app)/p/[project]/x/srs, web/src/components/srs): the documents,
@@ -471,6 +473,15 @@ MANIFEST = {
                 "tasks: a frame task of each new use case, comments, cancellations and @ba's split run.",
                 "on": ["srs.version.approved"],
                 "python": f"{EVENTS}:on_version_approved",
+            },
+            {
+                "name": "releases",
+                "title": "An approved use case",
+                "description": "Keeps the project's tasks in step with a use case approved on its own, when it "
+                "enables the plugin tasks: a frame task of a new use case and @ba's split run, comments on the tasks "
+                "of one that changed, cancellations of those of one removed.",
+                "on": ["srs.use_case.approved"],
+                "python": f"{EVENTS}:on_use_case_approved",
             },
         ],
         "routes": [{"name": "documents", "title": "The BA documents of a project", "python": f"{SERVER}:router"}],

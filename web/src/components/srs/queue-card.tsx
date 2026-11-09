@@ -79,7 +79,8 @@ export function QueueCardView({ project, card, primary }: { project: string; car
   const href = useCase ? caseHref(project, version.document, version.number, useCase.key) : reviewHref(project, version.document, version.number);
   const name = useCase ? caseName(useCase) : version.document_title;
   const title = useCase ? useCase.title : t("wholeTitle");
-  const act = version.may_review;
+  // The author rule is each use case's: who wrote a revision of this one may still review the others.
+  const act = useCase ? useCase.may_review : version.may_review;
   return (
     <article
       aria-labelledby={titleId}
@@ -108,7 +109,7 @@ export function QueueCardView({ project, card, primary }: { project: string; car
           {title}
         </h3>
         <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          {useCase?.code ? <CodeChip code={useCase.code} /> : null}
+          {useCase?.code ? <CodeChip code={useCase.rev ? `${useCase.code} r${useCase.rev}` : useCase.code} /> : null}
           <span className="min-w-0 [overflow-wrap:anywhere]">{version.document_title}</span>
           {useCase?.change === "added" ? <Tag data-testid="srs-queue-change">{t("added")}</Tag> : null}
           {useCase?.change === "removed" ? <Tag data-testid="srs-queue-change">{t("removed")}</Tag> : null}

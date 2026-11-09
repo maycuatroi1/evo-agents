@@ -23,7 +23,7 @@ import { approveGate, caseAccess, caseFindings, type CaseView, keysUnder, shownC
 import { reviewHolds } from "./findings-model";
 import { useSrsViewer } from "./hooks";
 import { documentHref, itemHref, reviewsHref } from "./links";
-import { canWrite, findItem, reviewBlock, selfApprovalOf, versionOf } from "./model";
+import { canWrite, caseReviewBlock, findItem, selfApprovalOf, versionOf } from "./model";
 import { nextCard, QUEUE_REFRESH_MS } from "./review-queue-model";
 import { caseBlock } from "./use-case-model";
 
@@ -78,14 +78,17 @@ function CaseBody({ view, caseKey }: { view: CaseView; caseKey: string }) {
   const shown = shownCase(view)!;
   const keys = new Set([...keysUnder(view.items, shown.item.key), ...keysUnder(view.baseItems, shown.item.key)]);
   const groups = findings.data ? caseFindings(findings.data, keys) : null;
-  const gate = version.state === "in_review" ? approveGate(version.review_run, groups) : null;
+  // A use case sent to review on its own is reviewed in a version that is not: its gate is its own findings.
+  const open = version.state === "in_review" || (useCase?.submitted ?? false);
+  const gate = open ? approveGate(version.state === "in_review" ? version.review_run : null, groups) : null;
   const fields = config.data?.fields ?? [];
-  const block = viewer ? reviewBlock(viewer, latest, version, selfApprovalOf(fields)) : null;
+  const block = viewer ? caseReviewBlock(viewer, version, useCase, selfApprovalOf(fields)) : null;
   const access = caseAccess({ signedIn: viewer !== null, block: caseBlock(block), configPending: config.isPending, toReview: useCase !== null });
   const next = queue.data ? nextCard(queue.data, login, { document: slug, number: version.number, key: useCase?.key ?? caseKey }) : null;
 
   const day = (value: string) => format.dateTime(new Date(value), { dateStyle: "medium" });
-  const code = shown.item.code ?? useCase?.code ?? shown.item.key;
+  const bare = shown.item.code ?? useCase?.code ?? shown.item.key;
+  const code = useCase?.rev ? `${bare} r${useCase.rev}` : bare;
   usePageCrumb(pathname, code);
   const sent = { code, author: version.author, date: day(version.submitted_at ?? version.created_at) };
   const inUse = latest.approved_version === null ? null : versionOf(latest, latest.approved_version);

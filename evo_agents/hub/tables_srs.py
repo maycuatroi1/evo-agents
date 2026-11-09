@@ -33,6 +33,14 @@ the tables because its one chain of migrations creates them (``docs/plugins.md``
 - srs_use_case_reviews (0098): an approval or a request for changes a writer gave one use case of a version in review,
   with the version it was given on, the item, the role it counts for and a note; a later review of the same reviewer on
   the same use case replaces the earlier one when they are counted, and the earlier one stays.
+- srs_use_case_revisions (0226): each revision of a use case, r1 and up: one more each time a saved version changes how
+  the use case reads (``use_case_reviews.fingerprints``), with the version it first appears in, its author, the
+  SHA-256 of that reading (null for the revision of the version that dropped it), and, once a writer sent it to review
+  on its own, when, by whom, its round and @ba's review of that round.
+- srs_use_case_releases (0226): each approved revision of a use case, the version its approval was given on, what it
+  did since the release before (added, changed, removed) and who approved it; the newest release of each use case is
+  the document's approved baseline, apart from its chain of versions. ``tasks`` holds what the plugin did to the
+  project's tasks once it handled the release.
 """
 
 from __future__ import annotations
@@ -74,6 +82,10 @@ VERSION_STATES = ("draft", "in_review", "approved", "superseded", "withdrawn")  
 REF_RELS = ("uses_screen", "refines", "relates")  # srs_refs.rel
 REVIEW_ROLES = ("ba", "qa", "dev")  # srs_reviews.role
 REVIEW_DECISIONS = ("approve", "request_changes")  # srs_reviews.decision
+RELEASE_CHANGES = ("added", "changed", "removed")  # srs_use_case_releases.change
+# srs_use_case_releases.tasks.no_split of a release that made a frame task while the rest of its review is still to be
+# handled: the last release of the review hands the one split run (hub.server.srs.auto_tasks), the Loop waits for it
+PENDING_SPLIT = "another release of the same review is still to be handled: the last one splits"
 SLUG = r"^[a-z0-9][a-z0-9-]{0,99}$"  # srs_documents.slug
 MAX_TITLE_CHARS = 300  # of a document
 MAX_ITEM_TITLE_CHARS = 500
@@ -138,6 +150,8 @@ class SrsTables:
     settle_chats: Table
     approval_tasks: Table
     use_case_reviews: Table
+    use_case_revisions: Table
+    use_case_releases: Table
 
 
 def _key(table: str, column: str, target: str, *, ondelete: str, field: str = "id") -> ForeignKeyConstraint:
@@ -432,6 +446,60 @@ def _use_case_reviews(metadata: MetaData) -> Table:
     )
 
 
+def _use_case_revisions(metadata: MetaData) -> Table:
+    name = "srs_use_case_revisions"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("document_id", BigInteger, nullable=False),
+        Column("item_id", BigInteger, nullable=False),
+        Column("rev", Integer, nullable=False),
+        Column("version_id", BigInteger, nullable=False),
+        Column("fingerprint", Text),
+        Column("author_id", BigInteger, nullable=False),
+        Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("submitted_at", DateTime(timezone=True)),
+        Column("submitted_by", BigInteger),
+        Column("round", Integer, nullable=False, server_default="0"),
+        Column("review_run_id", BigInteger),
+        _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
+        _key(name, "item_id", "srs_items", ondelete="CASCADE"),
+        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        _key(name, "author_id", "users", ondelete="RESTRICT"),
+        _key(name, "submitted_by", "users", ondelete="RESTRICT"),
+        _key(name, "review_run_id", "runs", ondelete="SET NULL"),
+        PrimaryKeyConstraint("id", name="srs_use_case_revisions_pkey"),
+        UniqueConstraint("item_id", "rev", name="srs_use_case_revisions_rev_key"),
+        Index("srs_use_case_revisions_document_idx", "document_id", "item_id", "rev"),
+        Index("srs_use_case_revisions_review_run_idx", "review_run_id"),
+    )
+
+
+def _use_case_releases(metadata: MetaData) -> Table:
+    name = "srs_use_case_releases"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("document_id", BigInteger, nullable=False),
+        Column("item_id", BigInteger, nullable=False),
+        Column("rev", Integer, nullable=False),
+        Column("version_id", BigInteger, nullable=False),
+        Column("change", Text, nullable=False),
+        Column("released_by", BigInteger),
+        Column("released_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("tasks", JSONB),
+        _key(name, "document_id", "srs_documents", ondelete="CASCADE"),
+        _key(name, "item_id", "srs_items", ondelete="CASCADE"),
+        _key(name, "version_id", "srs_versions", ondelete="CASCADE"),
+        _key(name, "released_by", "users", ondelete="RESTRICT"),
+        PrimaryKeyConstraint("id", name="srs_use_case_releases_pkey"),
+        UniqueConstraint("item_id", "rev", name="srs_use_case_releases_rev_key"),
+        Index("srs_use_case_releases_document_idx", "document_id", "item_id", "id"),
+    )
+
+
 def srs_tables(metadata: MetaData) -> SrsTables:
     """The tables of the core plugin srs, added to ``metadata`` (which holds projects, users, runs and chats
     already)."""
@@ -449,4 +517,6 @@ def srs_tables(metadata: MetaData) -> SrsTables:
         settle_chats=_settle_chats(metadata),
         approval_tasks=_approval_tasks(metadata),
         use_case_reviews=_use_case_reviews(metadata),
+        use_case_revisions=_use_case_revisions(metadata),
+        use_case_releases=_use_case_releases(metadata),
     )

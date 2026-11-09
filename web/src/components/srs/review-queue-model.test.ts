@@ -16,7 +16,7 @@ describe("the review queue", () => {
     reviews: [caseReview({ reviewer: "chi", decision: "request_changes", body: "Say who pays." })],
   });
   const mineAsked = aQueuedCase({ key: "uc5", state: "changes_requested", reviews: [caseReview({ reviewer: "bao", decision: "request_changes" })] });
-  const deciding = aQueuedCase({ key: "uc6", code: "UC ORD-6", deciding: 2 });
+  const deciding = aQueuedCase({ key: "uc6", code: "UC ORD-6", deciding: 2, held_by: "findings" });
   const shop = queued({ use_cases: [open, reviewed, approved, asked, mineAsked, deciding], held_by: "findings", deciding: 2 });
   const billing = queued({
     document: "northwind-billing",
@@ -24,10 +24,16 @@ describe("the review queue", () => {
     number: 5,
     round: 2,
     may_review: false,
-    use_cases: [aQueuedCase({ key: "b1", code: "UC BIL-1" })],
+    use_cases: [aQueuedCase({ key: "b1", code: "UC BIL-1", may_review: false })],
   });
   const terms = queued({ document: "northwind-terms", document_title: "Northwind Terms", number: 2, use_cases: [] });
-  const checking = queued({ document: "northwind-ledger", number: 7, held_by: "ba_review", review_run: { id: 431, state: "running" } });
+  const checking = queued({
+    document: "northwind-ledger",
+    number: 7,
+    held_by: "ba_review",
+    review_run: { id: 431, state: "running" },
+    use_cases: [aQueuedCase({ held_by: "ba_review" })],
+  });
 
   it("says where each use case stands for the viewer, in plain words", () => {
     expect(cardStatus(shop, mineAsked, "bao")).toEqual({ kind: "asked" });
@@ -37,10 +43,15 @@ describe("the review queue", () => {
     expect(cardStatus(shop, asked, "bao")).toEqual({ kind: "changes" });
     expect(cardStatus(checking, checking.use_cases[0], "bao")).toEqual({ kind: "ba_review" });
     expect(cardStatus(shop, deciding, "bao")).toEqual({ kind: "deciding", count: 2 });
-    // The document's points to decide hold this use case's approval too, though none is about it.
-    expect(cardStatus(shop, open, "bao")).toEqual({ kind: "deciding", count: 2 });
+    // Points to decide about another use case hold that one, not this one.
+    expect(cardStatus(shop, open, "bao")).toEqual({ kind: "waiting" });
     expect(cardStatus(queued(), open, "bao")).toEqual({ kind: "waiting" });
-    expect(cardStatus(shop, reviewed, "erin")).toEqual({ kind: "deciding", count: 2 });
+    expect(cardStatus(shop, reviewed, "erin")).toEqual({ kind: "waiting" });
+    // A point about the whole document holds every use case, though it counts for none of them.
+    expect(cardStatus(shop, { ...open, held_by: "findings" }, "bao")).toEqual({ kind: "deciding", count: 1 });
+    // Someone who wrote a revision of this use case may not review it, yet may review the others.
+    expect(cardStatus(shop, { ...open, may_review: false }, "bao")).toEqual({ kind: "others" });
+    expect(cardStatus(shop, { ...open, state: "superseded" }, "bao")).toEqual({ kind: "approved" });
   });
 
   it("gives a version that changes no use case one card, waiting until the viewer reviews its round", () => {

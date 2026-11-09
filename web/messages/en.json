@@ -9622,7 +9622,8 @@
         "state": {
           "pending": "Waiting for the approvals the policy asks for.",
           "approved": "Approved. v{version} is approved once every use case it needs reviewed is.",
-          "changes_requested": "A reviewer asked for changes: v{version} cannot be approved until it is settled."
+          "changes_requested": "A reviewer asked for changes: v{version} cannot be approved until it is settled.",
+          "superseded": "A newer revision of this use case is approved: this one needs no review."
         }
       }
     },
@@ -9774,7 +9775,8 @@
         "state": {
           "pending": "Pending",
           "approved": "Approved",
-          "changes_requested": "Changes requested"
+          "changes_requested": "Changes requested",
+          "superseded": "Superseded"
         },
         "reviewsLabel": "Reviews that count on {name}",
         "noReviews": "No review counts yet.",
@@ -9864,7 +9866,7 @@
         "noneWithout": "Nothing to settle.",
         "intro": "Pick one answer for each point. Agree opens once every point is settled.",
         "decideLabel": "Points to settle",
-        "elsewhere": "{count, plural, one {# point elsewhere in the document to settle} other {# points elsewhere in the document to settle}}",
+        "elsewhere": "{count, plural, one {# point about the whole document to settle} other {# points about the whole document to settle}}",
         "elsewhereText": "Agree waits for these too.",
         "advice": "More suggestions ({count})",
         "adviceText": "Advice only: none of these holds your decision.",
@@ -9897,8 +9899,8 @@
         "lock": {
           "ba": "@ba is checking; Agree opens when it is done.",
           "here": "{count, plural, one {Choose an answer for the # point in step 3 and Agree opens.} other {Choose an answer for the # points in step 3 and Agree opens.}}",
-          "elsewhere": "{count, plural, one {# point elsewhere in the document still needs settling (step 3); Agree opens once it is.} other {# points elsewhere in the document still need settling (step 3); Agree opens once they are.}}",
-          "both": "Settle the {here} points of this use case and the {elsewhere} elsewhere in the document (step 3), and Agree opens."
+          "elsewhere": "{count, plural, one {# point about the whole document still needs settling (step 3); Agree opens once it is.} other {# points about the whole document still need settling (step 3); Agree opens once they are.}}",
+          "both": "Settle the {here} points of this use case and the {elsewhere} about the whole document (step 3), and Agree opens."
         },
         "own": {
           "approve": "You agreed on {date}. You can still change your mind.",

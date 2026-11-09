@@ -143,7 +143,7 @@ def test_srs_import_export_submit_and_approve_from_the_command_line(hub, monkeyp
     assert_json_keys("hub srs list", listed)
     assert [(d["slug"], d["latest_version"], d["latest_state"]) for d in listed] == [("demo-shop", 1, "draft")]
     shown = ok(srs(hub, monkeypatch, capsys, "bao", "show", "demo-shop"))
-    assert "v1 draft by alice" in shown.out and "UC ORD-1: Place an order" in shown.out
+    assert "v1 draft by alice" in shown.out and "UC ORD-1 r1: Place an order" in shown.out
     detail = as_json(srs(hub, monkeypatch, capsys, "bao", "show", "demo-shop", "--item", "UC ORD-1", "--json"))
     assert_json_keys("hub srs show", detail, "--item")
     assert [child["code"] for child in detail["children"]] == ["BR ORD1-1", "BR ORD1-2"]
@@ -187,8 +187,9 @@ def test_srs_approve_item_reviews_single_use_cases_in_order_and_reviews_prints_t
     assert stopped.code == 1 and stopped.out == ""
     printed = ok(srs(hub, monkeypatch, capsys, "bao", "reviews", "demo-shop", "1"))
     assert "demo-shop version 1 is in review (round 1)." in printed.out
-    assert "UC ORD-1  added   approved" in printed.out and "approve by bao on v1" in printed.out
-    assert "UC ORD-2  added   pending" in printed.out
+    assert "UC ORD-1 r1  added   approved" in printed.out and "approve by bao on v1" in printed.out
+    assert "UC ORD-2 r1  added   pending" in printed.out
+    assert "/p/evo-agents/x/srs/documents/demo-shop/versions/1/cases/" in printed.out
     asked = srs(hub, monkeypatch, capsys, "bao", "approve", "demo-shop", "1", "--item", "UC ORD-2", "--request-changes")
     assert asked.code == 2
     done = as_json(
@@ -374,3 +375,26 @@ def test_srs_findings_are_listed_hold_an_approval_and_an_admin_waives_one_from_t
         "demo-shop has no finding resolved.\n"
     )
     assert as_json(srs(hub, monkeypatch, capsys, "bao", "approve", "demo-shop", "1", "--json"))["state"] == "approved"
+
+
+@needs_pg
+def test_srs_submit_item_sends_one_use_case_and_queue_prints_it_with_its_revision_and_link(hub, monkeypatch, capsys):
+    ok(srs(hub, monkeypatch, capsys, "alice", "import", str(SAMPLE), "--slug", "demo-shop"))
+    both = srs(hub, monkeypatch, capsys, "alice", "submit", "demo-shop", "1", "--item", "UC ORD-1")
+    assert both.code == 2 and "leave N out" in both.err
+    sent = ok(srs(hub, monkeypatch, capsys, "alice", "submit", "demo-shop", "--item", "UC ORD-1"))
+    assert "Sent UC ORD-1 r1 of demo-shop to review on its own, from version 1." in sent.out
+    assert "/p/evo-agents/x/srs/documents/demo-shop/versions/1/cases/" in sent.out
+    queued = as_json(srs(hub, monkeypatch, capsys, "bao", "queue", "--json"))
+    assert_json_keys("hub srs queue", queued)
+    (entry,) = queued
+    assert [(c["code"], c["rev"], c["submitted"], c["may_review"]) for c in entry["use_cases"]] == [
+        ("UC ORD-1", 1, True, True)
+    ]
+    printed = ok(srs(hub, monkeypatch, capsys, "bao", "queue"))
+    assert "demo-shop v1 (draft) by alice" in printed.out and "UC ORD-1 r1" in printed.out
+    approved = as_json(srs(hub, monkeypatch, capsys, "bao", "approve", "demo-shop", "--item", "UC ORD-1", "--json"))
+    assert {c["code"]: (c["state"], c["released"]) for c in approved["use_cases"]}["UC ORD-1"] == ("approved", 1)
+    shown = ok(srs(hub, monkeypatch, capsys, "bao", "show", "demo-shop", "--item", "UC ORD-1"))
+    assert "UC ORD-1 r1 (use case" in shown.out and "approved baseline: r1" in shown.out
+    assert "r1 in v1 by alice" in shown.out and "sent to review by alice" in shown.out

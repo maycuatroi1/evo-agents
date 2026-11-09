@@ -87,7 +87,8 @@ def test_srs_notices_without_ba_the_reviewers_learn_at_submit_once_per_round_and
     assert told(client, hub["other"]) == told(client, hub["owner"]) == [(WAITS, 1, 1, QUEUE)]
     assert told(client, hub["chi"]) == told(client, hub["reader"]) == []
     (notice,) = kind_of(client, hub["other"], notices.REVIEW)
-    assert "Use cases to review: UC ORD-1 (added), UC ORD-2 (added), UC RET-1 (added)." in notice["body"]
+    for code in CASES:
+        assert f"- {code} r1 (added): /p/{PROJECT}/x/srs/documents/demo-shop/versions/1/cases/" in notice["body"]
     assert "@ba did not review this round." in notice["body"]
     assert notice["details"]["use_cases"] == CASES and notice["details"]["event"] == notices.READY
     assert tell_again(client, 1) == [], "each member is told once per round"
@@ -109,9 +110,11 @@ def test_srs_notices_go_to_the_reviewers_the_config_names_or_every_writer_who_ma
     submitted(client, hub["chi"], 1)
     assert told(client, hub["owner"]) == [(WAITS, 1, 1, QUEUE)]
     assert told(client, hub["other"]) == []
+    for code in ("UC ORD-2", "UC RET-1"):  # approved, so only UC ORD-1 is left to review in version 2
+        assert one(client, hub["other"], 1, code).status_code == 200
     stock = item(client, hub["chi"], "BR ORD1-2")
     saved(client, hub["owner"], 1, {"key": stock["key"], "body": "- Placing the order holds its stock for 20 minutes."})
-    submitted(client, hub["owner"], 2)  # owner wrote version 2, so owner may not review it
+    submitted(client, hub["owner"], 2)  # owner wrote a revision of UC ORD-1, so owner may not review it
     assert [row[:3] for row in told(client, hub["other"])] == [
         (f"v2 of demo-shop in {PROJECT} waits for your review", 2, 1)
     ]
@@ -159,12 +162,14 @@ def test_srs_notices_tell_the_author_of_changes_asked_on_a_use_case_and_of_the_a
     asked = one(client, hub["other"], 1, "UC ORD-1", "request_changes", body="Name the hold")
     assert asked.status_code == 200, asked.text
     (back,) = kind_of(client, hub["chi"], notices.REVIEWED)
-    assert back["title"] == f"{OTHER} asked for changes on UC ORD-1 of v1 of demo-shop in {PROJECT}"
-    assert (back["body"], back["details"]["use_case"], back["details"]["event"]) == (
+    assert back["title"] == f"{OTHER} asked for changes on UC ORD-1 r1 of demo-shop in {PROJECT}"
+    assert (back["body"].splitlines()[0], back["details"]["use_case"], back["details"]["event"]) == (
         "Name the hold",
         "UC ORD-1",
         "changes_requested",
     )
+    assert back["link"].startswith(f"{LINK}/cases/") and back["details"]["rev"] == 1
+    assert back["body"].splitlines()[1] == back["link"], "the review's link is in the body too, for a channel"
     for ref in CASES:
         assert one(client, hub["other"], 1, ref).status_code == 200
     latest = kind_of(client, hub["chi"], notices.REVIEWED)[0]

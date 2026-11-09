@@ -1,7 +1,18 @@
-"""The tasks of an approved version (criterion a8 of plan srs-conflicts-and-tasks).
+"""The tasks of an approved use case, and of an approved version (criterion a8 of plan srs-conflicts-and-tasks).
 
-When a version of a document is approved and the project enables the plugin tasks, ``approved`` compares it with the
-version approved before it (none the first time) and keeps the project's tasks in step with its use cases:
+Each use case is approved on its own: a review that makes it approved releases its revision into the document's
+approved baseline (``revisions``) and emits ``srs.use_case.approved`` with the release. ``released`` takes that release
+when the hub delivers the event and, when the project enables the plugin tasks, does to the project's tasks what the
+release did to the use case, as below for a version: a frame task when the use case is new to the baseline (or a
+comment on the open frame task it has already, made by an earlier approval), comments on the open tasks of a use case
+that changed, with the comparison of the version of the release before and this one, and cancellations of those of a
+use case removed. The releases one review made form a batch: the last of them handled hands one run of @ba that splits
+every frame task the batch made. It is idempotent by release: its ``tasks`` column is claimed first. A version's approval comes after the approval of every use case it needs reviewed, so
+``approved`` no longer touches use cases: it keeps its row of srs_approval_tasks and nothing more.
+
+What follows is what the approval of a version did before use cases were approved one by one. When a version of a
+document is approved and the project enables the plugin tasks, ``approved`` compared it with the
+version approved before it (none the first time) and kept the project's tasks in step with its use cases:
 
 - a use case new in the version gets one frame task, titled with its code and title and linked to it: of type story
   when the project has that type (its first type otherwise), in the first status, carrying the document's label, made
@@ -39,20 +50,20 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from sqlalchemy import exists, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables, task_status
+from evo_agents.hub import feature_rule, tables, task_status
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.plugin_configs import stored_stacks
-from evo_agents.hub.server.srs import BA, store
+from evo_agents.hub.server.srs import BA, revisions, store
 from evo_agents.hub.server.srs.diff import diff
 from evo_agents.hub.server.srs.doc import Document, Item
 from evo_agents.hub.server.srs.store import PLUGIN, DocumentRow, Snapshot
-from evo_agents.hub.tables_srs import FRAME_TASK_PREFIX, frame_task_key
+from evo_agents.hub.tables_srs import FRAME_TASK_PREFIX, PENDING_SPLIT, frame_task_key
 from evo_agents.hub.tables_tasks import MAX_CAUSE_CHARS, MAX_TITLE_CHARS, MAX_VALUE_CHARS
 from evo_agents.plugins import config as plugin_config
 
@@ -65,6 +76,9 @@ FINISHED_GROUPS = ("done", CANCELLED)  # evo_agents.hub.server.tasks.FINISHED: a
 FRAME_TYPE = "story"  # a frame task's type, when the project has it
 MAX_FRAMES = 50  # the frame tasks one split run names
 APPROVED_STATES = ("approved", "superseded")  # of a version that was approved, now or before a newer one
+BY_USE_CASE = (  # the outcome of a version's approval: its use cases were each approved, and handled, before it
+    "every use case of the version was approved on its own before it, and its tasks kept then (srs.use_case.approved)"
+)
 
 
 @dataclass(frozen=True)
@@ -129,18 +143,24 @@ class _Approval:
     approver_id: int
     approver: str
     config: TasksConfig
+    release: tuple[str, int] | None = None  # (code, rev) of the use case a release approved
 
     @property
     def number(self) -> int:
         return self.version.version.number
 
     def because(self, what: str) -> str:
+        if self.release is not None:
+            code, rev = self.release
+            return f"{what}: {self.approver} approved {code} r{rev} of {self.doc.slug} on version {self.number}"
         return f"{what} in version {self.number} of {self.doc.slug}, which {self.approver} approved"
 
     async def announce(self, conn: AsyncConnection, task_id: int, old: str | None, new: str) -> None:
         """Emit ``tasks.status`` of task ``task_id``, which this approval made (``old`` None) or cancelled: the hub
         changed it, the document and the version its source."""
         source = {"document": self.doc.slug, "document_id": self.doc.id, "version": self.number}
+        if self.release is not None:
+            source |= {"use_case": self.release[0], "rev": self.release[1]}
         groups = self.config.group(old), self.config.group(new)
         change = task_status.StatusChange(
             task_id, old, new, *groups, task_status.SRS_APPROVAL, self.config.prefix, source=source
@@ -217,9 +237,12 @@ async def _history(conn: AsyncConnection, task_id: int, name: str, old: str | No
 
 def _frame_text(work: _Approval, item: Item, code: str) -> str:
     page = store.item_path(work.project, work.doc.slug, code)
+    if work.release is not None:
+        new = f"approved as r{work.release[1]} on version {work.number} by {work.approver}"
+    else:
+        new = f"new in version {work.number}, which {work.approver} approved"
     return (
-        f'The frame task of use case {code} ("{item.title}") of the SRS document {work.doc.slug}, new in version '
-        f"{work.number}, which {work.approver} approved: {page}\n\n"
+        f'The frame task of use case {code} ("{item.title}") of the SRS document {work.doc.slug}, {new}: {page}\n\n'
         f"@{BA} splits it into child tasks, each linked to the use case; the work is done and tracked in them."
     )
 
@@ -273,25 +296,27 @@ async def _comment(conn: AsyncConnection, work: _Approval, task_id: int, body: s
     await conn.execute(insert(tables.tasks.comments).values(**values))
 
 
-async def _changed(conn: AsyncConnection, work: _Approval, item: Item, outcome: Outcome) -> None:
-    """A comment of the approver on each open task linked to use case ``item``, which changed."""
-    code, low = item.code or item.key, work.previous.version.number
+async def _changed(
+    conn: AsyncConnection, work: _Approval, item_id: int, code: str, low: int, outcome: Outcome, what: str = "changed"
+) -> None:
+    """A comment of the approver on each open task linked to use case ``item_id`` (``code``), which changed since
+    version ``low``."""
     compare = store.compare_path(work.project, work.doc.slug, low, work.number)
     body = (
-        f"{work.because(f'Use case {code} changed')}: see what changed since version {low} at {compare}, and "
+        f"{work.because(f'Use case {code} {what}')}: see what changed since version {low} at {compare}, and "
         "check that this task still matches it."
     )
-    for task in await _open_tasks(conn, work, work.version.ids[item.key]):
+    for task in await _open_tasks(conn, work, item_id):
         await _comment(conn, work, task.id, body)
         outcome.commented.append(task.number)
 
 
-async def _dropped(conn: AsyncConnection, work: _Approval, item: Item, outcome: Outcome) -> None:
-    """Each open task linked to use case ``item``, which the version dropped, to the first status of group
+async def _dropped(conn: AsyncConnection, work: _Approval, item_id: int, code: str, outcome: Outcome) -> None:
+    """Each open task linked to use case ``item_id`` (``code``), which was dropped, to the first status of group
     cancelled, its history naming the hub and why; a comment when the project has no such status."""
-    t, code = tables.tasks.items, item.code or item.key
+    t = tables.tasks.items
     cause = work.because(f"use case {code} was dropped")
-    for task in await _open_tasks(conn, work, work.previous.ids[item.key]):
+    for task in await _open_tasks(conn, work, item_id):
         if work.config.cancelled is None:
             body = (
                 f"{cause[0].upper()}{cause[1:]}. The project has no status of group cancelled: the task keeps its own."
@@ -310,9 +335,11 @@ async def _dropped(conn: AsyncConnection, work: _Approval, item: Item, outcome: 
 # The split run
 
 
-async def _frames_to_split(conn: AsyncConnection, work: _Approval) -> dict[int, tuple[str, list[str]]]:
+async def _frames_to_split(
+    conn: AsyncConnection, work: _Approval, only: list[int] | None = None
+) -> dict[int, tuple[str, list[str]]]:
     """number -> (title, the codes of the SRS items it links) of each open frame task of the document with no child
-    task, the first MAX_FRAMES by number."""
+    task, the first MAX_FRAMES by number; those numbered ``only`` alone when given."""
     t, k, i = tables.tasks.items, tables.tasks.links, tables.srs.items
     child = t.alias("child")
     prefix = f"{FRAME_TASK_PREFIX}{work.doc.slug}:"
@@ -325,6 +352,8 @@ async def _frames_to_split(conn: AsyncConnection, work: _Approval) -> dict[int, 
         .where(t.c.status.not_in(work.config.finished), ~exists().where(child.c.parent_id == t.c.id))
         .order_by(t.c.number, k.c.id)
     )
+    if only is not None:
+        query = query.where(t.c.number.in_(only or [0]))
     found: dict[int, tuple[str, list[str]]] = {}
     for row in await conn.execute(query):
         title, codes = found.setdefault(row.number, (row.title, []))
@@ -340,17 +369,33 @@ def split_task(
     approver: str,
     frames: dict[int, tuple[str, list[str]]],
     ref: Callable[[int], str],
+    release: tuple[str, int] | None = None,
 ) -> str:
     """The task of @ba's run that splits ``frames`` (number -> (title, codes)) of document ``slug`` of ``project``,
-    whose version ``number`` ``approver`` approved; ``ref`` shows a task's number."""
+    whose version ``number`` ``approver`` approved, or on which they approved use cases (``release``: the code and
+    revision of one, or ("", n) for n of them); ``ref`` shows a task's number."""
     listed = [
         f"- {ref(n)}: {title} (use case {', '.join(codes) or 'not linked'})" for n, (title, codes) in frames.items()
     ]
     first = ref(next(iter(frames)))
+    if release is not None and release[0]:
+        why = (
+            f"{approver} approved use case {release[0]} r{release[1]} of it on version {number}, and the hub made "
+            "its frame task."
+        )
+        who = "who approved the use case"
+    elif release is not None:
+        why = (
+            f"{approver} approved {release[1]} use cases of it on version {number}, and the hub made a frame task for "
+            "each one new to the approved baseline."
+        )
+        who = "who approved the use cases"
+    else:
+        why = f"Version {number} of it was approved by {approver}, and the hub made a frame task for each use case new in it."
+        who = "who approved the version"
     return "\n".join(
         [
-            f"Split the frame tasks of the SRS document {slug} of project {project} into child tasks. Version "
-            f"{number} of it was approved by {approver}, and the hub made a frame task for each use case new in it.",
+            f"Split the frame tasks of the SRS document {slug} of project {project} into child tasks. {why}",
             "",
             "The open frame tasks of the document that have no child task yet:",
             *listed,
@@ -363,9 +408,9 @@ def split_task(
             "step. Every business rule of the use case is in one child task.",
             "3. Create each with tasks__create: a title of its own, a description_md that says what to build and how "
             f"to check it is done (the steps and business rules it covers), parent: the frame task's number (such as "
-            f"{first}), and links: the use case's code. The tool makes the task for {approver}, who approved the "
-            "version, and refuses a child whose title another child of the same frame task has: that child exists "
-            "already, so go on with the next.",
+            f"{first}), and links: the use case's code. The tool makes the task for {approver}, {who}, and "
+            "refuses a child whose title another child of the same frame task has: that child exists already, so go "
+            "on with the next.",
             "",
             "You create child tasks only. You change no frame task, no SRS document and no finding, you name no "
             "assignee, and you change no file of the repositories of this run.",
@@ -373,17 +418,25 @@ def split_task(
     )
 
 
-async def _split(conn: AsyncConnection, work: _Approval) -> tuple[int | None, str | None]:
-    """(the task run of @ba that splits the frame tasks of the document, None) or (None, why there is none)."""
+async def _split(
+    conn: AsyncConnection, work: _Approval, only: list[int] | None = None
+) -> tuple[int | None, str | None]:
+    """(the task run of @ba that splits the frame tasks of the document, those numbered ``only`` when given, None) or
+    (None, why there is none)."""
     # Imported here: task_dispatch's own imports go round a cycle (agent_packs, runs, claims) when it is the first
     # module of the server a process loads, which a job that imports this module first would make it.
     from evo_agents.hub.server.task_dispatch import hand_own_task
 
-    frames = await _frames_to_split(conn, work)
+    frames = await _frames_to_split(conn, work, only)
     if not frames:
         return None, f"no open frame task of {work.doc.slug} waits to be split"
-    task = split_task(work.project, work.doc.slug, work.number, work.approver, frames, work.config.ref)
-    title = f"@{BA} splits the tasks of {work.doc.slug} v{work.number}"
+    task = split_task(work.project, work.doc.slug, work.number, work.approver, frames, work.config.ref, work.release)
+    if work.release is not None and work.release[0]:
+        title = f"@{BA} splits the tasks of {work.release[0]} r{work.release[1]} of {work.doc.slug}"
+    elif work.release is not None:
+        title = f"@{BA} splits the tasks of {work.release[1]} use cases of {work.doc.slug}"
+    else:
+        title = f"@{BA} splits the tasks of {work.doc.slug} v{work.number}"
     return await hand_own_task(conn, PLUGIN, work.project_id, BA, task, title)
 
 
@@ -431,23 +484,7 @@ async def approved(
     claimed = await conn.scalar(claim.on_conflict_do_nothing(index_elements=[a.c.version_id]).returning(a.c.id))
     if claimed is None:
         return await _done_before(conn, row.id)
-    outcome = Outcome()
-    config = await tasks_config(conn, plugin, project_id)
-    if config is None:
-        outcome.no_split = f"the config of plugin {TASKS} names no status or no type: no task was made"
-    else:
-        project, approver = await _names(conn, project_id, approver_id)
-        before = await store.snapshot(conn, await store.version(conn, doc, previous)) if previous else None
-        now = await store.snapshot(conn, row)
-        work = _Approval(doc, project_id, project, now, before, approver_id, approver, config)
-        changes = use_case_changes(before.doc if before else None, work.version.doc)
-        for item in changes.added:
-            await _frame(conn, work, item, outcome)
-        for item in changes.changed:
-            await _changed(conn, work, item, outcome)
-        for item in changes.dropped:
-            await _dropped(conn, work, item, outcome)
-        outcome.split_run_id, outcome.no_split = await _split(conn, work)
+    outcome = Outcome(no_split=BY_USE_CASE)
     values = {"split_run_id": outcome.split_run_id, "outcome": outcome.as_json()}
     await conn.execute(update(a).where(a.c.id == claimed).values(**values))
     extra = {"document_id": document_id, "version": version, "run_id": outcome.split_run_id, "why": outcome.no_split}
@@ -456,12 +493,123 @@ async def approved(
     return outcome
 
 
+# The release of a use case
+
+
+async def _framed(conn: AsyncConnection, work: _Approval, item_id: int) -> bool:
+    """Whether use case ``item_id`` has an open frame task of the document: an earlier approval made it."""
+    t, k = tables.tasks.items, tables.tasks.links
+    query = (
+        select(t.c.id)
+        .join_from(k, t, t.c.id == k.c.task_id)
+        .where(k.c.kind == "srs_item", k.c.srs_item_id == item_id, t.c.project_id == work.project_id)
+        .where(t.c.status.not_in(work.config.finished))
+        .where(t.c.external_key.startswith(f"{FRAME_TASK_PREFIX}{work.doc.slug}:", autoescape=True))
+        .limit(1)
+    )
+    return await conn.scalar(query) is not None
+
+
+async def _save(conn: AsyncConnection, release_id: int, outcome: Outcome) -> Outcome:
+    e = tables.srs.use_case_releases
+    kept = {**outcome.as_json(), "split_run_id": outcome.split_run_id}
+    await conn.execute(update(e).where(e.c.id == release_id).values(tasks=kept))
+    return outcome
+
+
+async def _batch_frames(conn: AsyncConnection, batch: list[int]) -> list[int] | None:
+    """The frame tasks the releases ``batch`` made, once every one of them was handled; None while one was not."""
+    e = tables.srs.use_case_releases
+    rows = list(await conn.execute(select(e.c.id, e.c.tasks).where(e.c.id.in_(batch or [0]))))
+    if len(rows) < len(set(batch)) or any(row.tasks is None for row in rows):
+        return None
+    return [number for row in rows for number in (row.tasks or {}).get("created") or []]
+
+
+async def released(conn: AsyncConnection, release_id: int, batch: list[int] | None = None) -> Outcome | None:
+    """Keep the project's tasks in step with release ``release_id`` of a use case, in the caller's transaction (see the
+    module); what was done. ``batch`` lists the releases of the same review: once each is handled, this call hands the
+    run that splits the frame tasks they made. None when the release was handled before or is not there; an outcome
+    that says why when the project does not enable the plugin tasks, turned them on after the release, or its config
+    names no status or no type."""
+    s = tables.srs
+    e, v = s.use_case_releases, s.versions
+    claim = (
+        update(e)
+        .where(e.c.id == release_id, e.c.tasks.is_(None))
+        .values(tasks={})
+        .returning(e.c.document_id, e.c.item_id, e.c.rev, e.c.version_id, e.c.change, e.c.released_by, e.c.released_at)
+    )
+    row = (await conn.execute(claim)).first()
+    if row is None:
+        return None
+    outcome = Outcome()
+    d = s.documents
+    project_id = await conn.scalar(select(d.c.project_id).where(d.c.id == row.document_id))
+    if project_id is None:
+        return await _save(conn, release_id, outcome)
+    plugin = await enabled_in(conn, TASKS, project_id)
+    since = await feature_rule.on_since(conn, TASKS, project_id) if plugin is not None else None
+    if plugin is None or row.released_by is None or (since is not None and since > row.released_at):
+        outcome.no_split = f"the project did not enable the plugin {TASKS} when the use case was approved"
+        return await _save(conn, release_id, outcome)
+    config = await tasks_config(conn, plugin, project_id)
+    if config is None:
+        outcome.no_split = f"the config of plugin {TASKS} names no status or no type: no task was made"
+        return await _save(conn, release_id, outcome)
+    doc = await store.document_by_id(conn, project_id, row.document_id)
+    number = await conn.scalar(select(v.c.number).where(v.c.id == row.version_id))
+    if doc is None or number is None:
+        return await _save(conn, release_id, outcome)
+    project, approver = await _names(conn, project_id, row.released_by)
+    i = s.items
+    code = str(await conn.scalar(select(func.coalesce(i.c.code, i.c.key)).where(i.c.id == row.item_id)))
+    now = await store.snapshot(conn, await store.version(conn, doc, number))
+    work = _Approval(doc, project_id, project, now, None, row.released_by, approver, config, (code, row.rev))
+    before = await conn.scalar(
+        select(v.c.number)
+        .join_from(e, v, v.c.id == e.c.version_id)
+        .where(e.c.item_id == row.item_id, e.c.rev < row.rev)
+        .order_by(e.c.rev.desc())
+        .limit(1)
+    )
+    item = next((item for item in now.doc.items if item.key in now.ids and now.ids[item.key] == row.item_id), None)
+    if row.change == revisions.REMOVED:
+        await _dropped(conn, work, row.item_id, code, outcome)
+    elif row.change == revisions.ADDED and item is not None:
+        if await _framed(conn, work, row.item_id):
+            await _changed(conn, work, row.item_id, code, before or number, outcome, what="was approved again")
+        else:
+            await _frame(conn, work, item, outcome)
+    elif item is not None:
+        await _changed(conn, work, row.item_id, code, before or number, outcome)
+    await _save(conn, release_id, outcome)
+    frames = await _batch_frames(conn, batch or [release_id])
+    if frames:
+        cases = len(set(batch or [release_id]))
+        work = replace(work, release=work.release if cases == 1 else ("", cases))
+        outcome.split_run_id, outcome.no_split = await _split(conn, work, frames)
+        split = {"split_run_id": outcome.split_run_id, "no_split": outcome.no_split}
+        for other in set(batch or []) - {release_id}:  # the batch's split run, on each release that made a frame
+            await conn.execute(update(e).where(e.c.id == other).values(tasks=e.c.tasks.op("||")(split)))
+    elif frames is None:
+        outcome.no_split = PENDING_SPLIT
+    log.info(
+        "srs use case release kept the tasks",
+        extra={"release_id": release_id, "frames": outcome.created, "commented": outcome.commented},
+    )
+    return await _save(conn, release_id, outcome)
+
+
 __all__ = [
+    "BY_USE_CASE",
+    "PENDING_SPLIT",
     "MAX_FRAMES",
     "Outcome",
     "TasksConfig",
     "UseCases",
     "approved",
+    "released",
     "split_task",
     "tasks_config",
     "use_case_changes",

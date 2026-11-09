@@ -111,7 +111,8 @@ def test_srs_events_an_approval_emits_the_codes_it_changed_to_plugins_granted_sr
     fake = FakeHost()
     client.app.state.plugin_host = fake
     report = client.portal.call(lambda: plugin_events.deliver(client.app.state.engine, host=fake))
-    assert (report["delivered"], report["retried"], report["failed"]) == (5, 0, 0)  # and the 3 use cases
+    # and the 3 use cases, to sample and to srs's own contribution releases
+    assert (report["delivered"], report["retried"], report["failed"]) == (8, 0, 0)
     (sent,) = [c for c in fake.calls if c.method == "event" and c.params["kind"] == APPROVED]
     assert (sent.plugin, sent.params["kind"], sent.params["payload"]) == ("sample", APPROVED, first)
     assert protocol.params_problems("event", sent.params) == []

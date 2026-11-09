@@ -9622,7 +9622,8 @@
         "state": {
           "pending": "Đang chờ đủ lượt duyệt theo chính sách.",
           "approved": "Đã duyệt. v{version} được duyệt khi mọi use case cần duyệt của nó đều được duyệt.",
-          "changes_requested": "Có người yêu cầu sửa: chưa duyệt được v{version} cho tới khi xử lý xong."
+          "changes_requested": "Có người yêu cầu sửa: chưa duyệt được v{version} cho tới khi xử lý xong.",
+          "superseded": "Một revision mới hơn của use case này đã được duyệt: bản này không cần duyệt nữa."
         }
       }
     },
@@ -9774,7 +9775,8 @@
         "state": {
           "pending": "Chờ duyệt",
           "approved": "Đã duyệt",
-          "changes_requested": "Yêu cầu sửa"
+          "changes_requested": "Yêu cầu sửa",
+          "superseded": "Đã có bản mới hơn được duyệt"
         },
         "reviewsLabel": "Các lượt duyệt đang tính cho {name}",
         "noReviews": "Chưa có lượt duyệt nào được tính.",
@@ -9864,7 +9866,7 @@
         "noneWithout": "Không có điểm nào cần chốt.",
         "intro": "Chọn một hướng cho mỗi điểm. Nút Đồng ý mở khi mọi điểm đã chốt.",
         "decideLabel": "Các điểm cần chốt",
-        "elsewhere": "{count, plural, other {# điểm cần chốt ở phần khác của tài liệu}}",
+        "elsewhere": "{count, plural, other {# điểm cần chốt về cả tài liệu}}",
         "elsewhereText": "Nút Đồng ý chờ cả các điểm này.",
         "advice": "Gợi ý thêm ({count})",
         "adviceText": "Chỉ để tham khảo, không chặn quyết định của bạn.",
@@ -9897,8 +9899,8 @@
         "lock": {
           "ba": "@ba đang kiểm tra, nút Đồng ý mở khi xong.",
           "here": "{count, plural, other {Chọn xong # điểm ở bước 3 thì nút Đồng ý mở.}}",
-          "elsewhere": "{count, plural, other {Còn # điểm ở phần khác của tài liệu cần chốt (bước 3), nút Đồng ý mở khi xong.}}",
-          "both": "Chọn xong {here} điểm của use case này và {elsewhere} điểm ở phần khác của tài liệu (bước 3) thì nút Đồng ý mở."
+          "elsewhere": "{count, plural, other {Còn # điểm về cả tài liệu cần chốt (bước 3), nút Đồng ý mở khi xong.}}",
+          "both": "Chọn xong {here} điểm của use case này và {elsewhere} điểm về cả tài liệu (bước 3) thì nút Đồng ý mở."
         },
         "own": {
           "approve": "Bạn đã đồng ý ngày {date}. Bạn vẫn có thể đổi ý.",

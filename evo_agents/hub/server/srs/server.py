@@ -18,9 +18,12 @@ decide, or @ba's review of the version's round is queued or running (``findings.
 is never held. Approving a version emits ``srs.version.approved`` in the same transaction (``events``); in a project
 that enables the plugin tasks, the plugin's handler of that event keeps its tasks in step when the hub delivers it
 (``auto_tasks.approved``, with the version approved before it and the approver): frame tasks of its new use cases,
-comments and cancellations, and @ba's split run. Reads go through the sink X-Evo-Sink names, else the project's hub
-sink. A refusal is the hub's error body, with the problems that refused it (or a conflict's two texts) in
-``detail``.
+comments and cancellations, and @ba's split run. A writer sends one use case to review on its own (POST
+.../documents/{slug}/use-cases/{ref}/submit): the revision it has in the latest version, which @ba reviews alone and
+reviewers approve into the approved baseline without waiting for the rest of the version. Every use case answered
+carries its revision (``rev``), the revision the baseline holds (``released``) and the link of its review. Reads go
+through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error body, with the problems
+that refused it (or a conflict's two texts) in ``detail``.
 """
 
 from __future__ import annotations
@@ -28,9 +31,11 @@ from __future__ import annotations
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, Path, Query, Request
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.admin import PROJECT_NAME
@@ -45,10 +50,11 @@ from evo_agents.hub.server.srs import (
     markdown,
     notices,
     reviews,
+    revisions,
     store,
     use_case_reviews,
 )
-from evo_agents.hub.server.srs.auto_review import review_entered
+from evo_agents.hub.server.srs.auto_review import case_entered, review_entered
 from evo_agents.hub.server.srs.diff import diff, lines_between
 from evo_agents.hub.server.srs.doc import SrsError
 from evo_agents.hub.server.srs.models import (
@@ -67,8 +73,11 @@ from evo_agents.hub.server.srs.models import (
     SrsRetireIn,
     SrsRetireResult,
     SrsReviewIn,
+    SrsReviewRun,
+    SrsRevision,
     SrsSave,
     SrsSettleIn,
+    SrsUseCaseSubmitted,
     SrsVersion,
     SrsVersionCases,
     SrsVersionDetail,
@@ -113,13 +122,25 @@ async def _answer(request: Request, work):
         return error_response(request, 409, RACE)
 
 
+def _revs(known: revisions.History, number: int) -> dict[str, int]:
+    """The revision each use case has in version ``number``, by key."""
+    found = {}
+    for key in known.revisions:
+        revision = known.at(key, number)
+        if revision is not None and not revision.dropped:
+            found[key] = revision.rev
+    return found
+
+
 async def _detail(conn: AsyncConnection, access: ProjectAccess, doc: store.DocumentRow, number: int | None):
     row = await store.version(conn, doc, number)
     snap = await store.snapshot(conn, row)
     settings = await store.settings(conn, access)
     wide = use_case_reviews.round_approvals(row)
-    cases = await use_case_reviews.states(conn, access.project_id, doc, row, snap.doc, settings, wide)
-    return detail_model(doc.slug, row, snap.doc, checks.problems(snap.doc, settings.template), cases)
+    known = await revisions.history(conn, doc.id)
+    cases = await use_case_reviews.states(conn, access.project_id, doc, row, snap.doc, settings, wide, known)
+    problems = checks.problems(snap.doc, settings.template)
+    return detail_model(doc.slug, row, snap.doc, problems, cases, access.name, _revs(known, row.number))
 
 
 # Reading
@@ -144,9 +165,18 @@ async def list_documents(
     return await _answer(request, work)
 
 
-async def _queued_cases(conn: AsyncConnection, doc: store.DocumentRow, content, cases) -> list[SrsQueuedUseCase]:
-    """The use cases to review of a version whose content is ``content``, each with its intent as the version reads and
-    the open findings of the document about it or a business rule under it, by level."""
+async def _queued_cases(
+    conn: AsyncConnection,
+    access: ProjectAccess,
+    doc: store.DocumentRow,
+    row: store.VersionRow,
+    content,
+    cases,
+    reviewer: int | None,
+) -> list[SrsQueuedUseCase]:
+    """The use cases to review of version ``row``, whose content is ``content``, each with its intent as the version
+    reads, the open findings of the document about it or a business rule under it, by level, what holds its approval
+    and whether ``reviewer`` (None: nobody, the caller is no writer) may review it."""
     under = findings.use_case_of(content)
     intents = {  # Intent, or the Objective it replaced in older use cases
         item.key: item.fields.get("intent") or item.fields.get("objective")
@@ -154,19 +184,29 @@ async def _queued_cases(conn: AsyncConnection, doc: store.DocumentRow, content, 
         if item.kind == "use_case"
     }
     counts: dict[str, list[int]] = {}
-    for row in await findings.findings(conn, doc, findings.OPEN):
-        case = under.get(row.item or "")
+    for found in await findings.findings(conn, doc, findings.OPEN):
+        case = under.get(found.item or "")
         if case is not None:
-            counts.setdefault(case, [0, 0])[0 if row.level == findings.DECIDE else 1] += 1
-    return [
-        SrsQueuedUseCase(
-            **use_case_model(case).model_dump(),
-            intent=intents.get(case.key) or None,
-            deciding=counts.get(case.key, [0, 0])[0],
-            noted=counts.get(case.key, [0, 0])[1],
+            counts.setdefault(case, [0, 0])[0 if found.level == findings.DECIDE else 1] += 1
+    queued = []
+    for case in cases:
+        hold = findings.Case(case.key, use_case_reviews.case_name(case), content, case.review_run_id)
+        deciding, running = await findings.holds(conn, doc, row, hold)
+        link = store.case_path(access.name, doc.slug, row.number, case.key)
+        queued.append(
+            SrsQueuedUseCase(
+                **use_case_model(case, link).model_dump(),
+                intent=intents.get(case.key) or None,
+                deciding=counts.get(case.key, [0, 0])[0],
+                noted=counts.get(case.key, [0, 0])[1],
+                held_by="ba_review" if running is not None else "findings" if deciding else None,
+                may_review=reviewer is not None
+                and case.state not in use_case_reviews.DONE
+                and reviewer not in case.authors
+                and (row.state == "in_review" or case.submitted),
+            )
         )
-        for case in cases
-    ]
+    return queued
 
 
 @router.get("/{project}/reviews", response_model=list[SrsQueuedVersion])
@@ -182,25 +222,35 @@ async def review_queue(request: Request, project: ProjectName, user: CurrentUser
         queued = []
         for doc in await store.documents(conn, access, sink):
             for row in await store.versions(conn, doc.id):
-                if row.state != "in_review":
+                latest_draft = row.state == "draft" and row.number == doc.latest_version
+                if row.state != "in_review" and not latest_draft:
                     continue
                 snap = await store.snapshot(conn, row)
                 wide = use_case_reviews.round_approvals(row)
                 cases = await use_case_reviews.states(conn, access.project_id, doc, row, snap.doc, settings, wide)
+                if row.state != "in_review":  # a draft lists the use cases sent to review on their own alone
+                    cases = [case for case in cases if case.submitted]
+                    if not cases:
+                        continue
                 deciding, running = await findings.holds(conn, doc, row)
-                authors = await use_case_reviews.authors_since(conn, doc, row.number)
-                barred = not settings.self_approval and user.user_id in authors
+                reviewer = user.user_id if writer else None
+                use_cases = await _queued_cases(conn, access, doc, row, snap.doc, cases, reviewer)
+                if cases:
+                    may = any(case.may_review for case in use_cases)
+                else:
+                    authors = await use_case_reviews.authors_since(conn, doc, row.number)
+                    may = writer and (settings.self_approval or user.user_id not in authors)
                 held_by = "ba_review" if running is not None else "findings" if deciding else None
                 version = cases_model(row, cases).model_dump(exclude={"use_cases"})
                 queued.append(
                     SrsQueuedVersion(
                         **version,
-                        use_cases=await _queued_cases(conn, doc, snap.doc, cases),
+                        use_cases=use_cases,
                         document=doc.slug,
                         document_title=doc.title,
                         held_by=held_by,
                         deciding=len(deciding),
-                        may_review=writer and not barred,
+                        may_review=may,
                     )
                 )
         return sorted(
@@ -269,7 +319,22 @@ async def show_item(
         row = await store.version(conn, doc, version)
         snap = await store.snapshot(conn, row)
         found = snap.doc.item_index(ref, f"version {row.number} of {slug}")
-        return item_detail_model(slug, row.number, snap.doc, found)
+        known = await revisions.history(conn, doc.id)
+        key = snap.doc.items[found].key or ""
+        history = [
+            SrsRevision(
+                rev=one.rev,
+                version=one.version,
+                author=one.author,
+                created_at=one.created_at,
+                dropped=one.dropped,
+                submitted_at=one.submitted_at,
+                submitted_by=one.submitted_by,
+            )
+            for one in known.revisions.get(key, ())
+        ]
+        released = known.baseline(key)
+        return item_detail_model(slug, row.number, snap.doc, found, _revs(known, row.number), released, history)
 
     return await _answer(request, work)
 
@@ -410,7 +475,7 @@ async def retire_items(
     return await _answer(request, work)
 
 
-@router.post("/{project}/documents/{slug}/versions/{number}/submit", response_model=SrsVersion)
+@router.post("/{project}/documents/{slug}/versions/{number}/submit", response_model=SrsVersionCases)
 async def submit_version(
     request: Request, project: ProjectName, slug: Slug, number: Number, user: CurrentUser, sink: Sink = None
 ):
@@ -422,12 +487,50 @@ async def submit_version(
     async def work(conn):
         access = await project_access(conn, user, project)
         doc = await store.document(conn, access, slug, sink, lock=True)
-        sent = await reviews.submit(conn, access, doc, number, await store.settings(conn, access))
+        settings = await store.settings(conn, access)
+        sent = await reviews.submit(conn, access, doc, number, settings)
         if await review_entered(conn, access, doc, sent) is not None:
             sent = await store.version(conn, doc, number)  # with @ba's review run of the round
         else:
             await notices.tell_reviewers(conn, access.project_id, doc, sent)
-        return version_model(sent)
+        content = (await store.snapshot(conn, sent)).doc
+        cases = await use_case_reviews.states(conn, access.project_id, doc, sent, content, settings, [])
+        return cases_model(sent, cases, (access.name, slug))
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/documents/{slug}/use-cases/{ref}/submit", response_model=SrsUseCaseSubmitted)
+async def submit_use_case(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    ref: Annotated[str, Path(min_length=1, max_length=100, description="the use case's code, an alias or its key")],
+    user: CurrentUser,
+    sink: Sink = None,
+):
+    """Send one use case to review on its own: the revision it has in the latest version, while that version is not in
+    review. 409 when the revision is approved already or in review, 422 when the use case or a business rule under it
+    has an error that blocks submitting. @ba reviews that use case alone when the project enabled the agent type ba;
+    its reviewers (not whoever wrote a revision of it since its newest release) get the notice srs_review once nothing
+    holds its approval, with the link of its review. Answers the latest version with its use cases and this one."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        doc = await store.document(conn, access, slug, sink, lock=True)
+        settings = await store.settings(conn, access)
+        latest, cases, case, revision = await reviews.submit_use_case(conn, access, user, doc, ref, settings)
+        run_id = await case_entered(conn, access, doc, latest, case, revision, user.login)
+        if run_id is None:
+            await notices.tell_case_reviewers(conn, access.project_id, doc, latest, case.key)
+        run = None
+        if run_id is not None:
+            state = await conn.scalar(select(tables.runs.c.state).where(tables.runs.c.id == run_id))
+            run = SrsReviewRun(id=run_id, state=state)
+        where = (access.name, slug)
+        found = cases_model(latest, cases, where)
+        mine = next(model for model in found.use_cases if model.key == case.key)
+        return SrsUseCaseSubmitted(**found.model_dump(), use_case=mine, use_case_review_run=run)
 
     return await _answer(request, work)
 
@@ -488,9 +591,9 @@ async def review_use_case(
         settings = await store.settings(conn, access)
         asked = reviews.ReviewRequest(body.decision, body.role, body.body)
         decided, cases = await reviews.review_use_case(conn, access, user, doc, number, ref, asked, settings)
-        if decided.state == "approved":
+        if body.decision == "approve":  # the knowledge graph reads the approved baseline (``kg``)
             await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
-        return cases_model(decided, cases)
+        return cases_model(decided, cases, (access.name, slug))
 
     return await _answer(request, work)
 

@@ -24,6 +24,12 @@ open finding of level decide, whatever version it was found on, or while @ba's r
 holds nothing, nor does a round no review was handed for; a request for changes is never held. The refusal names each
 open finding with its chat link: the first message of the settle chat it is settled in while it is open (``settle``
 sets it when it opens the chat), the message that settled it once one did.
+
+The approval of one use case (``reviews.review_use_case``) goes through the same gate narrowed to it (``Case``): only
+the open findings of level decide about the use case, a business rule under it, or no item at all (the whole document)
+hold it, and @ba's review of the version's round or of the round of the use case's revision sent on its own. A finding
+about another use case, or about a section, a screen, an NFR or a CBR, holds that use case's approval no more: it still
+holds the version's.
 """
 
 from __future__ import annotations
@@ -449,23 +455,51 @@ async def review_run(conn: AsyncConnection, held: VersionRow):
     return await _review_run(conn, held)
 
 
-async def holds(conn: AsyncConnection, doc: DocumentRow, held: VersionRow):
+@dataclass(frozen=True)
+class Case:
+    """The use case an approval is of: its key, its name (``UC ORD-1 r3``), the version's content it is read in, and
+    @ba's review of the round of its revision sent on its own, when one was handed."""
+
+    key: str
+    name: str
+    content: Document
+    review_run_id: int | None = None
+
+
+async def _run(conn: AsyncConnection, run_id: int | None):
+    if run_id is None:
+        return None
+    r = tables.runs
+    return (await conn.execute(select(r.c.id, r.c.state).where(r.c.id == run_id))).first()
+
+
+async def holds(conn: AsyncConnection, doc: DocumentRow, held: VersionRow, case: Case | None = None):
     """What holds an approval of version ``held`` of ``doc`` now: the open findings of level decide of the document, and
-    @ba's review of the version's round (its id and state) while it is queued or running, else None."""
+    @ba's review of the version's round (its id and state) while it is queued or running, else None. With ``case``,
+    of that use case alone (see the module)."""
     deciding = [row for row in await findings(conn, doc, OPEN) if row.level == DECIDE]
     run = await _review_run(conn, held)
-    return deciding, run if run is not None and run.state in ACTIVE_STATES else None
+    run = run if run is not None and run.state in ACTIVE_STATES else None
+    if case is None:
+        return deciding, run
+    under = use_case_of(case.content)
+    deciding = [row for row in deciding if row.item is None or under.get(row.item) == case.key]
+    own = await _run(conn, case.review_run_id)
+    return deciding, run or (own if own is not None and own.state in ACTIVE_STATES else None)
 
 
-async def approval_hold(conn: AsyncConnection, access: ProjectAccess, doc: DocumentRow, held: VersionRow) -> None:
-    """409 when version ``held`` of ``doc`` may not be approved now (see the module), naming each open finding of
-    level decide with its chat link, or the review run that is still to end."""
-    deciding, run = await holds(conn, doc, held)
+async def approval_hold(
+    conn: AsyncConnection, access: ProjectAccess, doc: DocumentRow, held: VersionRow, case: Case | None = None
+) -> None:
+    """409 when version ``held`` of ``doc``, or use case ``case`` of it, may not be approved now (see the module),
+    naming each open finding of level decide with its chat link, or the review run that is still to end."""
+    deciding, run = await holds(conn, doc, held, case)
+    what = f"{case.name} of version {held.number} of {doc.slug}" if case else f"version {held.number} of {doc.slug}"
     if deciding:
         waive = f"evo-agents hub srs waive {doc.slug} FINDING --project {access.name} --reason TEXT"
         raise SrsError(
             409,
-            f"version {held.number} of {doc.slug} is not approved while {len(deciding)} finding(s) of level decide "
+            f"{what} is not approved while {len(deciding)} finding(s) of level decide "
             f"are open: {', '.join(_named(row) for row in deciding)}. Settle each in its chat, or an admin of the "
             f"project waives one with `{waive}`",
             detail=[
@@ -476,15 +510,22 @@ async def approval_hold(conn: AsyncConnection, access: ProjectAccess, doc: Docum
     if run is not None:
         raise SrsError(
             409,
-            f"version {held.number} of {doc.slug} is not approved while @{BA}'s review of its round {held.round} "
+            f"{what} is not approved while @{BA}'s review {'' if case else f'of its round {held.round} '}"
             f"(run #{run.id}) is {run.state}: approve it once the run ends; a run that failed or was cancelled holds "
             "nothing",
         )
 
 
+async def held_now(conn: AsyncConnection, doc: DocumentRow, held: VersionRow) -> bool:
+    """Whether the gate of a version's approval holds version ``held`` of ``doc`` now."""
+    deciding, run = await holds(conn, doc, held)
+    return bool(deciding) or run is not None
+
+
 __all__ = [
     "ACTIONS",
     "DECIDE",
+    "Case",
     "OPEN",
     "REOPEN_HOURS",
     "RESOLVED",
@@ -503,6 +544,7 @@ __all__ = [
     "finding",
     "findings",
     "graph_problems",
+    "held_now",
     "held_problems",
     "holds",
     "looked_up",

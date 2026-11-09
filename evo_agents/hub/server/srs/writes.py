@@ -9,7 +9,8 @@ none, the checks only the tables tell, and writing the version with its items, c
   had changed, a coded item dropped by a member who is not an admin of the project.
 - ``unheld_problems`` says why no item of the latest version holds a code an admin asked to retire.
 - ``write_version`` writes the next version of a document, under its row lock, as one straight line: the version
-  built on the latest one. A dropped item keeps its codes, so no item gets them again.
+  built on the latest one. A dropped item keeps its codes, so no item gets them again. Each use case the version adds,
+  changes or drops takes its next revision (``revisions.record``).
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.server.srs import CODED_KINDS, checks
+from evo_agents.hub.server.srs import CODED_KINDS, checks, revisions
 from evo_agents.hub.server.srs.doc import ERROR, Document, Item, Problem, SrsError
 from evo_agents.hub.server.srs.store import Snapshot
 from evo_agents.hub.server.srs.template import SCREEN_PREFIX, Template, code_key, screen_number
@@ -328,6 +329,7 @@ async def write_version(
         i = tables.srs.items
         await conn.execute(update(i).where(i.c.id.in_(gone)).values(retired_in=number))
     await _item_rows(conn, version_id, doc, ids)
+    await revisions.record(conn, writer.document_id, version_id, writer.author_id, doc, ids)
     return number
 
 

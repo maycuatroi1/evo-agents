@@ -161,6 +161,24 @@ export function reviewBlock(
   return null;
 }
 
+/**
+ * Why `viewer` cannot review one use case of `version`: they only read; the version is not in review and the use case
+ * was not sent to review on its own; or they wrote a revision of it since its newest release (the hub's author rule is
+ * the use case's, so writing another use case bars nothing here). A use case reviewed already blocks nothing: a later
+ * review replaces the earlier one.
+ */
+export function caseReviewBlock(
+  viewer: Viewer,
+  version: Pick<SrsVersion, "state">,
+  useCase: { submitted?: boolean; authors?: string[] } | null,
+  selfApproval = false,
+): ReviewBlock | null {
+  if (!canWrite(viewer)) return "reader";
+  if (version.state !== "in_review" && !useCase?.submitted) return "not_in_review";
+  if (!selfApproval && (useCase?.authors ?? []).includes(viewer.login)) return "author";
+  return null;
+}
+
 // The plugin's config: roles and the approval policy
 
 export type Policy = { required: ReviewRole[]; optional: ReviewRole[] };

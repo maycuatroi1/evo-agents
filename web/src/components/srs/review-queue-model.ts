@@ -47,9 +47,16 @@ function held(version: Version, deciding: number): CardStatus | null {
   return null;
 }
 
+/** What holds an approval of one use case: @ba's check (of the version or of the use case alone), then its points to settle. */
+function caseHeld(useCase: Pick<SrsQueuedUseCase, "held_by" | "deciding">): CardStatus | null {
+  if (useCase.held_by === "ba_review") return { kind: "ba_review" };
+  if (useCase.held_by === "findings") return { kind: "deciding", count: Math.max(useCase.deciding, 1) };
+  return null;
+}
+
 export function cardStatus(
   version: Version,
-  useCase: Pick<SrsQueuedUseCase, "state" | "reviews" | "deciding"> | null,
+  useCase: Pick<SrsQueuedUseCase, "state" | "reviews" | "deciding" | "held_by" | "may_review"> | null,
   login: string | null,
 ): CardStatus {
   if (useCase === null) {
@@ -60,10 +67,10 @@ export function cardStatus(
   }
   const own = ownReview(useCase, login);
   if (own?.decision === "request_changes") return { kind: "asked" };
-  if (own?.decision === "approve" || useCase.state === "approved") return { kind: "approved" };
-  if (!version.may_review) return { kind: "others" };
+  if (own?.decision === "approve" || useCase.state === "approved" || useCase.state === "superseded") return { kind: "approved" };
+  if (!useCase.may_review) return { kind: "others" };
   if (useCase.state === "changes_requested") return { kind: "changes" };
-  return held(version, useCase.deciding) ?? { kind: "waiting" };
+  return caseHeld(useCase) ?? { kind: "waiting" };
 }
 
 /** Whether a card waits for the viewer: they can review it now, or settle what holds it first. */

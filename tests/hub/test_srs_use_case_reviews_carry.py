@@ -128,11 +128,11 @@ def test_use_case_reviews_a_later_review_of_a_reviewer_replaces_their_earlier_on
     submitted(client, hub["chi"], 1)
     one(client, hub["other"], 1, "UC ORD-2", "request_changes", body="Name the gateway")
     assert states(client, hub["reader"], 1)["UC ORD-2"] == "changes_requested"
-    one(client, hub["other"], 1, "UC ORD-2")
-    assert states(client, hub["reader"], 1)["UC ORD-2"] == "approved"
     asked = one(client, hub["other"], 1, "UC ORD-2", "request_changes", body="After all, no")
     (case,) = [c for c in asked.json()["use_cases"] if c["code"] == "UC ORD-2"]
     assert [(c["decision"], c["body"]) for c in case["reviews"]] == [("request_changes", "After all, no")]
+    one(client, hub["other"], 1, "UC RET-1")
+    assert states(client, hub["reader"], 1)["UC RET-1"] == "approved"
     (count,) = sql(hub_db, select(func.count()).select_from(tables.srs.use_case_reviews))
     assert count[0] == 3, "every review stays in the table"
     wide = whole(client, hub["owner"], 1)
