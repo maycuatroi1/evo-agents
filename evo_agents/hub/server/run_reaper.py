@@ -261,8 +261,9 @@ async def recover_runs(
     ``parked_for`` cancelled, each in a transaction of its own, a question run queued for
     ``question_runs.QUEUE_SECONDS`` fails (no_worker), a run running or verifying with no event for
     ``triage.STALE_MINUTES`` while its worker heartbeats opens its triage thread (``triage.open_stale``), a trace of an
-    agent system idle past its limit opens a thread to its Orchestrator (``orchestrator.open_idle``), and a queued
-    run pinned to a revoked worker fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
+    agent system idle past its limit opens a thread to its Orchestrator (``orchestrator.open_idle``), a queued run
+    dispatched with browser that no worker can take has the hub ask its owner's nearest worker that lacks only Chromium
+    to install it (``browser_install.ask_for_queued``), and a queued run pinned to a revoked worker fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
     ``github_app`` (``credentials.revoke_tokens``; nothing without the App or ``sealer``). Returns how many runs
     ended in each state, and how many were parked."""
     r, w = tables.runs, tables.workers
@@ -321,6 +322,9 @@ async def recover_runs(
     from evo_agents.hub.server import orchestrator  # it opens threads through triage
 
     await orchestrator.open_idle(engine)  # a trace of an agent system that wrote no span for its idle limit
+    from evo_agents.hub.server import browser_install  # it reads queued runs through queue_fit
+
+    await browser_install.ask_for_queued(engine)  # a queued browser run whose owner's worker lacks only Chromium
     async with engine.begin() as conn:
         unclaimable = (
             select(r.c.id, w.c.name)

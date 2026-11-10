@@ -39,7 +39,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   of their step is queued, or fail on their last attempt; runs past their timeout fail; a plan run that waited
   EVO_HUB_DECISION_WAIT_SECONDS (10 minutes by default) for an answer, or waits only for a time or an event of the hub,
   is parked, and one parked for 7 days cancelled
-  (``evo_agents.hub.server.run_state``). The runs that end give back their leases, and the GitHub tokens of every lease
+  (``evo_agents.hub.server.run_state``); a queued run dispatched with browser that no worker can take has its owner's
+  nearest worker that lacks only Chromium asked to install it (``evo_agents.hub.server.browser_install``). The runs that end give back their leases, and the GitHub tokens of every lease
   given back and not revoked at GitHub yet are revoked there (``evo_agents.hub.server.credentials``).
 - ``hub.deliver_notifications``, every minute, and queued by each transaction that stores a notification: the
   notification deliveries that are due, each handed to its channel's class, tried again with a backoff and failed
