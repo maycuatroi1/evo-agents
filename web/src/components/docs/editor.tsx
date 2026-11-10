@@ -12,6 +12,7 @@ import { notify } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { browserApi } from "@/lib/api/browser";
@@ -35,6 +36,7 @@ import {
 } from "./model";
 
 type Held = { sha256: string; url: string };
+type Format = "markdown" | "html";
 
 /** The images the editor holds, by name: the latest version's, then those uploaded here, previewed from the file. */
 function useImages(doc: DocsDocument | null) {
@@ -53,9 +55,11 @@ function useImages(doc: DocsDocument | null) {
 
 /**
  * The editor of a document (web/DESIGN.md, Docs): a new one (`doc` null: its title, the slug made from it until edited,
- * the Markdown) or the next version of one, on the latest version it read. Add images uploads PNG, JPEG, WebP or GIF
- * files to the hub and puts their Markdown at the cursor; Preview draws the Markdown as readers will see it. Save
- * sends only the images the Markdown shows; a version someone saved meanwhile refuses it (409), with the hub's words.
+ * its kind, the Markdown) or the next version of one, on the latest version it read and in its kind. Add images uploads
+ * PNG, JPEG, WebP or GIF files to the hub and puts their Markdown at the cursor; Preview draws the Markdown as readers
+ * will see it. An HTML page is its source alone: no image upload and no preview here, since the page runs only in the
+ * hub's sandbox, where Save shows it. Save sends only the images the Markdown shows; a version someone saved meanwhile
+ * refuses it (409), with the hub's words.
  */
 export function DocumentEditor({ project, doc }: { project: string; doc: DocsDocument | null }) {
   const t = useTranslations("docs.editor");
@@ -70,6 +74,8 @@ export function DocumentEditor({ project, doc }: { project: string; doc: DocsDoc
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
   const [text, setText] = useState(doc?.shown.body ?? "");
+  const [format, setFormat] = useState<Format>(doc?.shown.format ?? "markdown");
+  const page = format === "html";
   const [summary, setSummary] = useState("");
   const [uploading, setUploading] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -130,13 +136,14 @@ export function DocumentEditor({ project, doc }: { project: string; doc: DocsDoc
       document.getElementById(`${ids}-slug`)?.focus();
       return;
     }
-    const shown = shownImages(text, new Set(images.keys())).map((name) => ({ name, sha256: images.get(name)!.sha256 }));
+    const shown = page ? [] : shownImages(text, new Set(images.keys())).map((name) => ({ name, sha256: images.get(name)!.sha256 }));
     setBusy(true);
     setRefused(null);
     try {
       const saved = await saveDocument(browserApi(), project, shownSlug, {
         title: title.trim(),
         body: text,
+        format,
         summary: summary.trim(),
         images: shown,
         base_version: doc ? doc.latest_version : 0,
@@ -199,59 +206,93 @@ export function DocumentEditor({ project, doc }: { project: string; doc: DocsDoc
           </p>
         </div>
       </div>
-      <Tabs defaultValue="write" className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <TabsList>
-            <TabsTrigger value="write">{t("write")}</TabsTrigger>
-            <TabsTrigger value="preview" data-testid="docs-editor-preview-tab">
-              {t("preview")}
-            </TabsTrigger>
-          </TabsList>
-          <input
-            ref={files}
-            type="file"
-            accept={IMAGE_TYPES.join(",")}
-            multiple
-            className="sr-only"
-            tabIndex={-1}
-            aria-hidden="true"
-            onChange={(event) => void addImages(event.target.files)}
-            data-testid="docs-editor-files"
-          />
-          <Button type="button" variant="secondary" size="sm" busy={uploading > 0} onClick={() => files.current?.click()} data-testid="docs-editor-add-images">
-            <ImagePlus aria-hidden="true" />
-            {t("addImages")}
-          </Button>
+      {doc === null ? (
+        <div className="flex max-w-xs flex-col gap-1.5">
+          <Label htmlFor={`${ids}-format`}>{t("format")}</Label>
+          <NativeSelect
+            id={`${ids}-format`}
+            value={format}
+            onChange={(event) => setFormat(event.target.value === "html" ? "html" : "markdown")}
+            data-testid="docs-editor-format"
+          >
+            <option value="markdown">{t("formatMarkdown")}</option>
+            <option value="html">{t("formatHtml")}</option>
+          </NativeSelect>
         </div>
-        <TabsContent value="write" className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-body`} className="sr-only">
-            {t("body")}
-          </Label>
+      ) : null}
+      {page ? (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${ids}-body`}>{t("htmlBody")}</Label>
           <Textarea
-            ref={body}
             id={`${ids}-body`}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            rows={24}
+            rows={28}
             maxLength={MAX_BODY}
+            spellCheck={false}
             aria-describedby={`${ids}-body-hint`}
             className="font-mono text-[13px] leading-5"
             data-testid="docs-editor-body"
           />
           <p id={`${ids}-body-hint`} className="text-xs text-fg-subtle">
-            {t("bodyHint")}
+            {t("htmlHint")}
           </p>
-        </TabsContent>
-        <TabsContent value="preview" className="min-h-48 rounded-md border border-border p-4" data-testid="docs-editor-preview">
-          {text.trim() ? (
-            <SafeMarkdown variant="page" images={resolve} testId="docs-editor-markdown">
-              {text}
-            </SafeMarkdown>
-          ) : (
-            <p className="text-[13px] text-fg-subtle">{t("previewEmpty")}</p>
-          )}
-        </TabsContent>
-      </Tabs>
+        </div>
+      ) : (
+        <Tabs defaultValue="write" className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <TabsList>
+              <TabsTrigger value="write">{t("write")}</TabsTrigger>
+              <TabsTrigger value="preview" data-testid="docs-editor-preview-tab">
+                {t("preview")}
+              </TabsTrigger>
+            </TabsList>
+            <input
+              ref={files}
+              type="file"
+              accept={IMAGE_TYPES.join(",")}
+              multiple
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={(event) => void addImages(event.target.files)}
+              data-testid="docs-editor-files"
+            />
+            <Button type="button" variant="secondary" size="sm" busy={uploading > 0} onClick={() => files.current?.click()} data-testid="docs-editor-add-images">
+              <ImagePlus aria-hidden="true" />
+              {t("addImages")}
+            </Button>
+          </div>
+          <TabsContent value="write" className="flex flex-col gap-1.5">
+            <Label htmlFor={`${ids}-body`} className="sr-only">
+              {t("body")}
+            </Label>
+            <Textarea
+              ref={body}
+              id={`${ids}-body`}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              rows={24}
+              maxLength={MAX_BODY}
+              aria-describedby={`${ids}-body-hint`}
+              className="font-mono text-[13px] leading-5"
+              data-testid="docs-editor-body"
+            />
+            <p id={`${ids}-body-hint`} className="text-xs text-fg-subtle">
+              {t("bodyHint")}
+            </p>
+          </TabsContent>
+          <TabsContent value="preview" className="min-h-48 rounded-md border border-border p-4" data-testid="docs-editor-preview">
+            {text.trim() ? (
+              <SafeMarkdown variant="page" images={resolve} testId="docs-editor-markdown">
+                {text}
+              </SafeMarkdown>
+            ) : (
+              <p className="text-[13px] text-fg-subtle">{t("previewEmpty")}</p>
+            )}
+          </TabsContent>
+        </Tabs>
+      )}
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${ids}-summary`}>{t("summary")}</Label>
         <Input

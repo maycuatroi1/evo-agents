@@ -22,6 +22,9 @@ export type DocumentTab = "read" | "history" | "edit";
 /** The one centred column every page of a document sits in, so its head, tabs and body share both edges. */
 export const DOCUMENT_COLUMN = "mx-auto flex w-full max-w-4xl flex-col gap-6";
 
+/** The column of an HTML version, wider, since a page lays itself out (a diagram, a table) for a wide screen. */
+export const PAGE_COLUMN = "mx-auto flex w-full max-w-screen-2xl flex-col gap-6";
+
 /**
  * The head of every page of one document: its title and slug, one line saying the version shown, who saved it and
  * when, and who may read it, Edit for a writer, then the document's tabs (Read, History). `shown` is the version the

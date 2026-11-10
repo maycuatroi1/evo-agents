@@ -4,6 +4,7 @@ the hub's OpenAPI document."""
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -21,6 +22,7 @@ from evo_agents.hub.tables_docs import (
 )
 
 SHA256 = r"^[0-9a-f]{64}$"
+Format = Literal["markdown", "html"]  # tables_docs.FORMATS
 
 
 class DocsDocumentSummary(BaseModel):
@@ -34,6 +36,7 @@ class DocsDocumentSummary(BaseModel):
     created_at: datetime
     updated_by: str = Field(description="the author of its latest version")
     updated_at: datetime
+    format: Format = Field("markdown", description="the format of its latest version")
 
 
 class DocsVersion(BaseModel):
@@ -42,6 +45,7 @@ class DocsVersion(BaseModel):
     summary: str = Field(description="what the version changed; may be empty")
     author: str
     created_at: datetime
+    format: Format = Field("markdown", description="markdown, or html for a page of its own")
 
 
 class DocsImage(BaseModel):
@@ -53,8 +57,12 @@ class DocsImage(BaseModel):
 
 
 class DocsVersionDetail(DocsVersion):
-    body: str = Field(description="the version's Markdown")
-    images: list[DocsImage] = Field(description="the images the version shows, by name")
+    body: str = Field(description="the version's Markdown, or its HTML page when the format is html")
+    images: list[DocsImage] = Field(description="the images the version shows, by name; none for an HTML page")
+    page_url: str | None = Field(
+        None,
+        description="for an HTML version, GET of the page on this hub, served under a sandbox for a frame of the web",
+    )
 
 
 class DocsDocument(DocsDocumentSummary):
@@ -73,7 +81,8 @@ class DocsSave(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(min_length=1, max_length=MAX_TITLE_CHARS)
-    body: str = Field(max_length=MAX_BODY_CHARS, description="the Markdown")
+    body: str = Field(max_length=MAX_BODY_CHARS, description="the Markdown, or the HTML page when format is html")
+    format: Format = Field("markdown", description="html saves the body as a page the hub serves in a sandbox")
     summary: str = Field("", max_length=MAX_SUMMARY_CHARS, description="what this version changes")
     images: list[DocsImageRef] = Field(default_factory=list, max_length=MAX_IMAGES)
     base_version: int | None = Field(
@@ -126,17 +135,28 @@ def summary_model(row: DocumentRow) -> DocsDocumentSummary:
         created_at=row.created_at,
         updated_by=row.updated_by,
         updated_at=row.updated_at,
+        format=row.format,
     )
 
 
 def version_model(row: VersionRow) -> DocsVersion:
     return DocsVersion(
-        number=row.number, title=row.title, summary=row.summary, author=row.author, created_at=row.created_at
+        number=row.number,
+        title=row.title,
+        summary=row.summary,
+        author=row.author,
+        created_at=row.created_at,
+        format=row.format,
     )
 
 
 def image_url(project: str, slug: str, sha256: str) -> str:
     return f"/v1/x/docs/{quote(project, safe='')}/documents/{quote(slug, safe='')}/images/{sha256}"
+
+
+def page_url(project: str, slug: str, number: int) -> str:
+    """GET of an HTML version's page, pinned to that version."""
+    return f"/v1/x/docs/{quote(project, safe='')}/documents/{quote(slug, safe='')}/page?version={number}"
 
 
 def _image(project: str, slug: str, image: ImageRef) -> DocsImage:
@@ -151,4 +171,5 @@ def _image(project: str, slug: str, image: ImageRef) -> DocsImage:
 
 def detail_model(project: str, slug: str, row: VersionRow) -> DocsVersionDetail:
     images = [_image(project, slug, image) for image in row.images]
-    return DocsVersionDetail(**version_model(row).model_dump(), body=row.body or "", images=images)
+    page = page_url(project, slug, row.number) if row.format == "html" else None
+    return DocsVersionDetail(**version_model(row).model_dump(), body=row.body or "", images=images, page_url=page)

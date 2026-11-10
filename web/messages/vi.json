@@ -1276,7 +1276,7 @@
         "canvas": "Canvas của dự án: các nhận định, bằng chứng và phần chấm của chúng, cùng @strategist.",
         "srs": "Các tài liệu yêu cầu của dự án, phần review và duyệt của chúng, cùng @ba.",
         "tasks": "Các task của dự án và bảng của chúng, tạo từ các yêu cầu đã duyệt.",
-        "docs": "Tài liệu của dự án: Markdown có ảnh, mỗi lần lưu là một version."
+        "docs": "Tài liệu của dự án: Markdown có ảnh hoặc trang HTML, mỗi lần lưu là một version."
       },
       "scopeHub": "Cả hub",
       "scopeProject": "Hub hoặc dự án",
@@ -10400,7 +10400,10 @@
       "latestOption": "v{number} (mới nhất)",
       "older": "Bạn đang đọc version {number}; bản mới nhất là version {latest}.",
       "readLatest": "Đọc bản mới nhất",
-      "empty": "Version này không có nội dung."
+      "empty": "Version này không có nội dung.",
+      "pageFrame": "Trang: {title}",
+      "pageNote": "Trang này chạy trong sandbox: không đọc gì của hub và không gọi ra ngoài.",
+      "openPage": "Mở riêng trang này"
     },
     "history": {
       "columns": {
@@ -10438,7 +10441,12 @@
       "slugTaken": "Đã có tài liệu dùng slug này. Chọn slug khác.",
       "readerTitle": "Chỉ người có vai trò ghi mới sửa tài liệu của {project}",
       "readerText": "Bạn đọc được mọi tài liệu và lịch sử. Muốn viết, nhờ admin của dự án cấp vai trò ghi.",
-      "newTitle": "Tài liệu mới"
+      "newTitle": "Tài liệu mới",
+      "format": "Loại",
+      "formatMarkdown": "Markdown có ảnh",
+      "formatHtml": "Trang HTML",
+      "htmlBody": "HTML",
+      "htmlHint": "Một trang HTML đầy đủ, chạy trong sandbox: script và style viết trong trang, thư viện từ esm.sh, cdn.jsdelivr.net hoặc cdnjs.cloudflare.com nếu dự án không bị hạn chế, ảnh nhúng dạng data: URL. Trang không gọi ra ngoài; bấm Lưu để xem."
     }
   },
   "canvas": {

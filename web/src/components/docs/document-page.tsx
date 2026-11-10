@@ -17,9 +17,10 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { type DocsDocument, docsDocumentQuery } from "./api";
-import { DOCUMENT_COLUMN, DocumentHead } from "./document-head";
+import { DOCUMENT_COLUMN, DocumentHead, PAGE_COLUMN } from "./document-head";
 import { documentHref } from "./links";
 import { imageResolver } from "./model";
+import { PageFrame } from "./page-frame";
 
 /** The versions of a document as a select that opens the one picked. */
 function VersionPicker({ project, doc }: { project: string; doc: DocsDocument }) {
@@ -68,7 +69,9 @@ function Body({ project, doc }: { project: string; doc: DocsDocument }) {
         />
       ) : null}
       <article className="min-w-0" aria-label={doc.shown.title} data-testid="docs-body">
-        {doc.shown.body.trim() ? (
+        {doc.shown.format === "html" && doc.shown.page_url ? (
+          <PageFrame url={doc.shown.page_url} title={doc.shown.title} />
+        ) : doc.shown.body.trim() ? (
           <SafeMarkdown variant="page" images={images} testId="docs-markdown">
             {doc.shown.body}
           </SafeMarkdown>
@@ -83,7 +86,8 @@ function Body({ project, doc }: { project: string; doc: DocsDocument }) {
 /**
  * A document of a project (/p/{project}/x/docs/documents/{slug}?v=N, the hub's feature docs): the version asked, the
  * latest by default, as Markdown with the images it shows, which the hub serves from its own origin to the document's
- * readers. An older version says so and links the latest.
+ * readers, or, for an HTML version, its page in a sandboxed frame (`PageFrame`) in a wider column. An older version
+ * says so and links the latest.
  */
 export function DocumentPage({
   project,
@@ -100,7 +104,7 @@ export function DocumentPage({
   return (
     <QueryView state={state} loading={<PageSkeleton />}>
       {(doc) => (
-        <div className={DOCUMENT_COLUMN} data-testid="docs-document">
+        <div className={doc.shown.format === "html" ? PAGE_COLUMN : DOCUMENT_COLUMN} data-testid="docs-document">
           <DocumentHead project={project} doc={doc} current="read" shown={doc.shown} actions={<VersionPicker project={project} doc={doc} />} />
           <Body project={project} doc={doc} />
         </div>

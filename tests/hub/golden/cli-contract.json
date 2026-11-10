@@ -8043,7 +8043,8 @@
           "title",
           "summary",
           "author",
-          "created_at"
+          "created_at",
+          "format"
         ],
         "schema": "DocsVersion"
       }
@@ -8078,7 +8079,8 @@
           "created_by",
           "created_at",
           "updated_by",
-          "updated_at"
+          "updated_at",
+          "format"
         ],
         "schema": "DocsDocumentSummary"
       }
@@ -8217,6 +8219,7 @@
           "created_at",
           "updated_by",
           "updated_at",
+          "format",
           "versions",
           "shown"
         ],
@@ -66720,6 +66723,141 @@
           }
         }
       },
+      "/v1/x/docs/{project}/documents/{slug}/page": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Page",
+          "description": "An HTML version of the document as a page of its own, the latest unless ``version``, for the document's readers;\na Markdown version is 404 here.",
+          "operationId": "show_page_v1_x_docs__project__documents__slug__page_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a version's number; the latest when left out",
+                "title": "Version"
+              },
+              "description": "a version's number; the latest when left out"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "the HTML version as a page, under a sandbox",
+              "content": {
+                "text/html": {}
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/x/docs/{project}/images": {
         "post": {
           "tags": [
@@ -124112,6 +124250,16 @@
               "format": "date-time",
               "title": "Updated At"
             },
+            "format": {
+              "type": "string",
+              "enum": [
+                "markdown",
+                "html"
+              ],
+              "title": "Format",
+              "description": "the format of its latest version",
+              "default": "markdown"
+            },
             "versions": {
               "items": {
                 "$ref": "#/components/schemas/DocsVersion"
@@ -124179,6 +124327,16 @@
               "type": "string",
               "format": "date-time",
               "title": "Updated At"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "markdown",
+                "html"
+              ],
+              "title": "Format",
+              "description": "the format of its latest version",
+              "default": "markdown"
             }
           },
           "type": "object",
@@ -124266,7 +124424,17 @@
               "type": "string",
               "maxLength": 500000,
               "title": "Body",
-              "description": "the Markdown"
+              "description": "the Markdown, or the HTML page when format is html"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "markdown",
+                "html"
+              ],
+              "title": "Format",
+              "description": "html saves the body as a page the hub serves in a sandbox",
+              "default": "markdown"
             },
             "summary": {
               "type": "string",
@@ -124399,6 +124567,16 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "markdown",
+                "html"
+              ],
+              "title": "Format",
+              "description": "markdown, or html for a page of its own",
+              "default": "markdown"
             }
           },
           "type": "object",
@@ -124435,10 +124613,20 @@
               "format": "date-time",
               "title": "Created At"
             },
+            "format": {
+              "type": "string",
+              "enum": [
+                "markdown",
+                "html"
+              ],
+              "title": "Format",
+              "description": "markdown, or html for a page of its own",
+              "default": "markdown"
+            },
             "body": {
               "type": "string",
               "title": "Body",
-              "description": "the version's Markdown"
+              "description": "the version's Markdown, or its HTML page when the format is html"
             },
             "images": {
               "items": {
@@ -124446,7 +124634,19 @@
               },
               "type": "array",
               "title": "Images",
-              "description": "the images the version shows, by name"
+              "description": "the images the version shows, by name; none for an HTML page"
+            },
+            "page_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page Url",
+              "description": "for an HTML version, GET of the page on this hub, served under a sandbox for a frame of the web"
             }
           },
           "type": "object",

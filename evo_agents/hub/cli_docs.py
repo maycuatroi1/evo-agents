@@ -4,7 +4,8 @@ which this client never imports: it speaks HTTP only.
 
 ``list`` prints the documents with their latest version. ``show SLUG`` prints a version as Markdown, the latest unless
 ``--version N``, its title as the first heading; ``--out DIR`` writes it to ``DIR/<slug>.md`` instead, with every
-image it shows under DIR by the name the Markdown gives it. ``history SLUG`` prints every version.
+image it shows under DIR by the name the Markdown gives it. An HTML version prints its page as it is, and ``--out``
+writes ``DIR/<slug>.html``. ``history SLUG`` prints every version.
 
 ``put FILE`` saves a Markdown file as the next version of a document, created at version 1 when the project has none of
 that slug (``--slug``, by default from the file's name). Every image the Markdown shows from a file beside it,
@@ -13,12 +14,15 @@ version names it by its path from the file; a path the hub does not take as a na
 renamed under ``images/`` and the Markdown with it. An image of the web (``https://...``) stays as it is, and the hub's
 web does not load it. A local image that is not there stops the command before anything is sent. The title is
 ``--title``, else the file's first line when it is a heading ``# Title``, which then leaves the body, else the slug.
+A file ending in ``.html`` or ``.htm`` is saved as it is as an HTML page (format ``html``), which shows no image of
+the project but embeds its own; its title is ``--title``, else the text of its ``<title>``, else the slug.
 ``--base N`` refuses the save unless the document is at version N; ``--label LEVEL`` gives a new document a label, an
 admin's choice. ``--json`` prints what the hub answered. Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
 
+import html
 import re
 import sys
 from dataclasses import dataclass, field
@@ -29,9 +33,19 @@ from evo_agents.hub.cli_client import client_command, print_json, signed_in, tab
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 
 EXIT_USAGE = 2
-SUMMARY_KEYS = ("slug", "title", "latest_version", "label", "created_by", "created_at", "updated_by", "updated_at")
+SUMMARY_KEYS = (
+    "slug",
+    "title",
+    "latest_version",
+    "label",
+    "created_by",
+    "created_at",
+    "updated_by",
+    "updated_at",
+    "format",
+)
 DOCUMENT_KEYS = (*SUMMARY_KEYS, "versions", "shown")
-VERSION_KEYS = ("number", "title", "summary", "author", "created_at")
+VERSION_KEYS = ("number", "title", "summary", "author", "created_at", "format")
 SAVED_KEYS = ("document", "version", "created", "changed")
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{0,99}$")
 IMAGE_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,99}(/[A-Za-z0-9_][A-Za-z0-9._-]{0,99}){0,4}$")
@@ -42,6 +56,8 @@ IMAGE = re.compile(
 FENCE = re.compile(r"^\s{0,3}(```|~~~)")
 SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 TITLE = re.compile(r"^#\s+(?P<title>.+?)\s*#*\s*$")
+PAGE_TITLE = re.compile(r"<title[^>]*>(?P<title>.*?)</title\s*>", re.IGNORECASE | re.DOTALL)
+PAGE_SUFFIXES = (".html", ".htm")
 MEDIA_TYPES = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
@@ -75,9 +91,17 @@ def cmd_list(args) -> int:
     return 0
 
 
+def _is_page(shown: dict) -> bool:
+    return shown.get("format") == "html"
+
+
 def _write_out(hub, directory: Path, doc: dict) -> Path:
     shown = doc["shown"]
     directory.mkdir(parents=True, exist_ok=True)
+    if _is_page(shown):
+        out = directory / f"{doc['slug']}.html"
+        out.write_text(shown["body"], encoding="utf-8")
+        return out
     for image in shown["images"]:
         target = directory / image["name"]
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -100,7 +124,8 @@ def cmd_show(args) -> int:
         print(f"Wrote version {doc['shown']['number']} of {doc['slug']} to {out}, with {count} image(s).")
         return 0
     shown = doc["shown"]
-    print(f"# {shown['title']}\n\n{shown['body']}", end="" if shown["body"].endswith("\n") else "\n")
+    text = shown["body"] if _is_page(shown) else f"# {shown['title']}\n\n{shown['body']}"
+    print(text, end="" if text.endswith("\n") else "\n")
     return 0
 
 
@@ -201,6 +226,15 @@ def prepare(file: Path, text: str) -> Prepared:
     return prepared
 
 
+def page_title(text: str) -> str | None:
+    """The text of an HTML page's ``<title>``, its entities decoded and its spaces joined; None without one."""
+    found = PAGE_TITLE.search(text)
+    if found is None:
+        return None
+    title = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]*>", "", found["title"]))).strip()
+    return title or None
+
+
 def _slug(args) -> str:
     slug = args.slug or re.sub(r"[^a-z0-9]+", "-", Path(args.file).stem.lower()).strip("-")[:100]
     if not SLUG.fullmatch(slug):
@@ -217,12 +251,39 @@ def _upload(hub, project: str, files: dict[str, Path]) -> dict[str, str]:
     return sha256
 
 
+def _save(hub, args, slug: str, body: dict) -> dict:
+    if args.base is not None:
+        body["base_version"] = args.base
+    if args.label:
+        body["label"] = {"level": args.label}
+    return hub.call("PUT", _path(args.project, "documents", slug), body)
+
+
+def _said(saved: dict) -> str:
+    return "created" if saved["created"] else "saved" if saved["changed"] else "unchanged, nothing saved"
+
+
+def _put_page(args, slug: str, text: str) -> int:
+    hub, _ = signed_in()
+    title = args.title or page_title(text) or slug
+    body = {"title": title, "body": text, "format": "html", "summary": args.summary or ""}
+    saved = _save(hub, args, slug, body)
+    if args.json:
+        print_json(saved)
+        return 0
+    print(f"{slug} version {saved['version']}: {_said(saved)}, an HTML page.")
+    return 0
+
+
 @client_command
 def cmd_put(args) -> int:
     file = Path(args.file)
     try:
         slug = _slug(args)
-        prepared = prepare(file, file.read_text(encoding="utf-8"))
+        text = file.read_text(encoding="utf-8")
+        if file.suffix.lower() in PAGE_SUFFIXES:
+            return _put_page(args, slug, text)
+        prepared = prepare(file, text)
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
@@ -237,16 +298,11 @@ def cmd_put(args) -> int:
         "summary": args.summary or "",
         "images": [{"name": name, "sha256": sha256} for name, sha256 in shown.items()],
     }
-    if args.base is not None:
-        body["base_version"] = args.base
-    if args.label:
-        body["label"] = {"level": args.label}
-    saved = hub.call("PUT", _path(args.project, "documents", slug), body)
+    saved = _save(hub, args, slug, body)
     if args.json:
         print_json(saved)
         return 0
-    what = "created" if saved["created"] else "saved" if saved["changed"] else "unchanged, nothing saved"
-    print(f"{slug} version {saved['version']}: {what}, with {len(shown)} image(s).")
+    print(f"{slug} version {saved['version']}: {_said(saved)}, with {len(shown)} image(s).")
     return 0
 
 
@@ -256,7 +312,7 @@ def _project(parser) -> None:
 
 def register_docs(hsub) -> None:
     docs = hsub.add_parser(
-        "docs", help="a project's documents: Markdown with images, each save a version (feature docs)"
+        "docs", help="a project's documents: Markdown with images or HTML pages, each save a version (feature docs)"
     )
     dsub = docs.add_subparsers(dest="docs_command", required=True)
 
@@ -265,11 +321,11 @@ def register_docs(hsub) -> None:
     json_option(listed, returns_array(*SUMMARY_KEYS, schema="DocsDocumentSummary"))
     listed.set_defaults(func=cmd_list)
 
-    show = dsub.add_parser("show", help="a version as Markdown, or written to a directory with its images")
+    show = dsub.add_parser("show", help="a version as Markdown or an HTML page, or written to a directory")
     show.add_argument("slug", metavar="SLUG")
     _project(show)
     show.add_argument("--version", type=int, metavar="N", help="this version instead of the latest")
-    show.add_argument("--out", metavar="DIR", help="write SLUG.md and the images it shows into DIR")
+    show.add_argument("--out", metavar="DIR", help="write SLUG.md and the images it shows, or SLUG.html, into DIR")
     json_option(show, returns_object(*DOCUMENT_KEYS, schema="DocsDocument"))
     show.set_defaults(func=cmd_show)
 
@@ -279,11 +335,13 @@ def register_docs(hsub) -> None:
     json_option(history, returns_array(*VERSION_KEYS, schema="DocsVersion"))
     history.set_defaults(func=cmd_history)
 
-    put = dsub.add_parser("put", help="save a Markdown file and the images beside it as the next version")
-    put.add_argument("file", metavar="FILE", help="the Markdown file")
+    put = dsub.add_parser(
+        "put", help="save a Markdown file and the images beside it, or an .html page, as the next version"
+    )
+    put.add_argument("file", metavar="FILE", help="the Markdown file, or an HTML page (.html, .htm)")
     _project(put)
     put.add_argument("--slug", metavar="SLUG", help="the document's slug (default: from the file's name)")
-    put.add_argument("--title", metavar="TITLE", help="its title (default: the file's first heading # Title)")
+    put.add_argument("--title", metavar="TITLE", help="its title (default: the first heading # Title, or <title>)")
     put.add_argument("--summary", metavar="TEXT", help="what this version changes")
     put.add_argument("--base", type=int, metavar="N", help="refuse the save unless the document is at version N")
     put.add_argument("--label", metavar="LEVEL", help="a new document's label level, an admin's choice")

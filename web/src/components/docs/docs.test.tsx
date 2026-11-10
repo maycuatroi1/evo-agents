@@ -30,6 +30,7 @@ function documentOf(shownNumber = 2): DocsDocument {
     summary: number === 1 ? "bản đầu" : "",
     author: "alice",
     created_at: `2026-10-2${number}T03:00:00Z`,
+    format: "markdown" as const,
   });
   return {
     slug: "guide",
@@ -40,6 +41,7 @@ function documentOf(shownNumber = 2): DocsDocument {
     created_at: "2026-10-21T03:00:00Z",
     updated_by: "alice",
     updated_at: "2026-10-22T03:00:00Z",
+    format: "markdown",
     versions: [version(2), version(1)],
     shown: {
       ...version(shownNumber),
@@ -129,6 +131,25 @@ describe("DocumentPage", () => {
     expect(screen.getByRole("img", { name: "Trang Tasks" })).toHaveAttribute("src", URL_OF_BOARD);
     expect(screen.getByTestId("docs-edit")).toHaveAttribute("href", "/p/demo/x/docs/documents/guide/edit");
     expect(screen.queryByTestId("docs-older-version")).toBeNull();
+  });
+
+  it("draws an HTML version as its page in a sandboxed frame, never with the hub's origin", () => {
+    const client = seeded("reader");
+    const doc = documentOf();
+    const page = "/v1/x/docs/demo/documents/guide/page?version=2";
+    client.setQueryData(docsKeys.version(PROJECT, "guide", null), {
+      ...doc,
+      format: "html",
+      shown: { ...doc.shown, format: "html", body: "<h1>Board</h1>", images: [], page_url: page },
+    });
+    withClient(<DocumentPage project={PROJECT} slug="guide" version={null} initialError={null} />, client);
+    const frame = screen.getByTestId("docs-page-frame");
+    expect(frame).toHaveAttribute("src", page);
+    expect(frame).toHaveAttribute("sandbox", "allow-scripts allow-popups allow-popups-to-escape-sandbox");
+    expect(frame.getAttribute("sandbox")).not.toContain("allow-same-origin");
+    expect(frame).toHaveAttribute("title", "Trang: Hướng dẫn");
+    expect(screen.getByTestId("docs-page-open")).toHaveAttribute("href", page);
+    expect(screen.queryByTestId("docs-markdown")).toBeNull();
   });
 
   it("says when a reader reads an older version, with no Edit", () => {

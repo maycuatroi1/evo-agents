@@ -40,3 +40,14 @@ def test_an_empty_document_has_no_text_and_a_label_of_another_project_keeps_it_o
     other = document_item(SOURCE, doc("shared", projects=["northwind", "lumen"]))
     found = checked(SOURCE, "docs", {"items": [empty, other]}, KNOWLEDGE, "northwind")
     assert [item["id"] for item in found.items] == ["plugin.docs:document:lumen-notes"] and found.left_out == 1
+
+
+def test_an_html_page_gives_the_graph_its_text_with_its_headings_and_no_script():
+    page = (
+        "<title>Board</title><style>h1{}</style><h1>Lumen board</h1><p>Read the <b>board</b>.</p><script>x()</script>"
+    )
+    item = document_item(SOURCE, KgDocument("board", "Board", {"level": "internal"}, 1, "alice", page, SAVED, "html"))
+    assert item["body"] == {"format": "markdown", "text": "Board\n\n# Lumen board\n\nRead the board."}
+    assert [fragment["anchor"] for fragment in item["fragments"]] == ["_preamble", "lumen-board"]
+    scripted = KgDocument("app", "App", {"level": "internal"}, 1, "alice", "<script>draw()</script>", SAVED, "html")
+    assert "body" not in document_item(SOURCE, scripted)

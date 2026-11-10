@@ -2,8 +2,9 @@
 (``evo_agents.hub.kg_sources``): the latest version of each document of the project.
 
 A document is the item ``plugin.docs:document:<slug>`` of kind ``doc``, a Document of the graph: the title of its
-latest version, its Markdown body as the item's text, a fragment (a Section) per heading of it as a Markdown file of a
-repo gives (``evo_agents.kg.text.split_markdown``), so search finds a document by any phrase of it and the link stage
+latest version, its Markdown body as the item's text (an HTML page's text as ``page_text`` reads it, the markup and
+scripts left out), a fragment (a Section) per heading of it as a Markdown file of a repo gives
+(``evo_agents.kg.text.split_markdown``), so search finds a document by any phrase of it and the link stage
 reads the codes, plans and files it mentions, and the time that version was saved. Its props are its slug
 (``document``), the version's number and its author's login. Each item carries the document's own label, so a reader
 whose sink does not let that label through never sees it, as on the feature's pages. Older versions are not read: a
@@ -22,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub.plugin_calls import CoreContext
 from evo_agents.hub.server.docs import store
+from evo_agents.hub.server.docs.page_text import page_text
 from evo_agents.kg.ids import utc_text
 from evo_agents.kg.text import split_markdown
 
@@ -44,9 +46,10 @@ def document_item(source: str, row: store.KgDocument, page: tuple[str, str] | No
         "props": {"document": row.slug, "version": row.version, "author": row.author},
         "label": row.label,
     }
-    if row.body.strip():
-        item["body"] = {"format": "markdown", "text": row.body}
-        item["fragments"] = split_markdown(row.body)
+    text = page_text(row.body) if row.format == "html" else row.body
+    if text.strip():
+        item["body"] = {"format": "markdown", "text": text}
+        item["fragments"] = split_markdown(text)
     if page is not None:
         item["uri"] = document_url(page[0], page[1], row.slug)
     return item

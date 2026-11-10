@@ -2125,11 +2125,17 @@ Shared pieces built on them:
   h1) in a column of at most 48 rem, and with `images`: an image whose source is a name the version holds is drawn
   from the hub's own origin, as wide as the text at most, in a `border` edge with the container radius, its title as a
   caption in `muted-foreground`; any other stays the placeholder. A version picker (a select that navigates) sits in
-  the head once there are two, and an older version carries an `attention` banner with Read the latest. History
+  the head once there are two, and an older version carries an `attention` banner with Read the latest. An HTML version
+  (`format` `html`) is drawn by `PageFrame` instead, in a column as wide as `max-w-screen-2xl`: its `page_url` in an
+  iframe with `sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"`, never `allow-same-origin`, as tall
+  as the window below the head (at least 32 rem), in a `border` edge with the container radius on white, and under it
+  a line with `ShieldCheck` saying the page runs in a sandbox and the link Open the page alone. History
   (`/history`) is a `DataTable` of the versions, the newest first: the number as a chip that opens it, what it changed
   over its title, the author, when. The editor (`/documents/{slug}/edit`, and `/new` for a new document) is one form:
-  title, the slug made from the title until edited (fixed once the document exists), the Markdown in mono with Write and
-  Preview tabs, Add images (PNG, JPEG, WebP or GIF of at most 10 MB, refused in a toast before any upload), which uploads
+  title, the slug made from the title until edited (fixed once the document exists), for a new document its Kind (a
+  select: Markdown with images, or HTML page; a document keeps its kind in the editor), the Markdown in mono with Write
+  and Preview tabs (an HTML page is its source in mono alone, without Add images or Preview, since it runs only in the
+  hub's sandbox), Add images (PNG, JPEG, WebP or GIF of at most 10 MB, refused in a toast before any upload), which uploads
   each file and puts `![name](images/name.png)` at the cursor, the preview drawing an image uploaded here from its file,
   and What this version changes. Save sends only the images the Markdown shows, on the latest version it read (0 for a
   new document); the hub's 409 shows above Save. Readers see a note that they only read, and no control that writes.

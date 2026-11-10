@@ -5,8 +5,9 @@ image of it is read under that label: through the sink X-Evo-Sink names, else th
 read (``ProjectAccess.visible``). A document the member cannot see answers the 404 of one that does not exist.
 
 ``save`` writes the next version of a document, creating it at version 1 when the project has none of that slug. It
-takes the document's row lock first, so two saves of one document are one after the other. A save whose title, body
-and images are those of the latest version writes nothing; with ``base_version`` it is refused (409) unless that is
+takes the document's row lock first, so two saves of one document are one after the other. A version's body is Markdown
+or, with format ``html``, a page of its own that shows no image of the project (it embeds its images). A save whose
+title, body, format and images are those of the latest version writes nothing; with ``base_version`` it is refused (409) unless that is
 the latest version, so an editor does not save over a version it never read, and with 0 unless the document does not
 exist yet, so a new one never lands on another of the same slug. Every image a version names must be an
 image of the project (``docs_images``), uploaded before. A save that writes a version queues a build of the project's
@@ -21,7 +22,7 @@ from datetime import datetime
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub import tables, telegram
 from evo_agents.hub.access import has_role
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import queue_if_configured
@@ -52,6 +53,7 @@ class DocumentRow:
     created_at: datetime
     updated_by: str
     updated_at: datetime
+    format: str = "markdown"  # its latest version's
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,7 @@ class VersionRow:
     summary: str
     author: str
     created_at: datetime
+    format: str = "markdown"
     body: str | None = None
     images: list[ImageRef] = field(default_factory=list)
 
@@ -122,6 +125,7 @@ def _documents_query(project_id: int):
             d.c.created_at,
             author.c.login.label("updated_by"),
             d.c.updated_at,
+            v.c.format,
         )
         .select_from(
             d.join(creator, creator.c.id == d.c.created_by)
@@ -130,6 +134,20 @@ def _documents_query(project_id: int):
         )
         .where(d.c.project_id == project_id)
     )
+
+
+def cdn_allowed(access: ProjectAccess) -> bool:
+    """Whether an HTML page of the project may load libraries from the CDNs of ``outputs.INTERACTIVE_POLICY``: the rule
+    of an interactive answer in a chat (``telegram.restricted``), read on the project's hub sink. A project whose hub
+    sink is cleared at or above the level customer, or that has none, gets no CDN."""
+    sink, rules = access.rules.hub_sink, access.rules
+    if sink is None:
+        return False
+    try:
+        clearance = {"level": rules.levels[sink.level], "location": rules.locations[sink.location]}
+    except (IndexError, TypeError):  # a sink the ladder does not hold: fail closed, as telegram.restricted does
+        return False
+    return not telegram.restricted(clearance, rules.levels, rules.locations)
 
 
 def _visible(access: ProjectAccess, sink: str | None, label) -> bool:
@@ -169,7 +187,7 @@ async def _find(conn: AsyncConnection, access: ProjectAccess, slug: str, *, lock
 def _versions_query(document_id: int):
     v, u = tables.docs.versions, tables.users
     return (
-        select(v.c.id, v.c.number, v.c.title, v.c.summary, u.c.login.label("author"), v.c.created_at)
+        select(v.c.id, v.c.number, v.c.title, v.c.summary, u.c.login.label("author"), v.c.created_at, v.c.format)
         .join_from(v, u, u.c.id == v.c.author_id)
         .where(v.c.document_id == document_id)
     )
@@ -214,6 +232,7 @@ class KgDocument:
     author: str
     body: str
     updated_at: datetime
+    format: str = "markdown"
 
 
 async def kg_documents(conn: AsyncConnection, project_id: int) -> list[KgDocument]:
@@ -230,6 +249,7 @@ async def kg_documents(conn: AsyncConnection, project_id: int) -> list[KgDocumen
             u.c.login.label("author"),
             v.c.body,
             v.c.created_at.label("updated_at"),
+            v.c.format,
         )
         .select_from(
             d.join(v, (v.c.document_id == d.c.id) & (v.c.number == d.c.latest_version)).join(u, u.c.id == v.c.author_id)
@@ -288,7 +308,8 @@ async def _write_version(
 
 def _unchanged(latest: VersionRow, content: dict, images: dict[str, str]) -> bool:
     shown = {image.name: image.sha256 for image in latest.images}
-    return (latest.title, latest.body) == (content["title"], content["body"]) and shown == images
+    same = (latest.title, latest.body, latest.format) == (content["title"], content["body"], content["format"])
+    return same and shown == images
 
 
 async def _create(
@@ -331,9 +352,16 @@ async def save(
     label: dict | None = None,
     sink: str | None = None,
 ) -> Saved:
-    """Save ``content`` ({title, body, summary}) showing ``images`` ({name: sha256}) as the next version of document
-    ``slug``, created when the project has none of that slug (see the module)."""
+    """Save ``content`` ({title, body, format, summary}) showing ``images`` ({name: sha256}) as the next version of
+    document ``slug``, created when the project has none of that slug (see the module)."""
     writer(access, "saving a document")
+    content = {"format": "markdown", **content}
+    if content["format"] == "html" and images:
+        raise DocsError(
+            422,
+            f"an HTML version shows no image of project {access.name}: embed each image in the page (a data: URL); "
+            "nothing was saved",
+        )
     await _project_images(conn, access, images)
     found = await _find(conn, access, slug, lock=True)
     if found is None:

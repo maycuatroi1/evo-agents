@@ -1,10 +1,11 @@
 """The feature docs of the hub (``evo_agents.hub.server.docs``): a project the feature is on in keeps documents,
-Markdown with images. A writer uploads the images to the hub's own blob store (PNG, JPEG, WebP or GIF, checked by
+Markdown with images or HTML pages. A writer uploads the images to the hub's own blob store (PNG, JPEG, WebP or GIF, checked by
 their first bytes, at most 10 MiB, kept once per project) and saves a document, each save the next version and a save
 that changes nothing none; a stale base version is a 409. Readers read a document at any version with the images it
 shows, which the hub serves from its own origin to them alone; a document carries the project's label, or one an
-admin gives it, and reads follow it. The tool docs__read reads them on /mcp. A project the feature is off in answers
-404.
+admin gives it, and reads follow it. An HTML version is a page the hub serves from its own origin under a sandboxing
+CSP, to the same readers, and shows no image of the project. The tool docs__read reads them on /mcp. A project the
+feature is off in answers 404.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from evo_agents.hub import blob_gc, tables
+from evo_agents.hub import blob_gc, outputs, tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.docs import images
 from tests.hub import live
@@ -278,3 +279,51 @@ def test_docs_read_lists_the_documents_and_reads_a_version_as_markdown(client, h
     assert latest.endswith("\n\nSecond text") and "Images it shows" not in latest
     hidden = rpc(client, hub["outsider"], call(9, "docs__read", {"document": "guide"}))
     assert hidden["isError"] and "no document guide" in hidden["content"][0]["text"]
+
+
+# HTML pages
+
+PAGE = "<!doctype html><title>Board page</title><h1>Board</h1><script>document.body.append('ran')</script>\n"
+
+
+def test_an_html_version_is_a_page_the_hub_serves_in_a_sandbox_to_the_documents_readers(client, hub):
+    first = saved(client, hub["alice"], body=PAGE, format="html", title="Board page")
+    assert (first["version"], first["document"]["format"]) == (1, "html")
+    doc = shown(client, hub["eve"])
+    assert (doc["format"], doc["shown"]["format"], doc["shown"]["body"]) == ("html", "html", PAGE)
+    assert doc["shown"]["images"] == [] and doc["shown"]["page_url"] == f"{GUIDE}/page?version=1"
+    page = client.get(doc["shown"]["page_url"], headers=hub["eve"])
+    assert page.status_code == 200 and page.text == PAGE
+    policy = page.headers["content-security-policy"]
+    assert page.headers["content-type"] == "text/html; charset=utf-8"
+    assert policy == outputs.INTERACTIVE_POLICY  # its hub sink is cleared at internal, under customer: the CDNs
+    assert "sandbox allow-scripts" in policy and "allow-same-origin" not in policy and "connect-src 'none'" in policy
+    assert page.headers["x-content-type-options"] == "nosniff"
+    assert (page.headers["cache-control"], page.headers["referrer-policy"]) == ("private, no-cache", "no-referrer")
+    assert client.get(doc["shown"]["page_url"], headers=hub["outsider"]).status_code == 404
+
+    assert saved(client, hub["alice"], body=PAGE, format="html", title="Board page")["changed"] is False
+    markdown = saved(client, hub["alice"], body=PAGE, title="Board page")  # the same text as Markdown is a new version
+    assert (markdown["changed"], markdown["version"], markdown["document"]["format"]) == (True, 2, "markdown")
+    latest = shown(client, hub["eve"])["shown"]
+    assert latest["format"] == "markdown" and latest["page_url"] is None
+    refused = client.get(f"{GUIDE}/page", headers=hub["eve"])
+    assert refused.status_code == 404 and "is Markdown, not a page" in refused.json()["message"], refused.text
+    assert client.get(f"{GUIDE}/page", params={"version": 1}, headers=hub["eve"]).text == PAGE
+    versions = client.get(f"{GUIDE}/versions", headers=hub["eve"]).json()
+    assert [(version["number"], version["format"]) for version in versions] == [(2, "markdown"), (1, "html")]
+
+
+def test_an_html_version_shows_no_image_of_the_project_and_the_formats_are_two(client, hub):
+    uploaded(client, hub["alice"], PNG)
+    refused = save(client, hub["alice"], body=PAGE, format="html", images=board())
+    assert refused.status_code == 422 and "shows no image of project" in refused.json()["message"], refused.text
+    assert client.get(GUIDE, headers=hub["eve"]).status_code == 404  # nothing was saved
+    assert save(client, hub["alice"], body=PAGE, format="pdf").status_code == 422
+
+
+def test_docs_read_gives_an_html_versions_source(client, hub):
+    saved(client, hub["alice"], body=PAGE, format="html", title="Board page")
+    text = rpc(client, hub["eve"], call(9, "docs__read", {"document": "guide"}))["content"][0]["text"]
+    assert text.startswith("guide: Board page\nVersion 1 of 1, by alice, ")
+    assert "An HTML page, which the hub's web shows in a sandboxed frame" in text and text.endswith(PAGE)

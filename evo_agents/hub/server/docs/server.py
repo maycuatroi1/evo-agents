@@ -2,8 +2,15 @@
 in (the hub checks both first, ``evo_agents.hub.server.plugin_routes``; a project it is off in answers 404).
 
 Readers read: the documents (GET .../documents), a document with every version and one version whole, its Markdown
-and its images (GET .../documents/{slug}, ``version`` for an older one), the versions alone (GET .../versions), and an
-image a version of the document shows (GET .../documents/{slug}/images/{sha256}). Writers upload images (POST
+and its images (GET .../documents/{slug}, ``version`` for an older one), the versions alone (GET .../versions), an
+image a version of the document shows (GET .../documents/{slug}/images/{sha256}), and an HTML version as a page of its
+own (GET .../documents/{slug}/page, ``version`` for an older one).
+
+A page is served from the hub's origin as an interactive answer of a chat is (``evo_agents.hub.outputs``): UTF-8
+text/html, ``nosniff``, no referrer, kept no longer than a revalidation, under a Content-Security-Policy whose
+``sandbox`` gives it an opaque origin, so it reads no cookie and calls nothing; only the hub's pages frame it. Its
+scripts, styles, fonts and images load from the CDNs of ``outputs.INTERACTIVE_POLICY`` when the project is not
+restricted (``store.cdn_allowed``), and from nowhere (``outputs.HTML_POLICY``) when it is. Writers upload images (POST
 .../images, the image's bytes as the body) and save a document's next version, creating it at version 1 (PUT
 .../documents/{slug}). Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's
 error body; nothing is written.
@@ -17,6 +24,7 @@ from fastapi import APIRouter, Header, Path, Query, Request, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents.hub import outputs
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.docs import images, store
 from evo_agents.hub.server.docs.models import (
@@ -51,6 +59,7 @@ IMAGE_BODY = {
         "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}},
     }
 }
+PAGE = {200: {"content": {"text/html": {}}, "description": "the HTML version as a page, under a sandbox"}}
 IMAGE = {
     200: {"content": {"image/png": {}}, "description": "the image's bytes, in its own media type"},
     304: {"description": "the image the browser holds, named by If-None-Match"},
@@ -139,6 +148,41 @@ async def show_image(
     return await images.serve(request, sha256, found[0], if_none_match)
 
 
+def page_headers(cdn: bool) -> dict[str, str]:
+    """The headers of an HTML version's page (see the module); ``cdn`` lets it load libraries from the CDNs."""
+    return {
+        "Content-Security-Policy": outputs.INTERACTIVE_POLICY if cdn else outputs.HTML_POLICY,
+        "X-Content-Type-Options": "nosniff",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Referrer-Policy": "no-referrer",
+        "Cache-Control": "private, no-cache",
+    }
+
+
+@router.get("/{project}/documents/{slug}/page", response_class=Response, responses=PAGE)
+async def show_page(
+    request: Request, project: ProjectName, slug: Slug, user: CurrentUser, version: Version = None, sink: Sink = None
+):
+    """An HTML version of the document as a page of its own, the latest unless ``version``, for the document's readers;
+    a Markdown version is 404 here."""
+
+    async def work(conn: AsyncConnection):
+        access = await project_access(conn, user, project)
+        doc = await store.document(conn, access, slug, sink)
+        row = await store.version(conn, doc, version)
+        if row.format != "html":
+            raise DocsError(
+                404, f"version {row.number} of document {slug} is Markdown, not a page: read it at .../{slug}"
+            )
+        return row.body or "", store.cdn_allowed(access)
+
+    found = await _answer(request, work)
+    if isinstance(found, Response):
+        return found
+    body, cdn = found
+    return Response(body, media_type="text/html; charset=utf-8", headers=page_headers(cdn))
+
+
 # Writing
 
 
@@ -172,7 +216,7 @@ async def save_document(
 
     async def work(conn: AsyncConnection):
         access = await project_access(conn, user, project)
-        content = {"title": body.title, "body": body.body, "summary": body.summary.strip()}
+        content = {"title": body.title, "body": body.body, "format": body.format, "summary": body.summary.strip()}
         shown = {image.name: image.sha256 for image in body.images}
         label = body.label.model_dump(exclude_none=True) if body.label is not None else None
         saved = await store.save(
