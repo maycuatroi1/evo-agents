@@ -69,6 +69,7 @@ from evo_agents.hub.server.security import CurrentUser
 log = logging.getLogger(__name__)
 
 ANSWER_IN_THREAD = 2048  # bytes of the answer the asking run's thread shows; the agent gets it whole
+LAST_REPLY_SCAN = 8  # the last messages of an agent last_reply reads to step over the lines of its pushes
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 
@@ -302,7 +303,9 @@ async def _last_reply(conn: AsyncConnection, run_id: int) -> str | None:
 
 
 async def last_reply(conn: AsyncConnection, run_id: int) -> tuple[int, str] | None:
-    """(id, body) of the last message of the agent of run ``run_id`` in the thread of the message that started it."""
+    """(id, body) of the last message of the agent of run ``run_id`` in the thread of the message that started it,
+    past the hub's lines of its pushes (``is_pull_text``), which come after its answer when the worker pushes at the end
+    of the turn."""
     r, m = tables.runs, tables.chat_messages
     row = (
         await conn.execute(
@@ -315,8 +318,10 @@ async def last_reply(conn: AsyncConnection, run_id: int) -> tuple[int, str] | No
         return None
     in_thread = func.coalesce(m.c.thread_root_id, m.c.id) == row.root
     query = select(m.c.id, m.c.body).where(in_thread, m.c.author_profile_id == row.profile_id).order_by(m.c.id.desc())
-    found = (await conn.execute(query.limit(1))).one_or_none()
-    return None if found is None else (found.id, found.body)
+    for found in (await conn.execute(query.limit(LAST_REPLY_SCAN))).all():
+        if not rules.is_pull_text(found.body):
+            return found.id, found.body
+    return None
 
 
 async def _refs(conn: AsyncConnection, run_id: int, wait_id: int) -> list[str]:
@@ -384,7 +389,8 @@ async def delegated_answer(conn: AsyncConnection, run_id: int, state: str, wait_
         thread = f"@{handle} ended run #{run_id} {state}; its answer was withheld from this run: {why}"
         return Answer(runs.clip(agent, runs.MAX_ANSWER_BYTES), runs.clip(thread, ANSWER_IN_THREAD))
     if state != "done":
-        why = row.error or row.failure_cause or "its worker gave no reason"
+        given = "it was cancelled" if state == "cancelled" else "its worker gave no reason"
+        why = row.error or row.failure_cause or given
         said = f"run #{run_id} of @{handle}, which you asked, ended {state}: {why}"
         agent = f"Decision #{wait_id} (wait) woke: {said}. It gave no answer: say so in your reply, or ask again."
         thread = f"@{handle} gave no answer: run #{run_id} ended {state}: {why}"

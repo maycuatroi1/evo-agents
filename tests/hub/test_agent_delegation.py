@@ -121,6 +121,9 @@ def test_delegation_parks_and_wakes_parent(client, hub, hub_db):
     assert taken is not None and taken["id"] == child
     moved(client, node, child, "running", session_id="sess-kb")
     reply(client, node, child, "The export service signs them; it reads the key in kb/export/keys.py::load_key.")
+    # the worker pushes at the end of the turn: the hub's line of the push is not the answer
+    push = {"repo": "evo-agents", "branch": f"chat/{child}", "head": "1" * 40}
+    assert in_chats(client, node, child, "chat/pulls", push).status_code == 201
     ended(client, node, child)
 
     assert sql(hub_db, select(d.c.state).where(d.c.id == asked["decision_id"])) == [("answered",)]
@@ -252,3 +255,18 @@ def started_by(client, headers, worker: dict, chat: dict) -> tuple:
     assert spec is not None and spec["kind"] == "chat", spec
     moved(client, worker, spec["id"], "running", session_id="sess-2")
     return mention, spec
+
+
+@pytest.mark.parametrize(
+    ("pull", "opened", "problem", "draft"),
+    [(True, True, None, True), (True, True, None, False), (True, False, None, True), (False, False, None, True)],
+)
+def test_the_line_of_a_push_is_known(pull, opened, problem, draft):
+    url = "https://github.com/lumen-org/evo-agents/pull/3" if pull else "https://github.com/lumen-org/evo-agents"
+    said = chat_runs.pull_text("evo-agents", "chat/41", url, pull=pull, opened=opened, problem=problem, draft=draft)
+    assert chat_runs.is_pull_text(said)
+    for other in (None, "the GitHub App refused it"):
+        text = chat_runs.pull_text("evo-agents", "chat/41", None, pull=False, opened=False, problem=other)
+        assert chat_runs.is_pull_text(text)
+    assert not chat_runs.is_pull_text("Pushed the fix to chat/41 of evo-agents: the export key is read once.")
+    assert not chat_runs.is_pull_text(said + "\n\nThe answer: the export service signs them.")
