@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Literal
+from typing import Literal, cast
 
 import psycopg
 from fastapi import APIRouter, Request, Response
@@ -96,7 +96,7 @@ async def health(request: Request, response: Response):
         db=db,
         r2=r2_status,
         gateway=gateway_status,
-        broker=broker_status,
+        broker=cast(Literal["ok", "error", "off"], broker_status),
         cache=cache_status,
         failed=failed,
     )

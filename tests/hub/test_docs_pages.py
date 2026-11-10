@@ -9,7 +9,6 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.hub.cli_docs import page_title
-from evo_agents.hub.server.docs.page_text import page_text
 
 LADDER = SimpleNamespace(levels=["public", "internal", "customer", "secret"], locations=["any", "domestic-only"])
 
@@ -28,6 +27,9 @@ PAGE = """<!doctype html>
 
 
 def test_the_graph_reads_the_text_a_reader_sees_without_a_script():
+    pytest.importorskip("sqlalchemy", reason="the feature docs need the hub-server extra, evo-ak[hub-server]")
+    from evo_agents.hub.server.docs.page_text import page_text
+
     assert page_text(PAGE) == (
         "# Lumen board\n\nRead the board first.\n\nThen the queue.\n\nportal-web\n\nops-api\n\none\n\ntwo\n\n"
         "### Notes\n\nKept."

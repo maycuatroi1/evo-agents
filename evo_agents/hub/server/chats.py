@@ -444,7 +444,7 @@ async def deliver_message(
         chat,
         message_id,
         root or message_id,
-        None,
+        None,  # pyright: ignore[reportArgumentType]  # hand_mentions sets the profile of each mention
         user.user_id,
         user.login,
         via,
@@ -469,9 +469,9 @@ async def deliver_message(
             await notice_mention(conn, chat, user_id, message_id, body.body)
     target = f"chat:{chat.chat_id} message:{message_id}" + ("" if plugin is None else f" plugin:{plugin}")
     await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.CHAT_MESSAGE, target=target)
-    if opened is not None:  # the person's words, as they wrote them, where the agents they named are
+    if opened is not None and opened.chat_id is not None:  # the person's words, where the agents they named are
         group = await chat_access(conn, user, opened.chat_id)
-        copy = ChatMessageIn(body=body.body)
+        copy = ChatMessageIn(body=body.body, reply_to=None)
         await deliver_message(conn, group, user, copy, via=came_by, plugin=plugin)
     return message_id
 

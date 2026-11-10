@@ -4,7 +4,7 @@ the hub's OpenAPI document."""
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -135,7 +135,7 @@ def summary_model(row: DocumentRow) -> DocsDocumentSummary:
         created_at=row.created_at,
         updated_by=row.updated_by,
         updated_at=row.updated_at,
-        format=row.format,
+        format=cast(Format, row.format),
     )
 
 
@@ -146,7 +146,7 @@ def version_model(row: VersionRow) -> DocsVersion:
         summary=row.summary,
         author=row.author,
         created_at=row.created_at,
-        format=row.format,
+        format=cast(Format, row.format),
     )
 
 
