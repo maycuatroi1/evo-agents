@@ -335,6 +335,7 @@ export function SystemNode({ data }: NodeProps<SystemFlowNode>) {
       data-kind={node.kind}
       data-level={level ?? ""}
       data-selected={selected ? "true" : "false"}
+      data-dimmed={dimmed ? "true" : "false"}
       data-drop={drop ?? ""}
       data-ghost={ghost ?? ""}
       data-avatar={ROUND_KINDS.has(node.kind) ? (data.face ? "profile" : "none") : undefined}

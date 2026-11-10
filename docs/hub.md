@@ -837,16 +837,30 @@ and its message, reason and other attributes only to those with a grant on that 
 | Route | What | Who |
 | --- | --- | --- |
 | `GET /v1/projects/{p}/systems/{slug}/traces` (`?limit=50&before=ID`) | the traces, the newest first | a member who reads the chat |
-| `GET .../systems/{slug}/traces/{id}` | a trace, its spans and metrics | the same |
+| `GET .../systems/{slug}/traces/{id}` | a trace, its spans, metrics and timeline | the same |
+| `GET .../systems/{slug}/work/summary` (`?hours=24`) | the numbers of the work of the last N hours | the same |
 | `GET .../systems/{slug}/metrics` (`?limit=50`) | metrics of the latest traces | the same |
 | `GET .../systems/{slug}/metrics/traces` (`?days=30`) | the numbers of each trace of the last N days and their spread | the same |
 | `GET .../systems/{slug}/traces/stream` (`?after=TIME`) | SSE: a `trace` event each time a trace moves, `end` when access ends | the same |
 
-The stream wakes on the hub's one LISTEN (channel `evo_system_traces`, the system's id).
+The stream wakes on the hub's one LISTEN (channel `evo_system_traces`, the system's id). A span written wakes it, and
+so does a move of the work that writes no span: `work set`, or a change of the work card (`system_traces.touch` sets
+the trace's `last_at` and notifies).
 
 Each trace in the list and the detail also carries its work (The work card): `work_chat_id` (null for a
 trace with no hand-off), `title`, `goal` and `done_when` (what the entry agent set with `work set`; `title` falls back
 to the first line of the trace's first message), `status`, `agent` and `waiting`, as on the card.
+
+The detail carries its `timeline` too (`evo_agents/hub/server/work_observe.py`), which the Observe page draws: a lane
+per run of the trace (each `invoke_agent` span with a run), cut into segments from the run's own times (`queued`
+until a worker took it, `running`, `parked` from `parked_at` to its end, `waiting` from `waiting_since` while the
+worker holds it; a segment still going has no `ended_at`), and the `marks`, the decisions of the trace that ask a
+person (as for `needs_person`), when each was asked and answered.
+
+`GET .../systems/{slug}/work/summary?hours=N` (1 to 720, 24 by default) counts the work the caller may read that
+moved in the last N hours or has a run still active, at most 2000 traces: `open` (running or needing a person),
+`needs_person`, `failed`, `done`, `closed_p50_seconds` (the median from start to last move of the work done in the
+window), `usd` (as the budget counts it, spawned runs included) and `withheld`. It reads only.
 
 ### Spread of the traces
 

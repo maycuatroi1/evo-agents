@@ -82476,7 +82476,7 @@
             "systems"
           ],
           "summary": "Show Trace",
-          "description": "One trace: its spans in the order written, with their runs' numbers, and the metrics of its nodes and edges.",
+          "description": "One trace: its spans in the order written, with their runs' numbers, the metrics of its nodes and edges, and its\ntimeline by agent.",
           "operationId": "show_trace_v1_projects__project__systems__slug__traces__trace_id__get",
           "parameters": [
             {
@@ -82520,6 +82520,106 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/TraceOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/systems/{slug}/work/summary": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Work Summary",
+          "description": "The numbers of the system's work the caller may read that moved in the last ``hours`` hours or has a run\nstill active: open, needing a person, failed and done, the median time from start to close of the work done in\nthe window, and the cost. It reads only.",
+          "operationId": "work_summary_v1_projects__project__systems__slug__work_summary_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "hours",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 720,
+                "minimum": 1,
+                "description": "the traces that moved in the last N hours",
+                "default": 24,
+                "title": "Hours"
+              },
+              "description": "the traces that moved in the last N hours"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkSummary"
                   }
                 }
               }
@@ -180470,6 +180570,173 @@
           ],
           "title": "TierSetting"
         },
+        "TimelineMark": {
+          "properties": {
+            "decision_id": {
+              "type": "integer",
+              "title": "Decision Id"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the run that asked"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent of that run"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "the person it asks"
+            },
+            "question": {
+              "type": "string",
+              "title": "Question"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "open, answered, expired or cancelled"
+            },
+            "asked_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Asked At"
+            },
+            "answered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "decision_id",
+            "run_id",
+            "agent",
+            "login",
+            "question",
+            "state",
+            "asked_at",
+            "answered_at"
+          ],
+          "title": "TimelineMark"
+        },
+        "TimelineRun": {
+          "properties": {
+            "span_id": {
+              "type": "integer",
+              "title": "Span Id",
+              "description": "its invoke_agent span"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "agent": {
+              "type": "string",
+              "title": "Agent",
+              "description": "the handle of the agent"
+            },
+            "node": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "the state of the run now"
+            },
+            "segments": {
+              "items": {
+                "$ref": "#/components/schemas/TimelineSegment"
+              },
+              "type": "array",
+              "title": "Segments",
+              "description": "oldest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "span_id",
+            "run_id",
+            "agent",
+            "node",
+            "state",
+            "segments"
+          ],
+          "title": "TimelineRun"
+        },
+        "TimelineSegment": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "parked",
+                "waiting"
+              ],
+              "title": "Kind",
+              "description": "queued for a worker, running, parked, or waiting for an answer held"
+            },
+            "started_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Started At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At",
+              "description": "null while it goes on"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "started_at",
+            "ended_at"
+          ],
+          "title": "TimelineSegment"
+        },
         "Today": {
           "properties": {
             "summary": {
@@ -181484,6 +181751,10 @@
             },
             "metrics": {
               "$ref": "#/components/schemas/Metrics"
+            },
+            "timeline": {
+              "$ref": "#/components/schemas/TraceTimeline",
+              "description": "each run of it cut into queued, running, parked and waiting, and the decisions that ask a person"
             }
           },
           "type": "object",
@@ -181762,6 +182033,28 @@
             "usd"
           ],
           "title": "TraceSummary"
+        },
+        "TraceTimeline": {
+          "properties": {
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/TimelineRun"
+              },
+              "type": "array",
+              "title": "Runs",
+              "description": "in the order of their spans"
+            },
+            "marks": {
+              "items": {
+                "$ref": "#/components/schemas/TimelineMark"
+              },
+              "type": "array",
+              "title": "Marks",
+              "description": "the decisions that ask a person, oldest first"
+            }
+          },
+          "type": "object",
+          "title": "TraceTimeline"
         },
         "TranscriptFile": {
           "properties": {
@@ -184430,6 +184723,77 @@
           },
           "type": "object",
           "title": "WorkSetIn"
+        },
+        "WorkSummary": {
+          "properties": {
+            "hours": {
+              "type": "integer",
+              "title": "Hours"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since"
+            },
+            "traces": {
+              "type": "integer",
+              "title": "Traces",
+              "description": "the traces counted: moved since `since`, or with a run still active"
+            },
+            "withheld": {
+              "type": "integer",
+              "title": "Withheld",
+              "description": "such traces the caller may not read, left out"
+            },
+            "open": {
+              "type": "integer",
+              "title": "Open",
+              "description": "running or needing a person"
+            },
+            "needs_person": {
+              "type": "integer",
+              "title": "Needs Person"
+            },
+            "failed": {
+              "type": "integer",
+              "title": "Failed"
+            },
+            "done": {
+              "type": "integer",
+              "title": "Done"
+            },
+            "closed_p50_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Closed P50 Seconds",
+              "description": "median start to last move of the work done in the window"
+            },
+            "usd": {
+              "type": "number",
+              "title": "Usd",
+              "description": "what the traces counted cost, their spawned runs included"
+            }
+          },
+          "type": "object",
+          "required": [
+            "hours",
+            "since",
+            "traces",
+            "withheld",
+            "open",
+            "needs_person",
+            "failed",
+            "done",
+            "closed_p50_seconds",
+            "usd"
+          ],
+          "title": "WorkSummary"
         },
         "WorkSystem": {
           "properties": {

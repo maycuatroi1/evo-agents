@@ -1061,8 +1061,9 @@ Shared pieces built on them:
   drawn in `running` with a moving dash while a crossing is recent, a working agent's circle has a turning dashed
   `running` ring, which stands still under reduced motion; a crossing the design lacks is a dashed
   `attention` edge, to a dashed node outside the design when it reached one. Selecting a node shows its numbers in
-  full above the recent traces in the side panel. The trace stream (`use-trace-stream.ts`) keeps both current while
-  the tab is in view and closes while it is hidden; nothing says it is live, only a line when it fails or ends. A
+  full in a side panel under its display name. Above the map Observe lists the system's work (see Observe: work and
+  timeline below). The trace stream (`use-trace-stream.ts`) keeps it all current while the tab is in view and closes
+  while it is hidden; nothing says it is live, only a line when it fails or ends. A
   trace's page (`/p/{project}/systems/{slug}/traces/{id}`, `trace-page.tsx`) gives its totals, a table by agent (runs,
   messages, tool calls, kg queries, cost) and the waterfall of its spans in the order of their tree, each with its
   run's link or its message's in the chat; a refused or off-design span is marked in `danger` or `attention`.
@@ -2184,6 +2185,46 @@ Themes come from `next-themes` with the `class` strategy and follow the system u
 or dark in the user menu. The language is the `NEXT_LOCALE` cookie set from the same menu: English without it
 (or with a value that is not a locale), Vietnamese when it says `vi`. The browser's Accept-Language is not read,
 so the server renders a page the same way for everyone who has not picked a language.
+
+### Observe: work and timeline
+
+Observe (`?mode=observe` of an agent system, `components/systems/observer.tsx`, the logic in `lib/systems-work.ts`)
+reads as one page from top to bottom: the numbers of the last 24 hours, the work list, the work selected, then the map.
+
+- Numbers (`work-summary.tsx`): one `MetricStrip` under the small heading "Work of the last 24 hours" with Open, Needs a
+  person (the one cell in `attention`), Failed, Median time to close ("-" while no work closed) and Cost, from
+  `GET .../work/summary?hours=24`. Work the reader may not read is left out and said under Open. A load error is a
+  `danger` line in place of the strip.
+- Work list (`work-list.tsx`): a `DataCard` with the filters All, Needs you, Running, Failed and Done as a
+  `FacetGroup`, each with its count, and "{shown} of {total}". Needs you is work waiting on a decision put to the
+  viewer. The table: Work (the title, else "Work {id}", with `#id` and who opened it), Status, At (the agent the work
+  is at, by display name), Waits for (an agent's answer, a person at a run, or a person's decision with its question
+  in `attention`), Time (to now while open), Runs, Cost against the budget of one work (`limits.trace_usd`) as a
+  `Meter` that turns `warning` at 80 % and `danger` past it, and Open with Work chat and Trace. Below 768 px At,
+  below 1024 Waits for and below 1280 Runs drop out; on a phone each work is a `DataList` row that selects it. The
+  filter lives in `?filter=` (replaced, not pushed). Empty, no match (with Show all), loading and error states are
+  the kit's.
+- Status (`work-status.tsx`): a `StatusPill` per work: Running `running` with the live dot, Needs a person
+  `attention`, Failed `danger`, Done `success`, Unknown in outline for a trace an older hub wrote. Colour says only
+  state.
+- The work selected (`work-detail.tsx`, `?work={id}`, pushed so Back returns to the list): a card with the title,
+  "Work {id}", its status, runs, cost and time, its goal and done-when, Work chat, Trace and a close button. Under
+  it, side by side from 1024 px and stacked below:
+  - Timeline by agent (`work-timeline.tsx`): a lane per agent, its display name on the left and a track of bars from
+    `timeline.runs`: Queued (a dashed neutral outline), Running (`running`, pulsing while open unless motion is
+    reduced), Done (`success`), Failed (`danger`), Parked (a soft `attention` fill inside a solid edge), Waiting for an
+    answer (neutral). A decision put to a person is an `attention` diamond with a line at the moment it was asked. The
+    axis gives the time since the work started; the key under it names each look, so no state rests on colour alone.
+    Each bar says its kind and times to a screen reader.
+  - Hand-offs (`work-handoffs.tsx`): the turns from one node to the next in order, with the time; one the hub refused
+    shows Refused in `danger` with its reason, one off the design is tagged in `attention`, and the heading counts the
+    hand-offs and those off the design.
+- The map: with no work selected it draws all work (the five newest for states, the last 50 for numbers); with one
+  selected it draws that work's own numbers and fades to 30 % every node and line off its path, its lines drawn as
+  emphasised. A line no work crossed shows its dot, never a 0. The view fits every node with room for the words under
+  them (32 px above, 72 below, 96 at the sides), again when the path changes.
+- Live: the trace stream updates the list, the numbers (their query sits under the metrics key) and the work
+  selected; there is no live badge, only the line when the stream fails or ends.
 
 ## Accessibility
 

@@ -6,7 +6,9 @@ as its ``work`` part (``chat_views.messages_view``). A move that changes what th
 ``chat_runs.chat_run_moved``; a decision of one asked or answered, ``decisions``; the entry agent's ``work set``) writes
 a ``message_changed`` event for it in the root chat, whose streams then read it again: a chat event, woken through
 ``evo_agents.hub.wake`` as every chat event is, so it needs no event bus. ``system_traces.card_state`` keeps the key of
-what the card showed (``work_status.card_state``), so a move that changes nothing on it writes no event.
+what the card showed (``work_status.card_state``), so a move that changes nothing on it writes no event. A change of the
+card, and every ``work set``, also moves the trace (``system_traces.touch``), so the trace stream of the system's
+Observe sends it with its new title, status and wait.
 
 - POST /v1/worker/runs/{id}/work (``evo-agents worker work set``, the hub runtime's ``work_set``): the coordinator (the
   system's entry agent) sets the title, goal and done-when of the work of its run's trace. The worker token that holds
@@ -25,7 +27,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, system_context, tables
-from evo_agents.hub.server import audit, work_chats, work_status
+from evo_agents.hub.server import audit, system_traces, work_chats, work_status
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_agents import REFUSALS, AgentRun, agent_run
 from evo_agents.hub.server.chat_members import ChatId
@@ -97,6 +99,7 @@ async def refresh(conn: AsyncConnection, trace_id: int) -> bool:
         return False
     await conn.execute(update(t).values(card_state=state).where(t.c.id == trace_id))
     await write_event(conn, row.chat_id, chats.MESSAGE_CHANGED, {"message_id": row.card_message_id})
+    await system_traces.touch(conn, trace_id)  # the Observe of the system shows the work too
     return True
 
 
@@ -145,7 +148,8 @@ async def set_work(conn: AsyncConnection, run: AgentRun, body: WorkSetIn) -> Wor
         target=f"trace:{trace.id} run:{run.run_id} " + " ".join(sorted(given)),
         project_id=trace.project_id,
     )
-    await refresh(conn, trace.id)
+    if not await refresh(conn, trace.id):
+        await system_traces.touch(conn, trace.id)
     log.info("work set", extra={"trace_id": trace.id, "run_id": run.run_id, "fields": sorted(given)})
     return (await work_status.cards(conn, [trace.id]))[trace.id]
 

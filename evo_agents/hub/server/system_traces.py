@@ -16,7 +16,8 @@ pins (``chat_runs._pinned``).
 
 ``execute_tool`` spans record what a run does through the hub: an ask (with the brief fields present), a mention, a
 forward, a query of a knowledge graph (``gen_ai.data_source.id``), and a refusal. Each write notifies CHANNEL with
-the system's id, which wakes the trace streams of that system (``system_trace_views``). Tokens and cost are not
+the system's id, which wakes the trace streams of that system (``system_trace_views``); so does ``touch``, for a move
+of the trace's work that writes no span. Tokens and cost are not
 copied into spans: ``run_numbers`` reads them from run_spend when a trace is shown, and ``usage`` sums them over the
 trace's runs and the runs their tree spawned, for the budget (``budget_problem``).
 """
@@ -86,6 +87,15 @@ class _Span:
 async def notify(conn: AsyncConnection, system_id: int | None) -> None:
     if system_id is not None:
         await wake.notify(conn, CHANNEL, str(system_id))
+
+
+async def touch(conn: AsyncConnection, trace_id: int) -> None:
+    """Mark trace ``trace_id`` as moved without a span written (its work set, its card changed), so the trace streams
+    of its system send it again."""
+    t = tables.system_traces
+    query = update(t).values(last_at=func.now()).where(t.c.id == trace_id).returning(t.c.system_id)
+    system_id = (await conn.execute(query)).scalar_one_or_none()
+    await notify(conn, system_id)
 
 
 async def _system_row(conn: AsyncConnection, query) -> SystemRef | None:

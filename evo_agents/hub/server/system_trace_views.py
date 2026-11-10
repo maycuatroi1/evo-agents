@@ -2,12 +2,15 @@
 
 - GET /v1/projects/{p}/systems/{slug}/traces: its traces, the newest first, that the caller may read.
 - GET .../systems/{slug}/traces/{id}: one trace, its spans in the order written, each with the tokens, cost, state
-  model and state of its run (run_spend, runs), and the metrics of its nodes and edges.
+  model and state of its run (run_spend, runs), the metrics of its nodes and edges, and its timeline by agent
+  (``work_observe``).
 - GET .../systems/{slug}/metrics[?limit=N]: the metrics of each node and edge over its last N traces the caller may
   read.
 - GET .../systems/{slug}/metrics/traces[?days=N]: the numbers of each trace the caller may read that started in the
   last N days, and their spread (``system_trace_stats``): cost, runs, deepest hop, budget refusals, overrun of
   limits.trace_usd, Orchestrator threads, off-design ratio per edge, p50 and p95.
+- GET .../systems/{slug}/work/summary[?hours=N]: the numbers of its work over the last N hours (``work_observe``):
+  open, needing a person, failed, done, the median time to close, and the cost.
 - GET .../systems/{slug}/traces/stream: server-sent ``trace`` events (a ``TraceSummary``) each time a trace of the
   system moves, built on the process's one LISTEN (``system_traces.CHANNEL``); a ``: ping`` keeps it open.
 
@@ -32,7 +35,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import system_context, system_spec, tables
-from evo_agents.hub.server import agent_tasking, route_autonomy, system_trace_stats, system_traces, work_status
+from evo_agents.hub.server import (
+    agent_tasking,
+    route_autonomy,
+    system_trace_stats,
+    system_traces,
+    work_observe,
+    work_status,
+)
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.errors import ErrorBody
@@ -48,6 +58,7 @@ log = logging.getLogger(__name__)
 MAX_TRACES = 200  # traces a list or the metrics read at most
 MAX_WINDOW_TRACES = 2000  # traces the spread of a window reads at most, the newest first
 MAX_DAYS = 365
+MAX_HOURS = 24 * 30
 STREAM_POLL_SECONDS = 5.0
 SHOWN_ATTRIBUTES = ("gen_ai.",)  # the attributes a reader without a grant on a span's project still sees
 
@@ -203,6 +214,10 @@ class TraceDistribution(BaseModel):
 class TraceOut(TraceSummary):
     spans: list[SpanOut]
     metrics: Metrics
+    timeline: work_observe.TraceTimeline = Field(
+        default_factory=work_observe.TraceTimeline,
+        description="each run of it cut into queued, running, parked and waiting, and the decisions that ask a person",
+    )
 
 
 # Reading
@@ -495,16 +510,52 @@ async def trace_distribution(
 
 @router.get("/{project}/systems/{slug}/traces/{trace_id}", response_model=TraceOut, responses=READ_REFUSALS)
 async def show_trace(request: Request, project: ProjectName, slug: Slug, trace_id: TraceId, user: CurrentUser):
-    """One trace: its spans in the order written, with their runs' numbers, and the metrics of its nodes and edges."""
+    """One trace: its spans in the order written, with their runs' numbers, the metrics of its nodes and edges, and its
+    timeline by agent."""
     async with request.app.state.engine.begin() as conn:
         access, _ = await _system(conn, user, project, slug)
         query = _trace_query(access, slug).where(tables.system_traces.c.id == trace_id)
         found = await read_traces(conn, user, access, slug, query, 1)
-    if not found:
-        raise HTTPException(404, f"system {slug} of project {project} has no trace {trace_id} you may read")
-    summary, spans = found[0]
+        if not found:
+            raise HTTPException(404, f"system {slug} of project {project} has no trace {trace_id} you may read")
+        summary, spans = found[0]
+        timeline = await work_observe.timeline(conn, trace_id, spans)
     metrics = Metrics(**system_context.metrics(_metric_rows(spans)))
-    return TraceOut(**summary.model_dump(), spans=spans, metrics=metrics)
+    return TraceOut(**summary.model_dump(), spans=spans, metrics=metrics, timeline=timeline)
+
+
+@router.get("/{project}/systems/{slug}/work/summary", response_model=work_observe.WorkSummary, responses=READ_REFUSALS)
+async def work_summary(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    user: CurrentUser,
+    hours: Annotated[int, Query(ge=1, le=MAX_HOURS, description="the traces that moved in the last N hours")] = 24,
+) -> work_observe.WorkSummary:
+    """The numbers of the system's work the caller may read that moved in the last ``hours`` hours or has a run
+    still active: open, needing a person, failed and done, the median time from start to close of the work done in
+    the window, and the cost. It reads only."""
+    t = tables.system_traces
+    async with request.app.state.engine.begin() as conn:
+        access, _ = await _system(conn, user, project, slug)
+        since = (await conn.execute(select(func.now()))).scalar_one() - timedelta(hours=hours)
+        query = (
+            select(t.c.id, t.c.chat_id, t.c.work_chat_id, t.c.started_at, t.c.last_at)
+            .where(t.c.project_id == access.project_id, t.c.system_slug == slug)
+            .where((t.c.last_at >= since) | t.c.id.in_(work_observe.active_traces()))
+            .order_by(t.c.id.desc())
+            .limit(MAX_WINDOW_TRACES)
+        )
+        rows = list(await conn.execute(query))
+        readable: dict[tuple[int | None, int | None], bool] = {}
+        kept = []
+        for row in rows:
+            chats_of = (row.chat_id, row.work_chat_id)
+            if chats_of not in readable:
+                readable[chats_of] = await _readable(conn, user, *chats_of)
+            if readable[chats_of]:
+                kept.append(row)
+        return await work_observe.summary(conn, kept, hours, since, len(rows) - len(kept))
 
 
 # The live stream
