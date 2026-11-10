@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
@@ -227,13 +228,14 @@ async def ask_for_queued(engine: AsyncEngine, batch: int = ASK_BATCH) -> int:
             found = await queue_fit.queue_fit(conn, run_id)
             if found.diagnosis is None:  # a worker takes it, or waits for nothing anyone does
                 continue
-            run, now = found.run, datetime.now(UTC)
+            run: Any = found.run  # the run's row, as queue_fit reads it
+            now = datetime.now(UTC)
             lacking = [
                 v for v in found.verdicts if v.blocked_by == ["browser"] and askable(v.row, run.dispatched_by, now)
             ]
             if not lacking:
                 continue
-            worker_id = queue_fit.nearest(lacking).row.id
+            worker_id = cast(Any, queue_fit.nearest(lacking).row).id
             if worker_id not in asked and await _ask(conn, worker_id, run):
                 asked.add(worker_id)
     return len(asked)

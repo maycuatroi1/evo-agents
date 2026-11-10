@@ -984,9 +984,11 @@ def test_corpus_sets_take_the_graph_search_and_a_limit_kg_search_has(tmp_path, m
     assert main(["kg", "bench", "fetch", "nosuchset", "--cache", str(cache)]) == 1
 
 
-ENTITY_MODEL = """import json, sys
+# Each call leaves a file of its own in the directory it is given: two calls at once appending to one file lose a line on
+# Windows, where an append is no single write.
+ENTITY_MODEL = """import json, sys, uuid, pathlib
 req = json.load(sys.stdin)
-open(sys.argv[1], "a").write("call\\n")
+(pathlib.Path(sys.argv[1]) / uuid.uuid4().hex).write_text("call")
 name = req["text"].split()[0]
 print(json.dumps({"nodes": [{"kind": "Place", "name": name, "evidence": name, "conf": 0.9}], "edges": [],
                   "usage": {"input_tokens": 100, "output_tokens": 10, "cost": 0.25}}))
@@ -999,8 +1001,9 @@ def test_a_strategy_graph_of_a_corpus_runs_its_entities_step_apart_and_goes_on_a
     cache, mirror, _ = _corpus_mirror(tmp_path, monkeypatch)
     argv = ["--cache", str(cache)]
     assert main(["kg", "bench", "fetch", "musique", *argv, "--from", str(mirror)]) == 0
-    script, log = tmp_path / "model.py", tmp_path / "calls.log"
+    script, log = tmp_path / "model.py", tmp_path / "calls"
     script.write_text(ENTITY_MODEL)
+    log.mkdir()
     chosen = tmp_path / "places.yaml"
     mapping = {"model": "fake-1", "command": [sys.executable, str(script), str(log)], "node_kinds": ["Place"]}
     chosen.write_text(
@@ -1018,10 +1021,10 @@ def test_a_strategy_graph_of_a_corpus_runs_its_entities_step_apart_and_goes_on_a
     ceiling.write_text(json.dumps({"max_calls": 1, "jobs": 2}))
     strategy = ["--strategy", str(chosen), "--entities", str(ceiling)]
     assert main(["kg", "bench", "build", "musique", *argv, *strategy]) == 1
-    assert "entities unfinished" in capsys.readouterr().out and len(log.read_text().splitlines()) == 1
+    assert "entities unfinished" in capsys.readouterr().out and len(list(log.iterdir())) == 1
     ceiling.write_text(json.dumps({"max_calls": 50, "jobs": 2}))
     assert main(["kg", "bench", "build", "musique", *argv, *strategy]) == 0
-    assert len(log.read_text().splitlines()) == 3, "the second build goes on from the memo"
+    assert len(list(log.iterdir())) == 3, "the second build goes on from the memo"
 
     out = tmp_path / "places.json"
     assert main(["kg", "bench", "run", "musique", *argv, *strategy, "--out", str(out)]) == 0
@@ -1035,7 +1038,7 @@ def test_a_strategy_graph_of_a_corpus_runs_its_entities_step_apart_and_goes_on_a
     plain = tmp_path / "plain.json"
     assert main(["kg", "bench", "run", "musique", *argv, "--out", str(plain)]) == 0
     assert compare.load_summary(plain)["benches"]["musique"]["build"]["built"] == 1, "the graph without the step"
-    assert len(log.read_text().splitlines()) == 3
+    assert len(list(log.iterdir())) == 3
     assert main(["kg", "bench", "build", "medical", *argv, "--entities", str(ceiling)]) == 1
     assert "--entities goes with --strategy" in capsys.readouterr().err
 
