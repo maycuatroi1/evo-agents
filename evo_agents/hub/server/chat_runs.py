@@ -845,7 +845,16 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
     under its messages changed (``chat_progress``); the agent's reaction on the message that started it, the hub's
     reply in the thread when it failed, and when it ended done with messages of its inbox untaken, the run that goes on
     in its session with them (its id), titled by the first of them. A run another agent's run asked that ended, and
-    goes on in no run, answers that run's wait (``agent_asks.answer_asker``)."""
+    goes on in no run, answers that run's wait (``agent_asks.answer_asker``). Then the work cards of its traces are
+    refreshed (``work_cards``)."""
+    went_on = await _moved(conn, run_id, new, old)
+    from evo_agents.hub.server.work_cards import run_moved  # it reads the traces' work through this module
+
+    await run_moved(conn, run_id)
+    return went_on
+
+
+async def _moved(conn: AsyncConnection, run_id: int, new: str, old: str | None) -> int | None:
     if new in runs.TERMINAL_STATES:
         await system_traces.end_run(conn, run_id, new)
     if old == "parked" and new == "done":  # it waited for an answer and a new run goes on in its session (go_on_parked)

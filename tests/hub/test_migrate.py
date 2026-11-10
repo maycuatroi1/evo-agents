@@ -5940,3 +5940,14 @@ def test_0234_takes_work_chats_and_the_columns_that_name_them_and_going_back_mak
     assert "copied_from_id" not in columns(hub_db, "chat_messages")
     assert "awaits_run_id" not in columns(hub_db, "decisions")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0234") :]
+
+
+def test_0235_gives_traces_the_work_and_its_card_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0234")
+    work = {"title", "goal", "done_when", "card_message_id", "card_state"}
+    assert not work & columns(hub_db, "system_traces")
+    move_to(hub_db, "0235")
+    assert work <= columns(hub_db, "system_traces")
+    move_to(hub_db, "0234", down=True)
+    assert not work & columns(hub_db, "system_traces")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0235") :]

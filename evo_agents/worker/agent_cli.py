@@ -30,6 +30,7 @@ from evo_agents.worker import (
     pull_heads,
     step_verify,
     triage_cli,
+    work_cli,
 )
 from evo_agents.worker.agent_input import (
     attest,
@@ -75,6 +76,7 @@ AGENT_PARSERS += (merge_check_cli.register_merge_check,)  # a plan run's pull re
 AGENT_PARSERS += (curator_cli.register_curator,)  # a proposal's thread answers the proposal
 AGENT_PARSERS += (agent_ask_cli.register_agent,)  # a chat run asks an agent of another project
 AGENT_PARSERS += (escalate_cli.register_escalate,)  # an agent of an agent system asks its Orchestrator
+AGENT_PARSERS += (work_cli.register_work,)  # the entry agent of an agent system names the work of its trace
 
 
 @dataclass

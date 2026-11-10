@@ -32,7 +32,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import system_context, system_spec, tables
-from evo_agents.hub.server import agent_tasking, route_autonomy, system_trace_stats, system_traces
+from evo_agents.hub.server import agent_tasking, route_autonomy, system_trace_stats, system_traces, work_status
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.errors import ErrorBody
@@ -41,6 +41,7 @@ from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_events import JSON_ERROR, RunStreams, StreamRoute
 from evo_agents.hub.server.runs.models import MAX_ID
 from evo_agents.hub.server.security import CurrentUser, Principal, still_live
+from evo_agents.hub.server.work_status import WorkBrief, WorkStatus, WorkWaiting
 
 log = logging.getLogger(__name__)
 
@@ -122,6 +123,15 @@ class TraceSummary(BaseModel):
     off_design: int = Field(description="its spans that crossed an edge the spec lacks")
     errors: int
     usd: float
+    work_chat_id: int | None = Field(None, description="the work chat its first hand-off opened; null before one")
+    title: str | None = Field(
+        None, description="what the entry agent set (work set), else the first line of its first message"
+    )
+    goal: str | None = Field(None, description="what the entry agent set; null when not set")
+    done_when: str | None = Field(None, description="what the entry agent set; null when not set")
+    status: WorkStatus | None = Field(None, description="the status of its work, derived from its runs and decisions")
+    agent: str | None = Field(None, description="the handle of the agent at work now; null when none is")
+    waiting: WorkWaiting | None = Field(None, description="what its work waits for; null for nothing")
 
 
 class Metrics(BaseModel):
@@ -247,6 +257,8 @@ def _trace_query(access: ProjectAccess, slug: str):
             t.c.message_id,
             u.c.login,
             t.c.work_chat_id,
+            t.c.goal,
+            t.c.done_when,
             t.c.started_at,
             t.c.last_at,
         )
@@ -332,7 +344,7 @@ def _metric_rows(spans: list[SpanOut]) -> list[dict]:
     ]
 
 
-def _summary(row, spans: list[SpanOut]) -> TraceSummary:
+def _summary(row, spans: list[SpanOut], work: WorkBrief | None) -> TraceSummary:
     invoked = [span for span in spans if span.name == system_context.INVOKE]
     return TraceSummary(
         id=row.id,
@@ -347,6 +359,13 @@ def _summary(row, spans: list[SpanOut]) -> TraceSummary:
         off_design=sum(1 for span in spans if span.off_design),
         errors=sum(1 for span in spans if span.status == "error"),
         usd=round(sum(span.usd for span in invoked), 6),
+        work_chat_id=row.work_chat_id,
+        title=None if work is None else work.title,
+        goal=row.goal,
+        done_when=row.done_when,
+        status=None if work is None else work.status,
+        agent=None if work is None else work.agent,
+        waiting=None if work is None else work.waiting,
     )
 
 
@@ -367,10 +386,11 @@ async def read_traces(
     numbers = await system_traces.run_numbers(conn, run_ids)
     others = {span.project_id for found in spans.values() for span in found if span.project_id is not None}
     granted = await _granted(conn, user, others - {access.project_id})
+    work = await work_status.briefs(conn, [row.id for row in rows])
     out = []
     for row in rows:
         shown = [_span_out(span, numbers, access.project_id, granted) for span in spans[row.id]]
-        out.append((_summary(row, shown), shown))
+        out.append((_summary(row, shown, work.get(row.id)), shown))
     return out
 
 

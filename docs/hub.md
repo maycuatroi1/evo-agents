@@ -844,6 +844,10 @@ and its message, reason and other attributes only to those with a grant on that 
 
 The stream wakes on the hub's one LISTEN (channel `evo_system_traces`, the system's id).
 
+Each trace in the list and the detail also carries its work (The work card): `work_chat_id` (null for a
+trace with no hand-off), `title`, `goal` and `done_when` (what the entry agent set with `work set`; `title` falls back
+to the first line of the trace's first message), `status`, `agent` and `waiting`, as on the card.
+
 ### Spread of the traces
 
 `GET .../systems/{slug}/metrics/traces?days=N` (1 to 365, 30 by default) reads the traces of the system that started
@@ -918,6 +922,51 @@ Schema 0234 adds `system_traces.work_chat_id`, `chat_messages.copied_from_id` an
 asked whose end answers the wait of an ask, so two asks that reach one session are both answered), all null for
 everything before and set to null when what they name is deleted, and lets `chats.kind` be `work`. Going back makes
 every work chat a group chat and drops the three columns.
+
+### The work card
+
+When a trace's work chat opens, the hub posts one message of its own in the root thread, the thread of the trace's
+first message, in the chat that opened it (`evo_agents/hub/server/work_cards.py`, `work_status.py`, migration 0235).
+Its text is "Work card: " and the title; every read of it in the chat API carries the card as its `work` part
+(`GroupMessage.work`, null on every other message). `system_traces.card_message_id` names that message. The card is
+derived from the trace's runs, decisions and Orchestrator threads, with no model call:
+
+- `status`, the first that holds: `needs_person` (a decision of a run of the trace, in the system's project, asks a
+  person and is open; a wait asks nobody), `failed` (the coordinator's latest run of the trace failed or was lost, or a
+  thread of rule `failed` of the Orchestrator about the trace has no outcome), `running` (a run of the trace is active),
+  `done`.
+- `agent`: the handle of the latest run of the trace at work; `waiting`, what the work waits for, the first that holds:
+  `{kind: "decision", decision_id, login, question}`, `{kind: "person", run_id, agent}` (a run a person drives or
+  reviews), `{kind: "run", run_id, agent}` (the run an open wait awaits); else null.
+- `title`, `goal`, `done_when`: what the entry agent set; `system` `{id, slug, name}`; `trace_id`, `chat_id`,
+  `message_id` (the trace's first message), `work_chat_id`.
+- `asks`: each ask, escalation and reassignment of the trace, `{kind: ask|escalate|reassign, from_agent, agent, brief,
+  status, run_id, usd, thread: {chat_id, root_id}}`, `brief` the goal of its brief.
+- `decisions`: the Orchestrator's threads about the trace `{kind: "orchestrator", id, rule, outcome, state, run_id, at}`
+  and the decisions that ask a person `{kind: "person", id, question, state, answer, asked_of, run_id, at}`, oldest
+  first.
+- `runs`, `usd`, `hop` against `max_hops`, `trace_runs` and `trace_usd` (the limits of the trace's revision);
+  `started_at`, `ended_at` (null while a run is active or a person is asked) and `seconds`.
+
+A move that changes what the card shows (a run of the trace moving, a decision of one asked or answered, `work set`)
+writes a `message_changed` event for the card's message in the root chat, so the chat's streams read it again. It is a
+chat event, woken through the hub's LISTEN as every chat event is, and needs no event bus.
+`system_traces.card_state` keeps a key of what the card last showed, so a move that changes nothing on it writes none.
+
+The entry agent names the work with `evo-agents worker work set --title --goal --done-when` (`POST
+/v1/worker/runs/{id}/work`, the hub runtime's tool `work_set`, `docs/workers.md`, The work of a trace): 409 for a run
+in no trace with a work chat, 403 for another agent, audited as `work.set`. The System section of the entry agent's
+prompt says that hand-offs open a work chat, to use `work set`, and that its final answer goes in the root thread.
+
+| Route | What | Who |
+| --- | --- | --- |
+| `GET /v1/chats/{id}/work` | the card of the trace whose work chat this is | a member of the work chat (404 to anyone else and for a chat that is no work chat, 403 to a member who no longer clears its label) |
+
+In the list of chats, a work chat's summary carries `work` `{trace_id, system: {id, slug, name}, title, status, agent,
+waiting}`, null for every other chat.
+
+Schema 0235 adds the nullable `system_traces.title`, `goal`, `done_when`, `card_message_id` (set to null when the
+message is deleted) and `card_state`. Going back drops them.
 
 ### Hub runtime
 

@@ -144,7 +144,8 @@ async def _made(conn: AsyncConnection, trace: Trace, creator: Principal) -> int:
 
 async def open_work(conn: AsyncConnection, trace: Trace, person: Principal) -> int:
     """The work chat of ``trace``: made at its first hand-off, under the trace's advisory lock, its creator the person
-    who opened the trace (else ``person``), with the coordinator in it; its id."""
+    who opened the trace (else ``person``), with the coordinator in it and the trace's work card posted in its root thread
+    (``work_cards``); its id."""
     await conn.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(f"work:{trace.id}", 0))))
     t = tables.system_traces
     found = (await conn.execute(select(t.c.work_chat_id).where(t.c.id == trace.id))).scalar_one()
@@ -158,6 +159,9 @@ async def open_work(conn: AsyncConnection, trace: Trace, person: Principal) -> i
         _, why = await put_in(conn, chat_id, coordinator)
         if why is not None:
             log.warning("coordinator not in the work chat", extra={"trace_id": trace.id, "why": why})
+    from evo_agents.hub.server.work_cards import post_card  # it reads the traces through this module
+
+    await post_card(conn, trace)
     log.info("work chat opened", extra={"trace_id": trace.id, "chat_id": chat_id})
     return chat_id
 

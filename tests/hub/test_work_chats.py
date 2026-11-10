@@ -329,3 +329,264 @@ def test_a_trace_is_read_by_the_readers_of_its_work_chat(client, hub, hub_db):
     assert client.put(f"/v1/chats/{work}/people/{OTHER}", headers=hub["owner"]).status_code == 200
     listed = client.get(traces_path(), headers=hub["other"])
     assert [item["id"] for item in listed.json()] == [trace_id]
+
+
+# The work card (plan work-chats, step 2)
+
+
+def card_of(client, headers: dict, work: int):
+    return client.get(f"/v1/chats/{work}/work", headers=headers)
+
+
+def card(client, hub, work: int) -> dict:
+    response = card_of(client, hub["owner"], work)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def card_message(db, trace_id: int) -> int:
+    t = tables.system_traces
+    ((message_id,),) = rows(db, select(t.c.card_message_id).where(t.c.id == trace_id))
+    assert message_id is not None, "the trace has a card message"
+    return message_id
+
+
+def card_events(db, chat_id: int, message_id: int) -> int:
+    e = tables.chat_events
+    query = select(func.count()).where(
+        e.c.chat_id == chat_id, e.c.kind == chats.MESSAGE_CHANGED, e.c.body["message_id"].as_integer() == message_id
+    )
+    return rows(db, query)[0][0]
+
+
+def test_the_first_hand_off_posts_the_work_card_in_the_root_thread(client, hub, hub_db):
+    studio, _, chat, mention, parent = desk(client, hub)
+    child = asked(client, studio, parent, "fixer", goal="a retry loop that backs off")["run_id"]
+    trace_id, work = opened(hub_db)
+    message_id = card_message(hub_db, trace_id)
+    (posted,) = [item for item in messages_in(hub_db, chat["id"]) if item["id"] == message_id]
+    assert posted["root"] == mention["id"] and posted["run_id"] is None, "a hub message in the root thread"
+    page = client.get(f"/v1/chats/{chat['id']}/messages", params={"thread": mention["id"]}, headers=hub["owner"])
+    assert page.status_code == 200, page.text
+    carried = [item for item in page.json()["messages"] if item["work"] is not None]
+    assert [item["id"] for item in carried] == [message_id]
+    shown = carried[0]["work"]
+    assert (shown["trace_id"], shown["work_chat_id"], shown["chat_id"]) == (trace_id, work, chat["id"])
+    assert shown["title"] == "@reviewer please fix the flaky wait test", "the first line of the first message"
+    assert shown["system"]["id"] is not None and shown["system"]["slug"]
+    assert shown["status"] == "running"
+    (ask,) = shown["asks"]
+    assert (ask["kind"], ask["from_agent"], ask["agent"], ask["run_id"]) == ("ask", "reviewer", "fixer", child)
+    assert ask["brief"] == "a retry loop that backs off" and ask["thread"]["chat_id"] == work
+    assert shown["waiting"] == {
+        "kind": "run",
+        "run_id": child,
+        "agent": "fixer",
+        "decision_id": None,
+        "login": None,
+        "question": None,
+    }
+    assert shown["max_hops"] == 3 and shown["runs"] >= 2 and shown["ended_at"] is None
+    assert card_events(hub_db, chat["id"], message_id) >= 1, "the wait of the ask changed the card"
+    others = [item for item in messages_in(hub_db, chat["id"]) if item["id"] != message_id]
+    assert not any(item["body"].startswith("Work card") for item in others), "one card"
+
+
+def test_the_card_is_read_by_the_members_of_the_work_chat_alone(client, hub, hub_db):
+    studio, _, chat, _, parent = desk(client, hub)
+    asked(client, studio, parent, "fixer")
+    trace_id, work = opened(hub_db)
+    assert card(client, hub, work)["trace_id"] == trace_id
+    assert card_of(client, hub["other"], work).status_code == 404, "not a member"
+    assert card_of(client, hub["owner"], chat["id"]).status_code == 404, "no work chat"
+    assert card_of(client, hub["owner"], 999_999).status_code == 404
+    assert client.put(f"/v1/chats/{work}/people/{OTHER}", headers=hub["owner"]).status_code == 200
+    assert card_of(client, hub["other"], work).json()["trace_id"] == trace_id
+
+
+def runs_of_trace(db, trace_id: int) -> list[int]:
+    s = tables.system_spans
+    query = select(s.c.run_id).where(s.c.trace_id == trace_id, s.c.name == "invoke_agent").order_by(s.c.id)
+    return [run_id for (run_id,) in rows(db, query)]
+
+
+def state_to(db, run_ids: list[int], state: str) -> None:
+    """Runs ``run_ids`` put in ``state`` as the checks of runs take it."""
+    r = tables.runs
+    finished = func.now() if state in ("done", "failed", "lost", "cancelled") else None
+    values = {"state": state, "finished_at": finished, "error": "it broke" if state == "failed" else None}
+    sql(db, r.update().where(r.c.id.in_(run_ids)).values(**values, lease_expires_at=func.now()))
+
+
+def test_the_status_is_derived_from_the_runs_decisions_and_threads(client, hub, hub_db):
+    studio, fixer, _, _, parent = desk(client, hub)
+    child = asked(client, studio, parent, "fixer")["run_id"]
+    trace_id, work = opened(hub_db)
+    assert claimed(client, fixer) == child
+    moved(client, fixer, child, "running", session_id="sess-fix")
+    shown = card(client, hub, work)
+    assert (shown["status"], shown["agent"]) == ("running", "fixer")
+
+    state_to(hub_db, runs_of_trace(hub_db, trace_id), "done")
+    shown = card(client, hub, work)
+    assert (shown["status"], shown["agent"]) == ("done", None)
+    assert shown["ended_at"] is not None and shown["seconds"] >= 0
+
+    state_to(hub_db, [parent], "failed")
+    assert card(client, hub, work)["status"] == "failed", "the coordinator's last run failed"
+    state_to(hub_db, [parent], "done")
+
+    (system_id, project_id) = rows(hub_db, select(tables.system_traces.c.system_id, tables.system_traces.c.project_id))[
+        0
+    ]
+    o = tables.orchestrator_threads
+    thread = {
+        "system_id": system_id,
+        "project_id": project_id,
+        "trace_id": trace_id,
+        "subject": "fixer",
+        "rule": "failed",
+    }
+    (thread_id,) = rows(hub_db, insert(o).values(**thread).returning(o.c.id))[0]
+    assert card(client, hub, work)["status"] == "failed", "a failed thread not handled yet"
+    sql(hub_db, o.update().where(o.c.id == thread_id).values(outcome="answer", closed_at=func.now()))
+    shown = card(client, hub, work)
+    assert shown["status"] == "done"
+    assert [(d["kind"], d["rule"], d["outcome"], d["state"]) for d in shown["decisions"]] == [
+        ("orchestrator", "failed", "answer", "closed")
+    ]
+
+    (owner_id,) = rows(hub_db, select(tables.users.c.id).where(tables.users.c.login == OWNER))[0]
+    d = tables.decisions
+    asked_row = {
+        "run_id": child,
+        "project_id": project_id,
+        "category": "triage",
+        "question": "Keep the old policy?",
+        "options": [{"key": "yes", "label": "Yes"}, {"key": "no", "label": "No"}],
+        "asked_of": owner_id,
+    }
+    (decision_id,) = rows(hub_db, insert(d).values(**asked_row).returning(d.c.id))[0]
+    shown = card(client, hub, work)
+    assert shown["status"] == "needs_person"
+    assert shown["waiting"]["kind"] == "decision"
+    assert (shown["waiting"]["decision_id"], shown["waiting"]["login"]) == (decision_id, OWNER)
+    sql(
+        hub_db,
+        d.update()
+        .where(d.c.id == decision_id)
+        .values(state="answered", answer_option="yes", answered_by=owner_id, answered_at=d.c.asked_at),
+    )
+    shown = card(client, hub, work)
+    assert shown["status"] == "done"
+    assert [(x["kind"], x["state"], x["answer"]) for x in shown["decisions"] if x["kind"] == "person"] == [
+        ("person", "answered", "yes")
+    ]
+
+    state_to(hub_db, [child], "interactive")
+    shown = card(client, hub, work)
+    assert (shown["status"], shown["agent"]) == ("running", "fixer")
+    assert (shown["waiting"]["kind"], shown["waiting"]["run_id"]) == ("person", child)
+
+
+def test_the_list_of_chats_and_the_traces_carry_the_work(client, hub, hub_db):
+    studio, _, chat, _, parent = desk(client, hub)
+    asked(client, studio, parent, "fixer")
+    trace_id, work = opened(hub_db)
+    listed = client.get("/v1/chats", headers=hub["owner"])
+    assert listed.status_code == 200, listed.text
+    by_id = {item["id"]: item for item in listed.json()}
+    assert by_id[chat["id"]]["work"] is None
+    shown = by_id[work]["work"]
+    assert (shown["trace_id"], shown["status"], shown["waiting"]["kind"]) == (trace_id, "running", "run")
+    assert shown["system"]["id"] is not None
+    traces = client.get(traces_path(), headers=hub["owner"]).json()
+    assert (traces[0]["work_chat_id"], traces[0]["status"], traces[0]["goal"]) == (work, "running", None)
+    detail = client.get(f"{traces_path()}/{trace_id}", headers=hub["owner"])
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["work_chat_id"] == work and detail.json()["title"] == shown["title"]
+
+
+def test_the_entry_agent_sets_the_work_and_the_card_refreshes(client, hub, hub_db):
+    studio, fixer, chat, _, parent = desk(client, hub)
+    refused = in_chats(client, studio, parent, "work", {"title": "Retry loop"})
+    assert refused.status_code == 409 and "no trace of an agent system with a work chat" in refused.text
+    child = asked(client, studio, parent, "fixer")["run_id"]
+    trace_id, work = opened(hub_db)
+    message_id = card_message(hub_db, trace_id)
+    before = card_events(hub_db, chat["id"], message_id)
+    assert in_chats(client, studio, parent, "work", {}).status_code == 422
+    body = {"title": "Retry loop of the wait helper", "goal": "backoff capped at five", "done_when": "tests pass"}
+    done = in_chats(client, studio, parent, "work", body)
+    assert done.status_code == 200, done.text
+    assert (done.json()["title"], done.json()["goal"], done.json()["done_when"]) == tuple(body.values())
+    assert card_events(hub_db, chat["id"], message_id) == before + 1, "message_changed on the card"
+    again = in_chats(client, studio, parent, "work", {"goal": "backoff capped at five"})
+    assert again.status_code == 200 and again.json()["title"] == body["title"], "a field not given keeps its value"
+    assert card_events(hub_db, chat["id"], message_id) == before + 1, "nothing changed on the card: no event"
+    assert rows(hub_db, select(func.count()).where(tables.audit.c.action == "work.set")) == [(2,)]
+
+    assert claimed(client, fixer) == child
+    moved(client, fixer, child, "running", session_id="sess-fix")
+    refused = in_chats(client, fixer, child, "work", {"title": "mine"})
+    assert refused.status_code == 403 and "only the system's entry agent" in refused.text
+    ended(client, fixer, child)
+    assert card_events(hub_db, chat["id"], message_id) > before + 1, "a run's end refreshes the card"
+    assert card(client, hub, work)["asks"][0]["status"] == "done"
+
+
+def test_work_set_parses_and_sends_only_the_fields_given():
+    import argparse
+
+    from evo_agents.worker import work_cli
+
+    parser = argparse.ArgumentParser(prog="evo-agents worker")
+    work_cli.register_work(parser.add_subparsers(dest="command"))
+    args = parser.parse_args(["work", "set", "--title", "Retry loop", "--done-when", "tests pass"])
+    assert args.func is work_cli.cmd_work_set
+    assert work_cli.payload(args) == {"title": "Retry loop", "done_when": "tests pass"}
+
+
+def test_the_hub_runtimes_work_set_tool_sets_the_work(client, hub, hub_db):
+    from types import SimpleNamespace
+
+    from evo_agents.hub.server import hub_tools
+
+    assert "work_set" in hub_tools.NAMES
+    studio, _, _, _, parent = desk(client, hub)
+    asked(client, studio, parent, "fixer")
+    _, work = opened(hub_db)
+    hub_run = {"worker_id": None, "runtime": "hub", "requested_runtime": "hub"}  # a turn of the hub runtime
+    sql(hub_db, tables.runs.update().where(tables.runs.c.id == parent).values(**hub_run))
+
+    async def go(raw: str) -> str:
+        engine = create_async_engine(hub_db.dsn.replace("postgresql://", "postgresql+psycopg://", 1))
+        try:
+            return await hub_tools.call(SimpleNamespace(engine=engine, run_id=parent), "work_set", raw)
+        finally:
+            await engine.dispose()
+
+    said = asyncio.run(go('{"title": "Retry loop", "goal": "backoff"}'))
+    assert said.startswith("the work of trace #") and "Retry loop" in said, said
+    assert card(client, hub, work)["goal"] == "backoff"
+    assert asyncio.run(go("{}")).startswith("error:")
+
+
+def test_the_entry_agent_is_told_of_the_work_chat_and_the_others_are_not():
+    from evo_agents.hub import system_context
+
+    spec = {
+        "nodes": [
+            {"id": "in", "kind": "entry"},
+            {"id": "lumen-desk", "kind": "agent", "profile": "desk"},
+            {"id": "lumen-fix", "kind": "agent", "profile": "fix"},
+        ],
+        "edges": [
+            {"from": "in", "to": "lumen-desk", "kind": "interacts"},
+            {"from": "lumen-desk", "to": "lumen-fix", "kind": "interacts"},
+        ],
+    }
+    entry = "\n".join(system_context.system_lines(system_context.Place("northwind", spec, "desk", "lumen-desk")))
+    assert system_context.WORK_COMMAND in entry and "opens a work chat" in entry and "final answer" in entry
+    other = "\n".join(system_context.system_lines(system_context.Place("northwind", spec, "fix", "lumen-fix")))
+    assert system_context.WORK_COMMAND not in other

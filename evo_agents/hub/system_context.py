@@ -6,7 +6,9 @@ only but the spec module, so the hub, the worker's commands and the tests share 
   agents it hands work to and those that hand it work (the interacts edges out and in, with @handle and description),
   the knowledge graphs it uses (its uses_kg edges, which the kg tools read when no ``graph`` is named), the
   Orchestrator it escalates to (with ESCALATE_COMMAND), and the rules of asking: a brief (goal, output, done-when), a reason for an agent off
-  its edges, forwarding an answer verbatim, the budget of a trace. It has a byte budget of its own, SYSTEM_BYTES.
+  its edges, forwarding an answer verbatim, the budget of a trace; for the entry agent, the work chat a hand-off opens,
+  naming the work with WORK_COMMAND, and the final answer in the root thread. It has a byte budget of its own,
+  SYSTEM_BYTES.
 - ``brief_lines``: the brief an ask gave (``evo-agents worker agent ask --goal ... --done-when``), at the head of the
   prompt of the run it made, within BRIEF_BYTES.
 - ``off_edge_refusal``: why an ask from an agent of a system to an agent off its interacts edges, with no reason, is
@@ -61,6 +63,7 @@ ENTRY = "entry"  # the kind of node a person's message comes from
 ASK_COMMAND = "evo-agents worker agent ask"
 FORWARD_COMMAND = "evo-agents worker agent forward"
 ESCALATE_COMMAND = "evo-agents worker escalate"  # docs/workers.md, Escalation
+WORK_COMMAND = "evo-agents worker work set"  # docs/workers.md, Work chats: the entry agent names a trace's work
 CUT = "\n[... the rest of the system is left out]"
 
 
@@ -214,6 +217,8 @@ def system_lines(place: Place) -> list[str]:
     ]
     if spec.get("purpose"):
         lines.append(f"Its purpose: {spec['purpose']}")
+    if system_spec.entry_agent(spec) == place.handle:  # before the edges, so the clip leaves it
+        lines += _entry_lines()
     out = _edges(spec, "interacts", start=place.node)
     if out:
         lines += ["", "Agents you hand work to (with `" + ASK_COMMAND + "`):"]
@@ -250,6 +255,19 @@ def system_lines(place: Place) -> list[str]:
         "and mentions in it.",
     ]
     return _clip("\n".join(lines), SYSTEM_BYTES).split("\n")
+
+
+def _entry_lines() -> list[str]:
+    """What the entry agent, which coordinates each trace, knows of the work chat (``docs/hub.md``, Work chats)."""
+    return [
+        "",
+        "You are the system's entry agent: you coordinate the work a person's message starts.",
+        "- Your first hand-off (an ask, an escalation) opens a work chat for this work, where each agent you ask "
+        "answers in a thread of its own.",
+        f"- Then name the work with `{WORK_COMMAND} --title TEXT --goal TEXT --done-when TEXT`; its card in this "
+        "thread shows it with the status.",
+        "- Give the final answer here, in the thread of the person's message, not in the work chat.",
+    ]
 
 
 def clean_brief(brief: dict | None) -> dict:

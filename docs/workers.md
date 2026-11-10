@@ -934,6 +934,22 @@ shows as written by RUN's agent and forwarded by this run's (`forwarded_by` in t
 trace of an agent system that has ended can be forwarded. Otherwise the hub refuses (201, `refusal`), says so in the
 thread, and the command exits 1.
 
+### The work of a trace
+
+The entry agent of an agent system, which coordinates a trace, names its work with `evo-agents worker work set`
+(`POST /v1/worker/runs/{id}/work`, body `{title, goal, done_when}`, each optional but one needed; 422 for none). The
+worker token that holds the run sends it. The hub keeps them on the trace, refreshes the work card in the root thread
+(`docs/hub.md`, Work chats) and answers with the card. It refuses with 409 a run in no trace with a work chat (a trace
+that handed no work over yet), and with 403 an agent that is not the system's entry agent. Without `--title` the card
+shows the first line of the person's message, at most 80 characters. A run of the hub runtime has the tool `work_set`
+for the same. The System section of the entry agent's prompt tells it that hand-offs open a work chat, to name the
+work with this command, and to give its final answer in the root thread.
+
+```sh
+evo-agents worker work set --title "Refund R-17" --goal "a decision on refund R-17" \
+  --done-when "the customer has the answer in the root thread"
+```
+
 ### Escalation
 
 An agent of an agent system asks the system's Orchestrator with `evo-agents worker escalate --question TEXT`
