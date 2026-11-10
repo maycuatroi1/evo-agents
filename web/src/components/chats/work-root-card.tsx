@@ -31,7 +31,7 @@ export function WorkRootCard({ work }: { work: WorkCard }) {
       data-status={work.status}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <h3 id={`${id}-title`} className="min-w-0 flex-1 truncate text-sm font-semibold" title={work.title}>
+        <h3 id={`${id}-title`} className="min-w-[8rem] flex-1 text-sm font-semibold [overflow-wrap:anywhere]">
           {work.title}
         </h3>
         <WorkStatusPill status={work.status} />
