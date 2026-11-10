@@ -74,7 +74,7 @@ and their routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect
 9. **The window closes.** The night shift queues nothing more and cancels the runs of the night still queued.
 10. **The brief.** At `brief_at` the owner gets the notice `curator_brief`, on the web and on Telegram.
 11. **Later.** `outcome_days` after a merge the hub counts the same figures again; a change that made them worse gets
-    a revert proposal. Two jobs of a night in a row that failed or were reverted pause the night shift.
+    a revert proposal. Two jobs of a night in a row that failed of the agent's cause or were reverted pause the night shift.
 
 ## The charter
 
@@ -116,7 +116,7 @@ auto_merge: [0]
 merge_without_ci: false
 answer_by: owner
 protected_paths: ["evo_agents/hub/migrations/**", "evo-agents:deploy/**"]
-circuit_breaker: {max_failed_in_a_row: 2}
+circuit_breaker: {max_failed_in_a_row: 2, infra: {backoff_minutes: [15, 30, 60, 240], max_probes_per_day: 6}}
 outcome_days: 7
 review: {lenses: 3, days: 7, budget_usd: 2}
 replay: {tasks: 3, budget_usd: 4}
@@ -145,7 +145,9 @@ env_secrets: [claude-oauth]
 | `merge_without_ci` | false | true lets the hub merge a change the Judge passed when no CI ran on it, or when the ruleset requires no check and what ran passed; a check that ran and failed still blocks, one still running still makes it wait (Merging, below) |
 | `answer_by` | `owner` | who answers the proposals: `owner`, the project's admins; `agent`, the project's default agent, in a thread of the triage chat for each proposal, for the schedule's owner (The agent answers, below) |
 | `protected_paths` | none | globs no change of the Curator may touch below tier 3 (Tiers, below) |
-| `circuit_breaker.max_failed_in_a_row` | 2 | jobs of a night in a row that failed or were reverted before the hub pauses the night shift, 1 to 10 |
+| `circuit_breaker.max_failed_in_a_row` | 2 | jobs of a night in a row that failed of the agent's cause or were reverted before the hub pauses the night shift, 1 to 10; a run that failed of an infra cause does not count |
+| `circuit_breaker.infra.backoff_minutes` | [15, 30, 60, 240] | minutes the kinds of run of a failing dependency wait after its 1st, 2nd... failure in a row, the last one past their end, each jittered by 20% either way; 1 to 10 entries of 1 to 1440 |
+| `circuit_breaker.infra.max_probes_per_day` | 6 | half-open probes of a failing dependency in 24 hours, 1 to 48; then its kinds of run wait for the day and the owner is told once |
 | `outcome_days` | 7 | days after a merge over which the hub counts a change's figures again, 1 to 90 |
 | `review.lenses`, `review.days`, `review.budget_usd` | 3, 7, null | lenses a night looks through, days of sessions and runs the figures count (at most 30), and the most the review run may cost |
 | `history.budget_usd`, `history.model` | null, null | the most the night's history run may cost, never above `night_budget_usd`; null gives the smaller of 1 USD and a quarter of `night_budget_usd`, and 0 runs none; and the model of the reviewer's runtime it runs on, null for the cheapest the worker on duty reports for that runtime (The history run, below) |
@@ -972,9 +974,29 @@ whatever room the day has left. The hub's merge of a change whose replays won ke
 version it published from the merge, or the one before published again after a revert.
 
 **The circuit breaker** pauses every schedule of the project once `circuit_breaker.max_failed_in_a_row` jobs of one
-night in a row failed or were reverted, cancels what they queued, and sends the owner the notice `curator_paused`. A run
-that ended done breaks the row. `evo-agents hub curator resume` lets the night shift run again and starts the count
-again.
+night in a row failed of the agent's cause or were reverted, cancels what they queued, and sends the owner the notice
+`curator_paused`. A run that ended done breaks the row. `evo-agents hub curator resume` lets the night shift run again
+and starts the count again.
+
+A run of the night shift (review, history, judge, replay, probe, Builder or plan run) that ended failed carries a
+`failure_cause`. The infra causes, `account_auth`, `rate_limit`, `network`, `hub_5xx`, `worker_stopped`, `lease_lost`,
+`runtime` and `missing_tool`, say a dependency broke, not the agent: they do not count toward `max_failed_in_a_row`,
+and an empty or unknown cause counts as the agent's. The dependency of `network` and `hub_5xx` is the hub, which every
+kind of run uses; the dependency of the other infra causes is the run's runtime with its account, which the kinds the
+charter runs on it use (`reviewer.runtime` for the review and history runs, `builder.runtime` for the Builder, plan and
+replay runs, `probes.models` for the probes; the Judge takes another runtime while its own waits). While a dependency
+fails, the night shift queues none of the kinds of run that use it and the others go on:
+
+- after its nth failure in a row, they wait `circuit_breaker.infra.backoff_minutes[n]` (the last entry past the end),
+  jittered by 20% either way;
+- then the next run of them goes as one half-open probe: when it ends done, the dependency works again; when it fails,
+  the next wait is longer. Before the probe after `account_auth` or `rate_limit`, the accounts the failed run took cool
+  down, so the probe's lease takes another account of the charter, or another runtime, when one is ready;
+- once `circuit_breaker.infra.max_probes_per_day` probes failed in 24 hours, they wait until the oldest of them is a
+  day old, and the schedule's owner gets one notice `run_failed` that names the dependency, until it works again.
+
+A charter written without `circuit_breaker.infra` gets the defaults, and `evo-agents hub curator charter show --json`
+shows them, so its output can be written back as it is.
 
 ```sh
 evo-agents hub curator proposal list --state open --tier 2 --project demo

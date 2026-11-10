@@ -36,7 +36,16 @@ The circuit breaker stops a night shift that keeps failing: once the charter's `
 jobs of one night failed in a row (``failed_in_a_row``), a run of the schedule that ended failed or a merged change of
 the project whose figures the hub found worse (an outcome ``revert``), the hub pauses the project's schedules and tells
 their owner (``evo_agents.hub.server.outcomes``). A run that ended done breaks the row; a cancelled one, or a lost one
-the hub tries again, leaves it as it is. Resuming the night shift starts the count again.
+the hub tries again, leaves it as it is, and so does a run that failed of a cause of INFRA_CAUSES: the agent did not
+get it wrong, a dependency of the run did. Resuming the night shift starts the count again.
+
+A dependency that fails so is held off alone (``outages``): the hub (``hub``, for HUB_CAUSES) or the runtime of the run
+with its account (``runtime:<name>``). The kinds of run that use it wait the backoff of the charter's
+``circuit_breaker.infra.backoff_minutes`` (INFRA_BACKOFF_MINUTES by default) for the failures in a row, with a jitter
+of INFRA_JITTER either way that the dependency and its last failed run fix, then one run of them goes as a probe
+(half-open): ended done, or failed of a cause of the agent's, it closes the dependency; failed of an infra cause again,
+the next backoff starts. A dependency that had ``max_probes_per_day`` probes (INFRA_PROBES_PER_DAY by default) in the
+last day waits until the oldest of them is a day old (``evo_agents.hub.server.infra_breaker``).
 
 Claude Code 2.1.293 reports ``total_cost_usd`` as the running total of the session: each result carries the total so
 far, and a resumed session starts from the total its transcript saved, while ``--max-budget-usd`` counts only the
@@ -47,9 +56,11 @@ runs went on in it, and an agent that goes on in a session gets as its budget th
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Literal, get_args
 
@@ -89,6 +100,33 @@ MAX_RUNS_PER_NIGHT = 100
 MAX_DECISIONS_PER_DAY = 100
 MAX_REVIEW_DAYS = 30  # the days of sessions and runs a night's figures may count
 CIRCUIT_BREAKER = (1, 10)  # failed runs in a row that stop the night shift
+# The causes of a failed run that say a dependency of the run failed, not the agent: they never count toward the
+# circuit breaker. A cause that is empty or not one of them is the agent's.
+INFRA_CAUSES = (
+    "account_auth",
+    "rate_limit",
+    "network",
+    "hub_5xx",
+    "worker_stopped",
+    "lease_lost",
+    "runtime",
+    "missing_tool",
+)
+HUB_CAUSES = ("network", "hub_5xx")  # of these the dependency is the hub, which every kind of run uses
+HUB = "hub"
+INFRA_BACKOFF_MINUTES = (
+    15,
+    30,
+    60,
+    240,
+)  # circuit_breaker.infra.backoff_minutes by default: the nth failure waits the nth
+INFRA_PROBES_PER_DAY = 6  # circuit_breaker.infra.max_probes_per_day by default
+INFRA_BACKOFFS = (1, 10)  # the steps of backoff_minutes
+INFRA_BACKOFF_RANGE = (1, 24 * 60)  # the minutes of one step
+INFRA_PROBES = (1, 48)  # max_probes_per_day
+INFRA_JITTER = 0.2  # a backoff is its minutes times 1 - INFRA_JITTER to 1 + INFRA_JITTER
+INFRA_LOOKBACK = timedelta(days=2)  # the ended runs of a schedule the dependencies are read from
+PROBE_DAY = timedelta(days=1)
 BUDGET_GRACE_SECONDS = 300  # a scheduled run's timeout is its time cap plus this
 BRIEF_GRACE = timedelta(hours=3)  # a morning brief the hub could not send this long after brief_at waits a day
 
@@ -153,6 +191,133 @@ def failed_in_a_row(bad: list[bool]) -> int:
             break
         count += 1
     return count
+
+
+# Infrastructure failures
+
+
+def is_infra(cause: str | None) -> bool:
+    """Whether a run that failed of ``cause`` failed for a dependency of it (INFRA_CAUSES), not for its agent."""
+    return cause in INFRA_CAUSES
+
+
+def dependency_of(cause: str | None, runtime: str) -> str | None:
+    """The dependency a run on ``runtime`` that failed of ``cause`` points at: HUB, ``runtime:<runtime>`` (the runtime
+    and the account it ran with), or None for a cause of the agent's."""
+    if not is_infra(cause):
+        return None
+    return HUB if cause in HUB_CAUSES else f"runtime:{runtime}"
+
+
+def infra_settings(charter: Mapping | None) -> tuple[tuple[int, ...], int]:
+    """(backoff_minutes, max_probes_per_day) of the charter's ``circuit_breaker.infra``, the defaults for each one a
+    charter written before it lacks."""
+    breaker = (charter or {}).get("circuit_breaker") if isinstance(charter, Mapping) else None
+    infra = breaker.get("infra") if isinstance(breaker, Mapping) else None
+    infra = infra if isinstance(infra, Mapping) else {}
+    found = infra.get("backoff_minutes")
+    steps = (
+        tuple(found)
+        if isinstance(found, list)
+        and found
+        and all(isinstance(m, int) and not isinstance(m, bool) and m > 0 for m in found)
+        else INFRA_BACKOFF_MINUTES
+    )
+    most = infra.get("max_probes_per_day")
+    most = most if isinstance(most, int) and not isinstance(most, bool) and most >= 1 else INFRA_PROBES_PER_DAY
+    return steps, most
+
+
+def backoff(failures: int, steps: tuple[int, ...], key: str) -> timedelta:
+    """How long a dependency that failed ``failures`` times in a row waits before its probe: the step of ``steps`` for
+    that failure (the last one past their end), times a jitter within INFRA_JITTER that ``key`` fixes, so the minute
+    the job runs again finds the same time."""
+    minutes = steps[min(max(failures, 1), len(steps)) - 1]
+    share = int.from_bytes(hashlib.sha256(key.encode()).digest()[:4], "big") / 2**32
+    return timedelta(minutes=minutes * (1 - INFRA_JITTER + 2 * INFRA_JITTER * share))
+
+
+@dataclass(frozen=True)
+class Ended:
+    """A run of the schedule that ended done or failed, as ``outages`` reads it."""
+
+    run_id: int
+    queued_at: datetime
+    finished_at: datetime
+    runtime: str
+    failed: bool
+    cause: str | None
+
+
+@dataclass(frozen=True)
+class Outage:
+    """A dependency whose last runs failed of an infra cause: how often in a row, the last one, when its probe may go,
+    and the probes of the last day."""
+
+    dependency: str
+    cause: str  # the last failure's
+    failures: int
+    since: datetime  # when the first failure in a row ended
+    last_run_id: int
+    retry_at: datetime  # no run that uses the dependency is queued before
+    probes: int  # runs queued while it was failing, in the last PROBE_DAY
+    exhausted: bool  # probes reached max_probes_per_day: retry_at waits for the oldest to be a day old
+
+    def held(self, now: datetime) -> bool:
+        """Whether the kinds of run that use the dependency wait at ``now``; once False, the next of them is a probe."""
+        return now < self.retry_at
+
+
+def outages(ended: list[Ended], now: datetime, steps: tuple[int, ...], most: int, key: str = "") -> dict[str, Outage]:
+    """The dependencies whose runs in ``ended`` (oldest end first) failed of an infra cause since they last worked, by
+    name. A run that ended done, or failed of the agent's cause, reached the hub and its runtime: both work again. Of
+    the failures in a row of a dependency, each but the first is a probe; ``key`` (the schedule) seeds the jitter."""
+    rows: dict[str, list[Ended]] = {}
+    for run in sorted(ended, key=lambda r: (r.finished_at, r.run_id)):
+        dependency = dependency_of(run.cause, run.runtime) if run.failed else None
+        if dependency is None:
+            rows.pop(HUB, None)
+            rows.pop(f"runtime:{run.runtime}", None)
+            continue
+        rows.setdefault(dependency, []).append(run)
+    found = {}
+    for dependency, failed in rows.items():
+        last = failed[-1]
+        recent = sorted(run.queued_at for run in failed[1:] if run.queued_at > now - PROBE_DAY)
+        retry_at = last.finished_at + backoff(len(failed), steps, f"{key}:{dependency}:{last.run_id}")
+        exhausted = len(recent) >= most
+        if exhausted:
+            retry_at = max(retry_at, recent[len(recent) - most] + PROBE_DAY)
+        found[dependency] = Outage(
+            dependency=dependency,
+            cause=last.cause or "",
+            failures=len(failed),
+            since=failed[0].finished_at,
+            last_run_id=last.run_id,
+            retry_at=retry_at,
+            probes=len(recent),
+            exhausted=exhausted,
+        )
+    return found
+
+
+def kind_runtimes(charter: Mapping, kind: str) -> tuple[str, ...]:
+    """The runtimes the night shift runs ``kind`` on by the charter: the reviewer's for review and history, the
+    builder's for plan and replay, those of ``probes.models`` for probe. The judge's the hub picks itself (empty)."""
+
+    def role(name: str) -> str:
+        found = charter.get(name) if isinstance(charter.get(name), Mapping) else {}
+        return found.get("runtime") or DEFAULT_RUNTIME
+
+    if kind in ("review", "history"):
+        return (role("reviewer"),)
+    if kind in ("plan", "replay"):
+        return (role("builder"),)
+    if kind == "probe":
+        models = (charter.get("probes") or {}).get("models") or []
+        named = [item.get("runtime") or DEFAULT_RUNTIME for item in models if isinstance(item, Mapping)]
+        return tuple(dict.fromkeys(named)) or (role("builder"),)
+    return ()
 
 
 def run_cost(usage) -> float:

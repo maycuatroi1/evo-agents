@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from dataclasses import replace
 from datetime import date, datetime
 from typing import cast
 
@@ -19,6 +20,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.curator import NIGHT_SHIFT
+from evo_agents.hub.server.infra_breaker import infra_of
 from evo_agents.hub.server.night_cost import next_run_budget, night_figures
 from evo_agents.hub.server.night_duty import Duty, on_duty
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -51,6 +53,7 @@ def due_schedules(now: datetime | None):
             c.c.revision,
             c.c.body,
             func.timezone(c.c.body["window"]["timezone"].astext, moment).label("local_now"),
+            moment.label("now"),
         )
         .join_from(s, p, p.c.id == s.c.project_id)
         .join(u, u.c.id == s.c.owner_id)
@@ -230,7 +233,9 @@ async def project_gate(conn: AsyncConnection, project_id: int):
 
 
 async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
-    """What schedule ``due`` does now, in the caller's transaction; a word for the job's summary."""
+    """What schedule ``due`` does now, in the caller's transaction; a word for the job's summary. A dependency failing
+    of an infra cause holds off the kinds of run that use it alone (``infra_breaker``): ``infra`` when that left
+    nothing to queue."""
     from evo_agents.hub.server.change_shift import queue_builder, queue_judge  # it queues runs through this module
     from evo_agents.hub.server.collect import queue_review  # it queues runs through this module
     from evo_agents.hub.server.history import queue_history  # it queues runs through this module
@@ -240,23 +245,35 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
     word, gate = await gate_of(conn, due, any_hour=True)
     if gate is None:
         return word
-    if gate.inside and await queue_review(conn, due, gate) is not None:
+    infra = await infra_of(conn, due, due.now)
+    if infra.hub is not None:  # every kind of run uses the hub
+        return "infra"
+    gate = replace(gate, avoid=infra.avoid)
+    body, held = due.body, bool(infra.avoid)
+    if gate.inside and not infra.holds(body, "review") and await queue_review(conn, due, gate) is not None:
         return "review"
-    if gate.inside and await queue_history(conn, due, gate) is not None:
+    if gate.inside and not infra.holds(body, "history") and await queue_history(conn, due, gate) is not None:
         return "history"
     if await queue_judge(conn, due, gate) is not None:
         return "judge"
-    if await queue_builder(conn, due, gate, curator_app=curator_app) is not None:
+    if not infra.holds(body, "plan") and await queue_builder(conn, due, gate, curator_app=curator_app) is not None:
         return "builder"
-    if await queue_replay(conn, due, gate) is not None:
+    if not infra.holds(body, "replay") and await queue_replay(conn, due, gate) is not None:
         return "replay"
     if not gate.inside:  # the night's plans wait for the window
-        return "outside"
+        return "infra" if held else "outside"
     night, duty, budget = gate.night, gate.duty, gate.budget
-    plan, why = await _next_plan(conn, gate.access, due.body, duty)
+    plan, why = (None, "held off") if infra.holds(body, "plan") else await _next_plan(conn, gate.access, body, duty)
     if plan is None:
-        if await queue_probe(conn, due, gate) is not None:  # the probes queue after every other kind of the night
+        # the probes queue after every other kind of the night
+        if not infra.holds(body, "probe") and await queue_probe(conn, due, gate) is not None:
             return "probe"
+        if held:
+            log.info(
+                "night shift holds off a failing dependency",
+                extra={"project": due.project, "avoid": sorted(gate.avoid)},
+            )
+            return "infra"
         log.info("night shift has no plan to run", extra={"project": due.project, "why": why})
         return "no_plan"
     try:

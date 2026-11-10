@@ -230,7 +230,8 @@ async def queue_builder(conn: AsyncConnection, due, gate, *, curator_app: bool, 
 async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     """Queue the judge run of the oldest change of the project that waits for one; its id, or None. The Judge runs on
     Codex when the project's policy clears Codex for the change's label and the worker on duty has it, else on Claude
-    Code with a model other than the Builder's (``judge.judge_runtime``). Called under the schedule's row lock."""
+    Code with a model other than the Builder's (``judge.judge_runtime``); a runtime of ``gate.avoid`` is not on duty.
+    Called under the schedule's row lock."""
     c, p = tables.curator_changes, tables.proposals
     waiting = (
         await conn.execute(
@@ -252,12 +253,14 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     activity = await plan_activity(conn, due.project_id, waiting.plan_id)
     if activity.plan_run is not None or activity.steps:
         return None  # a Builder of the change still runs: never both at once
-    usable = {name for name in runs.RUNTIMES if duty.runtime(name) is not None}
+    usable = {name for name in runs.RUNTIMES if duty.runtime(name) is not None and name not in gate.avoid}
     cleared = judge.codex_cleared(access.rules, waiting.proposal_label)
     runtime, model, why = judge.judge_runtime(
         charter.get("judge") or {}, charter.get("builder") or {}, codex_allowed=cleared, worker_runtimes=usable
     )
     problems = duty.unfit(due.project, "judge", [waiting.repo], runtime)
+    if runtime in gate.avoid:  # its dependency waits its backoff, and no other runtime is on duty
+        problems = [f"{runtime} is held off: it failed of an infra cause"]
     if problems:
         log.info("no judge run yet", extra={"project": due.project, "why": "; ".join(problems)})
         return None

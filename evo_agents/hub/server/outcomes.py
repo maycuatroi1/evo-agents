@@ -22,8 +22,9 @@ row lock each minute, before anything else and whether the window is open or not
 since the schedule last changed (a resume, a new worker), it pauses every schedule of the project with the reason
 (``schedules.pause_reason``, no member in ``paused_by``), cancels the runs they queued that are still queued, tells the
 owner of each schedule (the notice ``curator_paused``) and audits curator.circuit. A job of the night is a run of the
-schedule for that night, which went wrong when it ended failed and right when it ended done (a cancelled run, and a lost
-one the hub tries again, count neither way), or an outcome ``revert`` the hub recorded for the project in the night's
+schedule for that night, which went wrong when it ended failed of a cause of the agent's (an empty or unknown cause
+included) and right when it ended done (a cancelled run, a lost one the hub tries again, and one that failed of an infra
+cause, ``curator.INFRA_CAUSES``, count neither way: ``infra_breaker`` holds off the kinds of run of its dependency), or an outcome ``revert`` the hub recorded for the project in the night's
 span, which went wrong. ``evo-agents hub curator resume`` lets the night shift run again.
 """
 
@@ -300,20 +301,25 @@ async def measure_outcomes(engine: AsyncEngine, *, now: datetime | None = None) 
 
 async def _night_jobs(conn: AsyncConnection, due, night: date, since: datetime) -> list[tuple]:
     """The night's jobs of schedule ``due`` since ``since``, oldest first: (when, went wrong, what), what being
-    ``run:<id>`` or ``revert:<proposal id>``."""
+    ``run:<id>`` or ``revert:<proposal id>``. A run that failed of an infra cause (``curator.INFRA_CAUSES``) is no job:
+    ``infra_breaker`` holds off the kinds of run of its dependency instead."""
     r, lg = tables.runs, tables.curator_ledger
     window = due.body["window"]
     opens = curator.parse_time(window["start"])
     first, last = datetime.combine(night, opens), datetime.combine(night + timedelta(days=1), opens)
     ran = await conn.execute(
-        select(r.c.id, r.c.state, r.c.finished_at).where(
+        select(r.c.id, r.c.state, r.c.finished_at, r.c.failure_cause).where(
             r.c.schedule_id == due.id,
             r.c.schedule_night == night,
             r.c.state.in_(("done", "failed")),
             r.c.finished_at >= since,
         )
     )
-    jobs = [(row.finished_at, row.state == "failed", f"run:{row.id}") for row in ran]
+    jobs = [
+        (row.finished_at, row.state == "failed", f"run:{row.id}")
+        for row in ran
+        if not (row.state == "failed" and curator.is_infra(row.failure_cause))  # a dependency's, the infra breaker's
+    ]
     local = func.timezone(window["timezone"], lg.c.created_at)
     reverted = await conn.execute(
         select(lg.c.created_at, lg.c.proposal_id).where(

@@ -19361,10 +19361,11 @@ export interface components {
         CircuitBreaker: {
             /**
              * Max Failed In A Row
-             * @description jobs of a night in a row that failed or were reverted before the hub pauses the night shift
+             * @description jobs of a night in a row that failed of the agent's cause or were reverted before the hub pauses the night shift; a run that failed of an infra cause (curator.INFRA_CAUSES) does not count
              * @default 2
              */
             max_failed_in_a_row: number;
+            infra?: components["schemas"]["InfraBreaker"];
         };
         /** Citation */
         Citation: {
@@ -24496,6 +24497,24 @@ export interface components {
              * @description the files it carries, whose bytes GET /v1/worker/runs/{id}/attachments/{aid}/content serves
              */
             attachments?: components["schemas"]["Attachment"][];
+        };
+        /**
+         * InfraBreaker
+         * @description How the night shift holds off the kinds of run whose dependency (the hub, or a runtime and its account) failed
+         *     (``curator.outages``); a charter written before it gets the defaults.
+         */
+        InfraBreaker: {
+            /**
+             * Backoff Minutes
+             * @description the wait before the probe after the 1st, 2nd... failure in a row of a dependency, the last one past their end; each is jittered by 20% either way
+             */
+            backoff_minutes?: number[];
+            /**
+             * Max Probes Per Day
+             * @description probes of a failing dependency in a day; then its kinds of run wait and the owner is told once
+             * @default 6
+             */
+            max_probes_per_day: number;
         };
         /** InitAll */
         InitAll: {

@@ -77,6 +77,30 @@ class Judge(Role):
     )
 
 
+BackoffMinutes = Annotated[int, Field(ge=curator.INFRA_BACKOFF_RANGE[0], le=curator.INFRA_BACKOFF_RANGE[1])]
+
+
+class InfraBreaker(BaseModel):
+    """How the night shift holds off the kinds of run whose dependency (the hub, or a runtime and its account) failed
+    (``curator.outages``); a charter written before it gets the defaults."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    backoff_minutes: list[BackoffMinutes] = Field(
+        default_factory=lambda: list(curator.INFRA_BACKOFF_MINUTES),
+        min_length=curator.INFRA_BACKOFFS[0],
+        max_length=curator.INFRA_BACKOFFS[1],
+        description="the wait before the probe after the 1st, 2nd... failure in a row of a dependency, the last one "
+        "past their end; each is jittered by 20% either way",
+    )
+    max_probes_per_day: int = Field(
+        curator.INFRA_PROBES_PER_DAY,
+        ge=curator.INFRA_PROBES[0],
+        le=curator.INFRA_PROBES[1],
+        description="probes of a failing dependency in a day; then its kinds of run wait and the owner is told once",
+    )
+
+
 class CircuitBreaker(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -84,8 +108,10 @@ class CircuitBreaker(BaseModel):
         2,
         ge=curator.CIRCUIT_BREAKER[0],
         le=curator.CIRCUIT_BREAKER[1],
-        description="jobs of a night in a row that failed or were reverted before the hub pauses the night shift",
+        description="jobs of a night in a row that failed of the agent's cause or were reverted before the hub pauses "
+        "the night shift; a run that failed of an infra cause (curator.INFRA_CAUSES) does not count",
     )
+    infra: InfraBreaker = Field(default_factory=lambda: InfraBreaker.model_validate({}))
 
 
 class CharterBody(BaseModel):

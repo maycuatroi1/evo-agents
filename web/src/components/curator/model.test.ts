@@ -42,7 +42,7 @@ const CHARTER: Charter = {
   merge_without_ci: false,
   answer_by: "owner",
   protected_paths: ["curator.yaml", ".github/workflows/**"],
-  circuit_breaker: { max_failed_in_a_row: 2 },
+  circuit_breaker: { max_failed_in_a_row: 2, infra: { backoff_minutes: [10, 20], max_probes_per_day: 4 } },
   outcome_days: 7,
   review: { lenses: 3, days: 7, budget_usd: null },
   replay: { tasks: 6, budget_usd: 0.8 },
@@ -292,6 +292,13 @@ describe("the charter as a form", () => {
     expect(charterBody({ ...onBuilder, builder: { runtime: "codex", model: "" } }).body?.probes).toEqual({ k: 3, models: [], budget_usd: 4 });
     expect(charterBody(charterForm({ ...CHARTER, probes: undefined }, { timezone: "" })).body?.probes).toEqual({ k: 3, models: [], budget_usd: null });
     expect(charterBody(charterForm(null, { timezone: "UTC" })).body?.probes).toEqual({ k: 3, models: [], budget_usd: null });
+  });
+
+  it("keeps the infra breaker of the charter, and leaves it to the hub's defaults when the charter has none", () => {
+    expect(charterBody(charterForm(CHARTER, { timezone: "" })).body?.circuit_breaker).toEqual(CHARTER.circuit_breaker);
+    const old = charterForm({ ...CHARTER, circuit_breaker: { max_failed_in_a_row: 3 } }, { timezone: "" });
+    expect(charterBody(old).body?.circuit_breaker).toEqual({ max_failed_in_a_row: 3 });
+    expect(charterBody(charterForm(null, { timezone: "UTC" })).body?.circuit_breaker).toEqual({ max_failed_in_a_row: 2 });
   });
 
   it("refuses the probes' settings the hub refuses, and does not hold a week's budget against a night's", () => {

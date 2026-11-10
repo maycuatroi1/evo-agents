@@ -29,11 +29,12 @@ review run with what it wrote, and whether curator.collect counted its figures.
 ``fire_schedules`` (``evo_agents.hub.server.curator_shift``) is the job ``hub.fire_schedules``, run every minute by
 the hub's worker: for each schedule of kind night_shift, under its row's lock (a schedule another run of the job holds
 is passed over), it first lets the circuit breaker look at the night (``outcomes.check_circuit``: once the charter's
-``circuit_breaker.max_failed_in_a_row`` jobs of the night in a row failed or were reverted, every schedule of the
-project is paused with the reason in ``pause_reason`` and no member in ``paused_by``, and their owner gets the notice
-curator_paused), then it cancels its queued runs when it is paused, and outside its window those of the night
-(``shift_hours``), and otherwise queues at most one run (``gate_of`` says when it may): the night's review run first,
-when the night has none yet and the worker runs review runs (``evo_agents.hub.server.collect``), else the night's
+``circuit_breaker.max_failed_in_a_row`` jobs of the night in a row failed of the agent's cause or were reverted,
+every schedule of the project is paused with the reason in ``pause_reason`` and no member in ``paused_by``, and their
+owner gets the notice curator_paused), then it cancels its queued runs when it is paused, and outside its window
+those of the night (``shift_hours``), and otherwise queues at most one run (``gate_of`` says when it may): the
+night's review run first, when the night has none yet and the worker runs review runs
+(``evo_agents.hub.server.collect``), else the night's
 history run once its review run was queued (``evo_agents.hub.server.history``), these two inside the window alone,
 else the judge run of a change of the Curator that waits for one, else the Builder of a change the Curator planned
 (``evo_agents.hub.server.changes``), else the replay run of a change that waits for one
