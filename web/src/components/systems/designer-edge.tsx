@@ -115,6 +115,8 @@ export function SystemEdge({ id, source, target, data }: EdgeProps<SystemFlowEdg
   if (!data || !from || !to) return null;
   const { path, middle, arrow } = floatingLine(from, to, data.bend ?? 0);
   const seen = data.observed;
+  // A line nothing crossed shows its dot, not a 0 (web/DESIGN.md, Observe).
+  const counted = seen !== undefined && seen.count > 0;
   const ghost = data.ghost ?? null;
   const look = EDGE_LOOK[data.kind];
   const colour = seen?.offDesign
@@ -152,7 +154,7 @@ export function SystemEdge({ id, source, target, data }: EdgeProps<SystemFlowEdg
           title={words ? undefined : data.description || data.label}
           className={cn(
             "nodrag nopan pointer-events-auto absolute cursor-pointer transition-opacity duration-fast focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-            words || seen
+            words || counted
               ? "max-w-48 truncate rounded-sm border bg-card px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
               : "grid size-5 place-items-center rounded-full",
             words && data.level === "error" && "border-danger text-danger",
@@ -179,7 +181,7 @@ export function SystemEdge({ id, source, target, data }: EdgeProps<SystemFlowEdg
           {words ? (
             <>
               {seen?.offDesign ? t("offDesignEdge") : t(`edgeKinds.${data.kind}`)}
-              {seen ? (
+              {counted ? (
                 <span className="ml-1 rounded-sm bg-muted px-1 font-semibold text-foreground tabular-nums" data-testid="system-edge-count">
                   {seen.count}
                 </span>
@@ -187,7 +189,7 @@ export function SystemEdge({ id, source, target, data }: EdgeProps<SystemFlowEdg
                 <span className="font-normal">: {data.description}</span>
               ) : null}
             </>
-          ) : seen ? (
+          ) : counted ? (
             <span className="font-semibold text-foreground tabular-nums" data-testid="system-edge-count">
               {seen.count}
             </span>
