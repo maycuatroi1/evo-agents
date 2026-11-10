@@ -28464,7 +28464,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.61.7"
+      "version": "0.63.1"
     },
     "paths": {
       "/v1/health": {
@@ -184030,6 +184030,18 @@
                 }
               ],
               "description": "what the work waits for; null for nothing"
+            },
+            "coordinator": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Coordinator",
+              "description": "the handle of the system's entry agent, which coordinates the work"
             }
           },
           "type": "object",
@@ -184090,6 +184102,18 @@
                 }
               ],
               "description": "what the work waits for; null for nothing"
+            },
+            "coordinator": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Coordinator",
+              "description": "the handle of the system's entry agent, which coordinates the work"
             },
             "chat_id": {
               "anyOf": [
@@ -184436,6 +184460,18 @@
               ],
               "title": "Name",
               "description": "null once the system is deleted"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "the name of its project"
             }
           },
           "type": "object",

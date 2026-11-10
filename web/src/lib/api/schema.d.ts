@@ -47113,6 +47113,11 @@ export interface components {
             agent: string | null;
             /** @description what the work waits for; null for nothing */
             waiting: components["schemas"]["WorkWaiting"] | null;
+            /**
+             * Coordinator
+             * @description the handle of the system's entry agent, which coordinates the work
+             */
+            coordinator?: string | null;
         };
         /**
          * WorkCard
@@ -47139,6 +47144,11 @@ export interface components {
             agent: string | null;
             /** @description what the work waits for; null for nothing */
             waiting: components["schemas"]["WorkWaiting"] | null;
+            /**
+             * Coordinator
+             * @description the handle of the system's entry agent, which coordinates the work
+             */
+            coordinator?: string | null;
             /**
              * Chat Id
              * @description the chat of the message that opened the trace
@@ -47273,6 +47283,11 @@ export interface components {
              * @description null once the system is deleted
              */
             name: string | null;
+            /**
+             * Project
+             * @description the name of its project
+             */
+            project?: string | null;
         };
         /** WorkThread */
         WorkThread: {

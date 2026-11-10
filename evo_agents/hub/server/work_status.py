@@ -60,6 +60,7 @@ class WorkSystem(BaseModel):
     id: int | None = Field(description="null once the system is deleted")
     slug: str
     name: str | None = Field(description="null once the system is deleted")
+    project: str | None = Field(default=None, description="the name of its project")
 
 
 class WorkWaiting(BaseModel):
@@ -80,6 +81,9 @@ class WorkBrief(BaseModel):
     status: WorkStatus
     agent: str | None = Field(description="the handle of the agent at work now; null when none is")
     waiting: WorkWaiting | None = Field(description="what the work waits for; null for nothing")
+    coordinator: str | None = Field(
+        default=None, description="the handle of the system's entry agent, which coordinates the work"
+    )
 
 
 class WorkThread(BaseModel):
@@ -149,6 +153,7 @@ class _Read:
 
 def _trace_query(trace_ids: list[int]):
     t, s, m = tables.system_traces, tables.agent_systems, tables.chat_messages
+    p, a = tables.projects, tables.agent_profiles
     return (
         select(
             t.c.id,
@@ -167,8 +172,15 @@ def _trace_query(trace_ids: list[int]):
             s.c.name.label("system_name"),
             s.c.entry_profile_id,
             m.c.body.label("first_body"),
+            p.c.name.label("project_name"),
+            a.c.handle.label("coordinator"),
         )
-        .select_from(t.outerjoin(s, s.c.id == t.c.system_id).outerjoin(m, m.c.id == t.c.message_id))
+        .select_from(
+            t.outerjoin(s, s.c.id == t.c.system_id)
+            .outerjoin(m, m.c.id == t.c.message_id)
+            .outerjoin(p, p.c.id == t.c.project_id)
+            .outerjoin(a, a.c.id == s.c.entry_profile_id)
+        )
         .where(t.c.id.in_(trace_ids))
     )
 
@@ -298,11 +310,14 @@ def _brief(read: _Read, trace_id: int) -> WorkBrief:
     working = [span for span in read.spans.get(trace_id, []) if span.state in WORKING]
     return WorkBrief(
         trace_id=trace_id,
-        system=WorkSystem(id=row["system_id"], slug=row["system_slug"], name=row["system_name"]),
+        system=WorkSystem(
+            id=row["system_id"], slug=row["system_slug"], name=row["system_name"], project=row["project_name"]
+        ),
         title=row["title"] or first_line(row["first_body"]) or f"trace #{trace_id}",
         status=status_of(read, trace_id),  # type: ignore[arg-type]  # one of STATUSES
         agent=working[-1].agent if working else None,
         waiting=_waiting(read, trace_id),
+        coordinator=row["coordinator"],
     )
 
 

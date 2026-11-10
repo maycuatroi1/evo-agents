@@ -938,7 +938,8 @@ derived from the trace's runs, decisions and Orchestrator threads, with no model
 - `agent`: the handle of the latest run of the trace at work; `waiting`, what the work waits for, the first that holds:
   `{kind: "decision", decision_id, login, question}`, `{kind: "person", run_id, agent}` (a run a person drives or
   reviews), `{kind: "run", run_id, agent}` (the run an open wait awaits); else null.
-- `title`, `goal`, `done_when`: what the entry agent set; `system` `{id, slug, name}`; `trace_id`, `chat_id`,
+- `title`, `goal`, `done_when`: what the entry agent set; `system` `{id, slug, name, project}`; `coordinator`, the
+  handle of the system's entry agent; `trace_id`, `chat_id`,
   `message_id` (the trace's first message), `work_chat_id`.
 - `asks`: each ask, escalation and reassignment of the trace, `{kind: ask|escalate|reassign, from_agent, agent, brief,
   status, run_id, usd, thread: {chat_id, root_id}}`, `brief` the goal of its brief.
@@ -962,8 +963,8 @@ prompt says that hand-offs open a work chat, to use `work set`, and that its fin
 | --- | --- | --- |
 | `GET /v1/chats/{id}/work` | the card of the trace whose work chat this is | a member of the work chat (404 to anyone else and for a chat that is no work chat, 403 to a member who no longer clears its label) |
 
-In the list of chats, a work chat's summary carries `work` `{trace_id, system: {id, slug, name}, title, status, agent,
-waiting}`, null for every other chat.
+In the list of chats, a work chat's summary carries `work` `{trace_id, system: {id, slug, name, project}, title, status,
+agent, waiting, coordinator}`, null for every other chat.
 
 Schema 0235 adds the nullable `system_traces.title`, `goal`, `done_when`, `card_message_id` (set to null when the
 message is deleted) and `card_state`. Going back drops them.

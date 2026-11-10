@@ -499,7 +499,8 @@ def test_the_list_of_chats_and_the_traces_carry_the_work(client, hub, hub_db):
     assert by_id[chat["id"]]["work"] is None
     shown = by_id[work]["work"]
     assert (shown["trace_id"], shown["status"], shown["waiting"]["kind"]) == (trace_id, "running", "run")
-    assert shown["system"]["id"] is not None
+    assert shown["system"]["id"] is not None and shown["system"]["project"] == PROJECT
+    assert shown["coordinator"] == "reviewer", "the system's entry agent"
     traces = client.get(traces_path(), headers=hub["owner"]).json()
     assert (traces[0]["work_chat_id"], traces[0]["status"], traces[0]["goal"]) == (work, "running", None)
     detail = client.get(f"{traces_path()}/{trace_id}", headers=hub["owner"])
