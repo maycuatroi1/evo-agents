@@ -312,7 +312,7 @@ def test_a_chat_run_claim_has_the_bounded_snapshot_and_its_moves_react_by_rule(c
     assert (said["author"]["kind"], said["author"]["handle"], said["run_id"]) == ("agent", "reviewer", spec["id"])
     assert [(m["name"], m["refusal"]) for m in said["mentions"]] == [
         (OTHER, None),
-        ("fixer", "an agent's @ in a message hands no work: it uses `evo-agents worker chat mention`"),
+        ("fixer", None),
     ]
     assert len(chat_runs_of(hub_db)) == 1  # the @fixer of a reply hands it nothing
     notices = client.get("/v1/me/notifications", params={"kind": "notice"}, headers=hub["other"]).json()

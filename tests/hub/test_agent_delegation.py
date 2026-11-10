@@ -149,9 +149,8 @@ def test_delegation_parks_and_wakes_parent(client, hub, hub_db):
 
 def test_an_agent_naming_the_agent_it_asked_is_refused_nothing(client, hub, hub_db):
     """The asking run's own messages that name @kb-bot, before it parks and after the answer resumes it, point at the
-    run asked rather than saying @kb-bot is not in the chat; an agent it did not ask is still refused."""
-    from evo_agents.hub.server.chats import NOT_IN_CHAT
-
+    run asked rather than saying @kb-bot is not in the chat; an agent it did not ask is a name in its words, refused
+    nothing either, so no note shows under it."""
     kb_project(client, hub, hub_db)
     agent(client, hub["owner"], "kb-docs", project=KB)
     studio = chat_worker(client, hub["owner"], "studio")
@@ -166,8 +165,7 @@ def test_an_agent_naming_the_agent_it_asked_is_refused_nothing(client, hub, hub_
 
     waiting = f"I asked @{KB_AGENT}; @kb-docs may know too."
     reply(client, studio, spec["id"], waiting)
-    refused = NOT_IN_CHAT.format(name="kb-docs")
-    assert mentions_of(waiting) == [(KB_AGENT, child, None), ("kb-docs", None, refused)]
+    assert mentions_of(waiting) == [(KB_AGENT, child, None), ("kb-docs", None, None)]
 
     moved(client, studio, spec["id"], "waiting")
     recover(client)

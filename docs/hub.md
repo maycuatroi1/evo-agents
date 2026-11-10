@@ -1140,7 +1140,7 @@ project, deleted, a label the people do not clear) stays out with why, and when 
 chat's agent's work as before. The direct chat's agent brings another agent in the same way with `evo-agents worker
 chat mention HANDLE TEXT` (`docs/workers.md`, Chat runs): the group of the thread is opened or found, the agent's
 message goes there, and the person is told (`chat_added`) of a group made now. An @ of another agent in the agent's
-reply hands no work, as in a group chat. The prompt of its run shows, instead of the chat before the
+reply hands no work and shows no note, as in a group chat. The prompt of its run shows, instead of the chat before the
 thread, the latest turns: at most 30 messages of the earlier threads, the person's messages and the agent's answers,
 within the snapshot's 12 KiB, the oldest left out first. Opening one is audited as `chat.create` in the agent's project.
 
@@ -1189,7 +1189,7 @@ an emoji, a new chat with the person at the origin of the chain (who gets `chat_
 each with a grant that clears the agent's project), and a mention that hands work to another agent of the chat. That
 run is for the same person, at one hop more than the run that asked (a person's mention is hop 1), at most hop 3, never
 to the agent's own profile, and within the budget; a refusal is said in the thread. An `@` of an agent in an agent's
-reply or post hands no work.
+reply or post hands no work and is refused nothing: it is a name in the agent's words, so no note shows under it.
 
 **Reactions.** A reaction is one emoji of one person or agent on a message, once each; a message carries at most 20
 different ones, and the hub counts them by emoji (`count`, who put each, and whether the reader did). The reactions of

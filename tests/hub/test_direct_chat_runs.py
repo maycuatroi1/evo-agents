@@ -22,7 +22,6 @@ if not pg.DSN:
 from sqlalchemy import select
 
 from evo_agents.hub import autonomy_card, chat_runs, tables
-from evo_agents.hub.server.chat_runs import AGENT_REPLY_REFUSAL
 from evo_agents.hub.server.chats import NOT_IN_DIRECT
 from tests.hub import test_chat_runs as group_runs
 from tests.hub.live import sql
@@ -213,7 +212,7 @@ def test_the_direct_agent_brings_in_another_agent_through_the_group_of_its_threa
     # an @ of it in the agent's reply hands no work, as in a group chat
     reply(client, worker, spec["id"], "Handed steps 1 and 2 to @fixer.")
     said = thread(client, hub["owner"], chat["id"], asked["id"])[-1]
-    assert [(m["name"], m["run_id"], m["refusal"]) for m in said["mentions"]] == [("fixer", None, AGENT_REPLY_REFUSAL)]
+    assert [(m["name"], m["run_id"], m["refusal"]) for m in said["mentions"]] == [("fixer", None, None)]
 
 
 def test_a_reply_in_the_thread_of_a_direct_chat_goes_on_in_its_run_session(client, hub, hub_db):
@@ -239,7 +238,7 @@ def test_an_answer_naming_its_own_agent_is_refused_nothing_and_hands_no_work(cli
     assert answer["author"]["handle"] == "reviewer"
     assert [(m["name"], m["run_id"], m["refusal"]) for m in answer["mentions"]] == [
         ("reviewer", None, None),
-        ("fixer", None, AGENT_REPLY_REFUSAL),
+        ("fixer", None, None),
     ]
     assert len(chat_runs_of(hub_db)) == 1
 
