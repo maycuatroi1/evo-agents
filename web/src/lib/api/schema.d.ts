@@ -9274,9 +9274,32 @@ export interface paths {
         };
         /**
          * Show Trace
-         * @description One trace: its spans in the order written, with their runs' numbers, and the metrics of its nodes and edges.
+         * @description One trace: its spans in the order written, with their runs' numbers, the metrics of its nodes and edges, and its
+         *     timeline by agent.
          */
         get: operations["show_trace_v1_projects__project__systems__slug__traces__trace_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/work/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Work Summary
+         * @description The numbers of the system's work the caller may read that moved in the last ``hours`` hours or has a run
+         *     still active: open, needing a person, failed and done, the median time from start to close of the work done in
+         *     the window, and the cost. It reads only.
+         */
+        get: operations["work_summary_v1_projects__project__systems__slug__work_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -45486,6 +45509,86 @@ export interface components {
              */
             chosen: boolean;
         };
+        /** TimelineMark */
+        TimelineMark: {
+            /** Decision Id */
+            decision_id: number;
+            /**
+             * Run Id
+             * @description the run that asked
+             */
+            run_id: number;
+            /**
+             * Agent
+             * @description the handle of the agent of that run
+             */
+            agent: string | null;
+            /**
+             * Login
+             * @description the person it asks
+             */
+            login: string | null;
+            /** Question */
+            question: string;
+            /**
+             * State
+             * @description open, answered, expired or cancelled
+             */
+            state: string;
+            /**
+             * Asked At
+             * Format: date-time
+             */
+            asked_at: string;
+            /** Answered At */
+            answered_at: string | null;
+        };
+        /** TimelineRun */
+        TimelineRun: {
+            /**
+             * Span Id
+             * @description its invoke_agent span
+             */
+            span_id: number;
+            /** Run Id */
+            run_id: number;
+            /**
+             * Agent
+             * @description the handle of the agent
+             */
+            agent: string;
+            /** Node */
+            node: string | null;
+            /**
+             * State
+             * @description the state of the run now
+             */
+            state: string;
+            /**
+             * Segments
+             * @description oldest first
+             */
+            segments: components["schemas"]["TimelineSegment"][];
+        };
+        /** TimelineSegment */
+        TimelineSegment: {
+            /**
+             * Kind
+             * @description queued for a worker, running, parked, or waiting for an answer held
+             * @enum {string}
+             */
+            kind: "queued" | "running" | "parked" | "waiting";
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Ended At
+             * @description null while it goes on
+             */
+            ended_at: string | null;
+        };
         /** Today */
         Today: {
             /**
@@ -45978,6 +46081,8 @@ export interface components {
             /** Spans */
             spans: components["schemas"]["SpanOut"][];
             metrics: components["schemas"]["Metrics"];
+            /** @description each run of it cut into queued, running, parked and waiting, and the decisions that ask a person */
+            timeline?: components["schemas"]["TraceTimeline"];
         };
         /** TraceSpread */
         TraceSpread: {
@@ -46089,6 +46194,19 @@ export interface components {
             agent?: string | null;
             /** @description what its work waits for; null for nothing */
             waiting?: components["schemas"]["WorkWaiting"] | null;
+        };
+        /** TraceTimeline */
+        TraceTimeline: {
+            /**
+             * Runs
+             * @description in the order of their spans
+             */
+            runs?: components["schemas"]["TimelineRun"][];
+            /**
+             * Marks
+             * @description the decisions that ask a person, oldest first
+             */
+            marks?: components["schemas"]["TimelineMark"][];
         };
         /** TranscriptFile */
         TranscriptFile: {
@@ -47258,6 +47376,47 @@ export interface components {
             goal?: string | null;
             /** Done When */
             done_when?: string | null;
+        };
+        /** WorkSummary */
+        WorkSummary: {
+            /** Hours */
+            hours: number;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Traces
+             * @description the traces counted: moved since `since`, or with a run still active
+             */
+            traces: number;
+            /**
+             * Withheld
+             * @description such traces the caller may not read, left out
+             */
+            withheld: number;
+            /**
+             * Open
+             * @description running or needing a person
+             */
+            open: number;
+            /** Needs Person */
+            needs_person: number;
+            /** Failed */
+            failed: number;
+            /** Done */
+            done: number;
+            /**
+             * Closed P50 Seconds
+             * @description median start to last move of the work done in the window
+             */
+            closed_p50_seconds: number | null;
+            /**
+             * Usd
+             * @description what the traces counted cost, their spawned runs included
+             */
+            usd: number;
         };
         /** WorkSystem */
         WorkSystem: {
@@ -83535,6 +83694,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TraceOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    work_summary_v1_projects__project__systems__slug__work_summary_get: {
+        parameters: {
+            query?: {
+                /** @description the traces that moved in the last N hours */
+                hours?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkSummary"];
                 };
             };
             /** @description Unauthorized */

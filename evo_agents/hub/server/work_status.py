@@ -211,7 +211,7 @@ async def _decisions(conn: AsyncConnection, read: _Read) -> None:
     d, u = tables.decisions, tables.users
     query = (
         select(d.c.id, d.c.run_id, d.c.project_id, d.c.category, d.c.question, d.c.state, d.c.answer_option)
-        .add_columns(d.c.answer_text, d.c.awaits_run_id, d.c.asked_at, u.c.login.label("asked_login"))
+        .add_columns(d.c.answer_text, d.c.awaits_run_id, d.c.asked_at, d.c.answered_at, u.c.login.label("asked_login"))
         .select_from(d.outerjoin(u, u.c.id == d.c.asked_of))
         .where(d.c.run_id.in_(sorted(owner)))
         .order_by(d.c.id)
@@ -255,6 +255,13 @@ async def _read(conn: AsyncConnection, trace_ids: list[int]) -> _Read:
         await _decisions(conn, read)
         await _awaited(conn, read)
     return read
+
+
+async def person_decisions(conn: AsyncConnection, trace_id: int) -> list:
+    """The decisions of trace ``trace_id`` that ask a person, open or not (the rows ``_decisions`` reads), oldest
+    first."""
+    read = await _read(conn, [trace_id])
+    return [d for d in read.decisions.get(trace_id, []) if not _is_wait(d) and d.asked_login is not None]
 
 
 def _asks_person(decision) -> bool:
