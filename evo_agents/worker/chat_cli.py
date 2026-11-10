@@ -7,10 +7,11 @@ and ``evo-agents worker repo open``, which only a chat run's agent uses.
   in it hands no work. Each ``--attach`` file goes to the run's outputs first and under the message
   (``output_cli.attached``); ``--interactive`` marks them interactive answers, HTML the web shows inside the message.
 - ``react MESSAGE EMOJI [--remove]``: an emoji of the run's agent on a message, or taken off.
-- ``create --title TEXT [--person LOGIN ...]``: a new chat of the run's agent and the person who dispatched the run,
-  with the people named; the hub tells each of them.
+- ``create --title TEXT [--person LOGIN ...] [--agent HANDLE ...]``: a new chat of the run's agent and the person who
+  dispatched the run, with the people and agents named; the hub tells each person.
 - ``mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]``: a message that hands the work to agent HANDLE of the chat,
-  for the person who dispatched the run, one hop further; a refusal (the hops, the agent itself, no worker) is
+  for the person who dispatched the run, one hop further; in a direct chat, an agent it does not have goes to the group
+  chat the hub opens for the thread, where the message goes; a refusal (the hops, the agent itself, no worker) is
   printed, said in the thread, and exits 1.
 - ``read MESSAGE [--thread] [--fetch]``, a command of the run's agent too: a message of a chat whole, or its thread (its first
   message and the replies), those the run's agent may read (POST .../chat/read, ``evo_agents.hub.server.chat_read``),
@@ -233,7 +234,13 @@ def fetch_files(run: AgentRun, messages: list) -> tuple[str, bool]:
 @chat_command
 def cmd_create(args) -> int:
     run = agent_run("create")
-    answer = call(run, "chats", {"title": args.title, "people": list(dict.fromkeys(args.person or []))})
+    agents = [handle.removeprefix("@").lower() for handle in args.agent or []]
+    payload = {
+        "title": args.title,
+        "people": list(dict.fromkeys(args.person or [])),
+        "agents": list(dict.fromkeys(agents)),
+    }
+    answer = call(run, "chats", payload)
     people = ", ".join(person["login"] for person in answer.get("people") or [])
     agents = ", ".join(f"@{agent['handle']}" for agent in answer.get("agents") or [])
     print(f"Created chat #{answer['id']} {answer['title']!r} with {people} and {agents}; each person was told.")
@@ -249,7 +256,9 @@ def cmd_mention(args) -> int:
     if answer.get("refusal"):
         print(f"error: @{handle} took no work: {answer['refusal']}", file=sys.stderr)
         return EXIT_FAILED
-    print(f"Handed the work to @{handle} in message #{message.get('id')}: its run is #{answer.get('run_id')}.")
+    group = answer.get("group_id")
+    where = "" if group is None else f" of group chat #{group}, which the hub opened for this thread"
+    print(f"Handed the work to @{handle} in message #{message.get('id')}{where}: its run is #{answer.get('run_id')}.")
     return 0
 
 
@@ -320,9 +329,17 @@ def register_chat(wsub) -> None:
     create.add_argument(
         "--person", action="append", metavar="LOGIN", help="add a person with a grant on the agent's project; repeat"
     )
+    create.add_argument(
+        "--agent",
+        action="append",
+        metavar="HANDLE",
+        help="add an agent the person who dispatched the run may add to a chat (writer on its project); repeat",
+    )
     create.set_defaults(func=cmd_create)
     mention = csub.add_parser(
-        "mention", help="hand work to another agent of the chat, for the person who dispatched the run, one hop further"
+        "mention",
+        help="hand work to another agent of the chat, for the person who dispatched the run, one hop further; in a "
+        "direct chat, an agent it does not have goes to the group chat the hub opens for the thread",
     )
     mention.add_argument("handle", metavar="HANDLE", help="the agent's handle, @ left out")
     mention.add_argument("text", metavar="TEXT", help="what the agent is to do (- for stdin)")

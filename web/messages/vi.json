@@ -4431,7 +4431,7 @@
       "personHint": "Người chung dự án hay chung chat với bạn; gõ login để thêm người khác đã đăng nhập hub. Mỗi người cần grant đủ cho các dự án của agent trong chat này.",
       "detailsTitle": "Chi tiết",
       "directDescription": "Chat riêng của bạn với {name}.",
-      "directNote": "Chat riêng chỉ có bạn và một agent, không đổi được. Muốn có thêm người hay agent khác, hãy bấm Chat mới để tạo group chat."
+      "directNote": "Chat riêng chỉ có bạn và một agent, không đổi được. Muốn có thêm người hay agent khác, hãy bấm Chat mới để tạo group chat, hoặc @ một agent khác ngay tại đây: hub sẽ mở group chat của thread này với agent đó."
     },
     "create": {
       "title": "Chat mới",

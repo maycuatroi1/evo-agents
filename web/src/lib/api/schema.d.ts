@@ -2651,7 +2651,12 @@ export interface paths {
         get: operations["show_pool_v1_worker_pools__name__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Pool
+         * @description Delete the caller's pool once it has no live node, with its join tokens; its revoked nodes stay revoked, in no
+         *     pool. The pool of an agent goes with its agent alone.
+         */
+        delete: operations["delete_pool_v1_worker_pools__name__delete"];
         options?: never;
         head?: never;
         /**
@@ -14556,6 +14561,11 @@ export interface components {
              * @description logins besides the person who dispatched the run, who is in it anyway
              */
             people?: string[];
+            /**
+             * Agents
+             * @description handles, @ left out, of agents besides the run's, which is in it anyway
+             */
+            agents?: string[];
         };
         /** AgentCreate */
         AgentCreate: {
@@ -14666,6 +14676,11 @@ export interface components {
              * @description why the mention handed no work, as the thread says too
              */
             refusal: string | null;
+            /**
+             * Group Id
+             * @description the group chat of the direct chat's thread the message went to (chat_groups); null: none
+             */
+            group_id?: number | null;
         };
         /** AgentMentionIn */
         AgentMentionIn: {
@@ -57571,6 +57586,72 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_pool_v1_worker_pools__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the pool's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

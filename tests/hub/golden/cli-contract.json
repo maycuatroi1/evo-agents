@@ -27177,6 +27177,14 @@
           "value": "string",
           "required": false,
           "repeatable": true
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         }
       ],
       "json": null
@@ -109112,6 +109120,16 @@
               "maxItems": 49,
               "title": "People",
               "description": "logins besides the person who dispatched the run, who is in it anyway"
+            },
+            "agents": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 9,
+              "title": "Agents",
+              "description": "handles, @ left out, of agents besides the run's, which is in it anyway"
             }
           },
           "type": "object",
@@ -109424,6 +109442,18 @@
               ],
               "title": "Refusal",
               "description": "why the mention handed no work, as the thread says too"
+            },
+            "group_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group Id",
+              "description": "the group chat of the direct chat's thread the message went to (chat_groups); null: none"
             }
           },
           "type": "object",

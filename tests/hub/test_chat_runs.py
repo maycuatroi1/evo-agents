@@ -693,6 +693,11 @@ def test_an_agent_posts_reacts_and_create_makes_a_chat_with_the_origin_who_is_to
     assert nobody.status_code == 409 and f"{STRANGER} (no grant on project {PROJECT})" in nobody.json()["message"]
     there = in_chats(client, worker, spec["id"], "chat/messages", {"body": "Here.", "chat_id": new_chat["id"]})
     assert there.status_code == 201 and there.json()["thread_root_id"] is None
+    paired = in_chats(client, worker, spec["id"], "chats", {"title": "Pair", "agents": ["fixer", "reviewer"]})
+    assert paired.status_code == 201, paired.text
+    assert [a["handle"] for a in paired.json()["agents"]] == ["reviewer", "fixer"]
+    unknown = in_chats(client, worker, spec["id"], "chats", {"title": "Ghost", "agents": ["nobody"]})
+    assert unknown.status_code == 404 and "no agent @nobody" in unknown.json()["message"]
 
 
 def test_the_chat_commands_of_a_step_run_name_a_chat_and_create_one_for_its_dispatcher(client, hub, hub_db):

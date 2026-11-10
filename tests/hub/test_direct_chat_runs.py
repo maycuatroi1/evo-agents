@@ -2,7 +2,9 @@
 criterion a2 of the plan agent-direct-chats names it: each message of the person outside a thread is a task, handed
 to the chat's agent without an @, as a mention would (a new session, dispatched by the sender, hop 1, within
 MAX_RUNS_PER_MESSAGE, whatever the chat's runs cost before); an @ of the agent makes one run, not two; a reply in the thread of the agent's
-answer goes on in that session; with no worker the hub says why in the thread. The prompt of a run in a direct chat
+answer goes on in that session; with no worker the hub says why in the thread. An @ of an agent the chat does not have,
+by its person or by its agent's `worker chat mention`, opens the group chat of the thread (``chat_groups``) and the work
+goes there; an agent the person may not add stays out with why. The prompt of a run in a direct chat
 shows the latest turns (the person's messages and the agent's answers in the threads before) within SNAPSHOT_BYTES,
 the oldest left out first. A group chat is as it was: a message without an @ makes no run.
 
@@ -20,6 +22,7 @@ if not pg.DSN:
 from sqlalchemy import select
 
 from evo_agents.hub import autonomy_card, chat_runs, tables
+from evo_agents.hub.server.chat_runs import AGENT_REPLY_REFUSAL
 from evo_agents.hub.server.chats import NOT_IN_DIRECT
 from tests.hub import test_chat_runs as group_runs
 from tests.hub.live import sql
@@ -32,6 +35,7 @@ from tests.hub.test_chat_runs import (
     claim,
     created,
     ended,
+    in_chats,
     moved,
     reply,
     run_of,
@@ -105,18 +109,111 @@ def test_a_direct_message_without_an_at_hands_the_agent_work_in_a_new_session(cl
     assert run_of(client, hub["owner"], other)["branch"] == f"chat/{other}"
 
 
-def test_an_at_of_the_direct_agent_makes_one_run_and_an_outsider_is_told_to_use_a_group(client, hub, hub_db):
+def opened_groups(db) -> list[tuple]:
+    c = tables.chats
+    return sql(db, select(c.c.id, c.c.title, c.c.opened_from_message_id).where(c.c.opened_from_message_id.is_not(None)))
+
+
+def members(client, headers, chat_id: int) -> tuple:
+    found = client.get(f"/v1/chats/{chat_id}", headers=headers).json()
+    return found["kind"], [p["login"] for p in found["people"]], [a["handle"] for a in found["agents"]]
+
+
+def latest(client, headers, chat_id: int) -> dict:
+    return client.get(f"/v1/chats/{chat_id}/messages", headers=headers).json()["messages"][-1]
+
+
+def test_an_at_of_the_direct_agent_makes_one_run_and_an_outsider_opens_the_group_of_the_thread(client, hub, hub_db):
     chat_worker(client, hub["owner"], "studio", slots=3)
+    chat_worker(client, hub["owner"], "fixer-node", pool="fixer", slots=3)
     chat = direct(client, hub["owner"])
     named = sent(client, hub["owner"], chat["id"], "@reviewer fix the flaky wait test")
     assert handed(named) == [("reviewer", "handle", True, None)]
     assert len(chat_runs_of(hub_db)) == 1
     outsider = sent(client, hub["owner"], chat["id"], "@fixer can you take this one?")
-    refusal = NOT_IN_DIRECT.format(name="fixer")
-    assert handed(outsider) == [("fixer", None, False, refusal), ("reviewer", "direct", True, None)]
+    assert handed(outsider) == [("fixer", None, False, None)]  # the direct chat hands none, to @reviewer neither
+    ((group_id, title, opened_from),) = opened_groups(hub_db)
+    assert (title, opened_from) == ("Reviewer + @fixer: @fixer can you take this one?", outsider["id"])
+    assert members(client, hub["owner"], group_id) == ("group", [OWNER], ["reviewer", "fixer"])
+    copy = latest(client, hub["owner"], group_id)
+    assert (copy["author"]["login"], copy["body"], handed(copy)) == (
+        OWNER,
+        "@fixer can you take this one?",
+        [("fixer", "handle", True, None)],
+    )
     assert len(chat_runs_of(hub_db)) == 2
+    note = thread(client, hub["owner"], chat["id"], outsider["id"])[-1]
+    assert (note["author"]["kind"], note["body"]) == (
+        "hub",
+        f"Opened the group chat [{title}](/chats/{group_id}) of you, @reviewer and @fixer: the work goes on there.",
+    )
+    # the same thread goes on in the same group
+    again = sent(client, hub["owner"], chat["id"], "@fixer the docs too", outsider["id"])
+    assert handed(again) == [("fixer", None, False, None)] and len(opened_groups(hub_db)) == 1
+    assert latest(client, hub["owner"], group_id)["body"] == "@fixer the docs too"
+    note = thread(client, hub["owner"], chat["id"], outsider["id"])[-1]
+    assert (
+        note["body"] == f"The work goes on in the group chat [{title}](/chats/{group_id}) of this thread, with @fixer."
+    )
+    # a new thread opens a group of its own
+    sent(client, hub["owner"], chat["id"], "@fixer another task")
+    assert len(opened_groups(hub_db)) == 2
+
+
+def test_an_outsider_the_person_may_not_add_stays_out_with_why_and_the_direct_agent_takes_the_work(client, hub, hub_db):
+    chat_worker(client, hub["owner"], "studio", slots=2)
+    chat = direct(client, hub["owner"])
+    gone = client.delete(f"/v1/projects/{PROJECT}/agents/fixer", headers=hub["owner"])
+    assert gone.status_code == 200, gone.text
+    outsider = sent(client, hub["owner"], chat["id"], "@fixer can you take this one?")
+    ((name, via, ran, refusal), direct_agent) = handed(outsider)
+    assert (name, via, ran, direct_agent) == ("fixer", None, False, ("reviewer", "direct", True, None))
+    assert refusal.startswith(NOT_IN_DIRECT.format(name="fixer") + ": @fixer was deleted")
+    assert opened_groups(hub_db) == []
     answer = thread(client, hub["owner"], chat["id"], outsider["id"])[-1]
     assert (answer["author"]["kind"], answer["body"]) == ("hub", refusal)
+
+
+def test_the_direct_agent_brings_in_another_agent_through_the_group_of_its_thread(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "studio", slots=3)
+    fixer = chat_worker(client, hub["owner"], "fixer-node", pool="fixer")
+    chat = direct(client, hub["owner"])
+    asked = sent(client, hub["owner"], chat["id"], "Plan the retry rework, then hand step 1 on.")
+    spec = claimed(client, hub, worker, asked)
+    moved(client, worker, spec["id"], "running", session_id="sess-lead")
+    first = in_chats(client, worker, spec["id"], "chat/mentions", {"handle": "fixer", "body": "do step 1 of retry"})
+    assert first.status_code == 201, first.text
+    answer = first.json()
+    group_id = answer["message"]["chat_id"]
+    assert group_id != chat["id"] and (answer["refusal"], answer["group_id"]) == (None, group_id)
+    assert (answer["message"]["body"], answer["message"]["author"]["handle"], answer["message"]["thread_root_id"]) == (
+        "@fixer do step 1 of retry",
+        "reviewer",
+        None,
+    )
+    run = run_of(client, hub["owner"], answer["run_id"])
+    assert (run["profile"], run["dispatched_by"], run["hop"], run["pinned_worker_id"]) == (
+        "fixer",
+        OWNER,
+        2,
+        fixer["id"],
+    )
+    ((_, title, opened_from),) = opened_groups(hub_db)
+    assert (title, opened_from) == ("Reviewer + @fixer: Plan the retry rework, then hand step 1 on.", asked["id"])
+    assert members(client, hub["owner"], group_id) == ("group", [OWNER], ["reviewer", "fixer"])
+    note = thread(client, hub["owner"], chat["id"], asked["id"])[-1]
+    assert (note["author"]["kind"], note["body"]) == (
+        "hub",
+        f"Opened the group chat [{title}](/chats/{group_id}) of you, @reviewer and @fixer: the work goes on there.",
+    )
+    notices = client.get("/v1/me/notifications", params={"kind": "notice"}, headers=hub["owner"]).json()
+    assert any(n["title"] == f"@reviewer added you to {title}" for n in notices["notifications"])
+    second = in_chats(client, worker, spec["id"], "chat/mentions", {"handle": "fixer", "body": "then step 2"}).json()
+    assert second["message"]["chat_id"] == group_id and len(opened_groups(hub_db)) == 1
+    # an @ of it in the agent's reply hands no work, as in a group chat
+    reply(client, worker, spec["id"], "Handed steps 1 and 2 to @fixer.")
+    said = thread(client, hub["owner"], chat["id"], asked["id"])[-1]
+    assert [(m["name"], m["run_id"], m["refusal"]) for m in said["mentions"]] == [("fixer", None, AGENT_REPLY_REFUSAL)]
 
 
 def test_a_reply_in_the_thread_of_a_direct_chat_goes_on_in_its_run_session(client, hub, hub_db):
@@ -142,7 +239,7 @@ def test_an_answer_naming_its_own_agent_is_refused_nothing_and_hands_no_work(cli
     assert answer["author"]["handle"] == "reviewer"
     assert [(m["name"], m["run_id"], m["refusal"]) for m in answer["mentions"]] == [
         ("reviewer", None, None),
-        ("fixer", None, NOT_IN_DIRECT.format(name="fixer")),
+        ("fixer", None, AGENT_REPLY_REFUSAL),
     ]
     assert len(chat_runs_of(hub_db)) == 1
 
