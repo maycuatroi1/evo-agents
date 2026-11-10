@@ -1,15 +1,19 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 
 import type { Feed } from "@/components/chats/feed-model";
 import type { MessageSlot } from "@/components/chats/message-item";
-import { WorkAskCard, WorkExceptionCard } from "@/components/chats/work-ask";
 import type { Chat } from "@/lib/chats";
 import { askAnswer, askPlaces, exceptionPlaces, type WorkCard, workKeys } from "@/lib/work";
 
 import { useChatDecisions } from "./use-chat-decisions";
+
+/** The cards of a sub-task and of an exception load when a work chat first shows one. */
+const WorkAskCard = dynamic(() => import("@/components/chats/work-ask").then((module) => module.WorkAskCard), { ssr: false });
+const WorkExceptionCard = dynamic(() => import("@/components/chats/work-ask").then((module) => module.WorkExceptionCard), { ssr: false });
 
 /** The work chat shown and its card, for what the chat puts under its messages; null in any other chat. */
 export const WorkChatContext = createContext<{ chat: Pick<Chat, "id" | "agents" | "people">; card: WorkCard | null } | null>(null);
