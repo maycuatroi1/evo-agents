@@ -220,7 +220,7 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
 
         return await review_prompt(conn, view)
     if view.kind == "chat":
-        from evo_agents.hub.server.chat_runs import chat_prompt
+        from evo_agents.hub.server.chat_prompts import chat_prompt
 
         repos = [repo.model_dump() for repo in view.repos or []]
         return await chat_prompt(conn, view.id, view.branch, repos, features, ships=ships)

@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import plugin_calls, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plugin_records import Reach
-from evo_agents.hub.server.chat_runs import run_clearers
+from evo_agents.hub.server.chat_prompts import run_clearers
 from evo_agents.hub.server.projects import ProjectAccess, access_of
 from evo_agents.hub.server.security import WEB, Principal, hash_token
 

@@ -21,7 +21,7 @@ pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server ext
 
 import httpx
 import psycopg
-from sqlalchemy import text
+from sqlalchemy import literal, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from evo_agents.hub import bus, wake
@@ -44,7 +44,7 @@ async def _write(engine, *wakes: tuple[str, str], fail: bool = False) -> None:
     """One transaction that wakes ``wakes`` and commits, or raises and rolls back when ``fail``."""
     try:
         async with engine.begin() as conn:
-            await conn.execute(text("select 1"))
+            await conn.execute(select(literal(1)))
             for channel, payload in wakes:
                 await wake.notify(conn, channel, payload)
             if fail:
@@ -116,7 +116,7 @@ def test_with_the_broker_every_listener_gets_a_wake_up_after_the_commit_and_none
             for each in got.values():
                 each.clear()
             async with engine.begin() as conn:
-                await conn.execute(text("select 1"))
+                await conn.execute(select(literal(1)))
                 await wake.notify(conn, CHANNEL, "5")
                 await wake.notify(conn, CHANNEL, "5")
                 await asyncio.sleep(0.5)

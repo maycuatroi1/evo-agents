@@ -85,7 +85,7 @@ test("the sidebar leads to Accounts, which points to the Secrets page while ther
   await expect(page.getByTestId("nav-accounts")).toHaveAttribute("aria-current", "page");
   const empty = main(page).getByTestId("state-empty");
   await expect(empty).toContainText("No model account yet");
-  await expect(empty).toContainText(VAR);
+  await expect(empty).toContainText("evo-agents hub account login");
   await expect(main(page).getByTestId("accounts-secrets-link")).toHaveAttribute("href", "/secrets");
 });
 

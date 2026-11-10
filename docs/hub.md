@@ -447,7 +447,7 @@ that project reaches that level. The hub computes a reader's audience from its d
 out, whose label as it is now they clear, and `grant:<p>:<l>` for each project they hold a grant on and each level of
 its ladder up to the grant's max level. A sink does not narrow it, since the clearance of every sink holds the highest
 audience. The agent of a run holds its owner's audience, and the agent of a chat run what both people its prompt is
-cleared for hold (`chat_runs.run_clearers`): the person who started it and the member whose worker runs it. Every read
+cleared for hold (`chat_prompts.run_clearers`): the person who started it and the member whose worker runs it. Every read
 of a graph asks for it: the `kg_*` tools of REST and of `/mcp`, `kg_more` and the web's graph routes; the review of a
 proposal reads with none, since every member of the project sees what it keeps. So a member of the project who is not
 in a chat sees nothing of it, someone who joins later sees the messages whose labels they clear, and someone who leaves

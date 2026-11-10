@@ -138,6 +138,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from evo_agents.hub.config_env import ConfigError
+from evo_agents.hub.config_env import number as _number
+from evo_agents.hub.config_env import secret as _secret
+from evo_agents.hub.config_env import text as _text
+from evo_agents.hub.config_env import url as _url
 from evo_agents.hub.curator import MAX_TIME_ZONE_CHARS, TIME_ZONE
 from evo_agents.hub.log import dsn_password, register_secret
 from evo_agents.hub.runs import DECISION_WAIT_SECONDS, LEASE_SECONDS
@@ -271,12 +276,6 @@ SERVICE_ACCOUNT_EMAIL = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
 PRIVATE_KEY_PEM = re.compile(
     r"-----BEGIN ((?:RSA )?)PRIVATE KEY-----\n([A-Za-z0-9+/=\n]+)\n-----END \1PRIVATE KEY-----"
 )
-
-
-class ConfigError(ValueError):
-    def __init__(self, variable: str, message: str):
-        super().__init__(message)
-        self.variable = variable
 
 
 @dataclass(frozen=True)
@@ -418,25 +417,6 @@ class HubConfig:
         return [name for name, value in zip(CURATOR_APP_VARIABLES, values, strict=True) if not value]
 
 
-def _text(env: Mapping[str, str], name: str) -> str | None:
-    value = env.get(name, "").strip()
-    return value or None
-
-
-def _number(env: Mapping[str, str], name: str, default, kind=int, minimum=None):
-    raw = _text(env, name)
-    if raw is None:
-        return default
-    try:
-        value = kind(raw)
-    except ValueError:
-        what = "an integer" if kind is int else "a number"
-        raise ConfigError(name, f"{name} must be {what}, got {raw!r}") from None
-    if minimum is not None and value < minimum:
-        raise ConfigError(name, f"{name} must be at least {minimum}, got {raw!r}")
-    return value
-
-
 def _blob_concurrency(env: Mapping[str, str]) -> int:
     name = "EVO_HUB_BLOB_CONCURRENCY"
     value = _number(env, name, DEFAULT_BLOB_CONCURRENCY, minimum=1)
@@ -517,17 +497,6 @@ def _web_time_zone(env: Mapping[str, str]) -> str:
     return value
 
 
-def _url(env: Mapping[str, str], name: str, default: str | None) -> str | None:
-    """An http(s) base URL without a trailing slash, query or fragment."""
-    raw = _text(env, name)
-    if raw is None:
-        return default
-    parts = urlsplit(raw)
-    if parts.scheme not in ("http", "https") or not parts.hostname or parts.query or parts.fragment:
-        raise ConfigError(name, f"{name} must be an http(s) URL such as https://example.org, got {raw!r}")
-    return raw.rstrip("/")
-
-
 def _forwarded_allow_ips(env: Mapping[str, str]) -> str | None:
     """EVO_HUB_FORWARDED_ALLOW_IPS as uvicorn takes it: ``*``, or IP addresses and networks, comma-separated. uvicorn
     reads anything else as a literal that never matches a TCP peer, so a typo would trust nobody without a word."""
@@ -556,14 +525,6 @@ def _admins(env: Mapping[str, str]) -> frozenset[str]:
         if not LOGIN.fullmatch(login):
             raise ConfigError("EVO_HUB_ADMINS", f"EVO_HUB_ADMINS must list GitHub logins, got {login!r}")
     return frozenset(login.lower() for login in logins)
-
-
-def _secret(env: Mapping[str, str], name: str, minimum: int = 1) -> str | None:
-    value = _text(env, name)
-    register_secret(value)
-    if value is not None and len(value) < minimum:
-        raise ConfigError(name, f"{name} must be at least {minimum} characters long")
-    return value
 
 
 def _blob_store(env: Mapping[str, str]) -> dict:
