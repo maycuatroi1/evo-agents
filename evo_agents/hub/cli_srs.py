@@ -489,7 +489,7 @@ def cmd_comments(args) -> int:
         if args.json:
             print_json(found)
         else:
-            _print_threads(args.slug, found)
+            _print_threads(args.slug, found or [])
         return 0
     if args.comments_command in ("resolve", "reopen"):
         found = _object("POST", _path(args.project, *path, str(args.comment), args.comments_command))

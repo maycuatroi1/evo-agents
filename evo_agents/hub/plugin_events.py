@@ -399,7 +399,7 @@ def _settle(claim: _Claim, result: dict | None, error: str | None, retry_after: 
     failed = tried - put_off  # the tries that failed and were not put off
     if later and put_off >= MAX_PUT_OFF:
         outcome, values = "failed", {"state": "failed", "last_error": error}
-    elif later:
+    elif later and retry_after is not None:  # later says so; the test tells the type checker
         outcome, values = "retried", {"next_at": func.now() + put_off_for(retry_after), "last_error": error}
     elif error is not None and failed >= MAX_ATTEMPTS:
         outcome, values = "failed", {"state": "failed", "last_error": error}

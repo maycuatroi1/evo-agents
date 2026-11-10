@@ -45,7 +45,9 @@ async def notify(conn: AsyncConnection, channel: str, payload: str) -> None:
     if not bus.on():
         await conn.execute(_pg_notify(channel, payload))
         return
-    _keep(conn.sync_connection, channel, payload)
+    sync = conn.sync_connection
+    assert sync is not None  # an AsyncConnection inside a transaction holds its connection
+    _keep(sync, channel, payload)
 
 
 def notify_sync(connection: Connection, channel: str, payload: str) -> None:

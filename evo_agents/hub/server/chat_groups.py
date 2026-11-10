@@ -53,7 +53,7 @@ class Opened:
 
     def note(self) -> str:
         """The hub's message in the direct chat's thread: where the work went."""
-        link = f"[{self.title}]({chats.chat_link(self.chat_id)})"
+        link = f"[{self.title}]({chats.chat_link(self.chat_id or 0)})"  # a note names a group that took an agent
         who = ", ".join(f"@{handle}" for handle in self.members)
         if self.made:
             return f"Opened the group chat {link} of you, @{self.lead} and {who}: the work goes on there."

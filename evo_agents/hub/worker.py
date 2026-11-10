@@ -497,6 +497,7 @@ async def deliver_plugin_events(context: JobContext, timestamp: int | None = Non
     from evo_agents.hub.plugin_events import BUS_GRACE_SECONDS, deliver
 
     found = hub(context)
+    assert found.engine is not None  # the hub's worker opens its engine before its first job
     if not bus.on():
         return await deliver(found.engine, config=found.config)
     # The bus carries what falls due; the minute's pass takes what it left a while, and a pass the delivery process

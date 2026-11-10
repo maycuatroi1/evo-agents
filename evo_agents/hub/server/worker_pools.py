@@ -33,6 +33,7 @@ import re
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import Any
 
 import psycopg
 from fastapi import APIRouter, HTTPException, Path, Request, Response
@@ -70,7 +71,11 @@ MAX_NODE_NAME = 100  # as WORKER_NAME takes it
 REFUSED_TOKEN = (
     "the join token is wrong, expired, revoked or used up: create a new one (`evo-agents worker pool token create`)"
 )
-REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 409: {"model": ErrorBody}}
+REFUSALS: dict[int | str, dict[str, Any]] = {
+    403: {"model": ErrorBody},
+    404: {"model": ErrorBody},
+    409: {"model": ErrorBody},
+}
 SETTINGS = ("projects", "slots", "labels", "taints", "accepted_findings", "reap_after_days")
 
 router = APIRouter(prefix="/v1/worker-pools", tags=["worker pools"], responses={401: {"model": ErrorBody}})

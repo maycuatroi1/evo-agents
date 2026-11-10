@@ -151,6 +151,8 @@ def _written(statement, compiled) -> set[str]:
     areas: set[str] = set()
     for write in writes:
         name = _table_name(write.table)
+        if name is None:
+            continue
         areas |= _WATCHED.get(name, set())
         if isinstance(write, Delete):
             areas |= _cascaded().get(name, set())
@@ -377,7 +379,7 @@ class Cache:
             del self._values[kept]
 
     def _client(self, *, ignore_break: bool = False):
-        if not ignore_break and self.clock() < self._down_until:
+        if self.url is None or (not ignore_break and self.clock() < self._down_until):
             return None
         loop = asyncio.get_running_loop()
         client = self._clients.get(loop)

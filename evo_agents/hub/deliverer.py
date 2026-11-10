@@ -83,7 +83,7 @@ class Broker:
         """Publish ``body`` with routing key ``key``, persistent; returns once the broker confirmed it."""
         import aio_pika
 
-        if not self.ready:
+        if not self.ready or self._exchange is None:
             raise ConnectionError("the broker is not connected")
         message = aio_pika.Message(
             json.dumps(body).encode(), content_type="application/json", delivery_mode=aio_pika.DeliveryMode.PERSISTENT
@@ -93,7 +93,7 @@ class Broker:
     async def consume(self, queue: str, key: str, handler) -> None:
         """Declare quorum queue ``queue`` with a single active consumer, bound to the exchange by ``key``, and consume
         it one message at a time with ``handler``, once: the connection restores it after a reconnect."""
-        if queue in self._consumed or not self.ready:
+        if queue in self._consumed or not self.ready or self._connection is None:
             return
         channel = await self._connection.channel()
         await channel.set_qos(prefetch_count=1)
