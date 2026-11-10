@@ -11,7 +11,7 @@ A person holds:
 
 The agent of a run (a principal with a ``RunScope``, on /mcp) holds the audience of the run's owner, the person the
 principal is. The agent of a chat run holds what both people its prompt is cleared for hold
-(``chat_runs.run_clearers``): the person who started it and the member whose worker runs it, when another.
+(``chat_prompts.run_clearers``): the person who started it and the member whose worker runs it, when another.
 
 Every graph read of the hub asks this module: the kg_* tools of REST and /mcp (``kg.tool_result``), kg_more on /mcp,
 and the web's graph pages (``kg_web``); the retrieval eval of the night's measure and of the optimize loop reads with
@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.server.chat_access import cleared_chats
-from evo_agents.hub.server.chat_runs import run_clearers
+from evo_agents.hub.server.chat_prompts import run_clearers
 from evo_agents.hub.server.security import Principal
 
 CHAT_RUN = "chat"  # the kind of a chat run (``runs.kind``)

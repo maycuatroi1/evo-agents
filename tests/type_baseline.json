@@ -13526,14 +13526,6 @@
                     "endColumn": 61,
                     "lineCount": 1
                 }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 40,
-                    "endColumn": 46,
-                    "lineCount": 1
-                }
             }
         ],
         "./evo_agents/hub/server/chat_views.py": [

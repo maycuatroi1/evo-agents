@@ -11,7 +11,7 @@ TURN_SECONDS and a margin, so the lease reaper ends a turn whose job died), then
 3. The model is the run's (the profile's model axis, as ``chat_runs._start`` picked it), through the provider accounts
    the run may use (``gateway_accounts.usable_accounts``), with a key of the gateway made for the turn alone and
    revoked at its end.
-4. The prompt is the worker's (``chat_runs.chat_prompt``, the same rules), the profile's instructions and ON_HUB, and
+4. The prompt is the worker's (``chat_prompts.chat_prompt``, the same rules), the profile's instructions and ON_HUB, and
    the messages of the run's inbox, which the turn takes. The model calls the tools of ``hub_tools`` for at most
    MAX_ROUNDS rounds and TURN_SECONDS; messages that reach the inbox meanwhile join before the next round. A round
    whose tools asked an agent or escalated ends the turn, as the worker's agent ends its turn after the command: the
@@ -39,7 +39,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from evo_agents.hub import runs, system_context, system_spec, tables
 from evo_agents.hub.server import gateway_accounts, gateway_sync, hub_tools, orchestrator, system_traces
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
-from evo_agents.hub.server.chat_runs import agent_reply, chat_prompt
+from evo_agents.hub.server.chat_prompts import chat_prompt
+from evo_agents.hub.server.chat_runs import agent_reply
 from evo_agents.hub.server.gateway_client import GatewayClient, GatewayError, GatewayOff
 from evo_agents.hub.server.gateway_leases import used_with
 from evo_agents.hub.server.notifications import notify
