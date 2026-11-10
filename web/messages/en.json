@@ -4122,17 +4122,9 @@
       "offDesignLabel": "Off design from {from} to {to}: {count, plural, one {# crossing} other {# crossings}}",
       "a11yNode": "Select a box to see its numbers.",
       "canvas": "What goes through the agent system",
-      "panel": "Numbers and traces",
-      "observing": "Revision {revision} as it runs: each box's state and numbers, and what crossed each edge.",
+      "panel": "Numbers of the box selected",
       "streamFailing": "Live updates stopped; trying again.",
       "streamEnded": "Live updates ended: you may no longer read this project.",
-      "recentTraces": "Recent traces",
-      "tracesFailed": "The traces did not load.",
-      "noTraces": "No traces yet. A message to the entry agent opens one.",
-      "traceTitle": "Trace {id}",
-      "traceRuns": "{runs, plural, one {# run} other {# runs}}",
-      "traceErrors": "{count, plural, one {# error} other {# errors}}",
-      "traceOff": "{count} off design",
       "seconds": "{seconds} s",
       "closeDetail": "Close the numbers",
       "detail": {
@@ -4144,6 +4136,113 @@
         "tokens": "Tokens",
         "usd": "Cost",
         "scope": "Over the system's last 50 traces you may read."
+      },
+      "work": {
+        "summary": {
+          "label": "Work of the last 24 hours",
+          "open": "Open",
+          "needsPerson": "Needs a person",
+          "failed": "Failed",
+          "closeTime": "Median time to close",
+          "cost": "Cost",
+          "withheld": "{count, plural, one {# work you may not read left out} other {# works you may not read left out}}",
+          "failedToLoad": "The numbers of the last 24 hours did not load."
+        },
+        "filters": {
+          "label": "Show work",
+          "all": "All",
+          "needs_you": "Needs you",
+          "running": "Running",
+          "failed": "Failed",
+          "done": "Done",
+          "count": "{count, plural, one {# work} other {# works}}",
+          "shown": "{shown} of {total}"
+        },
+        "status": {
+          "running": "Running",
+          "needs_person": "Needs a person",
+          "failed": "Failed",
+          "done": "Done",
+          "unknown": "Unknown"
+        },
+        "columns": {
+          "work": "Work",
+          "status": "Status",
+          "agent": "At",
+          "waiting": "Waits for",
+          "time": "Time",
+          "runs": "Runs",
+          "cost": "Cost",
+          "open": "Open"
+        },
+        "listLabel": "Work of {name}",
+        "caption": "The work of agent system {name}, the newest first",
+        "untitled": "Work {id}",
+        "noAgent": "None",
+        "waitsRun": "{agent} to answer",
+        "waitsPerson": "{login} at the run",
+        "waitsDecision": "{login} to answer: {question}",
+        "waitsNothing": "Nothing",
+        "costOfBudget": "{usd} of {budget}",
+        "budgetLabel": "Cost of work {id} against its budget",
+        "runs": "{count, plural, one {# run} other {# runs}}",
+        "openChat": "Work chat",
+        "openChatLabel": "Open the work chat of work {id}",
+        "openTrace": "Trace",
+        "openTraceLabel": "Open the trace of work {id}",
+        "select": "Show work {id} on the timeline and the map",
+        "mobileMeta": "At {agent}, waits for {waiting}, {runs}, {cost}",
+        "empty": "No work yet",
+        "emptyDescription": "A message to the entry agent starts one.",
+        "noMatch": "No work matches this filter.",
+        "showAll": "Show all",
+        "failedToLoad": "The work did not load.",
+        "retry": "Try again",
+        "duration": {
+          "hours": "{hours}h {minutes}m",
+          "minutes": "{minutes}m {seconds}s",
+          "seconds": "{seconds}s"
+        },
+        "detail": {
+          "label": "Work {id}",
+          "close": "Close work {id}",
+          "failedToLoad": "This work did not load.",
+          "stats": "{runs}, {cost}, {time}",
+          "goal": "Goal",
+          "doneWhen": "Done when"
+        },
+        "timeline": {
+          "title": "Timeline by agent",
+          "empty": "No run of this work has started yet.",
+          "axis": "Time since the work started",
+          "lane": "Runs of {agent}",
+          "bar": "{kind}, {start} to {end}",
+          "barOpen": "{kind}, since {start}",
+          "mark": "Asked {login}: {question}",
+          "markAnswered": "Asked {login}, answered: {question}",
+          "someone": "a person",
+          "legend": "Key to the timeline",
+          "kinds": {
+            "queued": "Queued",
+            "running": "Running",
+            "done": "Done",
+            "failed": "Failed",
+            "parked": "Parked",
+            "waiting": "Waiting for an answer",
+            "needsPerson": "Needs a person"
+          }
+        },
+        "handoffs": {
+          "title": "Hand-offs",
+          "count": "{count, plural, one {# hand-off} other {# hand-offs}}",
+          "offDesign": "{count} off design",
+          "empty": "No hand-offs: the entry agent did the work alone.",
+          "route": "{from} to {to}",
+          "refused": "Refused",
+          "offDesignTag": "Off design"
+        },
+        "map": "Path of work {id} through the system",
+        "mapAll": "What goes through the system"
       }
     },
     "traceView": {

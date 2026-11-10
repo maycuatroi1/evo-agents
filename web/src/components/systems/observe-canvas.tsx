@@ -10,7 +10,8 @@ import type { Agent } from "@/lib/agents";
 import type { EdgeKind, Spec, SpecNode } from "@/lib/systems";
 import { bendsOf, focusOf, type Line, type Pointer } from "@/lib/systems-canvas";
 import { drawnAt, NODE_SIZE, ROUND_KINDS } from "@/lib/systems-layout";
-import type { EdgeActivity, ExtraEdge, Numbers, NodeState } from "@/lib/systems-observe";
+import { type EdgeActivity, edgeKey, type ExtraEdge, type Numbers, type NodeState } from "@/lib/systems-observe";
+import type { WorkPath } from "@/lib/systems-work";
 
 import { SystemEdge, type SystemFlowEdge } from "./designer-edge";
 import { handlesOf, type SystemFlowNode, SystemNode } from "./designer-nodes";
@@ -19,6 +20,8 @@ import { SystemLegend } from "./system-legend";
 const NODE_TYPES = { system: SystemNode };
 const EDGE_TYPES = { system: SystemEdge };
 const NO_UPGRADE = () => undefined;
+/** Room around the drawing when it fits the view: the words under a node and its numbers hang below and beside it. */
+const FIT = { padding: { top: "32px", bottom: "72px", left: "96px", right: "96px" }, maxZoom: 1 } as const;
 
 export type Observed = {
   states: ReadonlyMap<string, NodeState>;
@@ -28,6 +31,8 @@ export type Observed = {
   edges: ReadonlyMap<number, EdgeActivity>;
   extra: readonly ExtraEdge[];
   ghosts: readonly { id: string; position: { x: number; y: number } }[];
+  /** The path of the work selected: what is off it fades, its lines stand out. Null draws every work. */
+  path: WorkPath | null;
 };
 
 type Props = {
@@ -37,6 +42,8 @@ type Props = {
   agents: readonly Agent[];
   selected: string | null;
   onSelect: (node: string | null) => void;
+  /** What the canvas shows, for a screen reader. */
+  label?: string;
 };
 
 /**
@@ -44,7 +51,7 @@ type Props = {
  * joined, each node with its state and numbers and each line with what crossed it; the edges the design lacks, and the
  * agents outside it they reach, are drawn too. The pointer on a node or a line fades what it does not touch.
  */
-export function ObserveCanvas({ spec, observed, agents, selected, onSelect }: Props) {
+export function ObserveCanvas({ spec, observed, agents, selected, onSelect, label }: Props) {
   const t = useTranslations("systems.designer");
   const o = useTranslations("systems.observe");
   const format = useFormatter();
@@ -81,11 +88,27 @@ export function ObserveCanvas({ spec, observed, agents, selected, onSelect }: Pr
   const optimized = useMemo(() => new Set(spec.edges.filter((edge) => edge.kind === "optimizes").map((edge) => edge.to)), [spec.edges]);
   const kinds = useMemo(() => new Set<EdgeKind>(spec.edges.map((edge) => edge.kind)), [spec.edges]);
 
+  const titles = useMemo(
+    () =>
+      new Map(
+        spec.nodes.map((node) => {
+          const face = node.profile ? faces.get(node.profile) : undefined;
+          // An agent without a label goes by its profile's name: its @handle is already the pin under it.
+          return [node.id, node.label || (node.kind === "kg" ? (node.graph ?? "default") : (face?.name ?? (node.profile ? `@${node.profile}` : t(`kinds.${node.kind}`))))];
+        }),
+      ),
+    [spec.nodes, faces, t],
+  );
+  const titleOf = useMemo(() => (id: string) => titles.get(id) ?? faces.get(id.replace(/^@/, ""))?.name ?? id, [titles, faces]);
+  const path = observed.path;
+  /** Off the path of the work selected, or away from the pointer. */
+  const nodeDimmed = (id: string) => (hovered ? !hovered.nodes.has(id) : false) || (path !== null && !path.nodes.has(id));
+  const lineDimmed = (id: string, from: string, to: string) => (hovered ? !hovered.lines.has(id) : false) || (path !== null && !path.edges.has(edgeKey(from, to)));
+
   const nodes = useMemo<SystemFlowNode[]>(() => {
     const placed = spec.nodes.map((node): SystemFlowNode => {
       const face = node.profile ? (faces.get(node.profile) ?? null) : null;
-      // An agent without a label goes by its profile's name: its @handle is already the pin under it.
-      const title = node.label || (node.kind === "kg" ? (node.graph ?? "default") : (face?.name ?? (node.profile ? `@${node.profile}` : t(`kinds.${node.kind}`))));
+      const title = titleOf(node.id);
       const state = observed.states.get(node.id) ?? "idle";
       const numbers = numbersOf(node);
       return {
@@ -113,7 +136,7 @@ export function ObserveCanvas({ spec, observed, agents, selected, onSelect }: Pr
           onUpgrade: NO_UPGRADE,
           face,
           optimized: optimized.has(node.id),
-          dimmed: hovered ? !hovered.nodes.has(node.id) : false,
+          dimmed: nodeDimmed(node.id),
           observed: { state, numbers, ghost: false },
         },
       };
@@ -130,10 +153,10 @@ export function ObserveCanvas({ spec, observed, agents, selected, onSelect }: Pr
         className: "system-node-round",
         draggable: false,
         connectable: false,
-        ariaLabel: o("ghostLabel", { name: id }),
+        ariaLabel: o("ghostLabel", { name: titleOf(id) }),
         data: {
           node,
-          title: id,
+          title: titleOf(id),
           level: null,
           problems: [],
           newer: null,
@@ -143,13 +166,15 @@ export function ObserveCanvas({ spec, observed, agents, selected, onSelect }: Pr
           canChange: false,
           onUpgrade: NO_UPGRADE,
           face: faces.get(node.profile ?? "") ?? null,
-          dimmed: hovered ? !hovered.nodes.has(id) : false,
+          dimmed: nodeDimmed(id),
           observed: { state: observed.states.get(id) ?? "idle", numbers: "", ghost: true },
         },
       };
     });
     return [...placed, ...ghosts];
-  }, [spec.nodes, observed, selected, numbersOf, faces, optimized, hovered, o, t]);
+    // nodeDimmed reads hovered and observed.path only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spec.nodes, observed, selected, numbersOf, faces, optimized, hovered, titleOf, o, t]);
 
   const edges = useMemo<SystemFlowEdge[]>(() => {
     const designed = spec.edges.map((edge, index): SystemFlowEdge => {
@@ -168,11 +193,11 @@ export function ObserveCanvas({ spec, observed, agents, selected, onSelect }: Pr
           description: edge.description,
           level: null,
           selected: false,
-          label: o("edgeLabel", { kind: t(`edgeKinds.${edge.kind}`), from: edge.from, to: edge.to, count: seen.count }),
+          label: o("edgeLabel", { kind: t(`edgeKinds.${edge.kind}`), from: titleOf(edge.from), to: titleOf(edge.to), count: seen.count }),
           onSelect: () => onSelect(edge.to),
           bend: bends.get(id) ?? 0,
-          emphasis: focus?.lines.has(id) ?? false,
-          dimmed: hovered ? !hovered.lines.has(id) : false,
+          emphasis: (focus?.lines.has(id) ?? false) || (path?.edges.has(edgeKey(edge.from, edge.to)) ?? false),
+          dimmed: lineDimmed(id, edge.from, edge.to),
           observed: { count: seen.count, lit: seen.lit, offDesign: false },
         },
       };
@@ -190,17 +215,19 @@ export function ObserveCanvas({ spec, observed, agents, selected, onSelect }: Pr
           description: "",
           level: null,
           selected: false,
-          label: o("offDesignLabel", { from: edge.from, to: edge.to, count: edge.count }),
+          label: o("offDesignLabel", { from: titleOf(edge.from), to: titleOf(edge.to), count: edge.count }),
           onSelect: () => onSelect(edge.to),
           bend: bends.get(id) ?? 0,
-          emphasis: focus?.lines.has(id) ?? false,
-          dimmed: hovered ? !hovered.lines.has(id) : false,
+          emphasis: (focus?.lines.has(id) ?? false) || (path?.edges.has(edgeKey(edge.from, edge.to)) ?? false),
+          dimmed: lineDimmed(id, edge.from, edge.to),
           observed: { count: edge.count, lit: edge.lit, offDesign: true },
         },
       };
     });
     return [...designed, ...extra];
-  }, [spec.edges, observed, onSelect, bends, focus, hovered, showOptimizes, o, t]);
+    // lineDimmed reads hovered and observed.path only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spec.edges, observed, onSelect, bends, focus, hovered, showOptimizes, titleOf, o, t]);
 
   return (
     <ReactFlow<SystemFlowNode, SystemFlowEdge>
@@ -211,7 +238,7 @@ export function ObserveCanvas({ spec, observed, agents, selected, onSelect }: Pr
       minZoom={0.25}
       maxZoom={1.75}
       fitView
-      fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+      fitViewOptions={FIT}
       nodesDraggable={false}
       nodesConnectable={false}
       deleteKeyCode={null}
@@ -224,13 +251,13 @@ export function ObserveCanvas({ spec, observed, agents, selected, onSelect }: Pr
       onNodeMouseLeave={() => setPointer(null)}
       onEdgeMouseEnter={(_, edge) => setPointer({ line: edge.id })}
       onEdgeMouseLeave={() => setPointer(null)}
-      onInit={() => void flow.fitView({ padding: 0.2, maxZoom: 1 })}
+      onInit={() => void flow.fitView(FIT)}
       ariaLabelConfig={{
         "node.a11yDescription.default": o("a11yNode"),
         "node.a11yDescription.keyboardDisabled": o("a11yNode"),
         "edge.a11yDescription.default": o("a11yNode"),
       }}
-      aria-label={o("canvas")}
+      aria-label={label ?? o("canvas")}
     >
       <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--border-strong)" />
       <Panel position="bottom-left">
