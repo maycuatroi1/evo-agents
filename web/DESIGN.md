@@ -1268,7 +1268,8 @@ Shared pieces built on them:
   page shows a live indicator only when its stream drops, as every chat does.
   The work chat's head adds, beside its title, the state pill and Work #N (the trace's id, a mono `Tag`), and over who
   is in it the system (linking to Observe, `/p/{project}/systems/{slug}?mode=observe`) and the coordinator (the
-  system's entry agent, `@handle` in mono). Under the head the card is pinned (`work-card.tsx`) on `surface-sunken`:
+  system's entry agent, `@handle` in mono). The breadcrumb names the chat by the work's title too (`use-chat-title.ts`),
+  the chat's own title until the card is read. Under the head the card is pinned (`work-card.tsx`) on `surface-sunken`:
   Work card, what the work waits for, and Show details / Hide details (`aria-expanded`); the figures in four cells
   (runs and cost of the trace's limits, hop of max hops, time); unfolded, the goal and Done when (or "No goal set yet"
   in `fg-subtle` italics), the sub-task table (agent, state as the run's pill, brief from 640 px, cost; the agent's
