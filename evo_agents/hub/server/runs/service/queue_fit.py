@@ -9,8 +9,10 @@ reads are those of the run's owner and those shared in the run's project, the wo
 run of an agent in pool mode, the nodes of the agent's pool (``agent_placement``), whoever owns them.
 
 A worker fits when nothing but a wait keeps it from the run: no free slot, a run of another member on a shared worker,
-a lost attempt of the run while it is not steady yet, another run of the plan editing the same files, or no free
-browser. Anything else, an offline worker included, keeps it from the run until someone acts."""
+a lost attempt of the run while it is not steady yet, another run of the plan editing the same files, no free
+browser, or Chromium the hub asked it to install less than ``browser_install.UNFINISHED_AFTER`` ago. Anything else,
+an offline worker included, keeps it from the run until someone acts; a worker of the run's owner that lacks only
+Chromium gets the hub's request to install it on the reaper's next pass (``browser_install.ask_for_queued``)."""
 
 from __future__ import annotations
 
@@ -21,7 +23,7 @@ from sqlalchemy import and_, exists, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
-from evo_agents.hub.server import agent_placement, kg_shared_pool, worker_placement
+from evo_agents.hub.server import agent_placement, browser_install, kg_shared_pool, worker_placement
 from evo_agents.hub.server.profile_store import profile_of, profile_select
 from evo_agents.hub.server.runs.service import claim_rules, claims, overlap
 from evo_agents.hub.server.runs.service.candidates import PoolCandidate, RerunCandidates, WorkerCandidate
@@ -30,13 +32,14 @@ from evo_agents.hub.server.runs.service.worker_fit import OFFLINE, worker_proble
 
 @dataclass
 class Verdict:
-    """One worker for a queued run: what keeps it from the run until someone acts (``blocking``), and what it waits
-    for (``waiting``)."""
+    """One worker for a queued run: what keeps it from the run until someone acts (``blocking``, with the key of each
+    in ``blocked_by``), and what it waits for (``waiting``)."""
 
     row: object
     claimer: claim_rules.Claimer
     blocking: list[str] = field(default_factory=list)
     waiting: list[str] = field(default_factory=list)
+    blocked_by: list[str] = field(default_factory=list)
 
     @property
     def fit(self) -> bool:
@@ -107,6 +110,7 @@ def _workers(run, home: agent_placement.Home | None):
             held.label("holding"),
             literal(0).label("others"),
             *worker_placement.columns(w),
+            *browser_install.columns(),
         )
         .where(w.c.revoked_at.is_(None), who)
         .order_by(w.c.owner_id != run.dispatched_by, w.c.id)
@@ -225,10 +229,33 @@ def _profile_reason(row, run, profile, home) -> tuple[str, bool]:
     )
 
 
+def _minutes_since(at: datetime) -> int:
+    return int((datetime.now(UTC) - at).total_seconds() // 60)
+
+
 def _browser_reason(row, run, profile, home) -> tuple[str, bool]:
-    if runs.BROWSER not in (row.features or ()):
-        return "starts no browser, and the run asks for a Chromium of its own", False
-    return "has no free browser, or another run holds the run's browser identity: it takes the run then", True
+    features = row.features or ()
+    if runs.BROWSER in features:
+        return "has no free browser, or another run holds the run's browser identity: it takes the run then", True
+    lacks = "starts no browser, and the run asks for a Chromium of its own"
+    install = _owners_command(row, run, "evo-agents worker browser install")
+    if browser_install.is_open(row):
+        minutes = _minutes_since(row.browser_install_requested_at)
+        if datetime.now(UTC) - row.browser_install_requested_at < browser_install.UNFINISHED_AFTER:
+            return f"{lacks}: it installs the Chromium asked {minutes} min ago, and takes the run then", True
+        return f"{lacks}: the Chromium asked {minutes} min ago is not installed yet; on its machine, {install}", False
+    if runs.BROWSER_INSTALL not in features:
+        return f"{lacks}: on its machine, {install}, or update its daemon so the hub installs one", False
+    if browser_install.held_back(row):
+        how = row.browser_install_outcome
+        why = f" ({row.browser_install_reason})" if row.browser_install_reason else ""
+        return f"{lacks}, and its last install from the hub ended {how}{why}: on its machine, {install}", False
+    if row.owner_id != run.dispatched_by:
+        return (
+            f"{lacks}: its owner {row.owner} installs one with Install browser, or runs `evo-agents worker browser install`",
+            False,
+        )
+    return f"{lacks}: the hub asks it to install one within a minute", False
 
 
 def _agent_pool_reason(row, run, profile, home) -> tuple[str, bool]:
@@ -306,26 +333,33 @@ async def _verdict(conn: AsyncConnection, run, row, profile, home) -> Verdict:
     claimer = await claim_rules.read_claimer(conn, row, worker_placement.Placement.of(row))
     verdict = Verdict(row=row, claimer=claimer)
 
-    def add(reason: tuple[str, bool]) -> None:
-        (verdict.waiting if reason[1] else verdict.blocking).append(reason[0])
+    def add(key: str, reason: tuple[str, bool]) -> None:
+        if reason[1]:
+            verdict.waiting.append(reason[0])
+        else:
+            verdict.blocking.append(reason[0])
+            verdict.blocked_by.append(key)
 
     if not row.online:
-        add((f"is offline: {_ago(row.last_heartbeat_at)}; start its daemon (`evo-agents worker service`)", False))
+        add(
+            "offline",
+            (f"is offline: {_ago(row.last_heartbeat_at)}; start its daemon (`evo-agents worker service`)", False),
+        )
     elsewhere = run.project_id not in claimer.served  # the project it takes no run of says why: no checkout follows
     for key in claimer.stops():
         if not (key == "checkout" and elsewhere):
-            add(_stop_reasons(key, row, run, claimer))
+            add(key, _stop_reasons(key, row, run, claimer))
     failed = await _failed(conn, run.id, claimer.conditions())
     for key in failed:
         if key == "queued" or (key == "checkout" and elsewhere):
             continue
         if key == "dispatcher":
             for reason in await _dispatcher_reasons(conn, row, run):
-                add(reason)
+                add(key, reason)
             continue
-        add(_condition_reason(key, row, run, profile, home))
+        add(key, _condition_reason(key, row, run, profile, home))
     if not failed and run.id in await overlap.blocked(conn, list(claimer.served)):
-        add(("waits for another run of the plan that edits the files the step names", True))
+        add("overlap", ("waits for another run of the plan that edits the files the step names", True))
     return verdict
 
 
@@ -336,7 +370,8 @@ def _distance(verdict: Verdict) -> tuple:
     return (not row.serves, not row.online, len(verdict.blocking), verdict.claimer.holding - row.slots, row.id)
 
 
-def _nearest(verdicts: list[Verdict]) -> Verdict:
+def nearest(verdicts: list[Verdict]) -> Verdict:
+    """The worker of ``verdicts`` nearest to taking the run (``_distance``)."""
     return min(verdicts, key=_distance)
 
 
@@ -357,12 +392,12 @@ def _diagnosis(run, verdicts: list[Verdict], home) -> str | None:
         )
     if not any(verdict.row.serves for verdict in verdicts):
         own = [v for v in verdicts if v.row.owner_id == run.dispatched_by] or verdicts
-        nearest = _nearest(own)
-        command = f"evo-agents worker projects --worker {nearest.row.name} --add {project}"
-        return f"no worker serves project {project}: {_owners_command(nearest.row, run, command)}"
-    nearest = _nearest(verdicts)
+        closest = nearest(own)
+        command = f"evo-agents worker projects --worker {closest.row.name} --add {project}"
+        return f"no worker serves project {project}: {_owners_command(closest.row, run, command)}"
+    closest = nearest(verdicts)
     where = f"no node of pool {home.pool} can take it" if home is not None else "no worker can take it"
-    return f"{where}; the nearest, {nearest.row.name}, {'; '.join(nearest.blocking)}"
+    return f"{where}; the nearest, {closest.row.name}, {'; '.join(closest.blocking)}"
 
 
 async def _profile(conn: AsyncConnection, run):
