@@ -80,10 +80,12 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("credential_request", JSONB(none_as_null=True)),
         # a merge approval: the head and the scope of the request its answer holds for (0184, ``approval_heads``)
         Column("approval", JSONB(none_as_null=True)),
+        Column("awaits_run_id", BigInteger),  # the run asked whose end answers this wait of an agent ask (0234)
         ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
         ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="decisions_run_id_fkey"),
+        ForeignKeyConstraint(["awaits_run_id"], ["runs.id"], ondelete="SET NULL", name="decisions_awaits_run_id_fkey"),
         PrimaryKeyConstraint("id", name="decisions_pkey"),
         Index("decisions_run_idx", "run_id", "id"),
     )

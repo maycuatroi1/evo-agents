@@ -94,7 +94,7 @@ async def _granted(conn: AsyncConnection, plugin: str, project_id: int) -> bool:
 
 async def _bridgeable(conn: AsyncConnection, user: Principal, chat: ChatAccess, kind: str) -> str:
     """The plugin of ``kind``, once ``user`` may bridge ``chat`` to a group of it; the refusal otherwise."""
-    if chat.kind != chats.GROUP:
+    if chat.kind not in (chats.GROUP, chats.WORK):  # a work chat is a group chat the hub opened
         raise HTTPException(409, f"chat {chat.chat_id} is not a group chat: only a group chat is bridged")
     if not chat.projects:
         raise HTTPException(409, f"chat {chat.chat_id} has no agents: no project's sink could let its messages out")

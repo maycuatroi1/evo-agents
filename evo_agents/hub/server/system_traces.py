@@ -227,7 +227,7 @@ async def join(conn: AsyncConnection, run_id: int, *, previous_id: int | None = 
     m = tables.chat_messages
     message = None
     if row.chat_message_id is not None:
-        query = select(m.c.author_user_id, m.c.run_id).where(m.c.id == row.chat_message_id)
+        query = select(m.c.author_user_id, m.c.run_id, m.c.copied_from_id).where(m.c.id == row.chat_message_id)
         message = (await conn.execute(query)).one_or_none()
     previous = await _span_of(conn, previous_id)
     same_message = previous is not None and previous.message_id == row.chat_message_id
@@ -245,6 +245,7 @@ async def join(conn: AsyncConnection, run_id: int, *, previous_id: int | None = 
     elif (
         message is not None
         and message.author_user_id is not None
+        and message.copied_from_id is None  # a copy from a work chat goes on in its trace (``work_chats``)
         and (entry := await _system_row(conn, tables.agent_systems.c.entry_profile_id == row.profile_id))
     ):
         held = entry

@@ -175,11 +175,12 @@ async def insert_message(
     via: str | None = None,
     via_bridge: int | None = None,
     from_output_id: int | None = None,
+    copied_from_id: int | None = None,
 ) -> tuple[int, int]:
     """Store a message of a person, an agent or the hub (neither) in the chat, with the chat's label now, and its
     event, hand it to the chat's bridges but ``via_bridge``, the one it came in by (``via`` its kind of channel), and
     queue the builds of the graphs that hold it; (its id, its seq). ``from_output_id`` is the interactive answer a
-    person sent it from."""
+    person sent it from, ``copied_from_id`` the message of another chat it copies (``work_chats``)."""
     seq = await next_seq(conn, chat.chat_id)
     cm = tables.chat_messages
     statement = (
@@ -195,6 +196,7 @@ async def insert_message(
             label=chat.label,
             via=via,
             from_output_id=from_output_id,
+            copied_from_id=copied_from_id,
         )
         .returning(cm.c.id)
     )

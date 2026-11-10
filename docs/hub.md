@@ -829,7 +829,8 @@ the asker's edges is refused unless it gives `--reason`, which the span keeps; a
 is recorded off design with no reason. Only the agents of a system meet this rule. The metrics count, per node and per
 edge, the spans, the errors, the spans off design, the p50 and last seconds, the tokens and the cost.
 
-A trace follows its chat's audience: a member of the system's project reads it when they may read the chat. A span
+A trace follows its chats' audience: a member of the system's project reads it when they may read the chat that
+opened it or its work chat (Work chats). A span
 of a run of another project shows its node, edge, state and `gen_ai.*` attributes to everyone who reads the trace,
 and its message, reason and other attributes only to those with a grant on that project (`content_withheld`).
 
@@ -878,6 +879,45 @@ evo-agents hub system metrics support --project northwind --days 7 --traces
 `limits.trace_runs` (12) and `limits.trace_usd` (2) cap a trace: its runs, counted through `spawned_by_run_id`, and
 their cost. Past either, the next ask or mention of the trace is refused with the limit it passed, and a `refused`
 span says so.
+
+### Work chats
+
+The first hand-off of a trace opens its work chat: one group chat of kind `work` (`chats.WORK`), where the agents the
+trace's work goes to answer, each in a thread of its own (`evo_agents/hub/server/work_chats.py`, migration 0234). A
+hand-off is an agent's ask (Agents across projects), an escalation, or any other thread of the Orchestrator about a
+run of the trace (The Orchestrator). `system_traces.work_chat_id` names the chat; a trace with no hand-off has none.
+An advisory lock per trace, under which that column is read again, makes concurrent hand-offs open one chat. Its title
+is "Work: " and the start of the trace's first message.
+
+Its creator is the person who opened the trace, who gets no `chat_added` notice. The hub puts in it the coordinator
+(the system's entry agent) and each agent the work goes to, as its other flows put agents (`chat_members.put_agent`,
+sharing nothing), and the person at the origin of the work. Everywhere the hub tells chats apart by kind, a work chat
+counts as a group chat: mentions, replies, bridges, summaries.
+
+An ask puts its question, as a message of the asking agent, in the thread of the agent asked when it has one in the
+work chat, so its session, worktree and branch go on; else on the main line, where it starts that thread. Asking the
+same agent again goes back to that thread: to the run's inbox while it runs, to its session once it ended. The hub's
+lines about the ask (asked, answered, refused, gave no answer, withheld, escalated) go in the work chat, in the thread
+of the agent asked when there is one. The asking run parks and resumes with the answer as before; the hop limit, the
+budget, the edges, the reason, the brief and the forward are the same.
+
+The coordinator keeps one session: the thread of the trace's first message, in the chat that opened the trace. Its
+final answer stays there. When the coordinator is asked, the question goes on the work chat's main line and a copy of
+it into that thread, which takes the work. What the coordinator writes in that thread is copied onto the work chat's
+main line, and a message of the person who opened the trace on that main line that mentions no agent goes to the
+coordinator's session as a copy in that thread; another person is told to mention the agent the message is for. A copy
+names the message it copies (`chat_messages.copied_from_id`) and hands no work. The coordinator's words are copied only
+while every project of its chat is one of the work chat's too, so a label never reaches a chat with a wider audience.
+
+An ask goes to the origin person's direct chat with the agent, as an ask outside a system does, and a line of the hub
+in the work chat names the agent, its project and the run, when the agent is of another project than the system's,
+when it would put more than `chats.MAX_AGENTS` agents (10) in the chat, or when a member does not clear the label it
+would give the chat.
+
+Schema 0234 adds `system_traces.work_chat_id`, `chat_messages.copied_from_id` and `decisions.awaits_run_id` (the run
+asked whose end answers the wait of an ask, so two asks that reach one session are both answered), all null for
+everything before and set to null when what they name is deleted, and lets `chats.kind` be `work`. Going back makes
+every work chat a group chat and drops the three columns.
 
 ### Hub runtime
 
@@ -948,8 +988,10 @@ evo-agents hub agent edit lumen-helper --project northwind --runs-on hub --allow
 
 An agent with an `orchestrates` edge from the system's Orchestrator has the Orchestrator for its triage, in place of
 the project's triage chat (`evo_agents/hub/server/orchestrator.py`). The hub opens a thread to the Orchestrator in the
-system's ops chat, "Ops: SLUG" (`agent_systems.ops_chat_id`, migration 0221). It makes that chat the first time, with
-the system's creator in it, and puts the Orchestrator and the person at the origin of the work in it. The thread's
+work chat of the run's trace (Work chats), which it opens when the trace has none, and puts the Orchestrator and the
+person at the origin of the work in it. For a run of no trace, or when the work chat cannot take the Orchestrator, the
+thread is in the system's ops chat, "Ops: SLUG" (`agent_systems.ops_chat_id`, migration 0221), which the hub makes the
+first time with the system's creator in it, and a line in the work chat says where the thread went. The thread's
 first message is the hub's. It names the rule, the agent, its run and trace, and the spans that show it, then mentions
 the Orchestrator, which starts its chat run for the person at the origin at the hop of the work. The message carries
 the run it is about, so the Orchestrator's run joins that trace under the run's span. `orchestrator_threads` keeps
@@ -980,7 +1022,8 @@ it has three more actions (`orchestrator_actions.py`; `docs/workers.md`, Failure
 - reassign: the work goes to another agent node of the system at the hop of the work, with the escalation's wait.
 - ask-owner: a decision of category `triage` for the person at the origin of the work.
 
-Each posts a `Decision:` line in the thread and writes the audit row `orchestrator.answer`, `orchestrator.reassign` or
+Answer and reassign hand their work in the chat of the thread, so in the work chat for a trace that has one. Each
+posts a `Decision:` line in the thread and writes the audit row `orchestrator.answer`, `orchestrator.reassign` or
 `orchestrator.ask_owner`, whose target names the system, the thread, the rule, the agent and the Orchestrator's run.
 Answer and reassign close the thread. An escalation adds no hop, the trace's budget does not refuse it, and the work
 the Orchestrator reassigns keeps its hop: the hop limit of 3 stays as it is. An agent with no `orchestrates` edge
@@ -1347,8 +1390,10 @@ Who may give an agent work, and whether it takes work at all, is one module, `ev
 a mention in a chat (`chat_runs.hand_work`), an ask and the list of agents a person may chat with call the same
 functions, so they never disagree.
 
-Otherwise the hub opens the origin person's direct chat with the agent asked and posts the question there as a message
-of the asking agent, which starts a thread. The run it hands is a chat run of the agent asked, on its pool,
+Otherwise the hub posts the question as a message of the asking agent: for a run of a trace of an agent system, in
+the trace's work chat (Work chats), else in the origin person's direct chat with the agent asked, where it starts a
+thread. An agent of another project than the system's still gets it in that direct chat, and a line of the hub in the
+work chat names it, its project and the run. The run it hands is a chat run of the agent asked, on its pool,
 dispatched by the origin person, one hop further, with `runs.spawned_by_run_id` naming the asking run. Its rights are
 those of the run before it at most: it acts within the asking run's principal and autonomy snapshot
 (`run_autonomy.of_message`), so each run of a chain holds the intersection of the rights of the runs above it. It opens
@@ -1364,7 +1409,7 @@ run that fails, is cancelled or is lost sends why. A run asked that goes on in a
 inbox untaken) carries both columns, so the run that really ends answers. A wait already answered, by its time (7
 days) or by a person's Go on now or Stop waiting, is left as it is.
 
-The asking run's thread shows each part as a message of the hub: "@reviewer asked @kb-bot of project lumen-kb (run
+The asking run's thread, or the work chat of its trace, shows each part as a message of the hub: "@reviewer asked @kb-bot of project lumen-kb (run
 #N): TEXT" when the ask is taken, "@kb-bot: WHY" when it is refused, then "@kb-bot answered (run #N): ..." or "@kb-bot
 gave no answer: run #N ended failed: WHY". The thread shows at most 2 KiB of the answer
 (`agent_asks.ANSWER_IN_THREAD`); the agent gets it whole, within the size of a decision's answer.

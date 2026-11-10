@@ -213,9 +213,7 @@ async def _system(conn: AsyncConnection, user: Principal, project: str, slug: st
     return access, system_id
 
 
-async def _readable(conn: AsyncConnection, user: Principal, chat_id: int | None) -> bool:
-    if chat_id is None:
-        return True
+async def _reads(conn: AsyncConnection, user: Principal, chat_id: int) -> bool:
     nested = await conn.begin_nested()
     try:
         await chat_access(conn, user, chat_id)
@@ -224,6 +222,18 @@ async def _readable(conn: AsyncConnection, user: Principal, chat_id: int | None)
         return False
     await nested.commit()
     return True
+
+
+async def _readable(
+    conn: AsyncConnection, user: Principal, chat_id: int | None, work_chat_id: int | None = None
+) -> bool:
+    """Whether ``user`` reads a trace opened in chat ``chat_id`` (None: anyone who reads the system does) whose work
+    chat is ``work_chat_id``: they read either chat."""
+    if chat_id is None:
+        return True
+    if await _reads(conn, user, chat_id):
+        return True
+    return work_chat_id is not None and await _reads(conn, user, work_chat_id)
 
 
 def _trace_query(access: ProjectAccess, slug: str):
@@ -236,6 +246,7 @@ def _trace_query(access: ProjectAccess, slug: str):
             t.c.chat_id,
             t.c.message_id,
             u.c.login,
+            t.c.work_chat_id,
             t.c.started_at,
             t.c.last_at,
         )
@@ -347,7 +358,7 @@ async def read_traces(
     t = tables.system_traces
     rows = []
     for row in await conn.execute(query.order_by(t.c.id.desc()).limit(MAX_TRACES)):
-        if await _readable(conn, user, row.chat_id):
+        if await _readable(conn, user, row.chat_id, row.work_chat_id):
             rows.append(row)
         if len(rows) >= limit:
             break
@@ -415,7 +426,9 @@ async def trace_distribution(
         access, _ = await _system(conn, user, project, slug)
         since = (await conn.execute(select(func.now()))).scalar_one() - timedelta(days=days)
         query = (
-            select(t.c.id, t.c.system_id, t.c.system_revision, t.c.chat_id, t.c.started_at, t.c.last_at)
+            select(
+                t.c.id, t.c.system_id, t.c.system_revision, t.c.chat_id, t.c.work_chat_id, t.c.started_at, t.c.last_at
+            )
             .where(t.c.project_id == access.project_id, t.c.system_slug == slug, t.c.started_at >= since)
             .order_by(t.c.id.desc())
             .limit(MAX_WINDOW_TRACES + 1)
@@ -423,12 +436,13 @@ async def trace_distribution(
         rows = list(await conn.execute(query))
         truncated = len(rows) > MAX_WINDOW_TRACES
         rows = rows[:MAX_WINDOW_TRACES]
-        readable: dict[int | None, bool] = {}
+        readable: dict[tuple[int | None, int | None], bool] = {}
         kept = []
         for row in rows:
-            if row.chat_id not in readable:
-                readable[row.chat_id] = await _readable(conn, user, row.chat_id)
-            if readable[row.chat_id]:
+            chats_of = (row.chat_id, row.work_chat_id)
+            if chats_of not in readable:
+                readable[chats_of] = await _readable(conn, user, *chats_of)
+            if readable[chats_of]:
                 kept.append(row)
         found = await system_trace_stats.numbers(conn, [(row.id, row.system_id, row.system_revision) for row in kept])
         s = tables.system_spans

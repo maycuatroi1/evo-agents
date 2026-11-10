@@ -39,6 +39,10 @@ adds it.
 Revision 0232 gives chats ``opened_from_message_id``: for a group chat a direct chat opened (a mention of an agent the
 direct chat does not have, ``evo_agents.hub.server.chat_groups``), the first message of the direct chat's thread it came
 from, one group per thread (chats_opened_from_key).
+
+Revision 0234 lets chats ``kind`` be work (``chats.WORK``, a group chat the hub opens for a trace of an agent system)
+and gives chat_messages ``copied_from_id``: the message of another chat a message copies, between a work chat and the
+root thread of its trace (``evo_agents.hub.server.work_chats``), which hands no work again.
 """
 
 from __future__ import annotations
@@ -146,12 +150,14 @@ def _messages(metadata: MetaData) -> tuple[Table, Table]:
         _stamp("created_at"),
         Column("via", Text),  # 0165: the kind of channel it came in by, from a bridged group
         Column("from_output_id", BigInteger),  # 0213: the interactive answer a person sent it from
+        Column("copied_from_id", BigInteger),  # 0234: the message of another chat it copies, which hands no work again
         _fk("chat_messages", "chat_id", "chats.id", ondelete="CASCADE"),
         _fk("chat_messages", "thread_root_id", "chat_messages.id", ondelete="CASCADE"),
         _fk("chat_messages", "author_user_id", "users.id", ondelete="RESTRICT"),
         _fk("chat_messages", "author_profile_id", "agent_profiles.id", ondelete="RESTRICT"),
         _fk("chat_messages", "run_id", "runs.id", ondelete="SET NULL"),
         _fk("chat_messages", "from_output_id", "run_outputs.id", ondelete="SET NULL", use_alter=True),  # 0213
+        _fk("chat_messages", "copied_from_id", "chat_messages.id", ondelete="SET NULL"),  # 0234
         PrimaryKeyConstraint("id", name="chat_messages_pkey"),
         UniqueConstraint("chat_id", "seq", name="chat_messages_seq_key"),
     )

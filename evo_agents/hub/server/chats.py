@@ -47,7 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import chats, profiles, tables
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server import attachment_store, audit, chat_answers
+from evo_agents.hub.server import attachment_store, audit, chat_answers, work_chats
 from evo_agents.hub.server.chat_access import (
     ChatAccess,
     chat_access,
@@ -362,7 +362,7 @@ async def _answered(conn: AsyncConnection, answered) -> Answered | None:
 async def _replied_agent(conn: AsyncConnection, chat: ChatAccess, answered: Answered | None, kept: list[dict]):
     """The mention, ``via`` reply, of the agent that wrote ``answered``, the message a message of a group chat that
     mentions no one (``kept`` is empty) answers; none otherwise, or when that agent left the chat or was deleted."""
-    if chat.kind != chats.GROUP or answered is None or kept:
+    if chat.kind not in (chats.GROUP, chats.WORK) or answered is None or kept:
         return []
     m, ap = tables.chat_members, tables.agent_profiles
     query = (
@@ -375,6 +375,29 @@ async def _replied_agent(conn: AsyncConnection, chat: ChatAccess, answered: Answ
     if handle is None:
         return []
     return [{"name": handle, "via": chats.REPLY, "user_id": None, "profile_id": answered.profile_id, "refusal": None}]
+
+
+async def _unnamed_agent(
+    conn: AsyncConnection, chat: ChatAccess, user: Principal, root: int | None, answered, kept: list[dict]
+) -> list[dict]:
+    """The mention a message of a group chat that names no agent hands its work by: the agent it answers, else the
+    one whose session is in its thread; none on the main line of a work chat, which goes to its coordinator."""
+    if chat.kind == chats.WORK and await work_chats.main_line(conn, root):
+        return []
+    return await _replied_agent(conn, chat, answered, kept) or await _thread_agent(conn, chat, user, root)
+
+
+async def _to_coordinator(conn: AsyncConnection, chat: ChatAccess, user: Principal, hand: Hand, kept: list[dict]):
+    """The hub's answer, when there is one, to a message of work chat ``chat`` that mentions no agent (``kept`` names
+    none): on its main line it goes to the coordinator's session (``work_chats.to_coordinator``); [] for any other."""
+    root = None if hand.root_id == hand.message_id else hand.root_id
+    if chat.kind != chats.WORK or any(mention["profile_id"] is not None for mention in kept):
+        return []
+    if not await work_chats.main_line(conn, root):
+        return []
+    message_id, text, via = hand.message_id, hand.body, hand.via
+    said = await work_chats.to_coordinator(conn, chat, user, message_id, text, via)
+    return [] if said is None else [said]
 
 
 async def _direct_agent(
@@ -438,7 +461,7 @@ async def deliver_message(
     elif chat.kind == chats.SETTLE:
         kept += await direct_mention(conn, chat, kept)
     elif not any(mention["profile_id"] is not None for mention in kept):
-        kept += await _replied_agent(conn, chat, answered, kept) or await _thread_agent(conn, chat, user, root)
+        kept += await _unnamed_agent(conn, chat, user, root, answered, kept)
     via = dispatch_credential(user.kind)
     hand = Hand(
         chat,
@@ -457,6 +480,7 @@ async def deliver_message(
         await hand_mentions(conn, hand, kept)
     await insert_mentions(conn, message_id, kept)
     refusals = [mention["refusal"] for mention in kept if mention["refusal"]]
+    refusals += await _to_coordinator(conn, chat, user, hand, kept)
     said = ([] if opened is None else [opened.note()]) + refusals
     if said:  # the hub's answer, which the sender has read as they read their own
         await hub_reply(conn, chat.chat_id, root or message_id, "\n".join(said))

@@ -118719,7 +118719,8 @@
               "enum": [
                 "group",
                 "direct",
-                "settle"
+                "settle",
+                "work"
               ],
               "title": "Kind",
               "description": "group: members are added and removed; direct: one person and one agent, for good; settle: a group chat the hub opened, whose agent every message of a person wakes"
@@ -120157,7 +120158,8 @@
               "enum": [
                 "group",
                 "direct",
-                "settle"
+                "settle",
+                "work"
               ],
               "title": "Kind",
               "description": "group; direct: one person and one agent; or settle: a group chat the hub opened for its agent"

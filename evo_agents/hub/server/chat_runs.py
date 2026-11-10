@@ -734,6 +734,9 @@ async def post_agent(
     await link_message(conn, run_id, message_id, output_ids or [])
     for user_id in dict.fromkeys(people):
         await notice_mention(conn, chat, user_id, message_id, body)
+    from evo_agents.hub.server.work_chats import copy_out  # it hands work through this module
+
+    await copy_out(conn, chat, profile, run_id, message_id, root_id or message_id, body)  # the coordinator's words
     return message_id, kept
 
 

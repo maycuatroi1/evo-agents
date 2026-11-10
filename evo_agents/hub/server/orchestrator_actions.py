@@ -34,13 +34,10 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, profiles, runs, system_context, tables, triage_rules
-from evo_agents.hub.server import audit, orchestrator, run_waits, system_traces
+from evo_agents.hub.server import audit, orchestrator, run_waits, system_traces, work_chats
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
-from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_agents import REFUSALS, AgentRun, agent_run
-from evo_agents.hub.server.chat_direct import direct_chat
-from evo_agents.hub.server.chat_runs import Hand, agent_access, chat_run, hand_work, hub_reply, post_agent
-from evo_agents.hub.server.chat_store import insert_message
+from evo_agents.hub.server.chat_runs import agent_access, chat_run, post_agent
 from evo_agents.hub.server.decisions import DecisionAsk, OptionIn, store_decision
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.profile_store import by_handle
@@ -163,32 +160,16 @@ async def _masked(conn: AsyncConnection, sealer, run: AgentRun, text: str) -> st
 
 
 async def _give(conn: AsyncConnection, frame: Frame, handle: str, text: str) -> tuple[int | None, str | None]:
-    """(the run of agent ``handle`` the work went to, None), or (None, why none): a message of the Orchestrator in the
-    direct chat of the person at the origin with that agent, handed at the hop of the work, in a savepoint."""
+    """(the run of agent ``handle`` the work went to, None), or (None, why none): a message of the Orchestrator handed
+    at the hop of the work, in the work chat of the trace when it has one (``work_chats.hand_over``), else in the
+    direct chat of the person at the origin with that agent, in a savepoint."""
     run = frame.run
     target = await by_handle(conn, handle)
     if target is None or target.deleted_at is not None:
         return None, f"@{handle} is no agent the hub has"
-    origin = run.principal
-    nested = await conn.begin_nested()
-    try:
-        chat_id, _ = await direct_chat(conn, origin, handle)
-        chat = await chat_access(conn, origin, chat_id)
-    except HTTPException as exc:
-        await nested.rollback()
-        return None, str(exc.detail)
-    message_id, _ = await insert_message(
-        conn, chat, text, thread_root_id=None, author_profile_id=run.profile.id, run_id=run.run_id
-    )
-    hop = frame.thread.hop
-    author = f"@{run.profile.handle}"
-    hand = Hand(chat, message_id, message_id, target, origin.user_id, origin.login, run.via, hop, author, text)
-    child, why = await hand_work(conn, hand)
-    if child is None:
-        await nested.rollback()
-        return None, why
-    await nested.commit()
-    return child, None
+    asker = work_chats.Asker(run.profile, run.run_id, run.principal, run.via, frame.thread.hop)
+    handed = await work_chats.hand_over(conn, asker, target, text)
+    return handed.child, handed.why
 
 
 def _work_text(frame: Frame, text: str) -> str:
@@ -217,7 +198,8 @@ async def answer(conn: AsyncConnection, sealer, run: AgentRun, body: Orchestrato
         await conn.execute(update(r).values(spawned_wait_id=None).where(r.c.spawned_wait_id == thread.wait_id))
         asker = await chat_run(conn, woke)
         if asker is not None:
-            await hub_reply(conn, asker.chat_id, asker.root_id, runs.clip(f"@{frame.lead} answered:\n\n{text}", 2048))
+            line = runs.clip(f"@{frame.lead} answered:\n\n{text}", 2048)
+            await work_chats.say(conn, woke, (asker.chat_id, asker.root_id), line)
         where = f"the wait #{thread.wait_id} of run #{thread.asker_run_id}, which woke as run #{woke}"
     else:
         woke, refusal = await _give(conn, frame, thread.subject, _work_text(frame, text))
@@ -250,6 +232,8 @@ async def reassign(conn: AsyncConnection, sealer, run: AgentRun, body: Orchestra
         await conn.execute(update(r).values(spawned_wait_id=None).where(r.c.spawned_wait_id == thread.wait_id))
         moved = {"spawned_by_run_id": thread.asker_run_id, "spawned_wait_id": thread.wait_id}
         await conn.execute(update(r).values(**moved).where(r.c.id == child))
+        d = tables.decisions
+        await conn.execute(update(d).values(awaits_run_id=child).where(d.c.id == thread.wait_id))
     member = await system_traces.of_run(conn, run.run_id)
     if member is not None:
         await system_traces.record_tool(

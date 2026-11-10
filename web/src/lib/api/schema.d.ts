@@ -18635,7 +18635,7 @@ export interface components {
              * @description group: members are added and removed; direct: one person and one agent, for good; settle: a group chat the hub opened, whose agent every message of a person wakes
              * @enum {string}
              */
-            kind: "group" | "direct" | "settle";
+            kind: "group" | "direct" | "settle" | "work";
             /**
              * Image Url
              * @description the image its members set, on this hub; null for none, and always for a direct chat
@@ -19301,7 +19301,7 @@ export interface components {
              * @description group; direct: one person and one agent; or settle: a group chat the hub opened for its agent
              * @enum {string}
              */
-            kind: "group" | "direct" | "settle";
+            kind: "group" | "direct" | "settle" | "work";
             /**
              * Image Url
              * @description the image its members set; null for none, and always for a direct chat
