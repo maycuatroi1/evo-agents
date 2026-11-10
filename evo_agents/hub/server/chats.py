@@ -56,6 +56,7 @@ from evo_agents.hub.server.chat_access import (
     uncleared,
 )
 from evo_agents.hub.server.chat_direct import direct_mention
+from evo_agents.hub.server.chat_groups import open_from
 from evo_agents.hub.server.chat_members import (
     LOGIN_PATTERN,
     REFUSALS,
@@ -107,9 +108,7 @@ Login = Annotated[str, Field(pattern=LOGIN_PATTERN)]
 Handle = Annotated[str, Field(pattern=profiles.HANDLE_PATTERN)]
 NOT_THERE = "chat {chat} has no message {id} that you can read"
 NOT_IN_CHAT = "@{name} is not in this chat: add it to the chat, then mention it again"
-NOT_IN_DIRECT = (
-    "@{name} is not in this direct chat, whose one agent never changes: start a group chat to talk with both"
-)
+NOT_IN_DIRECT = "@{name} is not in this direct chat, and the hub opened no group chat with it"
 
 router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model": ErrorBody}})
 
@@ -404,6 +403,7 @@ async def deliver_message(
     (``plugin_chats_api``): the message comes ``via`` plugin, and its audit row ends with plugin:<id>."""
     if plugin is not None:
         via = chats.PLUGIN_VIA
+    came_by = via
     root, answered = None, None
     if body.reply_to is not None:
         replied = await visible_message(conn, chat, body.reply_to)
@@ -432,8 +432,9 @@ async def deliver_message(
         mention = await chat_answers.answer_mention(conn, chat, answer)
         if not any(found["profile_id"] == mention["profile_id"] for found in kept):
             kept.append(mention)
-    if chat.kind == chats.DIRECT:
-        kept += await _direct_agent(conn, chat, user, root, kept)
+    opened = await _open_group(conn, chat, user, root or message_id, kept)
+    if chat.kind == chats.DIRECT:  # once a group took the agents named, its copy of the message hands the work
+        kept += [] if opened is not None else await _direct_agent(conn, chat, user, root, kept)
     elif chat.kind == chats.SETTLE:
         kept += await direct_mention(conn, chat, kept)
     elif not any(mention["profile_id"] is not None for mention in kept):
@@ -452,11 +453,13 @@ async def deliver_message(
         body.body,
         answers=answered,
     )
-    await hand_mentions(conn, hand, kept)
+    if opened is None:
+        await hand_mentions(conn, hand, kept)
     await insert_mentions(conn, message_id, kept)
     refusals = [mention["refusal"] for mention in kept if mention["refusal"]]
-    if refusals:  # the hub's answer, which the sender has read as they read their own
-        await hub_reply(conn, chat.chat_id, root or message_id, "\n".join(refusals))
+    said = ([] if opened is None else [opened.note()]) + refusals
+    if said:  # the hub's answer, which the sender has read as they read their own
+        await hub_reply(conn, chat.chat_id, root or message_id, "\n".join(said))
         seq = (
             await conn.execute(select(tables.chats.c.event_seq).where(tables.chats.c.id == chat.chat_id))
         ).scalar_one()
@@ -466,7 +469,25 @@ async def deliver_message(
             await notice_mention(conn, chat, user_id, message_id, body.body)
     target = f"chat:{chat.chat_id} message:{message_id}" + ("" if plugin is None else f" plugin:{plugin}")
     await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.CHAT_MESSAGE, target=target)
+    if opened is not None:  # the person's words, as they wrote them, where the agents they named are
+        group = await chat_access(conn, user, opened.chat_id)
+        copy = ChatMessageIn(body=body.body)
+        await deliver_message(conn, group, user, copy, via=came_by, plugin=plugin)
     return message_id
+
+
+async def _open_group(conn: AsyncConnection, chat: ChatAccess, user: Principal, root: int, kept: list[dict]):
+    """The group (``chat_groups.Opened``) a message of direct chat ``chat`` in the thread of ``root`` goes on in,
+    when its mentions ``kept`` name agents the chat does not have and one of them may go in; None otherwise. Each
+    such mention reaches the group, or keeps why it could not."""
+    outside = [mention for mention in kept if mention["profile_id"] is not None and mention["via"] is None]
+    if chat.kind != chats.DIRECT or not outside:
+        return None
+    opened = await open_from(conn, chat, user, root, [mention["name"] for mention in outside])
+    for mention in outside:
+        why = opened.refused.get(mention["name"])
+        mention["refusal"] = None if why is None else f"{NOT_IN_DIRECT.format(name=mention['name'])}: {why}"
+    return opened if opened.chat_id is not None else None
 
 
 async def _message_view(conn: AsyncConnection, chat: ChatAccess, row, user: Principal) -> GroupMessage:

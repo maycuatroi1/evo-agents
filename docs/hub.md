@@ -1130,7 +1130,17 @@ leaving, are refused (409); a group chat is for more. Each message of the person
 goes to its agent as if it mentioned it (`via` direct): a message outside a thread is a new task, in a new session at
 hop 1 for the person, and a reply in the thread of the agent's answer goes on in that session
 (`via` thread), as in any chat of one person; an `@` of the agent makes the same one run. A mention of another agent
-reaches no one and the hub says to start a group chat. The prompt of its run shows, instead of the chat before the
+the person may add to a chat opens a group chat instead (`evo_agents/hub/server/chat_groups.py`, schema 0232): the
+person, the direct chat's agent and the agents mentioned, titled with the agent's name, the agents mentioned and the
+thread's first line. The group keeps the first message of the direct chat's thread it came from
+(`chats.opened_from_message_id`, unique), so a later mention in that thread adds to the same group. The person's message
+is posted there again as theirs and hands the work there, as any message of a group does; in the direct chat it hands
+none, and the hub answers in its thread with the group's link. An agent the person may not add (no writer role on its
+project, deleted, a label the people do not clear) stays out with why, and when none goes in the message is the direct
+chat's agent's work as before. The direct chat's agent brings another agent in the same way with `evo-agents worker
+chat mention HANDLE TEXT` (`docs/workers.md`, Chat runs): the group of the thread is opened or found, the agent's
+message goes there, and the person is told (`chat_added`) of a group made now. An @ of another agent in the agent's
+reply hands no work, as in a group chat. The prompt of its run shows, instead of the chat before the
 thread, the latest turns: at most 30 messages of the earlier threads, the person's messages and the agent's answers,
 within the snapshot's 12 KiB, the oldest left out first. Opening one is audited as `chat.create` in the agent's project.
 

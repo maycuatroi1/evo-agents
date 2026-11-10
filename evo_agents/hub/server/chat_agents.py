@@ -14,9 +14,12 @@ acts for the person who dispatched the run, the origin of the chain: it writes o
 - POST .../chat/reactions: an emoji of the agent on a message of a chat it is in, or taken off (``remove``).
 - POST .../chat/mentions: a message of the agent that mentions ``handle``, which hands that agent the work as a
   person's mention does (``chat_runs.hand_work``) but for the origin of the chain, one hop further, never to the agent's
-  own profile. A refusal is answered (201, ``refusal``) and said in the thread.
+  own profile. A refusal is answered (201, ``refusal``) and said in the thread. In a direct chat, an agent it does not
+  have goes to the group chat of the thread (``chat_groups``: the one the thread opened, or one made now, of the origin,
+  the agent and the agent mentioned): the message goes there, and the hub says where in the direct chat's thread.
 - POST .../chats: a new chat of the agent and the origin of the chain, with the people named, each of whom must hold a
-  grant that clears the label of the agent's project; the origin and each person get the notice chat_added.
+  grant that clears the label of the agent's project, and the agents named, which the origin may add to a chat
+  (``chat_members.addable_agent``, ``put_agent``); the origin and each person get the notice chat_added.
 - POST .../chat/pulls: the worker pushed the run's branch of a repo (chat runs only): the hub opens a draft pull
   request of it on GitHub with the workers' App, or finds the one open, titled as the session (its first run), and the
   agent's message in the thread links it; a repo elsewhere, or a hub without the App, gets the message without one.
@@ -52,7 +55,15 @@ from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, pull_trailers, pulls
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
 from evo_agents.hub.server.chat_access import ChatAccess, label_reader, projects_by_id, uncleared
-from evo_agents.hub.server.chat_members import LOGIN_PATTERN, person, refuse_clash, refuse_uncleared
+from evo_agents.hub.server.chat_groups import has_agent, open_from
+from evo_agents.hub.server.chat_members import (
+    LOGIN_PATTERN,
+    addable_agent,
+    person,
+    put_agent,
+    refuse_clash,
+    refuse_uncleared,
+)
 from evo_agents.hub.server.chat_notices import notice_added
 from evo_agents.hub.server.chat_runs import Hand, agent_access, chat_run, hub_reply, post_agent, project_repos
 from evo_agents.hub.server.chat_store import add_member, emoji_kinds, member_event, put_reaction, take_reaction
@@ -134,12 +145,20 @@ class AgentChatIn(BaseModel):
         max_length=chats.MAX_PEOPLE - 1,
         description="logins besides the person who dispatched the run, who is in it anyway",
     )
+    agents: list[Handle] = Field(
+        default_factory=list,
+        max_length=chats.MAX_AGENTS - 1,
+        description="handles, @ left out, of agents besides the run's, which is in it anyway",
+    )
 
 
 class AgentHanded(BaseModel):
     message: GroupMessage
     run_id: int | None = Field(description="the run of the agent mentioned: new, or the one of its session it woke")
     refusal: str | None = Field(description="why the mention handed no work, as the thread says too")
+    group_id: int | None = Field(
+        None, description="the group chat of the direct chat's thread the message went to (chat_groups); null: none"
+    )
 
 
 class ChatPushed(BaseModel):
@@ -360,6 +379,12 @@ async def mention(request: Request, run_id: RunId, body: AgentMentionIn, user: C
         run = await agent_run(conn, user, run_id)
         chat, root = await _chat_of(conn, run, body.chat_id)
         root = await _thread(conn, chat, root, body.reply_to)
+        direct, opened = None, None
+        if chat.kind == chats.DIRECT and not await has_agent(conn, chat.chat_id, body.handle):
+            opened = await open_from(conn, chat, run.principal, root, [body.handle], run_id=run_id)
+            if opened.chat_id is not None:
+                direct = (chat, root)
+                chat, root = await _in_chat(conn, run, opened.chat_id), None
         said = await mask_values(conn, request.app.state.sealer, run.profile.id, body.body)
         said = await mask_run(conn, request.app.state.sealer, run_id, said)
         text = said if body.handle in chats.mention_names(said) else f"@{body.handle} {said}"
@@ -373,6 +398,11 @@ async def mention(request: Request, run_id: RunId, body: AgentMentionIn, user: C
         handed = next((item for item in kept if item["name"] == body.handle), None)
         run_made = handed.get("run_id") if handed else None
         refusal = handed["refusal"] if handed else f"no agent @{body.handle} in this chat"
+        if opened is not None and body.handle in opened.refused:
+            refusal = f"@{body.handle} is not in this direct chat, and no group chat could take it: "
+            refusal += opened.refused[body.handle]
+        if direct is not None:
+            await hub_reply(conn, direct[0].chat_id, direct[1], opened.note())
         if refusal is not None:
             await hub_reply(conn, chat.chat_id, root or message_id, f"@{body.handle}: {refusal}")
         await _audit(conn, run, audit.CHAT_MESSAGE, f"chat:{chat.chat_id} message:{message_id} run:{run_id}")
@@ -380,7 +410,8 @@ async def mention(request: Request, run_id: RunId, body: AgentMentionIn, user: C
     log.info(
         "agent mention", extra={"run_id": run_id, "handle": body.handle, "made": run_made, "refused": bool(refusal)}
     )
-    return AgentHanded(message=view, run_id=run_made, refusal=refusal)
+    group_id = None if direct is None else chat.chat_id
+    return AgentHanded(message=view, run_id=run_made, refusal=refusal, group_id=group_id)
 
 
 @worker_router.post("/runs/{run_id}/chats", status_code=201, response_model=Chat, responses=REFUSALS)
@@ -392,7 +423,9 @@ async def create_chat(request: Request, run_id: RunId, body: AgentChatIn, user: 
         if profile.deleted_at is not None:
             raise HTTPException(409, f"@{profile.handle} was deleted: it takes no new work")
         people = dict([await person(conn, login) for login in body.people if login.lower() != origin.login.lower()])
-        refuse_clash([origin.login, *people.values()], [profile.handle])
+        others = [await addable_agent(conn, origin, handle) for handle in dict.fromkeys(body.agents)]
+        others = [other for other in others if other.id != profile.id]
+        refuse_clash([origin.login, *people.values()], [profile.handle, *(other.handle for other in others)])
         projects = await projects_by_id(conn, [profile.project_id])
         refuse_uncleared(await uncleared(conn, {origin.user_id: origin.login, **people}, projects), "the chat")
         c = tables.chats
@@ -408,11 +441,15 @@ async def create_chat(request: Request, run_id: RunId, body: AgentChatIn, user: 
             await add_member(conn, chat_id, user_id=user_id, added_by=origin.user_id, added_by_run_id=run_id)
             await member_event(conn, chat_id, "member_added", person_author(login), by)
         chat = await agent_access(conn, chat_id, profile, origin.user_id)
+        for other in others:  # the label checks of adding an agent, with the people in it now
+            await put_agent(conn, origin, chat, other)
+        chat = await agent_access(conn, chat_id, profile, origin.user_id)
         for user_id in (origin.user_id, *people):
             await notice_added(conn, chat, user_id)
         await _audit(conn, run, audit.CHAT_CREATE, f"chat:{chat_id} run:{run_id}")
         view = await chat_view(conn, chat)
-    log.info("chat created by an agent", extra={"run_id": run_id, "chat_id": chat_id, "people": len(people) + 1})
+    extra = {"run_id": run_id, "chat_id": chat_id, "people": len(people) + 1, "agents": len(others) + 1}
+    log.info("chat created by an agent", extra=extra)
     return view
 
 

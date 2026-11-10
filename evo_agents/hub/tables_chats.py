@@ -35,6 +35,10 @@ message from, which the message keeps as its source and the hub's rate limit cou
 Revision 0229 adds chat_label_shares: a person of a chat who clears a project's part of its label because a writer on
 that project shared it with them there (``shared_by``), not by a grant of their own (``chat_access``). ``share_table``
 adds it.
+
+Revision 0232 gives chats ``opened_from_message_id``: for a group chat a direct chat opened (a mention of an agent the
+direct chat does not have, ``evo_agents.hub.server.chat_groups``), the first message of the direct chat's thread it came
+from, one group per thread (chats_opened_from_key).
 """
 
 from __future__ import annotations
@@ -86,13 +90,21 @@ def _chats(metadata: MetaData) -> tuple[Table, Table]:
         Column("image_sha256", Text),  # 0051
         Column("image_size", BigInteger),  # 0051
         Column("label_override", JSONB),  # 0164: the level a project admin set, and the projects it lowers
+        Column("opened_from_message_id", BigInteger),  # 0232: the direct chat's thread a group was opened from
         _fk("chats", "created_by", "users.id", ondelete="RESTRICT"),
         _fk("chats", "direct_user_id", "users.id", ondelete="RESTRICT"),
         _fk("chats", "direct_profile_id", "agent_profiles.id", ondelete="RESTRICT"),
+        _fk("chats", "opened_from_message_id", "chat_messages.id", ondelete="SET NULL", use_alter=True),  # 0232
         PrimaryKeyConstraint("id", name="chats_pkey"),
         UniqueConstraint("direct_user_id", "direct_profile_id", name="chats_direct_key"),
     )
     Index("chats_image_sha256_idx", chats.c.image_sha256, postgresql_where=chats.c.image_sha256.is_not(None))  # 0051
+    Index(  # 0232
+        "chats_opened_from_key",
+        chats.c.opened_from_message_id,
+        unique=True,
+        postgresql_where=chats.c.opened_from_message_id.is_not(None),
+    )
     members = Table(
         "chat_members",
         metadata,

@@ -705,7 +705,7 @@ async def post_agent(
 ) -> tuple[int, list[dict]]:
     """Store a message of agent ``profile`` of run ``run_id`` in ``chat``, in the thread of ``root_id``; (its id, its
     mentions). A person it mentions gets the notice. The agent ``target`` names gets the work ``hand`` asks
-    (``_hand_on``), and any other agent it mentions none (AGENT_REPLY_REFUSAL). The agent naming itself ("I am
+    (``_hand_on``), and any other agent it mentions none (AGENT_REPLY_REFUSAL), one a direct chat does not have too. The agent naming itself ("I am
     @reviewer"), as the agent of a direct chat does, asks no work of anyone and is refused nothing. An agent the run's
     session asked (``agent_asks``, ``_asked``) is refused nothing either, in the chat or not: its mention names the
     latest run asked of it, the work the agent did give it. The message
@@ -723,6 +723,10 @@ async def post_agent(
     for mention in kept:
         if mention["profile_id"] in asked and mention["name"] != target:
             mention["run_id"], mention["refusal"] = asked[mention["profile_id"]], None
+            continue
+        outside = mention["profile_id"] is not None and mention["via"] is None
+        if outside and chat.kind == chats.DIRECT and mention["name"] != target:  # named, not asked: no group opens
+            mention["refusal"] = AGENT_REPLY_REFUSAL
             continue
         if mention["profile_id"] is None or mention["refusal"] is not None:
             continue

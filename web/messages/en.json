@@ -4431,7 +4431,7 @@
       "personHint": "People who share a project or a chat with you; type the login of someone else who signed in to the hub. Each needs a grant that clears the projects of this chat's agents.",
       "detailsTitle": "Details",
       "directDescription": "Your direct chat with {name}.",
-      "directNote": "A direct chat is you and one agent, for good. To bring in other people or agents, start a group chat with New chat."
+      "directNote": "A direct chat is you and one agent, for good. To bring in other people or agents, start a group chat with New chat, or @ another agent here: the hub opens a group chat of this thread with it."
     },
     "create": {
       "title": "New chat",
