@@ -4122,17 +4122,9 @@
       "offDesignLabel": "Off design from {from} to {to}: {count, plural, one {# crossing} other {# crossings}}",
       "a11yNode": "Select a box to see its numbers.",
       "canvas": "What goes through the agent system",
-      "panel": "Numbers and traces",
-      "observing": "Revision {revision} as it runs: each box's state and numbers, and what crossed each edge.",
+      "panel": "Numbers of the box selected",
       "streamFailing": "Live updates stopped; trying again.",
       "streamEnded": "Live updates ended: you may no longer read this project.",
-      "recentTraces": "Recent traces",
-      "tracesFailed": "The traces did not load.",
-      "noTraces": "No traces yet. A message to the entry agent opens one.",
-      "traceTitle": "Trace {id}",
-      "traceRuns": "{runs, plural, one {# run} other {# runs}}",
-      "traceErrors": "{count, plural, one {# error} other {# errors}}",
-      "traceOff": "{count} off design",
       "seconds": "{seconds} s",
       "closeDetail": "Close the numbers",
       "detail": {
@@ -4144,6 +4136,114 @@
         "tokens": "Tokens",
         "usd": "Cost",
         "scope": "Over the system's last 50 traces you may read."
+      },
+      "work": {
+        "summary": {
+          "label": "Work of the last 24 hours",
+          "open": "Open",
+          "needsPerson": "Needs a person",
+          "failed": "Failed",
+          "closeTime": "Median time to close",
+          "cost": "Cost",
+          "withheld": "{count, plural, one {# work you may not read left out} other {# works you may not read left out}}",
+          "failedToLoad": "The numbers of the last 24 hours did not load."
+        },
+        "filters": {
+          "label": "Show work",
+          "all": "All",
+          "needs_you": "Needs you",
+          "running": "Running",
+          "failed": "Failed",
+          "done": "Done",
+          "count": "{count, plural, one {# work} other {# works}}",
+          "shown": "{shown} of {total}"
+        },
+        "status": {
+          "running": "Running",
+          "needs_person": "Needs a person",
+          "failed": "Failed",
+          "done": "Done",
+          "unknown": "Unknown"
+        },
+        "columns": {
+          "work": "Work",
+          "status": "Status",
+          "agent": "At",
+          "waiting": "Waits for",
+          "time": "Time",
+          "runs": "Runs",
+          "cost": "Cost",
+          "open": "Open"
+        },
+        "listLabel": "Work of {name}",
+        "caption": "The work of agent system {name}, the newest first",
+        "untitled": "Work {id}",
+        "noAgent": "None",
+        "waitsRun": "{agent} to answer",
+        "waitsPerson": "{login} at the run",
+        "waitsDecision": "{login} to answer: {question}",
+        "waitsNothing": "Nothing",
+        "costOfBudget": "{usd} of {budget}",
+        "budgetLabel": "Cost of work {id} against its budget",
+        "runs": "{count, plural, one {# run} other {# runs}}",
+        "openChat": "Work chat",
+        "openChatLabel": "Open the work chat of work {id}",
+        "openTrace": "Trace",
+        "openTraceLabel": "Open the trace of work {id}",
+        "select": "Show work {id} on the timeline and the map",
+        "mobileAt": "At {agent}",
+        "mobileWaits": "Waits for {waiting}",
+        "empty": "No work yet",
+        "emptyDescription": "A message to the entry agent starts one.",
+        "noMatch": "No work matches this filter.",
+        "showAll": "Show all",
+        "failedToLoad": "The work did not load.",
+        "retry": "Try again",
+        "duration": {
+          "hours": "{hours}h {minutes}m",
+          "minutes": "{minutes}m {seconds}s",
+          "seconds": "{seconds}s"
+        },
+        "detail": {
+          "label": "Work {id}",
+          "close": "Close work {id}",
+          "failedToLoad": "This work did not load.",
+          "stats": "{runs}, {cost}, {time}",
+          "goal": "Goal",
+          "doneWhen": "Done when"
+        },
+        "timeline": {
+          "title": "Timeline by agent",
+          "empty": "No run of this work has started yet.",
+          "axis": "Time since the work started",
+          "lane": "Runs of {agent}",
+          "bar": "{kind}, {start} to {end}",
+          "barOpen": "{kind}, since {start}",
+          "mark": "Asked {login}: {question}",
+          "markAnswered": "Asked {login}, answered: {question}",
+          "someone": "a person",
+          "legend": "Key to the timeline",
+          "kinds": {
+            "queued": "Queued",
+            "running": "Running",
+            "done": "Done",
+            "failed": "Failed",
+            "parked": "Parked",
+            "waiting": "Waiting for an answer",
+            "needsPerson": "Needs a person"
+          }
+        },
+        "handoffs": {
+          "title": "Hand-offs",
+          "count": "{count, plural, one {# hand-off} other {# hand-offs}}",
+          "offDesign": "{count} off design",
+          "empty": "No hand-offs: the entry agent did the work alone.",
+          "route": "{from} to {to}",
+          "refused": "Refused",
+          "offDesignTag": "Off design"
+        },
+        "map": "Path of work {id} through the system",
+        "mapAll": "What goes through the system"
       }
     },
     "traceView": {
@@ -4525,6 +4625,106 @@
         "accounts": "Accounts"
       },
       "defaultAccounts": "The project's default agent owns no accounts: its runs take the secrets of the person who hands them work."
+    },
+    "work": {
+      "status": {
+        "running": "Running",
+        "needs_person": "Needs a person",
+        "failed": "Failed",
+        "done": "Done"
+      },
+      "waiting": {
+        "run": "Waiting for @{agent}",
+        "runAny": "Waiting for an agent",
+        "person": "Waiting for {login}",
+        "personAny": "Waiting for a person",
+        "decision": "Waiting for {login} to decide",
+        "decisionAny": "Waiting for a decision",
+        "atWork": "@{agent} is at work",
+        "nothing": "Not waiting for anyone",
+        "done": "Done",
+        "failed": "Stopped on a failure"
+      },
+      "time": {
+        "hours": "{hours} h {minutes} min",
+        "minutes": "{minutes} min",
+        "seconds": "{seconds} s"
+      },
+      "totals": "{runs, plural, one {# run} other {# runs}}, {cost}, {time}",
+      "placeholder": "Goes to @{coordinator}, the coordinator, unless you @ an agent",
+      "placeholderAny": "Goes to the coordinator unless you @ an agent",
+      "list": {
+        "group": "{name}",
+        "line": "{status}: {waiting}",
+        "done": "{count, plural, one {# done work} other {# done works}}",
+        "doneLabel": "Done works of {name}"
+      },
+      "head": {
+        "number": "Work #{id}",
+        "system": "System",
+        "observe": "Open {name} in Observe",
+        "coordinator": "Coordinator"
+      },
+      "card": {
+        "title": "Work card",
+        "show": "Show details",
+        "hide": "Hide details",
+        "goal": "Goal",
+        "doneWhen": "Done when",
+        "noGoal": "No goal set yet",
+        "noDoneWhen": "Not set yet",
+        "runs": "Runs",
+        "cost": "Cost",
+        "hop": "Hop",
+        "time": "Time",
+        "of": "{value} of {max}",
+        "subTasks": "Sub-tasks",
+        "noSubTasks": "No sub-task yet",
+        "agent": "Agent",
+        "status": "Status",
+        "brief": "Brief",
+        "refused": "Refused",
+        "openThreadOf": "Open the thread of @{agent}",
+        "decisions": "Decisions",
+        "orchestrator": "Orchestrator",
+        "askedOf": "Asks {login}",
+        "answered": "Answer: {answer}",
+        "decisionFailed": "Couldn't load this decision",
+        "notFound": "This chat has no work card you can see",
+        "forbidden": "Your grants no longer clear this work's label",
+        "failed": "Couldn't load the work card",
+        "retry": "Try again"
+      },
+      "ask": {
+        "ask": "@{from} asked @{to}",
+        "escalate": "@{from} escalated to @{to}",
+        "reassign": "Reassigned from @{from} to @{to}",
+        "refusedTitle": "@{from} asked, the hub refused",
+        "refused": "Refused",
+        "error": "Error",
+        "brief": "Brief:",
+        "answer": "Answer:",
+        "noAnswer": "No answer yet",
+        "inThread": "Answered in its thread",
+        "openThread": "Open thread",
+        "openThreadOf": "Open thread of @{agent}"
+      },
+      "exception": {
+        "title": "Orchestrator: {rule}",
+        "titleAny": "Orchestrator",
+        "deciding": "Deciding",
+        "decided": "Decided",
+        "outcome": "Decision:",
+        "outcomes": {
+          "answer": "Answered",
+          "reassign": "Reassigned",
+          "ask_owner": "Asked the owner"
+        }
+      },
+      "root": {
+        "open": "Open work chat",
+        "done": "Done: {totals}"
+      }
     }
   },
   "accounts": {

@@ -13670,14 +13670,6 @@
             {
                 "code": "reportArgumentType",
                 "range": {
-                    "startColumn": 54,
-                    "endColumn": 58,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
                     "startColumn": 92,
                     "endColumn": 100,
                     "lineCount": 1

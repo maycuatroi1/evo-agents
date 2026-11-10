@@ -9,8 +9,10 @@ latest of all, since the web shows a direct chat's answers under the message the
 text as one short line without markdown (``chats.preview``); a message whose label the reader does not clear keeps its
 author and time and leaves its text out (``hidden``), as the messages a reader may not read are left out elsewhere.
 
-The list takes the same few queries however many chats the person is in: the chats, their members, their last
-messages, the agents among them, and the projects and grants the labels of those messages name.
+A work chat (``chats.WORK``) carries the work of its trace (``work``: its system, title, status and what it waits for,
+``work_status.briefs``). The list takes the same few queries however many chats the person is in: the chats, their
+members, their last messages, the agents among them, the projects and grants the labels of those messages name, and
+the traces of the work chats among them.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from evo_agents.hub.server.chat_views import (
     summaries_query,
 )
 from evo_agents.hub.server.profile_store import Profile
+from evo_agents.hub.server.work_status import WorkBrief, briefs
 
 
 def _members_query(chat_ids: list[int]):
@@ -101,6 +104,17 @@ def _last(row, profiles: dict[int, Profile], reader: LabelReader) -> ChatLastMes
     )
 
 
+async def _work(conn: AsyncConnection, chat_ids: list[int]) -> dict[int, WorkBrief]:
+    """The work of each work chat of ``chat_ids`` (``work_status.briefs``), by chat id."""
+    if not chat_ids:
+        return {}
+    t = tables.system_traces
+    query = select(t.c.work_chat_id, func.min(t.c.id)).where(one_of(t.c.work_chat_id, chat_ids))
+    traces = {key: value for key, value in await conn.execute(query.group_by(t.c.work_chat_id))}
+    found = await briefs(conn, list(traces.values()))
+    return {chat_id: found[trace] for chat_id, trace in traces.items() if trace in found}
+
+
 async def chat_summaries(conn: AsyncConnection, user_id: int) -> list[ChatSummary]:
     """The chats person ``user_id`` is in, the latest active first, each as ``ChatSummary`` shows it to them."""
     rows = (await conn.execute(summaries_query(user_id))).all()
@@ -118,6 +132,7 @@ async def chat_summaries(conn: AsyncConnection, user_id: int) -> list[ChatSummar
         + [row.author_profile_id for row in last.values() if row.author_profile_id is not None],
     )
     reader = await label_reader(conn, user_id, [row.label for row in last.values()])
+    work = await _work(conn, [row.id for row in rows if row.kind == chats.WORK])
     found = []
     for row in rows:
         here = members[row.id]
@@ -138,6 +153,7 @@ async def chat_summaries(conn: AsyncConnection, user_id: int) -> list[ChatSummar
                 direct_agent=agent_author(profiles[row.direct_profile_id]) if row.direct_profile_id else None,
                 faces=[_face(member, profiles) for member in others[: chats.FACES]],
                 last_message=_last(last.get(row.id), profiles, reader),
+                work=work.get(row.id),
             )
         )
     return found

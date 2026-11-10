@@ -14,6 +14,8 @@ row.
   the hop of the run, and a wait the Orchestrator's answer wakes; the run then parks as for ``agent_ask``.
 - ``orchestrator_answer``, ``orchestrator_reassign``, ``orchestrator_ask_owner``: the Orchestrator's actions in a
   thread the hub opened to it (``orchestrator_actions``), as ``evo-agents worker triage answer|reassign|ask-owner``.
+- ``work_set``: as the entry agent of its system, name the work of its trace (title, goal, done-when), which the work
+  card shows (``work_cards.set_work``), as ``evo-agents worker work set``.
 - ``memory_write``: a memory of the project, under the rules of ``memories.put``.
 
 A tool that is refused answers the model with why, as the worker's command prints it; nothing raises past ``call``.
@@ -48,6 +50,7 @@ from evo_agents.hub.server import (
     orchestrator,
     orchestrator_actions,
     output_store,
+    work_cards,
 )
 from evo_agents.hub.server.blobs import put_bytes
 from evo_agents.hub.server.mcp_run import hub_principal
@@ -153,6 +156,13 @@ TOOLS = [
             "reason": _TEXT,
         },
         ["question", "options", "reason"],
+    ),
+    _function(
+        "work_set",
+        "As the entry agent of your system, once a hand-off opened the work chat: name the work of this trace (title, "
+        "goal, done-when) that its card shows. Give at least one.",
+        {"title": _TEXT, "goal": _TEXT, "done_when": _TEXT},
+        [],
     ),
     _function(
         "memory_write",
@@ -318,6 +328,13 @@ async def orchestrator_ask_owner(turn: Turn, arguments: dict) -> str:
     )
 
 
+async def work_set(turn: Turn, arguments: dict) -> str:
+    body = work_cards.WorkSetIn(**{key: arguments[key] for key in ("title", "goal", "done_when") if arguments.get(key)})
+    async with turn.engine.begin() as conn:
+        card = await work_cards.set_work(conn, await _agent_run(conn, turn), body)
+    return f"the work of trace #{card.trace_id} is now: {card.title} (status {card.status})"
+
+
 async def agent_forward(turn: Turn, arguments: dict) -> str:
     async with turn.engine.begin() as conn:
         run = await _agent_run(conn, turn)
@@ -363,6 +380,7 @@ HANDLERS = {
     "orchestrator_answer": orchestrator_answer,
     "orchestrator_reassign": orchestrator_reassign,
     "orchestrator_ask_owner": orchestrator_ask_owner,
+    "work_set": work_set,
     "memory_write": memory_write,
 }
 

@@ -5909,3 +5909,45 @@ def test_0231_notes_when_the_bus_carried_a_plugin_delivery_null_before_and_going
     move_to(hub_db, "0230", down=True)
     assert "published_at" not in columns(hub_db, "plugin_deliveries")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0231") :]
+
+
+def test_0234_takes_work_chats_and_the_columns_that_name_them_and_going_back_makes_them_group_chats(hub_db):
+    move_to(hub_db, "0233")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        with pytest.raises(errors.CheckViolation):  # 0233 knows group, direct and settle chats alone
+            conn.execute(insert(t.chats).values(title="Work: fix", created_by=ids["user"], kind="work"))
+    move_to(hub_db, "0234")
+    for relation, name in (
+        ("system_traces", "work_chat_id"),
+        ("chat_messages", "copied_from_id"),
+        ("decisions", "awaits_run_id"),
+    ):
+        assert name in columns(hub_db, relation)
+    with live.connect(hub_db) as conn:
+        work = one(
+            conn, insert(t.chats).values(title="Work: fix", created_by=ids["user"], kind="work").returning(t.chats.c.id)
+        )
+        with pytest.raises(errors.CheckViolation):  # a work chat names no person, as a group chat
+            conn.execute(
+                insert(t.chats).values(title="w", created_by=ids["user"], kind="work", direct_user_id=ids["user"])
+            )
+    move_to(hub_db, "0233", down=True)
+    c = t.chats
+    assert query(hub_db, select(c.c.kind).where(c.c.id == work)) == [("group",)]
+    assert "work_chat_id" not in columns(hub_db, "system_traces")
+    assert "copied_from_id" not in columns(hub_db, "chat_messages")
+    assert "awaits_run_id" not in columns(hub_db, "decisions")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0234") :]
+
+
+def test_0235_gives_traces_the_work_and_its_card_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0234")
+    work = {"title", "goal", "done_when", "card_message_id", "card_state"}
+    assert not work & columns(hub_db, "system_traces")
+    move_to(hub_db, "0235")
+    assert work <= columns(hub_db, "system_traces")
+    move_to(hub_db, "0234", down=True)
+    assert not work & columns(hub_db, "system_traces")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0235") :]

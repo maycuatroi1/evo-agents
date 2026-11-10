@@ -4982,7 +4982,8 @@
           "image_url",
           "direct_agent",
           "faces",
-          "last_message"
+          "last_message",
+          "work"
         ],
         "schema": "ChatSummary"
       }
@@ -5050,7 +5051,8 @@
           "via",
           "bridged_to",
           "from_answer",
-          "forwarded_by"
+          "forwarded_by",
+          "work"
         ],
         "schema": "GroupMessage"
       }
@@ -5127,7 +5129,8 @@
           "via",
           "bridged_to",
           "from_answer",
-          "forwarded_by"
+          "forwarded_by",
+          "work"
         ],
         "schema": "GroupMessage"
       }
@@ -28461,7 +28464,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.61.7"
+      "version": "0.63.1"
     },
     "paths": {
       "/v1/health": {
@@ -82473,7 +82476,7 @@
             "systems"
           ],
           "summary": "Show Trace",
-          "description": "One trace: its spans in the order written, with their runs' numbers, and the metrics of its nodes and edges.",
+          "description": "One trace: its spans in the order written, with their runs' numbers, the metrics of its nodes and edges, and its\ntimeline by agent.",
           "operationId": "show_trace_v1_projects__project__systems__slug__traces__trace_id__get",
           "parameters": [
             {
@@ -82517,6 +82520,106 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/TraceOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/systems/{slug}/work/summary": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Work Summary",
+          "description": "The numbers of the system's work the caller may read that moved in the last ``hours`` hours or has a run\nstill active: open, needing a person, failed and done, the median time from start to close of the work done in\nthe window, and the cost. It reads only.",
+          "operationId": "work_summary_v1_projects__project__systems__slug__work_summary_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "hours",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 720,
+                "minimum": 1,
+                "description": "the traces that moved in the last N hours",
+                "default": 24,
+                "title": "Hours"
+              },
+              "description": "the traces that moved in the last N hours"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkSummary"
                   }
                 }
               }
@@ -91268,6 +91371,81 @@
           }
         }
       },
+      "/v1/chats/{chat_id}/work": {
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Show Work",
+          "description": "The work card of the trace whose work chat this is.",
+          "operationId": "show_work_v1_chats__chat_id__work_get",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkCard"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/chats/{chat_id}/events": {
         "get": {
           "tags": [
@@ -93123,6 +93301,101 @@
                 }
               },
               "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/work": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Set Work Route",
+          "description": "Set the title, goal and done-when of the work of this run's trace, as its coordinator.",
+          "operationId": "set_work_route_v1_worker_runs__run_id__work_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkSetIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/WorkCard"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
             },
             "404": {
               "content": {
@@ -118719,7 +118992,8 @@
               "enum": [
                 "group",
                 "direct",
-                "settle"
+                "settle",
+                "work"
               ],
               "title": "Kind",
               "description": "group: members are added and removed; direct: one person and one agent, for good; settle: a group chat the hub opened, whose agent every message of a person wakes"
@@ -120157,7 +120431,8 @@
               "enum": [
                 "group",
                 "direct",
-                "settle"
+                "settle",
+                "work"
               ],
               "title": "Kind",
               "description": "group; direct: one person and one agent; or settle: a group chat the hub opened for its agent"
@@ -120203,6 +120478,17 @@
                 }
               ],
               "description": "the latest message of its main line; null for none"
+            },
+            "work": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkBrief"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "of a work chat (kind work): its trace's system, title, status and what it waits for"
             }
           },
           "type": "object",
@@ -129756,6 +130042,17 @@
               ],
               "title": "Forwarded By",
               "description": "the @handle of the agent that forwarded it verbatim from the run of its author (evo-agents worker agent forward); null when its author's run wrote it"
+            },
+            "work": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkCard"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the work card of a trace of an agent system, on the hub's message that carries it in the trace's root thread; a message_changed event says it changed. Null on every other message"
             }
           },
           "type": "object",
@@ -149795,6 +150092,17 @@
               ],
               "title": "Forwarded By",
               "description": "the @handle of the agent that forwarded it verbatim from the run of its author (evo-agents worker agent forward); null when its author's run wrote it"
+            },
+            "work": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkCard"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the work card of a trace of an agent system, on the hub's message that carries it in the trace's root thread; a message_changed event says it changed. Null on every other message"
             },
             "thread": {
               "type": "integer",
@@ -180262,6 +180570,173 @@
           ],
           "title": "TierSetting"
         },
+        "TimelineMark": {
+          "properties": {
+            "decision_id": {
+              "type": "integer",
+              "title": "Decision Id"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the run that asked"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent of that run"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "the person it asks"
+            },
+            "question": {
+              "type": "string",
+              "title": "Question"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "open, answered, expired or cancelled"
+            },
+            "asked_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Asked At"
+            },
+            "answered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "decision_id",
+            "run_id",
+            "agent",
+            "login",
+            "question",
+            "state",
+            "asked_at",
+            "answered_at"
+          ],
+          "title": "TimelineMark"
+        },
+        "TimelineRun": {
+          "properties": {
+            "span_id": {
+              "type": "integer",
+              "title": "Span Id",
+              "description": "its invoke_agent span"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "agent": {
+              "type": "string",
+              "title": "Agent",
+              "description": "the handle of the agent"
+            },
+            "node": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "the state of the run now"
+            },
+            "segments": {
+              "items": {
+                "$ref": "#/components/schemas/TimelineSegment"
+              },
+              "type": "array",
+              "title": "Segments",
+              "description": "oldest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "span_id",
+            "run_id",
+            "agent",
+            "node",
+            "state",
+            "segments"
+          ],
+          "title": "TimelineRun"
+        },
+        "TimelineSegment": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "parked",
+                "waiting"
+              ],
+              "title": "Kind",
+              "description": "queued for a worker, running, parked, or waiting for an answer held"
+            },
+            "started_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Started At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At",
+              "description": "null while it goes on"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "started_at",
+            "ended_at"
+          ],
+          "title": "TimelineSegment"
+        },
         "Today": {
           "properties": {
             "summary": {
@@ -181178,6 +181653,95 @@
               "type": "number",
               "title": "Usd"
             },
+            "work_chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Chat Id",
+              "description": "the work chat its first hand-off opened; null before one"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "what the entry agent set (work set), else the first line of its first message"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal",
+              "description": "what the entry agent set; null when not set"
+            },
+            "done_when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Done When",
+              "description": "what the entry agent set; null when not set"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "needs_person",
+                    "failed",
+                    "done"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "the status of its work, derived from its runs and decisions"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent at work now; null when none is"
+            },
+            "waiting": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkWaiting"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what its work waits for; null for nothing"
+            },
             "spans": {
               "items": {
                 "$ref": "#/components/schemas/SpanOut"
@@ -181187,6 +181751,10 @@
             },
             "metrics": {
               "$ref": "#/components/schemas/Metrics"
+            },
+            "timeline": {
+              "$ref": "#/components/schemas/TraceTimeline",
+              "description": "each run of it cut into queued, running, parked and waiting, and the decisions that ask a person"
             }
           },
           "type": "object",
@@ -181358,6 +181926,95 @@
             "usd": {
               "type": "number",
               "title": "Usd"
+            },
+            "work_chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Chat Id",
+              "description": "the work chat its first hand-off opened; null before one"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "what the entry agent set (work set), else the first line of its first message"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal",
+              "description": "what the entry agent set; null when not set"
+            },
+            "done_when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Done When",
+              "description": "what the entry agent set; null when not set"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "needs_person",
+                    "failed",
+                    "done"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "the status of its work, derived from its runs and decisions"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent at work now; null when none is"
+            },
+            "waiting": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkWaiting"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what its work waits for; null for nothing"
             }
           },
           "type": "object",
@@ -181376,6 +182033,28 @@
             "usd"
           ],
           "title": "TraceSummary"
+        },
+        "TraceTimeline": {
+          "properties": {
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/TimelineRun"
+              },
+              "type": "array",
+              "title": "Runs",
+              "description": "in the order of their spans"
+            },
+            "marks": {
+              "items": {
+                "$ref": "#/components/schemas/TimelineMark"
+              },
+              "type": "array",
+              "title": "Marks",
+              "description": "the decisions that ask a person, oldest first"
+            }
+          },
+          "type": "object",
+          "title": "TraceTimeline"
         },
         "TranscriptFile": {
           "properties": {
@@ -183511,6 +184190,757 @@
             "timezone"
           ],
           "title": "Window"
+        },
+        "WorkAsk": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "ask",
+                "escalate",
+                "reassign"
+              ],
+              "title": "Kind",
+              "description": "ask: an agent's ask; escalate: to the Orchestrator; reassign: its reassignment"
+            },
+            "from_agent": {
+              "type": "string",
+              "title": "From Agent",
+              "description": "the handle of the agent that handed the work"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent that took it; null when refused"
+            },
+            "brief": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brief",
+              "description": "the goal of its brief"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status",
+              "description": "the state of the run it made; else its span's status (refused, error)"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "usd": {
+              "type": "number",
+              "title": "Usd"
+            },
+            "thread": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkThread"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the thread of its question"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "from_agent",
+            "agent",
+            "brief",
+            "status",
+            "run_id",
+            "usd",
+            "thread"
+          ],
+          "title": "WorkAsk"
+        },
+        "WorkBrief": {
+          "properties": {
+            "trace_id": {
+              "type": "integer",
+              "title": "Trace Id"
+            },
+            "system": {
+              "$ref": "#/components/schemas/WorkSystem"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "what the entry agent set, else the first line of the trace's first message"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "running",
+                "needs_person",
+                "failed",
+                "done"
+              ],
+              "title": "Status"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent at work now; null when none is"
+            },
+            "waiting": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkWaiting"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what the work waits for; null for nothing"
+            },
+            "coordinator": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Coordinator",
+              "description": "the handle of the system's entry agent, which coordinates the work"
+            }
+          },
+          "type": "object",
+          "required": [
+            "trace_id",
+            "system",
+            "title",
+            "status",
+            "agent",
+            "waiting"
+          ],
+          "title": "WorkBrief",
+          "description": "What a list shows of the work of a trace."
+        },
+        "WorkCard": {
+          "properties": {
+            "trace_id": {
+              "type": "integer",
+              "title": "Trace Id"
+            },
+            "system": {
+              "$ref": "#/components/schemas/WorkSystem"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "what the entry agent set, else the first line of the trace's first message"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "running",
+                "needs_person",
+                "failed",
+                "done"
+              ],
+              "title": "Status"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent at work now; null when none is"
+            },
+            "waiting": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkWaiting"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what the work waits for; null for nothing"
+            },
+            "coordinator": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Coordinator",
+              "description": "the handle of the system's entry agent, which coordinates the work"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id",
+              "description": "the chat of the message that opened the trace"
+            },
+            "message_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Message Id"
+            },
+            "work_chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Chat Id"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal"
+            },
+            "done_when": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Done When"
+            },
+            "asks": {
+              "items": {
+                "$ref": "#/components/schemas/WorkAsk"
+              },
+              "type": "array",
+              "title": "Asks",
+              "description": "the sub-tasks, oldest first"
+            },
+            "decisions": {
+              "items": {
+                "$ref": "#/components/schemas/WorkDecision"
+              },
+              "type": "array",
+              "title": "Decisions",
+              "description": "oldest first"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs"
+            },
+            "usd": {
+              "type": "number",
+              "title": "Usd"
+            },
+            "hop": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hop",
+              "description": "the deepest hop of its runs"
+            },
+            "max_hops": {
+              "type": "integer",
+              "title": "Max Hops"
+            },
+            "trace_runs": {
+              "type": "integer",
+              "title": "Trace Runs",
+              "description": "the runs a trace of its revision may make"
+            },
+            "trace_usd": {
+              "type": "number",
+              "title": "Trace Usd",
+              "description": "the USD a trace of its revision may spend"
+            },
+            "started_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Started At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At",
+              "description": "its last span, once no run of it is active; null while running"
+            },
+            "seconds": {
+              "type": "number",
+              "title": "Seconds",
+              "description": "from its start to its end, or to now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "trace_id",
+            "system",
+            "title",
+            "status",
+            "agent",
+            "waiting",
+            "chat_id",
+            "message_id",
+            "work_chat_id",
+            "goal",
+            "done_when",
+            "asks",
+            "decisions",
+            "runs",
+            "usd",
+            "hop",
+            "max_hops",
+            "trace_runs",
+            "trace_usd",
+            "started_at",
+            "ended_at",
+            "seconds"
+          ],
+          "title": "WorkCard",
+          "description": "The work card of a trace: its root-thread message carries it, GET /v1/chats/{id}/work answers it."
+        },
+        "WorkDecision": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "orchestrator",
+                "person"
+              ],
+              "title": "Kind",
+              "description": "orchestrator: a thread of the Orchestrator; person: a decision that asks a person"
+            },
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the thread's id, or the decision's"
+            },
+            "rule": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rule",
+              "description": "the rule that opened the thread (failed, escalate, ...)"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "answer, reassign or ask_owner; null while the thread is open"
+            },
+            "question": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Question"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "open or closed for a thread; the decision's state"
+            },
+            "answer": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answer",
+              "description": "the option and words of the answer"
+            },
+            "asked_of": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asked Of"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the Orchestrator's run, or the run that asked"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "id",
+            "rule",
+            "outcome",
+            "question",
+            "state",
+            "answer",
+            "asked_of",
+            "run_id",
+            "at"
+          ],
+          "title": "WorkDecision"
+        },
+        "WorkSetIn": {
+          "properties": {
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "a short name of the work"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal"
+            },
+            "done_when": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Done When"
+            }
+          },
+          "type": "object",
+          "title": "WorkSetIn"
+        },
+        "WorkSummary": {
+          "properties": {
+            "hours": {
+              "type": "integer",
+              "title": "Hours"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since"
+            },
+            "traces": {
+              "type": "integer",
+              "title": "Traces",
+              "description": "the traces counted: moved since `since`, or with a run still active"
+            },
+            "withheld": {
+              "type": "integer",
+              "title": "Withheld",
+              "description": "such traces the caller may not read, left out"
+            },
+            "open": {
+              "type": "integer",
+              "title": "Open",
+              "description": "running or needing a person"
+            },
+            "needs_person": {
+              "type": "integer",
+              "title": "Needs Person"
+            },
+            "failed": {
+              "type": "integer",
+              "title": "Failed"
+            },
+            "done": {
+              "type": "integer",
+              "title": "Done"
+            },
+            "closed_p50_seconds": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Closed P50 Seconds",
+              "description": "median start to last move of the work done in the window"
+            },
+            "usd": {
+              "type": "number",
+              "title": "Usd",
+              "description": "what the traces counted cost, their spawned runs included"
+            }
+          },
+          "type": "object",
+          "required": [
+            "hours",
+            "since",
+            "traces",
+            "withheld",
+            "open",
+            "needs_person",
+            "failed",
+            "done",
+            "closed_p50_seconds",
+            "usd"
+          ],
+          "title": "WorkSummary"
+        },
+        "WorkSystem": {
+          "properties": {
+            "id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Id",
+              "description": "null once the system is deleted"
+            },
+            "slug": {
+              "type": "string",
+              "title": "Slug"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name",
+              "description": "null once the system is deleted"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "the name of its project"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "slug",
+            "name"
+          ],
+          "title": "WorkSystem"
+        },
+        "WorkThread": {
+          "properties": {
+            "chat_id": {
+              "type": "integer",
+              "title": "Chat Id"
+            },
+            "root_id": {
+              "type": "integer",
+              "title": "Root Id"
+            }
+          },
+          "type": "object",
+          "required": [
+            "chat_id",
+            "root_id"
+          ],
+          "title": "WorkThread"
+        },
+        "WorkWaiting": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "run",
+                "person",
+                "decision"
+              ],
+              "title": "Kind",
+              "description": "run: an agent's run; person: a person drives or reviews a run; decision"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run awaited, or the run a person drives"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent of that run"
+            },
+            "decision_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Id",
+              "description": "the open decision that asks a person"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "the person the decision asks"
+            },
+            "question": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Question"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "title": "WorkWaiting"
         },
         "Worker": {
           "properties": {

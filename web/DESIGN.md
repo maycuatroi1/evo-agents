@@ -1061,8 +1061,9 @@ Shared pieces built on them:
   drawn in `running` with a moving dash while a crossing is recent, a working agent's circle has a turning dashed
   `running` ring, which stands still under reduced motion; a crossing the design lacks is a dashed
   `attention` edge, to a dashed node outside the design when it reached one. Selecting a node shows its numbers in
-  full above the recent traces in the side panel. The trace stream (`use-trace-stream.ts`) keeps both current while
-  the tab is in view and closes while it is hidden; nothing says it is live, only a line when it fails or ends. A
+  full in a side panel under its display name. Above the map Observe lists the system's work (see Observe: work and
+  timeline below). The trace stream (`use-trace-stream.ts`) keeps it all current while the tab is in view and closes
+  while it is hidden; nothing says it is live, only a line when it fails or ends. A
   trace's page (`/p/{project}/systems/{slug}/traces/{id}`, `trace-page.tsx`) gives its totals, a table by agent (runs,
   messages, tool calls, kg queries, cost) and the waterfall of its spans in the order of their tree, each with its
   run's link or its message's in the chat; a refused or off-design span is marked in `danger` or `attention`.
@@ -1255,6 +1256,40 @@ Shared pieces built on them:
   branch the hub recorded for it (`task/<id of the run the dispatch made>`, a later attempt's too), which the hub opens
   as a draft pull request, and the runs list shows it with that tag and "A task a plugin handed to @handle, on branch
   task/N", linked to the run's page.
+- Work card, the work chats of agent systems (`components/chats/work-*.tsx`, `lib/work.ts`; docs/hub.md, Work chats
+  and The work card). A work chat (kind `work`) is the chat the first hand-off of a trace opens. In the chat list
+  (`work-list.tsx`) the work chats stand first, grouped under their system's name (`Network` icon, `xs` `fg-muted`), the
+  open ones (running, needs a person, failed) by latest activity, the done ones folded under "N done works" (a native
+  `details`, unfolded while the chat shown is one of them); the other chats follow under a rule. A work row's second
+  line is its state as an 8 px dot and in words, then what it waits for ("Running: Waiting for @helper"); the dot is
+  `aria-hidden`, the words carry the state. The state's look (`work-look.tsx`, `WORK_LOOK`): running `running`
+  (cobalt, `CirclePlay`), needs a person `attention` (amber, `MessageSquare`), failed `danger` (`CircleX`), done
+  `success` (`CircleCheck`); colour is only ever a state's and always with its word or icon, and nothing pulses: the
+  page shows a live indicator only when its stream drops, as every chat does.
+  The work chat's head adds, beside its title, the state pill and Work #N (the trace's id, a mono `Tag`), and over who
+  is in it the system (linking to Observe, `/p/{project}/systems/{slug}?mode=observe`) and the coordinator (the
+  system's entry agent, `@handle` in mono). Under the head the card is pinned (`work-card.tsx`) on `surface-sunken`:
+  Work card, what the work waits for, and Show details / Hide details (`aria-expanded`); the figures in four cells
+  (runs and cost of the trace's limits, hop of max hops, time); unfolded, the goal and Done when (or "No goal set yet"
+  in `fg-subtle` italics), the sub-task table (agent, state as the run's pill, brief from 640 px, cost; the agent's
+  name is the button that opens its thread beside the chat, a link to the chat that holds it otherwise), and the
+  decisions: an open decision that asks the visitor is the Inbox's `DecisionCard` with its answer form, answered in
+  the card (`app/(app)/chats/[id]/work-decision.tsx`); any other shows its state, question, who it asks and its
+  answer, an Orchestrator's with the word Orchestrator. From 768 px the card opens unfolded, below it folded to its
+  figures; its body scrolls inside 40 % of the window. Loading is two skeleton lines; a failed read is an
+  `InlineError` with Try again, a 404 or 403 says the chat has no card the visitor can see without a retry.
+  On the main line (`work-ask.tsx`, through `use-work-under.tsx`), the question that opens an agent's thread carries
+  the ask card: "@lead asked @helper" (escalated, reassigned, refused by the hub), the sub-task's state, its brief,
+  what the asked agent last answered in its thread ("No answer yet" in italics), and Open thread, which opens the
+  thread panel on the right. An exception the Orchestrator took up sits under the first message of its run: its rule
+  with `ShieldAlert` in `attention`, Deciding (`attention`) or Decided (`success`), and the Orchestrator's decision
+  (answered, reassigned, asked the owner) with its words. Each event of the chat reads the card again 800 ms after the
+  last; the card is read every 15 seconds while its work is not done. The composer says "Goes to @lead, the
+  coordinator, unless you @ an agent".
+  In the root thread, where the person asked, the hub's "Work card: {title}" message carries the card
+  (`work-root-card.tsx`), refreshed by `message_changed`: the title, the state pill, what the work waits for, the
+  totals (runs, cost, time) in `fg-subtle`, and Open work chat (`outline`, `ArrowRight`); once done the line reads
+  "Done: 3 runs, $0.42, 12 min". No emoji anywhere in these cards; all their words are in English and Vietnamese.
 - Dispatch and Run plan end with "Run as me on the hub" (`runs/as-me-field.tsx`, `UserRoundKey`), a checkbox card off
   by default whose line says what the agent gets (the owner's access on every project, hub admin when they have it)
   and never gets (their secrets, tokens and workers), and that it ends with the run; checked, a warning on
@@ -2150,6 +2185,46 @@ Themes come from `next-themes` with the `class` strategy and follow the system u
 or dark in the user menu. The language is the `NEXT_LOCALE` cookie set from the same menu: English without it
 (or with a value that is not a locale), Vietnamese when it says `vi`. The browser's Accept-Language is not read,
 so the server renders a page the same way for everyone who has not picked a language.
+
+### Observe: work and timeline
+
+Observe (`?mode=observe` of an agent system, `components/systems/observer.tsx`, the logic in `lib/systems-work.ts`)
+reads as one page from top to bottom: the numbers of the last 24 hours, the work list, the work selected, then the map.
+
+- Numbers (`work-summary.tsx`): one `MetricStrip` under the small heading "Work of the last 24 hours" with Open, Needs a
+  person (the one cell in `attention`), Failed, Median time to close ("-" while no work closed) and Cost, from
+  `GET .../work/summary?hours=24`. Work the reader may not read is left out and said under Open. A load error is a
+  `danger` line in place of the strip.
+- Work list (`work-list.tsx`): a `DataCard` with the filters All, Needs you, Running, Failed and Done as a
+  `FacetGroup`, each with its count, and "{shown} of {total}". Needs you is work waiting on a decision put to the
+  viewer. The table: Work (the title, else "Work {id}", with `#id` and who opened it), Status, At (the agent the work
+  is at, by display name), Waits for (an agent's answer, a person at a run, or a person's decision with its question
+  in `attention`), Time (to now while open), Runs, Cost against the budget of one work (`limits.trace_usd`) as a
+  `Meter` that turns `warning` at 80 % and `danger` past it, and Open with Work chat and Trace. Below 768 px At,
+  below 1024 Waits for and below 1280 Runs drop out; on a phone each work is a `DataList` row that selects it. The
+  filter lives in `?filter=` (replaced, not pushed). Empty, no match (with Show all), loading and error states are
+  the kit's.
+- Status (`work-status.tsx`): a `StatusPill` per work: Running `running` with the live dot, Needs a person
+  `attention`, Failed `danger`, Done `success`, Unknown in outline for a trace an older hub wrote. Colour says only
+  state.
+- The work selected (`work-detail.tsx`, `?work={id}`, pushed so Back returns to the list): a card with the title,
+  "Work {id}", its status, runs, cost and time, its goal and done-when, Work chat, Trace and a close button. Under
+  it, side by side from 1024 px and stacked below:
+  - Timeline by agent (`work-timeline.tsx`): a lane per agent, its display name on the left and a track of bars from
+    `timeline.runs`: Queued (a dashed neutral outline), Running (`running`, pulsing while open unless motion is
+    reduced), Done (`success`), Failed (`danger`), Parked (a soft `attention` fill inside a solid edge), Waiting for an
+    answer (neutral). A decision put to a person is an `attention` diamond with a line at the moment it was asked. The
+    axis gives the time since the work started; the key under it names each look, so no state rests on colour alone.
+    Each bar says its kind and times to a screen reader.
+  - Hand-offs (`work-handoffs.tsx`): the turns from one node to the next in order, with the time; one the hub refused
+    shows Refused in `danger` with its reason, one off the design is tagged in `attention`, and the heading counts the
+    hand-offs and those off the design.
+- The map: with no work selected it draws all work (the five newest for states, the last 50 for numbers); with one
+  selected it draws that work's own numbers and fades to 30 % every node and line off its path, its lines drawn as
+  emphasised. A line no work crossed shows its dot, never a 0. The view fits every node with room for the words under
+  them (32 px above, 72 below, 96 at the sides), again when the path changes.
+- Live: the trace stream updates the list, the numbers (their query sits under the metrics key) and the work
+  selected; there is no live badge, only the line when the stream fails or ends.
 
 ## Accessibility
 

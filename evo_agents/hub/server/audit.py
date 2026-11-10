@@ -123,6 +123,7 @@ RUN_TRIAGE_CANCEL = "run.triage_cancel"  # ... or asked the worker of a stale ru
 ORCHESTRATOR_ANSWER = "orchestrator.answer"  # the Orchestrator of a system answered a thread the hub opened to it
 ORCHESTRATOR_REASSIGN = "orchestrator.reassign"  # ... or gave its work to another agent of the system
 ORCHESTRATOR_ASK_OWNER = "orchestrator.ask_owner"  # ... or asked the person at the origin of the work a decision
+WORK_SET = "work.set"  # the entry agent of a system set the title, goal or done-when of a trace's work (work_cards)
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
 # The dispatcher of a run or an admin of its project deleted an output of it (evo_agents.hub.server.run_outputs): the

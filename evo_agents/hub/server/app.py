@@ -606,6 +606,7 @@ def _include_member_routes(app: FastAPI) -> None:
         signals,
         task_dispatch,
         triage_actions,
+        work_cards,
         worker_autonomy,
     )
 
@@ -655,6 +656,7 @@ def _include_member_routes(app: FastAPI) -> None:
         chat_images.router,
         chat_labels.router,
         chat_bridges.router,
+        work_cards.router,  # the work card of a work chat
         chat_events.router,
         chat_events.stream_router,
         chat_agents.worker_router,
@@ -663,6 +665,7 @@ def _include_member_routes(app: FastAPI) -> None:
         chat_read.worker_router,
         triage_actions.worker_router,
         orchestrator_actions.worker_router,  # the Orchestrator of a system acts in its threads; agents escalate
+        work_cards.worker_router,  # the entry agent of a system sets the work of its trace
         curator_threads.worker_router,  # the agent of a proposal's thread answers it
         market_install.github_router,  # before plugins.router, whose routes take /v1/plugins/{name}
         plugins.router,

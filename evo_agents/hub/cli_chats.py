@@ -60,6 +60,7 @@ SUMMARY_KEYS = (
     "direct_agent",
     "faces",
     "last_message",
+    "work",
 )
 MESSAGE_KEYS = (
     "id",
@@ -81,6 +82,7 @@ MESSAGE_KEYS = (
     "bridged_to",
     "from_answer",
     "forwarded_by",
+    "work",
 )
 PAGE_KEYS = ("chat", "messages", "more")
 

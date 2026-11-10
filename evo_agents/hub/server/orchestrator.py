@@ -14,8 +14,10 @@ escalates (``escalate``), and when a rule of progress matches its trace (``triag
 - rounds: a turn of the hub runtime used its tool rounds without a final answer (``on_rounds``);
 - budget: the trace refused an ask or a mention for its budget (``on_budget``, when that refusal is written).
 
-The thread is in the system's ops chat ("Ops: <slug>", ``agent_systems.ops_chat_id``), made the first time with the
-system's creator in it, the Orchestrator and the person at the origin of the work put in it. Its first message is the
+The thread is in the work chat of the run's trace (``work_chats.placed``, which opens it), the Orchestrator and the
+person at the origin of the work put in it; for a run of no trace, or an Orchestrator the work chat cannot take, it is
+in the system's ops chat ("Ops: <slug>", ``agent_systems.ops_chat_id``), made the first time with the system's creator
+in it, and a line of the hub in the work chat says where it went. Its first message is the
 hub's: the rule, the agent, its run and trace, and the spans that show it, then the mention of the Orchestrator,
 which hands it the work at the hop of the work it is about: an escalation adds no hop. The message carries the run it
 is about, so the Orchestrator's run joins that run's trace under its span. ``orchestrator_threads`` keeps the thread;
@@ -39,7 +41,7 @@ from functools import partial
 from typing import cast
 
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import and_, exists, func, insert, select, update
+from sqlalchemy import BigInteger, and_, exists, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -81,6 +83,7 @@ class Opened:
     root_id: int
     run_id: int | None
     refusal: str | None = None
+    kind: str = chats.GROUP  # chats.WORK for a thread in the work chat of its trace (``work_chats``)
 
 
 @dataclass(frozen=True)
@@ -248,7 +251,7 @@ async def open_thread(conn: AsyncConnection, ask: Ask) -> Opened | None:
         return None
     token = _OPENING.set(True)
     try:
-        chat = await ops_chat(conn, ask.found.system, origin.person, lead)
+        chat = await _thread_chat(conn, ask, origin.person, lead)
         text = runs.clip("\n".join([*_head(ask), *ask.lines, ACTIONS_LINE]), chats.MAX_MESSAGE_BYTES - 200)
         body = f"{text}\n\n@{lead.handle}"
         message_id, _ = await insert_message(conn, chat, body, thread_root_id=None, run_id=ask.found.run_id)
@@ -265,7 +268,26 @@ async def open_thread(conn: AsyncConnection, ask: Ask) -> Opened | None:
         "orchestrator thread opened",
         extra={"rule": ask.rule, "subject_run_id": ask.found.run_id, "thread_id": thread_id, "run_id": run_id},
     )
-    return Opened(thread_id, chat.chat_id, message_id, run_id, refusal)
+    return Opened(thread_id, chat.chat_id, message_id, run_id, refusal, chat.kind)
+
+
+async def _thread_chat(conn: AsyncConnection, ask: Ask, person: Principal, lead: Profile) -> ChatAccess:
+    """The chat a thread of ``ask`` opens in: the work chat of its trace (``work_chats``), else the ops chat of its
+    system, which a line in the work chat names when the Orchestrator may not be in it."""
+    from evo_agents.hub.server import work_chats  # it hands work through chat_runs, as this module does
+
+    trace = None
+    if ask.found.trace_id is not None and ask.found.run_id is not None:
+        trace = await work_chats.trace_of_run(conn, ask.found.run_id)
+    if trace is None or trace.system_id is None:
+        return await ops_chat(conn, ask.found.system, person, lead)
+    work, chat, why = await work_chats.placed(conn, trace, person, lead)
+    if chat is not None:
+        return await chat_access(conn, person, work)
+    ops = await ops_chat(conn, ask.found.system, person, lead)
+    line = f"The thread of @{lead.handle} on @{ask.found.handle} ({ask.rule}) is in the ops chat {ops.chat_id}: {why}"
+    await hub_reply(conn, work, None, line)
+    return ops
 
 
 async def _safely(conn: AsyncConnection, rule: str, make: Callable[[], Awaitable[Opened | None]]) -> Opened | None:
@@ -347,10 +369,11 @@ async def on_run(conn: AsyncConnection, found: RunStep, lines: list[str], *, sta
 
 async def _received(conn: AsyncConnection, trace_id: int, handle: str) -> list[tuple[int, str | None, str | None]]:
     """The work agent ``handle`` received in trace ``trace_id``, oldest first: (its span, the message, the goal of
-    its brief); a run that goes on in a session is left out, its message the same."""
+    its brief); a run that goes on in a session is left out, its message the same, and a question asked of a session
+    that took it in its inbox or went on with it counts by the span of its ask."""
     s, m, b = tables.system_spans, tables.chat_messages, tables.agent_ask_briefs
     query = (
-        select(s.c.id, m.c.body, b.c.brief["goal"].astext)
+        select(s.c.id, m.c.body, b.c.brief["goal"].astext, s.c.message_id)
         .select_from(s.outerjoin(m, m.c.id == s.c.message_id).outerjoin(b, b.c.run_id == s.c.run_id))
         .where(
             s.c.trace_id == trace_id,
@@ -360,7 +383,19 @@ async def _received(conn: AsyncConnection, trace_id: int, handle: str) -> list[t
         )
         .order_by(s.c.id)
     )
-    return [(row[0], row[1], row[2]) for row in await conn.execute(query)]
+    invoked = (await conn.execute(query)).all()
+    seen = {row.message_id for row in invoked if row.message_id is not None}
+    r, ap = tables.runs, tables.agent_profiles
+    child = s.c.attributes["evo.child_run_id"].astext.cast(BigInteger)
+    asks = (
+        select(s.c.id, m.c.body, s.c.message_id)
+        .select_from(
+            s.join(r, r.c.id == child).join(ap, ap.c.id == r.c.profile_id).outerjoin(m, m.c.id == s.c.message_id)
+        )
+        .where(s.c.trace_id == trace_id, s.c.tool == system_context.TOOL_ASK, s.c.status == "ok", ap.c.handle == handle)
+    )
+    asked = [(row.id, row.body, None) for row in await conn.execute(asks) if row.message_id not in seen]
+    return sorted([(row[0], row[1], row[2]) for row in invoked] + asked)
 
 
 async def check_loop(conn: AsyncConnection, run_id: int) -> Opened | None:
@@ -575,10 +610,15 @@ async def escalate(conn: AsyncConnection, sealer, run: AgentRun, body: EscalateI
             action=audit.CHAT_MESSAGE,
             target=f"message:{opened.root_id} run:{run.run_id} escalated:{opened.run_id}",
         )
-        shown = f"@{run.profile.handle} escalated to @{lead} (run #{opened.run_id}, ops chat {opened.chat_id}): {said}"
+        where = "work" if opened.kind == chats.WORK else "ops"
+        shown = (
+            f"@{run.profile.handle} escalated to @{lead} (run #{opened.run_id}, {where} chat {opened.chat_id}): {said}"
+        )
     else:
         shown = f"escalation: {refusal}"
-    await hub_reply(conn, chat.chat_id, chat.root_id, runs.clip(shown, 4000))
+    from evo_agents.hub.server import work_chats  # it hands work through chat_runs, as this module does
+
+    await work_chats.say(conn, run.run_id, (chat.chat_id, chat.root_id), runs.clip(shown, 4000))
     log.info(
         "agent escalated", extra={"run_id": run.run_id, "made": opened and opened.run_id, "refused": bool(refusal)}
     )
