@@ -195,12 +195,15 @@ export function WorkList({ project, slug, name, traces, failed, onRetry, login, 
           titleText: titleOf(trace),
           href: selectHref(trace.id) as never,
           status: <WorkStatusPill status={trace.status} />,
-          meta: t("mobileMeta", {
-            agent: trace.agent ? agentName(trace.agent, names) : t("noAgent"),
-            waiting: waitingText(trace.waiting) ?? t("waitsNothing"),
-            runs: t("runs", { count: trace.runs }),
-            cost: usd(trace.usd),
-          }),
+          // Only what there is: the agent it is at and what it waits for drop out when none, then its runs and cost.
+          meta: [
+            trace.agent ? t("mobileAt", { agent: agentName(trace.agent, names) }) : null,
+            trace.waiting ? t("mobileWaits", { waiting: waitingText(trace.waiting) ?? "" }) : null,
+            t("runs", { count: trace.runs }),
+            usd(trace.usd),
+          ]
+            .filter(Boolean)
+            .join(", "),
           data: { trace: trace.id, selected: trace.id === selected ? "true" : undefined },
         })}
       />

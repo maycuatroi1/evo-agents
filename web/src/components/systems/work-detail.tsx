@@ -43,7 +43,7 @@ export function WorkDetail({ project, slug, id, trace, failed, onRetry, onClose,
   return (
     <section aria-labelledby="system-work-detail-title" className="flex min-w-0 flex-col gap-4 rounded-md border bg-card p-4 shadow-raised" data-testid="system-work-detail" data-trace={id}>
       <header className="flex flex-wrap items-start gap-x-3 gap-y-2">
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex min-w-60 flex-1 flex-col gap-1">
           <h2 id="system-work-detail-title" className="flex min-w-0 flex-wrap items-center gap-2 text-base font-semibold">
             <span className="min-w-0 truncate" title={title}>
               {title}

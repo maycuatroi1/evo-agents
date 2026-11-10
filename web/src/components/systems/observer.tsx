@@ -104,7 +104,13 @@ function Observer({ project, system }: { project: string; system: SystemOut }) {
   const shown = selected === null ? NO_TRACE : work.data;
 
   const names = useMemo(() => new Map((agents.data ?? NO_AGENTS).filter((agent) => agent.deleted_at === null).map((agent) => [agent.handle, agent.name || `@${agent.handle}`])), [agents.data]);
-  const nodes = useMemo(() => nodeNames(spec, names), [spec, names]);
+  const kinds = useTranslations("systems.designer.kinds");
+  // A node with neither label nor profile (the entry, a graph) goes by its kind, as on the canvas.
+  const nodes = useMemo(() => {
+    const out = nodeNames(spec, names);
+    for (const one of spec.nodes) if (!one.label && !one.profile) out.set(one.id, kinds(one.kind));
+    return out;
+  }, [spec, names, kinds]);
   const nameOf = useCallback((id: string) => nameOfNode(id, nodes, names), [nodes, names]);
 
   const observed = useMemo<Observed>(() => {

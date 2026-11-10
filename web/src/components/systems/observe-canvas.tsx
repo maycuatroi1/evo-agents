@@ -4,7 +4,7 @@ import "@xyflow/react/dist/base.css";
 
 import { Background, BackgroundVariant, Panel, ReactFlow, useReactFlow } from "@xyflow/react";
 import { useFormatter, useTranslations } from "next-intl";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { Agent } from "@/lib/agents";
 import type { EdgeKind, Spec, SpecNode } from "@/lib/systems";
@@ -20,8 +20,12 @@ import { SystemLegend } from "./system-legend";
 const NODE_TYPES = { system: SystemNode };
 const EDGE_TYPES = { system: SystemEdge };
 const NO_UPGRADE = () => undefined;
-/** Room around the drawing when it fits the view: the words under a node and its numbers hang below and beside it. */
-const FIT = { padding: { top: "32px", bottom: "72px", left: "96px", right: "96px" }, maxZoom: 1 } as const;
+/**
+ * Room around the drawing when it fits the view: the words under a node and its numbers hang below and beside it. The
+ * fit counts every node by its declared size: the nodes are drawn anew each second, which drops React Flow's measured
+ * size of all but the newest and would fit the view to those alone. No node of Observe is hidden.
+ */
+const FIT = { padding: { top: "32px", bottom: "72px", left: "96px", right: "96px" }, maxZoom: 1, includeHiddenNodes: true } as const;
 
 export type Observed = {
   states: ReadonlyMap<string, NodeState>;
@@ -228,6 +232,13 @@ export function ObserveCanvas({ spec, observed, agents, selected, onSelect, labe
     // lineDimmed reads hovered and observed.path only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spec.edges, observed, onSelect, bends, focus, hovered, showOptimizes, titleOf, o, t]);
+
+  // Fit the drawing again when what it shows changes: another work's path, or a node outside the design that appeared.
+  const drawn = `${path ? [...path.nodes].sort().join(",") : "*"}|${nodes.length}`;
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => void flow.fitView(FIT));
+    return () => cancelAnimationFrame(frame);
+  }, [drawn, flow]);
 
   return (
     <ReactFlow<SystemFlowNode, SystemFlowEdge>

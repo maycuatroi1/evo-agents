@@ -177,6 +177,7 @@ export function SystemEdge({ id, source, target, data }: EdgeProps<SystemFlowEdg
           data-lit={seen ? String(seen.lit) : undefined}
           data-off-design={seen ? String(seen.offDesign) : undefined}
           data-ghost={ghost ?? ""}
+          data-dimmed={data.dimmed ? "true" : "false"}
         >
           {words ? (
             <>
