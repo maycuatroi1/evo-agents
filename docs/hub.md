@@ -1230,8 +1230,8 @@ titled with the agent's name. A person has one direct chat with each agent: the 
 agent) holds it, so two requests at once make one chat and the second answers the first's. Making one takes the checks
 of adding the agent to a chat (404 for an agent the person cannot see, 403 without the writer role on its project, 409
 for a deleted agent, a person and an agent of the same name, or a label the person does not clear); a direct chat
-there is opens without them, so one whose agent was deleted since still reads. A chat's `kind` (`group`, `direct` or
-`settle`, in Chat and ChatSummary) is kept with it, never read from its members: a chat made with New chat with one person and one
+there is opens without them, so one whose agent was deleted since still reads. A chat's `kind` (`group`, `direct`,
+`settle` or `work`, in Chat and ChatSummary) is kept with it, never read from its members: a chat made with New chat with one person and one
 agent is a group. The members of a direct chat never change: adding or removing a person or an agent, and its person
 leaving, are refused (409); a group chat is for more. Each message of the person that mentions no agent of the chat
 goes to its agent as if it mentioned it (`via` direct): a message outside a thread is a new task, in a new session at
@@ -1250,6 +1250,12 @@ message goes there, and the person is told (`chat_added`) of a group made now. A
 reply hands no work and shows no note, as in a group chat. The prompt of its run shows, instead of the chat before the
 thread, the latest turns: at most 30 messages of the earlier threads, the person's messages and the agent's answers,
 within the snapshot's 12 KiB, the oldest left out first. Opening one is audited as `chat.create` in the agent's project.
+
+**Work chats.** A work chat (`kind` work) is the chat the hub opens for the hand-offs of a trace of an agent system
+(Agent systems, Work chats). It is a group chat in all but two things: a message of the person who opened the trace on
+its main line that mentions no agent goes to the coordinator's session in the root thread, and a copy of a message
+(`chat_messages.copied_from_id`) hands no work. Its summary in `GET /v1/chats` carries `work`, and
+`GET /v1/chats/{id}/work` reads its card (The work card).
 
 **Settle chats.** A settle chat (`kind` settle) is a chat the hub opens, never a person, for something members settle
 with one agent: today the conflicts @ba found in a version of a BA document of the core plugin srs, whose review left
