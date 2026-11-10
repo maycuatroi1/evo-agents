@@ -90,8 +90,9 @@ EVENTS_CHANNEL = "evo_run_events"  # notified with a run's id when an event of i
 PLAN_TRIES = 5  # writes of a step tried before giving up on revision conflicts
 MAX_NOTE_CHARS = 1000  # a note the hub sets on a step
 LEASE = timedelta(seconds=runs.LEASE_SECONDS)  # the api's own comes from EVO_HUB_RUN_LEASE_SECONDS
-# The kinds whose failed runs always carry a failure_cause: the worker's, else the hub's guess from the error
-CAUSED_KINDS = ("step", "plan", "author", "chat")
+# The kinds whose failed runs always carry a failure_cause: the worker's, else the hub's guess from the error. The
+# Curator's (review, judge, replay, history, probe; its Builder's are plan runs) for the night shift's breakers.
+CAUSED_KINDS = ("step", "plan", "author", "chat", "review", "judge", "replay", "history", "probe")
 # Columns a move may set besides the state, its times and the lease.
 MOVE_COLUMNS = frozenset({"worker_id", "runtime", "environment", "session_id", "commit_sha", "diffstat", "verify"})
 MOVE_COLUMNS |= {"evidence", "usage", "failure_cause", "model_used", "routing", "proofs"}

@@ -568,6 +568,7 @@ class Gate:
     access: ProjectAccess
     duty: Duty
     inside: bool = True  # inside the window; outside it, the gate is for the Curator's changes alone (shift_hours)
+    avoid: frozenset[str] = frozenset()  # runtimes whose dependency waits its backoff (infra_breaker): none queued on
 
 
 def _review_budget(charter: dict, budget: dict) -> dict | None:

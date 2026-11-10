@@ -916,8 +916,19 @@ def test_judge_a_run_its_preflight_stopped_for_a_missing_tool_fails_no_change_an
     n = tables.notifications
     rows = sql(world.db, select(n.c.details).where(n.c.run_id == spec["id"], n.c.notice_kind == "run_failed"))
     assert [details["error"] for (details,) in rows] == [error]
-    # the next judge run, on a worker that has the program, judges the change
-    again = judge_run(world)
+    # missing_tool is an infra cause: the Judge's runtime waits its first backoff (15 minutes, jittered by 20%), and
+    # the next judge run, the half-open probe, on a worker that has the program, judges the change
+    from datetime import timedelta
+
+    # the night's runs, the review and the Builder before the judge run, in the night the test fires at
+    r = tables.runs
+    sql(world.db, update(r).where(r.c.id != spec["id"]).values(finished_at=NIGHT - timedelta(minutes=5)))
+    sql(
+        world.db,
+        update(r).where(r.c.id == spec["id"]).values(queued_at=NIGHT - timedelta(minutes=1), finished_at=NIGHT),
+    )
+    assert fire(world.client, NIGHT + timedelta(minutes=10)) == {"infra": 1}
+    again = judge_run(world, NIGHT + timedelta(minutes=20))
     assert again["id"] != spec["id"]
     assert inputs(world, again["id"]).status_code == 200
     assert verdict(world, again["id"]).status_code == 200

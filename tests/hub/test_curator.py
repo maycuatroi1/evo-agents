@@ -24,7 +24,7 @@ if not pg.DSN:
 import psycopg
 from sqlalchemy import func, select, update
 
-from evo_agents.hub import jobs, tables
+from evo_agents.hub import curator, jobs, tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.curator import night_figures
 from evo_agents.hub.server.curator_shift import fire_schedules
@@ -200,6 +200,43 @@ def ended(client, worker: dict, run_id: int) -> None:
     assert report(client, worker, run_id, "failed", error="the agent gave up").status_code == 200
 
 
+# The breaker of dependencies (curator.outages)
+
+
+def test_infra_causes_backoff_with_jitter_and_half_open_probes():
+    steps, most = curator.infra_settings({"circuit_breaker": {"max_failed_in_a_row": 2}})  # a charter before infra
+    assert (steps, most) == ((15, 30, 60, 240), 6)
+    assert curator.dependency_of("account_auth", "codex") == "runtime:codex"
+    assert curator.dependency_of("hub_5xx", "codex") == curator.HUB
+    assert curator.dependency_of("verify_failed", "codex") is None and curator.dependency_of(None, "codex") is None
+    for failures, minutes in ((1, 15), (2, 30), (4, 240), (9, 240)):
+        waits = {curator.backoff(failures, steps, f"key{n}") for n in range(50)}
+        assert all(timedelta(minutes=minutes * 0.8) <= wait <= timedelta(minutes=minutes * 1.2) for wait in waits)
+        assert len(waits) > 1  # jittered, and the same key the same wait
+        assert curator.backoff(failures, steps, "key") == curator.backoff(failures, steps, "key")
+
+    def run(n, minute, runtime="codex", cause="account_auth", failed=True):
+        at = NIGHT + timedelta(minutes=minute)
+        return curator.Ended(n, at - timedelta(minutes=1), at, runtime, failed, cause)
+
+    two = [run(1, 0), run(2, 1, runtime="claude-code", cause="other"), run(3, 20)]
+    (outage,) = curator.outages(two, NIGHT + timedelta(minutes=21), steps, most).values()
+    assert (outage.dependency, outage.failures, outage.probes, outage.last_run_id) == ("runtime:codex", 2, 1, 3)
+    assert outage.held(NIGHT + timedelta(minutes=21)) and not outage.held(NIGHT + timedelta(minutes=20 + 37))
+    closed = [*two, run(4, 60, cause=None, failed=False)]
+    assert curator.outages(closed, NIGHT + timedelta(minutes=61), steps, most) == {}
+    agent = [*two, run(4, 60, cause="verify_failed")]  # it reached the runtime: the agent's failure closes it
+    assert curator.outages(agent, NIGHT + timedelta(minutes=61), steps, most) == {}
+    many = [run(n, n * 300) for n in range(1, 9)]
+    (used,) = curator.outages(many, NIGHT + timedelta(minutes=8 * 300 + 1), steps, 2).values()
+    assert used.exhausted and used.probes == 5 and used.retry_at == many[-2].queued_at + timedelta(days=1)
+    charter = {"reviewer": {"runtime": "codex"}, "probes": {"models": [{"runtime": "codex"}, {"runtime": "codex"}]}}
+    assert curator.kind_runtimes(charter, "review") == ("codex",) and curator.kind_runtimes(charter, "plan") == (
+        "claude-code",
+    )
+    assert curator.kind_runtimes(charter, "probe") == ("codex",) and curator.kind_runtimes(charter, "judge") == ()
+
+
 # The charter
 
 
@@ -214,7 +251,10 @@ def test_an_admin_writes_the_charter_and_every_revision_is_kept(night, hub_db):
     }
     assert "worker" not in first and "worker_id" not in first
     assert first["schedule_owner"] == OWNER and first["auto_merge"] == [0] and first["judge"]["runtime"] == "codex"
-    assert first["judge"]["hidden_checks"] == HIDDEN and first["circuit_breaker"] == {"max_failed_in_a_row": 2}
+    assert first["judge"]["hidden_checks"] == HIDDEN and first["circuit_breaker"] == {
+        "max_failed_in_a_row": 2,
+        "infra": {"backoff_minutes": [15, 30, 60, 240], "max_probes_per_day": 6},
+    }
     assert first["reviewer"] == first["builder"] == {"runtime": "claude-code", "model": None}
 
     assert written(client, owner, charter_body())["revision"] == 1  # the same body writes nothing

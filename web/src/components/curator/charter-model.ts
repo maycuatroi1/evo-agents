@@ -11,6 +11,7 @@ import { AUTO_MERGE_TIERS, GOAL_ID, LIMITS, LINE, PLANNED_TIERS, type Tier, TIME
 
 export type RoleForm = { runtime: Runtime; model: string };
 export type ProbeModel = { runtime: Runtime; model?: string | null };
+export type CircuitInfra = NonNullable<NonNullable<Charter["circuit_breaker"]>["infra"]>;
 
 /** The charter as the form edits it: every number as typed, every list one entry a line. */
 export type CharterForm = {
@@ -34,6 +35,8 @@ export type CharterForm = {
   answerBy: "owner" | "agent";
   protectedPaths: string;
   maxFailedInARow: string;
+  /** `circuit_breaker.infra` as the charter wrote it, kept as it is; null, the hub's defaults. */
+  circuitInfra: CircuitInfra | null;
   outcomeDays: string;
   reviewLenses: string;
   reviewDays: string;
@@ -60,7 +63,7 @@ export type CharterForm = {
 };
 
 export type CharterField =
-  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "moreAutoMerge" | "plannedTiers" | "mergeWithoutCi" | "answerBy" | "probeModels">
+  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "moreAutoMerge" | "plannedTiers" | "mergeWithoutCi" | "answerBy" | "probeModels" | "circuitInfra">
   | "goals"
   | `${"reviewer" | "builder" | "judge"}Model`;
 
@@ -132,6 +135,7 @@ export function charterForm(charter: Charter | null, first: { timezone: string }
       answerBy: "owner",
       protectedPaths: "",
       maxFailedInARow: "2",
+      circuitInfra: null,
       outcomeDays: "7",
       reviewLenses: "3",
       reviewDays: "7",
@@ -169,6 +173,7 @@ export function charterForm(charter: Charter | null, first: { timezone: string }
     answerBy: charter.answer_by ?? "owner",
     protectedPaths: (charter.protected_paths ?? []).join("\n"),
     maxFailedInARow: String(charter.circuit_breaker?.max_failed_in_a_row ?? 2),
+    circuitInfra: charter.circuit_breaker?.infra ?? null,
     outcomeDays: String(charter.outcome_days ?? 7),
     reviewLenses: String(charter.review?.lenses ?? 3),
     reviewDays: String(charter.review?.days ?? 7),
@@ -319,7 +324,7 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
       merge_without_ci: form.mergeWithoutCi,
       answer_by: form.answerBy,
       protected_paths: protectedPaths ?? [],
-      circuit_breaker: { max_failed_in_a_row: maxFailedInARow as number },
+      circuit_breaker: { max_failed_in_a_row: maxFailedInARow as number, ...(form.circuitInfra ? { infra: form.circuitInfra } : {}) },
       outcome_days: outcomeDays as number,
       review: { lenses: reviewLenses as number, days: reviewDays as number, budget_usd: caps.reviewBudget },
       replay: { tasks: replayTasks as number, budget_usd: caps.replayBudget },

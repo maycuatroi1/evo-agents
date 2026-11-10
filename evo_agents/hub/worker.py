@@ -52,7 +52,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.fire_schedules``, every minute: each schedule of a project's charter that is not paused queues its next run
   inside its window and within its night's budget, the night's review run first, and cancels its queued runs outside
   it; its circuit breaker pauses a project's night shift once the charter's max_failed_in_a_row jobs of a night in a
-  row failed or were reverted (``evo_agents.hub.server.curator``, ``evo_agents.hub.server.outcomes``).
+  row failed of the agent's cause or were reverted (``evo_agents.hub.server.curator``,
+  ``evo_agents.hub.server.outcomes``).
 - ``curator.collect``, every minute: the health of each charter's knowledge graph, measured every 6 hours against the
   default branches on GitHub (``evo_agents.hub.server.kg_health``); in each charter's window, the night's figures of
   the project, counted once without any model, and its review run; and the deferred proposals whose time has passed

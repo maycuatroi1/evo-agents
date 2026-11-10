@@ -44,6 +44,8 @@ from tests.hub.test_curator import (
     fire,
     night,  # noqa: F401 (a fixture)
     scheduled,
+    set_run,
+    shown,
     status_of,
     written,
 )
@@ -72,7 +74,7 @@ from tests.hub.test_curator_changes import (
 from tests.hub.test_migrate import move_to
 from tests.hub.test_plan_runs import reported
 from tests.hub.test_review_runs import answered, digest_body, push_digest
-from tests.hub.test_runs import OWNER, claim, control, moved, web_client  # noqa: F401 (a fixture)
+from tests.hub.test_runs import OWNER, claim, control, moved, report, web_client  # noqa: F401 (a fixture)
 
 HAND_MERGE = "4" * 40
 SESSIONS = "0199a3c1-0000-7000-8000-{:012d}"
@@ -684,6 +686,109 @@ def test_circuit_breaker_of_one_and_a_night_that_ended_still_trips(night, hub_db
     assert fire(client, day) == {"circuit": 1}
     assert status_of(client, headers["owner"])["paused"] is True
     assert notices(hub_db, "curator_paused")[0][2]["runs"] == [run_id]
+
+
+def failed_of(night, db, run_id: int, cause: str, at) -> None:  # noqa: F811
+    """The worker claims run ``run_id`` and fails it of ``cause``; it was queued a minute before ``at`` and ended at
+    ``at``, the time the tests fire the night shift at."""
+    client = night.client
+    assert claim(client, night.worker)["id"] == run_id
+    moved(client, night.worker, run_id, "running")
+    response = report(client, night.worker, run_id, "failed", error=f"it failed: {cause}", failure_cause=cause)
+    assert response.status_code == 200, response.text
+    set_run(db, run_id, queued_at=at - timedelta(minutes=1), finished_at=at)
+
+
+def test_circuit_infra_failures_hold_off_their_runtime_and_never_pause(night, hub_db):  # noqa: F811
+    client, headers = night.client, night.headers
+    written(client, headers["owner"], charter_body(max_runs_per_night=10, circuit_breaker={"max_failed_in_a_row": 2}))
+    assert fire(client, NIGHT) == {"queued": 1}
+    first = scheduled(hub_db)[-1]["id"]
+    failed_of(night, hub_db, first, "account_auth", NIGHT)
+    assert fire(client, NIGHT + timedelta(minutes=1)) == {"infra": 1}  # claude-code waits 15 minutes, 20% either way
+    assert fire(client, NIGHT + timedelta(minutes=11)) == {"infra": 1}
+    assert fire(client, NIGHT + timedelta(minutes=19)) == {"queued": 1}  # the probe (half-open)
+    probe = scheduled(hub_db)[-1]["id"]
+    failed_of(night, hub_db, probe, "account_auth", NIGHT + timedelta(minutes=20))
+    assert fire(client, NIGHT + timedelta(minutes=21)) == {"infra": 1}  # two in a row: 30 minutes
+    assert fire(client, NIGHT + timedelta(minutes=20 + 37)) == {"queued": 1}
+    assert status_of(client, headers["owner"])["paused"] is False and notices(hub_db, "curator_paused") == []
+    second = scheduled(hub_db)[-1]["id"]
+    assert claim(client, night.worker)["id"] == second
+    moved(client, night.worker, second, "running", "verifying", "done")
+    set_run(hub_db, second, finished_at=NIGHT + timedelta(minutes=60))
+    assert fire(client, NIGHT + timedelta(minutes=61)) == {"queued": 1}  # it works again: no wait
+    assert sql(hub_db, select(tables.runs.c.failure_cause).where(tables.runs.c.id == first)) == [("account_auth",)]
+
+
+def test_circuit_agent_failures_around_an_infra_one_still_pause(night, hub_db):  # noqa: F811
+    client, headers = night.client, night.headers
+    written(client, headers["owner"], charter_body(max_runs_per_night=10, circuit_breaker={"max_failed_in_a_row": 2}))
+    earlier = NIGHT - timedelta(hours=1)  # the count starts before the night's runs end
+    sql(hub_db, update(tables.schedules).values(created_at=earlier, updated_at=earlier))
+    assert fire(client, NIGHT) == {"queued": 1}
+    agent = scheduled(hub_db)[-1]["id"]
+    failed_of(night, hub_db, agent, "verify_failed", NIGHT)
+    assert fire(client, NIGHT + timedelta(minutes=1)) == {"queued": 1}
+    failed_of(night, hub_db, scheduled(hub_db)[-1]["id"], "hub_5xx", NIGHT + timedelta(minutes=2))
+    assert fire(client, NIGHT + timedelta(minutes=3)) == {"infra": 1}  # the hub: every kind waits
+    assert fire(client, NIGHT + timedelta(minutes=19)) == {"queued": 1}
+    last = scheduled(hub_db)[-1]["id"]
+    ended(client, night.worker, last)  # no cause from the worker: the hub's guess, other, is the agent's
+    set_run(hub_db, last, finished_at=NIGHT + timedelta(minutes=20))
+    assert fire(client, NIGHT + timedelta(minutes=21)) == {"circuit": 1}  # failed, (infra), failed
+    (details,) = [found for _, _, found, _ in notices(hub_db, "curator_paused")]
+    assert details["runs"] == [agent, last] and details["failed_in_a_row"] == 2
+
+
+def test_backoff_half_open_probes_stop_at_max_probes_per_day_and_tell_the_owner_once(night, hub_db):  # noqa: F811
+    client, headers = night.client, night.headers
+    infra = {"backoff_minutes": [1], "max_probes_per_day": 2}
+    breaker = {"max_failed_in_a_row": 2, "infra": infra}
+    shown_back = written(client, headers["owner"], charter_body(max_runs_per_night=10, circuit_breaker=breaker))
+    assert shown_back["circuit_breaker"]["infra"] == infra
+    at = NIGHT
+    assert fire(client, at) == {"queued": 1}
+    for _ in range(3):  # the first failure, then two probes
+        failed_of(night, hub_db, scheduled(hub_db)[-1]["id"], "runtime", at)
+        assert fire(client, at + timedelta(seconds=30)) == {"infra": 1}
+        at += timedelta(minutes=2)
+        if len(scheduled(hub_db)) < 3:
+            assert fire(client, at) == {"queued": 1}
+    assert len(scheduled(hub_db)) == 3
+    assert fire(client, at + timedelta(hours=1)) == {"infra": 1}  # the day's probes are used
+    assert fire(client, at + timedelta(hours=2)) == {"infra": 1}
+    owner_id = sql(hub_db, select(tables.users.c.id).where(tables.users.c.login == OWNER))[0][0]
+    told = [found for found in notices(hub_db, "run_failed") if "dependency" in found[2]]
+    assert len(told) == 1
+    ((user, title, details, link),) = told
+    assert (user, link) == (owner_id, f"/p/{PROJECT}/curator")
+    assert title == f"The night shift of {PROJECT} holds off runtime:claude-code: its probes of the day failed"
+    assert details["dependency"] == "runtime:claude-code" and details["probes"] == 2 and details["failures"] == 3
+    assert status_of(client, headers["owner"])["paused"] is False
+    assert fire(client, at + timedelta(days=1)) == {"queued": 1}  # the oldest probe is a day old
+
+
+def without_infra(db) -> None:
+    """Take ``circuit_breaker.infra`` out of the stored charters, as a charter written before it has none."""
+    c = tables.charters
+    sql(db, update(c).values(body=c.c.body.delete_path(["circuit_breaker", "infra"])))
+
+
+def test_infra_defaults_for_a_charter_without_them_which_writes_back_as_shown(night, hub_db):  # noqa: F811
+    client, headers = night.client, night.headers
+    written(client, headers["owner"], charter_body(max_runs_per_night=10))
+    without_infra(hub_db)
+    stored = sql(hub_db, select(tables.charters.c.body))[0][0]
+    assert stored["circuit_breaker"] == {"max_failed_in_a_row": 2}  # a charter written before infra
+    found = shown(client, headers["owner"])
+    assert found["circuit_breaker"]["infra"] == {"backoff_minutes": [15, 30, 60, 240], "max_probes_per_day": 6}
+    body = {key: value for key, value in found.items() if key not in curator.CHARTER_META}
+    assert written(client, headers["owner"], body)["revision"] == 2
+    without_infra(hub_db)
+    assert fire(client, NIGHT) == {"queued": 1}
+    failed_of(night, hub_db, scheduled(hub_db)[-1]["id"], "rate_limit", NIGHT)
+    assert fire(client, NIGHT + timedelta(minutes=11)) == {"infra": 1}  # the default backoff, 15 minutes
 
 
 # Schema 0018
