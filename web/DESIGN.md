@@ -1166,7 +1166,8 @@ Shared pieces built on them:
   a chip that opens the viewer. It looks right in light and dark (the bridge gives the theme; the plugin kit's
   `evo-ui.css` gives the tokens) and at 375 px. Then, on its side: square chips for where it leads (`message-links.tsx`: a
   mention the hub refused in `attention` with the
-  hub's reason, each GitHub pull request the message links, in a new tab), how far each run it handed work to is while
+  hub's reason (under an agent's message only one that needs a worker bound, since the hub says the rest in the thread
+  and an agent's @ that hands no work is a name in its words), each GitHub pull request the message links, in a new tab), how far each run it handed work to is while
   that run is on its way (`message-progress.tsx`, by the hub's rule, for a visitor who may read the run: one polite
   status line per run, "handle got it, waiting for worker X" (the handle marked as in the text) or "in the inbox of the running turn" with a still
   neutral dot, then each step of its setup and working with the running dot, each in place of the one before; gone

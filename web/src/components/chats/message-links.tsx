@@ -15,12 +15,16 @@ const CHIP =
 
 /**
  * Where a message leads (web/DESIGN.md, Chats): why a mention took no work, and the pull requests it links, the agent's
- * draft ones above all. Square chips, since each names a thing. The runs it came from or handed work to are not here:
+ * draft ones above all. Under an agent's message only a refusal that asks to bind a worker shows: the hub says why a
+ * `chat mention` handed nothing in the thread, and any other @ of an agent's is a name in its words. Square chips, since each names a thing. The runs it came from or handed work to are not here:
  * `MessageRuns` puts them among the message's actions, shown while the pointer is over it.
  */
 export function MessageLinks({ message }: { message: GroupMessage }) {
   const t = useTranslations("chats.message");
-  const refused = message.mentions.filter((mention) => mention.handle && !mention.run_id && mention.refusal);
+  const byAgent = message.author.kind === "agent";
+  const refused = message.mentions.filter(
+    (mention) => mention.handle && !mention.run_id && mention.refusal && (!byAgent || noWorkerProject(mention.refusal)),
+  );
   const pulls = message.author.kind === "person" ? [] : pullLinks(message.body);
   if (!refused.length && !pulls.length) return null;
   return (
