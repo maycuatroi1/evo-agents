@@ -1276,7 +1276,7 @@
         "canvas": "A project's canvas: its claims, their evidence and judging, and @strategist.",
         "srs": "A project's requirement documents, their reviews and approvals, and @ba.",
         "tasks": "A project's tasks and their board, made from approved requirements.",
-        "docs": "A project's documents: Markdown with images, each save a version."
+        "docs": "A project's documents: Markdown with images or HTML pages, each save a version."
       },
       "scopeHub": "Whole hub",
       "scopeProject": "Hub or project",
@@ -10400,7 +10400,10 @@
       "latestOption": "v{number} (latest)",
       "older": "You are reading version {number}; the latest is version {latest}.",
       "readLatest": "Read the latest",
-      "empty": "This version has no text."
+      "empty": "This version has no text.",
+      "pageFrame": "Page: {title}",
+      "pageNote": "This page runs in a sandbox: it reads nothing of the hub and calls nothing.",
+      "openPage": "Open the page alone"
     },
     "history": {
       "columns": {
@@ -10438,7 +10441,12 @@
       "slugTaken": "A document with this slug exists already. Pick another slug.",
       "readerTitle": "Only writers edit the documents of {project}",
       "readerText": "You read every document and its history. Ask an admin of the project for the writer role to write.",
-      "newTitle": "New document"
+      "newTitle": "New document",
+      "format": "Kind",
+      "formatMarkdown": "Markdown with images",
+      "formatHtml": "HTML page",
+      "htmlBody": "HTML",
+      "htmlHint": "A whole HTML page, shown in a sandbox: inline scripts and styles, libraries from esm.sh, cdn.jsdelivr.net or cdnjs.cloudflare.com unless the project is restricted, images as data: URLs. It calls nothing; Save shows it."
     }
   },
   "canvas": {

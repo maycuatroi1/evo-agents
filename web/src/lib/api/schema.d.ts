@@ -6778,6 +6778,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/docs/{project}/documents/{slug}/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Page
+         * @description An HTML version of the document as a page of its own, the latest unless ``version``, for the document's readers;
+         *     a Markdown version is 404 here.
+         */
+        get: operations["show_page_v1_x_docs__project__documents__slug__page_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/docs/{project}/images": {
         parameters: {
             query?: never;
@@ -21139,6 +21160,13 @@ export interface components {
              */
             updated_at: string;
             /**
+             * Format
+             * @description the format of its latest version
+             * @default markdown
+             * @enum {string}
+             */
+            format: "markdown" | "html";
+            /**
              * Versions
              * @description every version, the newest first
              */
@@ -21184,6 +21212,13 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Format
+             * @description the format of its latest version
+             * @default markdown
+             * @enum {string}
+             */
+            format: "markdown" | "html";
         };
         /** DocsImage */
         DocsImage: {
@@ -21220,9 +21255,16 @@ export interface components {
             title: string;
             /**
              * Body
-             * @description the Markdown
+             * @description the Markdown, or the HTML page when format is html
              */
             body: string;
+            /**
+             * Format
+             * @description html saves the body as a page the hub serves in a sandbox
+             * @default markdown
+             * @enum {string}
+             */
+            format: "markdown" | "html";
             /**
              * Summary
              * @description what this version changes
@@ -21293,6 +21335,13 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Format
+             * @description markdown, or html for a page of its own
+             * @default markdown
+             * @enum {string}
+             */
+            format: "markdown" | "html";
         };
         /** DocsVersionDetail */
         DocsVersionDetail: {
@@ -21313,15 +21362,27 @@ export interface components {
              */
             created_at: string;
             /**
+             * Format
+             * @description markdown, or html for a page of its own
+             * @default markdown
+             * @enum {string}
+             */
+            format: "markdown" | "html";
+            /**
              * Body
-             * @description the version's Markdown
+             * @description the version's Markdown, or its HTML page when the format is html
              */
             body: string;
             /**
              * Images
-             * @description the images the version shows, by name
+             * @description the images the version shows, by name; none for an HTML page
              */
             images: components["schemas"]["DocsImage"][];
+            /**
+             * Page Url
+             * @description for an HTML version, GET of the page on this hub, served under a sandbox for a frame of the web
+             */
+            page_url?: string | null;
         };
         /** DoctorAnswer */
         DoctorAnswer: {
@@ -72865,6 +72926,88 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_page_v1_x_docs__project__documents__slug__page_get: {
+        parameters: {
+            query?: {
+                /** @description a version's number; the latest when left out */
+                version?: number | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the HTML version as a page, under a sandbox */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

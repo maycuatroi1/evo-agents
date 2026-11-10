@@ -1,7 +1,10 @@
-"""The feature docs: a project's documents on the hub, Markdown with images, each save a version (``docs/hub.md``,
-section Docs).
+"""The feature docs: a project's documents on the hub, Markdown with images or HTML pages, each save a version
+(``docs/hub.md``, section Docs).
 
-A document is Markdown under a slug of the project. Each save is the next version of it, never changed after, with its
+A document is Markdown under a slug of the project, or an HTML page (a version of format ``html``): the hub serves a
+page from its own origin under a Content-Security-Policy whose sandbox gives it an opaque origin, as it serves an
+interactive answer of a chat, and the web shows it in a sandboxed frame; a page shows no image of the project but
+embeds its own. Each save is the next version of it, never changed after, with its
 title, its body, what it changed and who wrote it; a save that changes nothing writes nothing. An image a document
 shows is uploaded to the hub's own blob store first (``images``): a PNG, JPEG, WebP or GIF image of at most
 MAX_IMAGE_BYTES, checked by its first bytes and kept once per project by its SHA-256. A version names the images it
@@ -14,9 +17,9 @@ default or one an admin gives it when creating it, and every version and image o
 the sink X-Evo-Sink names, else the project's hub sink, as plans are read. The hub's web shows them on the feature's
 native pages (``PAGES``): the documents, a document read at any version with its images, its history, and the editor.
 ``evo-agents hub docs list|show|put|history`` is their client: ``put`` uploads the images a Markdown file names beside
-it and saves the file as the next version. The tool ``docs__read`` of the hub's /mcp reads them for the agent of a run.
+it and saves the file as the next version, or saves an ``.html`` file as a page. The tool ``docs__read`` of the hub's /mcp reads them for the agent of a run.
 The project's knowledge graph holds the latest version of each document, under its label (``kg``, source
-``plugin.docs``), so ``kg_search`` finds a document by what it says.
+``plugin.docs``; a page's text as ``page_text`` reads it), so ``kg_search`` finds a document by what it says.
 
 The hub imports this package for the manifest only: ``store`` reads and writes the documents, ``images`` keeps and
 serves their images, ``models`` and ``server`` are the API, ``agent`` is the tool, ``kg`` the graph's source.
@@ -44,15 +47,16 @@ TOOLS = (
     (
         "read",
         "Read the project's docs",
-        "Read a document of the project: without document, the list of documents; with it, a version as Markdown (the "
-        "latest unless version names one) with its title, author and the images it shows, each by its name.",
+        "Read a document of the project: without document, the list of documents; with it, a version (the latest unless "
+        "version names one) as Markdown with its title, author and the images it shows, each by its name, or the "
+        "source of an HTML page.",
         READ_SCHEMA,
     ),
 )
 
 TABLES = (
     ("docs_documents", "A project's documents, the latest version of each and the label each carries"),
-    ("docs_versions", "Each save of a document, never changed after"),
+    ("docs_versions", "Each save of a document, Markdown or an HTML page, never changed after"),
     ("docs_images", "The images uploaded for a project's documents, once each by SHA-256"),
     ("docs_version_images", "The images a version shows, by the name its Markdown gives each"),
 )
@@ -63,11 +67,12 @@ PAGES = {"documents": {"title": "Docs", "icon": "book-open", "description": "The
 
 MANIFEST = {
     "id": "docs",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "publisher": "evo-agents",
     "tier": "core",
     "name": "Docs",
-    "description": "A project's documents: Markdown with images, each save a version, read and written by its members.",
+    "description": "A project's documents: Markdown with images or HTML pages, each save a version, read and written "
+    "by its members.",
     "engines": {"evo-agents": ">=0.20"},
     "plugin_api": 1,
     "contributes": {

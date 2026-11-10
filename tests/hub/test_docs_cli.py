@@ -2,7 +2,8 @@
 serves the feature docs: the commands and their ``--json`` keys are in the contract (seam hub-cli-v1); ``put`` uploads
 the images a Markdown file shows from beside it, once each, names a path the hub refuses under ``images/``, stops on a
 missing image before sending anything, takes the title from the first heading, and saves the next version, none when
-nothing changed; ``show --out`` writes the Markdown and its images back.
+nothing changed; ``show --out`` writes the Markdown and its images back. An ``.html`` file is saved as it is, as an HTML
+page titled by its ``<title>``, and ``show`` prints it back as it is.
 
 The parsing runs without Postgres or the hub-server extra, as the client does; everything that needs the hub skips
 without EVO_HUB_TEST_DSN."""
@@ -166,3 +167,21 @@ def test_docs_put_show_and_history_from_the_command_line(hub, monkeypatch, capsy
     assert (out / "coordination-guide.md").read_text(encoding="utf-8").startswith("# Coordination guide\n\nRead the")
     refused = docs(hub, monkeypatch, capsys, "eve", "put", str(guide))
     assert refused.code == 1 and "writer role" in refused.err
+
+
+@needs_pg
+def test_docs_put_saves_an_html_file_as_a_page_and_show_gives_it_back(hub, monkeypatch, capsys, tmp_path):
+    page = tmp_path / "Lumen Board.html"
+    text = "<!doctype html>\n<title>Lumen &amp; board</title>\n<h1>Board</h1>\n<script>draw()</script>\n"
+    page.write_text(text, encoding="utf-8")
+    saved = as_json(docs(hub, monkeypatch, capsys, "alice", "put", str(page), "--json"))
+    assert (saved["created"], saved["document"]["slug"], saved["document"]["format"]) == (True, "lumen-board", "html")
+    assert saved["document"]["title"] == "Lumen & board"
+    again = ok(docs(hub, monkeypatch, capsys, "alice", "put", str(page)))
+    assert again.out == "lumen-board version 1: unchanged, nothing saved, an HTML page.\n"
+    assert ok(docs(hub, monkeypatch, capsys, "eve", "show", "lumen-board")).out == text
+    out = tmp_path / "out"
+    ok(docs(hub, monkeypatch, capsys, "eve", "show", "lumen-board", "--out", str(out)))
+    assert (out / "lumen-board.html").read_text(encoding="utf-8") == text and not (out / "lumen-board.md").exists()
+    history = as_json(docs(hub, monkeypatch, capsys, "eve", "history", "lumen-board", "--json"))
+    assert [(v["number"], v["format"]) for v in history] == [(1, "html")]

@@ -99,13 +99,15 @@ async def _document(conn: AsyncConnection, who: Reader, slug: str, number: int |
     row = await store.version(conn, doc, number)
     when = row.created_at.strftime("%Y-%m-%d %H:%M UTC")
     lines = [f"{doc.slug}: {row.title}", f"Version {row.number} of {doc.latest_version}, by {row.author}, {when}."]
+    if row.format == "html":
+        lines.append("An HTML page, which the hub's web shows in a sandboxed frame; its source follows.")
     if row.images:
         lines.append("Images it shows: " + ", ".join(f"{image.name} ({image.media_type})" for image in row.images))
     return "\n".join([*lines, "", row.body or ""])
 
 
 async def read(params: dict, context: CoreContext) -> dict:
-    """``docs__read``: the documents of the project, or one version of one as Markdown."""
+    """``docs__read``: the documents of the project, or one version of one: its Markdown, or an HTML page's source."""
     arguments = params.get("arguments") or {}
     try:
         async with context.engine.begin() as conn:

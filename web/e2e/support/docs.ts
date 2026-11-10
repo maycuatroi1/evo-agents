@@ -47,7 +47,13 @@ export async function seedGuide(account: Account, project: string, body = GUIDE_
   return call(
     api.PUT("/v1/x/docs/{project}/documents/{slug}", {
       params: { path: { project, slug: GUIDE_SLUG } },
-      body: { title: GUIDE_TITLE, body, summary: "First draft", images: [{ name: "shots/board.png", sha256 }] },
+      body: {
+        title: GUIDE_TITLE,
+        body,
+        format: "markdown",
+        summary: "First draft",
+        images: [{ name: "shots/board.png", sha256 }],
+      },
     }),
   );
 }

@@ -8,7 +8,9 @@
  * and port under 'self' (Chromium and Firefox; e2e/terminal.spec.ts checks both).
  *
  * frame-src 'self' lets a page frame the pages of isolated plugins, which the hub serves from the same origin under
- * /v1/plugin-ui/ with a CSP of their own whose `sandbox` keeps their origin opaque (components/plugins/plugin-frame.tsx);
+ * /v1/plugin-ui/ with a CSP of their own whose `sandbox` keeps their origin opaque (components/plugins/plugin-frame.tsx),
+ * and the HTML versions of documents, under /v1/x/docs/{project}/documents/{slug}/page with the same kind of CSP
+ * (components/docs/page-frame.tsx);
  * no other origin is ever framed, and every page of the web refuses to be framed itself (frame-ancestors 'none').
  *
  * img-src adds one origin besides the web's own: GitHub's avatars (https://avatars.githubusercontent.com), the faces of

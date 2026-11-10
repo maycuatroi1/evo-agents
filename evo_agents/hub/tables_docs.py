@@ -4,8 +4,9 @@
 
 - docs_documents: a document of a project, Markdown with images, by its slug: its title as the latest version has it,
   the number of that version, and the label every version and image of it is read under (the project's by default).
-- docs_versions: each save of a document, never changed after: its number (1 and up within the document), its title
-  and Markdown body, what it changed (``summary``, may be empty) and who wrote it, when.
+- docs_versions: each save of a document, never changed after: its number (1 and up within the document), its title,
+  its body and the body's format (``markdown``, or ``html`` for a page the hub serves in a sandbox, 0233), what it
+  changed (``summary``, may be empty) and who wrote it, when.
 - docs_images: the images uploaded for a project's documents, once each by SHA-256: their media type, size and who
   uploaded them first. The row refers to the blob of the bytes (``evo_agents.hub.blob_gc``), so none is deleted.
 - docs_version_images: the images a version shows, by the name its Markdown gives each (``shots/board.png``).
@@ -35,6 +36,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 SLUG = r"^[a-z0-9][a-z0-9-]{0,99}$"  # docs_documents.slug
 IMAGE_NAME = r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,99}(/[A-Za-z0-9_][A-Za-z0-9._-]{0,99}){0,4}$"  # docs_version_images.name
 IMAGE_TYPES = ("image/png", "image/jpeg", "image/webp", "image/gif")  # docs_images.media_type
+FORMATS = ("markdown", "html")  # docs_versions.format
 MAX_TITLE_CHARS = 300
 MAX_BODY_CHARS = 500_000
 MAX_SUMMARY_CHARS = 500
@@ -90,6 +92,7 @@ def _versions(metadata: MetaData) -> Table:
         Column("number", Integer, nullable=False),
         Column("title", Text, nullable=False),
         Column("body", Text, nullable=False),
+        Column("format", Text, nullable=False, server_default="markdown"),
         Column("summary", Text, nullable=False, server_default=""),
         Column("author_id", BigInteger, nullable=False),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),

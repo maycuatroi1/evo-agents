@@ -2934,14 +2934,15 @@ the Loop that holds use cases of the goal's backlog out of any build, with the `
 
 ## Docs
 
-The feature docs (`evo_agents.hub.server.docs`, migration 0163) keeps a project's documents: guides and notes in
-Markdown, with images, read on the hub's web by the project's members. A project has it once a layer of its features
+The feature docs (`evo_agents.hub.server.docs`, migrations 0163 and 0233) keeps a project's documents: guides and notes
+in Markdown, with images, or HTML pages, read on the hub's web by the project's members. A project has it once a layer of its features
 turns it on (Branding and features, below): an admin of the project with `evo-agents hub plugin enable docs --project
 P` or on the project's Plugins page, or a hub admin in Features. Its page is Docs in the project's menu.
 
 A document is Markdown under a slug of the project (`^[a-z0-9][a-z0-9-]{0,99}$`). Each save is the next version of it,
-never changed after: its title, its body (500,000 characters at most), what it changed and who wrote it. A save whose
-title, body and images are those of the latest version writes nothing. A save that names `base_version` is refused
+never changed after: its title, its body (500,000 characters at most) and the body's format (`markdown`, or `html`),
+what it changed and who wrote it. A save whose title, body, format and images are those of the latest version writes
+nothing. A save that names `base_version` is refused
 with 409 unless the document is at that version, and with 0 unless it does not exist yet, so an editor never writes
 over a version it did not read and a new document never lands on another of the same slug. Without it, the save goes on
 top.
@@ -2955,6 +2956,19 @@ starting with a dot. Every image a version names must be an image of the project
 is such a name, with its title as the caption, from `GET .../documents/{slug}/images/{sha256}`, which the hub serves
 to the readers of a document that shows it (`nosniff`, a sandbox CSP, its hash as the ETag); it loads no other image.
 
+**HTML pages.** A save with `format: "html"` keeps the body as a page of its own, an interactive diagram or a
+calculator, say. The hub serves it from its own origin at `GET .../documents/{slug}/page` (`version` for an older one,
+404 for a Markdown version) to the document's readers, as it serves an interactive answer of a chat (Interactive
+answers, above): UTF-8 `text/html`, `nosniff`, no referrer, `Cache-Control: private, no-cache`, under a
+Content-Security-Policy whose `sandbox` has no `allow-same-origin`, so the page runs with an opaque origin, reads no
+cookie and calls nothing (`connect-src 'none'`, `form-action 'none'`). Its inline scripts and styles run; libraries
+load from the CDNs of `outputs.CDN_HOSTS` (`outputs.INTERACTIVE_POLICY`) when the project is not restricted, by the
+rule of a chat (its hub sink cleared under the level customer and the location domestic-only), and from nowhere
+(`outputs.HTML_POLICY`) when it is. A page shows no image of the project, which an opaque origin could not read: a
+save of an HTML version that names images is 422, and a page embeds its images as `data:` URLs. A version's
+`page_url` is the address of its page. The web shows the page in a frame with `sandbox="allow-scripts allow-popups
+allow-popups-to-escape-sandbox"`, so its links open in a new tab, and links the page alone.
+
 **Who reads and writes.** Readers of the project read, writers create documents, save versions and upload images. A
 document carries a label, the project's default or one an admin gives it when creating it (`label`), and every version
 and image of it is read under that label through the sink X-Evo-Sink names, else the project's hub sink, as plans are.
@@ -2966,13 +2980,15 @@ A writer who could not read the label a new document would carry gets 422 instea
 | `GET .../documents/{slug}` | readers | the document, its versions, and one version whole (`version`, the latest by default) |
 | `GET .../documents/{slug}/versions` | readers | every version, the newest first |
 | `GET .../documents/{slug}/images/{sha256}` | readers | an image a version of the document shows |
+| `GET .../documents/{slug}/page` | readers | an HTML version as a page of its own, under a sandbox (`version`, the latest by default) |
 | `POST /v1/x/docs/{project}/images` | writers | upload an image; its hash, media type, size, and whether the project held it |
 | `PUT .../documents/{slug}` | writers | save the next version, or create the document at version 1 |
 
 `evo-agents hub docs list|show|history|put` is the client. `put FILE` uploads every image the Markdown shows from a
 file beside it, once each, renames a path the hub does not take as a name under `images/`, takes the title from the
 file's first heading `# Title` (which then leaves the body) and saves the next version; `show SLUG --out DIR` writes the
-Markdown and its images back. The agent of a run reads documents with the tool `docs__read` of the hub's /mcp, as the
+Markdown and its images back. A file ending in `.html` or `.htm` is saved as it is as an HTML page, titled by its
+`<title>` unless `--title`; `show` prints a page as it is and `--out` writes `DIR/<slug>.html`. The agent of a run reads documents with the tool `docs__read` of the hub's /mcp, as the
 person it works for (the person who mentioned it in a chat, else who dispatched the run) and, on another member's
 worker, only what that member reads too.
 
@@ -2980,13 +2996,15 @@ worker, only what that member reads too.
 evo-agents hub docs put guide.md --project demo --summary "screenshots of the board"
 evo-agents hub docs list --project demo
 evo-agents hub docs show guide --project demo --version 1 --out /tmp/guide
+evo-agents hub docs put board.html --project demo --summary "the board as an interactive page"
 ```
 
 **In the knowledge graph.** The project's graph holds the latest version of each document, a source of the feature
 (`plugin.docs`, `evo_agents/hub/server/docs/kg.py`, extension point `kg_sources` of `docs/plugins.md`). A document is
 the item `plugin.docs:document:<slug>`, a Document node named by its title, with its slug, version number and that
 version's author as props (`document`, `version`, `author`) and a link to its page on the hub's web. Its Markdown is the
-item's text, with a Section per heading, so `kg_search` finds a document by a phrase of its body, a heading reads as
+item's text (an HTML page's text without a script: its text outside `<script>`, `<style>` and `<head>`, each `<h1>` to
+`<h6>` a heading; `evo_agents/hub/server/docs/page_text.py`), with a Section per heading, so `kg_search` finds a document by a phrase of its body, a heading reads as
 `plugin.docs:document:<slug>#<heading slug>`, and the link stage reads the codes, plans and files it mentions. Older
 versions and images are not read. Each item carries the document's own label, so a reader whose sink does not clear
 it never sees the document in the graph, as on its pages. A save that writes a version queues a build of the graph
