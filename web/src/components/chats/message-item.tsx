@@ -68,6 +68,9 @@ const InteractiveAnswer = dynamic(() => import("./interactive-answer").then((mod
   loading: () => <Skeleton className="h-[322px] w-full rounded-lg" />,
 });
 
+/** The work card a hub message carries in a trace's root thread loads with the first such message (`work-root-card.tsx`). */
+const WorkRootCard = dynamic(() => import("./work-root-card").then((module) => module.WorkRootCard), { ssr: false });
+
 /**
  * A message column leaves room on its open side for ACTIONS (three small buttons, 98 px with their gap) inside the
  * row: 5.5rem beside one's own message, 8rem beside another's, whose face and gap take 40 px more. Less, and the actions
@@ -89,7 +92,8 @@ const ACTIONS = {
  * that run on. The text is Markdown that is never HTML, the chat's members it names marked without their `@`; under the bubble, its interactive answers in their
  * sandboxed frames (`interactive-answer.tsx`, the message then as wide as its column allows), the files of its run it carries (an agent's,
  * as chips that open the viewer, the bytes served to who reads the message), where it leads (its pull requests, a mention
- * the hub refused), how far each run it handed work to is (`message-progress.tsx`), what
+ * the hub refused), how far each run it handed work to is (`message-progress.tsx`), the work card of a trace on the hub's
+ * message that carries it (`work-root-card.tsx`), what
  * the page puts under it, its reactions, and for a message that starts a thread, how many replies it has and a way
  * into it. In a direct chat a reply that does not sit right under what it answers quotes it above its bubble. React, its
  * runs (`MessageRuns`) and Reply sit beside it from 768 px, shown while the pointer is over it or a key is in it, and under it on phones.
@@ -166,6 +170,7 @@ export function MessageItem(props: Props) {
         <DocButtons files={messageDocs(message)} className={cn(mine && "justify-end")} />
         <MessageLinks message={message} />
         <MessageProgress progress={message.progress} />
+        {message.work ? <WorkRootCard work={message.work} /> : null}
         {under?.(message)}
         {/* The reactions, then React, the runs and Reply: in the same row under 768 px; from 768 px those two sit beside the
             message at its top, shown while the pointer is over it, a key is in it or its picker is open. */}

@@ -16,11 +16,13 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { chatsQuery, LIST_LIVE_MS } from "@/lib/chat-queries";
 import { type ChatSummary, filterChats, unreadTotal } from "@/lib/chats";
+import { groupWorkChats } from "@/lib/work";
 import { cn } from "@/lib/utils";
 
 import { AgentStripSkeleton } from "./agent-strip-skeleton";
 import { ChatRow } from "./chat-row";
 import { useMe } from "./hooks";
+import { WorkGroupRows } from "./work-list";
 
 // The form loads when New chat is first pressed: the list carries only its button.
 const NewChatDialog = dynamic(() => import("./new-chat-dialog").then((module) => module.NewChatDialog), { ssr: false });
@@ -32,7 +34,7 @@ const FILTER_FROM = 6;
 
 /**
  * The visitor's chats (web/DESIGN.md, Chats): New chat at the top, the row of agents to chat with one to one under it
- * (`AgentStrip`), then the chats, the latest active first, each with its face, name, last message and the messages of
+ * (`AgentStrip`), then the work chats under their system (`WorkGroupRows`), then the other chats, the latest active first, each with its face, name, last message and the messages of
  * others not read yet (`ChatRow`). The chat shown is marked. Read every 10 seconds while shown; a chat's own page keeps
  * its count at zero while it is in view.
  */
@@ -110,12 +112,20 @@ function Rows({ chats, activeId, filter, onClear }: { chats: ChatSummary[]; acti
   if (chats.length === 0) {
     return <NoResults title={t("noMatch")} filters={[{ label: t("filterChip"), value: filter }]} onClear={onClear} testId="chats-no-match" />;
   }
+  const { others, groups } = groupWorkChats(chats);
   return (
-    <ul className="flex flex-col p-1.5" aria-label={t("caption")} data-testid="chats-rows">
-      {chats.map((chat) => (
-        <ChatRow key={chat.id} chat={chat} active={chat.id === activeId} me={me} />
+    <div className="flex flex-col p-1.5">
+      {groups.map((group) => (
+        <WorkGroupRows key={group.key} group={group} activeId={activeId} me={me} />
       ))}
-    </ul>
+      {others.length ? (
+        <ul className={cn("flex flex-col", groups.length > 0 && "mt-2 border-t pt-1.5")} aria-label={t("caption")} data-testid="chats-rows">
+          {others.map((chat) => (
+            <ChatRow key={chat.id} chat={chat} active={chat.id === activeId} me={me} />
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

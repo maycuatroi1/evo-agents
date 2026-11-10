@@ -4525,6 +4525,106 @@
         "accounts": "Account"
       },
       "defaultAccounts": "Agent mặc định của dự án không có account riêng: run của nó dùng secret của người giao việc."
+    },
+    "work": {
+      "status": {
+        "running": "Đang chạy",
+        "needs_person": "Cần người",
+        "failed": "Thất bại",
+        "done": "Xong"
+      },
+      "waiting": {
+        "run": "Đang chờ @{agent}",
+        "runAny": "Đang chờ một agent",
+        "person": "Đang chờ {login}",
+        "personAny": "Đang chờ một người",
+        "decision": "Đang chờ {login} quyết định",
+        "decisionAny": "Đang chờ một quyết định",
+        "atWork": "@{agent} đang làm",
+        "nothing": "Không chờ ai",
+        "done": "Xong",
+        "failed": "Dừng vì lỗi"
+      },
+      "time": {
+        "hours": "{hours} giờ {minutes} phút",
+        "minutes": "{minutes} phút",
+        "seconds": "{seconds} giây"
+      },
+      "totals": "{runs, plural, other {# lượt chạy}}, {cost}, {time}",
+      "placeholder": "Gửi tới @{coordinator}, người điều phối, trừ khi bạn @ một agent",
+      "placeholderAny": "Gửi tới người điều phối trừ khi bạn @ một agent",
+      "list": {
+        "group": "{name}",
+        "line": "{status}: {waiting}",
+        "done": "{count, plural, other {# việc đã xong}}",
+        "doneLabel": "Các việc đã xong của {name}"
+      },
+      "head": {
+        "number": "Việc #{id}",
+        "system": "Hệ thống",
+        "observe": "Mở {name} trong Observe",
+        "coordinator": "Điều phối"
+      },
+      "card": {
+        "title": "Thẻ công việc",
+        "show": "Hiện chi tiết",
+        "hide": "Ẩn chi tiết",
+        "goal": "Mục tiêu",
+        "doneWhen": "Xong khi",
+        "noGoal": "Chưa đặt mục tiêu",
+        "noDoneWhen": "Chưa đặt",
+        "runs": "Lượt chạy",
+        "cost": "Chi phí",
+        "hop": "Bước",
+        "time": "Thời gian",
+        "of": "{value} trên {max}",
+        "subTasks": "Việc con",
+        "noSubTasks": "Chưa có việc con",
+        "agent": "Agent",
+        "status": "Trạng thái",
+        "brief": "Yêu cầu",
+        "refused": "Bị từ chối",
+        "openThreadOf": "Mở luồng của @{agent}",
+        "decisions": "Quyết định",
+        "orchestrator": "Orchestrator",
+        "askedOf": "Hỏi {login}",
+        "answered": "Trả lời: {answer}",
+        "decisionFailed": "Không tải được quyết định này",
+        "notFound": "Chat này không có thẻ công việc bạn xem được",
+        "forbidden": "Quyền của bạn không còn đủ cho nhãn của việc này",
+        "failed": "Không tải được thẻ công việc",
+        "retry": "Thử lại"
+      },
+      "ask": {
+        "ask": "@{from} đã hỏi @{to}",
+        "escalate": "@{from} đã chuyển lên @{to}",
+        "reassign": "Đã giao lại từ @{from} cho @{to}",
+        "refusedTitle": "@{from} đã hỏi, hub từ chối",
+        "refused": "Bị từ chối",
+        "error": "Lỗi",
+        "brief": "Yêu cầu:",
+        "answer": "Trả lời:",
+        "noAnswer": "Chưa có trả lời",
+        "inThread": "Đã trả lời trong luồng",
+        "openThread": "Mở luồng",
+        "openThreadOf": "Mở luồng của @{agent}"
+      },
+      "exception": {
+        "title": "Orchestrator: {rule}",
+        "titleAny": "Orchestrator",
+        "deciding": "Đang quyết định",
+        "decided": "Đã quyết định",
+        "outcome": "Quyết định:",
+        "outcomes": {
+          "answer": "Đã trả lời",
+          "reassign": "Đã giao lại",
+          "ask_owner": "Đã hỏi chủ sở hữu"
+        }
+      },
+      "root": {
+        "open": "Mở chat công việc",
+        "done": "Xong: {totals}"
+      }
     }
   },
   "accounts": {

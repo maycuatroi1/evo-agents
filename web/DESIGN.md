@@ -1255,6 +1255,40 @@ Shared pieces built on them:
   branch the hub recorded for it (`task/<id of the run the dispatch made>`, a later attempt's too), which the hub opens
   as a draft pull request, and the runs list shows it with that tag and "A task a plugin handed to @handle, on branch
   task/N", linked to the run's page.
+- Work card, the work chats of agent systems (`components/chats/work-*.tsx`, `lib/work.ts`; docs/hub.md, Work chats
+  and The work card). A work chat (kind `work`) is the chat the first hand-off of a trace opens. In the chat list
+  (`work-list.tsx`) the work chats stand first, grouped under their system's name (`Network` icon, `xs` `fg-muted`), the
+  open ones (running, needs a person, failed) by latest activity, the done ones folded under "N done works" (a native
+  `details`, unfolded while the chat shown is one of them); the other chats follow under a rule. A work row's second
+  line is its state as an 8 px dot and in words, then what it waits for ("Running: Waiting for @helper"); the dot is
+  `aria-hidden`, the words carry the state. The state's look (`work-look.tsx`, `WORK_LOOK`): running `running`
+  (cobalt, `CirclePlay`), needs a person `attention` (amber, `MessageSquare`), failed `danger` (`CircleX`), done
+  `success` (`CircleCheck`); colour is only ever a state's and always with its word or icon, and nothing pulses: the
+  page shows a live indicator only when its stream drops, as every chat does.
+  The work chat's head adds, beside its title, the state pill and Work #N (the trace's id, a mono `Tag`), and over who
+  is in it the system (linking to Observe, `/p/{project}/systems/{slug}?mode=observe`) and the coordinator (the
+  system's entry agent, `@handle` in mono). Under the head the card is pinned (`work-card.tsx`) on `surface-sunken`:
+  Work card, what the work waits for, and Show details / Hide details (`aria-expanded`); the figures in four cells
+  (runs and cost of the trace's limits, hop of max hops, time); unfolded, the goal and Done when (or "No goal set yet"
+  in `fg-subtle` italics), the sub-task table (agent, state as the run's pill, brief from 640 px, cost; the agent's
+  name is the button that opens its thread beside the chat, a link to the chat that holds it otherwise), and the
+  decisions: an open decision that asks the visitor is the Inbox's `DecisionCard` with its answer form, answered in
+  the card (`app/(app)/chats/[id]/work-decision.tsx`); any other shows its state, question, who it asks and its
+  answer, an Orchestrator's with the word Orchestrator. From 768 px the card opens unfolded, below it folded to its
+  figures; its body scrolls inside 40 % of the window. Loading is two skeleton lines; a failed read is an
+  `InlineError` with Try again, a 404 or 403 says the chat has no card the visitor can see without a retry.
+  On the main line (`work-ask.tsx`, through `use-work-under.tsx`), the question that opens an agent's thread carries
+  the ask card: "@lead asked @helper" (escalated, reassigned, refused by the hub), the sub-task's state, its brief,
+  what the asked agent last answered in its thread ("No answer yet" in italics), and Open thread, which opens the
+  thread panel on the right. An exception the Orchestrator took up sits under the first message of its run: its rule
+  with `ShieldAlert` in `attention`, Deciding (`attention`) or Decided (`success`), and the Orchestrator's decision
+  (answered, reassigned, asked the owner) with its words. Each event of the chat reads the card again 800 ms after the
+  last; the card is read every 15 seconds while its work is not done. The composer says "Goes to @lead, the
+  coordinator, unless you @ an agent".
+  In the root thread, where the person asked, the hub's "Work card: {title}" message carries the card
+  (`work-root-card.tsx`), refreshed by `message_changed`: the title, the state pill, what the work waits for, the
+  totals (runs, cost, time) in `fg-subtle`, and Open work chat (`outline`, `ArrowRight`); once done the line reads
+  "Done: 3 runs, $0.42, 12 min". No emoji anywhere in these cards; all their words are in English and Vietnamese.
 - Dispatch and Run plan end with "Run as me on the hub" (`runs/as-me-field.tsx`, `UserRoundKey`), a checkbox card off
   by default whose line says what the agent gets (the owner's access on every project, hub admin when they have it)
   and never gets (their secrets, tokens and workers), and that it ends with the run; checked, a warning on

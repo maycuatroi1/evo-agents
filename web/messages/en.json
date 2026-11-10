@@ -4525,6 +4525,106 @@
         "accounts": "Accounts"
       },
       "defaultAccounts": "The project's default agent owns no accounts: its runs take the secrets of the person who hands them work."
+    },
+    "work": {
+      "status": {
+        "running": "Running",
+        "needs_person": "Needs a person",
+        "failed": "Failed",
+        "done": "Done"
+      },
+      "waiting": {
+        "run": "Waiting for @{agent}",
+        "runAny": "Waiting for an agent",
+        "person": "Waiting for {login}",
+        "personAny": "Waiting for a person",
+        "decision": "Waiting for {login} to decide",
+        "decisionAny": "Waiting for a decision",
+        "atWork": "@{agent} is at work",
+        "nothing": "Not waiting for anyone",
+        "done": "Done",
+        "failed": "Stopped on a failure"
+      },
+      "time": {
+        "hours": "{hours} h {minutes} min",
+        "minutes": "{minutes} min",
+        "seconds": "{seconds} s"
+      },
+      "totals": "{runs, plural, one {# run} other {# runs}}, {cost}, {time}",
+      "placeholder": "Goes to @{coordinator}, the coordinator, unless you @ an agent",
+      "placeholderAny": "Goes to the coordinator unless you @ an agent",
+      "list": {
+        "group": "{name}",
+        "line": "{status}: {waiting}",
+        "done": "{count, plural, one {# done work} other {# done works}}",
+        "doneLabel": "Done works of {name}"
+      },
+      "head": {
+        "number": "Work #{id}",
+        "system": "System",
+        "observe": "Open {name} in Observe",
+        "coordinator": "Coordinator"
+      },
+      "card": {
+        "title": "Work card",
+        "show": "Show details",
+        "hide": "Hide details",
+        "goal": "Goal",
+        "doneWhen": "Done when",
+        "noGoal": "No goal set yet",
+        "noDoneWhen": "Not set yet",
+        "runs": "Runs",
+        "cost": "Cost",
+        "hop": "Hop",
+        "time": "Time",
+        "of": "{value} of {max}",
+        "subTasks": "Sub-tasks",
+        "noSubTasks": "No sub-task yet",
+        "agent": "Agent",
+        "status": "Status",
+        "brief": "Brief",
+        "refused": "Refused",
+        "openThreadOf": "Open the thread of @{agent}",
+        "decisions": "Decisions",
+        "orchestrator": "Orchestrator",
+        "askedOf": "Asks {login}",
+        "answered": "Answer: {answer}",
+        "decisionFailed": "Couldn't load this decision",
+        "notFound": "This chat has no work card you can see",
+        "forbidden": "Your grants no longer clear this work's label",
+        "failed": "Couldn't load the work card",
+        "retry": "Try again"
+      },
+      "ask": {
+        "ask": "@{from} asked @{to}",
+        "escalate": "@{from} escalated to @{to}",
+        "reassign": "Reassigned from @{from} to @{to}",
+        "refusedTitle": "@{from} asked, the hub refused",
+        "refused": "Refused",
+        "error": "Error",
+        "brief": "Brief:",
+        "answer": "Answer:",
+        "noAnswer": "No answer yet",
+        "inThread": "Answered in its thread",
+        "openThread": "Open thread",
+        "openThreadOf": "Open thread of @{agent}"
+      },
+      "exception": {
+        "title": "Orchestrator: {rule}",
+        "titleAny": "Orchestrator",
+        "deciding": "Deciding",
+        "decided": "Decided",
+        "outcome": "Decision:",
+        "outcomes": {
+          "answer": "Answered",
+          "reassign": "Reassigned",
+          "ask_owner": "Asked the owner"
+        }
+      },
+      "root": {
+        "open": "Open work chat",
+        "done": "Done: {totals}"
+      }
     }
   },
   "accounts": {
