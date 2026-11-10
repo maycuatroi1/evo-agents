@@ -15,10 +15,11 @@ import { workCardQuery } from "@/lib/work";
 import { AGENT_PANELS } from "./agent-panels";
 import { useChatDecisions } from "./use-chat-decisions";
 import { useWorkUnder, WorkChatContext } from "./use-work-under";
-import { WorkDecisionAnswer } from "./work-decision";
 
 /** The pinned work card loads with the first work chat opened. */
 const WorkPinned = dynamic(() => import("@/components/chats/work-card").then((module) => module.WorkPinned), { ssr: false });
+/** The decisions card (the inbox's DecisionCard and its answer form) loads when the work card first shows a decision. */
+const WorkDecisionAnswer = dynamic(() => import("./work-decision").then((module) => module.WorkDecisionAnswer), { ssr: false });
 
 /**
  * The chat, with the decisions its agents' runs asked shown under the message that ended their turn, and the sheet an
