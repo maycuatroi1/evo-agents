@@ -10,6 +10,7 @@ import { DecisionCard } from "@/components/inbox/decision-view";
 import { type Decision, decisionQuery } from "@/components/inbox/queries";
 import { browserApi } from "@/lib/api/browser";
 import { cn } from "@/lib/utils";
+import { isWait, onlyWaits } from "@/lib/waits";
 
 import {
   CHAT_REFRESH_MS,
@@ -63,15 +64,21 @@ export function RunDecisions({
 
   const since = run.state === "waiting" ? run.waiting_since : run.state === "parked" ? run.parked_at : null;
   const when = since ? format.dateTime(new Date(since), { dateStyle: "medium", timeStyle: "short" }) : "none";
-  const why =
-    run.kind === "local"
+  // A run whose every open decision is a wait asks nobody anything: no amber count, no link to the Inbox, and a note
+  // that it holds no worker and goes on by itself (web/DESIGN.md, The wait panel).
+  const waits = onlyWaits(open);
+  const asks = open.filter((decision) => !isWait(decision));
+  const why = waits
+    ? run.state === "parked" ? "waitParked" : run.state === "waiting" ? "waitWaiting" : "waitOpen"
+    : run.kind === "local"
       ? owner
         ? "localYou"
         : "local"
       : run.state === "parked" ? (owner ? "parkedYou" : "parked") : run.state === "waiting" ? (owner ? "waitingYou" : "waiting") : owner ? "openYou" : "open";
-  const title =
-    open.length === 0 && settledHere.length > 0 ? t("titleAnswered") : owner ? t("titleYou") : t("titleOther", { login: run.dispatched_by });
-  const first = open[0] ?? null;
+  const title = waits
+    ? t("waitTitle")
+    : open.length === 0 && settledHere.length > 0 ? t("titleAnswered") : owner ? t("titleYou") : t("titleOther", { login: run.dispatched_by });
+  const first = asks[0] ?? null;
 
   return (
     <section
@@ -80,13 +87,14 @@ export function RunDecisions({
       data-testid="run-decisions"
       data-state={run.state}
       data-open={open.length}
+      data-waits={waits ? "true" : undefined}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <h2 id={`${ids}-title`} className="flex items-center gap-2 text-[15px] leading-[22px] font-semibold">
           {title}
-          {open.length > 1 ? (
+          {asks.length > 1 ? (
             <span className="rounded-full bg-attention-soft px-2 text-xs leading-5 font-medium text-attention tabular-nums" data-testid="run-decisions-count">
-              {t("count", { count: open.length })}
+              {t("count", { count: asks.length })}
             </span>
           ) : null}
         </h2>
@@ -111,7 +119,7 @@ export function RunDecisions({
         <ol className="flex flex-col gap-3">
           {shown.map((decision) => (
             <li key={decision.id} id={decisionAnchor(decision.id)} tabIndex={-1} className="scroll-mt-20 rounded-md" data-testid="run-decision">
-              <LiveDecision decision={decision} settledHere={kept.has(decision.id)} onSettled={keep} onTakeOver={onTakeOver} />
+              <LiveDecision decision={decision} settledHere={kept.has(decision.id)} parkedAt={run.parked_at} onSettled={keep} onTakeOver={onTakeOver} />
             </li>
           ))}
         </ol>
@@ -133,11 +141,13 @@ export function RunDecisions({
 function LiveDecision({
   decision,
   settledHere,
+  parkedAt,
   onSettled,
   onTakeOver,
 }: {
   decision: Decision;
   settledHere: boolean;
+  parkedAt: string | null;
   onSettled: (decision: Decision) => void;
   onTakeOver?: () => void;
 }) {
@@ -146,6 +156,7 @@ function LiveDecision({
     <DecisionCard
       decision={settledHere ? live.data : decision}
       where="run"
+      parkedAt={parkedAt}
       onAnswered={onSettled}
       onConflict={onSettled}
       onTakeOver={onTakeOver}

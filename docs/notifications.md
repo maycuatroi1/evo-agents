@@ -310,6 +310,15 @@ the agent gets, which names the decision, the event with its payload or the time
 resumed by the reaper, as an answer resumes it, and a parked run whose wait has not come is not cancelled at
 `PARKED_DAYS`. The person asked may answer a wait sooner like any decision.
 
+Every view of a decision carries `waiting_on`, null for a decision that is not a wait
+(`evo_agents.hub.server.waiting_on`). For a wait, `kind` says what it waits for and the field of that name holds
+where that stands: `workflow_run` (the run, its jobs and their steps with their links on GitHub, as the reaper's poll
+last read them; the poll keeps each read in `workflow_run_reads`, migration 0236, so a view never calls GitHub, and
+the first read also notes the median time of recent runs of the workflow that succeeded), `plan_step` (the plan, the
+step and the status waited for; its title, status and the run on it for a reader of that plan), `agent_answer` (the
+agent asked, its run and state, the question and its last activity), `merge_check` (the pull request, its head and
+each Judge's state), `event` (the kind, a name for a kind the hub knows, and the pairs of `contains`) or `time`.
+
 ## Notices
 
 A notice needs no answer (`NOTICE_KINDS`):

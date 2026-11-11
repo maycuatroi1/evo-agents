@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 
 import { syncOf } from "./graph-sync";
 import { useCuratorFailure, useCuratorRights, usePauseCurator } from "./hooks";
-import { curatorLook } from "./model";
+import { curatorLook, shiftHours } from "./model";
 import { type CuratorPageSegment, type CuratorStatus, curatorHref, figuresQuery } from "./queries";
 
 type CuratorPage = "overview" | "proposals" | "history" | "graph" | "runtime" | "charter";
@@ -176,7 +176,9 @@ function PauseControl({ project, status }: { project: string; status: CuratorSta
  */
 export function CuratorHeader({ project, status, actions }: { project: string; status: CuratorStatus; actions?: ReactNode }) {
   const t = useTranslations("curator");
+  const tPeriod = useTranslations("curator.periods");
   const charter = status.charter;
+  const hours = charter ? shiftHours(charter) : null;
   const pausedBy = status.schedules.find((schedule) => schedule.paused_at !== null) ?? null;
   const sub: ReactNode = charter
     ? status.paused && pausedBy
@@ -186,12 +188,14 @@ export function CuratorHeader({ project, status, actions }: { project: string; s
             login: pausedBy.paused_by,
             ago: () => <Ago value={pausedBy.paused_at} never="" />,
           })
-      : t.rich("sub.duty", {
-          start: charter.window.start,
-          end: charter.window.end,
-          timezone: charter.window.timezone,
-          owner: charter.schedule_owner,
-        })
+      : hours?.kind === "paced"
+        ? t("sub.dutyPaced", { period: tPeriod(hours.period), timezone: hours.timezone, owner: charter.schedule_owner })
+        : t.rich("sub.duty", {
+            start: hours?.kind === "window" ? hours.start : "",
+            end: hours?.kind === "window" ? hours.end : "",
+            timezone: hours?.timezone ?? "",
+            owner: charter.schedule_owner,
+          })
     : null;
   return (
     <PageHeader

@@ -149,6 +149,23 @@ async def tag_run(
     return max(ours, key=lambda found: found.id, default=None)
 
 
+async def recent_successes(
+    app: GitHubApp, token: str, owner: str, repo: str, workflow: str | int, count: int
+) -> list[dict]:
+    """The latest ``count`` runs of ``workflow`` (its file name or id) that succeeded, as GitHub lists them; none when
+    GitHub knows no such workflow."""
+    doing = f"listing the runs of {workflow} that succeeded on {owner}/{repo}"
+    path = _path("repos", owner, repo, "actions", "workflows", workflow, "runs")
+    params = {"status": "success", "per_page": count}
+    response = await _call(app, token, "GET", path, doing, params=params)
+    if response.status_code == 404:
+        return []
+    if response.status_code != 200:
+        raise _refused(response, doing, owner, repo)
+    listed = app._json(response, doing).get("workflow_runs")
+    return [item for item in listed if isinstance(item, dict)] if isinstance(listed, list) else []
+
+
 async def run_jobs(app: GitHubApp, token: str, owner: str, repo: str, run_id: int) -> list[dict]:
     """The jobs of the latest attempt of run ``run_id``, as GitHub lists them."""
     doing = f"listing the jobs of run {run_id} on {owner}/{repo}"

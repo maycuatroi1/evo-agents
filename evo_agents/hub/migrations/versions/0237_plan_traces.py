@@ -1,7 +1,7 @@
 """Plan traces: the plan a system was given to run, on the trace its dispatch opened.
 
-Revision ID: 0236
-Revises: 0235
+Revision ID: 0237
+Revises: 0236
 Create Date: 2026-11-11
 
 system_traces takes plan_id and plan_revision: the plan, and its revision then, that POST
@@ -17,8 +17,8 @@ Going back drops the index and the two columns.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0236"
-down_revision = "0235"
+revision = "0237"
+down_revision = "0236"
 branch_labels = None
 depends_on = None
 

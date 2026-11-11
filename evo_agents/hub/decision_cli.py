@@ -72,6 +72,7 @@ DECISION_KEYS = (
     "held_at",
     "wake_at",
     "wake_on",
+    "waiting_on",
     "outputs",
     "credential_request",
     "approval",

@@ -35,7 +35,7 @@ from tests.hub.test_credentials_api import (  # noqa: F401 (app_key, client, con
     worker_of,
 )
 from tests.hub.test_decisions import SESSION, decision, inbox, run_view
-from tests.hub.test_runs import claim, moved
+from tests.hub.test_runs import PROJECT, claim, moved
 
 READ_ACTIONS = {"contents": "write", "pull_requests": "write", "metadata": "read", "actions": "read"}
 NO_ACTIONS = {"contents": "write", "pull_requests": "write", "metadata": "read"}
@@ -180,3 +180,77 @@ def test_a_wait_on_a_workflow_run_the_hub_cannot_read_gets_422(client, hub, gith
     d = tables.decisions
     assert sql(hub_db, select(d.c.id).where(d.c.category == "wait")) == []
     assert hub_events.WORKFLOW_RUN in hub_events.KINDS
+
+
+def test_waiting_on_a_workflow_run_shows_the_polls_latest_read_of_its_jobs_and_steps_and_no_view_calls_github(
+    client, hub, github
+):
+    install(github, "evo-agents", permissions=READ_ACTIONS)
+    run = ci_run(github, jobs=running(TEST_JOB, WINDOWS_JOB))
+    github.workflow_run(  # an earlier run of the workflow that succeeded in 12 minutes
+        MINE,
+        "evo-agents",
+        workflow="release.yml",
+        sha="b" * 40,
+        tag="v0.57.0",
+        started_at="2026-11-01T10:00:00Z",
+        updated_at="2026-11-01T10:12:00Z",
+    )
+    worker, run_id = a_running_plan_run(client, hub, github)
+    wait = waited(client, worker, run_id, {"repo": "evo-agents", "run_id": run.id})
+
+    before = decision(client, hub["owner"], wait["id"])["waiting_on"]
+    assert before["kind"] == "workflow_run" and before["workflow_run"]["read_at"] is None, "no read before the poll"
+    assert before["workflow_run"]["repo"] == f"{MINE}/evo-agents" and before["workflow_run"]["run_id"] == run.id
+    assert before["workflow_run"]["jobs"] == [] and before["plan_step"] is None
+
+    reap(client)
+    shown = decision(client, hub["owner"], wait["id"])["waiting_on"]["workflow_run"]
+    assert shown["read_at"] is not None and shown["typical_seconds"] == 720
+    assert (shown["workflow"], shown["branch"], shown["sha"], shown["status"]) == (
+        "release",
+        "v0.58.0",
+        "a" * 40,
+        "in_progress",
+    )
+    assert shown["url"] == f"https://github.com/{MINE}/evo-agents/actions/runs/{run.id}"
+    assert [job["name"] for job in shown["jobs"]] == [TEST_JOB, WINDOWS_JOB] and shown["jobs_total"] == 2
+    (step,) = shown["jobs"][0]["steps"]
+    assert step["name"] == "Set up job" and step["url"].endswith("#step:1:1")
+    assert shown["jobs"][0]["steps_total"] == 1
+
+    github.attempt(run.id, status="in_progress", conclusion=None, jobs=running(TEST_JOB, WINDOWS_JOB))
+    reap(client)
+    typical = [r for r in github.requests if r.path.endswith("/actions/workflows/release.yml/runs")]
+    assert len(typical) == 1, "the typical time is read once per wait"
+
+    asked_github = len(github.requests)
+    listed = client.get(f"/v1/projects/{PROJECT}/decisions", headers=hub["owner"])
+    assert listed.status_code == 200, listed.text
+    (item,) = [found for found in listed.json()["decisions"] if found["id"] == wait["id"]]
+    assert item["waiting_on"]["workflow_run"]["jobs_total"] == 2
+    decision(client, hub["owner"], wait["id"])
+    assert len(github.requests) == asked_github, "a view reads the poll's latest read, never GitHub"
+
+
+def test_waiting_on_keeps_at_most_max_jobs_and_steps_failed_and_running_jobs_first():
+    step = {"name": "Run", "status": "completed", "conclusion": "success"}
+    jobs = [
+        {
+            "id": index,
+            "name": f"job {index}",
+            "status": "completed",
+            "conclusion": "success",
+            "html_url": f"https://github.com/northwind/lumen/actions/runs/9/job/{index}",
+            "steps": [step | {"number": number} for number in range(1, workflow_waits.MAX_STEPS + 6)],
+        }
+        for index in range(1, workflow_waits.MAX_JOBS + 6)
+    ]
+    jobs[-1] |= {"conclusion": "failure"}
+    jobs[-2] |= {"status": "in_progress", "conclusion": None}
+    kept = workflow_waits.snapshot("northwind/lumen", 9, {"run_attempt": 1, "name": "ci"}, jobs)
+    assert kept["jobs_total"] == workflow_waits.MAX_JOBS + 5 and len(kept["jobs"]) == workflow_waits.MAX_JOBS
+    names = [job["name"] for job in kept["jobs"]]
+    assert names[-2:] == [jobs[-2]["name"], jobs[-1]["name"]], "the failed and running jobs stay, in GitHub's order"
+    assert all(len(job["steps"]) == workflow_waits.MAX_STEPS for job in kept["jobs"])
+    assert kept["jobs"][0]["steps_total"] == workflow_waits.MAX_STEPS + 5

@@ -1,7 +1,7 @@
 """Plan run choices: a member's last choice in the Run plan dialog of a project.
 
-Revision ID: 0237
-Revises: 0236
+Revision ID: 0238
+Revises: 0237
 Create Date: 2026-11-12
 
 The names below are copies of ``evo_agents.hub.tables_push`` as of this revision, never imports, so a later change to
@@ -20,8 +20,8 @@ The table is new and nothing reads it before this revision. Going back drops it;
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0237"
-down_revision = "0236"
+revision = "0238"
+down_revision = "0237"
 branch_labels = None
 depends_on = None
 

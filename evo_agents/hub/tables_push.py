@@ -21,7 +21,7 @@ today_marks (0158) holds what Today (``evo_agents.hub.server.today``) keeps of a
 which they saw what changed, which only moves forward; and ``digest_on``, the local day of their last summary push
 (``evo_agents.hub.server.today_digest``), so it goes at most once a day. A member without a row saw nothing yet.
 
-plan_run_choices (0237) holds a member's last choice in the Run plan dialog of a project
+plan_run_choices (0238) holds a member's last choice in the Run plan dialog of a project
 (``evo_agents.hub.server.plan_run_choice``): where the plan runs (``target``, TARGETS; ``system``, the slug of a system
 of the project when the target is one), the agent by handle (none: the project's default), the runtime, the model
 (none: the runtime's own), the mode, the timeout in hours and whether each step gets a session of its own. Never
@@ -58,7 +58,7 @@ MAX_ADDRESS_CHARS = 2048  # push_devices.address: an endpoint or a device token
 MAX_LABEL_CHARS = 100  # push_devices.label
 TIERS = INTERRUPT, BRIEF, OFF = ("interrupt", "brief", "off")  # the values of notification_preferences.tiers (0157)
 DEFAULT_DIGEST_AT = "07:30"  # the local time of a member's summary push until they choose one
-TARGETS = WORKER, SYSTEM = ("worker", "system")  # plan_run_choices.target (0237)
+TARGETS = WORKER, SYSTEM = ("worker", "system")  # plan_run_choices.target (0238)
 
 
 def push_tables(metadata: MetaData) -> tuple[Table, Table]:
@@ -116,7 +116,7 @@ def today_table(metadata: MetaData) -> Table:
 
 
 def plan_run_choice_table(metadata: MetaData) -> Table:
-    """plan_run_choices (0237), added to ``metadata``."""
+    """plan_run_choices (0238), added to ``metadata``."""
     name = "plan_run_choices"
     return Table(
         name,

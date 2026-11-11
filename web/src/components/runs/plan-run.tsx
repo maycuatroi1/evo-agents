@@ -10,11 +10,13 @@ import { useId, useState } from "react";
 import { useNow } from "@/components/kg/use-now";
 import { stepHref } from "@/components/plans/links";
 import { StatusBadge, useStatusText } from "@/components/status/status-badge";
+import { WaitPill } from "@/components/status/wait-pill";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { browserApi } from "@/lib/api/browser";
 import { type PlanStep, percent } from "@/lib/plans";
 import { cn } from "@/lib/utils";
+import { onlyWaits, waitSubject } from "@/lib/waits";
 
 import { useCanDispatch, useViewer } from "./hooks";
 import { activePlanRun, isCuratorPlan, type PlanRunLock, planRunLock, planRunPhase } from "./model";
@@ -199,6 +201,8 @@ export function PlanRunBanner({ project, run, steps }: { project: string; run: R
   const decisions = useQuery({ ...openDecisionsQuery(browserApi, project, run.id), refetchInterval: LIVE_REFRESH_MS });
   const open = decisions.data?.decisions ?? [];
   const latest = open[0] ?? null;
+  // A run whose open decisions are all waits asks nobody: neutral, its pill says what it waits for, no Answer button.
+  const waits = (phase === "waiting" || phase === "parked") && onlyWaits(open);
   const now = useNow(phase === "waiting" || phase === "parked");
   const done = steps.filter((step) => step.group === "done").length;
   const total = steps.length;
@@ -215,17 +219,22 @@ export function PlanRunBanner({ project, run, steps }: { project: string; run: R
   return (
     <section
       aria-labelledby={`${ids}-title`}
-      className={cn("flex flex-col gap-3 rounded-md border p-4", BANNER_TONE[phase])}
+      className={cn("flex flex-col gap-3 rounded-md border p-4", waits ? "border-border bg-card" : BANNER_TONE[phase])}
       data-testid="plan-run-banner"
       data-run-id={run.id}
       data-phase={phase}
+      data-waits={waits ? "true" : undefined}
     >
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 flex-col gap-1.5">
           <h2 id={`${ids}-title`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] leading-[22px] font-semibold">
             <Workflow className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span>{t("title", { id: run.id })}</span>
-            <StatusBadge kind="run" status={phase} label={tPhase(`${phase}Long`)} data-testid="plan-run-phase" />
+            {waits && latest ? (
+              <WaitPill subject={waitSubject(latest.waiting_on, latest.wake_at ?? null)} data-testid="plan-run-wait" />
+            ) : (
+              <StatusBadge kind="run" status={phase} label={tPhase(`${phase}Long`)} data-testid="plan-run-phase" />
+            )}
           </h2>
           <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-pretty text-muted-foreground" data-testid="plan-run-banner-worker">
             <Server className="size-3.5 shrink-0" aria-hidden="true" />
@@ -239,14 +248,16 @@ export function PlanRunBanner({ project, run, steps }: { project: string; run: R
           </p>
           {phase === "waiting" || phase === "parked" ? (
             <p className="text-sm text-pretty" data-testid="plan-run-banner-why">
-              {phase === "waiting"
+              {waits
+                ? t(phase === "parked" ? "waitParked" : "waitWaiting", { since: sinceText ?? "none" })
+                : phase === "waiting"
                 ? t(owner ? "waitingOwner" : "waitingOther", { since: sinceText ?? "none", login: run.dispatched_by })
                 : t(owner ? "parkedOwner" : "parkedOther", { since: sinceText ?? "none", login: run.dispatched_by })}
             </p>
           ) : null}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {latest ? (
+          {latest && !waits ? (
             <Button asChild variant={phase === "waiting" || phase === "parked" ? "default" : "outline"}>
               <Link href={decisionHref(latest.id)} data-testid="plan-run-banner-decision">
                 <MessageCircleQuestionMark aria-hidden="true" />
@@ -265,7 +276,7 @@ export function PlanRunBanner({ project, run, steps }: { project: string; run: R
       </div>
       {latest ? (
         <p className="line-clamp-2 text-sm text-pretty [overflow-wrap:anywhere]" data-testid="plan-run-banner-question">
-          <span className="text-muted-foreground">{t("question")}</span> {latest.question}
+          <span className="text-muted-foreground">{waits ? t("waitReason") : t("question")}</span> {latest.question}
         </p>
       ) : null}
       <div className="flex flex-col gap-2">

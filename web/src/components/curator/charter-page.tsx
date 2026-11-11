@@ -24,8 +24,8 @@ import { CharterFormView } from "./charter-form";
 import { CuratorHeader, CuratorTabs } from "./curator-header";
 import { useCuratorStatus } from "./curator-page";
 import { useCuratorRights } from "./hooks";
-import { readCharterView } from "./model";
-import { Fact, Facts, useMoney } from "./parts";
+import { periodBudget, readCharterView, shiftHours } from "./model";
+import { Fact, Facts, useMoney, useShiftText } from "./parts";
 import { type Charter, charterQuery, charterRevisionsQuery, type CharterRevision, curatorHref, type CuratorStatus } from "./queries";
 
 function charterHref(project: string, revision: number | null = null, edit = false): Route {
@@ -51,6 +51,8 @@ function List({ items, mono = false, empty, testId }: { items: readonly ReactNod
 function CharterView({ project, charter }: { project: string; charter: Charter }) {
   const t = useTranslations("curator.charter");
   const tRuntime = useTranslations("runs.runtime");
+  const tPeriod = useTranslations("curator.periods");
+  const shift = useShiftText();
   const money = useMoney();
   const role = (value: { runtime: string; model?: string | null } | undefined) =>
     t("roleValue", { runtime: tRuntime((value?.runtime ?? "claude-code") as "claude-code"), model: value?.model ?? t("modelDefault") });
@@ -78,7 +80,7 @@ function CharterView({ project, charter }: { project: string; charter: Charter }
       <HomeCard title={t("groups.window")} testId="charter-view-window">
         <Facts>
           <Fact label={t("fields.window")} testId="charter-window">
-            {t("windowValue", { start: charter.window.start, end: charter.window.end, timezone: charter.window.timezone })}
+            {shift.hours(shiftHours(charter))}
           </Fact>
           <Fact label={t("fields.owner")}>
             <span className="font-mono text-xs">{charter.schedule_owner}</span>
@@ -89,7 +91,9 @@ function CharterView({ project, charter }: { project: string; charter: Charter }
       <HomeCard title={t("groups.budget")} testId="charter-view-budget">
         <Facts>
           <Fact label={t("fields.nightBudget")} testId="charter-night-budget-value">
-            {money(charter.night_budget_usd)}
+            {charter.pacing
+              ? t("pacedBudget", { budget: money(periodBudget(charter)), period: tPeriod(charter.pacing.period) })
+              : money(periodBudget(charter))}
           </Fact>
           <Fact label={t("fields.runBudget")}>{charter.run_budget_usd ? money(charter.run_budget_usd) : t("runBudgetNone")}</Fact>
           <Fact label={t("fields.maxRunsPerNight")}>{charter.max_runs_per_night ?? 6}</Fact>

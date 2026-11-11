@@ -22,9 +22,9 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 import { useLensText } from "./badges";
 import { CuratorHeader, CuratorTabs } from "./curator-header";
 import { useCuratorViewer } from "./hooks";
-import { nightOutcome } from "./model";
+import { nightOutcome, periodBudget, shiftHours } from "./model";
 import { proposalsHref, NightStrip, NoCharter } from "./night-strip";
-import { Fact, Facts, useDay, useMoney } from "./parts";
+import { Fact, Facts, useDay, useMoney, useShiftText } from "./parts";
 import { ProbeReport } from "./probe-lazy";
 import { type CuratorStatus, curatorHref, curatorStatusQuery, type NightList, type NightSummary, nightsQuery } from "./queries";
 
@@ -53,6 +53,8 @@ function briefsHref(project: string): Route {
  */
 function ScheduleCard({ project, status }: { project: string; status: CuratorStatus }) {
   const t = useTranslations("curator.schedule");
+  const tPeriod = useTranslations("curator.periods");
+  const shift = useShiftText();
   const viewer = useCuratorViewer(project);
   const money = useMoney();
   const day = useDay();
@@ -72,7 +74,7 @@ function ScheduleCard({ project, status }: { project: string; status: CuratorSta
     >
       <Facts>
         <Fact label={t("window")}>
-          {t("windowValue", { start: charter.window.start, end: charter.window.end, timezone: charter.window.timezone })}
+          {shift.hours(shiftHours(charter))}
         </Fact>
         {night ? (
           <Fact label={t("now")} testId="curator-local-time">
@@ -82,8 +84,8 @@ function ScheduleCard({ project, status }: { project: string; status: CuratorSta
         <Fact label={t("owner")}>
           <span className="font-mono text-xs">{charter.schedule_owner}</span>
         </Fact>
-        <Fact label={t("caps")}>
-          {t("capsValue", { budget: money(charter.night_budget_usd), runs: charter.max_runs_per_night ?? 0 })}
+        <Fact label={charter.pacing ? t("capsPaced", { period: tPeriod(charter.pacing.period) }) : t("caps")}>
+          {t("capsValue", { budget: money(periodBudget(charter)), runs: charter.max_runs_per_night ?? 0 })}
         </Fact>
         <Fact label={t("brief")}>{t("briefValue", { at: charter.brief_at ?? "07:00" })}</Fact>
         {status.last_brief ? (
@@ -274,6 +276,7 @@ function NightsTable({ project, list }: { project: string; list: NightList }) {
 
 function Nights({ project, status }: { project: string; status: CuratorStatus }) {
   const t = useTranslations("curator.nights");
+  const shift = useShiftText();
   const nights = useHubQuery(nightsQuery(browserApi, project));
   const charter = status.charter;
   return (
@@ -286,7 +289,7 @@ function Nights({ project, status }: { project: string; status: CuratorStatus })
           {(list) =>
             list.nights.length === 0 ? (
               <p className="px-4 py-6 text-[13px] text-muted-foreground" data-testid="curator-nights-empty">
-                {charter ? t("empty", { start: charter.window.start, timezone: charter.window.timezone }) : t("emptyNoCharter")}
+                {charter ? shift.empty(shiftHours(charter)) : t("emptyNoCharter")}
               </p>
             ) : (
               <NightsTable project={project} list={list} />

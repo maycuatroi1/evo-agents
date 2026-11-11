@@ -14580,6 +14580,41 @@ export interface components {
              */
             created: boolean;
         };
+        /** AgentAnswerWait */
+        AgentAnswerWait: {
+            /**
+             * Handle
+             * @description the agent asked, @ left out
+             */
+            handle: string | null;
+            /**
+             * Project
+             * @description the agent's project
+             */
+            project: string | null;
+            /** @description the agent's run whose end answers the wait */
+            run: components["schemas"]["RunRef"] | null;
+            /**
+             * Question
+             * @description what the waiting run asked it
+             */
+            question: string | null;
+            /**
+             * Chat Id
+             * @description the chat the question went to
+             */
+            chat_id: number | null;
+            /**
+             * Thread Id
+             * @description the message that roots the thread of it
+             */
+            thread_id: number | null;
+            /**
+             * Last Activity At
+             * @description when the agent's run last wrote an event
+             */
+            last_activity_at: string | null;
+        };
         /** AgentAskIn */
         AgentAskIn: {
             /**
@@ -18448,12 +18483,15 @@ export interface components {
              * @description the product's goals, highest first
              */
             goals?: components["schemas"]["Goal"][];
-            window: components["schemas"]["Window"];
+            /** @description the night the Curator runs in; null with pacing */
+            window?: components["schemas"]["Window"] | null;
+            /** @description the Curator runs through the day on the period's budget instead of a window; null: a window */
+            pacing?: components["schemas"]["Pacing"] | null;
             /**
              * Night Budget Usd
-             * @description the most a night may cost
+             * @description the most a night may cost, with a window; null with pacing, whose budget_usd it is
              */
-            night_budget_usd: number;
+            night_budget_usd?: number | null;
             /**
              * Run Budget Usd
              * @description the most one run may cost; null: what the night has
@@ -18583,12 +18621,15 @@ export interface components {
              * @description the product's goals, highest first
              */
             goals?: components["schemas"]["Goal"][];
-            window: components["schemas"]["Window"];
+            /** @description the night the Curator runs in; null with pacing */
+            window?: components["schemas"]["Window"] | null;
+            /** @description the Curator runs through the day on the period's budget instead of a window; null: a window */
+            pacing?: components["schemas"]["Pacing"] | null;
             /**
              * Night Budget Usd
-             * @description the most a night may cost
+             * @description the most a night may cost, with a window; null with pacing, whose budget_usd it is
              */
-            night_budget_usd: number;
+            night_budget_usd?: number | null;
             /**
              * Run Budget Usd
              * @description the most one run may cost; null: what the night has
@@ -20490,7 +20531,7 @@ export interface components {
             state: "running" | "on_duty" | "idle" | "paused";
             /**
              * In Window
-             * @description the charter's window is open now
+             * @description the charter's window is open now; with pacing, outside its quiet hours
              */
             in_window: boolean;
             /**
@@ -20746,6 +20787,8 @@ export interface components {
             wake_at?: string | null;
             /** @description a wait: the event of the hub that answers it sooner */
             wake_on?: components["schemas"]["WakeOn"] | null;
+            /** @description a wait: what it waits for and where that stands, as the hub last knew it (``waiting_on``); null for any other decision */
+            waiting_on?: components["schemas"]["WaitingOn"] | null;
             /**
              * Outputs
              * @description the files of its run it carries, oldest first, each with the decision's URL of its bytes
@@ -22877,6 +22920,28 @@ export interface components {
             body: {
                 [key: string]: unknown;
             };
+        };
+        /** EventPair */
+        EventPair: {
+            /** Key */
+            key: string;
+            /**
+             * Value
+             * @description the value as text, JSON for one that is not a text
+             */
+            value: string;
+        };
+        /** EventWait */
+        EventWait: {
+            /** Kind */
+            kind: string;
+            /**
+             * Name
+             * @description what the kind is, for a kind the hub knows
+             */
+            name: string | null;
+            /** Contains */
+            contains: components["schemas"]["EventPair"][];
         };
         /** EventsAck */
         EventsAck: {
@@ -28594,6 +28659,33 @@ export interface components {
              */
             branch?: string | null;
         };
+        /** MergeCheckWait */
+        MergeCheckWait: {
+            /** Id */
+            id: number;
+            /** Repo */
+            repo: string;
+            /**
+             * Number
+             * @description the pull request's number
+             */
+            number: number;
+            /** Title */
+            title: string | null;
+            /** Url */
+            url: string | null;
+            /** Head Sha */
+            head_sha: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "judging" | "passed" | "failed";
+            /** Reason */
+            reason: string | null;
+            /** Judges */
+            judges: components["schemas"]["MergeJudge"][];
+        };
         /** MergeEvent */
         MergeEvent: {
             /** Id */
@@ -28728,6 +28820,26 @@ export interface components {
              * @description the head of the pull request as the hook read it now; null when it could not
              */
             head?: string | null;
+        };
+        /** MergeJudge */
+        MergeJudge: {
+            /**
+             * Round
+             * @enum {string}
+             */
+            round: "first" | "second";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "judging" | "passed" | "failed";
+            /**
+             * Run Id
+             * @description the judge run
+             */
+            run_id: number | null;
+            /** Model */
+            model: string | null;
         };
         /**
          * MergeJudgeInputs
@@ -29279,10 +29391,13 @@ export interface components {
             /**
              * Night
              * Format: date
-             * @description the local date the window opened on: the night now, or the last one
+             * @description the local date the window opened on: the night now, or the last one; with pacing, the period's first date
              */
             night: string;
-            /** In Window */
+            /**
+             * In Window
+             * @description inside the window; with pacing, outside the quiet hours
+             */
             in_window: boolean;
             /**
              * Local Time
@@ -31153,7 +31268,7 @@ export interface components {
         OverviewCounts: {
             /**
              * Waiting On You
-             * @description open decisions asked of you, which you answer
+             * @description open decisions asked of you, which you answer; a wait is not one
              */
             waiting_on_you: number;
             /**
@@ -31384,6 +31499,44 @@ export interface components {
              * @description the last sign of life of a local run's session
              */
             last_activity_at?: string | null;
+        };
+        /**
+         * Pacing
+         * @description The Curator runs through the day instead of in a window: at any hour outside ``quiet_hours``, spending the
+         *     period's budget evenly (``curator.pace_line``).
+         */
+        Pacing: {
+            /**
+             * Period
+             * @description day, from local midnight, or week, from Monday 00:00 local
+             * @enum {string}
+             */
+            period: "day" | "week";
+            /**
+             * Budget Usd
+             * @description the most a period may cost
+             */
+            budget_usd: number;
+            /** @description local hours no run of the Curator is queued; null: none */
+            quiet_hours?: components["schemas"]["PacingQuietHours"] | null;
+            /**
+             * Timezone
+             * @description an IANA time zone, such as Asia/Ho_Chi_Minh
+             */
+            timezone: string;
+        };
+        /** PacingQuietHours */
+        PacingQuietHours: {
+            /**
+             * Start
+             * @description HH:MM, 24 hours, in the window's zone
+             */
+            start: string;
+            /**
+             * End
+             * @description when it is not after start, the quiet hours run past midnight
+             */
+            end: string;
         };
         /** Page */
         Page: {
@@ -32146,6 +32299,30 @@ export interface components {
              * @default false
              */
             as_me: boolean;
+        };
+        /** PlanStepWait */
+        PlanStepWait: {
+            /** Plan */
+            plan: string;
+            /** Step */
+            step: string;
+            /**
+             * Wanted
+             * @description the status the wait waits for, such as done; null: any change
+             */
+            wanted: string | null;
+            /**
+             * Title
+             * @description the step's title; null when the caller does not read the plan
+             */
+            title: string | null;
+            /**
+             * Status
+             * @description the step's status now; null when the caller does not read the plan
+             */
+            status: string | null;
+            /** @description the active run of the plan working on it, when the caller reads the plan */
+            run: components["schemas"]["RunRef"] | null;
         };
         /** PlanSummary */
         PlanSummary: {
@@ -38528,6 +38705,33 @@ export interface components {
              * @description the most the review run may cost; null: as any run
              */
             budget_usd?: number | null;
+            /** @description queue the review run of a night or period only when enough new evidence came since the previous one; null: one every night or period, its figures over days */
+            trigger?: components["schemas"]["ReviewTrigger"] | null;
+        };
+        /**
+         * ReviewTrigger
+         * @description When the review run of a night or period is worth queuing (``curator.review_wait``): enough new evidence since
+         *     the previous review and a gap after it, or a long enough gap alone.
+         */
+        ReviewTrigger: {
+            /**
+             * Min New
+             * @description new evidence since the previous review that queues one: failed runs of the agent's cause, new traces of an agent system with an optimizes edge, and turns of a person that correct the agent
+             * @default 1
+             */
+            min_new: number;
+            /**
+             * Min Gap Hours
+             * @description the hours after the previous review before new evidence queues the next one
+             * @default 24
+             */
+            min_gap_hours: number;
+            /**
+             * Max Gap Days
+             * @description the days after the previous review that queue the next one whatever the evidence
+             * @default 7
+             */
+            max_gap_days: number;
         };
         /** Revision */
         Revision: {
@@ -40057,6 +40261,15 @@ export interface components {
              * @description the groups before this write
              */
             previous: ("agents" | "workers" | "curator" | "releases" | "answers" | "runs")[];
+        };
+        /** RunRef */
+        RunRef: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** State */
+            state: string;
         };
         /**
          * RunRepo
@@ -45768,6 +45981,11 @@ export interface components {
              */
             chosen: boolean;
         };
+        /** TimeWait */
+        TimeWait: {
+            /** Wake At */
+            wake_at: string | null;
+        };
         /** TimelineMark */
         TimelineMark: {
             /** Decision Id */
@@ -47296,6 +47514,20 @@ export interface components {
              */
             step_key?: string | null;
         };
+        /** WaitingOn */
+        WaitingOn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workflow_run" | "plan_step" | "agent_answer" | "merge_check" | "time" | "event";
+            workflow_run?: components["schemas"]["WorkflowRunWait"] | null;
+            plan_step?: components["schemas"]["PlanStepWait"] | null;
+            agent_answer?: components["schemas"]["AgentAnswerWait"] | null;
+            merge_check?: components["schemas"]["MergeCheckWait"] | null;
+            time?: components["schemas"]["TimeWait"] | null;
+            event?: components["schemas"]["EventWait"] | null;
+        };
         /** WakeOn */
         WakeOn: {
             /**
@@ -48231,6 +48463,119 @@ export interface components {
              * @description why it failed or was impossible, as the daemon or the hub said
              */
             reason: string | null;
+        };
+        /** WorkflowJob */
+        WorkflowJob: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string | null;
+            /** Status */
+            status: string | null;
+            /** Conclusion */
+            conclusion: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Url
+             * @description the job's page on GitHub
+             */
+            url: string | null;
+            /** Steps */
+            steps: components["schemas"]["WorkflowStep"][];
+            /**
+             * Steps Total
+             * @description the steps GitHub lists for the job; steps keeps at most 60
+             */
+            steps_total: number;
+        };
+        /** WorkflowRunWait */
+        WorkflowRunWait: {
+            /**
+             * Repo
+             * @description owner/name
+             */
+            repo: string;
+            /** Run Id */
+            run_id: number;
+            /** Attempt */
+            attempt: number | null;
+            /**
+             * Workflow
+             * @description the workflow's name
+             */
+            workflow: string | null;
+            /**
+             * Title
+             * @description the run's title, such as its commit's subject
+             */
+            title: string | null;
+            /** Branch */
+            branch: string | null;
+            /** Sha */
+            sha: string | null;
+            /**
+             * Event
+             * @description what started the run, such as push
+             */
+            event: string | null;
+            /**
+             * Status
+             * @description as GitHub says it: queued, in_progress, completed ...
+             */
+            status: string | null;
+            /** Conclusion */
+            conclusion: string | null;
+            /** Url */
+            url: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
+            /**
+             * Read At
+             * @description when the hub last read the run from GitHub; null before its first read
+             */
+            read_at: string | null;
+            /**
+             * Typical Seconds
+             * @description the median time of the latest runs of the workflow that succeeded; null when not known
+             */
+            typical_seconds: number | null;
+            /**
+             * Jobs
+             * @description the jobs of its latest attempt, in GitHub's order; past 40, those that failed or run are kept
+             */
+            jobs: components["schemas"]["WorkflowJob"][];
+            /**
+             * Jobs Total
+             * @description the jobs GitHub lists for that attempt; null before the first read
+             */
+            jobs_total: number | null;
+        };
+        /** WorkflowStep */
+        WorkflowStep: {
+            /** Number */
+            number: number;
+            /** Name */
+            name: string | null;
+            /** Status */
+            status: string | null;
+            /** Conclusion */
+            conclusion: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Url
+             * @description the step on GitHub: its job's page at #step:N:1
+             */
+            url: string | null;
         };
         /** Conflict */
         evo_agents__hub__server__memories__Conflict: {

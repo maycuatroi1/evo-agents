@@ -5657,7 +5657,10 @@
           "waiting": "đang chờ quyết định",
           "parked": "tạm gác",
           "review": "chờ duyệt"
-        }
+        },
+        "waitWaiting": "Agent đang chờ việc khác{since, select, none {} other { từ {since}}}. Không ai cần trả lời: run tạm dừng để không giữ worker, và tự đi tiếp.",
+        "waitParked": "Đã tạm dừng{since, select, none {} other { {since}}} để không giữ worker khi chờ. Nó tự đi tiếp khi điều nó chờ đến; không ai cần trả lời.",
+        "waitReason": "Chờ:"
       },
       "toast": {
         "dispatched": "Đã dispatch plan run #{id}",
@@ -5932,7 +5935,11 @@
         "loading": "Đang đọc quyết định…",
         "failed": "Không đọc được quyết định ở đây. Bạn cũng xem được nó trong Inbox.",
         "localYou": "Phiên Claude Code đã hỏi bạn một câu. Câu trả lời của bạn đến với phiên ở lượt kế tiếp.",
-        "local": "Phiên Claude Code đã hỏi {login} một câu."
+        "local": "Phiên Claude Code đã hỏi {login} một câu.",
+        "waitTitle": "Run đang chờ gì",
+        "waitWaiting": "Không ai cần trả lời. Run tạm dừng khi agent hết lượt nên không giữ worker nào, và tự đi tiếp khi điều nó chờ đến.",
+        "waitParked": "Đã tạm dừng{since, select, none {} other { từ {since}}}, nên run không giữ worker nào khi chờ. Nó tự đi tiếp khi điều nó chờ đến; không ai cần trả lời.",
+        "waitOpen": "Agent đang chờ việc khác và tự đi tiếp khi điều đó đến."
       },
       "log": {
         "title": "Log",
@@ -6439,7 +6446,11 @@
           "idle": "Đang nghỉ {duration}",
           "ended": "Đã kết thúc sau {duration}"
         },
-        "progressShort": "{done}/{total} bước"
+        "progressShort": "{done}/{total} bước",
+        "waitState": {
+          "waiting": "Đang chờ {duration}",
+          "parked": "Đã tạm dừng {duration}, không giữ worker"
+        }
       },
       "preview": {
         "title": "Trace",
@@ -7810,7 +7821,8 @@
     "sub": {
       "duty": "Ca đêm với tư cách {owner}, từ {start} đến {end} {timezone}",
       "paused": "{login} đã tạm dừng <ago></ago>",
-      "pausedByHub": "Cầu dao đã tạm dừng <ago></ago>"
+      "pausedByHub": "Cầu dao đã tạm dừng <ago></ago>",
+      "dutyPaced": "Ca rải đều với tư cách {owner}, suốt {period} ngoài giờ nghỉ, {timezone}"
     },
     "pause": "Tạm dừng",
     "pausing": "Đang tạm dừng",
@@ -7888,7 +7900,10 @@
       "paused": "Tạm dừng",
       "pausedBy": "bởi {login},",
       "pausedByHub": "bởi cầu dao,",
-      "pauseReason": "Lý do"
+      "pauseReason": "Lý do",
+      "pacedValue": "Suốt {period}, nghỉ từ {start} đến {end}, {timezone}",
+      "pacedAlways": "Suốt {period}, không có giờ nghỉ, {timezone}",
+      "capsPaced": "Mỗi {period}"
     },
     "lastReview": {
       "title": "Review run gần nhất",
@@ -7925,7 +7940,8 @@
         "done": "{done} run xong",
         "empty": "Không xếp run nào"
       },
-      "mobileMeta": "{runs} run, {cost}, {proposals} đề xuất"
+      "mobileMeta": "{runs} run, {cost}, {proposals} đề xuất",
+      "emptyPaced": "Chưa có run nào: Curator chạy suốt {period} ngoài giờ nghỉ, {timezone}."
     },
     "proposals": {
       "caption": "Đề xuất của {project}",
@@ -8408,7 +8424,9 @@
       "historyBudgetOff": "Không có: không chạy run lịch sử",
       "historyModelDefault": "model rẻ nhất node báo",
       "probeBudgetNone": "Không có: không chạy probe",
-      "probeModelsBuilder": "Runtime và model của Builder"
+      "probeModelsBuilder": "Runtime và model của Builder",
+      "pacedBudget": "{budget} mỗi {period}, chi đều",
+      "pacedNote": "Charter này chạy rải đều: Curator chạy suốt {period} ngoài giờ nghỉ và chi đều {budget} trong đó. Form giữ nguyên pacing như đã viết và chỉ sửa múi giờ; đổi pacing bằng CLI."
     },
     "metaHistory": "Lịch sử của {project}",
     "metaGraph": "Sức khoẻ graph của {project}",
@@ -8919,6 +8937,10 @@
       "unreadable": "Không đọc được các tuần của probe.",
       "retry": "Thử lại",
       "fixOf": "Đề xuất này sửa luật của <link>thay đổi #{change}</link>, thay đổi có probe tái phát hai tuần liền."
+    },
+    "periods": {
+      "day": "ngày",
+      "week": "tuần"
     }
   },
   "releases": {
@@ -12830,6 +12852,197 @@
       "ended": "Kết thúc",
       "never": "chưa bao giờ",
       "notYet": "chưa"
+    }
+  },
+  "wait": {
+    "pill": {
+      "workflow": "Đang chờ {workflow} {done}/{total}",
+      "workflowNoSteps": "Đang chờ {workflow}",
+      "planStep": "Đang chờ {plan} bước {step}",
+      "agent": "Đang chờ @{handle}",
+      "agentRun": "Đang chờ run #{run}",
+      "mergeCheck": "Đang chờ kiểm tra merge của PR #{number}",
+      "time": "Đang chờ đến {time}",
+      "event": "Đang chờ {name}",
+      "reason": "Đang chờ: {reason}",
+      "unknown": "Đang chờ việc khác"
+    },
+    "span": {
+      "seconds": "{seconds}s",
+      "minutes": "{minutes}m {seconds}s",
+      "hours": "{hours} giờ {minutes} phút"
+    },
+    "headline": {
+      "workflow_run": "Đang chờ GitHub Actions",
+      "plan_step": "Đang chờ một bước của plan khác",
+      "agent_answer": "Đang chờ câu trả lời của agent khác",
+      "merge_check": "Đang chờ kiểm tra merge của một pull request",
+      "time": "Đang chờ đến giờ",
+      "event": "Đang chờ một sự kiện của hub",
+      "came": "Điều run chờ đã đến, và agent đã đi tiếp",
+      "youWoke": "Bạn đã đánh thức agent",
+      "woke": "{login} đã đánh thức agent",
+      "stopped": "Agent đã đi tiếp mà không chờ nữa",
+      "closed": "Lượt chờ đã kết thúc"
+    },
+    "reason": "Lý do của agent:",
+    "lead": "Không ai cần trả lời: khi điều đó đến, hub đánh thức agent trên cùng worker.",
+    "nobody": "Không ai cần trả lời: hub đánh thức agent khi điều đó đến. Chỉ {owner} có thể đánh thức sớm hơn.",
+    "raw": "Lượt chờ như hub lưu",
+    "timeline": {
+      "label": "Lượt chờ đang ở đâu",
+      "asked": "Đã hỏi",
+      "askedStep": "bởi agent của bước {step}",
+      "askedAgent": "bởi agent",
+      "parked": "Đã tạm dừng",
+      "parkedNote": "lượt chờ không giữ worker nào",
+      "parksSoon": "khi agent hết lượt",
+      "notParked": "run không tạm dừng",
+      "source": {
+        "workflow_run": "GitHub Actions: {name}",
+        "plan_step": "Bước của plan khác",
+        "agent_answer": "Câu trả lời của agent khác",
+        "merge_check": "Kiểm tra merge",
+        "time": "Thời điểm",
+        "event": "Sự kiện của hub"
+      },
+      "sourceSpan": "{state}, {elapsed}",
+      "actions": {
+        "done": "thành công",
+        "running": "đang chạy",
+        "failed": "thất bại",
+        "skipped": "bỏ qua",
+        "cancelled": "đã hủy",
+        "queued": "đang xếp hàng"
+      },
+      "notYet": "chưa đến",
+      "came": "đã đến",
+      "over": "đã xong",
+      "goesOn": "Agent đi tiếp",
+      "wentOn": "Agent đã đi tiếp",
+      "goesOnWhen": "khi điều đó đến, hoặc lúc {time}",
+      "goesOnCome": "khi điều đó đến",
+      "ended": "lượt chờ kết thúc mà không có nó",
+      "wokeHub": "hub đã đánh thức",
+      "saidNow": "{login} chọn Đi tiếp ngay",
+      "saidStop": "{login} chọn Thôi chờ"
+    },
+    "boxes": {
+      "wakesWhen": "Đánh thức agent khi",
+      "when": {
+        "workflow_run": "workflow run hoàn tất, hoặc một job của nó thất bại",
+        "plan_step": "bước {step} của {plan} là {wanted}",
+        "agent_answer": "agent kia trả lời",
+        "agent_run": "run #{run} kết thúc với câu trả lời, hoặc lý do thất bại",
+        "merge_check": "các giám khảo đưa ra kết luận",
+        "time": "đến giờ",
+        "event": "hub ghi nhận {name}"
+      },
+      "atLatest": "Muộn nhất",
+      "latest": "{time} ({utc} UTC)",
+      "in": "còn {duration}",
+      "woke": "Đã đánh thức",
+      "byHub": "bởi hub",
+      "byLogin": "bởi {login}"
+    },
+    "source": {
+      "title": {
+        "workflow_run": "Một lần chạy GitHub Actions",
+        "plan_step": "Một bước của plan khác",
+        "agent_answer": "Câu trả lời của agent khác",
+        "merge_check": "Kiểm tra merge của một pull request",
+        "time": "Một thời điểm",
+        "event": "Một sự kiện của hub"
+      },
+      "plan": {
+        "step": "{plan}, bước {step}",
+        "status": "Trạng thái: {status}; đánh thức agent khi là {wanted}",
+        "unknown": "chưa đọc",
+        "run": "Run #{id}, {state}",
+        "open": "Mở bước {step}"
+      },
+      "agent": {
+        "someone": "Một agent khác",
+        "run": "run #{id}",
+        "state": "Run đang {state}",
+        "active": "Hoạt động lần cuối <time></time>",
+        "question": "Câu hỏi agent đã hỏi",
+        "openChat": "Mở chat công việc"
+      },
+      "merge": {
+        "pr": "PR #{number} tại {sha}",
+        "state": {
+          "judging": "Đang chấm",
+          "passed": "Đạt",
+          "failed": "Không đạt"
+        },
+        "judges": "{spoke} trên {total} giám khảo đã cho ý kiến",
+        "judge": "vòng {round}: {state}",
+        "open": "Mở pull request"
+      },
+      "time": {
+        "until": "Đến {time} ({utc} UTC)",
+        "left": "còn {duration}",
+        "came": "Đã đến giờ",
+        "none": "Hub không lưu thời điểm cho lượt chờ này."
+      },
+      "event": {
+        "notYet": "chưa ghi nhận",
+        "contains": "Điều sự kiện phải chứa",
+        "unnamed": "Một loại hub chưa có tên gọi sẽ hiện tên của nó và các cặp khóa, giá trị này."
+      }
+    },
+    "workflow": {
+      "state": {
+        "done": "thành công",
+        "running": "đang chạy",
+        "failed": "thất bại",
+        "skipped": "bỏ qua",
+        "cancelled": "đã hủy",
+        "queued": "đang xếp hàng"
+      },
+      "repo": "Repo",
+      "branch": "Nhánh",
+      "commit": "Commit",
+      "status": "Trạng thái",
+      "opensOnGitHub": " (mở trên GitHub)",
+      "took": "mất {elapsed}",
+      "soFar": "đã {elapsed}",
+      "eta": "đã {elapsed}, còn khoảng {left}",
+      "etaTitle": "Ước tính từ thời gian các lần chạy gần đây của {workflow}",
+      "now": "Bước {n} trên {total} của {job}: {name}",
+      "failedAt": "Thất bại ở bước {n}, {name}",
+      "bar": "{done} trên {total} bước xong",
+      "barLabel": "Các bước của {workflow}",
+      "noJobs": "Hub chưa đọc các job của lần chạy này.",
+      "moreJobs": "{count, plural, other {# job nữa}} hub chưa đọc",
+      "jobSteps": "{done} trên {total} bước",
+      "jobStepsAll": "{total} bước",
+      "openJob": "Mở job {job} trên GitHub",
+      "stepLink": ", {state}, mở trên GitHub"
+    },
+    "actions": {
+      "note": "Không ai cần trả lời. Đi tiếp ngay đánh thức agent lập tức; Thôi chờ để agent đi tiếp mà không có điều nó chờ.",
+      "goOn": "Đi tiếp ngay",
+      "stop": "Thôi chờ",
+      "confirmNow": "Đánh thức agent ngay?",
+      "confirmNowText": "Agent đi tiếp ngay, như thể điều nó chờ đã đến.",
+      "confirmStop": "Đi tiếp mà không chờ?",
+      "confirmStopText": "Agent thôi chờ và đi tiếp mà không có điều nó chờ.",
+      "noteLabel": "Ghi chú cho agent (không bắt buộc)",
+      "long": "Ghi chú dài hơn 4 KiB.",
+      "cancel": "Hủy",
+      "wake": "Đánh thức agent",
+      "stopSend": "Thôi chờ",
+      "woke": "Agent đi tiếp ngay.",
+      "stopped": "Agent đi tiếp mà không chờ nữa.",
+      "failed": "Không kết thúc được lượt chờ"
+    },
+    "inbox": {
+      "title": "Run đang chờ việc khác, không cần trả lời",
+      "count": "{count, plural, other {# lượt chờ}}",
+      "run": "Run #{run}",
+      "asked": "hỏi <time></time>"
     }
   }
 }

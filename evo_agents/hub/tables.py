@@ -602,6 +602,7 @@ runs.append_constraint(
     )
 )
 notifications, notification_channels, notification_deliveries = tables_decisions.notification_tables(metadata)
+workflow_run_reads = tables_decisions.workflow_read_table(metadata)  # the hub's latest read of a waited run (0236)
 secrets, secret_bindings, credential_leases = tables_credentials.credential_tables(metadata)  # 0011
 
 charters, schedules = tables_night.night_tables(metadata)  # the night shift (0012)
@@ -805,7 +806,7 @@ run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)
 notification_mutes = tables_outputs.mute_table(metadata)  # the notices members turned off (0090)
 push_devices, notification_preferences = tables_push.push_tables(metadata)  # push devices, preferences (0156)
 today_marks = tables_push.today_table(metadata)  # what Today keeps of a member (0158)
-plan_run_choices = tables_push.plan_run_choice_table(metadata)  # a member's last Run plan choice in a project (0237)
+plan_run_choices = tables_push.plan_run_choice_table(metadata)  # a member's last Run plan choice in a project (0238)
 attachments, run_inbox_attachments = tables_attachments.attachment_tables(metadata)  # files of messages (0109)
 srs, tasks, canvas, agent_questions = tables_plugins.core_plugin_tables(metadata)  # 0046, 0047, 0073, 0100
 docs = tables_docs.docs_tables(metadata)  # the documents of a project, Markdown with images (0163)

@@ -3,7 +3,8 @@ agent_system), for ``evo_agents.hub.server.proposals``, ``proposal_reads`` and `
 
 An agent system whose curator node has an ``optimizes`` edge to an agent or a kg node asks the Curator to tune that
 target. The night's review run looks through the lens when a system of the project has such an edge and a trace in the
-window of the night's figures (``with_lens``); its prompt (``prompt_section``) names each target with what the
+window of the night's figures (``with_lens``): the charter's review.days, or since the previous review under
+review.trigger; its prompt (``prompt_section``) names each target with what the
 system's traces say of it in that window: an agent's turns, its failed turns and its escalations, what its runs cost,
 a graph's kg queries and those that came back empty, and the edges taken off the design, each with the ids of a few
 spans to cite as ``span:ID`` (``span_system``).
@@ -28,7 +29,7 @@ written. For a kg node the hub changes the named graph's sources, or takes the d
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Literal
 
 from fastapi import HTTPException
@@ -337,8 +338,27 @@ async def _audit(conn: AsyncConnection, access: ProjectAccess, user: Principal, 
 # The night
 
 
-def _days(charter: dict) -> int:
-    return int((charter.get("review") or {}).get("days") or review.REVIEW_DAYS)
+def _window(charter: dict, figures: dict | None) -> tuple[object, str]:
+    """(since when the lens reads the traces, those words for the prompt): from the previous review when the night's
+    figures were counted under review.trigger, else over the charter's review.days."""
+    trigger = figures.get("trigger") if isinstance(figures, dict) else None
+    if isinstance(trigger, dict) and isinstance(trigger.get("since"), str):
+        return datetime.fromisoformat(trigger["since"]), "since the previous review"
+    days = int((charter.get("review") or {}).get("days") or review.REVIEW_DAYS)
+    return func.now() - timedelta(days=days), f"in the last {days} days"
+
+
+async def new_traces(conn: AsyncConnection, project_id: int, since: datetime) -> int:
+    """The traces that started after ``since`` of the project's systems with an optimizes edge: new evidence for
+    review.trigger (``collect.review_due``)."""
+    slugs = [held.slug for held in await _optimizing(conn, project_id)]
+    if not slugs:
+        return 0
+    t = tables.system_traces
+    query = select(func.count()).where(
+        t.c.project_id == project_id, t.c.system_slug.in_(slugs), t.c.started_at >= since
+    )
+    return int(await conn.scalar(query) or 0)
 
 
 async def _optimizing(conn: AsyncConnection, project_id: int) -> list[system_store.System]:
@@ -349,16 +369,18 @@ async def _optimizing(conn: AsyncConnection, project_id: int) -> list[system_sto
     ]
 
 
-async def with_lens(conn: AsyncConnection, project_id: int, lenses: list[str], charter: dict) -> list[str]:
+async def with_lens(
+    conn: AsyncConnection, project_id: int, lenses: list[str], charter: dict, figures: dict | None = None
+) -> list[str]:
     """The night's lenses with agent_system when a system of the project has an optimizes edge and a trace in the
-    window of the night's figures."""
+    window of the night's ``figures`` (``_window``)."""
     if LENS in lenses:
         return list(lenses)
     slugs = [held.slug for held in await _optimizing(conn, project_id)]
     if not slugs:
         return list(lenses)
     t = tables.system_traces
-    since = func.now() - timedelta(days=_days(charter))
+    since, _ = _window(charter, figures)
     traced = await conn.scalar(
         select(t.c.id).where(t.c.project_id == project_id, t.c.system_slug.in_(slugs), t.c.last_at >= since).limit(1)
     )
@@ -396,9 +418,10 @@ def _kg_line(node: dict, spans: list) -> str:
     )
 
 
-async def _system_lines(conn: AsyncConnection, project_id: int, held: system_store.System, days: int) -> list[str]:
+async def _system_lines(
+    conn: AsyncConnection, project_id: int, held: system_store.System, since, window: str
+) -> list[str]:
     s, t = tables.system_spans, tables.system_traces
-    since = func.now() - timedelta(days=days)
     query = (
         select(s.c.id, s.c.name, s.c.tool, s.c.node, s.c.from_node, s.c.to_node, s.c.status, s.c.off_design)
         .add_columns(s.c.attributes, s.c.run_id)
@@ -416,7 +439,7 @@ async def _system_lines(conn: AsyncConnection, project_id: int, held: system_sto
         if span.name == system_context.INVOKE and span.run_id in runs:
             usd[span.node or ""] += runs[span.run_id]["usd"]
     edges = {(e["from"], e["to"]): e["kind"] for e in held.spec.get("edges") or ()}
-    lines = [f"System `{held.slug}` (revision {held.revision}): {len(spans)} spans in the last {days} days."]
+    lines = [f"System `{held.slug}` (revision {held.revision}): {len(spans)} spans {window}."]
     for edge in held.spec.get("edges") or ():
         node = _optimized(held.spec, edge["to"]) if edge["kind"] == "optimizes" else None
         if node is not None and node["kind"] == "agent":
@@ -433,14 +456,17 @@ def _users(spec: dict, kg_node: str) -> set[str]:
     return {e["from"] for e in spec.get("edges") or () if e["kind"] == "uses_kg" and e["to"] == kg_node}
 
 
-async def prompt_section(conn: AsyncConnection, project_id: int, lenses: list[str], charter: dict) -> str:
+async def prompt_section(
+    conn: AsyncConnection, project_id: int, lenses: list[str], charter: dict, figures: dict | None = None
+) -> str:
     """The section of a review prompt for the lens agent_system: what the traces of each system with an optimizes edge
     say of its targets, and how to propose a change of one; empty when the night does not look through the lens."""
     if LENS not in lenses:
         return ""
     lines = ["", "## Agent systems the curator optimizes (lens agent_system)", ""]
+    since, window = _window(charter, figures)
     for held in await _optimizing(conn, project_id):
-        lines += await _system_lines(conn, project_id, held, _days(charter))
+        lines += await _system_lines(conn, project_id, held, since, window)
     lines += [
         "",
         f"Propose a change of a target with `evo-agents worker propose --lens {LENS} --kind {KIND} "

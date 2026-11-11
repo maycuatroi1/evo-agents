@@ -67,8 +67,8 @@ def trace_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("done_when", Text),
         Column("card_message_id", BigInteger),  # 0235: the hub's message in the root thread carrying its card
         Column("card_state", Text),  # 0235: what the card showed when the streams were last told
-        Column("plan_id", Text),  # 0236: the plan a system dispatch gave it (``plan_systems``); NULL: none
-        Column("plan_revision", Integer),  # 0236: that plan's revision then
+        Column("plan_id", Text),  # 0237: the plan a system dispatch gave it (``plan_systems``); NULL: none
+        Column("plan_revision", Integer),  # 0237: that plan's revision then
         _stamp("started_at"),
         _stamp("last_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
@@ -86,7 +86,7 @@ def trace_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
     Index(f"{name}_chat_idx", traces.c.chat_id, traces.c.id.desc())
     for index, column in (("card_message_idx", traces.c.card_message_id), ("work_chat_idx", traces.c.work_chat_id)):
         Index(f"{name}_{index}", column, postgresql_where=column.is_not(None))  # 0235
-    Index(  # 0236: the traces of a plan, which hold its runs while active
+    Index(  # 0237: the traces of a plan, which hold its runs while active
         f"{name}_plan_idx", traces.c.project_id, traces.c.plan_id, postgresql_where=traces.c.plan_id.is_not(None)
     )
     sname = "system_spans"

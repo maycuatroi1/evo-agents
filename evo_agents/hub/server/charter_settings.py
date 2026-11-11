@@ -8,10 +8,43 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from evo_agents.hub import curator, history, probes, replay, review, runs
 from evo_agents.hub.server.runs.models import ModelName
+
+
+class ReviewTrigger(BaseModel):
+    """When the review run of a night or period is worth queuing (``curator.review_wait``): enough new evidence since
+    the previous review and a gap after it, or a long enough gap alone."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    min_new: int = Field(
+        1,
+        ge=curator.REVIEW_TRIGGER_NEW[0],
+        le=curator.REVIEW_TRIGGER_NEW[1],
+        description="new evidence since the previous review that queues one: failed runs of the agent's cause, new "
+        "traces of an agent system with an optimizes edge, and turns of a person that correct the agent",
+    )
+    min_gap_hours: int = Field(
+        24,
+        ge=curator.REVIEW_TRIGGER_GAP_HOURS[0],
+        le=curator.REVIEW_TRIGGER_GAP_HOURS[1],
+        description="the hours after the previous review before new evidence queues the next one",
+    )
+    max_gap_days: int = Field(
+        7,
+        ge=curator.REVIEW_TRIGGER_DAYS[0],
+        le=curator.REVIEW_TRIGGER_DAYS[1],
+        description="the days after the previous review that queue the next one whatever the evidence",
+    )
+
+    @model_validator(mode="after")
+    def _gaps(self):
+        if self.min_gap_hours > self.max_gap_days * 24:
+            raise ValueError("review.trigger.min_gap_hours is longer than max_gap_days")
+        return self
 
 
 class ReviewSettings(BaseModel):
@@ -27,6 +60,11 @@ class ReviewSettings(BaseModel):
     )
     budget_usd: float | None = Field(
         None, gt=0, le=curator.MAX_NIGHT_BUDGET_USD, description="the most the review run may cost; null: as any run"
+    )
+    trigger: ReviewTrigger | None = Field(
+        None,
+        description="queue the review run of a night or period only when enough new evidence came since the previous "
+        "one; null: one every night or period, its figures over days",
     )
 
 

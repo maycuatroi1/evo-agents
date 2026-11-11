@@ -55,7 +55,7 @@ import yaml
 from evo_agents.hub.cli_client import client_command, print_json, project_path, signed_in, table, when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
-from evo_agents.hub.curator import CHARTER_META, money
+from evo_agents.hub.curator import CHARTER_META, money, period_budget, zone_of
 from evo_agents.hub.curator_session_cli import register_session
 from evo_agents.hub.history import budget_usd as history_budget
 from evo_agents.hub.history_cli import register_history
@@ -70,6 +70,7 @@ from evo_agents.hub.review import ANSWERS, DEFER_DAYS, LENSES, PROPOSAL_STATES, 
 CHARTER_BODY_KEYS = (
     "goals",
     "window",
+    "pacing",
     "night_budget_usd",
     "run_budget_usd",
     "run_max_turns",
@@ -198,7 +199,7 @@ def _read_charter(source: str) -> dict:
     except yaml.YAMLError as exc:
         raise HubError(f"{source} is neither YAML nor JSON: {exc}") from None
     if not isinstance(data, dict):
-        raise HubError(f"{source} holds no mapping: a charter is one, with window and night_budget_usd")
+        raise HubError(f"{source} holds no mapping: a charter is one, with window and night_budget_usd, or pacing")
     return {key: value for key, value in data.items() if key not in CHARTER_META}
 
 
@@ -209,6 +210,13 @@ def _role(role: dict) -> str:
 def _review(settings: dict) -> str:
     cap = settings.get("budget_usd")
     spend = f"at most {money(cap)}" if cap is not None else "the night's caps"
+    trigger = settings.get("trigger")
+    if trigger:
+        return (
+            f"{settings.get('lenses', 3)} lenses, when {trigger['min_new']} new evidence came at least "
+            f"{trigger['min_gap_hours']} hours after the previous review, or {trigger['max_gap_days']} days went by; "
+            f"figures since the previous review, {spend}"
+        )
     return f"{settings.get('lenses', 3)} lenses a night, {settings.get('days', 7)} days of figures, {spend}"
 
 
@@ -224,23 +232,46 @@ def _history(charter: dict) -> str:
     if not cap:
         return "none: history.budget_usd is 0"
     model = (charter.get("history") or {}).get("model") or "the cheapest model of the reviewer's runtime"
-    return f"facets of the sessions and runs by {model}, at most {money(cap)} a night"
+    return f"facets of the sessions and runs by {model}, at most {money(cap)} a {_period(charter)}"
 
 
 ON_DUTY = "the pool of the default agent"  # where the night shift's runs go: the hub places them
 
 
+def _period(charter: dict | None) -> str:
+    """What the charter's Curator counts in: a night, or with pacing its period (a day or a week)."""
+    pacing = (charter or {}).get("pacing")
+    return pacing["period"] if pacing else "night"
+
+
+def _hours(charter: dict) -> tuple[str, str]:
+    """(label, value) of when the Curator runs: its window, or its pacing."""
+    window, pacing = charter.get("window"), charter.get("pacing")
+    if pacing:
+        quiet = pacing.get("quiet_hours")
+        hours = f"quiet {quiet['start']} to {quiet['end']}" if quiet else "no quiet hours"
+        return "pacing", f"{money(pacing['budget_usd'])} a {pacing['period']}, {hours}, {pacing['timezone']}"
+    return "window", f"{window['start']} to {window['end']}, {window['timezone']}"
+
+
 def _print_charter(charter: dict) -> None:
-    window = charter["window"]
+    paced = bool(charter.get("pacing"))
     print(
         f"Charter of {charter['project']}, revision {charter['revision']}, by {charter['updated_by']} at "
         f"{when(charter['updated_at'])} UTC"
     )
-    run_cap = money(charter["run_budget_usd"]) if charter["run_budget_usd"] is not None else "what the night has left"
+    run_cap = (
+        money(charter["run_budget_usd"])
+        if charter["run_budget_usd"] is not None
+        else f"what the {_period(charter)} has left"
+    )
     lines = [
-        ("window", f"{window['start']} to {window['end']}, {window['timezone']}"),
+        _hours(charter),
         ("on duty", f"{ON_DUTY}, runs dispatched as {charter['schedule_owner']}"),
-        ("night", f"{money(charter['night_budget_usd'])}, at most {charter['max_runs_per_night']} runs"),
+        (
+            "period" if paced else "night",
+            f"{money(period_budget(charter))}, at most {charter['max_runs_per_night']} runs",
+        ),
         ("each run", f"{run_cap}, {charter['run_max_turns']} turns, {charter['run_minutes']} minutes of agent time"),
         ("plans", ", ".join(charter["night_plans"]) or "none"),
         ("decisions", f"at most {charter['max_decisions_per_day']} a day, brief at {charter['brief_at']}"),
@@ -292,11 +323,16 @@ def cmd_charter_set(args) -> int:
         print_json(charter)
         return 0
     print(f"Charter of {charter['project']} is at revision {charter['revision']}.")
-    print(
-        f"The night shift runs {', '.join(charter['night_plans']) or 'no plan'} on {ON_DUTY} as "
-        f"{charter['schedule_owner']}, {charter['window']['start']} to {charter['window']['end']} "
-        f"{charter['window']['timezone']}."
-    )
+    plans = ", ".join(charter["night_plans"]) or "no plan"
+    label, hours = _hours(charter)
+    if label == "pacing":
+        print(f"The Curator runs {plans} on {ON_DUTY} as {charter['schedule_owner']}, paced at {hours}.")
+    else:
+        window = charter["window"]
+        print(
+            f"The night shift runs {plans} on {ON_DUTY} as {charter['schedule_owner']}, {window['start']} to "
+            f"{window['end']} {window['timezone']}."
+        )
     return 0
 
 
@@ -315,6 +351,16 @@ def cmd_charter_history(args) -> int:
     return 0
 
 
+def _where(charter: dict, inside: bool) -> str:
+    """Where the local time stands: inside or outside the window, or with pacing in or outside its quiet hours."""
+    pacing = charter.get("pacing")
+    if not pacing:
+        return f", {'inside' if inside else 'outside'} the window"
+    if not pacing.get("quiet_hours"):
+        return ""
+    return ", outside quiet hours" if inside else ", in quiet hours"
+
+
 def _print_status(status: dict) -> None:
     charter = status["charter"]
     if charter is None:
@@ -331,27 +377,28 @@ def _print_status(status: dict) -> None:
         if schedule.get("pause_reason"):
             print(f"    {schedule['pause_reason']}")
     night = status["night"]
+    period = _period(charter)
     if night is not None:
-        where = "inside" if night["in_window"] else "outside"
         active = f", run #{night['active_run_id']} active" if night["active_run_id"] else ""
         print(
-            f"  night of {night['night']} ({night['local_time']} local, {where} the window): {night['runs']} of "
-            f"{night['max_runs']} runs, {money(night['cost_usd'])} of {money(night['budget_usd'])}{active}"
+            f"  {period} of {night['night']} ({night['local_time']} local{_where(charter, night['in_window'])}): "
+            f"{night['runs']} of {night['max_runs']} runs, {money(night['cost_usd'])} of "
+            f"{money(night['budget_usd'])}{active}"
         )
     last = status.get("last_review_run")
     if last is not None:
         print(
-            f"  last review: run #{last['id']} of the night of {last['night']}, {last['state']}: {last['findings']} "
+            f"  last review: run #{last['id']} of the {period} of {last['night']}, {last['state']}: {last['findings']} "
             f"findings, {last['proposals']} proposals (lenses {', '.join(last['lenses']) or '-'})"
         )
     brief = status.get("last_brief")
     if brief is not None:
         print(
-            f"  last brief: {brief['day']} (night of {brief['night']}) to {brief['to']}, at {when(brief['sent_at'])} "
+            f"  last brief: {brief['day']} ({period} of {brief['night']}) to {brief['to']}, at {when(brief['sent_at'])} "
             f"UTC: {brief['title']}"
         )
     elif charter is not None:
-        print(f"  no morning brief yet: the first goes out at {charter['brief_at']} in {charter['window']['timezone']}")
+        print(f"  no morning brief yet: the first goes out at {charter['brief_at']} in {zone_of(charter)}")
 
 
 @client_command
@@ -378,7 +425,8 @@ def _switch(action: str):
         if action == "pause":
             print(f"Paused the night shift of {project}: it queues no run until `evo-agents hub curator resume`.")
         else:
-            print(f"The night shift of {project} runs again inside its window.")
+            again = "through its period" if (status.get("charter") or {}).get("pacing") else "inside its window"
+            print(f"The night shift of {project} runs again {again}.")
         _print_status(status)
         return 0
 

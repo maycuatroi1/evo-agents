@@ -5,7 +5,8 @@ exposes as its own attributes (``tables.decisions``, ``tables.run_inbox``, ``tab
 decisions holds each question a run asked a member and its answer; run_inbox the messages members sent a run, an
 answer among them, until the run took them. notifications holds what the hub tells a member, notification_channels
 the channels a member linked, and notification_deliveries each notification sent on a channel, to a push device or
-to the web, with its attempts.
+to the web, with its attempts. workflow_run_reads keeps the hub's latest read of each run of a GitHub Actions workflow
+a wait names (0236, ``server.workflow_waits``), which the views of the wait show.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Identity,
     Index,
+    Integer,
     MetaData,
     PrimaryKeyConstraint,
     SmallInteger,
@@ -111,6 +113,29 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         "run_inbox_pending_idx", run_inbox.c.run_id, run_inbox.c.id, postgresql_where=run_inbox.c.delivered_at.is_(None)
     )
     return decisions, run_inbox
+
+
+def workflow_read_table(metadata: MetaData) -> Table:
+    """workflow_run_reads (0236), added to ``metadata``: the latest read of each run of a workflow a wait named, kept by
+    the poll of the reaper; ``data`` is the run, its jobs and their steps as ``workflow_waits.snapshot`` keeps them,
+    ``typical_seconds`` how long recent runs of the workflow that succeeded took (NULL: not known), and
+    ``typical_read_at`` when the hub read those (NULL: not yet)."""
+    return Table(
+        "workflow_run_reads",
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("repo", Text, nullable=False),  # owner/name
+        Column("run_id", BigInteger, nullable=False),
+        Column("data", JSONB, nullable=False),
+        _stamp("read_at"),
+        Column("typical_seconds", Integer),
+        _when("typical_read_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="workflow_run_reads_project_id_fkey"
+        ),
+        PrimaryKeyConstraint("project_id", "repo", "run_id", name="workflow_run_reads_pkey"),
+        Index("workflow_run_reads_read_idx", "read_at"),
+    )
 
 
 def notification_tables(metadata: MetaData) -> tuple[Table, Table, Table]:

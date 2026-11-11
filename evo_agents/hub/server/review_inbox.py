@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import Date, cast, func, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import curator, runs, tables
 from evo_agents.hub.server.notifications import notify, run_link
 from evo_agents.hub.server.run_state import RunStep
 
@@ -20,16 +20,18 @@ log = logging.getLogger(__name__)
 
 
 async def _inbox_room(conn: AsyncConnection, project_id: int, charter: dict) -> int:
-    """How many more tier 2 proposals of the project may become Inbox items today, in the charter's time zone."""
+    """How many more tier 2 proposals of the project may become Inbox items today, in the charter's time zone; with
+    pacing, in its period (a week starts on Monday, as Postgres's date_trunc has it)."""
     p = tables.proposals
-    zone = charter["window"]["timezone"]
-    today = cast(func.timezone(zone, func.now()), Date)
+    zone = curator.zone_of(charter)
+    unit = (curator.pacing_of(charter) or {}).get("period") or "day"
+    today = func.date_trunc(unit, func.timezone(zone, func.now()))
     used = (
         await conn.execute(
             select(func.count()).where(
                 p.c.project_id == project_id,
                 p.c.inbox_at.is_not(None),
-                cast(func.timezone(zone, p.c.inbox_at), Date) == today,
+                func.date_trunc(unit, func.timezone(zone, p.c.inbox_at)) == today,
             )
         )
     ).scalar_one()

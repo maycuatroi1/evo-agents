@@ -9,7 +9,7 @@ with its evidence once its verify passes; ask the person about any decision it m
 are done and which are left. The message goes through ``chats.deliver_message`` as a typed one does, so it wakes the
 entry agent and ``system_traces.join`` opens a trace at the system's revision now; the names the text mentions are
 not read as mentions (``skip``), so the message hands work to the entry agent alone and opens no group. The trace
-then takes the plan's id and revision (system_traces.plan_id and plan_revision, 0236), and the dispatch is audited
+then takes the plan's id and revision (system_traces.plan_id and plan_revision, 0237), and the dispatch is audited
 once (run.dispatch_system), naming the plan, the run, the system and the trace.
 
 Refused with 403 without the writer role on the project (``dispatch.check_dispatcher``), 404 for a plan the caller
