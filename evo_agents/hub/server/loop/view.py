@@ -23,7 +23,7 @@ from datetime import datetime, time, timedelta
 from sqlalchemy import Text, column, func, literal, or_, select, table
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import goals, tables
+from evo_agents.hub import curator, goals, tables
 from evo_agents.hub.autonomy import AUTO, WEEKDAYS, repo_policy
 from evo_agents.hub.chats import chat_link as chats_link
 from evo_agents.hub.hub_events import BASELINE, SRS_APPROVED
@@ -657,7 +657,7 @@ async def loop_zone(conn: AsyncConnection, project_id: int, policy: dict) -> str
     charter = await conn.scalar(
         select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1)
     )
-    for zone in (policy.get("timezone"), ((charter or {}).get("window") or {}).get("timezone")):
+    for zone in (policy.get("timezone"), curator.zone_of(charter) if charter else None):
         if isinstance(zone, str) and zone:
             known = await conn.scalar(select(PG_TIMEZONES.c.name).where(PG_TIMEZONES.c.name == zone).limit(1))
             if known is not None:

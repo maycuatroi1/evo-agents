@@ -1,6 +1,8 @@
 import { PLAN_ID } from "@/lib/plans";
 
 import type { Charter, CharterWrite, Runtime } from "./queries";
+import type { Pacing } from "./shift-hours";
+export { ownTimeZone, timeZones } from "./time-zones";
 import { AUTO_MERGE_TIERS, GOAL_ID, LIMITS, LINE, PLANNED_TIERS, type Tier, TIME_OF_DAY, TIME_ZONE } from "./vocab";
 
 /**
@@ -12,6 +14,7 @@ import { AUTO_MERGE_TIERS, GOAL_ID, LIMITS, LINE, PLANNED_TIERS, type Tier, TIME
 export type RoleForm = { runtime: Runtime; model: string };
 export type ProbeModel = { runtime: Runtime; model?: string | null };
 export type CircuitInfra = NonNullable<NonNullable<Charter["circuit_breaker"]>["infra"]>;
+export type ReviewTrigger = NonNullable<NonNullable<Charter["review"]>["trigger"]>;
 
 /** The charter as the form edits it: every number as typed, every list one entry a line. */
 export type CharterForm = {
@@ -37,10 +40,17 @@ export type CharterForm = {
   maxFailedInARow: string;
   /** `circuit_breaker.infra` as the charter wrote it, kept as it is; null, the hub's defaults. */
   circuitInfra: CircuitInfra | null;
+  /**
+   * `pacing` as the charter wrote it, kept as it is but for its zone, which `timezone` edits; null, a window. With
+   * pacing the form writes no window and no night budget, and holds the caps against `pacing.budget_usd`.
+   */
+  pacing: Pacing | null;
   outcomeDays: string;
   reviewLenses: string;
   reviewDays: string;
   reviewBudget: string;
+  /** `review.trigger` as the charter wrote it, kept as it is; null, a review every night or period. */
+  reviewTrigger: ReviewTrigger | null;
   /** `replay.tasks`: the holdout tasks each change of a skill or an AGENTS.md is replayed on. */
   replayTasks: string;
   /** `replay.budget_usd`: what a night's replays may cost; empty, none is run. */
@@ -63,7 +73,7 @@ export type CharterForm = {
 };
 
 export type CharterField =
-  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "moreAutoMerge" | "plannedTiers" | "mergeWithoutCi" | "answerBy" | "probeModels" | "circuitInfra">
+  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "moreAutoMerge" | "plannedTiers" | "mergeWithoutCi" | "answerBy" | "probeModels" | "circuitInfra" | "pacing" | "reviewTrigger">
   | "goals"
   | `${"reviewer" | "builder" | "judge"}Model`;
 
@@ -136,10 +146,12 @@ export function charterForm(charter: Charter | null, first: { timezone: string }
       protectedPaths: "",
       maxFailedInARow: "2",
       circuitInfra: null,
+      pacing: null,
       outcomeDays: "7",
       reviewLenses: "3",
       reviewDays: "7",
       reviewBudget: "",
+      reviewTrigger: null,
       replayTasks: String(REPLAY_TASKS),
       replayBudget: "",
       historyBudget: "",
@@ -155,10 +167,10 @@ export function charterForm(charter: Charter | null, first: { timezone: string }
   }
   return {
     goals: (charter.goals ?? []).map((goal) => ({ id: goal.id, what: goal.what })),
-    windowStart: charter.window.start,
-    windowEnd: charter.window.end,
-    timezone: charter.window.timezone,
-    nightBudget: money(charter.night_budget_usd),
+    windowStart: charter.window?.start ?? "22:00",
+    windowEnd: charter.window?.end ?? "06:00",
+    timezone: charter.window?.timezone ?? charter.pacing?.timezone ?? "UTC",
+    nightBudget: charter.pacing ? "" : money(charter.night_budget_usd),
     runBudget: money(charter.run_budget_usd),
     runMaxTurns: String(charter.run_max_turns ?? 300),
     runMinutes: String(charter.run_minutes ?? 120),
@@ -174,10 +186,12 @@ export function charterForm(charter: Charter | null, first: { timezone: string }
     protectedPaths: (charter.protected_paths ?? []).join("\n"),
     maxFailedInARow: String(charter.circuit_breaker?.max_failed_in_a_row ?? 2),
     circuitInfra: charter.circuit_breaker?.infra ?? null,
+    pacing: charter.pacing ?? null,
     outcomeDays: String(charter.outcome_days ?? 7),
     reviewLenses: String(charter.review?.lenses ?? 3),
     reviewDays: String(charter.review?.days ?? 7),
     reviewBudget: money(charter.review?.budget_usd),
+    reviewTrigger: charter.review?.trigger ?? null,
     replayTasks: String(charter.replay?.tasks ?? REPLAY_TASKS),
     replayBudget: money(charter.replay?.budget_usd),
     historyBudget: money(charter.history?.budget_usd),
@@ -263,14 +277,15 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
     seen.add(id);
   });
 
-  for (const field of ["windowStart", "windowEnd", "briefAt"] as const) {
+  const paced = form.pacing !== null;
+  for (const field of paced ? (["briefAt"] as const) : (["windowStart", "windowEnd", "briefAt"] as const)) {
     if (!TIME_OF_DAY.test(form[field].trim())) errors[field] = { code: "time" };
   }
-  if (!errors.windowStart && !errors.windowEnd && form.windowStart.trim() === form.windowEnd.trim()) errors.windowEnd = { code: "sameTime" };
+  if (!paced && !errors.windowStart && !errors.windowEnd && form.windowStart.trim() === form.windowEnd.trim()) errors.windowEnd = { code: "sameTime" };
   const timezone = form.timezone.trim();
   if (!TIME_ZONE.test(timezone) || timezone.length > LIMITS.timeZoneChars) errors.timezone = { code: "timezone" };
 
-  const nightBudget = note<number | null>("nightBudget", dollars(form.nightBudget, false));
+  const nightBudget = form.pacing ? form.pacing.budget_usd : note<number | null>("nightBudget", dollars(form.nightBudget, false));
   const caps = {
     runBudget: note<number | null>("runBudget", dollars(form.runBudget, true)),
     reviewBudget: note<number | null>("reviewBudget", dollars(form.reviewBudget, true)),
@@ -310,8 +325,9 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
   return {
     body: {
       goals: form.goals.map((goal) => ({ id: goal.id.trim(), what: goal.what.trim() })),
-      window: { start: form.windowStart.trim(), end: form.windowEnd.trim(), timezone },
-      night_budget_usd: nightBudget as number,
+      ...(form.pacing
+        ? { pacing: { ...form.pacing, timezone } }
+        : { window: { start: form.windowStart.trim(), end: form.windowEnd.trim(), timezone }, night_budget_usd: nightBudget as number }),
       run_budget_usd: caps.runBudget,
       run_max_turns: runMaxTurns as number,
       run_minutes: runMinutes as number,
@@ -326,7 +342,12 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
       protected_paths: protectedPaths ?? [],
       circuit_breaker: { max_failed_in_a_row: maxFailedInARow as number, ...(form.circuitInfra ? { infra: form.circuitInfra } : {}) },
       outcome_days: outcomeDays as number,
-      review: { lenses: reviewLenses as number, days: reviewDays as number, budget_usd: caps.reviewBudget },
+      review: {
+        lenses: reviewLenses as number,
+        days: reviewDays as number,
+        budget_usd: caps.reviewBudget,
+        ...(form.reviewTrigger ? { trigger: form.reviewTrigger } : {}),
+      },
       replay: { tasks: replayTasks as number, budget_usd: caps.replayBudget },
       history: { budget_usd: caps.historyBudget, model: historyModel },
       probes: { k: probeK as number, models: form.probeModels, budget_usd: probeBudget },
@@ -369,21 +390,3 @@ export const CHARTER_FIELDS: readonly CharterField[] = [
   "judgeModel",
   "hiddenChecks",
 ];
-
-/** The time zones the browser knows, for the field's suggestions; the hub checks the one written against Postgres. */
-export function timeZones(): string[] {
-  try {
-    return Intl.supportedValuesOf("timeZone");
-  } catch {
-    return [];
-  }
-}
-
-/** The visitor's own time zone, for a first charter. */
-export function ownTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-}

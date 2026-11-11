@@ -17,7 +17,7 @@ sets its sources and takes the decision with origin curator.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from importlib import import_module
 
 import pytest
@@ -120,11 +120,13 @@ if pg.DSN:
     from evo_agents.hub import tables
     from tests.hub.live import sql
     from tests.hub.test_curator import (
+        NEXT_NIGHT,
         NIGHT,
         PROJECT,
         charter_body,
         count,
         night,  # noqa: F401 (a fixture)
+        set_run,
         written,
     )
     from tests.hub.test_review_runs import (
@@ -374,3 +376,114 @@ def test_migration_0220_goes_back_deleting_the_lens_proposals_and_up_again(desk)
     assert [row[0] for row in sql(desk.db, select(p.c.id))] == [kept.json()["id"]]
     move_to(desk.db, migration.revision)
     assert "system_change" in columns(desk.db, "proposals")
+
+
+# The review's trigger (plan self-improvement-runs-when-needed, step 4)
+
+TRIGGER = {"min_new": 3, "min_gap_hours": 12, "max_gap_days": 3}
+
+
+def nights_figures(db) -> list:
+    """(night, figures, run_id) of each night's figures, oldest first."""
+    cf = tables.curator_figures
+    return sql(db, select(cf.c.night, cf.c.figures, cf.c.run_id).order_by(cf.c.night))
+
+
+def reviewed(fixture, run_id: int, taken: bool = False) -> None:
+    """The worker takes review run ``run_id`` (unless it has ``taken`` it) and it ends done."""
+    if not taken:
+        spec = claim(fixture.client, fixture.worker)
+        assert spec["id"] == run_id
+        moved(fixture.client, fixture.worker, run_id, "running")
+    set_run(fixture.db, run_id, state="done", finished_at=NIGHT)
+
+
+def failed_run(db, like: int, at: datetime, cause: str | None, error: str = "it failed", **more) -> None:
+    """A run of plan fleet that failed of ``cause`` at ``at``, dispatched as review run ``like`` was."""
+    r, p = tables.runs, tables.plans
+    ((project_id, owner_id),) = sql(db, select(r.c.project_id, r.c.dispatched_by).where(r.c.id == like))
+    ((revision,),) = sql(db, select(p.c.revision).where(p.c.project_id == project_id, p.c.plan_id == "fleet"))
+    values = {
+        "project_id": project_id,
+        "plan_id": "fleet",
+        "plan_revision": revision,
+        "kind": "plan",
+        "repos": [{"repo": "evo-agents", "branch": "main"}],
+        "dispatched_by": owner_id,
+        "requested_runtime": "claude-code",
+        "runtime": "claude-code",
+        "mode": "headless",
+        "approval": "auto",
+        "timeout_s": 600,
+        "state": "failed",
+        "failure_cause": cause,
+        "error": error,
+        "finished_at": at,
+        **more,
+    }
+    sql(db, insert(r).values(values))
+
+
+@needs_pg
+def test_review_trigger_skips_a_night_without_enough_new_evidence_and_counts_from_the_previous_review(review):  # noqa: F811
+    client, db = review.client, review.db
+    written(client, review.headers["owner"], charter_body(night_plans=[], review={"trigger": TRIGGER}))
+    assert collected(client, NIGHT)["review"] == 1  # no review yet: the first is due
+    ((_, figures, first),) = nights_figures(db)
+    assert figures["trigger"]["why"] == "first" and figures["trigger"]["since"] is None and figures["days"] == 7
+    reviewed(review, first)
+    # The next night: the digest's correction alone, under min_new.
+    assert "review" not in collected(client, NEXT_NIGHT)
+    assert len(nights_figures(db)) == 1  # no figures are counted for a night that is not reviewed
+    before = NEXT_NIGHT - timedelta(hours=1)
+    failed_run(db, first, before, "verify_failed")
+    failed_run(db, first, before, None, error="the agent wrote no answer")  # the agent's: cause other
+    failed_run(db, first, before, "account_auth")  # the environment's: not new evidence
+    failed_run(db, first, before, "credentials")
+    failed_run(db, first, NIGHT - timedelta(hours=1), "verify_failed")  # before the previous review
+    assert collected(client, NEXT_NIGHT + timedelta(minutes=1))["review"] == 1
+    (_, (night, figures, second)) = nights_figures(db)
+    assert night == NEXT_NIGHT.date() and second is not None
+    trigger = figures["trigger"]
+    assert (trigger["why"], trigger["failed_runs"], trigger["traces"], trigger["corrections"]) == ("min_new", 2, 0, 1)
+    assert datetime.fromisoformat(trigger["since"]) == NIGHT == datetime.fromisoformat(figures["since"])
+    reviewed(review, second)
+    # max_gap_days after the previous review, it is due whatever the evidence.
+    later = NEXT_NIGHT + timedelta(days=2)
+    assert "review" not in collected(client, later)
+    assert collected(client, NEXT_NIGHT + timedelta(days=3, minutes=1))["review"] == 1
+    assert nights_figures(db)[-1][1]["trigger"]["why"] == "max_gap"
+
+
+@needs_pg
+def test_review_trigger_waits_min_gap_hours_and_a_charter_without_one_reviews_every_night(review):  # noqa: F811
+    client, db = review.client, review.db
+    owner = review.headers["owner"]
+    written(client, owner, charter_body(night_plans=[], review={"trigger": {**TRIGGER, "min_gap_hours": 48}}))
+    assert collected(client, NIGHT)["review"] == 1
+    first = nights_figures(db)[0][2]
+    reviewed(review, first)
+    for _ in range(3):
+        failed_run(db, first, NIGHT + timedelta(hours=2), "verify_failed")
+    assert "review" not in collected(client, NEXT_NIGHT)  # enough evidence, but only 24 of 48 hours
+    assert collected(client, NEXT_NIGHT + timedelta(days=1))["review"] == 1
+    assert nights_figures(db)[-1][1]["trigger"]["failed_runs"] == 3
+    reviewed(review, nights_figures(db)[-1][2])
+    written(client, owner, charter_body(night_plans=[]))  # no trigger: a review every night, over review.days
+    assert collected(client, NEXT_NIGHT + timedelta(days=2))["review"] == 1
+    assert "trigger" not in nights_figures(db)[-1][1] and nights_figures(db)[-1][1]["days"] == 7
+
+
+@needs_pg
+def test_review_trigger_counts_new_traces_and_the_lens_reads_since_the_previous_review(desk):
+    client, db = desk.client, desk.db
+    written(client, desk.headers["owner"], charter_body(night_plans=[], review={"trigger": {**TRIGGER, "min_new": 2}}))
+    run_id, prompt = held(desk)
+    assert "6 spans in the last 7 days" in prompt  # the first review counts over review.days
+    reviewed(desk, run_id, taken=True)
+    assert collected(client, NEXT_NIGHT)["review"] == 1  # the trace started after the previous review, the correction
+    figures = nights_figures(db)[-1][1]
+    assert (figures["trigger"]["traces"], figures["trigger"]["corrections"]) == (1, 1)
+    assert "agent_system" in figures["lenses"]
+    spec = claim(client, desk.worker)
+    assert spec["kind"] == "review" and "6 spans since the previous review" in spec["prompt"]

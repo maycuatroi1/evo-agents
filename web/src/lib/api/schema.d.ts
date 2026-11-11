@@ -18436,12 +18436,15 @@ export interface components {
              * @description the product's goals, highest first
              */
             goals?: components["schemas"]["Goal"][];
-            window: components["schemas"]["Window"];
+            /** @description the night the Curator runs in; null with pacing */
+            window?: components["schemas"]["Window"] | null;
+            /** @description the Curator runs through the day on the period's budget instead of a window; null: a window */
+            pacing?: components["schemas"]["Pacing"] | null;
             /**
              * Night Budget Usd
-             * @description the most a night may cost
+             * @description the most a night may cost, with a window; null with pacing, whose budget_usd it is
              */
-            night_budget_usd: number;
+            night_budget_usd?: number | null;
             /**
              * Run Budget Usd
              * @description the most one run may cost; null: what the night has
@@ -18571,12 +18574,15 @@ export interface components {
              * @description the product's goals, highest first
              */
             goals?: components["schemas"]["Goal"][];
-            window: components["schemas"]["Window"];
+            /** @description the night the Curator runs in; null with pacing */
+            window?: components["schemas"]["Window"] | null;
+            /** @description the Curator runs through the day on the period's budget instead of a window; null: a window */
+            pacing?: components["schemas"]["Pacing"] | null;
             /**
              * Night Budget Usd
-             * @description the most a night may cost
+             * @description the most a night may cost, with a window; null with pacing, whose budget_usd it is
              */
-            night_budget_usd: number;
+            night_budget_usd?: number | null;
             /**
              * Run Budget Usd
              * @description the most one run may cost; null: what the night has
@@ -20478,7 +20484,7 @@ export interface components {
             state: "running" | "on_duty" | "idle" | "paused";
             /**
              * In Window
-             * @description the charter's window is open now
+             * @description the charter's window is open now; with pacing, outside its quiet hours
              */
             in_window: boolean;
             /**
@@ -29338,10 +29344,13 @@ export interface components {
             /**
              * Night
              * Format: date
-             * @description the local date the window opened on: the night now, or the last one
+             * @description the local date the window opened on: the night now, or the last one; with pacing, the period's first date
              */
             night: string;
-            /** In Window */
+            /**
+             * In Window
+             * @description inside the window; with pacing, outside the quiet hours
+             */
             in_window: boolean;
             /**
              * Local Time
@@ -31443,6 +31452,44 @@ export interface components {
              * @description the last sign of life of a local run's session
              */
             last_activity_at?: string | null;
+        };
+        /**
+         * Pacing
+         * @description The Curator runs through the day instead of in a window: at any hour outside ``quiet_hours``, spending the
+         *     period's budget evenly (``curator.pace_line``).
+         */
+        Pacing: {
+            /**
+             * Period
+             * @description day, from local midnight, or week, from Monday 00:00 local
+             * @enum {string}
+             */
+            period: "day" | "week";
+            /**
+             * Budget Usd
+             * @description the most a period may cost
+             */
+            budget_usd: number;
+            /** @description local hours no run of the Curator is queued; null: none */
+            quiet_hours?: components["schemas"]["PacingQuietHours"] | null;
+            /**
+             * Timezone
+             * @description an IANA time zone, such as Asia/Ho_Chi_Minh
+             */
+            timezone: string;
+        };
+        /** PacingQuietHours */
+        PacingQuietHours: {
+            /**
+             * Start
+             * @description HH:MM, 24 hours, in the window's zone
+             */
+            start: string;
+            /**
+             * End
+             * @description when it is not after start, the quiet hours run past midnight
+             */
+            end: string;
         };
         /** Page */
         Page: {
@@ -38461,6 +38508,33 @@ export interface components {
              * @description the most the review run may cost; null: as any run
              */
             budget_usd?: number | null;
+            /** @description queue the review run of a night or period only when enough new evidence came since the previous one; null: one every night or period, its figures over days */
+            trigger?: components["schemas"]["ReviewTrigger"] | null;
+        };
+        /**
+         * ReviewTrigger
+         * @description When the review run of a night or period is worth queuing (``curator.review_wait``): enough new evidence since
+         *     the previous review and a gap after it, or a long enough gap alone.
+         */
+        ReviewTrigger: {
+            /**
+             * Min New
+             * @description new evidence since the previous review that queues one: failed runs of the agent's cause, new traces of an agent system with an optimizes edge, and turns of a person that correct the agent
+             * @default 1
+             */
+            min_new: number;
+            /**
+             * Min Gap Hours
+             * @description the hours after the previous review before new evidence queues the next one
+             * @default 24
+             */
+            min_gap_hours: number;
+            /**
+             * Max Gap Days
+             * @description the days after the previous review that queue the next one whatever the evidence
+             * @default 7
+             */
+            max_gap_days: number;
         };
         /** Revision */
         Revision: {

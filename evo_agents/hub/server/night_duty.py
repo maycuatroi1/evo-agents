@@ -154,6 +154,20 @@ async def _pool_duty(conn: AsyncConnection, pool_id: int, project_id: int) -> tu
     return None, f"pool {pool.name} has no node ready for a run now ({'; '.join(why)})"
 
 
+async def idle_nodes(conn: AsyncConnection, duty: Duty) -> tuple[Pinned, ...]:
+    """The nodes of ``duty`` that hold no run a member dispatched (a run with no schedule): where a paced Curator's
+    run may go without taking a node from a member's work."""
+    r = tables.runs
+    ids = [node.id for node in duty.nodes]
+    if not ids:
+        return ()
+    query = select(r.c.worker_id).where(
+        r.c.worker_id.in_(ids), r.c.state.in_(runs.HELD_STATES), r.c.schedule_id.is_(None)
+    )
+    taken = set((await conn.execute(query)).scalars())
+    return tuple(node for node in duty.nodes if node.id not in taken)
+
+
 NO_POOL = "the default agent of the project has no pool: create the agent's pool and add a node to it"
 
 

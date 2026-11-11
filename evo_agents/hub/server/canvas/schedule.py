@@ -24,7 +24,7 @@ from datetime import datetime, time, timedelta
 from sqlalchemy import Text, column, func, literal, select, table
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import tables
+from evo_agents.hub import curator, tables
 from evo_agents.hub.plugin_calls import CoreContext
 from evo_agents.hub.server.canvas import (
     BASELINE_CRON,
@@ -82,7 +82,7 @@ async def _charter_zone(conn: AsyncConnection, project_id: int):
     body = await conn.scalar(
         select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1)
     )
-    return ((body or {}).get("window") or {}).get("timezone")
+    return curator.zone_of(body) if body else None
 
 
 async def schedule_of(conn: AsyncConnection, project_id: int) -> Schedule:

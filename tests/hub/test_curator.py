@@ -88,6 +88,22 @@ def charter_body(**changes) -> dict:
     return {**body, **changes}
 
 
+PACING = {
+    "period": "day",
+    "budget_usd": 2.0,
+    "quiet_hours": {"start": "01:00", "end": "06:00"},
+    "timezone": "Asia/Ho_Chi_Minh",
+}
+THE_DAY = date(2026, 10, 9)  # the local day of DAY, a Friday
+QUIET = datetime(2026, 10, 9, 20, 0, tzinfo=UTC)  # 03:00 local on the 10th, in PACING's quiet hours
+
+
+def paced_body(pacing: dict | None = None, **changes) -> dict:
+    """charter_body with ``pacing`` (PACING by default) instead of the window and night_budget_usd."""
+    body = {key: value for key, value in charter_body(**changes).items() if key not in ("window", "night_budget_usd")}
+    return {**body, "pacing": {**PACING, **(pacing or {})}}
+
+
 def grant(client, headers, login: str, role: str) -> None:
     body = {"role": role, "max_level": "internal"}
     response = client.put(f"/v1/admin/projects/{PROJECT}/grants/{login}", json=body, headers=headers["admin"])
@@ -237,6 +253,134 @@ def test_infra_causes_backoff_with_jitter_and_half_open_probes():
     assert curator.kind_runtimes(charter, "probe") == ("codex",) and curator.kind_runtimes(charter, "judge") == ()
 
 
+# Pacing: the period instead of the night (curator.shift_state)
+
+
+def test_pacing_period_bounds_quiet_hours_and_the_even_spend_line():
+    friday_noon = datetime(2026, 10, 9, 12, 0)
+    assert curator.period_of(friday_noon, "day") == THE_DAY
+    assert curator.period_of(friday_noon, "week") == date(2026, 10, 5)  # a week starts on Monday
+    assert curator.period_bounds(date(2026, 10, 5), "week") == (datetime(2026, 10, 5), datetime(2026, 10, 12))
+    assert curator.period_elapsed(friday_noon, "day") == 0.5
+    assert curator.period_elapsed(datetime(2026, 10, 5, 0, 0), "week") == 0.0
+    # the line: the budget times the share gone by, plus PACING_MARGIN of it, at most the budget
+    assert curator.pace_line(2.0, 0.5) == pytest.approx(1.2)
+    assert curator.pace_line(2.0, 0.0) == pytest.approx(0.2) and curator.pace_line(2.0, 0.95) == 2.0
+    assert curator.on_pace(1.2, 2.0, 0.5) and not curator.on_pace(1.21, 2.0, 0.5)
+    assert curator.on_pace(1.99, 2.0, 0.99)  # at the end of the period the rest may be spent
+    quiet = PACING["quiet_hours"]
+    assert curator.quiet(datetime(2026, 10, 9, 3, 0).time(), quiet) and not curator.quiet(friday_noon.time(), quiet)
+    assert not curator.quiet(friday_noon.time(), None)
+    overnight = {"start": "22:00", "end": "02:00"}
+    assert curator.quiet(datetime(2026, 10, 9, 23, 0).time(), overnight)
+
+    paced, windowed = paced_body(), charter_body()
+    assert curator.shift_state(paced, friday_noon) == (True, THE_DAY)
+    assert curator.shift_state(paced, datetime(2026, 10, 9, 3, 0)) == (False, THE_DAY)  # quiet: the period goes on
+    assert curator.shift_state(windowed, friday_noon) == curator.window_state(friday_noon, "22:00", "06:00")
+    assert curator.night_bounds(paced, THE_DAY) == (datetime(2026, 10, 9), datetime(2026, 10, 10))
+    assert curator.night_bounds(windowed, THE_DAY) == (datetime(2026, 10, 9, 22), datetime(2026, 10, 10, 22))
+    assert curator.zone_of(paced) == curator.zone_of(windowed) == "Asia/Ho_Chi_Minh"
+    assert curator.period_budget(paced) == 2.0 and curator.period_budget(charter_body(night_budget_usd=3.0)) == 3.0
+    # the daily brief of a paced charter reports the day before; of a week, the week of the day before
+    assert curator.brief_night(paced, datetime(2026, 10, 9, 7, 0)) == (True, date(2026, 10, 8))
+    weekly = paced_body({"period": "week"})
+    assert curator.brief_night(weekly, datetime(2026, 10, 12, 7, 0)) == (True, date(2026, 10, 5))
+
+
+def test_pacing_charter_round_trips_and_names_no_window(night, hub_db):
+    client, owner = night.client, night.headers["owner"]
+    first = written(client, owner, paced_body())
+    assert first["pacing"] == PACING and first["window"] is None and first["night_budget_usd"] is None
+    ((stored,),) = sql(hub_db, select(tables.charters.c.body))
+    assert "window" not in stored and "night_budget_usd" not in stored
+    assert written(client, owner, shown(client, owner))["revision"] == 1
+    status = status_of(client, night.headers["reader"])["night"]
+    assert (status["budget_usd"], status["max_runs"]) == (2.0, 3)
+
+
+@pytest.mark.parametrize(
+    "body, status, words",
+    [
+        ({**paced_body(), "window": charter_body()["window"]}, 422, "a charter with pacing has no window: drop window"),
+        ({**paced_body(), "night_budget_usd": 2.0}, 422, "with pacing has no night_budget_usd"),
+        ({key: value for key, value in charter_body().items() if key != "window"}, 422, "needs a window, or pacing"),
+        (paced_body({"timezone": "Mars/Olympus_Mons"}), 422, "not a time zone"),
+        (paced_body({"period": "month"}), 422, None),
+        (paced_body({"quiet_hours": {"start": "01:00", "end": "01:00"}}), 422, "give them a length"),
+        (paced_body(run_budget_usd=5.0), 422, "run_budget_usd is over pacing.budget_usd"),
+    ],
+)
+def test_pacing_charter_the_hub_does_not_take_writes_nothing(night, hub_db, body, status, words):
+    response = put_charter(night.client, night.headers["owner"], body)
+    assert response.status_code == status, response.text
+    if words:
+        assert words in response.text
+    assert count(hub_db, tables.charters) == 0
+
+
+def test_pacing_queues_through_the_day_and_holds_in_quiet_hours(night, hub_db):
+    client, headers = night.client, night.headers
+    written(client, headers["owner"], paced_body())
+    assert fire(client, NIGHT) == {"queued": 1}  # 23:30 local: no window, and not quiet
+    (run,) = scheduled(hub_db)
+    assert run["schedule_night"] == date(2026, 10, 8)  # the day's period, not a night
+    assert fire(client, QUIET) == {"cancelled": 1}  # the quiet hours cancel what the Curator queued
+    assert scheduled(hub_db)[0]["state"] == "cancelled"
+    assert fire(client, QUIET) == {"quiet": 1}
+    assert fire(client, DAY) == {"queued": 1}  # noon: a window charter would wait for the night
+    assert scheduled(hub_db)[1]["schedule_night"] == THE_DAY
+    assert scheduled(hub_db)[1]["budget"] == {"max_usd": 0.5, "max_turns": 40, "max_seconds": 1800}
+
+
+def test_pacing_holds_a_period_that_spent_ahead_of_the_even_spend_line(night, hub_db):
+    client, headers = night.client, night.headers
+    breaker = {"max_failed_in_a_row": 10}
+    written(client, headers["owner"], paced_body(run_budget_usd=None, max_runs_per_night=10, circuit_breaker=breaker))
+    early = datetime(2026, 10, 8, 23, 30, tzinfo=UTC)  # 06:30 local on the 9th: the line is 2.0 * (0.27 + 0.1)
+    assert fire(client, early) == {"queued": 1}
+    first = scheduled(hub_db)[0]
+    assert first["schedule_night"] == THE_DAY and first["budget"]["max_usd"] == 2.0  # the rest of the period
+    ended(client, night.worker, first["id"])
+    set_run(hub_db, first["id"], usage={"total_cost_usd": 1.0}, session_id="s-1")
+    assert fire(client, early) == {"pace": 1}  # 1.0 is over the line of 06:30
+    assert fire(client, DAY) == {"queued": 1}  # at noon the line is 1.2
+    second = scheduled(hub_db)[1]
+    assert second["budget"]["max_usd"] == 1.0
+    ended(client, night.worker, second["id"])
+    set_run(hub_db, second["id"], usage={"total_cost_usd": 0.5}, session_id="s-2")
+    assert fire(client, DAY) == {"pace": 1}
+    late = datetime(2026, 10, 9, 16, 30, tzinfo=UTC)  # 23:30 local: the end of the period, the rest may be spent
+    assert fire(client, late) == {"queued": 1}
+    assert scheduled(hub_db)[2]["budget"]["max_usd"] == 0.5
+
+
+def test_pacing_waits_while_a_members_run_holds_the_node(night, hub_db):
+    client, headers = night.client, night.headers
+    written(client, headers["owner"], paced_body())
+    (by_hand,) = dispatched(client, headers["owner"], [2])
+    assert fire(client, DAY) == {"queued": 1}  # queued, not held: the node is idle yet
+    curator_run = scheduled(hub_db)[0]["id"]
+    assert control(client, headers["owner"], curator_run, "cancel").status_code == 200
+    assert claim(client, night.worker)["id"] == by_hand["id"]  # the member's run takes the node
+    assert fire(client, DAY) == {"taken": 1}
+    moved(client, night.worker, by_hand["id"], "running")
+    assert report(client, night.worker, by_hand["id"], "failed", error="the member stopped").status_code == 200
+    assert fire(client, DAY) == {"queued": 1}
+
+
+def test_pacing_week_period_counts_runs_and_dates_them_by_its_monday(night, hub_db):
+    client, headers = night.client, night.headers
+    written(client, headers["owner"], paced_body({"period": "week", "budget_usd": 10.0}, max_runs_per_night=1))
+    assert fire(client, DAY) == {"queued": 1}
+    (run,) = scheduled(hub_db)
+    assert run["schedule_night"] == date(2026, 10, 5)
+    ended(client, night.worker, run["id"])
+    assert fire(client, DAY + timedelta(days=1)) == {"max_runs": 1}  # Saturday: the same week
+    assert fire(client, DAY + timedelta(days=3)) == {"queued": 1}  # Monday: a new period
+    assert scheduled(hub_db)[1]["schedule_night"] == date(2026, 10, 12)
+
+
 # The charter
 
 
@@ -313,6 +457,61 @@ def test_a_charter_shown_can_be_written_back_as_it_is(night, hub_db):
     written(client, owner, charter_body())
     again = written(client, owner, shown(client, owner))
     assert again["revision"] == 1
+
+
+def test_a_window_charter_without_pacing_round_trips_unchanged(night, hub_db):
+    """A charter with a window and no pacing keeps what it stored: no pacing key, and what show prints written back
+    writes nothing new; the night's figures keep their meaning."""
+    client, owner = night.client, night.headers["owner"]
+    first = written(client, owner, charter_body())
+    c = tables.charters
+    ((stored,),) = sql(hub_db, select(c.c.body))
+    assert "pacing" not in stored and stored["window"] == charter_body()["window"] and stored["night_budget_usd"] == 2.0
+    shown_body = shown(client, owner)
+    assert shown_body["pacing"] is None and shown_body["window"] == first["window"]
+    again = written(client, owner, shown_body)
+    assert again["revision"] == 1
+    assert sql(hub_db, select(c.c.body)) == [(stored,)]
+    night_now = status_of(client, night.headers["reader"])["night"]
+    assert (night_now["budget_usd"], night_now["max_runs"]) == (2.0, 3)
+
+
+TRIGGER = {"min_new": 3, "min_gap_hours": 12, "max_gap_days": 3}
+
+
+def test_review_trigger_waits_its_gaps_before_any_evidence_is_counted():
+    last = NIGHT
+    assert curator.review_wait(TRIGGER, None, NIGHT) == "first"
+    assert curator.review_wait(TRIGGER, last, last + timedelta(hours=11, minutes=59)) == "gap"
+    assert curator.review_wait(TRIGGER, last, last + timedelta(hours=12)) == "count"
+    assert curator.review_wait(TRIGGER, last, last + timedelta(days=3)) == "max_gap"
+    assert curator.review_wait({**TRIGGER, "min_gap_hours": 0}, last, last) == "count"
+    assert curator.review_trigger_of(charter_body()) is None  # off by default
+    assert curator.review_trigger_of(charter_body(review={"trigger": TRIGGER})) == TRIGGER
+    assert curator.is_agents("verify_failed") and curator.is_agents(None) and curator.is_agents("push_conflict")
+    assert not any(curator.is_agents(cause) for cause in (*curator.INFRA_CAUSES, "credentials", "no_worker"))
+
+
+def test_review_trigger_round_trips_and_a_charter_without_one_stores_none(night, hub_db):
+    client, owner = night.client, night.headers["owner"]
+    first = written(client, owner, charter_body())
+    c = tables.charters
+    assert "trigger" not in sql(hub_db, select(c.c.body))[0][0]["review"]  # a4: an old charter stores what it did
+    assert shown(client, owner)["review"]["trigger"] is None
+    assert written(client, owner, shown(client, owner))["revision"] == first["revision"]
+    second = written(client, owner, charter_body(review={"trigger": {"min_new": 2}}))
+    assert second["review"]["trigger"] == {"min_new": 2, "min_gap_hours": 24, "max_gap_days": 7}
+    assert sql(hub_db, select(c.c.body).where(c.c.revision == 2))[0][0]["review"]["trigger"]["min_new"] == 2
+    assert written(client, owner, shown(client, owner))["revision"] == 2
+    for wrong, words in (
+        ({"min_gap_hours": 100, "max_gap_days": 4}, "min_gap_hours is longer than max_gap_days"),
+        ({"min_new": 0}, "min_new"),
+        ({"max_gap_days": 31}, "max_gap_days"),
+        ({"often": True}, "often"),
+    ):
+        response = put_charter(client, owner, charter_body(review={"trigger": wrong}))
+        assert response.status_code == 422 and words in response.text, response.text
+    assert count(hub_db, tables.charters) == 2
 
 
 def test_a_charter_plans_and_merges_tiers_0_to_2_by_default_and_names_3_when_its_owner_adds_it(night, hub_db):
@@ -674,6 +873,12 @@ def test_charter_and_curator_pause_from_the_command_line(served, monkeypatch, ca
 
     # what show --json printed goes back through set, from stdin, and writes nothing new
     shown_json = as_json(curator_cli(served, monkeypatch, capsys, "owner", "charter", "show", "--json"))
+    same = as_json(
+        curator_cli(
+            served, monkeypatch, capsys, "owner", "charter", "set", "-", "--json", stdin=yaml.safe_dump(shown_json)
+        )
+    )
+    assert same["revision"] == 1 and same == shown_json  # a charter with a window and no pacing, unchanged
     stdin = yaml.safe_dump({**shown_json, "night_budget_usd": 3.0})
     again = as_json(curator_cli(served, monkeypatch, capsys, "owner", "charter", "set", "-", "--json", stdin=stdin))
     assert again["revision"] == 2
