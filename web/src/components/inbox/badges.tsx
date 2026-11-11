@@ -129,6 +129,9 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   srs_review: { icon: ClipboardCheck },
   srs_reviewed: { icon: FileCheck },
   srs_comment: { icon: MessageSquareText },
+  ops_cap: { icon: Wallet },
+  ops_paused: { icon: OctagonPause },
+  ops_digest: { icon: ClipboardList },
 };
 
 /** Whether the web has a name and an icon for a kind of notice; a core plugin's own kind may have none. */

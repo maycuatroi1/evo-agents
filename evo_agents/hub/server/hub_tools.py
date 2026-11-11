@@ -14,6 +14,7 @@ row.
   the hop of the run, and a wait the Orchestrator's answer wakes; the run then parks as for ``agent_ask``.
 - ``orchestrator_answer``, ``orchestrator_reassign``, ``orchestrator_ask_owner``: the Orchestrator's actions in a
   thread the hub opened to it (``orchestrator_actions``), as ``evo-agents worker triage answer|reassign|ask-owner``.
+- ``ops_action``: the Orchestrator's actions in an ops thread (``ops_actions``), as ``evo-agents worker ops ...``.
 - ``work_set``: as the entry agent of its system, name the work of its trace (title, goal, done-when), which the work
   card shows (``work_cards.set_work``), as ``evo-agents worker work set``.
 - ``memory_write``: a memory of the project, under the rules of ``memories.put``.
@@ -28,6 +29,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -47,6 +49,7 @@ from evo_agents.hub.server import (
     chat_agents,
     kg,
     memories,
+    ops_actions,
     orchestrator,
     orchestrator_actions,
     output_store,
@@ -84,6 +87,14 @@ _BRIEF = {
     "bounds": {"type": "string", "description": "what it should not do or touch"},
     "done_when": {"type": "string", "description": "when its work is finished"},
     "refs": {"type": "array", "items": _TEXT, "description": "refs it starts from: repo:path, a run, a URL"},
+}
+OPS_ACTIONS = {  # ops_action's actions: (the body, the action of ops_actions)
+    "rerun": (ops_actions.OpsRunIn, ops_actions.rerun),
+    "redeliver": (ops_actions.OpsRunIn, partial(ops_actions.rerun, redeliver=True)),
+    "answer_wait": (ops_actions.OpsWaitIn, ops_actions.answer_wait),
+    "curator_resume": (ops_actions.OpsReasonIn, ops_actions.curator_resume),
+    "read": (ops_actions.OpsReadIn, ops_actions.read),
+    "finding": (ops_actions.OpsFindingIn, ops_actions.finding),
 }
 TOOLS = [
     _function(
@@ -156,6 +167,25 @@ TOOLS = [
             "reason": _TEXT,
         },
         ["question", "options", "reason"],
+    ),
+    _function(
+        "ops_action",
+        "As the Orchestrator, in an ops thread the hub opened to you for a batch: rerun or redeliver a failed run of "
+        "it (run_id), answer a stuck wait (decision_id, text), resume the Curator its breaker paused, mark a notice "
+        "read (notification_id), or write a finding for the Curator (lens, severity, title, body).",
+        {
+            "action": {"type": "string", "enum": list(OPS_ACTIONS)},
+            "reason": _TEXT,
+            "run_id": {"type": "integer"},
+            "decision_id": {"type": "integer"},
+            "text": _TEXT,
+            "notification_id": {"type": "integer"},
+            "lens": _TEXT,
+            "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+            "title": _TEXT,
+            "body": _TEXT,
+        },
+        ["action", "reason"],
     ),
     _function(
         "work_set",
@@ -370,6 +400,19 @@ async def memory_write(turn: Turn, arguments: dict) -> str:
     return f"wrote memory {written.name} (revision {written.revision})"
 
 
+async def ops_action(turn: Turn, arguments: dict) -> str:
+    found = OPS_ACTIONS.get(str(arguments.pop("action", "")))
+    if found is None:
+        return f"error: action is one of {', '.join(OPS_ACTIONS)}"
+    model, act = found
+    body = model(**{key: value for key, value in arguments.items() if key in model.model_fields})
+    async with turn.engine.begin() as conn:
+        run = await _agent_run(conn, turn)
+        await held_row(conn, turn.run_id, None, lock=True, kinds=("chat",))
+        acted = await act(conn, run, body)
+    return f"done: the Decision line is message #{acted.message_id}; {acted.model_dump_json(exclude_none=True)}"
+
+
 HANDLERS = {
     "kg_search": kg_search,
     "chat_post": chat_post,
@@ -380,6 +423,7 @@ HANDLERS = {
     "orchestrator_answer": orchestrator_answer,
     "orchestrator_reassign": orchestrator_reassign,
     "orchestrator_ask_owner": orchestrator_ask_owner,
+    "ops_action": ops_action,
     "work_set": work_set,
     "memory_write": memory_write,
 }

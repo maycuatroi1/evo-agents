@@ -7431,7 +7431,10 @@
       "system_daily_cap": "An agent system reached its daily spending cap",
       "srs_review": "An SRS version waits for your review",
       "srs_reviewed": "A review of your SRS version",
-      "srs_comment": "A comment on an SRS document"
+      "srs_comment": "A comment on an SRS document",
+      "ops_cap": "The ops threads of a system reached their daily cap",
+      "ops_paused": "The ops of a system paused after failed runs",
+      "ops_digest": "The daily digest of a system's ops"
     },
     "item": {
       "unread": "Unread",

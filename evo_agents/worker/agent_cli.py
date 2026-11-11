@@ -24,6 +24,7 @@ from evo_agents.worker import (
     curator_cli,
     escalate_cli,
     merge_check_cli,
+    ops_cli,
     output_cli,
     playbook_cli,
     probe_cli,
@@ -77,6 +78,7 @@ AGENT_PARSERS += (curator_cli.register_curator,)  # a proposal's thread answers 
 AGENT_PARSERS += (agent_ask_cli.register_agent,)  # a chat run asks an agent of another project
 AGENT_PARSERS += (escalate_cli.register_escalate,)  # an agent of an agent system asks its Orchestrator
 AGENT_PARSERS += (work_cli.register_work,)  # the entry agent of an agent system names the work of its trace
+AGENT_PARSERS += (ops_cli.register_ops,)  # the Orchestrator of a default system acts in an ops thread
 
 
 @dataclass

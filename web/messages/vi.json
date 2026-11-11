@@ -7431,7 +7431,10 @@
       "system_daily_cap": "Một hệ thống agent đã chạm mức chi tiêu trong ngày",
       "srs_review": "Một version SRS chờ bạn duyệt",
       "srs_reviewed": "Có lượt duyệt mới cho version SRS của bạn",
-      "srs_comment": "Có bình luận mới trên tài liệu SRS"
+      "srs_comment": "Có bình luận mới trên tài liệu SRS",
+      "ops_cap": "Các thread ops của một hệ thống chạm trần chi phí trong ngày",
+      "ops_paused": "Ops của một hệ thống tạm dừng sau các run hỏng",
+      "ops_digest": "Bản tóm tắt ops trong ngày của một hệ thống"
     },
     "item": {
       "unread": "Chưa đọc",

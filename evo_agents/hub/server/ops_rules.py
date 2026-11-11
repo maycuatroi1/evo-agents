@@ -118,7 +118,7 @@ async def redeliver(conn: AsyncConnection, project_id: int) -> tuple[int, int]:
         worker_id = None if orchestrated == "wait" else await healthy_worker(conn, project_id, failed)
         if worker_id is None:
             continue
-        new_id = await _again(conn, failed, worker_id)
+        new_id = await hand_again(conn, failed, worker_id)
         if new_id is not None:
             await ops_queue.settle(conn, project_id, by=REDELIVER, run_ids=[failed.run_id])
             log.info("run handed again", extra={"run_id": failed.run_id, "next": new_id, "cause": failed.cause})
@@ -207,9 +207,26 @@ async def healthy_worker(conn: AsyncConnection, project_id: int, failed: Failed)
     return fit[0] if fit else None
 
 
-async def _again(conn: AsyncConnection, failed: Failed, worker_id: int) -> int | None:
-    """Hand the work of ``failed`` again, to ``worker_id`` for a new session, in a savepoint undone when it hands
-    none; the run that took it, or None."""
+async def failed_run(conn: AsyncConnection, run_id: int) -> Failed | None:
+    """Run ``run_id`` of the project as ``Failed`` reads it, when it is a chat or task run that ended failed or lost;
+    None otherwise (the Orchestrator's ops actions, ``ops_actions``)."""
+    r = tables.runs
+    query = select(
+        r.c.id,
+        r.c.kind,
+        func.coalesce(r.c.failure_cause, r.c.state),
+        r.c.worker_id,
+        r.c.dispatched_by,
+        r.c.finished_at,
+        func.coalesce(func.nullif(r.c.runtime, "any"), r.c.requested_runtime),
+    ).where(r.c.id == run_id, r.c.kind.in_(KINDS), r.c.state.in_(("failed", "lost")))
+    row = (await conn.execute(query)).one_or_none()
+    return None if row is None else Failed(*row)
+
+
+async def hand_again(conn: AsyncConnection, failed: Failed, worker_id: int | None) -> int | None:
+    """Hand the work of ``failed`` again, to ``worker_id`` (any worker that fits, for None) for a new session, in a
+    savepoint undone when it hands none; the run that took it, or None."""
     savepoint = await conn.begin_nested()
     try:
         if failed.kind == "chat":
@@ -232,7 +249,7 @@ async def _again(conn: AsyncConnection, failed: Failed, worker_id: int) -> int |
     return new_id
 
 
-async def _chat_again(conn: AsyncConnection, failed: Failed, worker_id: int) -> int | None:
+async def _chat_again(conn: AsyncConnection, failed: Failed, worker_id: int | None) -> int | None:
     """Say the mention of chat run ``failed`` again, as the hub, in its thread, for the person at the origin of its
     work, and hand it to its agent on ``worker_id``; the run it reached, or None when it reached none."""
     found = await chat_run(conn, failed.run_id)
@@ -335,6 +352,8 @@ async def mark_read(conn: AsyncConnection, project_id: int) -> int:
 
 __all__ = [
     "CAUSES",
+    "failed_run",
+    "hand_again",
     "KINDS",
     "ORCHESTRATOR",
     "REDELIVER",

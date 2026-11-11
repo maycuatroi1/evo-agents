@@ -2,7 +2,9 @@
 every minute: it queues the operations events of each project whose default system turns ops on
 (``ops_queue.take``, one transaction a project, a project another pass holds skipped), runs the rules of tier 0 on
 what it queued (``ops_rules.tier0``: a run that failed because of its machine handed again, notices whose work is
-done marked read) and closes the batches whose time came (``ops_queue.close_due``). It calls no model.
+done marked read) and closes the batches whose time came (``ops_queue.close_due``). It calls no model. Then it opens
+the thread of each ready batch to the Orchestrator of the project's default system and settles the batches whose
+thread ended (``ops_threads.threads_pass``).
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from sqlalchemy import select, union
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import ops_queue, tables
-from evo_agents.hub.server import ops_rules
+from evo_agents.hub.server import ops_rules, ops_threads
 
 log = logging.getLogger(__name__)
 
@@ -43,8 +45,11 @@ async def ops_pass(engine: AsyncEngine, rules: tuple[ops_queue.Rule, ...] | None
     async with engine.begin() as conn:
         closed = await ops_queue.close_due(conn)
     found = {"queued": queued, **{key: tier0[key] for key in ("redelivered", "orchestrated", "read")}, **closed}
+    threads = await ops_threads.threads_pass(engine)  # logged, not returned: what ops_threads did is its own
     if any(found.values()):
         log.info("ops queue", extra=found)
+    if threads:
+        log.info("ops threads", extra={f"threads_{key}": count for key, count in threads.items()})
     return found
 
 

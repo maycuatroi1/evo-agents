@@ -27860,6 +27860,167 @@
       ],
       "json": null
     },
+    "worker ops answer-wait": {
+      "positionals": [
+        {
+          "name": "decision",
+          "metavar": "DECISION",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--text"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker ops curator-resume": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker ops finding": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--lens"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--severity"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--body"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker ops read": {
+      "positionals": [
+        {
+          "name": "notice",
+          "metavar": "NOTICE",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker ops redeliver": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker ops rerun": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "worker output": {
       "positionals": [
         {
@@ -94139,6 +94300,576 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/ops/rerun": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Rerun Route",
+          "description": "Run the work of a failed run of this ops thread's batch again, as its Orchestrator's chat run.",
+          "operationId": "rerun_route_v1_worker_runs__run_id__ops_rerun_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsRunIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpsActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/ops/redeliver": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Redeliver Route",
+          "description": "Hand the work of a failed run of this ops thread's batch to a healthy worker, as its Orchestrator's chat run.",
+          "operationId": "redeliver_route_v1_worker_runs__run_id__ops_redeliver_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsRunIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpsActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/ops/answer-wait": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Answer Wait Route",
+          "description": "Answer a stuck wait of this ops thread's batch, as its Orchestrator's chat run.",
+          "operationId": "answer_wait_route_v1_worker_runs__run_id__ops_answer_wait_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsWaitIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpsActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/ops/curator-resume": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Curator Resume Route",
+          "description": "Resume the Curator's schedules its breaker paused, as the Orchestrator's chat run of an ops thread.",
+          "operationId": "curator_resume_route_v1_worker_runs__run_id__ops_curator_resume_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsReasonIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpsActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/ops/read": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Read Route",
+          "description": "Mark a notice of the project read, as the Orchestrator's chat run of an ops thread.",
+          "operationId": "read_route_v1_worker_runs__run_id__ops_read_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsReadIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpsActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/ops/finding": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Finding Route",
+          "description": "Write a finding for the Curator, as the Orchestrator's chat run of an ops thread.",
+          "operationId": "finding_route_v1_worker_runs__run_id__ops_finding_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsFindingIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpsActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/work": {
         "post": {
           "tags": [
@@ -145048,7 +145779,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 39,
+              "maxItems": 42,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -146895,6 +147626,50 @@
           ],
           "title": "OpportunityRevision"
         },
+        "OpsActed": {
+          "properties": {
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the Decision: line the hub posted in the thread, in the Orchestrator's name"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run the work went to, or the run the answer woke"
+            },
+            "finding_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finding Id",
+              "description": "the finding it wrote"
+            },
+            "handled": {
+              "type": "integer",
+              "title": "Handled",
+              "description": "items of the batch it marked handled",
+              "default": 0
+            }
+          },
+          "type": "object",
+          "required": [
+            "message_id"
+          ],
+          "title": "OpsActed"
+        },
         "OpsBatch": {
           "properties": {
             "id": {
@@ -146989,6 +147764,73 @@
           ],
           "title": "OpsBatch"
         },
+        "OpsFindingIn": {
+          "properties": {
+            "lens": {
+              "type": "string",
+              "enum": [
+                "tool_errors",
+                "environment",
+                "corrections",
+                "failed_runs",
+                "runtime",
+                "tech_debt",
+                "code_health",
+                "docs_drift",
+                "harness",
+                "skills_memory",
+                "cost",
+                "security",
+                "product_goals",
+                "product",
+                "agent_system",
+                "kg_health",
+                "kg_init",
+                "kg_questions",
+                "kg_entity_map"
+              ],
+              "title": "Lens"
+            },
+            "severity": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "title": "Severity"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Title"
+            },
+            "body": {
+              "type": "string",
+              "maxLength": 8000,
+              "minLength": 1,
+              "title": "Body",
+              "description": "what is wrong with the system, and the fix"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "lens",
+            "severity",
+            "title",
+            "body",
+            "reason"
+          ],
+          "title": "OpsFindingIn"
+        },
         "OpsPause": {
           "properties": {
             "reason": {
@@ -147007,6 +147849,70 @@
           },
           "type": "object",
           "title": "OpsPause"
+        },
+        "OpsReadIn": {
+          "properties": {
+            "notification_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Notification Id",
+              "description": "a notice of the project"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "notification_id",
+            "reason"
+          ],
+          "title": "OpsReadIn"
+        },
+        "OpsReasonIn": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "OpsReasonIn"
+        },
+        "OpsRunIn": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Run Id",
+              "description": "a chat or task run of the batch that failed or was lost"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "reason"
+          ],
+          "title": "OpsRunIn"
         },
         "OpsSettings": {
           "properties": {
@@ -147033,6 +147939,38 @@
             "max_items"
           ],
           "title": "OpsSettings"
+        },
+        "OpsWaitIn": {
+          "properties": {
+            "decision_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Decision Id",
+              "description": "a stuck wait of the batch: a decision of category wait"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 4096,
+              "minLength": 1,
+              "title": "Text",
+              "description": "the answer that wakes its run"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "decision_id",
+            "text",
+            "reason"
+          ],
+          "title": "OpsWaitIn"
         },
         "OptimizeRun": {
           "properties": {
@@ -181688,7 +182626,10 @@
                 "system_daily_cap",
                 "srs_review",
                 "srs_reviewed",
-                "srs_comment"
+                "srs_comment",
+                "ops_cap",
+                "ops_paused",
+                "ops_digest"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -181761,7 +182702,10 @@
                 "system_daily_cap",
                 "srs_review",
                 "srs_reviewed",
-                "srs_comment"
+                "srs_comment",
+                "ops_cap",
+                "ops_paused",
+                "ops_digest"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
