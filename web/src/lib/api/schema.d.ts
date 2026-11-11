@@ -9274,9 +9274,32 @@ export interface paths {
         };
         /**
          * Show Trace
-         * @description One trace: its spans in the order written, with their runs' numbers, and the metrics of its nodes and edges.
+         * @description One trace: its spans in the order written, with their runs' numbers, the metrics of its nodes and edges, and its
+         *     timeline by agent.
          */
         get: operations["show_trace_v1_projects__project__systems__slug__traces__trace_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/work/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Work Summary
+         * @description The numbers of the system's work the caller may read that moved in the last ``hours`` hours or has a run
+         *     still active: open, needing a person, failed and done, the median time from start to close of the work done in
+         *     the window, and the cost. It reads only.
+         */
+        get: operations["work_summary_v1_projects__project__systems__slug__work_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -10599,6 +10622,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/chats/{chat_id}/work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Work
+         * @description The work card of the trace whose work chat this is.
+         */
+        get: operations["show_work_v1_chats__chat_id__work_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats/{chat_id}/events": {
         parameters: {
             query?: never;
@@ -11009,6 +11052,26 @@ export interface paths {
          * @description Escalate a question to the Orchestrator of this chat run's system; the run parks on the wait the answer wakes.
          */
         post: operations["escalate_v1_worker_runs__run_id__escalate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Work Route
+         * @description Set the title, goal and done-when of the work of this run's trace, as its coordinator.
+         */
+        post: operations["set_work_route_v1_worker_runs__run_id__work_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -18641,7 +18704,7 @@ export interface components {
              * @description group: members are added and removed; direct: one person and one agent, for good; settle: a group chat the hub opened, whose agent every message of a person wakes
              * @enum {string}
              */
-            kind: "group" | "direct" | "settle";
+            kind: "group" | "direct" | "settle" | "work";
             /**
              * Image Url
              * @description the image its members set, on this hub; null for none, and always for a direct chat
@@ -19307,7 +19370,7 @@ export interface components {
              * @description group; direct: one person and one agent; or settle: a group chat the hub opened for its agent
              * @enum {string}
              */
-            kind: "group" | "direct" | "settle";
+            kind: "group" | "direct" | "settle" | "work";
             /**
              * Image Url
              * @description the image its members set; null for none, and always for a direct chat
@@ -19322,6 +19385,8 @@ export interface components {
             faces: components["schemas"]["ChatAuthor"][];
             /** @description the latest message of its main line; null for none */
             last_message: components["schemas"]["ChatLastMessage"] | null;
+            /** @description of a work chat (kind work): its trace's system, title, status and what it waits for */
+            work?: components["schemas"]["WorkBrief"] | null;
         };
         /** Checked */
         Checked: {
@@ -23613,6 +23678,8 @@ export interface components {
              * @description the @handle of the agent that forwarded it verbatim from the run of its author (evo-agents worker agent forward); null when its author's run wrote it
              */
             forwarded_by?: string | null;
+            /** @description the work card of a trace of an agent system, on the hub's message that carries it in the trace's root thread; a message_changed event says it changed. Null on every other message */
+            work?: components["schemas"]["WorkCard"] | null;
         };
         /** GroupSample */
         GroupSample: {
@@ -32219,6 +32286,8 @@ export interface components {
              * @description the @handle of the agent that forwarded it verbatim from the run of its author (evo-agents worker agent forward); null when its author's run wrote it
              */
             forwarded_by?: string | null;
+            /** @description the work card of a trace of an agent system, on the hub's message that carries it in the trace's root thread; a message_changed event says it changed. Null on every other message */
+            work?: components["schemas"]["WorkCard"] | null;
             /**
              * Thread
              * @description the first message of its thread, its own id when it starts one: what reply_to and ?thread= take
@@ -45533,6 +45602,86 @@ export interface components {
              */
             chosen: boolean;
         };
+        /** TimelineMark */
+        TimelineMark: {
+            /** Decision Id */
+            decision_id: number;
+            /**
+             * Run Id
+             * @description the run that asked
+             */
+            run_id: number;
+            /**
+             * Agent
+             * @description the handle of the agent of that run
+             */
+            agent: string | null;
+            /**
+             * Login
+             * @description the person it asks
+             */
+            login: string | null;
+            /** Question */
+            question: string;
+            /**
+             * State
+             * @description open, answered, expired or cancelled
+             */
+            state: string;
+            /**
+             * Asked At
+             * Format: date-time
+             */
+            asked_at: string;
+            /** Answered At */
+            answered_at: string | null;
+        };
+        /** TimelineRun */
+        TimelineRun: {
+            /**
+             * Span Id
+             * @description its invoke_agent span
+             */
+            span_id: number;
+            /** Run Id */
+            run_id: number;
+            /**
+             * Agent
+             * @description the handle of the agent
+             */
+            agent: string;
+            /** Node */
+            node: string | null;
+            /**
+             * State
+             * @description the state of the run now
+             */
+            state: string;
+            /**
+             * Segments
+             * @description oldest first
+             */
+            segments: components["schemas"]["TimelineSegment"][];
+        };
+        /** TimelineSegment */
+        TimelineSegment: {
+            /**
+             * Kind
+             * @description queued for a worker, running, parked, or waiting for an answer held
+             * @enum {string}
+             */
+            kind: "queued" | "running" | "parked" | "waiting";
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Ended At
+             * @description null while it goes on
+             */
+            ended_at: string | null;
+        };
         /** Today */
         Today: {
             /**
@@ -45990,9 +46139,43 @@ export interface components {
             errors: number;
             /** Usd */
             usd: number;
+            /**
+             * Work Chat Id
+             * @description the work chat its first hand-off opened; null before one
+             */
+            work_chat_id?: number | null;
+            /**
+             * Title
+             * @description what the entry agent set (work set), else the first line of its first message
+             */
+            title?: string | null;
+            /**
+             * Goal
+             * @description what the entry agent set; null when not set
+             */
+            goal?: string | null;
+            /**
+             * Done When
+             * @description what the entry agent set; null when not set
+             */
+            done_when?: string | null;
+            /**
+             * Status
+             * @description the status of its work, derived from its runs and decisions
+             */
+            status?: ("running" | "needs_person" | "failed" | "done") | null;
+            /**
+             * Agent
+             * @description the handle of the agent at work now; null when none is
+             */
+            agent?: string | null;
+            /** @description what its work waits for; null for nothing */
+            waiting?: components["schemas"]["WorkWaiting"] | null;
             /** Spans */
             spans: components["schemas"]["SpanOut"][];
             metrics: components["schemas"]["Metrics"];
+            /** @description each run of it cut into queued, running, parked and waiting, and the decisions that ask a person */
+            timeline?: components["schemas"]["TraceTimeline"];
         };
         /** TraceSpread */
         TraceSpread: {
@@ -46072,6 +46255,51 @@ export interface components {
             errors: number;
             /** Usd */
             usd: number;
+            /**
+             * Work Chat Id
+             * @description the work chat its first hand-off opened; null before one
+             */
+            work_chat_id?: number | null;
+            /**
+             * Title
+             * @description what the entry agent set (work set), else the first line of its first message
+             */
+            title?: string | null;
+            /**
+             * Goal
+             * @description what the entry agent set; null when not set
+             */
+            goal?: string | null;
+            /**
+             * Done When
+             * @description what the entry agent set; null when not set
+             */
+            done_when?: string | null;
+            /**
+             * Status
+             * @description the status of its work, derived from its runs and decisions
+             */
+            status?: ("running" | "needs_person" | "failed" | "done") | null;
+            /**
+             * Agent
+             * @description the handle of the agent at work now; null when none is
+             */
+            agent?: string | null;
+            /** @description what its work waits for; null for nothing */
+            waiting?: components["schemas"]["WorkWaiting"] | null;
+        };
+        /** TraceTimeline */
+        TraceTimeline: {
+            /**
+             * Runs
+             * @description in the order of their spans
+             */
+            runs?: components["schemas"]["TimelineRun"][];
+            /**
+             * Marks
+             * @description the decisions that ask a person, oldest first
+             */
+            marks?: components["schemas"]["TimelineMark"][];
         };
         /** TranscriptFile */
         TranscriptFile: {
@@ -47035,6 +47263,321 @@ export interface components {
              * @description an IANA time zone, such as Asia/Ho_Chi_Minh
              */
             timezone: string;
+        };
+        /** WorkAsk */
+        WorkAsk: {
+            /**
+             * Kind
+             * @description ask: an agent's ask; escalate: to the Orchestrator; reassign: its reassignment
+             * @enum {string}
+             */
+            kind: "ask" | "escalate" | "reassign";
+            /**
+             * From Agent
+             * @description the handle of the agent that handed the work
+             */
+            from_agent: string;
+            /**
+             * Agent
+             * @description the handle of the agent that took it; null when refused
+             */
+            agent: string | null;
+            /**
+             * Brief
+             * @description the goal of its brief
+             */
+            brief: string | null;
+            /**
+             * Status
+             * @description the state of the run it made; else its span's status (refused, error)
+             */
+            status: string;
+            /** Run Id */
+            run_id: number | null;
+            /** Usd */
+            usd: number;
+            /** @description the thread of its question */
+            thread: components["schemas"]["WorkThread"] | null;
+        };
+        /**
+         * WorkBrief
+         * @description What a list shows of the work of a trace.
+         */
+        WorkBrief: {
+            /** Trace Id */
+            trace_id: number;
+            system: components["schemas"]["WorkSystem"];
+            /**
+             * Title
+             * @description what the entry agent set, else the first line of the trace's first message
+             */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "needs_person" | "failed" | "done";
+            /**
+             * Agent
+             * @description the handle of the agent at work now; null when none is
+             */
+            agent: string | null;
+            /** @description what the work waits for; null for nothing */
+            waiting: components["schemas"]["WorkWaiting"] | null;
+            /**
+             * Coordinator
+             * @description the handle of the system's entry agent, which coordinates the work
+             */
+            coordinator?: string | null;
+        };
+        /**
+         * WorkCard
+         * @description The work card of a trace: its root-thread message carries it, GET /v1/chats/{id}/work answers it.
+         */
+        WorkCard: {
+            /** Trace Id */
+            trace_id: number;
+            system: components["schemas"]["WorkSystem"];
+            /**
+             * Title
+             * @description what the entry agent set, else the first line of the trace's first message
+             */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "needs_person" | "failed" | "done";
+            /**
+             * Agent
+             * @description the handle of the agent at work now; null when none is
+             */
+            agent: string | null;
+            /** @description what the work waits for; null for nothing */
+            waiting: components["schemas"]["WorkWaiting"] | null;
+            /**
+             * Coordinator
+             * @description the handle of the system's entry agent, which coordinates the work
+             */
+            coordinator?: string | null;
+            /**
+             * Chat Id
+             * @description the chat of the message that opened the trace
+             */
+            chat_id: number | null;
+            /** Message Id */
+            message_id: number | null;
+            /** Work Chat Id */
+            work_chat_id: number | null;
+            /** Goal */
+            goal: string | null;
+            /** Done When */
+            done_when: string | null;
+            /**
+             * Asks
+             * @description the sub-tasks, oldest first
+             */
+            asks: components["schemas"]["WorkAsk"][];
+            /**
+             * Decisions
+             * @description oldest first
+             */
+            decisions: components["schemas"]["WorkDecision"][];
+            /** Runs */
+            runs: number;
+            /** Usd */
+            usd: number;
+            /**
+             * Hop
+             * @description the deepest hop of its runs
+             */
+            hop: number | null;
+            /** Max Hops */
+            max_hops: number;
+            /**
+             * Trace Runs
+             * @description the runs a trace of its revision may make
+             */
+            trace_runs: number;
+            /**
+             * Trace Usd
+             * @description the USD a trace of its revision may spend
+             */
+            trace_usd: number;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Ended At
+             * @description its last span, once no run of it is active; null while running
+             */
+            ended_at: string | null;
+            /**
+             * Seconds
+             * @description from its start to its end, or to now
+             */
+            seconds: number;
+        };
+        /** WorkDecision */
+        WorkDecision: {
+            /**
+             * Kind
+             * @description orchestrator: a thread of the Orchestrator; person: a decision that asks a person
+             * @enum {string}
+             */
+            kind: "orchestrator" | "person";
+            /**
+             * Id
+             * @description the thread's id, or the decision's
+             */
+            id: number;
+            /**
+             * Rule
+             * @description the rule that opened the thread (failed, escalate, ...)
+             */
+            rule: string | null;
+            /**
+             * Outcome
+             * @description answer, reassign or ask_owner; null while the thread is open
+             */
+            outcome: string | null;
+            /** Question */
+            question: string | null;
+            /**
+             * State
+             * @description open or closed for a thread; the decision's state
+             */
+            state: string;
+            /**
+             * Answer
+             * @description the option and words of the answer
+             */
+            answer: string | null;
+            /** Asked Of */
+            asked_of: string | null;
+            /**
+             * Run Id
+             * @description the Orchestrator's run, or the run that asked
+             */
+            run_id: number | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+        };
+        /** WorkSetIn */
+        WorkSetIn: {
+            /**
+             * Title
+             * @description a short name of the work
+             */
+            title?: string | null;
+            /** Goal */
+            goal?: string | null;
+            /** Done When */
+            done_when?: string | null;
+        };
+        /** WorkSummary */
+        WorkSummary: {
+            /** Hours */
+            hours: number;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
+            /**
+             * Traces
+             * @description the traces counted: moved since `since`, or with a run still active
+             */
+            traces: number;
+            /**
+             * Withheld
+             * @description such traces the caller may not read, left out
+             */
+            withheld: number;
+            /**
+             * Open
+             * @description running or needing a person
+             */
+            open: number;
+            /** Needs Person */
+            needs_person: number;
+            /** Failed */
+            failed: number;
+            /** Done */
+            done: number;
+            /**
+             * Closed P50 Seconds
+             * @description median start to last move of the work done in the window
+             */
+            closed_p50_seconds: number | null;
+            /**
+             * Usd
+             * @description what the traces counted cost, their spawned runs included
+             */
+            usd: number;
+        };
+        /** WorkSystem */
+        WorkSystem: {
+            /**
+             * Id
+             * @description null once the system is deleted
+             */
+            id: number | null;
+            /** Slug */
+            slug: string;
+            /**
+             * Name
+             * @description null once the system is deleted
+             */
+            name: string | null;
+            /**
+             * Project
+             * @description the name of its project
+             */
+            project?: string | null;
+        };
+        /** WorkThread */
+        WorkThread: {
+            /** Chat Id */
+            chat_id: number;
+            /** Root Id */
+            root_id: number;
+        };
+        /** WorkWaiting */
+        WorkWaiting: {
+            /**
+             * Kind
+             * @description run: an agent's run; person: a person drives or reviews a run; decision
+             * @enum {string}
+             */
+            kind: "run" | "person" | "decision";
+            /**
+             * Run Id
+             * @description the run awaited, or the run a person drives
+             */
+            run_id?: number | null;
+            /**
+             * Agent
+             * @description the handle of the agent of that run
+             */
+            agent?: string | null;
+            /**
+             * Decision Id
+             * @description the open decision that asks a person
+             */
+            decision_id?: number | null;
+            /**
+             * Login
+             * @description the person the decision asks
+             */
+            login?: string | null;
+            /** Question */
+            question?: string | null;
         };
         /** Worker */
         Worker: {
@@ -83299,6 +83842,68 @@ export interface operations {
             };
         };
     };
+    work_summary_v1_projects__project__systems__slug__work_summary_get: {
+        parameters: {
+            query?: {
+                /** @description the traces that moved in the last N hours */
+                hours?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_systems_v1_projects__project__systems_get: {
         parameters: {
             query?: never;
@@ -89325,6 +89930,64 @@ export interface operations {
             };
         };
     };
+    show_work_v1_chats__chat_id__work_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkCard"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_events_v1_chats__chat_id__events_get: {
         parameters: {
             query?: {
@@ -90634,6 +91297,77 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_work_route_v1_worker_runs__run_id__work_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkSetIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkCard"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

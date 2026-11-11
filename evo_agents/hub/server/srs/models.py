@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -680,7 +680,7 @@ def retire_model(slug: str, number: int | None, dry_run: bool, dropped: list[Ite
 
 def comment_model(row: CommentRow, anchor: str | None = None) -> SrsComment:
     values = {name: value for name, value in row.__dict__.items() if name != "author_id"}
-    return SrsComment(**values, anchor=anchor)
+    return SrsComment(**values, anchor=cast(Literal["found", "changed"] | None, anchor))
 
 
 def finding_model(row: FindingRow, documents: Mapping[str, str] | None = None) -> SrsFinding:

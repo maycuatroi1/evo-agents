@@ -47,7 +47,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import chats, profiles, tables
 from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.db import one_of
-from evo_agents.hub.server import attachment_store, audit, chat_answers
+from evo_agents.hub.server import attachment_store, audit, chat_answers, direct_systems, work_chats
 from evo_agents.hub.server.chat_access import (
     ChatAccess,
     chat_access,
@@ -362,7 +362,7 @@ async def _answered(conn: AsyncConnection, answered) -> Answered | None:
 async def _replied_agent(conn: AsyncConnection, chat: ChatAccess, answered: Answered | None, kept: list[dict]):
     """The mention, ``via`` reply, of the agent that wrote ``answered``, the message a message of a group chat that
     mentions no one (``kept`` is empty) answers; none otherwise, or when that agent left the chat or was deleted."""
-    if chat.kind != chats.GROUP or answered is None or kept:
+    if chat.kind not in (chats.GROUP, chats.WORK) or answered is None or kept:
         return []
     m, ap = tables.chat_members, tables.agent_profiles
     query = (
@@ -375,6 +375,29 @@ async def _replied_agent(conn: AsyncConnection, chat: ChatAccess, answered: Answ
     if handle is None:
         return []
     return [{"name": handle, "via": chats.REPLY, "user_id": None, "profile_id": answered.profile_id, "refusal": None}]
+
+
+async def _unnamed_agent(
+    conn: AsyncConnection, chat: ChatAccess, user: Principal, root: int | None, answered, kept: list[dict]
+) -> list[dict]:
+    """The mention a message of a group chat that names no agent hands its work by: the agent it answers, else the
+    one whose session is in its thread; none on the main line of a work chat, which goes to its coordinator."""
+    if chat.kind == chats.WORK and await work_chats.main_line(conn, root):
+        return []
+    return await _replied_agent(conn, chat, answered, kept) or await _thread_agent(conn, chat, user, root)
+
+
+async def _to_coordinator(conn: AsyncConnection, chat: ChatAccess, user: Principal, hand: Hand, kept: list[dict]):
+    """The hub's answer, when there is one, to a message of work chat ``chat`` that mentions no agent (``kept`` names
+    none): on its main line it goes to the coordinator's session (``work_chats.to_coordinator``); [] for any other."""
+    root = None if hand.root_id == hand.message_id else hand.root_id
+    if chat.kind != chats.WORK or any(mention["profile_id"] is not None for mention in kept):
+        return []
+    if not await work_chats.main_line(conn, root):
+        return []
+    message_id, text, via = hand.message_id, hand.body, hand.via
+    said = await work_chats.to_coordinator(conn, chat, user, message_id, text, via)
+    return [] if said is None else [said]
 
 
 async def _direct_agent(
@@ -396,11 +419,14 @@ async def deliver_message(
     via: str | None = None,
     via_bridge: int | None = None,
     plugin: str | None = None,
+    skip: frozenset[str] = frozenset(),
 ) -> int:
     """Store the message with its mentions, the work they hand the agents, the hub's answer to what they refuse and
-    the notices; its id. ``via`` names the kind of channel it came in by and ``via_bridge`` the bridge, which does
-    not get it back (``chat_bridge_events``). ``plugin`` names the isolated plugin that posts it in ``user``'s name
-    (``plugin_chats_api``): the message comes ``via`` plugin, and its audit row ends with plugin:<id>."""
+    the notices; its id. ``via`` names the kind of channel it came in by and ``via_bridge`` the bridge, which does not
+    get it back (``chat_bridge_events``). ``plugin`` names the isolated plugin that posts it in ``user``'s name
+    (``plugin_chats_api``): the message comes ``via`` plugin, and its audit row ends with plugin:<id>. The names
+    ``skip`` names are not read as mentions: the agents of a system a direct chat's message handed to its entry agent,
+    left out of the group the message is copied to (``direct_systems``)."""
     if plugin is not None:
         via = chats.PLUGIN_VIA
     came_by = via
@@ -414,7 +440,7 @@ async def deliver_message(
         answer = await chat_answers.answer_of(conn, chat, body.from_answer)
         root = chat_answers.thread_of(answer, root, body.reply_to)
         await chat_answers.refuse_too_many(conn, user.user_id)
-    names = chats.mention_names(body.body)
+    names = [name for name in chats.mention_names(body.body) if name not in skip]
     kept, people, _ = await resolve_mentions(conn, chat, user, names)
     files = await attachment_store.take(conn, body.attachment_ids, user.user_id, chat_id=chat.chat_id)
     message_id, seq = await insert_message(
@@ -432,19 +458,23 @@ async def deliver_message(
         mention = await chat_answers.answer_mention(conn, chat, answer)
         if not any(found["profile_id"] == mention["profile_id"] for found in kept):
             kept.append(mention)
-    opened = await _open_group(conn, chat, user, root or message_id, kept)
-    if chat.kind == chats.DIRECT:  # once a group took the agents named, its copy of the message hands the work
-        kept += [] if opened is not None else await _direct_agent(conn, chat, user, root, kept)
+    via = dispatch_credential(user.kind)
+    message = direct_systems.Message(chat, message_id, root or message_id, body.body, via)
+    to_systems = await direct_systems.to_systems(conn, message, user, kept)
+    routed = [mention for mention in kept if "run_id" in mention]  # the work went to a system's entry agent, or not
+    opened = await _open_group(conn, chat, user, root or message_id, [m for m in kept if "run_id" not in m])
+    if chat.kind == chats.DIRECT:  # once a group or a system took the agents named, the direct agent takes none
+        taken = opened is not None or any(mention["run_id"] is not None for mention in routed)
+        kept += [] if taken else await _direct_agent(conn, chat, user, root, kept)
     elif chat.kind == chats.SETTLE:
         kept += await direct_mention(conn, chat, kept)
     elif not any(mention["profile_id"] is not None for mention in kept):
-        kept += await _replied_agent(conn, chat, answered, kept) or await _thread_agent(conn, chat, user, root)
-    via = dispatch_credential(user.kind)
+        kept += await _unnamed_agent(conn, chat, user, root, answered, kept)
     hand = Hand(
         chat,
         message_id,
         root or message_id,
-        None,
+        None,  # pyright: ignore[reportArgumentType]  # hand_mentions sets the profile of each mention
         user.user_id,
         user.login,
         via,
@@ -454,10 +484,11 @@ async def deliver_message(
         answers=answered,
     )
     if opened is None:
-        await hand_mentions(conn, hand, kept)
+        await hand_mentions(conn, hand, [mention for mention in kept if all(mention is not r for r in routed)])
     await insert_mentions(conn, message_id, kept)
     refusals = [mention["refusal"] for mention in kept if mention["refusal"]]
-    said = ([] if opened is None else [opened.note()]) + refusals
+    refusals += await _to_coordinator(conn, chat, user, hand, kept)
+    said = ([] if opened is None else [opened.note()]) + to_systems + refusals
     if said:  # the hub's answer, which the sender has read as they read their own
         await hub_reply(conn, chat.chat_id, root or message_id, "\n".join(said))
         seq = (
@@ -469,10 +500,11 @@ async def deliver_message(
             await notice_mention(conn, chat, user_id, message_id, body.body)
     target = f"chat:{chat.chat_id} message:{message_id}" + ("" if plugin is None else f" plugin:{plugin}")
     await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.CHAT_MESSAGE, target=target)
-    if opened is not None:  # the person's words, as they wrote them, where the agents they named are
+    if opened is not None and opened.chat_id is not None:  # the person's words, where the agents they named are
         group = await chat_access(conn, user, opened.chat_id)
-        copy = ChatMessageIn(body=body.body)
-        await deliver_message(conn, group, user, copy, via=came_by, plugin=plugin)
+        copy = ChatMessageIn(body=body.body, reply_to=None)
+        handed = frozenset(mention["name"] for mention in routed)
+        await deliver_message(conn, group, user, copy, via=came_by, plugin=plugin, skip=handed)
     return message_id
 
 

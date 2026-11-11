@@ -600,6 +600,17 @@ def _files_line(trigger: dict) -> list[str]:
     ]
 
 
+# The message pull_text writes, which the hub posts as the agent's once the worker pushed: never the agent's answer
+PULL_TEXT = re.compile(
+    r"(Opened a (draft )?pull request of \S+ from chat/\d+[:,] |Pushed more commits of \S+ to chat/\d+, |Pushed chat/\d+ of \S+[.:] )"
+)
+
+
+def is_pull_text(body: str) -> bool:
+    """Whether ``body`` is the message ``pull_text`` wrote, not words of the agent."""
+    return PULL_TEXT.match(body) is not None and "\n" not in body.strip()
+
+
 def pull_text(
     repo: str,
     branch: str,

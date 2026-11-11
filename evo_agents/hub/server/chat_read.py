@@ -11,7 +11,7 @@ Each call reads who may read from the database as it is then, so a change of mem
 
 - a person: a member of the message's chat, not taken out, who clears its label now (``chat_access``), and who clears
   the label each message was sent with (``LabelReader``);
-- the agent of a chat run: both people its prompt is cleared for (``chat_runs.run_clearers``), each as a person;
+- the agent of a chat run: both people its prompt is cleared for (``chat_prompts.run_clearers``), each as a person;
 - the agent of a run of another kind: the run's owner, as a person. A run's agent reaches its run's project alone
   (``RunScope``), so it reads only messages whose label holds a part of that project, besides those of its own chat
   run's chat, which its prompt shows already.
@@ -50,7 +50,8 @@ from evo_agents.hub import chats, tables
 from evo_agents.hub.server import attachment_store
 from evo_agents.hub.server.chat_access import chat_access, label_reader
 from evo_agents.hub.server.chat_agents import agent_run
-from evo_agents.hub.server.chat_runs import chat_run, run_clearers
+from evo_agents.hub.server.chat_prompts import run_clearers
+from evo_agents.hub.server.chat_runs import chat_run
 from evo_agents.hub.server.chat_views import message_select, profiles_by_id
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access

@@ -60,6 +60,12 @@ def trace_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("chat_id", BigInteger),
         Column("message_id", BigInteger),
         Column("opened_by", BigInteger),
+        Column("work_chat_id", BigInteger),  # 0234: the work chat its first hand-off opened (``work_chats``)
+        Column("title", Text),  # 0235: what the entry agent set (``work_cards``); NULL: not set
+        Column("goal", Text),
+        Column("done_when", Text),
+        Column("card_message_id", BigInteger),  # 0235: the hub's message in the root thread carrying its card
+        Column("card_state", Text),  # 0235: what the card showed when the streams were last told
         _stamp("started_at"),
         _stamp("last_at"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
@@ -67,10 +73,16 @@ def trace_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         ForeignKeyConstraint(["chat_id"], ["chats.id"], ondelete="SET NULL", name=f"{name}_chat_id_fkey"),
         ForeignKeyConstraint(["message_id"], ["chat_messages.id"], ondelete="SET NULL", name=f"{name}_message_id_fkey"),
         ForeignKeyConstraint(["opened_by"], ["users.id"], ondelete="SET NULL", name=f"{name}_opened_by_fkey"),
+        ForeignKeyConstraint(["work_chat_id"], ["chats.id"], ondelete="SET NULL", name=f"{name}_work_chat_id_fkey"),
+        ForeignKeyConstraint(
+            ["card_message_id"], ["chat_messages.id"], ondelete="SET NULL", name=f"{name}_card_message_id_fkey"
+        ),
         PrimaryKeyConstraint("id", name=f"{name}_pkey"),
     )
     Index(f"{name}_system_idx", traces.c.project_id, traces.c.system_slug, traces.c.id.desc())
     Index(f"{name}_chat_idx", traces.c.chat_id, traces.c.id.desc())
+    for index, column in (("card_message_idx", traces.c.card_message_id), ("work_chat_idx", traces.c.work_chat_id)):
+        Index(f"{name}_{index}", column, postgresql_where=column.is_not(None))  # 0235
     sname = "system_spans"
     spans = Table(
         sname,

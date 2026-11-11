@@ -9,6 +9,7 @@ import { type MentionMark, plainMentions, summaryMentionMarks } from "@/lib/ment
 import { cn } from "@/lib/utils";
 
 import { ChatAvatar } from "./chat-avatar";
+import { WorkLine } from "./work-look";
 
 // The browser's clock to the minute, for "today" and "this week" in the rows: null on the server and while the page
 // hydrates (the rows say the date then, as both renders agree), then a reading a minute. One timer serves every row.
@@ -63,7 +64,7 @@ function useLastLine() {
 /**
  * A chat's row in the list (web/DESIGN.md, Chats): its face, its name (a direct chat's agent's), when its last message
  * came (the time today, the weekday this week, else the date), and that message as "Author: text", or that it is hidden
- * from the visitor. Unread: the name and the line in bold and the count of messages of others not read yet. The link's
+ * from the visitor; a work chat's says its work's state, with its dot, and what it waits for (`WorkLine`). A work chat is named by its work's title. Unread: the name and the line in bold and the count of messages of others not read yet. The link's
  * name is the chat's name with that count; the last message describes it.
  */
 export function ChatRow({ chat, active, me }: { chat: ChatSummary; active: boolean; me: string | null }) {
@@ -73,7 +74,7 @@ export function ChatRow({ chat, active, me }: { chat: ChatSummary; active: boole
   const now = useMinuteClock();
   const lastLine = useLastLine();
   const ids = useId();
-  const name = chatName(chat);
+  const name = chat.work?.title ?? chatName(chat);
   const unread = chat.unread > 0;
   const when = chat.last_message?.created_at ?? chat.last_message_at ?? chat.created_at;
   const date = new Date(when);
@@ -91,6 +92,7 @@ export function ChatRow({ chat, active, me }: { chat: ChatSummary; active: boole
         data-chat-id={chat.id}
         data-kind={chat.kind}
         data-unread={chat.unread}
+        data-work={chat.work?.status}
       >
         <ChatAvatar face={summaryFace(chat)} size="lg" />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -113,11 +115,11 @@ export function ChatRow({ chat, active, me }: { chat: ChatSummary; active: boole
               className={cn(
                 "min-w-0 flex-1 truncate text-[13px] leading-[18px]",
                 unread ? "font-medium text-foreground" : "text-muted-foreground",
-                (chat.last_message?.hidden || !chat.last_message) && "italic",
+                !chat.work && (chat.last_message?.hidden || !chat.last_message) && "italic",
               )}
               data-testid="chat-row-last"
             >
-              {last}
+              {chat.work ? <WorkLine work={chat.work} /> : last}
             </span>
             {unread ? (
               <span

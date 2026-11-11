@@ -84,6 +84,8 @@ MIGRATIONS_RUN = (
     "0011_credentials.py",
     "0184_decision_approval.py",  # a CHECK constraint written as one SQL string, as it ran
     "0210_run_spend.py",  # a partial index written as one SQL string, as it ran
+    "0226_srs_use_case_revisions.py",  # the backfill of the use cases' revisions in SQL strings, as it ran
+    "0232_chat_opened_from.py",  # a partial index whose WHERE is one SQL string, as it ran
 )
 # Migrations that have run: each is the record of how databases at its revision were built, so the guard leaves
 # them as they are. A new migration is written with Alembic's operations on evo_agents.hub.tables.
@@ -93,11 +95,17 @@ MIGRATIONS_RUN_PATHS = frozenset(f"evo_agents/hub/migrations/versions/{name}" fo
 ALLOWED_SQL: dict[str, re.Pattern] = {
     # LISTEN has no SQLAlchemy construct; the listener keeps a psycopg connection of its own for it.
     "evo_agents/hub/server/listen.py": re.compile(r"^LISTEN\b"),
+    # The relay of the event bus listens on bus.CHANNEL the same way, on a psycopg connection of its own.
+    "evo_agents/hub/deliverer.py": re.compile(r"^LISTEN\b"),
+    # The test of wake-ups listens on a channel as the listener does, to see what a transaction notifies.
+    "tests/hub/test_wake.py": re.compile(r"^LISTEN\b"),
     # A test's database and its owner role, made, copied, handed over and dropped by a superuser outside any hub
     # database; REASSIGN OWNED, which gives a copy's objects to its own role, has no SQLAlchemy construct either.
     "tests/hub/pg.py": re.compile(r"^(?:CREATE|ALTER|DROP)\s+(?:DATABASE|ROLE)\b"),
 }
-ALLOWED_PSYCOPG_SQL = frozenset({"evo_agents/hub/server/listen.py", "tests/hub/pg.py"})  # quotes their identifiers
+ALLOWED_PSYCOPG_SQL = frozenset(  # quotes their identifiers
+    {"evo_agents/hub/server/listen.py", "evo_agents/hub/deliverer.py", "tests/hub/pg.py"}
+)
 ALLOWED_DRIVER = frozenset(
     {
         "evo_agents/hub/jobs.py",  # procrastinate defers a job on the psycopg connection of the caller's transaction

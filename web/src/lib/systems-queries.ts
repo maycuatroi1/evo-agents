@@ -22,8 +22,10 @@ export const systemKeys = {
   metrics: (project: string, slug: string) => ["projects", project, "systems", "one", slug, "metrics"] as const,
 };
 
-/** The recent traces a system's pages hold: the test sheet's and Observe's list. */
-export const TRACE_LIST_LIMIT = 20;
+/** The recent traces a system's pages hold: Observe's work list. */
+export const TRACE_LIST_LIMIT = 50;
+/** The window of the numbers above Observe's work list. */
+export const WORK_SUMMARY_HOURS = 24;
 
 export const REVISION_CONFLICT = "revision_conflict";
 
@@ -74,6 +76,17 @@ export const systemMetricsQuery = (api: ApiSource, project: string, slug: string
       call(api().GET("/v1/projects/{project}/systems/{slug}/metrics", { params: { path: { project, slug } }, signal })),
   });
 
+/** The numbers of a system's work over the last `hours` (under the metrics' key, so the trace stream reads them
+ * again as a trace moves). */
+export const systemWorkSummaryQuery = (api: ApiSource, project: string, slug: string, hours = WORK_SUMMARY_HOURS) =>
+  queryOptions({
+    queryKey: [...systemKeys.metrics(project, slug), "work", hours] as const,
+    queryFn: ({ signal }) =>
+      call(
+        api().GET("/v1/projects/{project}/systems/{slug}/work/summary", { params: { path: { project, slug }, query: { hours } }, signal }),
+      ),
+  });
+
 /** The stream of a system's traces as they move, from `after` (an ISO time the hub wrote) or from now. */
 export function systemTraceStreamPath(project: string, slug: string, after: string | null): string {
   const path = `/v1/projects/${encodeURIComponent(project)}/systems/${encodeURIComponent(slug)}/traces/stream`;
@@ -88,9 +101,9 @@ export function systemHref(project: string, slug: string): Route {
   return `${systemsHref(project)}/${encodeURIComponent(slug)}` as Route;
 }
 
-/** The system's page in Observe mode. */
-export function systemObserveHref(project: string, slug: string): Route {
-  return `${systemHref(project, slug)}?mode=observe` as Route;
+/** The system's page in Observe mode, with one work selected when given. */
+export function systemObserveHref(project: string, slug: string, work?: number | null): Route {
+  return `${systemHref(project, slug)}?mode=observe${work ? `&work=${work}` : ""}` as Route;
 }
 
 /** The page of one trace of a system, with its waterfall. */

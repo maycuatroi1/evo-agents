@@ -1,89 +1,43 @@
 name: ci
 
-# Runs on a v* tag only, through release.yml, or by hand. A pull request and a push to main run no ci: the agent that
-# makes a change tests the cases it puts at risk on its own machine, merges, and main deploys to the hub at once
-# (deploy.yml). Two weights. The full one, which release.yml runs before it builds anything: Linux, macOS and Windows on
-# Python 3.11 and 3.12, the web's checks and its end-to-end tests. The light one, a manual run without `full`: Linux on
-# Python 3.12, the Python of the hub's image, and the web. The full one also runs the lint job: ruff, ruff format,
-# import-linter, the structure budgets of tests/test_structure.py and basedpyright against tests/type_baseline.json
-# (docs/structure.md), so a tag keeps the structure, types and lint main has. A plain pytest still leaves the structure
-# tests out.
+# Guards what PyPI gets. release.yml runs it on a v* tag before it builds the wheel; a pull request and a push to main
+# run no ci: the agent that makes a change tests the cases it puts at risk on its own machine, merges, and main deploys
+# to the hub at once (deploy.yml). The gate is the Python suite on Linux with Python 3.12, the Python of the hub's image,
+# and an import of every module on Python 3.11, the oldest version requires-python names. The checks of what the wheel
+# does not ship, or that found no fault of their own in the tags of 2026-11 (lint, structure and types, Windows, the
+# web, the hub's image, the core plugins' suite), run only by hand, with `extras`.
 on:
   workflow_call:
-    inputs:
-      full:
-        description: "Python 3.11 too, and macOS and Windows"
-        type: boolean
-        default: true
   workflow_dispatch:
     inputs:
-      full:
-        description: "Python 3.11 too, and macOS and Windows"
+      extras:
+        description: "Also lint, Windows, the web, the hub's image and the core plugins' suite"
         type: boolean
-        default: true
+        default: false
 
-# A new push to a pull request cancels the run of the push before it; every other run goes to the end.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  # What a pull request touches, so a change to web/ alone skips the Python tests and a change to the tests or the
-  # docs alone skips the web. Every other run runs everything. The Python tests count every file outside web/ (they
-  # read docs/, plugins/ and the harness files too) and the two files of web/ they read: package.json, which
-  # tests/release/test_versions.py checks names no version, and README.md, which tests/hub/test_contract.py reads.
-  # The web counts web/ and the package, since its end-to-end tests run against `hub serve` from this checkout, but
-  # not the knowledge graph builder (evo_agents/kg/) or a markdown file: a pull request that changes only those, the
-  # tests or the docs runs the Python tests alone, and its merge into main runs the web as every push does.
-  changes:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      python: ${{ github.event_name != 'pull_request' || steps.filter.outputs.python == 'true' || steps.filter.outputs.read_by_python == 'true' }}
-      web: ${{ github.event_name != 'pull_request' || steps.filter.outputs.web == 'true' }}
-      full: ${{ inputs.full == true }}
-      pythons: ${{ inputs.full == true && '["3.11", "3.12"]' || '["3.12"]' }}
-    steps:
-      - id: filter
-        if: github.event_name == 'pull_request'
-        uses: dorny/paths-filter@v4
-        with:
-          predicate-quantifier: some-with-excludes
-          filters: |
-            python:
-              - '**'
-              - '!web/**'
-            read_by_python:
-              - 'web/package.json'
-              - 'web/README.md'
-            web:
-              - 'web/**'
-              - 'evo_agents/**'
-              - 'pyproject.toml'
-              - '.github/workflows/ci.yml'
-              - '!evo_agents/kg/**'
-              - '!**/*.md'
-
-  # Linux runs everything, the hub tests included, against a Postgres service container, in five jobs per Python that
-  # run in parallel: tests/worker in one, where with the worker extra and tmux the daemon runs against a hub end to
+  # Linux runs everything, the hub tests included, against a Postgres service container, in five jobs that run in
+  # parallel: tests/worker in one, where with the worker extra and tmux the daemon runs against a hub end to
   # end, takeover and handback in tmux included, and the rest of the suite in four parts (EVO_TEST_SHARD, which
   # tests/conftest.py reads: each part keeps every fourth test of the collection, so the four run each test once).
-  # Every job prints its 20 slowest tests.
+  # Every job prints its 20 slowest tests. A test gets 300 s (pytest-timeout, pyproject.toml) and a job 30 minutes: a
+  # hung test had held four parts of v0.62.0 for five hours.
   #
   # The Postgres of a job is thrown away with it, so it keeps its data in memory (tmpfs) and writes nothing through:
-  # every hub test creates a database from a template and drops it, and those writes cost more than most tests.
+  # every hub test creates a database from a template and drops it, and those writes cost more than most tests. It
+  # logs only fatal errors: the unique violations procrastinate's queueing locks raise by design were most of the log.
   test:
-    name: test (ubuntu-latest, ${{ matrix.python }}, ${{ matrix.part }})
-    needs: changes
-    if: needs.changes.outputs.python == 'true'
+    name: test (ubuntu-latest, 3.12, ${{ matrix.part }})
     strategy:
       fail-fast: false
       matrix:
-        python: ${{ fromJSON(needs.changes.outputs.pythons) }}
         part: ["1/4", "2/4", "3/4", "4/4", worker]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16
@@ -114,15 +68,16 @@ jobs:
       EVO_HUB_TEST_REQUIRE_DSN: "1"
       EVO_HUB_TEST_BROKER_URL: amqp://guest:guest@localhost:5672/
     steps:
-      - name: Postgres without fsync
+      - name: Postgres without fsync, logging fatal errors only
         run: >-
           docker exec ${{ job.services.postgres.id }} psql -U postgres -q
           -c "ALTER SYSTEM SET fsync = off" -c "ALTER SYSTEM SET synchronous_commit = off"
-          -c "ALTER SYSTEM SET full_page_writes = off" -c "SELECT pg_reload_conf()"
+          -c "ALTER SYSTEM SET full_page_writes = off" -c "ALTER SYSTEM SET log_min_messages = 'fatal'"
+          -c "SELECT pg_reload_conf()"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: "3.12"
       # uv installs into the interpreter setup-python put on PATH, which keeps its pip for tests/hub/test_wheel.py.
       - uses: astral-sh/setup-uv@v10.2.0 # setup-uv tags releases only, no major tag
         with:
@@ -144,6 +99,28 @@ jobs:
         if: matrix.part == 'worker'
         run: pytest -q -n 4 --durations=20 tests/worker
 
+  # The oldest Python requires-python names: every module of evo_agents imports, with every extra installed
+  # (scripts/import_every_module.py). The suite itself runs on 3.12 only; 3.11 failed no test of its own in the tags of
+  # 2026-11.
+  py311:
+    name: import on Python 3.11
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v10.2.0 # setup-uv tags releases only, no major tag
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - run: uv pip install --system -e '.[graphify,hub-server,worker,ingest]'
+      - run: python -m compileall -q evo_agents
+      - run: python scripts/import_every_module.py
+
+  # The jobs below run only by hand with `extras`: none of them gates the wheel.
+
   # The plugin host as production runs it, which no other job reaches: as root in the hub's image with only the
   # capabilities of the plugins service (SETUID, SETGID, CHOWN, KILL), no-new-privileges, an init as pid 1 that holds
   # the hub's variables, and a fresh named volume at /plugins, so each backend gets a user of its own (isolation uid).
@@ -153,8 +130,7 @@ jobs:
   # in this image (uvloop, from uvicorn[standard]), as the plugins service runs it; the other tests run on asyncio's.
   plugin-host-root:
     name: plugin-host-root
-    needs: changes
-    if: needs.changes.outputs.python == 'true'
+    if: inputs.extras
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -186,8 +162,7 @@ jobs:
   # tests/plugins/test_core_install_image.py runs it all in Docker.
   core-plugins-image:
     name: core-plugins-image
-    needs: changes
-    if: needs.changes.outputs.python == 'true'
+    if: inputs.extras
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -211,8 +186,7 @@ jobs:
   # in that repository's nightly run against main.
   core-plugins-suite:
     name: core-plugins-suite
-    needs: changes
-    if: needs.changes.outputs.python == 'true'
+    if: inputs.extras
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -263,14 +237,13 @@ jobs:
         working-directory: evo-agents-core-plugins
         run: make test PYTEST_ARGS="-n 4 --durations=20"
 
-  # The full run only: lint, structure and types. ruff and its formatter, the package boundaries of import-linter, the
+  # Lint, structure and types. ruff and its formatter, the package boundaries of import-linter, the
   # budgets and baselines of tests/test_structure.py against main (EVO_STRUCTURE_BASE makes a missing origin/main fail
   # rather than skip), and basedpyright, in the environment of a worker's run (the extras of [tool.evo-agents.worker]),
   # in which tests/type_baseline.json was made.
   lint:
     name: lint
-    needs: changes
-    if: needs.changes.outputs.full == 'true' && needs.changes.outputs.python == 'true'
+    if: inputs.extras
     runs-on: ubuntu-latest
     env:
       EVO_STRUCTURE_BASE: origin/main
@@ -294,44 +267,18 @@ jobs:
       - run: python -m pytest -q -m structure tests/test_structure.py
       - run: python -m basedpyright
 
-  # The full run only. Service containers run on Linux only: macOS and Windows install the core package without the
-  # hub-server and worker extras, and with EVO_HUB_TEST_DSN unset the hub tests skip, and so do the worker tests that
-  # need a hub or the worker's SDKs.
-  test-macos:
-    name: test (macos-latest, ${{ matrix.python }})
-    needs: changes
-    if: needs.changes.outputs.full == 'true' && needs.changes.outputs.python == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.11", "3.12"]
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - uses: astral-sh/setup-uv@v10.2.0 # setup-uv tags releases only, no major tag
-        with:
-          enable-cache: true
-          cache-dependency-glob: pyproject.toml
-      - run: uv pip install --system -e '.[test,graphify]'
-      - run: pytest -q
-
+  # Windows on Python 3.12, without the hub-server and worker extras: with EVO_HUB_TEST_DSN unset the hub tests skip,
+  # and so do the worker tests that need a hub or the worker's SDKs.
   test-windows:
-    name: test (windows-latest, ${{ matrix.python }})
-    needs: changes
-    if: needs.changes.outputs.full == 'true' && needs.changes.outputs.python == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.11", "3.12"]
+    name: test (windows-latest, 3.12)
+    if: inputs.extras
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
+          python-version: "3.12"
       - uses: astral-sh/setup-uv@v10.2.0 # setup-uv tags releases only, no major tag
         with:
           enable-cache: true
@@ -344,8 +291,7 @@ jobs:
   # this checkout's Python but no database.
   web-check:
     name: web-check
-    needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: inputs.extras
     runs-on: ubuntu-latest
     env:
       PYTHON: python
@@ -402,8 +348,7 @@ jobs:
   # in Firefox too (playwright.config.ts).
   web-e2e:
     name: web-e2e (${{ matrix.shard }}/6)
-    needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: inputs.extras
     strategy:
       fail-fast: false
       matrix:
@@ -476,20 +421,18 @@ jobs:
             web/e2e/.stack/hub-serve.log
           retention-days: 7
 
-  # The check the main branch's ruleset requires: green when every job above passed or was skipped because the run is
-  # light or the pull request does not touch what it tests, red when one failed or was cancelled, or when `changes`
-  # itself did not run.
+  # The result release.yml waits for: green when every job above passed or was skipped because `extras` is off, red when
+  # one failed or was cancelled.
   ci-ok:
     name: ci-ok
     if: always()
     needs:
-      - changes
       - test
+      - py311
       - lint
       - plugin-host-root
       - core-plugins-image
       - core-plugins-suite
-      - test-macos
       - test-windows
       - web-check
       - web-e2e
@@ -499,4 +442,4 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$NEEDS" | jq -e '.changes.result == "success" and all(.[]; .result == "success" or .result == "skipped")'
+          echo "$NEEDS" | jq -e '.test.result == "success" and .py311.result == "success" and all(.[]; .result == "success" or .result == "skipped")'

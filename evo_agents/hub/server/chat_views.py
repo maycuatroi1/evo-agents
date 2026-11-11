@@ -29,6 +29,7 @@ from evo_agents.hub.server.output_views import RunOutput
 from evo_agents.hub.server.output_views import by_message as outputs_by_message
 from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select
 from evo_agents.hub.server.runs.models.attachment_parts import LinkedAttachment, linked
+from evo_agents.hub.server.work_status import WorkBrief, WorkCard, cards
 
 HUB_NAME = "hub"
 
@@ -169,6 +170,11 @@ class GroupMessage(BaseModel):
         description="the @handle of the agent that forwarded it verbatim from the run of its author "
         "(evo-agents worker agent forward); null when its author's run wrote it",
     )
+    work: WorkCard | None = Field(
+        None,
+        description="the work card of a trace of an agent system, on the hub's message that carries it in the trace's "
+        "root thread; a message_changed event says it changed. Null on every other message",
+    )
 
 
 class Chat(BaseModel):
@@ -253,6 +259,9 @@ class ChatSummary(BaseModel):
         )
     )
     last_message: ChatLastMessage | None = Field(description="the latest message of its main line; null for none")
+    work: WorkBrief | None = Field(
+        None, description="of a work chat (kind work): its trace's system, title, status and what it waits for"
+    )
 
 
 class ChatPage(BaseModel):
@@ -531,6 +540,7 @@ async def messages_view(
     attached = await attachment_store.of_messages(conn, ids)
     bridged = await _bridged(conn, ids)
     forwarders = await _forwarders(conn, shown)
+    work = await _work_cards(conn, ids)
     return [
         GroupMessage(
             id=row.id,
@@ -552,9 +562,19 @@ async def messages_view(
             bridged_to=bridged.get(row.id, []),
             from_answer=row.from_output_id,
             forwarded_by=forwarders.get(row.id),
+            work=work.get(row.id),
         )
         for row in shown
     ]
+
+
+async def _work_cards(conn: AsyncConnection, ids: list[int]) -> dict[int, WorkCard]:
+    """The work card each message of ``ids`` that carries one carries (``work_cards``), by message id."""
+    t = tables.system_traces
+    query = select(t.c.card_message_id, t.c.id).where(one_of(t.c.card_message_id, ids))
+    carried = {message: trace for message, trace in await conn.execute(query)}
+    found = await cards(conn, list(carried.values())) if carried else {}
+    return {message: found[trace] for message, trace in carried.items() if trace in found}
 
 
 async def _forwarders(conn: AsyncConnection, rows) -> dict[int, str]:

@@ -439,6 +439,7 @@ async def store_decision(
     await write_event(
         conn, run_id, {"text": shown, "decision": {"id": decision_id, "category": body.category, "step": key}}
     )
+    await _card_moved(conn, decision_id)
     return await decision_view(conn, decision_id)
 
 
@@ -690,6 +691,14 @@ async def _record_answer(
         .values(read_at=func.now())
         .where(n.c.decision_id == decision_id, n.c.user_id == user.user_id, n.c.read_at.is_(None))
     )
+    await _card_moved(conn, decision_id)
+
+
+async def _card_moved(conn: AsyncConnection, decision_id: int) -> None:
+    """The work card of the trace of decision ``decision_id``'s run refreshed (``work_cards``)."""
+    from evo_agents.hub.server.work_cards import decision_moved  # it hands work through modules that import this one
+
+    await decision_moved(conn, decision_id)
 
 
 async def _go_on_local(conn: AsyncConnection, run_id: int) -> None:

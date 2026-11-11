@@ -21,7 +21,7 @@ from evo_agents.hub import system_context, tables
 from evo_agents.hub.server import system_store, system_traces
 
 
-async def _usage(conn: AsyncConnection, trace_ids: list[int]) -> dict[int, tuple[int, float, int | None]]:
+async def tree_usage(conn: AsyncConnection, trace_ids: list[int]) -> dict[int, tuple[int, float, int | None]]:
     """{trace: (runs, USD, deepest hop)}, the tree and cost of ``system_traces.usage`` for each trace."""
     s, r, rs = tables.system_spans, tables.runs, tables.run_spend
     seeds = select(s.c.trace_id, s.c.run_id.label("id")).where(
@@ -102,7 +102,7 @@ async def numbers(conn: AsyncConnection, traces: list[tuple[int, int | None, int
     trace_ids = [trace_id for trace_id, _, _ in traces]
     if not trace_ids:
         return {}
-    used = await _usage(conn, trace_ids)
+    used = await tree_usage(conn, trace_ids)
     refusals = await _refusals(conn, trace_ids)
     threads = await _threads(conn, trace_ids)
     crossings = await _crossings(conn, trace_ids)

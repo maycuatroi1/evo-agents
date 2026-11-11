@@ -903,7 +903,12 @@ and the branch. A chat run that asks nothing ends after its turn.
 ### Handing work to another agent
 
 `evo-agents worker agent ask HANDLE TEXT` hands work to another agent and waits for its answer (`docs/hub.md`, Agents
-across projects). A brief makes the handoff clear; each field is optional, and an ask with none works as before:
+across projects). For a run of a trace of an agent system, the question goes in the trace's work chat, in the thread
+of the agent asked, and asking that agent again goes back to its thread (`docs/hub.md`, Work chats); an agent of
+another project gets it in the direct chat, with a line in the work chat. A person who mentions an agent of a system
+in a direct chat (Home) reaches the system's entry agent through its work chat, not the agent (`docs/hub.md`, Direct
+chats). A brief makes the handoff clear; each field
+is optional, and an ask with none works as before:
 
 | Flag | Body field | What |
 | --- | --- | --- |
@@ -915,7 +920,7 @@ across projects). A brief makes the handoff clear; each field is optional, and a
 | `--reason TEXT` | `reason` | why an agent of a system asks off its `interacts` edges |
 
 The brief heads the prompt of the run asked ("# Your brief from @handle (run #N)") and follows the question in the
-direct chat. The trace's span keeps which fields came (`evo.brief_fields`). The System section of a system agent's
+chat. The trace's span keeps which fields came (`evo.brief_fields`). The System section of a system agent's
 prompt tells it to give at least `--goal`, `--output` and `--done-when`. An agent of a system that asks an agent off
 its `interacts` edges without `--reason` is refused, and the refusal names the agents its edges lead to.
 
@@ -931,18 +936,36 @@ shows as written by RUN's agent and forwarded by this run's (`forwarded_by` in t
 trace of an agent system that has ended can be forwarded. Otherwise the hub refuses (201, `refusal`), says so in the
 thread, and the command exits 1.
 
+### The work of a trace
+
+The entry agent of an agent system, which coordinates a trace, names its work with `evo-agents worker work set`
+(`POST /v1/worker/runs/{id}/work`, body `{title, goal, done_when}`, each optional but one needed; 422 for none). The
+worker token that holds the run sends it. The hub keeps them on the trace, refreshes the work card in the root thread
+(`docs/hub.md`, Work chats) and answers with the card. It refuses with 409 a run in no trace with a work chat (a trace
+that handed no work over yet), and with 403 an agent that is not the system's entry agent. Without `--title` the card
+shows the first line of the person's message, at most 80 characters. A run of the hub runtime has the tool `work_set`
+for the same. The System section of the entry agent's prompt tells it that hand-offs open a work chat, to name the
+work with this command, and to give its final answer in the root thread.
+
+```sh
+evo-agents worker work set --title "Refund R-17" --goal "a decision on refund R-17" \
+  --done-when "the customer has the answer in the root thread"
+```
+
 ### Escalation
 
 An agent of an agent system asks the system's Orchestrator with `evo-agents worker escalate --question TEXT`
 (`POST /v1/worker/runs/{id}/escalate`, body `{question, goal, output, bounds, done_when, refs}`). The Orchestrator is
 the one with an `orchestrates` edge to the agent's node, else the one its `escalates` edge leads to. The hub opens a
-thread to it in the system's ops chat ("Ops: SLUG", `docs/hub.md`, The Orchestrator) and hands it the question at
+thread to it in the work chat of the run's trace, else in the system's ops chat ("Ops: SLUG", `docs/hub.md`, The
+Orchestrator), and hands it the question at
 the hop of the asking run: an escalation adds no hop, and the trace's budget does not refuse it. It opens a wait of
 the asking run, which the command notes as `worker wait` does. End the turn after it: the run parks and holds no
 worker. The Orchestrator's answer wakes it in the same session, or the end of the run of the agent the Orchestrator
 gives the work to. The brief flags (`--goal`, `--output`, `--bounds`, `--done-when`, `--ref`) are those of
 `agent ask` and head the thread. A refusal (the system names no Orchestrator for the agent, or the Orchestrator takes
-no work) comes back as `refusal` with 201, the thread of the asking run says it, and the command exits 1. A run of the
+no work) comes back as `refusal` with 201, the thread of the asking run (or the work chat) says it, and the command
+exits 1. A run of the
 hub runtime has the tool `escalate` for the same.
 
 ```sh

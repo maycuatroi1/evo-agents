@@ -39,7 +39,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   of their step is queued, or fail on their last attempt; runs past their timeout fail; a plan run that waited
   EVO_HUB_DECISION_WAIT_SECONDS (10 minutes by default) for an answer, or waits only for a time or an event of the hub,
   is parked, and one parked for 7 days cancelled
-  (``evo_agents.hub.server.run_state``). The runs that end give back their leases, and the GitHub tokens of every lease
+  (``evo_agents.hub.server.run_state``); a queued run dispatched with browser that no worker can take has its owner's
+  nearest worker that lacks only Chromium asked to install it (``evo_agents.hub.server.browser_install``). The runs that end give back their leases, and the GitHub tokens of every lease
   given back and not revoked at GitHub yet are revoked there (``evo_agents.hub.server.credentials``).
 - ``hub.deliver_notifications``, every minute, and queued by each transaction that stores a notification: the
   notification deliveries that are due, each handed to its channel's class, tried again with a backoff and failed
@@ -498,6 +499,7 @@ async def deliver_plugin_events(context: JobContext, timestamp: int | None = Non
     from evo_agents.hub.plugin_events import BUS_GRACE_SECONDS, deliver
 
     found = hub(context)
+    assert found.engine is not None  # the hub's worker opens its engine before its first job
     if not bus.on():
         return await deliver(found.engine, config=found.config)
     # The bus carries what falls due; the minute's pass takes what it left a while, and a pass the delivery process

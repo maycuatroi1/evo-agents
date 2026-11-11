@@ -133,12 +133,7 @@ if pg.DSN:
             ("refused", True, refused["refusal"]),
             ("ok", True, "the fix touches the review rules"),
         ]
-        (span,) = [s for s in spans_of(hub_db) if s["run_id"] == made["run_id"] and s["name"] == "invoke_agent"]
-        assert (span["from_node"], span["off_design"], span["reason"]) == (
-            "fix",
-            True,
-            "the fix touches the review rules",
-        )
+        assert made["run_id"] == parent, "the coordinator answers in its one session (work chats)"
 
     def test_an_agent_of_no_system_asks_as_before(client, hub, hub_db):
         studio = chat_worker(client, hub["owner"], "studio", slots=2)

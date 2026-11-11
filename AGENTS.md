@@ -17,3 +17,15 @@ a concrete workflow and the first steps. Put command catalogs, protocols, hooks 
   committing or opening a PR, read the diff, the message and the PR body for such names. The core plugin guard
   refuses them in runs and sessions too ([docs/guard.md](docs/guard.md)); a refusal names what to rewrite.
 - Use plain language in documentation. Do not use the middle-dot character as a separator.
+
+## Tests
+
+Development speed comes first; a bug that reaches main is fixed forward. The only CI is the release tag's, and it
+guards the PyPI wheel.
+
+- Add a test only for behavior that can break silently and that no existing test reaches: parsing, state transitions,
+  access rules, migrations, data that could be lost. Extend an existing test before writing a new one.
+- Do not pin what a change sets on purpose: a tuple of names, a count of tables or rows, a whole response or health
+  dict, help text, docs wording or UI copy. Assert the keys and the behavior a caller depends on.
+- No new end-to-end spec for a UI change unless the flow cannot be reached any other way.
+- Run the tests of what you changed, by node id. Delete a test that only restated what you changed on purpose.

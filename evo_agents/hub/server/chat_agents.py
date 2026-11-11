@@ -401,7 +401,7 @@ async def mention(request: Request, run_id: RunId, body: AgentMentionIn, user: C
         if opened is not None and body.handle in opened.refused:
             refusal = f"@{body.handle} is not in this direct chat, and no group chat could take it: "
             refusal += opened.refused[body.handle]
-        if direct is not None:
+        if direct is not None and opened is not None:
             await hub_reply(conn, direct[0].chat_id, direct[1], opened.note())
         if refusal is not None:
             await hub_reply(conn, chat.chat_id, root or message_id, f"@{body.handle}: {refusal}")
@@ -441,6 +441,7 @@ async def create_chat(request: Request, run_id: RunId, body: AgentChatIn, user: 
             await add_member(conn, chat_id, user_id=user_id, added_by=origin.user_id, added_by_run_id=run_id)
             await member_event(conn, chat_id, "member_added", person_author(login), by)
         chat = await agent_access(conn, chat_id, profile, origin.user_id)
+        assert chat is not None  # the agent was added to the chat just above
         for other in others:  # the label checks of adding an agent, with the people in it now
             await put_agent(conn, origin, chat, other)
         chat = await agent_access(conn, chat_id, profile, origin.user_id)

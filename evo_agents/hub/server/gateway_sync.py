@@ -235,6 +235,9 @@ class GatewaySync:
             asked = self._asked
             self._wake.clear()
             await self.round()
+            task = asyncio.current_task()
+            if task is not None and task.cancelling():  # a round that caught the cancellation as a failure: stop now
+                raise asyncio.CancelledError
             async with self._changed:
                 self._done = asked
                 self._changed.notify_all()

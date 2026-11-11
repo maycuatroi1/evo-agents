@@ -44,8 +44,9 @@ For documentation changes, check the CLI examples as well as links and anchors:
 python -m pytest -q tests/hub/test_contract.py::test_the_docs_of_this_repository_pass tests/kg/test_cross_repo_scope.py
 ```
 
-Pull requests and pushes to main do not run the full CI suite. It runs for release tags or manual dispatch;
-local verification belongs in the pull request description. See [structure checks](docs/structure.md) for package
+Pull requests and pushes to main run no CI. A release tag runs the Python suite on Python 3.12 and an import of every
+module on Python 3.11 before it publishes to PyPI; lint, Windows, the web and the hub's image run only in a CI run
+started by hand with `extras`. Local verification belongs in the pull request description. See [structure checks](docs/structure.md) for package
 boundaries and size limits.
 
 ## Repository layout

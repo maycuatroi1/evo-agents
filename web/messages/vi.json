@@ -4122,17 +4122,9 @@
       "offDesignLabel": "Ngoài thiết kế từ {from} tới {to}: {count} lượt đi qua",
       "a11yNode": "Chọn một ô để xem số liệu của nó.",
       "canvas": "Việc đi qua hệ thống agent",
-      "panel": "Số liệu và trace",
-      "observing": "Bản {revision} khi chạy: trạng thái và số liệu của từng ô, và việc đi qua từng cạnh.",
+      "panel": "Số liệu của ô đang chọn",
       "streamFailing": "Cập nhật trực tiếp đã dừng; đang thử lại.",
       "streamEnded": "Cập nhật trực tiếp đã kết thúc: bạn không còn quyền đọc dự án này.",
-      "recentTraces": "Trace gần đây",
-      "tracesFailed": "Không tải được trace.",
-      "noTraces": "Chưa có trace. Một tin nhắn tới agent đầu vào sẽ mở một trace.",
-      "traceTitle": "Trace {id}",
-      "traceRuns": "{runs} lượt chạy",
-      "traceErrors": "{count} lỗi",
-      "traceOff": "{count} ngoài thiết kế",
       "seconds": "{seconds} s",
       "closeDetail": "Đóng số liệu",
       "detail": {
@@ -4144,6 +4136,114 @@
         "tokens": "Token",
         "usd": "Chi phí",
         "scope": "Tính trên 50 trace gần nhất của hệ thống mà bạn được đọc."
+      },
+      "work": {
+        "summary": {
+          "label": "Việc trong 24 giờ qua",
+          "open": "Đang mở",
+          "needsPerson": "Cần người",
+          "failed": "Lỗi",
+          "closeTime": "Trung vị thời gian đóng",
+          "cost": "Chi phí",
+          "withheld": "{count, plural, other {Bỏ qua # việc bạn không được đọc}}",
+          "failedToLoad": "Không tải được số liệu 24 giờ qua."
+        },
+        "filters": {
+          "label": "Hiện việc",
+          "all": "Tất cả",
+          "needs_you": "Cần bạn",
+          "running": "Đang chạy",
+          "failed": "Lỗi",
+          "done": "Xong",
+          "count": "{count, plural, other {# việc}}",
+          "shown": "{shown} trên {total}"
+        },
+        "status": {
+          "running": "Đang chạy",
+          "needs_person": "Cần người",
+          "failed": "Lỗi",
+          "done": "Xong",
+          "unknown": "Không rõ"
+        },
+        "columns": {
+          "work": "Việc",
+          "status": "Trạng thái",
+          "agent": "Đang ở",
+          "waiting": "Đang chờ",
+          "time": "Thời gian",
+          "runs": "Lượt chạy",
+          "cost": "Chi phí",
+          "open": "Mở"
+        },
+        "listLabel": "Việc của {name}",
+        "caption": "Việc của hệ agent {name}, mới nhất trước",
+        "untitled": "Việc {id}",
+        "noAgent": "Không có",
+        "waitsRun": "{agent} trả lời",
+        "waitsPerson": "{login} ở lượt chạy",
+        "waitsDecision": "{login} trả lời: {question}",
+        "waitsNothing": "Không gì",
+        "costOfBudget": "{usd} trên {budget}",
+        "budgetLabel": "Chi phí của việc {id} so với ngân sách",
+        "runs": "{count, plural, other {# lượt chạy}}",
+        "openChat": "Work chat",
+        "openChatLabel": "Mở work chat của việc {id}",
+        "openTrace": "Trace",
+        "openTraceLabel": "Mở trace của việc {id}",
+        "select": "Xem việc {id} trên timeline và bản đồ",
+        "mobileAt": "Ở {agent}",
+        "mobileWaits": "Chờ {waiting}",
+        "empty": "Chưa có việc",
+        "emptyDescription": "Một tin nhắn tới agent đầu vào sẽ mở một việc.",
+        "noMatch": "Không có việc nào khớp bộ lọc này.",
+        "showAll": "Hiện tất cả",
+        "failedToLoad": "Không tải được danh sách việc.",
+        "retry": "Thử lại",
+        "duration": {
+          "hours": "{hours} giờ {minutes} phút",
+          "minutes": "{minutes} phút {seconds} giây",
+          "seconds": "{seconds} giây"
+        },
+        "detail": {
+          "label": "Việc {id}",
+          "close": "Đóng việc {id}",
+          "failedToLoad": "Không tải được việc này.",
+          "stats": "{runs}, {cost}, {time}",
+          "goal": "Mục tiêu",
+          "doneWhen": "Xong khi"
+        },
+        "timeline": {
+          "title": "Timeline theo agent",
+          "empty": "Chưa lượt chạy nào của việc này bắt đầu.",
+          "axis": "Thời gian từ khi việc bắt đầu",
+          "lane": "Các lượt chạy của {agent}",
+          "bar": "{kind}, từ {start} tới {end}",
+          "barOpen": "{kind}, từ {start}",
+          "mark": "Hỏi {login}: {question}",
+          "markAnswered": "Đã hỏi {login}, đã trả lời: {question}",
+          "someone": "một người",
+          "legend": "Chú giải timeline",
+          "kinds": {
+            "queued": "Xếp hàng",
+            "running": "Đang chạy",
+            "done": "Xong",
+            "failed": "Lỗi",
+            "parked": "Tạm dừng",
+            "waiting": "Chờ câu trả lời",
+            "needsPerson": "Cần người"
+          }
+        },
+        "handoffs": {
+          "title": "Giao việc",
+          "count": "{count, plural, other {# lần giao}}",
+          "offDesign": "{count} ngoài thiết kế",
+          "empty": "Không giao việc: agent đầu vào tự làm hết.",
+          "route": "{from} tới {to}",
+          "refused": "Bị từ chối",
+          "offDesignTag": "Ngoài thiết kế"
+        },
+        "map": "Đường đi của việc {id} qua hệ thống",
+        "mapAll": "Việc đi qua hệ thống"
       }
     },
     "traceView": {
@@ -4525,6 +4625,106 @@
         "accounts": "Account"
       },
       "defaultAccounts": "Agent mặc định của dự án không có account riêng: run của nó dùng secret của người giao việc."
+    },
+    "work": {
+      "status": {
+        "running": "Đang chạy",
+        "needs_person": "Cần người",
+        "failed": "Thất bại",
+        "done": "Xong"
+      },
+      "waiting": {
+        "run": "Đang chờ @{agent}",
+        "runAny": "Đang chờ một agent",
+        "person": "Đang chờ {login}",
+        "personAny": "Đang chờ một người",
+        "decision": "Đang chờ {login} quyết định",
+        "decisionAny": "Đang chờ một quyết định",
+        "atWork": "@{agent} đang làm",
+        "nothing": "Không chờ ai",
+        "done": "Xong",
+        "failed": "Dừng vì lỗi"
+      },
+      "time": {
+        "hours": "{hours} giờ {minutes} phút",
+        "minutes": "{minutes} phút",
+        "seconds": "{seconds} giây"
+      },
+      "totals": "{runs, plural, other {# lượt chạy}}, {cost}, {time}",
+      "placeholder": "Gửi tới @{coordinator}, người điều phối, trừ khi bạn @ một agent",
+      "placeholderAny": "Gửi tới người điều phối trừ khi bạn @ một agent",
+      "list": {
+        "group": "{name}",
+        "line": "{status}: {waiting}",
+        "done": "{count, plural, other {# việc đã xong}}",
+        "doneLabel": "Các việc đã xong của {name}"
+      },
+      "head": {
+        "number": "Việc #{id}",
+        "system": "Hệ thống",
+        "observe": "Mở {name} trong Observe",
+        "coordinator": "Điều phối"
+      },
+      "card": {
+        "title": "Thẻ công việc",
+        "show": "Hiện chi tiết",
+        "hide": "Ẩn chi tiết",
+        "goal": "Mục tiêu",
+        "doneWhen": "Xong khi",
+        "noGoal": "Chưa đặt mục tiêu",
+        "noDoneWhen": "Chưa đặt",
+        "runs": "Lượt chạy",
+        "cost": "Chi phí",
+        "hop": "Bước",
+        "time": "Thời gian",
+        "of": "{value} trên {max}",
+        "subTasks": "Việc con",
+        "noSubTasks": "Chưa có việc con",
+        "agent": "Agent",
+        "status": "Trạng thái",
+        "brief": "Yêu cầu",
+        "refused": "Bị từ chối",
+        "openThreadOf": "Mở luồng của @{agent}",
+        "decisions": "Quyết định",
+        "orchestrator": "Orchestrator",
+        "askedOf": "Hỏi {login}",
+        "answered": "Trả lời: {answer}",
+        "decisionFailed": "Không tải được quyết định này",
+        "notFound": "Chat này không có thẻ công việc bạn xem được",
+        "forbidden": "Quyền của bạn không còn đủ cho nhãn của việc này",
+        "failed": "Không tải được thẻ công việc",
+        "retry": "Thử lại"
+      },
+      "ask": {
+        "ask": "@{from} đã hỏi @{to}",
+        "escalate": "@{from} đã chuyển lên @{to}",
+        "reassign": "Đã giao lại từ @{from} cho @{to}",
+        "refusedTitle": "@{from} đã hỏi, hub từ chối",
+        "refused": "Bị từ chối",
+        "error": "Lỗi",
+        "brief": "Yêu cầu:",
+        "answer": "Trả lời:",
+        "noAnswer": "Chưa có trả lời",
+        "inThread": "Đã trả lời trong luồng",
+        "openThread": "Mở luồng",
+        "openThreadOf": "Mở luồng của @{agent}"
+      },
+      "exception": {
+        "title": "Orchestrator: {rule}",
+        "titleAny": "Orchestrator",
+        "deciding": "Đang quyết định",
+        "decided": "Đã quyết định",
+        "outcome": "Quyết định:",
+        "outcomes": {
+          "answer": "Đã trả lời",
+          "reassign": "Đã giao lại",
+          "ask_owner": "Đã hỏi chủ sở hữu"
+        }
+      },
+      "root": {
+        "open": "Mở chat công việc",
+        "done": "Xong: {totals}"
+      }
     }
   },
   "accounts": {

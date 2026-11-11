@@ -18,7 +18,7 @@ error body; nothing is written.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, Path, Query, Request, Response
 from sqlalchemy.exc import IntegrityError
@@ -59,7 +59,9 @@ IMAGE_BODY = {
         "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}},
     }
 }
-PAGE = {200: {"content": {"text/html": {}}, "description": "the HTML version as a page, under a sandbox"}}
+PAGE: dict[int | str, dict[str, Any]] = {
+    200: {"content": {"text/html": {}}, "description": "the HTML version as a page, under a sandbox"}
+}
 IMAGE = {
     200: {"content": {"image/png": {}}, "description": "the image's bytes, in its own media type"},
     304: {"description": "the image the browser holds, named by If-None-Match"},

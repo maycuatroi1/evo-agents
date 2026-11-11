@@ -13,6 +13,9 @@ whose members never change; or a settle chat (SETTLE), a group chat the hub open
 one agent, such as the conflicts @ba found in a version of a BA document (the core plugin srs). A direct or a settle
 chat names its agent (ATTENDED): each message of a person whose mentions do not reach it is work for it, as if it
 mentioned it (``via`` DIRECT, or SETTLE), and in a settle chat a member who only reads the agent's project wakes it too.
+A work chat (WORK) is a group chat the hub opens for one trace of an agent system, at its first hand-off, where the
+agents of the system that the work goes to answer in threads of their own (``evo_agents.hub.server.work_chats``);
+everything else treats it as a group chat.
 
 A group chat may have an image, which its members set (``image_url``); a direct chat has none, since its face is its
 agent's avatar. A person shows with the avatar of their GitHub account (``github_avatar``), the one image the web
@@ -58,7 +61,8 @@ EYES, CHECK, CROSS = "\U0001f440", "✅", "❌"
 STATUS_REACTIONS = {"leased": EYES, "done": CHECK, "failed": CROSS, "cancelled": CROSS}
 
 GROUP, DIRECT, SETTLE, ANSWER, REPLY = "group", "direct", "settle", "answer", "reply"
-CHAT_KINDS = (GROUP, DIRECT, SETTLE)
+WORK = "work"
+CHAT_KINDS = (GROUP, DIRECT, SETTLE, WORK)
 ATTENDED = (DIRECT, SETTLE)  # the kinds that name an agent (chats.direct_profile_id) each message of a person wakes
 # How a mention reached its member; thread: no @, a chat of one person; direct: no @ of the agent, a direct chat;
 # settle: no @ of the agent, a settle chat; answer: sent from an interactive answer of the agent; reply: no @ of

@@ -168,7 +168,7 @@ async def list_documents(
     return await _answer(request, work)
 
 
-def _held_by(settings: store.Settings, running, deciding) -> str | None:
+def _held_by(settings: store.Settings, running, deciding) -> Literal["ba_review", "findings"] | None:
     """What holds an approval now: @ba's review of the round, else open findings to decide; nothing of @ba holds one
     with the config's ``wait_for_ba`` off."""
     if not settings.wait_for_ba:

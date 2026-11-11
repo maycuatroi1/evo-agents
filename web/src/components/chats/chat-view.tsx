@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import { FileDropFrame } from "@/components/data/attachments";
 import { OpenDocContext } from "@/components/data/doc-buttons";
@@ -35,6 +35,7 @@ import { useChatFailure, useMe } from "./hooks";
 import { preview, type Quote } from "./line-model";
 import { type MessageSlot } from "./message-item";
 import { MessageList } from "./message-list";
+import { OpenThreadContext } from "./open-thread";
 import { useAuthorLabel } from "./message-parts";
 import { ThreadPanel } from "./thread-panel";
 import { ThreadResizeHandle, useThreadWidth } from "./thread-width";
@@ -57,6 +58,8 @@ const DOC_COLUMN_QUERY = "(min-width: 64rem)";
  */
 export type UseUnder = (feed: Feed, ended: boolean) => MessageSlot | undefined;
 const useNothingUnder: UseUnder = () => undefined;
+/** What a work chat's page adds: its work card pinned under the head, and the composer's own words. */
+export type ChatSlots = { pinned?: ReactNode; placeholder?: string };
 
 /**
  * A chat's page (web/DESIGN.md, Chats): its head, its messages, live, and the composer; a thread beside it from 2xl
@@ -68,7 +71,8 @@ const useNothingUnder: UseUnder = () => undefined;
  * direct chat Reply answers a message from the chat's own composer, in its thread, so the agent's session goes on.
  * With `agentPanels`, an agent's face or name opens its menu (`agent-menu.tsx`), whose Workers and pools and Accounts
  * open the agent sheet (`agent-sheet.tsx`) on that tab, drawn by the page. `headSlots` go to the head (`ChatHeader`):
- * a page that frames the chat puts its own controls there instead of a bar over it.
+ * a page that frames the chat puts its own controls there instead of a bar over it. `slots` pin a card under the head
+ * (a work chat's work card, whose sub-tasks open threads through `OpenThreadContext`) and give the composer its words.
  */
 export function ChatView({
   chatId,
@@ -76,17 +80,19 @@ export function ChatView({
   useUnder = useNothingUnder,
   agentPanels,
   headSlots,
+  slots,
 }: {
   chatId: number;
   initialError: ApiErrorInfo | null;
   useUnder?: UseUnder;
   agentPanels?: AgentPanels;
   headSlots?: ChatHeadSlots;
+  slots?: ChatSlots;
 }) {
   const state = useHubQuery(chatPageQuery(browserApi, chatId), initialError);
   return (
     <QueryView state={state} loading={<ChatLoading />}>
-      {(page) => <Conversation key={chatId} page={page} useUnder={useUnder} agentPanels={agentPanels} headSlots={headSlots} />}
+      {(page) => <Conversation key={chatId} page={page} useUnder={useUnder} agentPanels={agentPanels} headSlots={headSlots} slots={slots} />}
     </QueryView>
   );
 }
@@ -104,7 +110,7 @@ function numberParam(value: string | null): number | null {
   return value && /^[1-9][0-9]{0,17}$/.test(value) ? Number(value) : null;
 }
 
-function Conversation({ page, useUnder, agentPanels, headSlots }: { page: ChatPage; useUnder: UseUnder; agentPanels?: AgentPanels; headSlots?: ChatHeadSlots }) {
+function Conversation({ page, useUnder, agentPanels, headSlots, slots }: { page: ChatPage; useUnder: UseUnder; agentPanels?: AgentPanels; headSlots?: ChatHeadSlots; slots?: ChatSlots }) {
   const t = useTranslations("chats.view");
   const tDoc = useTranslations("chats.doc");
   const queryClient = useQueryClient();
@@ -260,10 +266,12 @@ function Conversation({ page, useUnder, agentPanels, headSlots }: { page: ChatPa
   return (
     <OpenDocContext.Provider value={openDoc}>
     <AgentActionsContext.Provider value={agentPanels ? openAgent : null}>
+    <OpenThreadContext.Provider value={openThread}>
     <div ref={frame} className="flex h-full min-h-0 w-full gap-4" data-testid="chat-view" data-chat-id={chatId} data-stream={live.status}>
       <section aria-labelledby="chat-title" className={`${CARD} min-w-0 flex-1`} hidden={threadColumn && thread !== null && threadFull}>
         <FileDropFrame className="flex min-h-0 flex-1 flex-col" data-testid="chat-drop">
           <ChatHeader chat={chat} me={me} onMembers={() => setMembers(true)} slots={headSlots} />
+          {slots?.pinned}
           <MessageList
             chat={chat}
             me={me}
@@ -299,7 +307,7 @@ function Conversation({ page, useUnder, agentPanels, headSlots }: { page: ChatPa
                   setReplying(null);
                 }}
                 label={t("composerLabel", { title: chat.title })}
-                placeholder={direct ? t("directPlaceholder", { name: agentName }) : t("placeholder")}
+                placeholder={slots?.placeholder ?? (direct ? t("directPlaceholder", { name: agentName }) : t("placeholder"))}
                 testId="chat-composer"
                 focusKey={replying ? `reply-${replyFocus}` : compose}
                 replying={replying ? { name: authorLabel(replying.author, me), text: plainMentions(preview(replying.body), chatMentionMarks(chat)), onCancel: () => setReplying(null) } : null}
@@ -356,6 +364,7 @@ function Conversation({ page, useUnder, agentPanels, headSlots }: { page: ChatPa
         />
       ) : null}
     </div>
+    </OpenThreadContext.Provider>
     </AgentActionsContext.Provider>
     </OpenDocContext.Provider>
   );

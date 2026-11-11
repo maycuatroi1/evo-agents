@@ -22,9 +22,10 @@ import { ChatLabelControl } from "./chat-label-control";
 /**
  * What a page that frames a chat puts in a direct chat's head: `title` draws the name (given the name's element, which
  * keeps the id the chat's section is labelled by), in place of the agent's menu; `actions` stand before Details from
- * 768 px.
+ * 768 px. In a group chat's head (a work chat's), `heading` replaces its title (the work's), `tags` stand after it and
+ * `sub` before who is in it.
  */
-export type ChatHeadSlots = { title?: (name: ReactNode) => ReactNode; actions?: ReactNode };
+export type ChatHeadSlots = { title?: (name: ReactNode) => ReactNode; actions?: ReactNode; heading?: string; tags?: ReactNode; sub?: ReactNode };
 
 /** The levels of a chat's label, each once, as the hub sends them: every member clears them all. */
 function levelsOf(chat: Pick<Chat, "label">): string[] {
@@ -70,6 +71,7 @@ export function ChatHeader({ chat, me, onMembers, slots }: { chat: Chat; me: str
           chat={chat}
           me={me}
           onMembers={onMembers}
+          slots={slots}
           image={<ChatImageControl chat={chat} me={me} onProblem={setProblem} />}
           label={<ChatLabelControl chat={chat} onProblem={setProblem} />}
         />
@@ -83,7 +85,7 @@ export function ChatHeader({ chat, me, onMembers, slots }: { chat: Chat; me: str
   );
 }
 
-function GroupHead({ chat, me, onMembers, image, label }: { chat: Chat; me: string | null; onMembers: () => void; image: ReactNode; label: ReactNode }) {
+function GroupHead({ chat, me, onMembers, slots, image, label }: { chat: Chat; me: string | null; onMembers: () => void; slots?: ChatHeadSlots; image: ReactNode; label: ReactNode }) {
   const t = useTranslations("chats.header");
   const format = useFormatter();
   const agents = chat.agents.filter((agent) => !agent.deleted);
@@ -99,7 +101,8 @@ function GroupHead({ chat, me, onMembers, image, label }: { chat: Chat; me: stri
           {image}
         </>
       }
-      title={<span id="chat-title" data-testid="chat-title">{chat.title}</span>}
+      title={<span id="chat-title" data-testid="chat-title">{slots?.heading ?? chat.title}</span>}
+      status={slots?.tags}
       tags={levelsOf(chat).map((level) => (
         <VisibilityTag key={level} level={level} testId="chat-visibility" />
       ))}
@@ -121,7 +124,12 @@ function GroupHead({ chat, me, onMembers, image, label }: { chat: Chat; me: stri
           </Button>
         </>
       }
-      sub={<span data-testid="chat-who">{who}</span>}
+      sub={
+        <span className="inline-flex max-w-full flex-wrap items-center gap-x-3 gap-y-1">
+          {slots?.sub}
+          <span data-testid="chat-who">{who}</span>
+        </span>
+      }
       testId="chat-header"
     />
   );

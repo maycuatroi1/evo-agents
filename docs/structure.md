@@ -9,8 +9,9 @@ shrink; since 2026-11-05 the baseline of the budgets holds none.
 
 ## In CI
 
-The CI of a release tag keeps these checks. The full tier of `.github/workflows/ci.yml`, which `release.yml` runs on a
-`v*` tag before it builds anything, has a `lint` job that runs, in the environment of a worker's run (the extras of
+No CI run gates these checks. Since 2026-11-11 the CI of a release tag guards only what PyPI gets (the Python suite
+on Python 3.12, an import of every module on Python 3.11); the `lint` job of `.github/workflows/ci.yml` runs them only
+in a run started by hand with `extras`, in the environment of a worker's run (the extras of
 `[tool.evo-agents.worker]`):
 
 ```sh
@@ -22,10 +23,9 @@ EVO_STRUCTURE_BASE=origin/main python -m pytest -q -m structure tests/test_struc
 python -m basedpyright
 ```
 
-A failure of any of them fails `ci-ok`, so the tag is not released. In the same run, the Linux test jobs set
-`EVO_HUB_TEST_REQUIRE_DSN=1` next to `EVO_HUB_TEST_DSN`: with it set and the DSN missing, `tests/hub/pg.py` fails the
-run instead of skipping every hub test (`tests/hub/test_require_dsn.py`). A pull request and a push to main run no CI,
-so run the commands below before you merge a change that touches what they check.
+The Linux test jobs of a tag set `EVO_HUB_TEST_REQUIRE_DSN=1` next to `EVO_HUB_TEST_DSN`: with it set and the DSN
+missing, `tests/hub/pg.py` fails the run instead of skipping every hub test (`tests/hub/test_require_dsn.py`). Run the
+commands below when a change moves code between packages or grows a large module.
 
 ## Commands
 
