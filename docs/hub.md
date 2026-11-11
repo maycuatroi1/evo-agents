@@ -985,6 +985,19 @@ agent, waiting, coordinator}`, null for every other chat.
 Schema 0235 adds the nullable `system_traces.title`, `goal`, `done_when`, `card_message_id` (set to null when the
 message is deleted) and `card_state`. Going back drops them.
 
+### Operations events
+
+The hub writes five kinds into a project's `hub_events` (`evo_agents/hub/ops_events.py`, plan hub-steward), each in the
+transaction that made what it tells of: `run.ended` when a run of the project comes to be failed or lost
+(`run_id`, `run_kind`, `state`, `failure_cause`, `worker_id`), `run.parked` when one is parked, `decision.opened` when
+a run asks a person a decision (`decision_id`, `category`, `run_id`, `asked_of`; a run that only waits, and a quiet
+credential request, write none), `curator.paused` when the circuit breaker pauses the night shift (`reason`,
+`cause_class`, `schedule_ids`, `run_ids`, `reverts`), and `worker.health` when the health a worker's heartbeat reports
+changes state (`worker_id`, `disk` low or ok against 20 GB free, `disk_free_pct`, `logins`), once for each project the
+worker serves. Payloads carry ids and states alone, never an error, a question or a reason. No plugin takes these kinds
+(they are not in `EVENT_KINDS`, `docs/plugins.md`) and they queue no tick of the Loop. Schema 0236 adds the nullable
+`workers.health`; going back drops it.
+
 ### Hub runtime
 
 An agent whose profile has `runs_on: hub` needs no worker and no pool: the hub answers for it in chat through its

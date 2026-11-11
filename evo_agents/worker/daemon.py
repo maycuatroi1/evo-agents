@@ -103,7 +103,7 @@ from evo_agents import __version__
 from evo_agents.guard_check import ENV as GUARD_ENV
 from evo_agents.hub import runs
 from evo_agents.plugins.runtimes import AcpRuntime
-from evo_agents.worker import checkouts, doctor_report, guard, interactive, skill_sync_loop
+from evo_agents.worker import checkouts, doctor_report, guard, health, interactive, skill_sync_loop
 from evo_agents.worker.adapter import Adapter, detect_adapters, detect_runtimes
 from evo_agents.worker.background import spawn
 from evo_agents.worker.browser import session as browser_session
@@ -161,6 +161,8 @@ class Daemon:
         self.run_tasks: dict[int, asyncio.Task] = {}
         self.orphans: dict[int, dict] = {}  # run id -> {"agent": agent.json, "record": run.json}, until the hub answers
         self.runtimes: dict[str, dict] = {}
+        self.logins: dict[str, str] = {}  # each runtime's login, found with the runtimes (``health``)
+        self.health: dict | None = None  # the heartbeat's health, from the last look; None before the first
         self.plugin_runtimes: dict[str, AcpRuntime] = {}  # the declarations the hub sent, by runtime
         self.plugin_adapters: dict[str, type[Adapter]] = {}  # and the adapter of ACP of each
         self.checkouts: dict[str, dict] = {}
@@ -247,8 +249,10 @@ class Daemon:
         now = asyncio.get_running_loop().time()
         if force or now - self._runtimes_at > RUNTIMES_EVERY:
             self.runtimes = await asyncio.to_thread(self._detect)
+            self.logins = await asyncio.to_thread(health.logins, path=self.env.get("PATH"))
             await self.browser.look()
             self._runtimes_at = now
+        self.health = await asyncio.to_thread(health.report, self.home.worktrees_dir, self.logins)
         if force or now - self._checkouts_at > CHECKOUTS_EVERY:
             found = await asyncio.to_thread(checkouts.discover, self.config)
             for key, entry in self._set_up.items():  # set up while the look ran, before config.json held it

@@ -21,7 +21,8 @@ row lock each minute, before anything else and whether the window is open or not
 ``circuit_breaker.max_failed_in_a_row`` jobs of the night in a row went wrong (``curator.failed_in_a_row``), counting
 since the schedule last changed (a resume, a new worker), it pauses every schedule of the project with the reason
 (``schedules.pause_reason``, no member in ``paused_by``), cancels the runs they queued that are still queued, tells the
-owner of each schedule (the notice ``curator_paused``) and audits curator.circuit. A job of the night is a run of the
+owner of each schedule (the notice ``curator_paused``), writes the hub event ``curator.paused`` (``ops_events``) and
+audits curator.circuit. A job of the night is a run of the
 schedule for that night, which went wrong when it ended failed of a cause of the agent's (an empty or unknown cause
 included) and right when it ended done (a cancelled run, a lost one the hub tries again, and one that failed of an infra
 cause, ``curator.INFRA_CAUSES``, count neither way: ``infra_breaker`` holds off the kinds of run of its dependency), or an outcome ``revert`` the hub recorded for the project in the night's
@@ -37,7 +38,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, ledger, review, tables, tiers
+from evo_agents.hub import curator, ledger, ops_events, review, tables, tiers
 from evo_agents.hub.server import audit, change_tiers, skill_release
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server.shift_hours import cancel_queued
@@ -382,6 +383,10 @@ async def trip(conn: AsyncConnection, due, night: date, reason: str, which: list
     cancelled = await cancel_queued(conn, ids, reason) if ids else []
     run_ids = [int(item.split(":")[1]) for item in which if item.startswith("run:")]
     reverts = [int(item.split(":")[1]) for item in which if item.startswith("revert:")]
+    if ids:  # schedules already paused change nothing
+        await ops_events.curator_paused(
+            conn, project_id=due.project_id, schedule_ids=ids, run_ids=run_ids, reverts=len(reverts)
+        )
     for owner_id in sorted({row.owner_id for row in rows}):
         await notify(
             conn,

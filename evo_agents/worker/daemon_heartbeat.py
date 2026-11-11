@@ -1,6 +1,7 @@
 """The heartbeat of a worker's daemon (``daemon``): sent at once and then every 15 seconds.
 
-It carries the runtimes, the checkouts, the free slots, the runs the daemon holds and its version. The answer says
+It carries the runtimes, the checkouts, the free slots, the runs the daemon holds, its version and the machine's
+health: the free disk of its worktrees and each runtime's login (``health``). The answer says
 whether to drain (``daemon_state``), and for each run whether to cancel it, whether the hub still holds it for this
 worker, how many messages of the owner wait, and the controls of a person (takeover, handback, terminal_open, inbox,
 park, finish). The orphans a previous daemon left are named apart (``orphans``), so the hub re-attaches none of them; a
@@ -169,6 +170,9 @@ class Heartbeat:
         report = daemon.graphs.report()
         if report and report["projects"]:
             body["kg_sync"] = report  # what the last looks found (0053)
+        found = getattr(daemon, "health", None)
+        if found is not None:  # the free disk of its worktrees and each runtime's login (hub-steward)
+            body["health"] = found
         browser = daemon.browser
         if browser.report is not None:
             body["browser"] = browser.report  # its Chromium, and how many browsers it holds at once (0119)

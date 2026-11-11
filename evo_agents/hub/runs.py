@@ -275,6 +275,7 @@ RUNTIME_NAME = "^(" + "|".join(("any", *RUNTIMES)) + r"|[a-z][a-z0-9-]{0,62}/[a-
 HUB_RUNTIME = "hub"
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
+MAX_RUNTIME_LOGINS = 50  # the runtimes whose login one heartbeat reports
 MAX_EVIDENCE_BYTES = 16 * 1024  # runs.evidence, as schema 0009 bounds it
 Mode = Literal["headless", "interactive"]
 MODES: tuple[str, ...] = get_args(Mode)

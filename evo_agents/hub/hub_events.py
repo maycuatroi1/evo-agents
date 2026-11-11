@@ -46,6 +46,14 @@ SRS_USE_CASE_APPROVED = "srs.use_case.approved"  # one use case of a version in 
 TASK_STATUS = "tasks.status"  # a task's status, set or changed (``evo_agents.hub.task_status``)
 PLAN_STEP = "plan.step"  # a step's status of a plan, set or changed (``evo_agents.hub.plan_step_status``)
 WORKFLOW_RUN = "github.workflow_run"  # a run of a GitHub Actions workflow a wait names, completed or with a job failed
+# The operations events (plan hub-steward, criterion a1; ``evo_agents.hub.ops_events``): no plugin takes them, and
+# they queue no tick of the Loop, which has no rule for them.
+RUN_ENDED = "run.ended"  # a run of the project failed or was lost
+RUN_PARKED = "run.parked"  # a run of the project was parked for want of an answer
+DECISION_OPENED = "decision.opened"  # a run of the project asked a person a decision
+CURATOR_PAUSED = "curator.paused"  # the circuit breaker paused the project's night shift
+WORKER_HEALTH = "worker.health"  # the health of a worker that serves the project changed
+OPS = (RUN_ENDED, RUN_PARKED, DECISION_OPENED, CURATOR_PAUSED, WORKER_HEALTH)
 KINDS = (
     CLAIM,
     BASELINE,
@@ -55,6 +63,7 @@ KINDS = (
     PLAN_STEP,
     SRS_USE_CASE_APPROVED,
     WORKFLOW_RUN,
+    *OPS,
 )  # what this release writes
 KIND = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,3}$"  # hub_events.kind, as the check of 0077 holds it
 OWN_PREFIX = "plugin."  # a kind a core plugin's Loop rule records of its own: plugin.<id, - made _>.<name>
@@ -82,14 +91,15 @@ def own_kind(plugin_id: str, name: str) -> str:
 
 async def record(conn: AsyncConnection, kind: str, project_id: int, payload: dict) -> int:
     """Write event ``kind`` of project ``project_id`` in the caller's transaction, after every event of the project
-    an earlier transaction wrote, and queue a tick of its Loop when that is on; its id."""
+    an earlier transaction wrote, and queue a tick of its Loop when that is on and ``kind`` is none of OPS; its id."""
     if kind not in KINDS and not OWN_KIND.fullmatch(kind):
         raise ValueError(f"{kind!r} is not a kind of hub event this release writes")
     await conn.execute(select(func.pg_advisory_xact_lock(literal(LOCK_BASE, BigInteger) + project_id)))
     e = tables.hub_events
     statement = insert(e).values(project_id=project_id, kind=kind, payload=payload)
     event_id = await conn.scalar(statement.returning(e.c.id))
-    await loop_jobs.on_event(conn, project_id)
+    if kind not in OPS:
+        await loop_jobs.on_event(conn, project_id)
     return event_id
 
 
@@ -109,7 +119,13 @@ async def after(conn: AsyncConnection, project_id: int, cursor: int = 0, limit: 
 __all__ = [
     "BASELINE",
     "CLAIM",
+    "CURATOR_PAUSED",
+    "DECISION_OPENED",
     "KINDS",
+    "OPS",
+    "RUN_ENDED",
+    "RUN_PARKED",
+    "WORKER_HEALTH",
     "PLAN_STEP",
     "SIGNALS",
     "SRS_APPROVED",

@@ -20995,6 +20995,22 @@ export interface components {
              */
             reason: string;
         };
+        /**
+         * DiskReport
+         * @description The free space of the drive that holds the daemon's worktrees.
+         */
+        DiskReport: {
+            /**
+             * Free Gb
+             * @description gigabytes free there
+             */
+            free_gb: number;
+            /**
+             * Free Pct
+             * @description the share of the drive free, in percent
+             */
+            free_pct: number;
+        };
         /** DismissBody */
         DismissBody: {
             /** Reason */
@@ -23872,6 +23888,22 @@ export interface components {
              */
             failed?: string[];
         };
+        /**
+         * HealthReport
+         * @description What the daemon last found of its machine's health (plan hub-steward, criterion a3): the free disk where its
+         *     worktrees go, and the login of each runtime as the runtime's own status command says it, never a credential.
+         */
+        HealthReport: {
+            /** @description null when the daemon could not read it */
+            disk?: components["schemas"]["DiskReport"] | null;
+            /**
+             * Logins
+             * @description each runtime's login: ok, signed in; unauthorized, its status command says it is not; missing, its program is not on the machine; unknown, the command gave no answer in time or one the daemon cannot read
+             */
+            logins?: {
+                [key: string]: string;
+            };
+        };
         /** HeartbeatAnswer */
         HeartbeatAnswer: {
             /**
@@ -23953,6 +23985,8 @@ export interface components {
             browser?: components["schemas"]["BrowserReport"] | null;
             /** @description for a daemon that says browser_install, where it stands with the owner's Install browser the answer carried; null when it carries none */
             browser_install?: components["schemas"]["BrowserInstallReport"] | null;
+            /** @description the free disk of its worktrees' drive and each runtime's login, as the daemon last looked; each heartbeat sets what the hub shows, and none clears it, as from an older daemon */
+            health?: components["schemas"]["HealthReport"] | null;
         };
         /** HeldAnswer */
         HeldAnswer: {
@@ -47618,6 +47652,13 @@ export interface components {
              * @description the free slots its last heartbeat reported; null before the first
              */
             free_slots: number | null;
+            /**
+             * Health
+             * @description what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct}, logins: {<runtime>: ok, unauthorized, missing or unknown}}; null when it said nothing of it, as an older daemon
+             */
+            health?: {
+                [key: string]: unknown;
+            } | null;
             /** Allow Web Terminal */
             allow_web_terminal: boolean;
             /**

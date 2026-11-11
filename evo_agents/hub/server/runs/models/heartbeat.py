@@ -92,6 +92,26 @@ class SelfUpdateReport(BaseModel):
     )
 
 
+class DiskReport(BaseModel):
+    """The free space of the drive that holds the daemon's worktrees."""
+
+    free_gb: float = Field(ge=0, description="gigabytes free there")
+    free_pct: float = Field(ge=0, le=100, description="the share of the drive free, in percent")
+
+
+class HealthReport(BaseModel):
+    """What the daemon last found of its machine's health (plan hub-steward, criterion a3): the free disk where its
+    worktrees go, and the login of each runtime as the runtime's own status command says it, never a credential."""
+
+    disk: DiskReport | None = Field(None, description="null when the daemon could not read it")
+    logins: dict[RuntimeName, Annotated[str, Field(pattern=RUN_KIND)]] = Field(
+        default_factory=dict,
+        max_length=runs.MAX_RUNTIME_LOGINS,
+        description="each runtime's login: ok, signed in; unauthorized, its status command says it is not; missing, "
+        "its program is not on the machine; unknown, the command gave no answer in time or one the daemon cannot read",
+    )
+
+
 KG_PROJECT = r"^[a-z0-9][a-z0-9-]{0,99}$"  # a project's name, as evo_agents.hub.server.admin.PROJECT_NAME
 KgSyncError = Annotated[str, Field(min_length=1, max_length=runs.KG_SYNC_ERROR_CHARS)]
 
@@ -206,6 +226,11 @@ class HeartbeatRequest(BaseModel):
     )
     browser: BrowserReport | None = Field(None, description=browser_help.REPORT_HELP)
     browser_install: BrowserInstallReport | None = Field(None, description=browser_help.INSTALL_REPORT_HELP)
+    health: HealthReport | None = Field(
+        None,
+        description="the free disk of its worktrees' drive and each runtime's login, as the daemon last looked; each "
+        "heartbeat sets what the hub shows, and none clears it, as from an older daemon",
+    )
 
     def stored(self) -> tuple[dict, dict]:
         """runtimes and checkouts as workers keeps them and GET /v1/workers/{id} shows them: every key present."""

@@ -1381,6 +1381,15 @@ the look (`error`), and for each source at most 50, its `source`, `status` (a na
 one of `runs.KG_SYNC_STATES`), `error`, `ref`, `commit`, `behind`, `checked_at`, `read_at`, `pushed_at`, `pulled` and
 `pushed`, at most 50 projects and every error 1 to 500 characters. Each heartbeat replaces what the hub holds
 (`workers.kg_sync`, schema 0053), and one without it clears it; `GET /v1/workers/{id}` shows it as `kg_sync`.
+`health`, optional, is what the daemon last found of its machine (`evo_agents/worker/health.py`): `disk`, the free
+space of the drive that holds its worktrees (`free_gb`, `free_pct`, null when it cannot be read), read at each look;
+and `logins`, the login of each runtime, `ok`, `unauthorized`, `missing` (not on PATH) or `unknown` (no answer within
+10 seconds, or one it cannot read), from the runtime's own status command (`claude auth status --json`,
+`codex login status`, `opencode auth list`), run every 300 seconds in a thread. Only the exit status and the shape of
+the answer are read: no credential value is read or sent. Each heartbeat replaces what the hub holds
+(`workers.health`, schema 0236), one without it clears it, and `GET /v1/workers` shows it as `health`. When its state
+changes (the disk under or over 20 GB free, or a login), the hub writes `worker.health` into each project the worker
+serves (`docs/hub.md`, Operations events).
 
 The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
 heartbeat and by one that comes more than 30 seconds after the one before), extends the lease of each run named that
@@ -1955,7 +1964,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker service uninstall` | stops the daemon and removes the service; the worker stays registered |
 | `evo-agents worker service status [--json]` | whether the service is installed and the daemon runs, its pid and last exit |
 | `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, tmux and whether the web terminal is allowed, checkouts, the daemon's pid, runs kept, the spool, and what the last look at each graph it keeps fresh found (`kg_sync`, [Keeping the graph fresh](#keeping-the-graph-fresh)) |
-| `evo-agents worker list [--revoked] [--json]` | the workers of the hub this machine is signed in to, yours and those other members share with you (every worker for a hub admin), one line each: status, the evo-agents its daemon runs and its commit, version lock or self-update state, runs held of its slots, last heartbeat; `--json` prints the rows of `GET /v1/workers`. It needs `hub login`, not a worker on this machine, so it answers for a machine ssh cannot reach |
+| `evo-agents worker list [--revoked] [--json]` | the workers of the hub this machine is signed in to, yours and those other members share with you (every worker for a hub admin), one line each: status, the evo-agents its daemon runs and its commit, version lock or self-update state, runs held of its slots, free disk of its worktrees and each runtime's login, last heartbeat; `--json` prints the rows of `GET /v1/workers`. It needs `hub login`, not a worker on this machine, so it answers for a machine ssh cannot reach |
 | `evo-agents worker doctor [--json]` | what the machine holds or allows that a worker should not (another administrator, a readable home, the owner's long-lived credentials, a PATH others write), each finding with a code, a severity, what was found and how to fix it; exits 2 when a finding is high (see [Checking a worker machine](credentials.md#checking-a-worker-machine)) |
 | `evo-agents worker attach N` | puts this terminal on the tmux session `evo-run-N` of an interactive run (`tmux attach`, or `switch-client` from inside tmux on the same server) |
 | `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--timeout S] [--keep] [--background]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise); `--background` (claude-code only) checks that the session waits for a command run in the background: the agent starts `sleep 20 && date -u` that way, ends its turn, and writes the file once the command ended |
