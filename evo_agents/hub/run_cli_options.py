@@ -26,7 +26,12 @@ reruns, and its identities.
 ``--as-me`` on ``dispatch`` and ``plan`` lets the run's agent call the hub's API as you, secrets, tokens and workers
 aside, through a token of the run's own that ends with it (``docs/credentials.md``, "A run that runs as its owner"); a
 rerun and the run that resumes a parked one keep the choice, and ``hub run access`` changes it afterwards
-(``run_cli_access``). Standard library only, like the rest of the client.
+(``run_cli_access``).
+
+``--system SLUG`` on ``plan`` hands the plan to an agent system of the project rather than queueing a plan run: its
+entry agent gets the plan in your direct chat with it and shares the steps out (POST .../plans/{id}/system-dispatch).
+The system decides how its agents run, so none of the plan run's options goes with it (SYSTEM_REFUSES). Standard
+library only, like the rest of the client.
 """
 
 from __future__ import annotations
@@ -224,6 +229,33 @@ def list_options(listed) -> None:
     listed.add_argument("--offset", type=int, metavar="N", help="skip this many runs, for the next page")
 
 
+SYSTEM_HELP = (
+    "hand the plan to this agent system of the project, by slug, rather than queue a plan run: its entry agent gets "
+    "the plan in your direct chat with it, opens a trace and shares the steps out; no other option of a plan run goes "
+    "with it"
+)
+# the options of a plan run, flag and attribute, that `hub run plan --system` refuses: the system runs its agents
+SYSTEM_REFUSES = (
+    ("--runtime", "runtime"),
+    ("--model", "model"),
+    ("--mode", "mode"),
+    ("--timeout-h", "timeout_h"),
+    ("--session-per-step", "session_per_step"),
+    ("--browser", "browser"),
+    ("--identity", "identities"),
+    ("--account", "account"),
+    ("--agent", "agent"),
+    ("--as-me", "as_me"),
+)
+
+
+def system_conflicts(args) -> list[str]:
+    """The options of a plan run given together with ``--system``, as flags; empty without ``--system``."""
+    if getattr(args, "system", None) is None:
+        return []
+    return [flag for flag, name in SYSTEM_REFUSES if getattr(args, name, None) not in (None, False)]
+
+
 def plan_options(plan, with_model) -> None:
     """The options of `hub run plan` after its plan and --project: where, how and how long the plan run runs."""
     plan.add_argument("--runtime", type=runtime_name, metavar="RUNTIME", help=RUNTIME_HELP)
@@ -249,6 +281,7 @@ def plan_options(plan, with_model) -> None:
     browser_option(plan, identities=True)
     account_option(plan)
     as_me_option(plan)
+    plan.add_argument("--system", metavar="SLUG", help=SYSTEM_HELP)
 
 
 def author_options(authored) -> None:

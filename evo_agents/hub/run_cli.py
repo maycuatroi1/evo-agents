@@ -2,9 +2,11 @@
 
 ``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none, ``plan`` queues a plan
 run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs), in one agent session or
-with ``--session-per-step`` in a new session for each step, and ``author`` queues an author run, a plan written from
-your request with the create-exec-plan skill on the pool of its agent (POST /v1/projects/{p}/author-runs,
-``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of the project. ``list`` and ``show`` read runs
+with ``--session-per-step`` in a new session for each step, or with ``--system SLUG`` hands the plan to an agent
+system of the project instead (POST /v1/projects/{p}/plans/{id}/system-dispatch, ``run_cli_options``), and
+``author`` queues an author run, a plan written from your request with the create-exec-plan skill on the pool of its
+agent (POST /v1/projects/{p}/author-runs, ``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of
+the project. ``list`` and ``show`` read runs
 of every kind, the chat runs of group chats among them. ``logs`` prints a run's events page by page (GET
 .../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's server-sent events (GET .../runs/{id}/stream)
 until the hub sends ``end``; ``watch`` waits until a run's state, an open decision or a plan's step changes
@@ -68,6 +70,7 @@ from evo_agents.hub.run_cli_options import (
     plan_options,
     rerun_body,
     rerun_options,
+    system_conflicts,
     usage_error,
 )
 from evo_agents.hub.run_cli_outputs import register_outputs
@@ -102,6 +105,13 @@ CHAT_KEYS = ("run_id", "state", "status", "owner", "plan_id", "plan_revision", "
 LEASE_KEYS = ("id", "name", "provider", "kind", "target", "worker", "issued_at", "expires_at", "revoked_at")
 LEASE_KEYS += ("profile", "profile_id", "profile_version")
 RUN = returns_object(*RUN_KEYS, schema="Run")
+DISPATCHED_KEYS = ("system", "system_revision", "trace_id", "plan_id", "plan_revision", "chat_id", "message_id")
+DISPATCHED_KEYS += ("run_id",)
+PLAN_RUN = returns_object(
+    *RUN_KEYS,
+    schema="Run",
+    variants=(("--system", returns_object(*DISPATCHED_KEYS, schema="SystemDispatched")),),
+)
 
 KIND_LABELS = {
     "agent_message_chunk": "agent",
@@ -402,6 +412,14 @@ def cmd_dispatch(args) -> int:
 
 @client_command
 def cmd_plan(args) -> int:
+    conflicts = system_conflicts(args)
+    if conflicts:
+        return usage_error(
+            f"--system hands the plan to the system, whose agents run as it sets them, so it does not go with "
+            f"{', '.join(conflicts)}"
+        )
+    if args.system is not None:
+        return _plan_in_system(args)
     refused = _model_check(args)
     if refused:
         return usage_error(refused)
@@ -428,6 +446,26 @@ def cmd_plan(args) -> int:
         f"Follow it with `evo-agents hub run logs {run['id']} --follow{where}`; the decisions its agent asks you: "
         f"`evo-agents hub decision list --run {run['id']}{where}`."
     )
+    return 0
+
+
+def _plan_in_system(args) -> int:
+    """``hub run plan PLAN --system SLUG``: hand the plan to the system's entry agent (POST .../system-dispatch)."""
+    hub, _ = signed_in()
+    project = project_of_args(args)
+    plan_id = checked_plan_id(args.plan)
+    path = f"{project_path(project)}/plans/{plan_id}/system-dispatch"
+    handed = hub.call("POST", path, {"system": args.system})
+    if args.json:
+        print_json(handed)
+        return 0
+    link = origin(hub.url) + chat_link(handed["chat_id"], handed["message_id"])
+    print(
+        f"Handed plan {handed['plan_id']} (revision {handed['plan_revision']}) to system {handed['system']} "
+        f"(revision {handed['system_revision']}): trace #{handed['trace_id']}, run #{handed['run_id']} of its entry "
+        f"agent, in your chat #{handed['chat_id']} with it ({link})."
+    )
+    print(f"Follow it with `evo-agents hub run logs {handed['run_id']} --follow{_with_project(args, project)}`.")
     return 0
 
 
@@ -886,12 +924,12 @@ def _register_plan(rsub) -> None:
     plan = rsub.add_parser(
         "plan",
         help="queue a plan run: one run, on the pool of its agent, that does every step of the plan "
-        "not done yet (needs writer)",
+        "not done yet, or with --system hand the plan to an agent system of the project (needs writer)",
     )
     plan.add_argument("plan", metavar="PLAN", help="the plan's id")
     _project_option(plan)
     plan_options(plan, _model_option)
-    json_option(plan, RUN)
+    json_option(plan, PLAN_RUN)
     plan.set_defaults(func=cmd_plan)
 
 
