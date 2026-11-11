@@ -154,7 +154,7 @@ projects = Table(
     Column("trusted_owners", ARRAY(Text), nullable=False, server_default="{}"),  # 0170
     Column("archived_at", DateTime(timezone=True)),  # 0198
     Column("archived_by", BigInteger),  # 0198
-    Column("systems_seeded_at", DateTime(timezone=True)),  # 0238: the hub gave it its first agent system
+    Column("systems_seeded_at", DateTime(timezone=True)),  # 0240: the hub gave it its first agent system
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="projects_created_by_fkey"),
     ForeignKeyConstraint(["archived_by"], ["users.id"], ondelete="RESTRICT", name="projects_archived_by_fkey"),
     CheckConstraint(column("archived_at").is_(None) == column("archived_by").is_(None), name="projects_archived_check"),
@@ -808,6 +808,7 @@ run_outputs, run_output_links = tables_outputs.output_tables(metadata, projects)
 notification_mutes = tables_outputs.mute_table(metadata)  # the notices members turned off (0090)
 push_devices, notification_preferences = tables_push.push_tables(metadata)  # push devices, preferences (0156)
 today_marks = tables_push.today_table(metadata)  # what Today keeps of a member (0158)
+plan_run_choices = tables_push.plan_run_choice_table(metadata)  # a member's last Run plan choice in a project (0238)
 attachments, run_inbox_attachments = tables_attachments.attachment_tables(metadata)  # files of messages (0109)
 srs, tasks, canvas, agent_questions = tables_plugins.core_plugin_tables(metadata)  # 0046, 0047, 0073, 0100
 docs = tables_docs.docs_tables(metadata)  # the documents of a project, Markdown with images (0163)
@@ -862,4 +863,4 @@ kg_entity_map_runs = tables_kg.entity_map_runs(metadata)  # each run that maps t
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
 )
-ops_cursors, ops_batches, ops_items = tables_ops.ops_tables(metadata)  # the queue of operations events (0238)
+ops_cursors, ops_batches, ops_items = tables_ops.ops_tables(metadata)  # the queue of operations events (0240)

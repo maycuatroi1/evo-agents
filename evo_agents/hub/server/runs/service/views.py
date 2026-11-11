@@ -11,11 +11,11 @@ from fastapi import HTTPException
 from sqlalchemy import BigInteger, and_, bindparam, case, cast, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_runs, runs, spend_store, tables
+from evo_agents.hub import chat_runs, runs, spend_store, system_context, tables
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.runs.models import ActiveRun, ReadySteps, Run, SteadyWait, StepReadiness
+from evo_agents.hub.server.runs.models import ActiveRun, PlanTrace, ReadySteps, Run, SteadyWait, StepReadiness
 from evo_agents.hub.server.runs.models.spend import run_spend_view
 from evo_agents.hub.server.security import Principal
 
@@ -210,10 +210,12 @@ async def run_view(conn: AsyncConnection, run_id: int) -> Run:
 
 @dataclass
 class Activity:
-    """The active runs of a plan: those of its steps by step key, and its plan run."""
+    """The active runs of a plan: those of its steps by step key, its plan run, and a trace of a system that runs the
+    plan (``plan_systems``) while one of its runs is active."""
 
     steps: dict[str, ActiveRun]
     plan_run: ActiveRun | None
+    trace: PlanTrace | None = None
 
 
 async def plan_activity(conn: AsyncConnection, project_id: int, plan_id: str) -> Activity:
@@ -237,7 +239,25 @@ async def plan_activity(conn: AsyncConnection, project_id: int, plan_id: str) ->
             activity.plan_run = active
         else:
             activity.steps[row.step_key] = active
+    activity.trace = await plan_trace(conn, project_id, plan_id)
     return activity
+
+
+async def plan_trace(conn: AsyncConnection, project_id: int, plan_id: str) -> PlanTrace | None:
+    """The trace a system dispatch of the plan opened that has a run active (its ``invoke_agent`` spans name its
+    runs), with its latest active run; None when every run of every such trace has ended. A chat run has no plan, so
+    ``plan_activity``'s runs never show it."""
+    t, s, r = tables.system_traces, tables.system_spans, tables.runs
+    query = (
+        select(t.c.id, t.c.system_slug, r.c.id.label("run_id"), r.c.state)
+        .join_from(t, s, and_(s.c.trace_id == t.c.id, s.c.name == system_context.INVOKE))
+        .join(r, r.c.id == s.c.run_id)
+        .where(t.c.project_id == project_id, t.c.plan_id == plan_id, r.c.state.in_(runs.ACTIVE_STATES))
+        .order_by(r.c.id.desc())
+        .limit(1)
+    )
+    row = (await conn.execute(query)).one_or_none()
+    return None if row is None else PlanTrace(id=row.id, system=row.system_slug, run_id=row.run_id, state=row.state)
 
 
 def plan_lock_key(project_id: int, plan_id: str) -> str:
@@ -266,6 +286,13 @@ def plan_busy(plan_id: str, active: ActiveRun) -> str:
     return f"plan {plan_id} has plan run #{active.id}, {active.state}, dispatched by {active.dispatched_by}"
 
 
+def trace_busy(plan_id: str, trace: PlanTrace) -> str:
+    return (
+        f"plan {plan_id} is run by system {trace.system} in trace #{trace.id}, whose run #{trace.run_id} is "
+        f"{trace.state}"
+    )
+
+
 async def step_readiness(engine, user: Principal, project: str, plan_id: str, sink: str | None) -> ReadySteps:
     """Every step of the plan with whether it may be dispatched now, and why not."""
     async with engine.begin() as conn:
@@ -284,6 +311,8 @@ async def step_readiness(engine, user: Principal, project: str, plan_id: str, si
             reason = busy(running)
         if reason is None and activity.plan_run is not None:
             reason = plan_busy(plan_id, activity.plan_run)
+        if reason is None and activity.trace is not None:
+            reason = trace_busy(plan_id, activity.trace)
         mapping = step if isinstance(step, dict) else {}
         repo = runs.plan_repo(body, mapping) if isinstance(step, dict) else None
         shown.append(
@@ -297,7 +326,14 @@ async def step_readiness(engine, user: Principal, project: str, plan_id: str, si
                 active_run=running,
             )
         )
-    return ReadySteps(project=project, plan_id=plan_id, revision=held.revision, plan_run=activity.plan_run, steps=shown)
+    return ReadySteps(
+        project=project,
+        plan_id=plan_id,
+        revision=held.revision,
+        plan_run=activity.plan_run,
+        trace=activity.trace,
+        steps=shown,
+    )
 
 
 _PLANS_OF = select(tables.plans.c.plan_id, tables.plans.c.label).where(

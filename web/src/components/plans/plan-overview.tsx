@@ -8,7 +8,7 @@ import { type ReactNode, useEffect, useRef } from "react";
 import { Identifier } from "@/components/data/identifier";
 import { useCanDispatch, usePlanRunToast } from "@/components/runs/hooks";
 import { ReviseWithAgentButton } from "@/components/runs/author-run";
-import { PlanRunBanner, RunPlanButton, usePlanActivity } from "@/components/runs/plan-run";
+import { PlanRunBanner, PlanTraceBanner, RunPlanButton, usePlanActivity } from "@/components/runs/plan-run";
 import { LIVE_REFRESH_MS } from "@/components/runs/queries";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { PageSkeleton } from "@/components/states/states";
@@ -236,6 +236,7 @@ function Overview({ project, plan, activity }: { project: string; plan: Plan; ac
                   pending={counts.pending}
                   runs={activity.active}
                   loaded={activity.loaded}
+                  trace={activity.trace}
                   onDispatched={dispatched}
                 />
               ) : null}
@@ -245,6 +246,7 @@ function Overview({ project, plan, activity }: { project: string; plan: Plan; ac
       />
       <ReadOnlyNotice />
       {activity.planRun ? <PlanRunBanner project={project} run={activity.planRun} steps={view.steps} /> : null}
+      {activity.trace ? <PlanTraceBanner project={project} trace={activity.trace} steps={view.steps} /> : null}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Intro view={view} />
         <PlanProgress counts={counts} />
@@ -269,15 +271,16 @@ export function PlanOverview({
 }) {
   const queryClient = useQueryClient();
   const activity = usePlanActivity(project, planId, !invalid);
-  const runId = activity.planRun?.id ?? null;
-  // While a plan run works on the plan, its steps change as the run reports them: read the plan as often as the runs.
+  const runId = activity.planRun ? `run-${activity.planRun.id}` : activity.trace ? `trace-${activity.trace.id}` : null;
+  // While a plan run or a system's trace works on the plan, its steps change as they report them: read the plan as
+  // often as the runs.
   const state = useHubQuery(
     { ...planQuery(browserApi, project, planId), enabled: !invalid, refetchInterval: runId !== null ? LIVE_REFRESH_MS : false },
     initialError,
-    { live: true }, // the top bar follows it while it polls, that is while a plan run works on the plan
+    { live: true }, // the top bar follows it while it polls, that is while a plan run or a trace works on the plan
   );
-  // Once the run ends, read the plan once more for what it wrote last.
-  const previous = useRef<number | null>(null);
+  // Once the run or the trace ends, read the plan once more for what it wrote last.
+  const previous = useRef<string | null>(null);
   useEffect(() => {
     if (previous.current !== null && runId === null) void queryClient.invalidateQueries({ queryKey: planKeys.one(project, planId), exact: true });
     previous.current = runId;

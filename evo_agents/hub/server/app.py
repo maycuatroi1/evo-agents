@@ -578,6 +578,8 @@ def _include_member_routes(app: FastAPI) -> None:
         opportunity_evidence,
         ops_actions,
         orchestrator_actions,
+        plan_run_choice,
+        plan_systems,
         plugin_chats_api,
         plugin_cli,
         plugin_docs_api,
@@ -626,7 +628,7 @@ def _include_member_routes(app: FastAPI) -> None:
         system_trace_views.stream_router,  # before its router, whose /traces/{id} would take /traces/stream
         system_trace_views.router,  # the traces of agent systems (0218)
         agent_systems.router,  # the agent systems of a project (0217)
-        system_ops.router,  # the default system of a project and the ops of a system (0238)
+        system_ops.router,  # the default system of a project and the ops of a system (0240)
         agent_accounts.router,
         account_pools.router,
         agent_provider_accounts.router,
@@ -654,6 +656,8 @@ def _include_member_routes(app: FastAPI) -> None:
         chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
         chats.router,
         chat_direct.router,
+        plan_systems.router,  # a plan handed to a system's entry agent, in the caller's direct chat with it
+        plan_run_choice.router,  # a member's last choice in the Run plan dialog of a project
         chat_home.router,  # the agents a member may chat with, for the chat home of the web
         chat_members.router,
         chat_images.router,

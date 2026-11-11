@@ -64,7 +64,7 @@ def hub_tables() -> set[str]:
     return set(tables.metadata.tables) - PLUGIN_OWNED_TABLES
 
 
-def test_the_metadata_holds_the_two_hundred_and_twenty_three_hub_tables():
+def test_the_metadata_holds_the_two_hundred_and_twenty_four_hub_tables():
     assert hub_tables() == TABLES - pg.QUEUE_TABLES - PLUGIN_OWNED_TABLES
     # the last added: problems, problem_revisions, problem_evidence, intakes, kg_review_dismissals, kg_decisions,
     # kg_decision_events, opportunities (4), retired_project_plugins, worker_pools, worker_pool_projects,
@@ -73,9 +73,10 @@ def test_the_metadata_holds_the_two_hundred_and_twenty_three_hub_tables():
     # market_payouts, market_purchases, docs_documents, docs_versions, docs_images, docs_version_images, chat_bridges,
     # chat_bridge_codes, chat_bridge_messages, plugin_records, plugin_record_leases, srs_delivery, srs_baselines, context_answer_loads, kg_query_labels, kg_eval_sets, kg_semantic, kg_optimize_runs, merge_checks, proposal_threads, account_pools, account_pool_members, guard_terms, guard_targets, kg_uploads, plugin_cron, kg_answer_jobs, kg_answers, kg_entity_map_runs, kg_named_graphs, agent_systems,
     # agent_system_revisions, system_traces, system_spans, agent_ask_briefs, orchestrator_threads,
-    # srs_use_case_revisions, srs_use_case_releases, chat_label_shares, workflow_run_reads, ops_cursors, ops_batches,
-    # ops_items; 237 with the 14 tables of crm, pm and marketing, whose plugins keep them
-    assert len(hub_tables()) == 223
+    # srs_use_case_revisions, srs_use_case_releases, chat_label_shares, workflow_run_reads,
+    # plan_run_choices, ops_cursors, ops_batches, ops_items; 238 with the 14 tables of crm, pm and marketing,
+    # whose plugins keep them
+    assert len(hub_tables()) == 224
     assert len(PLUGIN_OWNED_TABLES) == 14 and PLUGIN_OWNED_TABLES <= TABLES
 
 

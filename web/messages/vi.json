@@ -5683,7 +5683,8 @@
         "loading": "Đang kiểm tra các run của plan…",
         "planRun": "Plan run #{id} đang ở trạng thái {state}.",
         "stepRun": "Run #{id} của bước {step} đang ở trạng thái {state}; plan run phải chờ run này kết thúc.",
-        "noPending": "Không còn bước nào đang chờ làm."
+        "noPending": "Không còn bước nào đang chờ làm.",
+        "trace": "Đang chạy trong system {system} (trace #{id}); Run plan chờ tới khi các run của trace kết thúc."
       },
       "model": {
         "label": "Model",
@@ -5724,14 +5725,16 @@
         "stepRun": "<link>Run #{id}</link> của bước {step} đang ở trạng thái {state}: plan run phải chờ tới khi không còn run nào của các bước đang hoạt động.",
         "noPending": "Plan này không còn bước nào đang chờ làm: plan run không có gì để làm.",
         "unplaced": "Các bước sau không ghi repo, và plan không có đúng một repo: {steps}. Hãy ghi repo cho từng bước trong plan.",
-        "noBranch": "Plan không ghi nhánh cho {repos}: run sẽ thất bại trước khi agent bắt đầu. Hãy ghi nhánh cho từng repo trong phần repos của plan."
+        "noBranch": "Plan không ghi nhánh cho {repos}: run sẽ thất bại trước khi agent bắt đầu. Hãy ghi nhánh cho từng repo trong phần repos của plan.",
+        "trace": "<link>Trace #{id}</link> của system {system} đang chạy plan này ({state}): không gì khác chạy được plan cho tới khi các run của trace kết thúc."
       },
       "errors": {
         "forbidden": "Hub từ chối: chạy plan cần quyền ghi trên dự án này, và worker được ghim phải là của bạn.",
         "notFound": "Plan không còn trên hub, hoặc bạn không còn quyền đọc plan.",
         "conflict": "Hub không đưa plan run vào queue: plan đang có run hoạt động hoặc không còn bước nào đang chờ làm, hoặc worker được chọn không nhận được run này. Plan đã được tải lại; kiểm tra rồi thử lại.",
         "invalid": "Hub không nhận plan run này.",
-        "hubSays": "Hub báo: {message}"
+        "hubSays": "Hub báo: {message}",
+        "systemConflict": "Hub không giao plan cho system: plan đang có run hay trace hoạt động, không còn bước nào đang chờ, hoặc system không có entry agent. Plan đã được tải lại; kiểm tra rồi thử lại."
       },
       "banner": {
         "title": "Plan run #{id}",
@@ -5769,7 +5772,38 @@
       "toast": {
         "dispatched": "Đã dispatch plan run #{id}",
         "dispatchedText": "Plan run làm mọi bước chưa xong của {plan} trên một worker.",
-        "openRun": "Mở run"
+        "openRun": "Mở run",
+        "system": "Đã giao plan cho system {system}",
+        "systemText": "Trace #{trace} chạy {plan}: entry agent giao các bước cho các agent của system.",
+        "openTrace": "Mở trace"
+      },
+      "loadingChoice": "Đang tải lựa chọn lần trước của bạn",
+      "defaulted": "{fields} bạn chọn lần trước không còn dùng được ở đây, nên đã về mặc định.",
+      "fields": {
+        "target": "Nơi chạy",
+        "system": "System",
+        "agent": "Agent",
+        "runtime": "Runtime",
+        "model": "Model",
+        "mode": "Chế độ",
+        "timeout_h": "Thời gian tối đa",
+        "session_per_step": "Phiên"
+      },
+      "where": {
+        "legend": "Nơi chạy",
+        "info": "Trên worker: một plan run làm mọi bước chưa xong. Trong system: hub gửi plan cho entry agent của system trong direct chat của bạn với agent đó, và entry agent giao từng bước cho các agent của system; trace của system và giới hạn của nó được áp dụng.",
+        "worker": "Trên worker",
+        "workerHint": "Một plan run trên một node trong pool của agent, với các trường bên dưới.",
+        "entry": "Entry agent <name>@{handle}</name>",
+        "limits": "Mỗi trace tối đa {runs} run và {usd}",
+        "over": "{steps} bước đang chờ có thể cần khoảng {runs} run, vượt mức {limit} run của một trace: quá mức đó, hub từ chối lần giao việc tiếp theo của trace."
+      },
+      "trace": {
+        "title": "Đang chạy trong system {system}",
+        "text": "Trace #{id} đang ở trạng thái {state}. Entry agent giao từng bước cho các agent của system, và mỗi bước xong được ghi vào plan.",
+        "open": "Mở trace",
+        "progress": "Xong {done}/{total} bước",
+        "live": "Đang chạy trong system {system}: trace #{id} đang ở trạng thái {state}, xong {done}/{total} bước."
       }
     },
     "openRun": "Mở run #{id}",

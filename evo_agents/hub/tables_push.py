@@ -20,6 +20,13 @@ local time of their summary push (HH:MM; none: DEFAULT_DIGEST_AT). A member with
 today_marks (0158) holds what Today (``evo_agents.hub.server.today``) keeps of a member: ``seen_at``, the moment up to
 which they saw what changed, which only moves forward; and ``digest_on``, the local day of their last summary push
 (``evo_agents.hub.server.today_digest``), so it goes at most once a day. A member without a row saw nothing yet.
+
+plan_run_choices (0238) holds a member's last choice in the Run plan dialog of a project
+(``evo_agents.hub.server.plan_run_choice``): where the plan runs (``target``, TARGETS; ``system``, the slug of a system
+of the project when the target is one), the agent by handle (none: the project's default), the runtime, the model
+(none: the runtime's own), the mode, the timeout in hours and whether each step gets a session of its own. Never
+as_me, browser identities or an account. One row a member and project, which goes with either. A member without a row
+has the defaults.
 """
 
 from __future__ import annotations
@@ -33,6 +40,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Identity,
     Index,
+    Integer,
     MetaData,
     PrimaryKeyConstraint,
     Table,
@@ -50,6 +58,7 @@ MAX_ADDRESS_CHARS = 2048  # push_devices.address: an endpoint or a device token
 MAX_LABEL_CHARS = 100  # push_devices.label
 TIERS = INTERRUPT, BRIEF, OFF = ("interrupt", "brief", "off")  # the values of notification_preferences.tiers (0157)
 DEFAULT_DIGEST_AT = "07:30"  # the local time of a member's summary push until they choose one
+TARGETS = WORKER, SYSTEM = ("worker", "system")  # plan_run_choices.target (0238)
 
 
 def push_tables(metadata: MetaData) -> tuple[Table, Table]:
@@ -103,4 +112,28 @@ def today_table(metadata: MetaData) -> Table:
         Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name="today_marks_user_id_fkey"),
         PrimaryKeyConstraint("user_id", name="today_marks_pkey"),
+    )
+
+
+def plan_run_choice_table(metadata: MetaData) -> Table:
+    """plan_run_choices (0238), added to ``metadata``."""
+    name = "plan_run_choices"
+    return Table(
+        name,
+        metadata,
+        Column("user_id", BigInteger, nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("target", Text, nullable=False),
+        Column("system", Text),
+        Column("agent", Text),
+        Column("runtime", Text, nullable=False),
+        Column("model", Text),
+        Column("mode", Text, nullable=False),
+        Column("timeout_h", Integer, nullable=False),
+        Column("session_per_step", Boolean, nullable=False),
+        Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE", name=f"{name}_user_id_fkey"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        PrimaryKeyConstraint("user_id", "project_id", name=f"{name}_pkey"),
+        Index(f"{name}_project_idx", "project_id"),
     )

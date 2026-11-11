@@ -106,7 +106,7 @@ def workers_table(metadata: MetaData) -> Table:
         Column("doctor_high", SmallInteger),  # 0108
         Column("doctor_medium", SmallInteger),  # 0108
         Column("doctor_findings", JSONB),  # 0108
-        Column("health", JSONB),  # 0237: its free disk and runtimes' logins, as its last heartbeat said; NULL: none
+        Column("health", JSONB),  # 0239: its free disk and runtimes' logins, as its last heartbeat said; NULL: none
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="workers_owner_id_fkey"),
         ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="workers_token_id_fkey"),
         PrimaryKeyConstraint("id", name="workers_pkey"),

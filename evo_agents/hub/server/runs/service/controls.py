@@ -30,7 +30,7 @@ from evo_agents.hub.server.runs.service.dispatch import (
     worker_as_pinned,
 )
 from evo_agents.hub.server.runs.service.profiles import Asked, rerun_choice
-from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity, run_view
+from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity, run_view, trace_busy
 from evo_agents.hub.server.runs.service.worker_fit import shared_in
 from evo_agents.hub.server.security import WEB, Principal
 
@@ -309,6 +309,8 @@ async def rerun_plan_in(conn: AsyncConnection, user: Principal, project: str, ru
     await refuse_curator_plan(conn, access, row.plan_id)
     await lock_plan(conn, access.project_id, row.plan_id)
     activity = await plan_activity(conn, access.project_id, row.plan_id)
+    if activity.trace is not None:
+        raise HTTPException(409, f"{trace_busy(row.plan_id, activity.trace)}: nothing was queued")
     if activity.plan_run is not None or activity.steps:
         raise HTTPException(409, f"plan {row.plan_id} has an active run: nothing was queued")
     new_id = (await conn.execute(next_attempt(run_id))).scalar_one()

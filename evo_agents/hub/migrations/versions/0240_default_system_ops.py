@@ -1,7 +1,7 @@
 """The default system of a project, the pause of its ops, and the queue of a project's operations events.
 
-Revision ID: 0238
-Revises: 0237
+Revision ID: 0240
+Revises: 0239
 Create Date: 2026-11-11
 
 The names below are copies of ``evo_agents.hub.tables_ops`` and ``evo_agents.hub.ops_queue`` as of this revision,
@@ -25,8 +25,8 @@ Going back drops the three tables and the new columns.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0238"
-down_revision = "0237"
+revision = "0240"
+down_revision = "0239"
 branch_labels = None
 depends_on = None
 

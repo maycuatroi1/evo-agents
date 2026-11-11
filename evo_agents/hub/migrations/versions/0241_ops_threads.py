@@ -1,8 +1,8 @@
 """The ops threads of a project's default system: the rule ``ops`` of orchestrator_threads, the thread of a batch, and
 the breaker of a system's ops.
 
-Revision ID: 0239
-Revises: 0238
+Revision ID: 0241
+Revises: 0240
 Create Date: 2026-11-12
 
 The names below are copies of ``evo_agents.hub.tables_orchestrator``, ``tables_ops`` and ``tables_systems`` as of this
@@ -20,8 +20,8 @@ Going back drops the new columns and puts the rules back; a thread of rule ``ops
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0239"
-down_revision = "0238"
+revision = "0241"
+down_revision = "0240"
 branch_labels = None
 depends_on = None
 

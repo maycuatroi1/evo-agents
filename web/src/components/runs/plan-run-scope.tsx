@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import type { StepGroup } from "@/lib/plans";
 
 import { isCuratorPlan, type PlanRunScope } from "./model";
+import type { PlanTrace } from "./plan-run-choice";
+import { planTraceHref } from "./plan-run-outcome";
 import { type Run, runHref, type StepReadiness } from "./queries";
 
 /**
@@ -19,10 +21,14 @@ import { type Run, runHref, type StepReadiness } from "./queries";
  * step's status (`useStepStatusText` of the plans feature), so this file stays within its own feature.
  */
 
+/** The blockers that also keep the hub from handing the plan to a system; the others are a plan run's own. */
+export const SYSTEM_BLOCKERS: readonly Blocker["kind"][] = ["curator", "trace", "planRun", "stepRun", "noPending"];
+
 /** What keeps the hub from taking a plan run of the plan now, or makes the run fail before its agent starts. */
 export type Blocker =
   | { kind: "curator" }
   | { kind: "planRun"; id: number; state: Run["state"]; login: string }
+  | { kind: "trace"; id: number; system: string; state: Run["state"] }
   | { kind: "stepRun"; id: number; state: Run["state"]; step: string }
   | { kind: "noPending" }
   | { kind: "unplaced"; steps: string[] }
@@ -33,9 +39,11 @@ export function blockersOf(
   steps: readonly StepReadiness[],
   planRun: { id: number; state: Run["state"]; dispatched_by: string } | null,
   planId = "",
+  trace: PlanTrace | null = null,
 ): Blocker[] {
   const found: Blocker[] = [];
   if (isCuratorPlan(planId)) found.push({ kind: "curator" });
+  if (trace) found.push({ kind: "trace", id: trace.id, system: trace.system, state: trace.state });
   if (planRun) found.push({ kind: "planRun", id: planRun.id, state: planRun.state, login: planRun.dispatched_by });
   const stepRun = steps.filter((step) => step.active_run).sort((a, b) => a.active_run!.id - b.active_run!.id)[0];
   if (!planRun && stepRun?.active_run) found.push({ kind: "stepRun", id: stepRun.active_run.id, state: stepRun.active_run.state, step: stepRun.key });
@@ -65,6 +73,17 @@ export function Blockers({ project, blockers }: { project: string; blockers: Blo
         return t.rich("planRun", { id: blocker.id, state: tState(blocker.state), login: blocker.login, link: runLink(blocker.id) });
       case "stepRun":
         return t.rich("stepRun", { id: blocker.id, state: tState(blocker.state), step: blocker.step, link: runLink(blocker.id) });
+      case "trace":
+        return t.rich("trace", {
+          id: blocker.id,
+          system: blocker.system,
+          state: tState(blocker.state),
+          link: (chunks) => (
+            <Link href={planTraceHref(project, blocker.system, blocker.id)} className="font-medium underline underline-offset-4">
+              {chunks}
+            </Link>
+          ),
+        });
       case "curator":
         return t("curator");
       case "noPending":

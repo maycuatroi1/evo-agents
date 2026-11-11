@@ -445,6 +445,13 @@ describe("plan runs", () => {
     });
     expect(planRunLock(runs.slice(3), "rollout", 0)).toEqual({ kind: "noPending" });
     expect(planRunLock(runs.slice(3), "rollout", 1)).toBeNull();
+    // A system's trace that runs the plan locks it first, like a plan run.
+    expect(planRunLock(runs.slice(3), "rollout", 1, { id: 77, system: "lumen-review", state: "running" })).toEqual({
+      kind: "trace",
+      id: 77,
+      system: "lumen-review",
+      state: "running",
+    });
   });
 
   it("offers Run plan on a plan of the Curator as on any other, locked by its active runs alone", () => {

@@ -51,6 +51,7 @@ from evo_agents.hub.server.runs.service.views import (
     plan_busy,
     run_view,
     run_views,
+    trace_busy,
 )
 from evo_agents.hub.server.runs.service.worker_fit import shared_in
 from evo_agents.hub.server.security import WEB, Principal
@@ -418,11 +419,18 @@ async def refuse_curator_plan(conn: AsyncConnection, access: ProjectAccess, plan
 
 
 def no_plan_run(activity: Activity, plan_id: str) -> None:
-    """409 while the plan has an active plan run: its steps are that run's until it ends."""
+    """409 while the plan has an active plan run, or a trace of a system that runs it has an active run: its steps
+    are that run's, or that trace's, until it ends."""
     if activity.plan_run is not None:
         raise HTTPException(
             409,
             f"{plan_busy(plan_id, activity.plan_run)}: its steps are that run's until it ends; nothing was dispatched",
+        )
+    if activity.trace is not None:
+        raise HTTPException(
+            409,
+            f"{trace_busy(plan_id, activity.trace)}: its steps are that trace's until its runs end; nothing was "
+            "dispatched",
         )
 
 
@@ -558,6 +566,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         activity = await plan_activity(conn, access.project_id, body.plan_id)
         if activity.plan_run is not None:
             raise HTTPException(409, f"{plan_busy(body.plan_id, activity.plan_run)}; nothing was dispatched")
+        no_plan_run(activity, body.plan_id)  # a system's trace that runs the plan
         if activity.steps:
             key, active = min(activity.steps.items(), key=lambda item: item[1].id)
             busy = f"has run #{active.id}, {active.state}, dispatched by {active.dispatched_by}"

@@ -10562,6 +10562,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/plans/{plan_id}/system-dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * System Dispatch
+         * @description Hand the plan to the system's entry agent: the caller's message in their direct chat with it names the plan and
+         *     how to run it, and the trace it opens runs the plan.
+         */
+        post: operations["system_dispatch_v1_projects__project__plans__plan_id__system_dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/plan-run-choice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Plan Run Choice
+         * @description The caller's last choice in the Run plan dialog of the project, checked against the project now; the defaults
+         *     when they saved none.
+         */
+        get: operations["read_plan_run_choice_v1_projects__project__plan_run_choice_get"];
+        /**
+         * Put Plan Run Choice
+         * @description Keep the caller's choice in the Run plan dialog of the project, in place of the one before; the answer is the
+         *     choice as GET reads it.
+         */
+        put: operations["put_plan_run_choice_v1_projects__project__plan_run_choice_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/chat-agents": {
         parameters: {
             query?: never;
@@ -32561,6 +32608,127 @@ export interface components {
             /** If Revision */
             if_revision?: number | null;
         };
+        /**
+         * PlanRunChoice
+         * @description The caller's choice as the hub keeps it, checked against the project now.
+         */
+        PlanRunChoice: {
+            /**
+             * Target
+             * @description worker: a plan run on a worker (POST .../plan-runs); system: the plan handed to the entry agent of the system ``system`` names (POST .../plans/{plan_id}/system-dispatch)
+             * @default worker
+             * @enum {string}
+             */
+            target: "worker" | "system";
+            /**
+             * System
+             * @description the slug of a system of the project when target is system; null when it is worker
+             */
+            system?: string | null;
+            /**
+             * Agent
+             * @description the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything
+             */
+            agent?: string | null;
+            /**
+             * Runtime
+             * @description any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422
+             * @default any
+             */
+            runtime: string;
+            /**
+             * Model
+             * @description the model, as its runtime names it; null: the runtime's own
+             */
+            model?: string | null;
+            /**
+             * Mode
+             * @default headless
+             * @enum {string}
+             */
+            mode: "headless" | "interactive";
+            /**
+             * Timeout H
+             * @description hours of agent time a plan run may take
+             * @default 4
+             * @enum {integer}
+             */
+            timeout_h: 2 | 4 | 8 | 24;
+            /**
+             * Session Per Step
+             * @description true: a new agent session for each step of a plan run
+             * @default false
+             */
+            session_per_step: boolean;
+            /**
+             * Saved
+             * @description whether the caller saved a choice in the project; false: these are the defaults
+             */
+            saved: boolean;
+            /**
+             * Defaulted
+             * @description the fields of the saved choice that went back to their default, since what they named can no longer be used: system (deleted, or without an entry agent; target is then worker), agent (deleted, or not allowed in the project), runtime, model (not allowed, or not registered), mode, timeout_h
+             */
+            defaulted: string[];
+            /**
+             * Updated At
+             * @description when the caller saved it; null when they never did
+             */
+            updated_at: string | null;
+        };
+        /**
+         * PlanRunChoiceIn
+         * @description What the Run plan dialog keeps of a member's choice; the defaults are a plan run's.
+         */
+        PlanRunChoiceIn: {
+            /**
+             * Target
+             * @description worker: a plan run on a worker (POST .../plan-runs); system: the plan handed to the entry agent of the system ``system`` names (POST .../plans/{plan_id}/system-dispatch)
+             * @default worker
+             * @enum {string}
+             */
+            target: "worker" | "system";
+            /**
+             * System
+             * @description the slug of a system of the project when target is system; null when it is worker
+             */
+            system?: string | null;
+            /**
+             * Agent
+             * @description the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything
+             */
+            agent?: string | null;
+            /**
+             * Runtime
+             * @description any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422
+             * @default any
+             */
+            runtime: string;
+            /**
+             * Model
+             * @description the model, as its runtime names it; null: the runtime's own
+             */
+            model?: string | null;
+            /**
+             * Mode
+             * @default headless
+             * @enum {string}
+             */
+            mode: "headless" | "interactive";
+            /**
+             * Timeout H
+             * @description hours of agent time a plan run may take
+             * @default 4
+             * @enum {integer}
+             */
+            timeout_h: 2 | 4 | 8 | 24;
+            /**
+             * Session Per Step
+             * @description true: a new agent session for each step of a plan run
+             * @default false
+             */
+            session_per_step: boolean;
+        };
         /** PlanRunDispatch */
         PlanRunDispatch: {
             /** Plan Id */
@@ -32679,6 +32847,33 @@ export interface components {
              * @description the codes (P-<number>) of the problems of the project its body names
              */
             problems?: string[];
+        };
+        /**
+         * PlanTrace
+         * @description A trace of a system that runs the plan (``plan_systems``) and has a run active: its runs hold the plan's steps
+         *     until they end.
+         */
+        PlanTrace: {
+            /**
+             * Id
+             * @description the trace, as GET /v1/projects/{p}/systems/{slug}/traces/{id} names it
+             */
+            id: number;
+            /**
+             * System
+             * @description the slug of the system it runs under
+             */
+            system: string;
+            /**
+             * Run Id
+             * @description its active run, the latest when it has several
+             */
+            run_id: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked";
         };
         /**
          * PlaybookDelta
@@ -37829,6 +38024,8 @@ export interface components {
             revision: number;
             /** @description the plan's active plan run: while there is one, no step of the plan is dispatched */
             plan_run?: components["schemas"]["ActiveRun"] | null;
+            /** @description a trace of a system that runs the plan and has an active run: while there is one, neither a step nor a plan run of the plan is dispatched */
+            trace?: components["schemas"]["PlanTrace"] | null;
             /**
              * Steps
              * @description every step of the plan, in plan order
@@ -44801,6 +44998,49 @@ export interface components {
             project: string;
             /** Deleted */
             deleted: string;
+        };
+        /** SystemDispatch */
+        SystemDispatch: {
+            /**
+             * System
+             * @description the slug of a system of the project, whose entry agent is handed the plan
+             */
+            system: string;
+        };
+        /**
+         * SystemDispatched
+         * @description A plan handed to a system: the caller's message in their direct chat with its entry agent, the run it woke and
+         *     the trace it opened.
+         */
+        SystemDispatched: {
+            /** System */
+            system: string;
+            /**
+             * System Revision
+             * @description the revision of the system's spec the trace runs under
+             */
+            system_revision: number;
+            /** Trace Id */
+            trace_id: number;
+            /** Plan Id */
+            plan_id: string;
+            /** Plan Revision */
+            plan_revision: number;
+            /**
+             * Chat Id
+             * @description the caller's direct chat with the system's entry agent
+             */
+            chat_id: number;
+            /**
+             * Message Id
+             * @description the caller's message there, which names the plan and how to run it
+             */
+            message_id: number;
+            /**
+             * Run Id
+             * @description the entry agent's run the message woke
+             */
+            run_id: number;
         };
         /** SystemOps */
         SystemOps: {
@@ -90278,6 +90518,198 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    system_dispatch_v1_projects__project__plans__plan_id__system_dispatch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemDispatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemDispatched"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_plan_run_choice_v1_projects__project__plan_run_choice_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanRunChoice"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_plan_run_choice_v1_projects__project__plan_run_choice_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanRunChoiceIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanRunChoice"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

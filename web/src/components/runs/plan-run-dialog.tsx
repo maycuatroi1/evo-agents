@@ -1,9 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Play, X } from "lucide-react";
+import { Info, Play, X } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
 import { InlineError, useWriteFailure } from "@/components/feedback/notice";
@@ -36,9 +36,10 @@ import {
   type RuntimeName,
 } from "./model";
 import { ModelField } from "./model-field";
-import { Blockers, blockersOf, ScopeSummary } from "./plan-run-scope";
+import { choiceBody, fieldsOf, type PlanRunOutcome, planRunChoiceQuery, type PlanTarget } from "./plan-run-choice";
+import { Blockers, blockersOf, ScopeSummary, SYSTEM_BLOCKERS } from "./plan-run-scope";
+import { useDispatchPlanInSystem, useSavePlanRunChoice, useSystemOptions, WhereField } from "./plan-run-where";
 import {
-  DEFAULT_PLAN_TIMEOUT,
   PLAN_TIMEOUT_CHOICES,
   type PlanTimeout,
   readyStepsQuery,
@@ -65,8 +66,8 @@ type Props = {
   planId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Called with the plan run the hub queued, for the page to say so once the dialog closes. */
-  onDispatched: (run: Run) => void;
+  /** Called with the plan run the hub queued, or the plan handed to a system, for the page to say so once the dialog closes. */
+  onDispatched: (outcome: PlanRunOutcome) => void;
   /** Where focus goes once the dialog has closed, for a dialog opened without a trigger (the command palette). */
   onCloseAutoFocus?: (event: Event) => void;
 };
@@ -75,13 +76,17 @@ type Props = {
  * Run plan: one run, on a node of the agent's own pool, that does every step of the plan not done yet, in depends_on
  * order, in one session or, switched on, in a new session for each step (docs/workers.md, A plan run on the machine).
  * The dialog says what the run will do (its steps, repos, checkpoints, and where the agent may push and merge) and takes
- * the agent, runtime, model, mode, account, timeout and sessions, and no worker. It fills the account with the one it
+ * the agent, runtime, model, mode, account, timeout and sessions, and no worker. Where the project has an agent system
+ * with an entry agent, "Where it runs" offers to hand the plan to that system instead (plan-run-where.tsx), and the
+ * fields only a plan run takes are hidden. The dialog opens on the visitor's remembered choice (plan-run-choice.ts),
+ * says which fields fell back to their default, and remembers the choice again after a Run the hub took. It fills the account with the one it
  * finds for the run, which the visitor may change; what a field means shows from its info icon, and below a
  * field only what is wrong with the choice. The content mounts each time the dialog opens.
  */
 export function PlanRunDialog({ project, planId, open, onOpenChange, onDispatched, onCloseAutoFocus }: Props) {
   const write = useDispatchPlanRun(project);
-  const pending = write.isPending;
+  const handOver = useDispatchPlanInSystem(project);
+  const pending = write.isPending || handOver.isPending;
   const guard = (event: Event) => {
     if (pending) event.preventDefault();
   };
@@ -95,30 +100,45 @@ export function PlanRunDialog({ project, planId, open, onOpenChange, onDispatche
         onCloseAutoFocus={onCloseAutoFocus}
         data-testid="plan-run-dialog"
       >
-        <PlanRunForm project={project} planId={planId} write={write} onClose={() => onOpenChange(false)} onDispatched={onDispatched} />
+        <PlanRunForm
+          project={project}
+          planId={planId}
+          write={write}
+          handOver={handOver}
+          onClose={() => onOpenChange(false)}
+          onDispatched={onDispatched}
+        />
       </DialogContent>
     </Dialog>
   );
 }
 
+/** The fields of a remembered choice, as the line that names those fallen back to their default calls them. */
+const FIELD_NAMES: readonly string[] = ["target", "system", "agent", "runtime", "model", "mode", "timeout_h", "session_per_step"];
+type FieldName = "target" | "system" | "agent" | "runtime" | "model" | "mode" | "timeout_h" | "session_per_step";
+
 type Write = ReturnType<typeof useDispatchPlanRun>;
+type HandOver = ReturnType<typeof useDispatchPlanInSystem>;
 
 function PlanRunForm({
   project,
   planId,
   write,
+  handOver,
   onClose,
   onDispatched,
 }: {
   project: string;
   planId: string;
   write: Write;
+  handOver: HandOver;
   onClose: () => void;
-  onDispatched: (run: Run) => void;
+  onDispatched: (outcome: PlanRunOutcome) => void;
 }) {
   const t = useTranslations("runs.planRun");
   const tDispatch = useTranslations("runs.dispatch");
   const statusText = useStepStatusText();
+  const format = useFormatter();
   const ids = useId();
   const failure = useWriteFailure();
   const plan = useQuery(planQuery(browserApi, project, planId));
@@ -127,19 +147,43 @@ function PlanRunForm({
   const workersState = useQuery(workersQuery(browserApi));
   const projectState = useQuery(projectQuery(browserApi, project));
   const gateway = useQuery(runnableModelsQuery(browserApi, project)).data ?? [];
+  const choice = useQuery(planRunChoiceQuery(browserApi, project));
+  const systems = useSystemOptions(project);
+  const save = useSavePlanRunChoice(project);
 
+  const [target, setTarget] = useState<PlanTarget>("worker");
+  const [system, setSystem] = useState<string | null>(null);
   const [runtime, setRuntime] = useState<RequestedRuntime>("any");
   const [modelText, setModelText] = useState("");
   const [mode, setMode] = useState<RunMode>("headless");
-  const [timeout, setTimeoutHours] = useState<PlanTimeout>(DEFAULT_PLAN_TIMEOUT);
+  const [timeout, setTimeoutHours] = useState<PlanTimeout>(fieldsOf(undefined).timeout);
   const [perStep, setPerStep] = useState(false);
   const [asMe, setAsMe] = useState(false);
   const agents = useAgentChoice(project);
+  // The remembered choice fills the form once, as soon as the hub answers (an older hub's 404 keeps the defaults); the
+  // fields show only then, so nothing the visitor picks is overwritten.
+  const [prefilled, setPrefilled] = useState(false);
+  if (!prefilled && !choice.isPending) {
+    setPrefilled(true);
+    const start = fieldsOf(choice.data);
+    setTarget(start.target);
+    setSystem(start.system);
+    setRuntime(start.runtime);
+    setModelText(start.model);
+    setMode(start.mode);
+    setTimeoutHours(start.timeout);
+    setPerStep(start.perStep);
+    if (start.agent) agents.choose(start.agent);
+  }
+  const settled = prefilled && !systems.loading;
+  const defaulted = (choice.data?.defaulted ?? []).map((field) => (FIELD_NAMES.includes(field) ? t(`fields.${field as FieldName}`) : field));
+  const chosen = target === "system" ? (systems.options.find((option) => option.slug === system) ?? null) : null;
 
   const view = plan.data ? parsePlan(plan.data.body, plan.data.plan_id) : null;
   const defaults = Object.fromEntries((projectState.data?.repos ?? []).map((repo) => [repo.name, repo.default_branch ?? null]));
   const scope = view && ready.data ? planRunScope(ready.data.steps, view, defaults) : null;
-  const blockers = scope && ready.data ? blockersOf(scope, ready.data.steps, ready.data.plan_run ?? null, planId) : [];
+  const allBlockers = scope && ready.data ? blockersOf(scope, ready.data.steps, ready.data.plan_run ?? null, planId, ready.data.trace ?? null) : [];
+  const blockers = chosen ? allBlockers.filter((blocker) => SYSTEM_BLOCKERS.includes(blocker.kind)) : allBlockers;
   const own = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
   const mine = agentWorkers(own, agents.agent);
   const [account, setAccount] = useAccountChoice(project, runtime, null);
@@ -147,8 +191,8 @@ function PlanRunForm({
   const reach = workersState.isSuccess && mine.length > 0 ? Object.fromEntries((["any", ...RUNTIMES] as const).map((name) => [name, runtimeCount(mine, name)])) : null;
   const model = readModel(modelText, runtime, gateway.map((item) => item.model));
   const problems = agentProblems(agents.agent, { runtime, model: model.model, workers: own });
-  const runnable = scope !== null && blockers.length === 0 && problems.length === 0;
-  const pending = write.isPending;
+  const runnable = settled && scope !== null && blockers.length === 0 && (chosen !== null || (problems.length === 0 && model.problem === null));
+  const pending = write.isPending || handOver.isPending;
   const loading = plan.isPending || ready.isPending;
   const loadFailed = !loading && (plan.isError || ready.isError) && scope === null;
 
@@ -160,9 +204,23 @@ function PlanRunForm({
     if (!kept && (next === "any" || !models[next].includes(modelText.trim()))) setModelText("");
   };
 
+  const remember = () =>
+    void save(choiceBody({ target: chosen ? "system" : "worker", system, agent: agents.agent?.handle ?? null, runtime, model: modelText, mode, timeout, perStep }, model.problem === null ? model.model : null));
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (pending || !runnable || model.problem !== null) return;
+    if (pending || !runnable) return;
+    if (chosen) {
+      try {
+        const handed = await handOver.mutateAsync({ planId, system: chosen.slug });
+        remember();
+        onDispatched({ ...handed, project });
+        onClose();
+      } catch {
+        // shown above the buttons, from the mutation's state
+      }
+      return;
+    }
     let run: Run;
     try {
       const each = perStep ? { session_per_step: true as const } : {}; // sent only when on: an older hub ignores it
@@ -180,12 +238,18 @@ function PlanRunForm({
     } catch {
       return; // shown above the buttons, from the mutation's state
     }
+    remember();
     onDispatched(run);
     onClose();
   };
 
-  const error = write.isError ? failure(write.error, { 403: t("errors.forbidden"), 404: t("errors.notFound"), 409: t("errors.conflict"), 422: t("errors.invalid") }) : null;
-  const apiDetail = write.isError && isApiError(write.error) && [404, 409, 422].includes(write.error.info.status) ? t("errors.hubSays", { message: write.error.info.message }) : null;
+  const failed = chosen ? handOver : write;
+  const error = failed.isError ? failure(failed.error, { 403: t("errors.forbidden"), 404: t("errors.notFound"), 409: t(chosen ? "errors.systemConflict" : "errors.conflict"), 422: t("errors.invalid") }) : null;
+  const apiDetail = failed.isError && isApiError(failed.error) && [404, 409, 422].includes(failed.error.info.status) ? t("errors.hubSays", { message: failed.error.info.message }) : null;
+  const where = (next: PlanTarget, slug: string | null) => {
+    setTarget(next);
+    if (slug) setSystem(slug);
+  };
 
   return (
     <form onSubmit={(event) => void submit(event)} noValidate className="flex min-h-0 flex-1 flex-col" aria-busy={pending || undefined}>
@@ -223,49 +287,75 @@ function PlanRunForm({
           </>
         ) : null}
 
-        <AgentField choice={agents} problems={problems} disabled={pending} />
-        <RuntimeField value={runtime} onChange={changeRuntime} reach={reach} />
-
-        <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
-          <ModelField
-            value={modelText}
-            onChange={setModelText}
-            runtime={runtime}
-            models={models}
-            gateway={gateway}
-            onRuntime={changeRuntime}
-            problem={model.problem}
-            disabled={pending}
-          />
-          <ModeField value={mode} onChange={setMode} />
-          <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <FieldLabel htmlFor={`${ids}-timeout`} label={t("timeout")} info={t("timeoutHint")} testId="plan-run-timeout-info" />
-            <NativeSelect
-              id={`${ids}-timeout`}
-              value={String(timeout)}
-              onChange={(event) => setTimeoutHours(Number(event.target.value) as PlanTimeout)}
-              disabled={pending}
-              className="w-full md:[&_select]:h-9"
-              data-testid="plan-run-timeout"
-            >
-              {PLAN_TIMEOUT_CHOICES.map((hours) => (
-                <NativeSelectOption key={hours} value={String(hours)}>
-                  {t("timeoutValue", { hours })}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
+        {!settled ? (
+          <div className="flex flex-col gap-2" role="status" aria-label={t("loadingChoice")} data-testid="plan-run-choice-loading">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-28 w-full" />
           </div>
-          <SessionsField on={perStep} onChange={setPerStep} disabled={pending} workers={mine} loaded={workersState.isSuccess} />
-        </div>
+        ) : (
+          <>
+            {defaulted.length > 0 ? (
+              <p className="flex items-start gap-2 text-xs text-pretty text-muted-foreground" role="note" data-testid="plan-run-defaulted">
+                <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                <span>{t("defaulted", { fields: format.list(defaulted, { type: "conjunction" }) })}</span>
+              </p>
+            ) : null}
+            <WhereField
+              options={systems.options}
+              target={chosen ? "system" : "worker"}
+              system={chosen?.slug ?? null}
+              pending={ready.data ? ready.data.steps.filter((step) => step.status === "pending").length : null}
+              onChange={where}
+              disabled={pending}
+            />
+            {chosen ? null : (
+              <>
+                <AgentField choice={agents} problems={problems} disabled={pending} />
+                <RuntimeField value={runtime} onChange={changeRuntime} reach={reach} />
+                <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
+                  <ModelField
+                    value={modelText}
+                    onChange={setModelText}
+                    runtime={runtime}
+                    models={models}
+                    gateway={gateway}
+                    onRuntime={changeRuntime}
+                    problem={model.problem}
+                    disabled={pending}
+                  />
+                  <ModeField value={mode} onChange={setMode} />
+                  <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <FieldLabel htmlFor={`${ids}-timeout`} label={t("timeout")} info={t("timeoutHint")} testId="plan-run-timeout-info" />
+                    <NativeSelect
+                      id={`${ids}-timeout`}
+                      value={String(timeout)}
+                      onChange={(event) => setTimeoutHours(Number(event.target.value) as PlanTimeout)}
+                      disabled={pending}
+                      className="w-full md:[&_select]:h-9"
+                      data-testid="plan-run-timeout"
+                    >
+                      {PLAN_TIMEOUT_CHOICES.map((hours) => (
+                        <NativeSelectOption key={hours} value={String(hours)}>
+                          {t("timeoutValue", { hours })}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </div>
+                  <SessionsField on={perStep} onChange={setPerStep} disabled={pending} workers={mine} loaded={workersState.isSuccess} />
+                </div>
 
-        <AsMeField checked={asMe} onChange={setAsMe} disabled={pending} />
+                <AsMeField checked={asMe} onChange={setAsMe} disabled={pending} />
+              </>
+            )}
+          </>
+        )}
 
         {error ? <InlineError text={error.text} detail={apiDetail ?? error.detail} requestId={error.requestId} /> : null}
       </div>
 
       <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-5">
-        {agents.agent && problems.length ? <AgentBlocked agent={agents.agent} /> : null}
+        {!chosen && agents.agent && problems.length ? <AgentBlocked agent={agents.agent} /> : null}
         <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
           <DialogClose asChild>
             <Button
@@ -279,7 +369,7 @@ function PlanRunForm({
               {tDispatch("cancel")}
             </Button>
           </DialogClose>
-          <Button type="submit" size="lg" disabled={!runnable || model.problem !== null} busy={pending} data-testid="plan-run-submit">
+          <Button type="submit" size="lg" disabled={!runnable} busy={pending} data-testid="plan-run-submit">
             <Play aria-hidden="true" />
             {pending ? t("submitting") : t("submit")}
           </Button>
