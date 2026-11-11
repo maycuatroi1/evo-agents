@@ -56,6 +56,8 @@ LEASE_MARGIN = 120  # seconds the run's lease outlives TURN_SECONDS, before the 
 KEY_GRACE = 300  # seconds the turn's gateway key outlives TURN_SECONDS, in case its revocation fails
 KEY_NAME = "evo-hub-run-{run_id}"
 CAP_NOTICE = "system_daily_cap"
+DEADLOCK = "40P01"  # the SQLSTATE of a transaction Postgres aborted in a deadlock
+DEADLOCK_TRIES = 3  # the times a turn's end runs its transaction before a deadlock fails the run
 PARKED = "it waits for the answer of an agent it asked, which resumes it"
 OFF = (
     "The hub runtime is not configured: this hub has no model gateway (EVO_HUB_GATEWAY_SECRET, docs/hub.md section "
@@ -221,8 +223,38 @@ async def _tell_owner(conn, system, why: str) -> None:
 # Ending a turn
 
 
+def _deadlocked(exc: BaseException | None) -> bool:
+    """Whether ``exc`` or an error it wraps (procrastinate's ConnectorException, SQLAlchemy's DBAPIError) is a deadlock
+    of Postgres, which aborts the transaction it chose and lets the other go on."""
+    while exc is not None:
+        if (
+            getattr(exc, "sqlstate", None) == DEADLOCK
+            or getattr(getattr(exc, "orig", None), "sqlstate", None) == DEADLOCK
+        ):
+            return True
+        exc = exc.__cause__
+    return False
+
+
+async def _again(work):
+    """``work()``, one transaction, run again when Postgres aborted it in a deadlock: two turns that end at once queue
+    the same jobs (``jobs.soon``) in opposite orders, and the one it aborts would fail its run for nothing."""
+    for attempt in range(1, DEADLOCK_TRIES + 1):
+        try:
+            return await work()
+        except Exception as exc:
+            if attempt == DEADLOCK_TRIES or not _deadlocked(exc):
+                raise
+            log.warning("hub turn deadlocked, again", extra={"attempt": attempt})
+            await asyncio.sleep(0.05 * attempt)
+
+
 async def _end(engine: AsyncEngine, run_id: int, reply: str | None, *, park: bool = False) -> str:
     """Post ``reply`` as the agent's and end the turn of run ``run_id``: parked when ``park``, else done. The state."""
+    return await _again(lambda: _ending(engine, run_id, reply, park))
+
+
+async def _ending(engine: AsyncEngine, run_id: int, reply: str | None, park: bool) -> str:
     async with engine.begin() as conn:
         state = (
             await conn.execute(select(tables.runs.c.state).where(tables.runs.c.id == run_id).with_for_update())
@@ -241,6 +273,10 @@ async def _end(engine: AsyncEngine, run_id: int, reply: str | None, *, park: boo
 
 
 async def _fail(engine: AsyncEngine, run_id: int, error: str) -> None:
+    await _again(lambda: _failing(engine, run_id, error))
+
+
+async def _failing(engine: AsyncEngine, run_id: int, error: str) -> None:
     async with engine.begin() as conn:
         r = tables.runs
         state = (await conn.execute(select(r.c.state).where(r.c.id == run_id).with_for_update())).scalar_one()

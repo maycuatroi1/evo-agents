@@ -368,3 +368,38 @@ def test_an_ask_parks_the_hub_run_and_the_answer_wakes_it(client, hub, hub_db, g
     assert "load_key" in json.dumps(gateway.asked[-1]["messages"])
     shown = bodies(client, hub["owner"], chat, mention["id"])
     assert "kb-bot says the export service signs them, in kb/export/keys.py." in shown
+
+
+def test_a_deadlock_at_the_end_of_a_turn_runs_its_end_again_and_the_run_parks(
+    client, hub, hub_db, gateway, helper, monkeypatch
+):
+    """Runs #5134 and #5135 of 2026-11-11: two turns that parked at once queued the same jobs in opposite orders, and
+    the turn Postgres aborted failed its run with ConnectorException."""
+    from procrastinate.exceptions import ConnectorException
+    from psycopg.errors import DeadlockDetected
+
+    written(client, hub["owner"], "kb", account(sample(), models=["auto"]))
+    settled(client)
+    hub_agent(client, hub_db, hub["owner"], KB_AGENT, PROJECT, "kb")
+    chat = created(client, hub["owner"], agents=["helper", KB_AGENT])
+    sent(client, hub["owner"], chat["id"], "@helper ask kb-bot who signs the export links")
+    (parent,) = chat_runs_of(hub_db)
+    brief = {"goal": "name the signer", "output": "a service and a path", "done_when": "it names both"}
+    gateway.script = [
+        {"content": None, "tool_calls": [tool_call("agent_ask", {"handle": KB_AGENT, "body": QUESTION, **brief})]}
+    ]
+    moves, real = [], hub_runtime.move_run
+
+    async def deadlocks_once(conn, run_id, old, new, *args, **kwargs):
+        moves.append(new)
+        if moves.count("waiting") == 1 and new == "waiting":
+            try:
+                raise DeadlockDetected("deadlock detected")
+            except DeadlockDetected as exc:
+                raise ConnectorException() from exc
+        return await real(conn, run_id, old, new, *args, **kwargs)
+
+    monkeypatch.setattr(hub_runtime, "move_run", deadlocks_once)
+    assert turn(client, gateway, parent)["state"] == "parked"
+    assert run_row(hub_db, parent)[0] == "parked"
+    assert moves.count("waiting") == 2 and "failed" not in moves
