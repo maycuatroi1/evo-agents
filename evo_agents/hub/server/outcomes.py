@@ -304,9 +304,7 @@ async def _night_jobs(conn: AsyncConnection, due, night: date, since: datetime) 
     ``run:<id>`` or ``revert:<proposal id>``. A run that failed of an infra cause (``curator.INFRA_CAUSES``) is no job:
     ``infra_breaker`` holds off the kinds of run of its dependency instead."""
     r, lg = tables.runs, tables.curator_ledger
-    window = due.body["window"]
-    opens = curator.parse_time(window["start"])
-    first, last = datetime.combine(night, opens), datetime.combine(night + timedelta(days=1), opens)
+    first, last = curator.night_bounds(due.body, night)  # the window's start to the next one, or the period
     ran = await conn.execute(
         select(r.c.id, r.c.state, r.c.finished_at, r.c.failure_cause).where(
             r.c.schedule_id == due.id,
@@ -320,7 +318,7 @@ async def _night_jobs(conn: AsyncConnection, due, night: date, since: datetime) 
         for row in ran
         if not (row.state == "failed" and curator.is_infra(row.failure_cause))  # a dependency's, the infra breaker's
     ]
-    local = func.timezone(window["timezone"], lg.c.created_at)
+    local = func.timezone(curator.zone_of(due.body), lg.c.created_at)
     reverted = await conn.execute(
         select(lg.c.created_at, lg.c.proposal_id).where(
             lg.c.project_id == due.project_id,

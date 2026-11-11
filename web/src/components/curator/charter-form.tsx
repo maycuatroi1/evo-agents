@@ -21,6 +21,7 @@ import { Field, fieldId, Group, NightRunsGroup, RoleFields, useProblemText } fro
 import { CHARTER_FIELDS, type CharterErrors, type CharterForm, charterBody, charterForm, ownTimeZone, timeZones } from "./charter-model";
 import { useCuratorFailure, useWriteCharter } from "./hooks";
 import { type Charter, curatorHref } from "./queries";
+import { useMoney } from "./parts";
 import { LIMITS } from "./vocab";
 
 /** The browser's own time zone once the page has hydrated; null on the server, so both render the same form. */
@@ -42,6 +43,8 @@ function useOwnTimeZone(): string | null {
  */
 export function CharterFormView({ project, charter }: { project: string; charter: Charter | null }) {
   const t = useTranslations("curator.charter");
+  const tPeriod = useTranslations("curator.periods");
+  const money = useMoney();
   const base = useId();
   const router = useRouter();
   const zone = useOwnTimeZone();
@@ -152,12 +155,21 @@ export function CharterFormView({ project, charter }: { project: string; charter
       </Group>
 
       <Group title={t("groups.window")} description={t("groupHints.window")} testId="charter-window">
+        {form.pacing ? (
+          <p className="text-[13px] text-muted-foreground" data-testid="charter-paced-note">
+            {t("pacedNote", { period: tPeriod(form.pacing.period), budget: money(form.pacing.budget_usd) })}
+          </p>
+        ) : null}
+        {form.pacing ? null : (
+          <>
         <Field base={base} field="windowStart" label={t("fields.windowStart")} errors={errors}>
           {(props) => <Input {...props} type="time" step={60} value={form.windowStart} onChange={(event) => set("windowStart", event.target.value)} data-testid="charter-window-start" />}
         </Field>
         <Field base={base} field="windowEnd" label={t("fields.windowEnd")} hint={t("hints.windowEnd")} errors={errors}>
           {(props) => <Input {...props} type="time" step={60} value={form.windowEnd} onChange={(event) => set("windowEnd", event.target.value)} data-testid="charter-window-end" />}
         </Field>
+          </>
+        )}
         <Field base={base} field="timezone" label={t("fields.timezone")} hint={t("hints.timezone")} errors={errors}>
           {(props) => (
             <>
@@ -184,9 +196,11 @@ export function CharterFormView({ project, charter }: { project: string; charter
       </Group>
 
       <Group title={t("groups.budget")} description={t("groupHints.budget")} testId="charter-budget">
+        {form.pacing ? null : (
         <Field base={base} field="nightBudget" label={t("fields.nightBudget")} hint={t("hints.usd", { max: LIMITS.budgetUsd })} errors={errors}>
           {(props) => <Input {...props} type="number" inputMode="decimal" min={0} step="0.01" value={form.nightBudget} onChange={(event) => set("nightBudget", event.target.value)} data-testid="charter-night-budget" />}
         </Field>
+        )}
         <Field base={base} field="runBudget" label={t("fields.runBudget")} hint={t("hints.runBudget")} errors={errors}>
           {(props) => <Input {...props} type="number" inputMode="decimal" min={0} step="0.01" value={form.runBudget} onChange={(event) => set("runBudget", event.target.value)} data-testid="charter-run-budget" />}
         </Field>
