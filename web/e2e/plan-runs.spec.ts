@@ -26,7 +26,9 @@ import {
   seedRunPlan,
   workerHeartbeat,
 } from "./support/runs";
+import { systemPath } from "./support/systems";
 import { toast } from "./support/toast";
+import { workSystem } from "./support/work";
 
 /**
  * Plan runs from the web against the real API: Run plan shows only for a writer, on the plan's page and on its row of
@@ -263,4 +265,65 @@ test("plan run pages never scroll sideways at 375, 768 and 1024 px", async ({ pa
     expect.soft(inner, `the dialog's body scrolls sideways at ${width} px`).toBeLessThanOrEqual(0);
     await page.keyboard.press("Escape");
   }
+});
+
+test("a writer hands a plan to a system, follows its trace from the plan's page, and the dialog remembers the system", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedPlanRunPlan(me, project);
+  const system = await workSystem(me, project);
+  await page.setViewportSize({ width: 375, height: 900 });
+
+  await open(page, PLAN_PATH(project));
+  const button = main(page).getByTestId("run-plan");
+  await button.click();
+  const dialog = page.getByTestId("plan-run-dialog");
+  const where = dialog.getByTestId("plan-run-where");
+  const worker = where.getByTestId("plan-run-where-worker").getByRole("radio");
+  const card = where.getByTestId(`plan-run-where-system-${system.slug}`);
+  await expect(worker).toBeChecked();
+  await expect(card).toContainText(system.name);
+  await expect(card).toContainText(`Entry agent @${system.lead}`);
+  await expect(card).toContainText("A trace takes up to 12 runs and $2.00");
+  await expect(card.getByTestId("plan-run-where-over")).toHaveCount(0); // 3 pending steps, about 6 runs
+
+  // The keyboard moves to the system; the worker's fields leave the form.
+  await worker.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(card.getByRole("radio")).toBeChecked();
+  await expect(card.getByRole("radio")).toBeFocused();
+  await expect(dialog.getByTestId("plan-run-timeout")).toHaveCount(0);
+  await expect(dialog.getByTestId("plan-run-model-select")).toHaveCount(0);
+  const box = await dialog.boundingBox();
+  expect.soft(box && box.x >= 0 && box.x + box.width <= 375, "the dialog fits 375 px").toBe(true);
+  const inner = await dialog.getByTestId("plan-run-body").evaluate((element) => element.scrollWidth - element.clientWidth);
+  expect.soft(inner, "the dialog's body scrolls sideways at 375 px").toBeLessThanOrEqual(0);
+  await dialog.getByTestId("plan-run-submit").click();
+  await expect(dialog).toBeHidden();
+
+  // No plan run: the entry agent's chat run holds the plan, in a trace of the system.
+  expect((await runsOf(me, project)).filter((run) => run.kind === "plan")).toHaveLength(0);
+  const handed = toast(page, `Plan handed to system ${system.slug}`);
+  await expect(handed).toBeVisible();
+  const traceLink = handed.getByRole("link", { name: "Open trace" });
+  const href = await traceLink.getAttribute("href");
+  expect(href).toMatch(new RegExp(`^${systemPath(project, system.slug)}\\?mode=observe&work=\\d+$`));
+  const traceId = href?.split("work=")[1] ?? "";
+
+  const banner = main(page).getByTestId("plan-trace-banner");
+  await expect(banner).toContainText(`Running in system ${system.name}`, { timeout: 12_000 });
+  await expect(banner).toHaveAttribute("data-trace-id", traceId);
+  await expect(banner.getByTestId("plan-trace-banner-link")).toHaveAttribute("href", href ?? "");
+  await expect(banner.getByTestId("plan-trace-banner-progress")).toHaveText("1 of 4 steps done");
+  await expect(button).toHaveAttribute("data-locked", "trace");
+  await expect(main(page).getByTestId("run-plan-lock")).toHaveText(`Running in system ${system.slug} (trace #${traceId}); Run plan waits until its runs end.`);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect.soft(overflow, "the plan's page scrolls sideways at 375 px").toBeLessThanOrEqual(0);
+
+  // The choice is remembered: another plan's dialog opens on the same system.
+  await seedRunPlan(me, project);
+  await open(page, `/p/${project}/plans/rollout`);
+  await main(page).getByTestId("run-plan").click();
+  await expect(page.getByTestId("plan-run-dialog").getByTestId(`plan-run-where-system-${system.slug}`).getByRole("radio")).toBeChecked();
+  await expect(page.getByTestId("plan-run-dialog").getByTestId("plan-run-timeout")).toHaveCount(0);
 });

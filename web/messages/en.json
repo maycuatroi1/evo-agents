@@ -5576,7 +5576,8 @@
         "loading": "Checking the plan's runs…",
         "planRun": "Plan run #{id} is {state}.",
         "stepRun": "Run #{id} of step {step} is {state}; a plan run waits until it ends.",
-        "noPending": "No step is pending."
+        "noPending": "No step is pending.",
+        "trace": "Running in system {system} (trace #{id}); Run plan waits until its runs end."
       },
       "model": {
         "label": "Model",
@@ -5617,14 +5618,16 @@
         "stepRun": "<link>Run #{id}</link> of step {step} is {state}: a plan run waits until no run of the plan's steps is active.",
         "noPending": "No step of this plan is pending: a plan run has nothing to do.",
         "unplaced": "These steps name no repo, and the plan does not list exactly one: {steps}. Give each of them a repo in the plan.",
-        "noBranch": "The plan names no branch for {repos}: the run would fail before the agent starts. Add a branch for each in the plan's repos."
+        "noBranch": "The plan names no branch for {repos}: the run would fail before the agent starts. Add a branch for each in the plan's repos.",
+        "trace": "<link>Trace #{id}</link> of system {system} runs this plan ({state}): nothing else runs the plan until its runs end."
       },
       "errors": {
         "forbidden": "The hub refused: running a plan needs the writer role on this project, and a pinned worker must be one of yours.",
         "notFound": "The plan is no longer on the hub, or you can no longer read it.",
         "conflict": "The hub did not queue the plan run: the plan has an active run or no pending step, or the chosen worker cannot take it. The plan is read again; check it and try again.",
         "invalid": "The hub did not accept the plan run.",
-        "hubSays": "The hub says: {message}"
+        "hubSays": "The hub says: {message}",
+        "systemConflict": "The hub did not hand the plan to the system: the plan has an active run or trace, no pending step, or the system has no entry agent. The plan is read again; check it and try again."
       },
       "banner": {
         "title": "Plan run #{id}",
@@ -5659,7 +5662,38 @@
       "toast": {
         "dispatched": "Plan run #{id} dispatched",
         "dispatchedText": "It does every step of {plan} not done yet, on one worker.",
-        "openRun": "Open run"
+        "openRun": "Open run",
+        "system": "Plan handed to system {system}",
+        "systemText": "Trace #{trace} runs {plan}: the entry agent hands its steps to the system's agents.",
+        "openTrace": "Open trace"
+      },
+      "loadingChoice": "Loading your last choice",
+      "defaulted": "Your last choice of {fields} is no longer available here, so it is back to the default.",
+      "fields": {
+        "target": "place to run",
+        "system": "system",
+        "agent": "agent",
+        "runtime": "runtime",
+        "model": "model",
+        "mode": "mode",
+        "timeout_h": "timeout",
+        "session_per_step": "sessions"
+      },
+      "where": {
+        "legend": "Where it runs",
+        "info": "On a worker: one plan run does every step not done yet. In a system: the hub writes the plan to the system's entry agent in your direct chat with it, and the entry agent hands each step to the system's agents; the system's trace and its limits apply.",
+        "worker": "On a worker",
+        "workerHint": "A plan run on a node of the agent's pool, with the fields below.",
+        "entry": "Entry agent <name>@{handle}</name>",
+        "limits": "A trace takes up to {runs} runs and {usd}",
+        "over": "{steps} pending steps may need about {runs} runs, over the {limit} a trace takes: past it, the hub refuses the trace's next hand-off."
+      },
+      "trace": {
+        "title": "Running in system {system}",
+        "text": "Trace #{id} is {state}. The entry agent hands each step to the system's agents, and each step done is recorded on the plan.",
+        "open": "Open the trace",
+        "progress": "{done} of {total} steps done",
+        "live": "Running in system {system}: trace #{id} is {state}, {done} of {total} steps done."
       }
     },
     "openRun": "Open run #{id}",

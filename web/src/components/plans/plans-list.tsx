@@ -5,7 +5,7 @@ import { Archive, ClipboardList, Rocket } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
-import { useMemo, useState } from "react";
+import { type ComponentProps, useMemo, useState } from "react";
 
 import { DataCard, DataToolbar } from "@/components/data/data-card";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
@@ -71,7 +71,7 @@ function PlansTable({
   plans: PlanSummary[];
   area: PlanArea;
   activity: Activity;
-  onDispatched: (run: Run) => void;
+  onDispatched: ComponentProps<typeof RunPlanButton>["onDispatched"];
 }) {
   const t = useTranslations("plans.list");
   const tProgress = useTranslations("plans.progress");
@@ -214,7 +214,7 @@ function AreaSection({
   plans: PlanSummary[];
   filtered: PlanSummary[];
   activity: Activity;
-  onDispatched: (run: Run) => void;
+  onDispatched: ComponentProps<typeof RunPlanButton>["onDispatched"];
 }) {
   const t = useTranslations("plans.list");
   const Icon = area === "active" ? Rocket : Archive;

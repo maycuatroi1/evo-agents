@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiClient } from "@/lib/api/client";
 import { renderVi } from "@/test/render";
 
+import type { PlanRunOutcome } from "./plan-run-choice";
 import { PlanRunDialog } from "./plan-run-dialog";
 import type { Run } from "./queries";
 
@@ -140,7 +141,7 @@ function answer(post: (request: Request) => Response | Promise<Response>, ready:
   };
 }
 
-function Harness({ onDispatched }: { onDispatched: (run: Run) => void }) {
+function Harness({ onDispatched }: { onDispatched: (outcome: PlanRunOutcome) => void }) {
   const [open, setOpen] = useState(true);
   return (
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>

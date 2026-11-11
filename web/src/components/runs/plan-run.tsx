@@ -18,16 +18,20 @@ import { cn } from "@/lib/utils";
 
 import { useCanDispatch, useViewer } from "./hooks";
 import { activePlanRun, isCuratorPlan, type PlanRunLock, planRunLock, planRunPhase } from "./model";
+import type { PlanRunOutcome, PlanTrace } from "./plan-run-choice";
 import {
   decisionHref,
+  IDLE_REFRESH_MS,
   isActiveState,
   LIVE_REFRESH_MS,
   openDecisionsQuery,
   planActiveRunsQuery,
+  readyStepsQuery,
   type Run,
   runHref,
   runsQuery,
 } from "./queries";
+
 
 /**
  * The plan pages' side of plan runs: the active runs of a plan (polled every 5 seconds while one is active, every 30
@@ -40,13 +44,22 @@ import {
  * plans table) do not carry the dialog's form in their first load.
  */
 const PlanRunDialog = dynamic(() => import("./plan-run-dialog").then((module) => module.PlanRunDialog), { ssr: false });
+/** The banner of a system's trace that runs the plan, loaded once a plan has one: it carries the systems' queries. */
+export const PlanTraceBanner = dynamic(() => import("./plan-trace-banner").then((module) => module.PlanTraceBanner), { ssr: false });
 const CuratorBuildDialog = dynamic(() => import("./curator-build-dialog").then((module) => module.CuratorBuildDialog), { ssr: false });
 
 export function usePlanActivity(project: string, planId: string, enabled = true) {
   const query = useQuery({ ...runsQuery(browserApi, project, planActiveRunsQuery(planId)), enabled });
+  // The trace of a system the plan was handed to: polled often while it runs, seldom otherwise.
+  const ready = useQuery({
+    ...readyStepsQuery(browserApi, project, planId),
+    enabled,
+    refetchInterval: (state) => (state.state.data?.trace ? LIVE_REFRESH_MS : IDLE_REFRESH_MS),
+  });
   const active = (query.data?.runs ?? []).filter((run) => run.plan_id === planId && isActiveState(run.state));
+  const trace: PlanTrace | null = ready.data?.trace ?? null;
   // A failed read locks nothing: the hub decides again on the dispatch.
-  return { query, active, planRun: activePlanRun(active, planId), loaded: !query.isPending };
+  return { query, active, planRun: activePlanRun(active, planId), trace, loaded: !query.isPending };
 }
 
 function useLockText() {
@@ -56,6 +69,7 @@ function useLockText() {
     if (lock === "loading") return t("loading");
     if (lock.kind === "planRun") return t("planRun", { id: lock.id, state: tState(lock.state) });
     if (lock.kind === "stepRun") return t("stepRun", { id: lock.id, state: tState(lock.state), step: lock.step });
+    if (lock.kind === "trace") return t("trace", { id: lock.id, system: lock.system });
     return t("noPending");
   };
 }
@@ -72,6 +86,7 @@ export function RunPlanButton({
   pending,
   runs,
   loaded,
+  trace = null,
   onDispatched,
   size = "default",
   variant = "default",
@@ -83,7 +98,9 @@ export function RunPlanButton({
   pending: number;
   runs: readonly Pick<Run, "id" | "kind" | "plan_id" | "state" | "step_key">[];
   loaded: boolean;
-  onDispatched: (run: Run) => void;
+  /** The trace of a system that runs the plan, where the page knows it: it locks Run plan until its runs end. */
+  trace?: PlanTrace | null;
+  onDispatched: (outcome: PlanRunOutcome) => void;
   /** 32 px in a page's head, `sm` on a table's rows. */
   size?: "sm" | "default";
   /** outline where a button repeats on every row of a table. */
@@ -98,7 +115,7 @@ export function RunPlanButton({
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState(false);
   if (!canDispatch) return null;
-  const lock = loaded ? planRunLock(runs, planId, pending) : "loading";
+  const lock = loaded ? planRunLock(runs, planId, pending, trace) : "loading";
   const locked = lock !== null;
   const button = (
     <Button
