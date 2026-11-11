@@ -54,6 +54,9 @@ def failed(client, db, run_id: int, cause: str, worker_id: int = 7) -> int:
     return record(client, db, hub_events.RUN_ENDED, **payload)
 
 
+NO_TIER0 = {"redelivered": 0, "orchestrated": 0, "read": 0}  # what tier 0 did (ops_rules), nothing here
+
+
 def run_pass(client, rules=None) -> dict:
     return client.portal.call(ops_pass, client.app.state.engine, rules)
 
@@ -109,9 +112,9 @@ def test_events_gather_by_cause_key_and_a_batch_closes_after_its_debounce(client
         ("run.ended|checkout|worker:8", "open", 1, None),
         ("worker.health|login:codex:unauthorized|worker:7", "open", 1, None),
     ]
-    assert run_pass(client) == {"queued": 0, "ready": 0, "empty": 0}, "not before the debounce"
+    assert run_pass(client) == {**NO_TIER0, "queued": 0, "ready": 0, "empty": 0}, "not before the debounce"
     due(hub_db)
-    assert run_pass(client) == {"queued": 0, "ready": 3, "empty": 0}
+    assert run_pass(client) == {**NO_TIER0, "queued": 0, "ready": 3, "empty": 0}
     failed(client, hub_db, 205, "checkout", worker_id=7)
     run_pass(client)
     assert batches(hub_db)[-1] == ("run.ended|checkout|worker:7", "open", 1, None), "a new batch for the same key"
@@ -144,7 +147,7 @@ def test_items_tier_0_handled_leave_and_an_emptied_batch_closes_without_a_run(cl
 
     assert client.portal.call(settle, client.app.state.engine) == 2
     due(hub_db)
-    assert run_pass(client) == {"queued": 0, "ready": 0, "empty": 1}
+    assert run_pass(client) == {**NO_TIER0, "queued": 0, "ready": 0, "empty": 1}
     assert batches(hub_db) == [("run.ended|network|worker:7", "empty", 0, None)]
     i = tables.ops_items
     assert sql(hub_db, select(i.c.run_id, i.c.handled_by).order_by(i.c.id)) == [

@@ -745,6 +745,15 @@ whose items tier 0 all handled closes empty, with no run. `evo-agents hub system
 --project P` reads the ops of a system and its batches; pausing (admin) holds closed batches, and the queue still
 gathers.
 
+Tier 0 is what the hub does by itself, with no model, in the same pass. A chat or task run that failed because of its
+machine (`checkout`, `worker_stopped`, `lease_lost`, `network`, `hub_5xx`, `account_auth`) is handed again once: the
+hub says the mention again in the run's thread, or queues the task's next attempt for its plugin. It waits for a
+heartbeat after the failure that says the worker has enough free disk and the run's runtime logged in, or for another
+online worker of the same member and pool that does. A run whose work was handed again before and a run of a step,
+plan or author are not handed again and stay in their batch; a run an Orchestrator answered in a thread of rule
+`failed` is not handed again either, and its item leaves the batch. Unread notices whose work is done are marked read: `run_failed` once the run was done again or its plan is
+completed, `curator_paused` once no schedule of the project is paused and a night-shift run ended done.
+
 The hub checks a spec before it stores it. Errors are an unknown key, an edge whose ends do not fit its kind, a node or
 an edge that is not there, a second entry, curator or orchestrator, and a profile or a named graph the project does
 not have. A deleted profile, a version the profile never had, and a profile that is already the entry agent of

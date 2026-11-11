@@ -61,6 +61,7 @@ from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.org_store import ended_refusal
 from evo_agents.hub.server.plugin_tokens import plugin_of_token
 from evo_agents.hub.server.profile_store import by_id
+from evo_agents.hub.server.run_retry import next_attempt
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, OBJECT_NAME, RunId
 from evo_agents.hub.server.runs.service.claims import worker_of
@@ -470,6 +471,40 @@ async def hand_own_task(
         "task dispatched", extra={"project_id": project_id, "plugin": plugin, "agent_type": name, "run_id": run_id}
     )
     return run_id, None
+
+
+async def hand_again(conn: AsyncConnection, run_id: int, why: str, worker_id: int | None = None):
+    """Hand failed task run ``run_id`` again for its plugin, in the caller's transaction, as tier 0 of the operations
+    queue does for a run that failed because of its machine (``ops_rules``): (the next attempt, None), or (None, why
+    not) while the plugin is not enabled with runs:dispatch, its agent type takes no task (``type_refusal``) or spent
+    its cap. The attempt keeps the task's id (its branch), so the plugin hears task.result of it; one pinned to a
+    worker is pinned to ``worker_id`` instead, a worker the caller found fit."""
+    r, t = tables.runs, tables.project_agent_types
+    query = select(r.c.project_id, t.c.plugin_id, t.c.name).join_from(r, t, t.c.id == r.c.agent_type_id)
+    found = (await conn.execute(query.where(r.c.id == run_id, r.c.kind == "task"))).one_or_none()
+    if found is None:
+        return None, f"run {run_id} is no task run of an agent type"
+    query = plugin_calls.enabled_query().where(
+        tables.plugins.c.id == found.plugin_id, tables.projects.c.id == found.project_id
+    )
+    enabled = (await conn.execute(query)).first()
+    if enabled is None or task_runs.DISPATCH_PERMISSION not in plugin_calls.effective_grant(enabled):
+        return None, f"the plugin of agent type {found.name} is not enabled with {task_runs.DISPATCH_PERMISSION}"
+    row = await enabled_type(conn, found.project_id, found.plugin_id, found.name, lock=True)
+    refusal = await type_refusal(conn, enabled, row, found.name)
+    if refusal is not None:
+        return None, refusal[1]
+    problem = task_runs.spent_problem(await type_spend(conn, row.id), row.daily_usd, found.name)
+    if problem is not None:
+        return None, problem
+    new_id = (await conn.execute(next_attempt(run_id))).scalar_one()
+    if worker_id is not None:
+        pinned = update(r).values(pinned_worker_id=worker_id)
+        await conn.execute(pinned.where(r.c.id == new_id, r.c.pinned_worker_id.is_not(None)))
+    await write_event(conn, new_id, {"text": f"the hub hands task run #{run_id} again: {why}", "again_of": run_id})
+    await notify_queued(conn, new_id)
+    await _audited(conn, enabled, row, new_id)
+    return new_id, None
 
 
 @router.post(
