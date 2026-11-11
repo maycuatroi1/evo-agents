@@ -15,13 +15,14 @@ import { PlanRunKindBadge } from "@/components/runs/badges";
 import { useRunControl } from "@/components/runs/hooks";
 import { runHref } from "@/components/runs/queries";
 import { StatusBadge, StatusIcon } from "@/components/status/status-badge";
+import { WaitPill } from "@/components/status/wait-pill";
 import { Button } from "@/components/ui/button";
 import { workerHref } from "@/components/workers/queries";
 import { queryKeys } from "@/lib/queries";
 import { useRuntimeName } from "@/lib/runtimes";
 import { cn } from "@/lib/utils";
 
-import { canRerun, decisionOfRun, isRunningState, type Overview, type OverviewRun, ranFor } from "./model";
+import { canRerun, decisionOfRun, isRunningState, type Overview, type OverviewRun, ranFor, waitOfRun } from "./model";
 import { HomeCard, LiveDot, Relative, Row, useDuration } from "./parts";
 
 /** Home's In flight (the runs queued, at work, waiting or parked) and Recent (the runs that ended last, with Rerun). */
@@ -77,6 +78,9 @@ function InFlightEnd({ run, overview, viewer, now }: { run: OverviewRun; overvie
     const ms = ranFor(run, now);
     return ms === null ? <StatusBadge kind="run" status={run.state} /> : <span data-testid="home-run-duration">{t("ran", { duration: duration(ms) })}</span>;
   }
+  // A run on a wait asks nobody: a neutral pill with the agent's reason (web/DESIGN.md, The wait panel).
+  const wait = run.state === "waiting" || run.state === "parked" ? waitOfRun(overview, run) : null;
+  if (wait) return <WaitPill subject={{ kind: "reason", reason: wait.question }} className="max-w-56 sm:max-w-72" data-testid="home-run-wait" />;
   if (run.state === "waiting") {
     // Whose answer it waits for: the person the question is asked of, not always the run's owner.
     const decision = decisionOfRun(overview, run);

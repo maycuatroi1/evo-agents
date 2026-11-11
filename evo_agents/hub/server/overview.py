@@ -90,7 +90,7 @@ router = APIRouter(prefix="/v1/me", tags=["overview"], responses={401: {"model":
 
 
 class OverviewCounts(BaseModel):
-    waiting_on_you: int = Field(description="open decisions asked of you, which you answer")
+    waiting_on_you: int = Field(description="open decisions asked of you, which you answer; a wait is not one")
     running: int = Field(description=f"runs whose agent works: {', '.join(RUNNING_STATES)}")
     queued: int = Field(description="runs no worker has claimed yet")
     done_7d: int = Field(description=f"runs that ended done in the last {DAYS} days in UTC, today included")
@@ -458,13 +458,15 @@ def _author_waiting(visible, user_id, granted: ColumnElement[bool]):
 
 def _decision_counts(visible, user_id: int, unplanned: ColumnElement[bool]):
     """For each project, its open decisions the caller reads (``decision_visible``), and how many of those are asked
-    of ``user_id``."""
+    of ``user_id``. A wait (``runs.WAIT_DECISION_CATEGORY``) asks nobody anything, so it is not one the caller
+    answers: it counts in the total, not in the caller's."""
     decisions, runs_ = tables.decisions, tables.runs
+    asks = decisions.c.category != runs.WAIT_DECISION_CATEGORY
     return (
         select(
             decisions.c.project_id,
             func.count().label("total"),
-            func.count().filter(asked_person() == user_id).label("yours"),
+            func.count().filter(asked_person() == user_id, asks).label("yours"),
         )
         .select_from(decisions.join(runs_, runs_.c.id == decisions.c.run_id))
         .where(decisions.c.state == "open", decision_visible(visible, unplanned, user_id))

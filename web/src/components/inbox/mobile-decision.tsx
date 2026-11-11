@@ -17,6 +17,7 @@ import { SheetClose, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Ago } from "@/components/workers/ago";
 import { browserApi } from "@/lib/api/browser";
+import { isWait } from "@/lib/waits";
 
 import { agentDigest, type DigestLine } from "./agent-digest";
 import { AnswerFields } from "./answer-form";
@@ -33,6 +34,7 @@ import { type AnswerAccess, answerAccess, runLinkWords } from "./model";
 import { type Decision, decisionQuery } from "./queries";
 import { DigestItem, type DigestView, ScreenScroll } from "./screen-parts";
 import { TakeOverButton } from "./take-over-button";
+import { WaitCard } from "./wait-card";
 import { type DecisionTarget, useTargetDecision } from "./target-decision";
 
 /**
@@ -319,6 +321,14 @@ function ScreenDecision({
     if (active === null || active === document.body || active === contentRef.current) headingRef.current?.focus();
   }, [access, headingRef, contentRef]);
 
+  // A wait asks nobody anything: its panel, with Go on now and Stop waiting for the owner, is the screen.
+  if (isWait(decision)) {
+    return (
+      <ScreenScroll id={decision.id}>
+        <WaitCard decision={decision} where="inbox" headingRef={headingRef} flush />
+      </ScreenScroll>
+    );
+  }
   if (access === "answer") return <AnswerScreen decision={decision} access={access} parksAt={parksAt} headingRef={headingRef} />;
   const open = decision.state === "open";
   return (

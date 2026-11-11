@@ -37,6 +37,7 @@ import {
 import { NotificationItem } from "./notification-item";
 import { InboxDays, NotificationRow, RunGroup } from "./notification-row";
 import { InboxToolbar } from "./inbox-toolbar";
+import { InboxWaits } from "./inbox-waits";
 import { useRowKeys } from "./row-keys";
 import { ProposalSheet } from "./proposal-sheet";
 import { NoticeSettingsButton } from "./notice-settings";
@@ -336,7 +337,10 @@ function InboxList({
             </Button>
           </EmptyState>
         ) : (
-          <EmptyState icon={Inbox} title={t("empty.title")} />
+          <>
+            <InboxWaits href={decisionHref} selected={selected} onOpen={onOpenDecision} />
+            <EmptyState icon={Inbox} title={t("empty.title")} />
+          </>
         )
       ) : (
         <>
@@ -345,6 +349,8 @@ function InboxList({
               {waiting.map(item)}
             </ListSection>
           ) : null}
+          {/* The visitor's runs that wait on something else: no answer needed, after those that need one. */}
+          {filtered ? null : <InboxWaits href={decisionHref} selected={selected} onOpen={onOpenDecision} />}
           {rest.length > 0 ? (
             <ListSection title={waiting.length > 0 ? t("restTitle") : t("allTitle")} count={rest.length} testId="inbox-rest" list={false}>
               <InboxDays days={days} entry={entry} />
