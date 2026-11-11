@@ -29838,6 +29838,8 @@ export interface components {
              * @description the files it carries, oldest first: a decision's, or a notice run_outputs' (an output deleted since is left out), each with the URL its reader fetches the bytes from
              */
             outputs?: components["schemas"]["RunOutput"][];
+            /** @description the batch of the ops queue whose Orchestrator (the project's default system's) holds it, with its thread; null when it waits on a person */
+            ops?: components["schemas"]["OpsHolding"] | null;
         };
         /** NotificationCount */
         NotificationCount: {
@@ -30744,6 +30746,17 @@ export interface components {
             closed_at: string | null;
             /** Run Id */
             run_id: number | null;
+            /**
+             * Recurring
+             * @description its cause key closed 3 batches in 7 days: the system needs a fix
+             * @default false
+             */
+            recurring: boolean;
+            /**
+             * Thread
+             * @description the hub web's path of its ops thread; null before it opened one
+             */
+            thread?: string | null;
         };
         /** OpsFindingIn */
         OpsFindingIn: {
@@ -30769,6 +30782,22 @@ export interface components {
              * @description why, for the Decision: line
              */
             reason: string;
+        };
+        /** OpsHolding */
+        OpsHolding: {
+            /** Batch Id */
+            batch_id: number;
+            /**
+             * State
+             * @description open while it gathers, ready until its thread opens, running then
+             * @enum {string}
+             */
+            state: "open" | "ready" | "running";
+            /**
+             * Thread
+             * @description the hub web's path of the batch's ops thread; null before it opened
+             */
+            thread: string | null;
         };
         /** OpsPause */
         OpsPause: {
@@ -44583,6 +44612,12 @@ export interface components {
             paused_at: string | null;
             /** Paused Reason */
             paused_reason: string | null;
+            /**
+             * Spent Usd
+             * @description what the runs of its ops threads queued in the last 24 hours spent
+             * @default 0
+             */
+            spent_usd: number;
             /**
              * Batches
              * @description the batches of the project's queue by state; empty when not default
@@ -62765,6 +62800,8 @@ export interface operations {
                 run?: number | null;
                 /** @description only those whose title or body holds these words */
                 q?: string | null;
+                /** @description ops: only those the Orchestrator of a default system holds; person: only the others */
+                handler?: ("ops" | "person") | null;
                 limit?: number;
                 offset?: number;
             };

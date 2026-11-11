@@ -94,9 +94,10 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import bus, cache, jobs, plugin_events, review, runs, tables
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.plugin_calls import core_registry, load
-from evo_agents.hub.server import audit, output_views, push_store, push_tiers
+from evo_agents.hub.server import audit, ops_views, output_views, push_store, push_tiers
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.ops_views import OpsHolding
 from evo_agents.hub.server.output_views import RunOutput
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import LINE, MAX_ID, OBJECT_NAME, REFUSALS, RunId
@@ -715,6 +716,11 @@ class Notification(BaseModel):
         description="the files it carries, oldest first: a decision's, or a notice run_outputs' (an output deleted "
         "since is left out), each with the URL its reader fetches the bytes from",
     )
+    ops: OpsHolding | None = Field(
+        None,
+        description="the batch of the ops queue whose Orchestrator (the project's default system's) holds it, with "
+        "its thread; null when it waits on a person",
+    )
 
 
 def report_notice(stored=None):
@@ -832,6 +838,7 @@ def _listed(
     project: str | None,
     run_id: int | None = None,
     text: str | None = None,
+    handler: str | None = None,
 ) -> list:
     """The conditions of the list's filters, over ``_shown``: ``text`` matches anywhere in the title or the body."""
     stored = tables.notifications
@@ -847,6 +854,8 @@ def _listed(
     if text:
         pattern = _like(text)
         found.append(or_(stored.c.title.ilike(pattern), stored.c.body.ilike(pattern)))
+    if handler is not None:
+        found.append(ops_views.held() if handler == "ops" else ~ops_views.held())
     return found
 
 
@@ -915,11 +924,15 @@ async def list_notifications(
     q: Annotated[
         str | None, Query(max_length=MAX_QUERY_CHARS, description="only those whose title or body holds these words")
     ] = None,
+    handler: Annotated[
+        Literal[ops_views.HANDLERS] | None,
+        Query(description="ops: only those the Orchestrator of a default system holds; person: only the others"),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIST)] = 50,
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
 ) -> NotificationList:
     """The caller's notifications, open decisions and proposals first, then newest first."""
-    found = _listed(user.user_id, unread, kind, project, run, (q or "").strip() or None)
+    found = _listed(user.user_id, unread, kind, project, run, (q or "").strip() or None, handler)
     waiting = or_(_open_decision(), _open_proposal())
     order = (func.coalesce(waiting, false()).desc(), tables.notifications.c.id.desc())
     listed = _notification_rows().where(*found).order_by(*order).limit(limit).offset(offset)
@@ -928,7 +941,9 @@ async def list_notifications(
         page = _notifications((await conn.execute(listed)).all())
         matching = (await conn.execute(total)).scalar_one()
         carried = await output_views.by_notification(conn, page)
+        holding = await ops_views.by_notification(conn, [item.id for item in page])
     page = [item.model_copy(update={"outputs": carried[item.id]}) if item.id in carried else item for item in page]
+    page = [item.model_copy(update={"ops": holding[item.id]}) if item.id in holding else item for item in page]
     return NotificationList(notifications=page, total=matching, limit=limit, offset=offset)
 
 

@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import ops_queue, system_spec, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, route_autonomy, system_store
+from evo_agents.hub.server import audit, ops_threads, ops_views, route_autonomy, system_store
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_systems import Slug, admin_only, not_found, reader_only
 from evo_agents.hub.server.errors import ErrorBody
@@ -71,6 +71,7 @@ class SystemOps(BaseModel):
     paused: bool
     paused_at: datetime | None
     paused_reason: str | None
+    spent_usd: float = Field(0, description="what the runs of its ops threads queued in the last 24 hours spent")
     batches: dict[str, int] = Field(description="the batches of the project's queue by state; empty when not default")
 
 
@@ -91,6 +92,8 @@ class OpsBatch(BaseModel):
     closes_at: datetime
     closed_at: datetime | None
     run_id: int | None
+    recurring: bool = Field(False, description="its cause key closed 3 batches in 7 days: the system needs a fix")
+    thread: str | None = Field(None, description="the hub web's path of its ops thread; null before it opened one")
 
 
 def _limits(spec: dict) -> dict:
@@ -131,6 +134,7 @@ async def _ops_out(conn: AsyncConnection, access: ProjectAccess, held: system_st
         paused=held.ops_paused_at is not None,
         paused_at=held.ops_paused_at,
         paused_reason=held.ops_paused_reason,
+        spent_usd=await ops_threads.spent(conn, held.id),
         batches=await _counts(conn, access.project_id) if held.is_default else {},
     )
 
@@ -234,12 +238,22 @@ async def list_batches(
         held = await _held(conn, access, slug)
         if not held.is_default:
             return []
-        b, i = tables.ops_batches, tables.ops_items
+        b, i, t = tables.ops_batches, tables.ops_items, tables.orchestrator_threads
         items = select(func.count()).where(i.c.batch_id == b.c.id).scalar_subquery()
         pending = select(func.count()).where(i.c.batch_id == b.c.id, i.c.state == "pending").scalar_subquery()
-        query = select(b, items.label("items"), pending.label("pending")).where(b.c.project_id == access.project_id)
+        query = (
+            select(b, items.label("items"), pending.label("pending"), t.c.chat_id, t.c.root_message_id)
+            .select_from(b.outerjoin(t, t.c.id == b.c.thread_id))
+            .where(b.c.project_id == access.project_id)
+        )
         if state is not None:
             query = query.where(b.c.state == state)
         rows = await conn.execute(query.order_by(b.c.id.desc()).limit(limit))
         fields = set(OpsBatch.model_fields)
-        return [OpsBatch(**{k: v for k, v in row._mapping.items() if k in fields}) for row in rows]
+        return [
+            OpsBatch(
+                **{k: v for k, v in row._mapping.items() if k in fields},
+                thread=ops_views.thread_path(row.chat_id, row.root_message_id),
+            )
+            for row in rows
+        ]

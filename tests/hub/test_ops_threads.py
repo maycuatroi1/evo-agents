@@ -103,6 +103,21 @@ def ops(client, worker: dict, run_id: int, action: str, body: dict, status: int 
     return response.json()
 
 
+def inbox(client, headers: dict, **params) -> dict[int, dict | None]:
+    """The member's notices, as the Inbox lists them: id to the ops batch that holds each."""
+    response = client.get("/v1/me/notifications", params={"kind": "notice", **params}, headers=headers)
+    assert response.status_code == 200, response.text
+    return {item["id"]: item["ops"] for item in response.json()["notifications"]}
+
+
+def notice_of(db, login: str, run_id: int | None) -> int:
+    """A run_failed notice of run ``run_id`` for ``login``, written straight."""
+    n, u = tables.notifications, tables.users
+    (user_id,) = sql(db, select(u.c.id).where(u.c.login == login))[0]
+    row = {"user_id": user_id, "kind": "notice", "notice_kind": "run_failed", "project_id": project_id(db)}
+    return sql(db, insert(n).values(**row, run_id=run_id, title="A run failed").returning(n.c.id))[0][0]
+
+
 def test_a_ready_batch_opens_one_thread_and_a_new_session_and_no_batch_no_run(client, hub, hub_db):
     _, _, _, parent = led_desk(client, hub)
     ops_on(hub_db)
@@ -130,6 +145,17 @@ def test_a_ready_batch_opens_one_thread_and_a_new_session_and_no_batch_no_run(cl
     owner = sql(hub_db, select(u.c.login).join_from(s, u, u.c.id == s.c.created_by).where(s.c.slug == "review"))[0][0]
     assert by == owner, "the Orchestrator works for the system's owner, under the owner's autonomy card"
     assert threads_pass(client).get("opened", 0) == 0, "one thread a batch"
+
+    path = f"/chats/{thread['chat_id']}?thread={thread['root_message_id']}"
+    held, alone = notice_of(hub_db, owner, parent), notice_of(hub_db, owner, None)
+    listed = inbox(client, hub["owner"])
+    assert listed[held] == {"batch_id": first, "state": "running", "thread": path} and listed[alone] is None
+    assert set(inbox(client, hub["owner"], handler="ops")) == {held}
+    assert alone in inbox(client, hub["owner"], handler="person") and held not in inbox(
+        client, hub["owner"], handler="person"
+    )
+    shown = client.get(f"/v1/projects/{PROJECT}/systems/review/ops/batches", headers=hub["owner"]).json()
+    assert [(b["id"], b["thread"]) for b in shown] == [(first, path)]
 
     second = batch(hub_db, parent)
     assert threads_pass(client)["opened"] == 1
@@ -196,6 +222,8 @@ def test_at_the_cap_no_thread_opens_the_batch_waits_and_one_ops_cap_notice(clien
     assert threads_pass(client)["capped"] == 1
     assert batch_row(hub_db, waiting)["state"] == "ready" and len(ops_threads_of(hub_db)) == 1
     assert len(notices(hub_db, "ops_cap")) == 1, "one notice a day"
+    shown = client.get(f"/v1/projects/{PROJECT}/systems/review/ops", headers=hub["owner"]).json()
+    assert (shown["spent_usd"], shown["ops_daily_usd"]) == (1.5, 1), "the web reads the cap reached"
 
 
 def test_two_ops_runs_failed_of_their_agent_trip_the_breaker_and_resume_lets_them_run(client, hub, hub_db):
