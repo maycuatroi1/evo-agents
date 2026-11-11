@@ -26,6 +26,7 @@ import pytest
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
 from evo_agents.hub.credentials import Lease
+from evo_agents.worker import health
 from evo_agents.worker.adapter import AgentEvent
 from evo_agents.worker.runner.limits import AUTH_FAILOVER_PROMPT, FAILOVER_PROMPT, rate_limit_of
 from evo_agents.worker.runtimes.claude_code import OAUTH_TOKEN, auth_failure_of, limit_of_text
@@ -323,3 +324,34 @@ def test_an_account_that_fails_to_authenticate_with_no_other_fails_the_run_with_
     assert why in run["error"]
     assert [item["status"] for item in hub.rate_limits] == (["unauthorized"] if lease else [])
     assert len(machine.starts()) == 1
+
+
+# The login the worker's health says (worker.health): a runtime whose agents authenticate with the hub's lease
+
+
+@pytest.mark.parametrize(
+    ("lease", "auth", "expected"),
+    [(True, False, True), (False, False, False), (True, True, False)],
+    ids=["lease", "no-lease", "lease-refused-401"],
+)
+def test_the_health_says_leased_only_while_the_runtimes_agents_authenticate_with_a_lease(
+    machine, lease, auth, expected
+):  # noqa: F811
+    done = [{"write": {"a.txt": "a\n"}}, {"result": {"verify_commands": ["test -f a.txt"]}}]
+    refused = [{"fail": f"claude-code ended its turn with an error: {REFUSED}", "auth": REFUSED}]
+    machine.scenarios({"1": refused if auth else done})
+    found = {}
+
+    async def body(hub: FakeHub, daemon):
+        daemon.leased["claude-code"] = not expected  # what an earlier agent left
+        run_id = hub.queue_step_run(PLAN, "1", "alpha", "feat/alpha")
+        if lease:
+            hub.leases[run_id] = {"leases": [oauth(1, token(), "claude-a")], "missing": []}
+        await until_ended(hub, run_id)
+        found.update(leased=dict(daemon.leased), root=daemon.home.root)
+
+    with_daemon(machine, body)
+    assert found["leased"] == {"claude-code": expected}
+    assert health.load_leased(found["root"]) == {"claude-code": expected}, "kept for the next daemon"
+    said = health.with_leases({"claude-code": "unauthorized", "opencode": "missing"}, found["leased"])
+    assert said == {"claude-code": "leased" if expected else "unauthorized", "opencode": "missing"}

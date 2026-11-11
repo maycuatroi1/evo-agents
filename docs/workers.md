@@ -1413,8 +1413,12 @@ space of the drive that holds its worktrees (`free_gb`, `free_pct`, and `reserve
 when it cannot be read), read at each look;
 and `logins`, the login of each runtime, `ok`, `unauthorized`, `missing` (not on PATH) or `unknown` (no answer within
 10 seconds, or one it cannot read), from the runtime's own status command (`claude auth status --json`,
-`codex login status`, `opencode auth list`), run every 300 seconds in a thread. Only the exit status and the shape of
-the answer are read: no credential value is read or sent. Each heartbeat replaces what the hub holds
+`codex login status`, `opencode auth list`), run every 300 seconds in a thread; or `leased` when the machine's login
+is not ok but the last agent of that runtime on the worker ran on a model credential the hub leased its run (an `env`
+lease of a model account, or the gateway's route) and its account did not fail to authenticate. The daemon keeps that
+per runtime in `leased-logins.json` of its home, across restarts; an agent whose lease is refused (a 401), or the next
+one with no lease, puts the machine's login back. Only the exit status and the shape of the answer are read: no
+credential value is read or sent. Each heartbeat replaces what the hub holds
 (`workers.health`, schema 0239), one without it clears it, and `GET /v1/workers` shows it as `health`. When its state
 changes (the disk under or over its reserve, 20 GB for a daemon that says none, or a login), the hub writes
 `worker.health` into each project the worker serves (`docs/hub.md`, Operations events).

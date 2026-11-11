@@ -127,3 +127,15 @@ def test_the_heartbeat_carries_the_health_and_worker_list_shows_it(tmp_path):
     line = list_cli.describe(worker, datetime.now(UTC))
     assert "disk 12.5 GB free (4%), login claude-code=ok codex=unauthorized" in line
     assert "disk" not in list_cli.describe({**worker, "health": None}, datetime.now(UTC))
+
+
+def test_a_login_the_machine_lacks_reads_leased_while_the_runtimes_agents_authenticate_with_a_lease(tmp_path):
+    found = {"claude-code": "unauthorized", "codex": "ok", "opencode": "missing"}
+    assert health.with_leases(found, {}) == found
+    leased = {"claude-code": True, "codex": True, "opencode": False}
+    assert health.with_leases(found, leased) == {"claude-code": "leased", "codex": "ok", "opencode": "missing"}
+    assert health.load_leased(tmp_path) == {}
+    health.save_leased(tmp_path, leased)
+    assert health.load_leased(tmp_path) == leased
+    (tmp_path / health.LEASED_FILE).write_text("not json")
+    assert health.load_leased(tmp_path) == {}

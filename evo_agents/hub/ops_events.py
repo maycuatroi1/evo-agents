@@ -27,7 +27,10 @@ from evo_agents.hub import hub_events, tables
 
 ENDED_STATES = ("failed", "lost")  # the moves of a run that write run.ended
 DISK_LOW_GB = 20.0  # below this much free disk on its worktrees' drive a worker's disk is low, when it says no reserve
-LOGIN_STATES = ("ok", "unauthorized", "missing", "unknown")  # a runtime's login, as its daemon checked it
+LOGIN_STATES = ("ok", "leased", "unauthorized", "missing", "unknown")  # a runtime's login, as its daemon checked it
+# The logins a runtime works with: its own, or none on the machine while its last run there authenticated with a lease
+# of the hub (``evo_agents.worker.health.LEASED``).
+LOGGED_IN = ("ok", "leased")
 VERSION = hub_events.VERSION
 
 
@@ -169,6 +172,7 @@ async def worker_health(conn: AsyncConnection, worker_id: int, before: dict | No
 __all__ = [
     "DISK_LOW_GB",
     "ENDED_STATES",
+    "LOGGED_IN",
     "LOGIN_STATES",
     "curator_paused",
     "decision_opened",

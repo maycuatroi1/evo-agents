@@ -1133,7 +1133,9 @@ a run asks a person a decision (`decision_id`, `category`, `run_id`, `asked_of`;
 credential request, write none), `curator.paused` when the circuit breaker pauses the night shift (`reason`,
 `cause_class`, `schedule_ids`, `run_ids`, `reverts`), and `worker.health` when the health a worker's heartbeat reports
 changes state (`worker_id`, `disk` low or ok against the reserve its daemon says, 20 GB free when it says none,
-`disk_free_pct`, `logins`), once for each project the worker serves. Payloads carry ids and states alone, never an error, a question or a reason. No plugin takes these kinds
+`disk_free_pct`, `logins`), once for each project the worker serves. A login `leased` (the worker's runs of that
+runtime authenticate with the hub's lease) is no item of the ops queue, and a worker with it counts as logged in when
+tier 0 hands work again. Payloads carry ids and states alone, never an error, a question or a reason. No plugin takes these kinds
 (they are not in `EVENT_KINDS`, `docs/plugins.md`) and they queue no tick of the Loop. Schema 0239 adds the nullable
 `workers.health`; going back drops it.
 

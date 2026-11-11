@@ -497,6 +497,7 @@ class Agent:
                 phases.append(outcome.usage)
                 outcome = replace(outcome, usage=with_first_request(outcome.usage, phases, unseen=unseen))
                 session_id = self.adapter.session_id or session_id
+                self.run.daemon.saw_agent(self.run.runtime, leased=self.model_leased(), authenticated=not outcome.auth)
                 self.run.check()
                 outcome = await self.limits.after(outcome)
                 if outcome is None:  # the run moved to another account: a new agent goes on in the session
@@ -508,6 +509,12 @@ class Agent:
                 return outcome, session_id
         finally:
             self.phase = "after"
+
+    def model_leased(self) -> bool:
+        """Whether the agent's model credential is the hub's: an ``env`` lease of a model account, or the gateway's
+        route; what the worker's health says of the runtime's login rests on it (``health.with_leases``)."""
+        credentials = self.run.credentials
+        return credentials.gateway is not None or any(key in credentials.agent_vars for key in MODEL_ENV_VARS)
 
     async def open_browser(self) -> None:
         """Start the run's Chromium before its first agent, for a run dispatched with browser (``browser.session``);
