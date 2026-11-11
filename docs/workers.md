@@ -628,6 +628,11 @@ list of its repos with the branch the plan names for each. A plan has at most on
 one, dispatching one of its steps gets 409, as does a second plan run; a plan run waits, likewise, until no run of one
 of its steps is active.
 
+A plan can also be handed to an agent system of the project instead of a plan run: the hub writes the plan to the
+system's entry agent in the dispatcher's direct chat with it, a trace of the system runs it, and while a run of that
+trace is active the plan's step runs and plan runs get 409 (`evo-agents hub run plan PLAN --system SLUG`, or In a
+system in the web's Run plan dialog; [hub.md, A plan run in a system](hub.md#a-plan-run-in-a-system)).
+
 On the worker the run gets a directory with a worktree of each of its repos on that repo's branch, and the agent works
 in that directory with the plan in `.evo-run/plan.yaml`. The agent does the steps in the order `depends_on` allows,
 the way execute-plan does, and reports each through `evo-agents worker step`: the worker runs the step's verify

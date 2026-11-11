@@ -22013,6 +22013,14 @@
         },
         {
           "flags": [
+            "--system"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -22108,7 +22116,23 @@
           "routing",
           "spawned_by_run_id"
         ],
-        "schema": "Run"
+        "schema": "Run",
+        "with": {
+          "--system": {
+            "kind": "object",
+            "keys": [
+              "system",
+              "system_revision",
+              "trace_id",
+              "plan_id",
+              "plan_revision",
+              "chat_id",
+              "message_id",
+              "run_id"
+            ],
+            "schema": "SystemDispatched"
+          }
+        }
       }
     },
     "hub run rerun": {
@@ -90302,6 +90326,266 @@
           }
         }
       },
+      "/v1/projects/{project}/plans/{plan_id}/system-dispatch": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "System Dispatch",
+          "description": "Hand the plan to the system's entry agent: the caller's message in their direct chat with it names the plan and\nhow to run it, and the trace it opens runs the plan.",
+          "operationId": "system_dispatch_v1_projects__project__plans__plan_id__system_dispatch_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "plan_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Plan Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemDispatch"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SystemDispatched"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plan-run-choice": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Read Plan Run Choice",
+          "description": "The caller's last choice in the Run plan dialog of the project, checked against the project now; the defaults\nwhen they saved none.",
+          "operationId": "read_plan_run_choice_v1_projects__project__plan_run_choice_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PlanRunChoice"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Put Plan Run Choice",
+          "description": "Keep the caller's choice in the Run plan dialog of the project, in place of the one before; the answer is the\nchoice as GET reads it.",
+          "operationId": "put_plan_run_choice_v1_projects__project__plan_run_choice_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanRunChoiceIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PlanRunChoice"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/me/chat-agents": {
         "get": {
           "tags": [
@@ -149817,6 +150101,228 @@
           "type": "object",
           "title": "PlanReopen"
         },
+        "PlanRunChoice": {
+          "properties": {
+            "target": {
+              "type": "string",
+              "enum": [
+                "worker",
+                "system"
+              ],
+              "title": "Target",
+              "description": "worker: a plan run on a worker (POST .../plan-runs); system: the plan handed to the entry agent of the system ``system`` names (POST .../plans/{plan_id}/system-dispatch)",
+              "default": "worker"
+            },
+            "system": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 63,
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "System",
+              "description": "the slug of a system of the project when target is system; null when it is worker"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything"
+            },
+            "runtime": {
+              "type": "string",
+              "maxLength": 127,
+              "pattern": "^(any|claude-code|opencode|codex|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$",
+              "title": "Runtime",
+              "description": "any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422",
+              "default": "any"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model, as its runtime names it; null: the runtime's own"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "headless",
+                "interactive"
+              ],
+              "title": "Mode",
+              "default": "headless"
+            },
+            "timeout_h": {
+              "type": "integer",
+              "enum": [
+                2,
+                4,
+                8,
+                24
+              ],
+              "title": "Timeout H",
+              "description": "hours of agent time a plan run may take",
+              "default": 4
+            },
+            "session_per_step": {
+              "type": "boolean",
+              "title": "Session Per Step",
+              "description": "true: a new agent session for each step of a plan run",
+              "default": false
+            },
+            "saved": {
+              "type": "boolean",
+              "title": "Saved",
+              "description": "whether the caller saved a choice in the project; false: these are the defaults"
+            },
+            "defaulted": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Defaulted",
+              "description": "the fields of the saved choice that went back to their default, since what they named can no longer be used: system (deleted, or without an entry agent; target is then worker), agent (deleted, or not allowed in the project), runtime, model (not allowed, or not registered), mode, timeout_h"
+            },
+            "updated_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated At",
+              "description": "when the caller saved it; null when they never did"
+            }
+          },
+          "type": "object",
+          "required": [
+            "saved",
+            "defaulted",
+            "updated_at"
+          ],
+          "title": "PlanRunChoice",
+          "description": "The caller's choice as the hub keeps it, checked against the project now."
+        },
+        "PlanRunChoiceIn": {
+          "properties": {
+            "target": {
+              "type": "string",
+              "enum": [
+                "worker",
+                "system"
+              ],
+              "title": "Target",
+              "description": "worker: a plan run on a worker (POST .../plan-runs); system: the plan handed to the entry agent of the system ``system`` names (POST .../plans/{plan_id}/system-dispatch)",
+              "default": "worker"
+            },
+            "system": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 63,
+                  "minLength": 1,
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "System",
+              "description": "the slug of a system of the project when target is system; null when it is worker"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything"
+            },
+            "runtime": {
+              "type": "string",
+              "maxLength": 127,
+              "pattern": "^(any|claude-code|opencode|codex|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$",
+              "title": "Runtime",
+              "description": "any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422",
+              "default": "any"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model, as its runtime names it; null: the runtime's own"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "headless",
+                "interactive"
+              ],
+              "title": "Mode",
+              "default": "headless"
+            },
+            "timeout_h": {
+              "type": "integer",
+              "enum": [
+                2,
+                4,
+                8,
+                24
+              ],
+              "title": "Timeout H",
+              "description": "hours of agent time a plan run may take",
+              "default": 4
+            },
+            "session_per_step": {
+              "type": "boolean",
+              "title": "Session Per Step",
+              "description": "true: a new agent session for each step of a plan run",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "PlanRunChoiceIn",
+          "description": "What the Run plan dialog keeps of a member's choice; the defaults are a plan run's."
+        },
         "PlanRunDispatch": {
           "properties": {
             "plan_id": {
@@ -150074,6 +150580,48 @@
             "updated_by"
           ],
           "title": "PlanSummary"
+        },
+        "PlanTrace": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the trace, as GET /v1/projects/{p}/systems/{slug}/traces/{id} names it"
+            },
+            "system": {
+              "type": "string",
+              "title": "System",
+              "description": "the slug of the system it runs under"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "its active run, the latest when it has several"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked"
+              ],
+              "title": "State"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "system",
+            "run_id",
+            "state"
+          ],
+          "title": "PlanTrace",
+          "description": "A trace of a system that runs the plan (``plan_systems``) and has a run active: its runs hold the plan's steps\nuntil they end."
         },
         "PlaybookDelta": {
           "properties": {
@@ -161518,6 +162066,17 @@
                 }
               ],
               "description": "the plan's active plan run: while there is one, no step of the plan is dispatched"
+            },
+            "trace": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PlanTrace"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a trace of a system that runs the plan and has an active run: while there is one, neither a step nor a plan run of the plan is dispatched"
             },
             "steps": {
               "items": {
@@ -177620,6 +178179,77 @@
             "deleted"
           ],
           "title": "SystemDeleted"
+        },
+        "SystemDispatch": {
+          "properties": {
+            "system": {
+              "type": "string",
+              "maxLength": 63,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "title": "System",
+              "description": "the slug of a system of the project, whose entry agent is handed the plan"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "system"
+          ],
+          "title": "SystemDispatch"
+        },
+        "SystemDispatched": {
+          "properties": {
+            "system": {
+              "type": "string",
+              "title": "System"
+            },
+            "system_revision": {
+              "type": "integer",
+              "title": "System Revision",
+              "description": "the revision of the system's spec the trace runs under"
+            },
+            "trace_id": {
+              "type": "integer",
+              "title": "Trace Id"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "plan_revision": {
+              "type": "integer",
+              "title": "Plan Revision"
+            },
+            "chat_id": {
+              "type": "integer",
+              "title": "Chat Id",
+              "description": "the caller's direct chat with the system's entry agent"
+            },
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the caller's message there, which names the plan and how to run it"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the entry agent's run the message woke"
+            }
+          },
+          "type": "object",
+          "required": [
+            "system",
+            "system_revision",
+            "trace_id",
+            "plan_id",
+            "plan_revision",
+            "chat_id",
+            "message_id",
+            "run_id"
+          ],
+          "title": "SystemDispatched",
+          "description": "A plan handed to a system: the caller's message in their direct chat with its entry agent, the run it woke and\nthe trace it opened."
         },
         "SystemOut": {
           "properties": {

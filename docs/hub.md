@@ -106,7 +106,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | secrets | `GET /v1/secrets`, `PUT`, `PATCH` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
 | account pools | `GET` and `POST /v1/projects/{project}/account-pools`, `GET` and `DELETE .../account-pools/{pool}`, `PUT .../account-pools/{pool}/accounts`, `DELETE .../accounts/{secret_id}` and `PUT /v1/projects/{project}/agents/{handle}/account-pool`; admin of the project or hub (`docs/credentials.md`, section "Account pools") |
-| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../outputs` (with `/{oid}`, `/{oid}/content`, `/{oid}/link`), `.../{cancel,approve,rerun,takeover,handback,finish}`, `GET /v1/projects/{project}/tool-stats` and `GET`, `PUT /v1/projects/{project}/output-settings` |
+| runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/plans/{plan_id}/system-dispatch`, `GET` and `PUT /v1/projects/{project}/plan-run-choice`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../outputs` (with `/{oid}`, `/{oid}/content`, `/{oid}/link`), `.../{cancel,approve,rerun,takeover,handback,finish}`, `GET /v1/projects/{project}/tool-stats` and `GET`, `PUT /v1/projects/{project}/output-settings` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
@@ -897,6 +897,72 @@ evo-agents hub system metrics support --project northwind --days 7 --traces
 `limits.trace_runs` (12) and `limits.trace_usd` (2) cap a trace: its runs, counted through `spawned_by_run_id`, and
 their cost. Past either, the next ask or mention of the trace is refused with the limit it passed, and a `refused`
 span says so.
+
+### A plan run in a system
+
+A writer of the project can hand a whole plan to an agent system instead of queueing a plan run on a worker
+(`evo_agents/hub/server/plan_systems.py`). `POST /v1/projects/{p}/plans/{plan_id}/system-dispatch` takes `{system}`,
+the slug of a system of the project, and does what the member would do by hand: it writes their own message in their
+direct chat with the system's entry agent (the chat is made when there is none). The message names the plan, its
+revision, its page on the web and its pending steps (each with its key, title and the steps it depends on, as many as
+fit, then "and N more: see plan_show"), and says how to run it: read the plan with plan_show, take the pending steps in
+the order `depends_on` allows, hand each step to the system's agents along its `interacts` edges with a brief (the
+goal, the repo, the criteria, the verify command and when it is done), mark a step done with plan_step and its
+evidence once its verify passes, ask the person about any decision it may not take itself, and report which steps are
+done and which are left when it stops. The message is delivered as a typed one, so it wakes the entry agent and opens
+a trace at the system's revision now (Traces); the names its text mentions are not read as mentions, so it hands
+work to the entry agent alone. The trace then records the plan's id and revision (`system_traces.plan_id` and
+`plan_revision`, migration 0237; null for a trace a typed message opened), and the audit row `run.dispatch_system`
+names `<project>/<plan> run:<id> system:<slug> trace:<id>`. The answer (201) is `{system, system_revision, trace_id,
+plan_id, plan_revision, chat_id, message_id, run_id}`, `run_id` being the entry agent's run the message woke.
+
+The dispatch is refused with 403 without the writer role, 404 for a plan the caller cannot read, 422 for a system
+the project does not have, and 409 for a plan the Curator made (the night shift alone runs it), a system with no
+entry agent, a plan with an active plan run or step run, a plan a trace still runs, a plan with no pending step, and
+a message the entry agent took no run for or whose run opened no trace of the system (its refusal named). A refusal
+writes nothing: the message, the chat it would have opened and the run roll back with it.
+
+The 409 holds both ways. A system dispatch takes the plan's dispatch lock before it reads the plan's active runs, as a
+plan run and a step run do, so two dispatches at once, or a dispatch and a plan run, give one trace or one run. While
+a run of a trace of the plan is queued, running, waiting or parked, a plan run, a step run and a rerun of the plan get
+409 naming the trace, its system and the run (`plan X is run by system S in trace #N, whose run #R is running`), and
+`GET .../plans/{plan_id}/ready-steps` answers the trace as `trace` (`{id, system, run_id, state}`, the latest active
+run) next to `plan_run`, with no step ready. Once every run of the trace has ended, the plan is free again.
+
+The trace is a trace like any other: its budget (`limits.trace_runs` and `limits.trace_usd`, Budget of a trace) still
+applies, so a plan with many steps can pass it, and then the next hand-off of the trace is refused. The web's Run plan
+dialog says how many runs the pending steps may need (about two a step) against `trace_runs`. A run of the trace marks
+steps as any agent run does, with the MCP tool plan_step, which writes under the role of the run's owner: the member
+who dispatched the plan, a writer. On the plan's page a banner names the system, the state of the trace's active run
+and the steps done, with a link to the trace in the system's Observe.
+
+On the command line `evo-agents hub run plan PLAN --system SLUG` sends the dispatch and prints the trace, the entry
+agent's run and a link to the chat; `--json` prints the hub's answer. The system decides how its agents run, so
+`--system` goes with none of the options of a plan run (`--runtime`, `--model`, `--mode`, `--timeout-h`,
+`--session-per-step`, `--browser`, `--identity`, `--account`, `--agent`, `--as-me`), and the command refuses them
+before it asks the hub.
+
+```sh
+evo-agents hub run plan rollout --system support --project northwind
+```
+
+#### The remembered choice of Run plan
+
+The web's Run plan dialog has a Where it runs choice, on a worker or in a system, and opens on the member's last
+choice in the project, which the hub keeps (`evo_agents/hub/server/plan_run_choice.py`, table `plan_run_choices` of
+migration 0238, one row a member and project). `GET /v1/projects/{p}/plan-run-choice` reads the caller's own choice
+(a grant on the project), and `PUT` replaces it (the writer role); no one reads or writes another member's. The fields
+remembered are `target` (`worker` or `system`), `system` (the slug, given when and only when the target is `system`),
+`agent`, `runtime`, `model`, `mode`, `timeout_h` and `session_per_step`. The hub never keeps `as_me`, browser
+identities or an account: a body that names one is refused with 422. A member who saved none gets the defaults with
+`saved: false`.
+
+A choice is checked against the project each time it is read. A field that names what can no longer be used goes back
+to its default and is listed in `defaulted`: `system` for a system deleted or without an entry agent (the target is
+then `worker`), `agent` for an agent deleted or not allowed in the project, `runtime` for a runtime the project does
+not register or the agent does not allow, `model` for a model the agent does not allow, and `mode` or `timeout_h` for
+a value the hub no longer takes. A dispatch still checks everything again. The command line neither reads nor writes
+the choice: `hub run plan` takes only what its options say.
 
 ### Work chats
 
@@ -1871,6 +1937,7 @@ evo-agents hub run dispatch rollout 7 --account claude-b     # this account of y
 evo-agents hub run plan rollout --timeout-h 8                 # one plan run: every step not done yet
 evo-agents hub run plan rollout --session-per-step            # the same, each step in a new session with the handoff
 evo-agents hub run plan rollout --as-me                       # its agent calls the hub as you, secrets, tokens and workers aside
+evo-agents hub run plan rollout --system support              # hand the plan to agent system support instead of a plan run
 evo-agents hub run list --state running --state review        # newest first, with the runs in each state
 evo-agents hub run show 41
 evo-agents hub run logs 41 --follow                           # the live log, until the run ends
@@ -1939,7 +2006,9 @@ step; only a worker whose daemon says it does that takes the run, and one pinned
 refused (409). The flag is sent only when given, and `show` says which of the two a plan run is; the run's usage
 lists each step's session once it ends (`docs/workers.md`, A plan run with a session for each step). The hub refuses
 a plan with no pending step, a plan with an active run of any kind, and a step not done that names no repo when the
-plan lists more than one. `dispatch`, `rerun` and
+plan lists more than one. `--system SLUG` hands the plan to that agent system of the project instead
+(`POST .../plans/{plan_id}/system-dispatch`): its entry agent gets the plan in your direct chat with it and a trace of
+the system runs it (Agent systems, A plan run in a system); it takes none of the plan run's options. `dispatch`, `rerun` and
 `plan` are refused (409, naming the repo, nothing dispatched) when a repo the run needs is one the project lists no
 origin for: no credential is leased for it, and the worker's preflight would fail the run anyway. `list` shows each run's
 KIND (`step`, `plan`, `review`, `judge` or `author`), and filters by `--state` (repeat it for several), `--plan`,

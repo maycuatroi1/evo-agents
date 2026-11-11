@@ -112,6 +112,9 @@ RUN_CAUSE = (
 )
 RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step
 RUN_DISPATCH_PLAN = "run.dispatch_plan"  # a member queued a plan run: "<project>/<plan> run:<id>", no step
+# a member handed a plan to a system's entry agent (``plan_systems``): "<project>/<plan> run:<id> system:<slug>
+# trace:<id>", the run its message woke and the trace that run opened
+RUN_DISPATCH_SYSTEM = "run.dispatch_system"
 RUN_DISPATCH_AUTHOR = "run.dispatch_author"  # a member queued an author run: "<project>/author run:<id>", no request
 RUN_STEP_REPORT = "run.step_report"  # a plan run's worker wrote a step, as the dispatcher: "... run:<id> status=<s>"
 RUN_CANCEL = "run.cancel"  # the owner cancelled a run, or asked its worker to stop it

@@ -179,6 +179,7 @@ TABLES |= {"orchestrator_threads"}  # migration 0221
 TABLES |= {"srs_use_case_revisions", "srs_use_case_releases"}  # migration 0226
 TABLES |= {"chat_label_shares"}  # migration 0229
 TABLES |= {"workflow_run_reads"}  # migration 0236
+TABLES |= {"plan_run_choices"}  # migration 0238
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -269,8 +270,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_thirty_eight_tables(hub_db):
-    assert len(TABLES) == 238  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_thirty_nine_tables(hub_db):
+    assert len(TABLES) == 239  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -5964,3 +5965,40 @@ def test_0236_keeps_the_latest_read_of_a_watched_workflow_run_and_going_back_dro
     move_to(hub_db, "0235", down=True)
     assert "workflow_run_reads" not in tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0236") :]
+
+
+def test_0237_gives_traces_the_plan_they_run_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0236")
+    plan = {"plan_id", "plan_revision"}
+    assert not plan & columns(hub_db, "system_traces")
+    move_to(hub_db, "0237")
+    assert plan <= columns(hub_db, "system_traces")
+    move_to(hub_db, "0236", down=True)
+    assert not plan & columns(hub_db, "system_traces")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0237") :]
+
+
+def test_0238_keeps_a_members_plan_run_choice_per_project_which_goes_with_either_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0238")
+    t = hub_tables
+    c = t.plan_run_choices
+    choice = {"target": "worker", "runtime": "any", "mode": "headless", "timeout_h": 4, "session_per_step": False}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        lumen = insert(t.projects).values(
+            name="lumen", levels=["internal"], locations=["any"], default_label={}, created_by=ids["user"]
+        )
+        project = one(conn, lumen.returning(t.projects.c.id))
+        user = one(conn, insert(t.users).values(login="Lumen", github_id=2).returning(t.users.c.id))
+        conn.execute(insert(c).values(user_id=ids["user"], project_id=project, **choice))
+        conn.execute(insert(c).values(user_id=user, project_id=ids["project"], **choice))
+        with pytest.raises(errors.CheckViolation):  # a system target names its system, and only it
+            conn.execute(insert(c).values(user_id=user, project_id=project, **choice, system="dev"))
+    assert query(hub_db, select(func.count()).select_from(c)) == [(2,)]
+    with live.connect(hub_db) as conn:
+        conn.execute(delete(t.projects).where(t.projects.c.id == project))
+        conn.execute(delete(t.users).where(t.users.c.id == user))
+    assert query(hub_db, select(func.count()).select_from(c)) == [(0,)]
+    move_to(hub_db, "0237", down=True)
+    assert "plan_run_choices" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0238") :]

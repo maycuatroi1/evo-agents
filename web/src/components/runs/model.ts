@@ -312,6 +312,7 @@ export function isCuratorPlan(planId: string): boolean {
 export type PlanRunLock =
   | { kind: "planRun"; id: number; state: RunState }
   | { kind: "stepRun"; id: number; state: RunState; step: string }
+  | { kind: "trace"; id: number; system: string; state: RunState }
   | { kind: "noPending" };
 
 /**
@@ -324,7 +325,10 @@ export function planRunLock(
   runs: readonly Pick<Run, "id" | "kind" | "plan_id" | "state" | "step_key">[],
   planId: string,
   pending: number,
+  /** The trace of a system that runs the plan, from ready-steps: it locks the plan like a plan run. */
+  trace: { id: number; system: string; state: RunState } | null = null,
 ): PlanRunLock | null {
+  if (trace) return { kind: "trace", id: trace.id, system: trace.system, state: trace.state };
   const active = runs.filter((run) => run.plan_id === planId && isActiveState(run.state));
   const plan = active.find((run) => run.kind === "plan");
   if (plan) return { kind: "planRun", id: plan.id, state: plan.state };

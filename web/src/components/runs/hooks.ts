@@ -15,6 +15,8 @@ import { LOGIN_PATH } from "@/lib/config";
 import { planKeys } from "@/lib/plan-queries";
 import { whoamiQuery } from "@/lib/queries";
 
+import { isSystemDispatched, type PlanRunOutcome, planTraceHref } from "./plan-run-outcome";
+
 import {
   type AuthorRunRequest,
   controlRun,
@@ -188,19 +190,31 @@ export function useDispatchedToast() {
   );
 }
 
-/** The toast after Run plan: "Plan run #14 dispatched", with a link to it; and the hub's warning, if it gave one. */
+/**
+ * The toast after Run plan: "Plan run #14 dispatched" with a link to it, and the hub's warning if it gave one; or, for
+ * a plan handed to a system, "Plan handed to system dev" with a link to its trace in the system's Observe.
+ */
 export function usePlanRunToast() {
   const t = useTranslations("runs.planRun.toast");
   const warn = useNoWorkerToast();
   return useCallback(
-    (run: Run) => {
+    (outcome: PlanRunOutcome) => {
+      if (isSystemDispatched(outcome)) {
+        notify({
+          tone: "success",
+          text: t("system", { system: outcome.system }),
+          description: t("systemText", { plan: outcome.plan_id, trace: outcome.trace_id }),
+          link: { label: t("openTrace"), href: planTraceHref(outcome.project, outcome.system, outcome.trace_id) },
+        });
+        return;
+      }
       notify({
         tone: "success",
-        text: t("dispatched", { id: run.id }),
-        description: t("dispatchedText", { plan: run.plan_id }),
-        link: { label: t("openRun"), href: runHref(run.project, run.id) },
+        text: t("dispatched", { id: outcome.id }),
+        description: t("dispatchedText", { plan: outcome.plan_id }),
+        link: { label: t("openRun"), href: runHref(outcome.project, outcome.id) },
       });
-      warn([run]);
+      warn([outcome]);
     },
     [t, warn],
   );

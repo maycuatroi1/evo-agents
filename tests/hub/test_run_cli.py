@@ -383,6 +383,88 @@ def test_a_model_needs_the_runtime_that_names_it(monkeypatch, capsys, tmp_path, 
     assert result.err.startswith("error: --model names a model as one runtime names it, so it needs --runtime")
 
 
+HANDED = {
+    "system": "dev",
+    "system_revision": 3,
+    "trace_id": 71,
+    "plan_id": "rollout",
+    "plan_revision": 5,
+    "chat_id": 9,
+    "message_id": 120,
+    "run_id": 44,
+}
+
+
+class SystemHub:
+    """A hub that answers POST .../system-dispatch and records every call."""
+
+    url = HUB_URL
+
+    def __init__(self):
+        self.calls = []
+
+    def call(self, method, path, body=None):
+        self.calls.append((method, path, body))
+        return HANDED
+
+
+def test_run_plan_with_a_system_hands_the_plan_to_its_entry_agent(monkeypatch, capsys, tmp_path):
+    hub = SystemHub()
+    monkeypatch.setattr(run_cli, "signed_in", lambda: (hub, None))
+    where = ("--project", "demo")
+    shown = ok(cli(monkeypatch, capsys, tmp_path, "hub", "run", "plan", "rollout", "--system", "dev", *where)).out
+    assert hub.calls == [("POST", "/v1/projects/demo/plans/rollout/system-dispatch", {"system": "dev"})]
+    assert shown.splitlines() == [
+        "Handed plan rollout (revision 5) to system dev (revision 3): trace #71, run #44 of its entry agent, in your "
+        f"chat #9 with it ({HUB_URL}/chats/9?message=120).",
+        "Follow it with `evo-agents hub run logs 44 --follow --project demo`.",
+    ]
+    printed = as_json(
+        cli(monkeypatch, capsys, tmp_path, "hub", "run", "plan", "rollout", "--system", "dev", *where, "--json")
+    )
+    assert printed == HANDED
+    assert_json_keys("hub run plan", printed, "--system")
+    assert len(hub.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        ("--runtime", "claude-code"),
+        ("--runtime", "claude-code", "--model", "opus"),
+        ("--mode", "interactive"),
+        ("--timeout-h", "8"),
+        ("--session-per-step",),
+        ("--browser",),
+        ("--identity", "github"),
+        ("--account", "work"),
+        ("--agent", "ea-dev"),
+        ("--as-me",),
+    ],
+)
+def test_run_plan_with_a_system_refuses_the_options_of_a_plan_run_and_sends_nothing(
+    monkeypatch, capsys, tmp_path, given
+):
+    hub = SystemHub()
+    monkeypatch.setattr(run_cli, "signed_in", lambda: (hub, None))
+    result = cli(
+        monkeypatch, capsys, tmp_path, "hub", "run", "plan", "rollout", "--system", "dev", *given, "--project", "demo"
+    )
+    assert result.code == 2 and result.out == "" and hub.calls == []
+    flags = [word for word in given if word.startswith("--")]
+    assert result.err == (
+        "error: --system hands the plan to the system, whose agents run as it sets them, so it does not go with "
+        f"{', '.join(flags)}\n"
+    )
+
+
+def test_run_plan_without_a_system_still_queues_a_plan_run(monkeypatch, capsys, tmp_path):
+    hub = SystemHub()
+    monkeypatch.setattr(run_cli, "signed_in", lambda: (hub, None))
+    cli(monkeypatch, capsys, tmp_path, "hub", "run", "plan", "rollout", "--as-me", "--project", "demo", "--json")
+    assert hub.calls == [("POST", "/v1/projects/demo/plan-runs", {"plan_id": "rollout", "as_me": True})]
+
+
 def test_decision_cli_shows_a_decision_without_a_plan_by_its_run_alone(monkeypatch, capsys, tmp_path):
     from evo_agents.hub import decision_cli
 
