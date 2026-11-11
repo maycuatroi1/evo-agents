@@ -18,10 +18,11 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import system_spec, tables
 from evo_agents.hub.server import system_trace_views, system_traces
+from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (  # noqa: F401
     OTHER,
@@ -31,6 +32,7 @@ from tests.hub.test_chat_runs import (  # noqa: F401
     claim,
     client,
     created,
+    default_node,
     ended,
     hub,
     in_chats,
@@ -39,6 +41,8 @@ from tests.hub.test_chat_runs import (  # noqa: F401
     sent,
     started,
 )
+from tests.hub.test_plan_runs import race
+from tests.hub.test_runs import audit_rows
 
 SLUG = "review"
 SPEC = {
@@ -294,3 +298,129 @@ def test_the_trace_stream_wakes_on_a_span_written(hub_db, tmp_path, github, monk
                     event[field] = value.removeprefix(" ")
             assert event["event"] == "trace"
             assert json.loads(event["data"])["id"] == trace_id
+
+
+# A plan run in a system (plan run-plan-in-system): a1 the dispatch, a2 its trace holds the plan
+
+
+def push_plan(client, headers, body: dict | None = None, **extra) -> dict:
+    body = body or credentials_api.plan_body()
+    pushed = client.put(f"/v1/projects/{PROJECT}/plans/{body['id']}", json={"body": body, **extra}, headers=headers)
+    assert pushed.status_code == 200, pushed.text
+    return pushed.json()
+
+
+def system_dispatch(client, headers, system: str = SLUG, plan_id: str = credentials_api.PLAN):
+    path = f"/v1/projects/{PROJECT}/plans/{plan_id}/system-dispatch"
+    return client.post(path, json={"system": system}, headers=headers)
+
+
+def plan_traces(db) -> list[tuple]:
+    t = tables.system_traces
+    return sql(db, select(t.c.id, t.c.system_slug, t.c.plan_id, t.c.plan_revision).order_by(t.c.id))
+
+
+def test_a_system_dispatch_writes_the_callers_message_to_the_entry_agent_and_its_trace_runs_the_plan(
+    client, hub, hub_db
+):
+    system = put_system(client, hub["owner"])
+    studio = chat_worker(client, hub["owner"], "studio", slots=2)
+    pushed = push_plan(client, hub["owner"])
+    response = system_dispatch(client, hub["owner"])
+    assert response.status_code == 201, response.text
+    found = response.json()
+    assert (found["system"], found["plan_id"], found["plan_revision"]) == (SLUG, credentials_api.PLAN, 1)
+    assert found["system_revision"] == system["revision"]
+    assert plan_traces(hub_db) == [(found["trace_id"], SLUG, credentials_api.PLAN, pushed["revision"])]
+    assert invoked(hub_db, found["run_id"])["trace_id"] == found["trace_id"]
+
+    m = tables.chat_messages
+    ((author, text),) = sql(hub_db, select(m.c.author_user_id, m.c.body).where(m.c.id == found["message_id"]))
+    assert author is not None
+    assert f"Run plan {credentials_api.PLAN}, revision 1, in system {SLUG}: " in text
+    assert text.splitlines()[0].endswith(f"/p/{PROJECT}/plans/{credentials_api.PLAN}")
+    assert "- step 1: Push evo-agents" in text and "plan_show" in text and "plan_step" in text
+    mentions = tables.chat_mentions
+    query = select(mentions.c.name, mentions.c.run_id).where(mentions.c.message_id == found["message_id"])
+    assert sql(hub_db, query) == [("reviewer", found["run_id"])]  # the entry agent alone, as its direct chat's agent
+
+    run = claim(client, studio)
+    assert (run["id"], run["kind"]) == (found["run_id"], "chat")
+    assert audit_rows(hub_db, "run") == [
+        (
+            "run.dispatch_system",
+            f"{PROJECT}/{credentials_api.PLAN} run:{found['run_id']} system:{SLUG} trace:{found['trace_id']}",
+            credentials_api.OWNER,
+            PROJECT,
+        )
+    ]
+
+
+def test_a_system_dispatch_is_refused_for_a_reader_an_unknown_system_no_entry_and_no_pending_step(client, hub, hub_db):
+    put_system(client, hub["owner"])
+    chat_worker(client, hub["owner"], "studio")
+    push_plan(client, hub["owner"])
+    reader = {"role": "reader", "max_level": "internal"}
+    granted = client.put(f"/v1/admin/projects/{PROJECT}/grants/stranger", json=reader, headers=hub["admin"])
+    assert granted.status_code == 200, granted.text
+    refused = system_dispatch(client, hub["stranger"])
+    assert refused.status_code == 403 and "writer role" in refused.text, refused.text
+    assert system_dispatch(client, hub["owner"], system="nowhere").status_code == 422
+    assert system_dispatch(client, hub["owner"], plan_id="no-such-plan").status_code == 404
+
+    s = tables.agent_systems
+    ((entry,),) = sql(hub_db, select(s.c.entry_profile_id))
+    sql(hub_db, update(s).values(entry_profile_id=None))
+    refused = system_dispatch(client, hub["owner"])
+    assert refused.status_code == 409 and "no entry agent" in refused.text, refused.text
+    sql(hub_db, update(s).values(entry_profile_id=entry))
+
+    done = credentials_api.plan_body()
+    done["steps"] = [{**step, "status": "done", "evidence": "ok"} for step in done["steps"]]
+    push_plan(client, hub["owner"], done, if_revision=1)
+    refused = system_dispatch(client, hub["owner"])
+    assert refused.status_code == 409 and "no pending step" in refused.text, refused.text
+    assert plan_traces(hub_db) == [] and sql(hub_db, select(func.count()).select_from(tables.chat_messages)) == [(0,)]
+
+
+def test_a_plan_trace_holds_the_plan_runs_and_step_runs_until_its_runs_end(client, hub, hub_db):
+    put_system(client, hub["owner"])
+    studio = chat_worker(client, hub["owner"], "studio", slots=2)
+    default_node(client, hub, hub_db, chat_worker(client, hub["owner"], "step-node", slots=2, pool=None))
+    push_plan(client, hub["owner"])
+    found = system_dispatch(client, hub["owner"]).json()
+    named = f"system {SLUG} in trace #{found['trace_id']}"
+    plan = f"/v1/projects/{PROJECT}/plan-runs"
+    for path, body in ((plan, {}), (f"/v1/projects/{PROJECT}/runs", {"steps": [1]})):
+        refused = client.post(path, json={"plan_id": credentials_api.PLAN, **body}, headers=hub["other"])
+        assert refused.status_code == 409 and named in refused.text, refused.text
+    again = system_dispatch(client, hub["other"])
+    assert again.status_code == 409 and named in again.text, again.text
+    ready = client.get(f"/v1/projects/{PROJECT}/plans/{credentials_api.PLAN}/ready-steps", headers=hub["owner"]).json()
+    assert ready["trace"] == {"id": found["trace_id"], "system": SLUG, "run_id": found["run_id"], "state": "queued"}
+    assert all(named in step["reason"] for step in ready["steps"])
+
+    assert claim(client, studio)["id"] == found["run_id"]
+    moved(client, studio, found["run_id"], "running", session_id="sess-1")
+    ended(client, studio, found["run_id"])
+    ready = client.get(f"/v1/projects/{PROJECT}/plans/{credentials_api.PLAN}/ready-steps", headers=hub["owner"]).json()
+    assert ready["trace"] is None and all(step["ready"] for step in ready["steps"])
+    run = client.post(plan, json={"plan_id": credentials_api.PLAN}, headers=hub["owner"])
+    assert run.status_code == 201, run.text
+    held = system_dispatch(client, hub["owner"])  # and a plan run holds the plan from a system
+    assert held.status_code == 409 and f"plan run #{run.json()['id']}" in held.text, held.text
+
+
+def test_a_plan_trace_is_one_when_two_system_dispatches_race(client, hub, hub_db):
+    put_system(client, hub["owner"])
+    chat_worker(client, hub["owner"], "studio", slots=2)
+    push_plan(client, hub["owner"])
+    answers = race(
+        client,
+        hub_db,
+        partial(system_dispatch, client, hub["owner"]),
+        partial(system_dispatch, client, hub["other"]),
+        plan_id=credentials_api.PLAN,
+    )
+    assert sorted(answer.status_code for answer in answers) == [201, 409], [answer.text for answer in answers]
+    assert len(plan_traces(hub_db)) == 1

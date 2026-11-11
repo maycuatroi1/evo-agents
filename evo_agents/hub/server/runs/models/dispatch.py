@@ -8,7 +8,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from evo_agents.hub import author, runs
+from evo_agents.hub import author, runs, system_spec
 from evo_agents.hub.credentials import DispatchedVia
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.server.runs.models import browser as browser_help
@@ -41,6 +41,16 @@ class ActiveRun(BaseModel):
     dispatched_by: str
 
 
+class PlanTrace(BaseModel):
+    """A trace of a system that runs the plan (``plan_systems``) and has a run active: its runs hold the plan's steps
+    until they end."""
+
+    id: int = Field(description="the trace, as GET /v1/projects/{p}/systems/{slug}/traces/{id} names it")
+    system: str = Field(description="the slug of the system it runs under")
+    run_id: int = Field(description="its active run, the latest when it has several")
+    state: runs.ActiveState
+
+
 class StepReadiness(BaseModel):
     key: str = Field(description="the step's id, else its order, else its position, as plans name steps")
     title: str | None
@@ -57,6 +67,11 @@ class ReadySteps(BaseModel):
     revision: int
     plan_run: ActiveRun | None = Field(
         None, description="the plan's active plan run: while there is one, no step of the plan is dispatched"
+    )
+    trace: PlanTrace | None = Field(
+        None,
+        description="a trace of a system that runs the plan and has an active run: while there is one, neither a step "
+        "nor a plan run of the plan is dispatched",
     )
     steps: list[StepReadiness] = Field(description="every step of the plan, in plan order")
 
@@ -134,6 +149,31 @@ class PlanRunDispatch(HubPlaced):
     browser: bool = Field(False, description=browser_help.DISPATCH_HELP)
     identities: list[browser_help.IdentityName] = browser_help.identities_field()
     as_me: bool = Field(False, description=AS_ME_HELP)
+
+
+class SystemDispatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    system: str = Field(
+        min_length=1,
+        max_length=63,
+        pattern=system_spec.SLUG_PATTERN,
+        description="the slug of a system of the project, whose entry agent is handed the plan",
+    )
+
+
+class SystemDispatched(BaseModel):
+    """A plan handed to a system: the caller's message in their direct chat with its entry agent, the run it woke and
+    the trace it opened."""
+
+    system: str
+    system_revision: int = Field(description="the revision of the system's spec the trace runs under")
+    trace_id: int
+    plan_id: str
+    plan_revision: int
+    chat_id: int = Field(description="the caller's direct chat with the system's entry agent")
+    message_id: int = Field(description="the caller's message there, which names the plan and how to run it")
+    run_id: int = Field(description="the entry agent's run the message woke")
 
 
 class Rerun(HubPlaced):

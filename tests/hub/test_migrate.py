@@ -5951,3 +5951,14 @@ def test_0235_gives_traces_the_work_and_its_card_and_going_back_drops_them(hub_d
     move_to(hub_db, "0234", down=True)
     assert not work & columns(hub_db, "system_traces")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0235") :]
+
+
+def test_0236_gives_traces_the_plan_they_run_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0235")
+    plan = {"plan_id", "plan_revision"}
+    assert not plan & columns(hub_db, "system_traces")
+    move_to(hub_db, "0236")
+    assert plan <= columns(hub_db, "system_traces")
+    move_to(hub_db, "0235", down=True)
+    assert not plan & columns(hub_db, "system_traces")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0236") :]

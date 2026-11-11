@@ -577,6 +577,7 @@ def _include_member_routes(app: FastAPI) -> None:
         opportunities,
         opportunity_evidence,
         orchestrator_actions,
+        plan_systems,
         plugin_chats_api,
         plugin_cli,
         plugin_docs_api,
@@ -651,6 +652,7 @@ def _include_member_routes(app: FastAPI) -> None:
         chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
         chats.router,
         chat_direct.router,
+        plan_systems.router,  # a plan handed to a system's entry agent, in the caller's direct chat with it
         chat_home.router,  # the agents a member may chat with, for the chat home of the web
         chat_members.router,
         chat_images.router,

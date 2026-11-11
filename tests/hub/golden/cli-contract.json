@@ -90298,6 +90298,110 @@
           }
         }
       },
+      "/v1/projects/{project}/plans/{plan_id}/system-dispatch": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "System Dispatch",
+          "description": "Hand the plan to the system's entry agent: the caller's message in their direct chat with it names the plan and\nhow to run it, and the trace it opens runs the plan.",
+          "operationId": "system_dispatch_v1_projects__project__plans__plan_id__system_dispatch_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "plan_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Plan Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemDispatch"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SystemDispatched"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/me/chat-agents": {
         "get": {
           "tags": [
@@ -149585,6 +149689,48 @@
           ],
           "title": "PlanSummary"
         },
+        "PlanTrace": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id",
+              "description": "the trace, as GET /v1/projects/{p}/systems/{slug}/traces/{id} names it"
+            },
+            "system": {
+              "type": "string",
+              "title": "System",
+              "description": "the slug of the system it runs under"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "its active run, the latest when it has several"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "leased",
+                "running",
+                "interactive",
+                "verifying",
+                "waiting",
+                "review",
+                "parked"
+              ],
+              "title": "State"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "system",
+            "run_id",
+            "state"
+          ],
+          "title": "PlanTrace",
+          "description": "A trace of a system that runs the plan (``plan_systems``) and has a run active: its runs hold the plan's steps\nuntil they end."
+        },
         "PlaybookDelta": {
           "properties": {
             "op": {
@@ -161028,6 +161174,17 @@
                 }
               ],
               "description": "the plan's active plan run: while there is one, no step of the plan is dispatched"
+            },
+            "trace": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PlanTrace"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a trace of a system that runs the plan and has an active run: while there is one, neither a step nor a plan run of the plan is dispatched"
             },
             "steps": {
               "items": {
@@ -177064,6 +177221,77 @@
             "deleted"
           ],
           "title": "SystemDeleted"
+        },
+        "SystemDispatch": {
+          "properties": {
+            "system": {
+              "type": "string",
+              "maxLength": 63,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "title": "System",
+              "description": "the slug of a system of the project, whose entry agent is handed the plan"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "system"
+          ],
+          "title": "SystemDispatch"
+        },
+        "SystemDispatched": {
+          "properties": {
+            "system": {
+              "type": "string",
+              "title": "System"
+            },
+            "system_revision": {
+              "type": "integer",
+              "title": "System Revision",
+              "description": "the revision of the system's spec the trace runs under"
+            },
+            "trace_id": {
+              "type": "integer",
+              "title": "Trace Id"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "plan_revision": {
+              "type": "integer",
+              "title": "Plan Revision"
+            },
+            "chat_id": {
+              "type": "integer",
+              "title": "Chat Id",
+              "description": "the caller's direct chat with the system's entry agent"
+            },
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the caller's message there, which names the plan and how to run it"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "the entry agent's run the message woke"
+            }
+          },
+          "type": "object",
+          "required": [
+            "system",
+            "system_revision",
+            "trace_id",
+            "plan_id",
+            "plan_revision",
+            "chat_id",
+            "message_id",
+            "run_id"
+          ],
+          "title": "SystemDispatched",
+          "description": "A plan handed to a system: the caller's message in their direct chat with its entry agent, the run it woke and\nthe trace it opened."
         },
         "SystemOut": {
           "properties": {

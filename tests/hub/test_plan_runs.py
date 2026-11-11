@@ -176,11 +176,11 @@ def wait_for_lock_waiters(db, count: int, timeout: float = 10.0) -> None:
         time.sleep(0.05)
 
 
-def race(client, db, *calls) -> list:
+def race(client, db, *calls, plan_id: str = PLAN) -> list:
     """Run ``calls`` at once while the plan's dispatch lock is held, release it once each waits for it, and return
     their answers in order: whichever gets the lock first, the others see its run."""
     project_id = sql(db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
-    key = run_views.plan_lock_key(project_id, PLAN)
+    key = run_views.plan_lock_key(project_id, plan_id)
     answers = [None] * len(calls)
 
     def call(index):
