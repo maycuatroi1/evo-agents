@@ -59,12 +59,16 @@ export type SpecNode = {
   graph?: string;
 };
 export type SpecEdge = { from: string; to: string; kind: EdgeKind; description: string };
-export type Limits = { trace_usd: number; trace_runs: number; daily_usd: number };
+/** `limits` of a spec: the hub fills in the defaults of the keys it does not name (`system_spec.LIMITS`). */
+export type Limits = Partial<Record<"trace_usd" | "trace_runs" | "daily_usd" | "idle_minutes_hub" | "idle_minutes_worker" | "ops_daily_usd", number>>;
+/** `ops` of a spec: how the Orchestrator of the project's default system handles its operations events. */
+export type Ops = { enabled?: boolean; debounce_minutes?: number; max_items?: number };
 export type Spec = {
   schema: string;
   name: string;
   purpose: string;
   limits?: Limits;
+  ops?: Ops;
   nodes: SpecNode[];
   edges: SpecEdge[];
 };
@@ -81,6 +85,7 @@ export function specOf(raw: unknown): Spec {
     name: typeof spec.name === "string" ? spec.name : "",
     purpose: typeof spec.purpose === "string" ? spec.purpose : "",
     ...(isRecord(spec.limits) ? { limits: spec.limits as Limits } : {}),
+    ...(isRecord(spec.ops) ? { ops: spec.ops as Ops } : {}),
     nodes: nodes.map((node) => {
       const position = isRecord(node.position) ? node.position : {};
       const out: SpecNode = {
@@ -110,6 +115,7 @@ export function specBody(spec: Spec): Record<string, unknown> {
     name: spec.name.trim(),
     purpose: spec.purpose.trim(),
     ...(spec.limits ? { limits: spec.limits } : {}),
+    ...(spec.ops ? { ops: spec.ops } : {}),
     nodes: spec.nodes.map((node) => ({
       id: node.id,
       kind: node.kind,

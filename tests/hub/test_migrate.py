@@ -42,6 +42,7 @@ from sqlalchemy import (
     null,
     select,
     table,
+    text,
     union_all,
     update,
 )
@@ -180,6 +181,7 @@ TABLES |= {"srs_use_case_revisions", "srs_use_case_releases"}  # migration 0226
 TABLES |= {"chat_label_shares"}  # migration 0229
 TABLES |= {"workflow_run_reads"}  # migration 0236
 TABLES |= {"plan_run_choices"}  # migration 0238
+TABLES |= {"ops_cursors", "ops_batches", "ops_items"}  # migration 0240
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -6002,3 +6004,53 @@ def test_0238_keeps_a_members_plan_run_choice_per_project_which_goes_with_either
     move_to(hub_db, "0237", down=True)
     assert "plan_run_choices" not in tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0238") :]
+
+
+def test_0239_gives_workers_their_health_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0238")
+    assert "health" not in columns(hub_db, "workers")
+    move_to(hub_db, "0239")
+    assert "health" in columns(hub_db, "workers")
+    move_to(hub_db, "0238", down=True)
+    assert "health" not in columns(hub_db, "workers")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0239") :]
+
+
+def test_0240_makes_the_oldest_system_the_default_and_going_back_drops_the_ops_queue(hub_db):
+    move_to(hub_db, "0239")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        for slug in ("first", "second"):
+            conn.execute(
+                text(
+                    "INSERT INTO agent_systems (project_id, slug, name, spec) "
+                    'VALUES (:p, :slug, :slug, \'{"schema": "evo-agent-system/1"}\')'
+                ),
+                {"p": ids["project"], "slug": slug},
+            )
+    move_to(hub_db, "0240")
+    found = query(hub_db, text("SELECT slug, is_default FROM agent_systems ORDER BY id"))
+    assert [tuple(row) for row in found] == [("first", True), ("second", False)]
+    assert query(hub_db, text("SELECT systems_seeded_at IS NOT NULL FROM projects"))[0][0] is True
+    assert {"is_default", "ops_paused_at", "ops_paused_reason"} <= columns(hub_db, "agent_systems")
+    move_to(hub_db, "0239", down=True)
+    assert "is_default" not in columns(hub_db, "agent_systems")
+    assert "systems_seeded_at" not in columns(hub_db, "projects")
+    assert not columns(hub_db, "ops_batches")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0240") :]
+
+
+def test_0241_takes_the_ops_rule_the_thread_of_a_batch_and_the_ops_breaker(hub_db):
+    move_to(hub_db, "0240")
+    move_to(hub_db, "0241")
+    assert {"thread_id", "recurring"} <= columns(hub_db, "ops_batches")
+    assert "ops_failures" in columns(hub_db, "agent_systems")
+    check = query(
+        hub_db,
+        text("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'orchestrator_threads_rule_check'"),
+    )[0][0]
+    assert "'ops'" in check, check
+    move_to(hub_db, "0240", down=True)
+    assert "thread_id" not in columns(hub_db, "ops_batches")
+    assert "ops_failures" not in columns(hub_db, "agent_systems")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0241") :]

@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ChevronLeft, Info, PencilRuler, Workflow } from "lucide-react";
+import { Activity, ChevronLeft, Info, PencilRuler, RadioTower, Workflow } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -13,20 +13,21 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { systemHref, systemObserveHref, systemQuery, systemsHref } from "@/lib/systems-queries";
+import { systemHref, systemObserveHref, systemOpsHref, systemQuery, systemsHref } from "@/lib/systems-queries";
 
 import { DESIGNER_FRAME } from "./designer-frame";
-import { SystemDesigner, SystemObserver } from "./designer-lazy";
+import { SystemDesigner, SystemObserver, SystemOpsPanel } from "./designer-lazy";
 import type { DesignerSlots } from "./slots";
 import { SystemName } from "./system-name";
 
-export type SystemMode = "design" | "observe";
+export type SystemMode = "design" | "observe" | "ops";
 type Props = { project: string; slug: string; mode: SystemMode; initialError: ApiErrorInfo | null; slots: DesignerSlots };
 
 /**
  * One agent system of a project (web/DESIGN.md, Agent systems): its name, revision and entry agent over the designer.
- * Every member reads it and may test it; an admin of the project changes it, and renames it from the title. Two tabs: Design (the designer) and
- * Observe (`?mode=observe`, the saved revision with the work going through it). The designer, once opened, stays
+ * Every member reads it and may test it; an admin of the project changes it, and renames it from the title. Three tabs: Design (the designer),
+ * Observe (`?mode=observe`, the saved revision with the work going through it) and Ops (`?mode=ops`, how the
+ * Orchestrator of the project's default system handles its operations events). The designer, once opened, stays
  * mounted under Observe, so a draft survives a look at the traces.
  */
 export function SystemPage({ project, slug, mode, initialError, slots }: Props) {
@@ -37,6 +38,7 @@ export function SystemPage({ project, slug, mode, initialError, slots }: Props) 
   const tabs = [
     { id: "design", label: t("modes.design"), href: systemHref(project, slug), icon: PencilRuler },
     { id: "observe", label: t("modes.observe"), href: systemObserveHref(project, slug), icon: Activity },
+    { id: "ops", label: t("modes.ops"), href: systemOpsHref(project, slug), icon: RadioTower },
   ];
   return (
     <div className="flex flex-col gap-4" data-testid="system-page" data-slug={slug}>
@@ -75,6 +77,7 @@ export function SystemPage({ project, slug, mode, initialError, slots }: Props) 
               </div>
             ) : null}
             {mode === "observe" ? <SystemObserver project={project} system={system} /> : null}
+            {mode === "ops" ? <SystemOpsPanel project={project} system={system} /> : null}
           </>
         )}
       </QueryView>

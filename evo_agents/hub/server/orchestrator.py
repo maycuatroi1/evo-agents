@@ -102,6 +102,11 @@ async def _person(conn: AsyncConnection, user_id: int) -> Principal:
     return Principal(user_id, login, False, cast(int, None), MACHINE, "")
 
 
+async def machine_person(conn: AsyncConnection, user_id: int) -> Principal:
+    """Person ``user_id`` as the hub acts for them: a machine principal of no token."""
+    return await _person(conn, user_id)
+
+
 async def origin_of(conn: AsyncConnection, run_id: int) -> Origin:
     """The person at the origin of the work of run ``run_id`` (for a chat run, the person at the origin of its chain),
     its credential kind and its hop."""
@@ -268,6 +273,43 @@ async def open_thread(conn: AsyncConnection, ask: Ask) -> Opened | None:
         "orchestrator thread opened",
         extra={"rule": ask.rule, "subject_run_id": ask.found.run_id, "thread_id": thread_id, "run_id": run_id},
     )
+    return Opened(thread_id, chat.chat_id, message_id, run_id, refusal, chat.kind)
+
+
+async def open_ops(
+    conn: AsyncConnection, system: system_traces.SystemRef, lead: Profile, person: Principal, key: str, text: str
+) -> Opened | None:
+    """Open the ops thread ``key`` of ``system`` (``ops_threads``: a batch of the ops queue) to its Orchestrator
+    ``lead`` in the system's ops chat, for ``person`` at hop 1: a thread of rule ops about the Orchestrator itself,
+    of no run, whose first message is ``text`` and mentions ``lead``. None when the key has a thread already; the
+    caller holds a savepoint to undo it."""
+    t = tables.orchestrator_threads
+    values = {
+        "system_id": system.id,
+        "project_id": system.project_id,
+        "subject": lead.handle,
+        "rule": triage_rules.OPS,
+        "key": key,
+        "evidence": [],
+        "hop": 1,
+    }
+    statement = (
+        pg_insert(t).values(**values).on_conflict_do_nothing(index_elements=[t.c.key], index_where=t.c.key.is_not(None))
+    )
+    thread_id = (await conn.execute(statement.returning(t.c.id))).scalar_one_or_none()
+    if thread_id is None:
+        return None
+    token = _OPENING.set(True)
+    try:
+        chat = await ops_chat(conn, system, person, lead)
+        body = f"{runs.clip(text, chats.MAX_MESSAGE_BYTES - 200)}\n\n@{lead.handle}"
+        message_id, _ = await insert_message(conn, chat, body, thread_root_id=None)
+        run_id, refusal = await _hand(conn, chat, lead, Origin(person, MACHINE, 1), message_id, body)
+    finally:
+        _OPENING.reset(token)
+    done = update(t).values(chat_id=chat.chat_id, root_message_id=message_id, orchestrator_run_id=run_id)
+    await conn.execute(done.where(t.c.id == thread_id))
+    log.info("ops thread opened", extra={"key": key, "thread_id": thread_id, "run_id": run_id})
     return Opened(thread_id, chat.chat_id, message_id, run_id, refusal, chat.kind)
 
 

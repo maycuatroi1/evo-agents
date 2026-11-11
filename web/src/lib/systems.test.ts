@@ -77,6 +77,14 @@ describe("spec", () => {
     expect(body.nodes[3]).toEqual({ id: "docs", kind: "kg", position: { x: 600, y: 200 }, graph: "default" });
   });
 
+  it("keeps ops and the ops cap through a save, so a rename or a designer save does not turn ops off", () => {
+    const ops = { enabled: true, debounce_minutes: 10, max_items: 5 };
+    const body = specBody(specOf({ ...spec(), ops, limits: { ops_daily_usd: 3 } }));
+    expect(body.ops).toEqual(ops);
+    expect(body.limits).toEqual({ ops_daily_usd: 3 });
+    expect(specBody(specOf(spec()))).not.toHaveProperty("ops");
+  });
+
   it("names, ids and single kinds", () => {
     expect(slugOf("Hỗ trợ khách hàng!")).toBe("ho-tro-khach-hang");
     expect(slugProblem("validate")).toBe("reserved");

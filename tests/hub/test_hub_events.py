@@ -22,13 +22,21 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
+from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from evo_agents.hub import hub_events, plugin_events, tables
+from evo_agents.hub.server.app import create_app
 from evo_agents.plugins import protocol
+from tests.hub import live
 from tests.hub.live import bearer, sql
 from tests.hub.test_ba_agent import agent_of, enable, granted, members, mention, running, tool  # noqa: F401
+from tests.hub.test_decisions import QUESTION, park, waiting
+from tests.hub.test_plan_runs import dispatched_plan, plan_body
+from tests.hub.test_plan_runs import push as push_plan
 from tests.hub.test_plugin_points import FakeHost, install, sample_manifest
+from tests.hub.test_runs import OWNER, PROJECT, claim, expire, moved, recover
+from tests.hub.test_runs import members as runs_members
 from tests.hub.test_signals import ingest_key
 from tests.hub.test_strategist_agent import (  # noqa: F401
     CANVAS,
@@ -184,3 +192,71 @@ def test_plugin_events_of_canvas_and_signals_reach_only_plugins_granted_their_pe
         "plan.step": "plans:read",
         "task.result": "runs:dispatch",
     }
+
+
+# The operations events (plan hub-steward, criterion a1)
+
+
+@pytest.fixture
+def ops_client(hub_db, tmp_path, github):
+    """test_decisions' ``client``: a hub of test_runs' members, apart from this module's canvas and signals."""
+    with TestClient(create_app(live.hub_config(hub_db, tmp_path, github)), base_url="https://hub.test") as made:
+        yield made
+
+
+@pytest.fixture
+def ops_hub(ops_client, github) -> dict:
+    """test_decisions' ``hub``: the project, its members, and the plan fleet pushed by owner."""
+    headers = runs_members(ops_client, github)
+    push_plan(ops_client, headers["owner"], plan_body())
+    return headers
+
+
+def ops(db) -> list[tuple[str, dict]]:
+    return [(kind, payload) for _, kind, payload in stored(db) if kind in hub_events.OPS]
+
+
+def test_ops_events_tell_of_a_decision_asked_a_run_parked_failed_and_lost_with_ids_and_states_alone(
+    ops_client, ops_hub, hub_db
+):
+    client, hub = ops_client, ops_hub
+    owner = sql(hub_db, select(tables.users.c.id).where(tables.users.c.login == OWNER))[0][0]
+    worker, run, found = waiting(client, hub)
+    park(hub_db, run["id"])
+    assert recover(client)["parked"] == 1
+    assert client.post(f"/v1/projects/{PROJECT}/runs/{run['id']}/cancel", headers=hub["owner"]).status_code == 200
+    failing = dispatched_plan(client, hub["owner"])["id"]
+    assert claim(client, worker)["id"] == failing
+    moved(client, worker, failing, "running")
+    moved(client, worker, failing, "failed", error="git worktree add failed", failure_cause="checkout")
+    silent = dispatched_plan(client, hub["owner"])["id"]
+    assert claim(client, worker)["id"] == silent
+    moved(client, worker, silent, "running")
+    expire(hub_db, silent)
+    assert recover(client)["lost"] == 1
+
+    events = ops(hub_db)
+    assert [kind for kind, _ in events] == ["decision.opened", "run.parked", "run.ended", "run.ended"]
+    asked, parked, failed, lost = (payload for _, payload in events)
+    assert asked == {
+        "v": 1,
+        "decision_id": found["id"],
+        "category": "architecture",
+        "run_id": run["id"],
+        "asked_of": owner,
+    }
+    assert parked == {"v": 1, "run_id": run["id"], "run_kind": "plan", "state": "parked", "worker_id": worker["id"]}
+    assert failed == {
+        "v": 1,
+        "run_id": failing,
+        "run_kind": "plan",
+        "state": "failed",
+        "failure_cause": "checkout",
+        "worker_id": worker["id"],
+    }
+    assert (lost["run_id"], lost["state"], lost["worker_id"]) == (silent, "lost", worker["id"])
+    text = json.dumps(events)
+    assert QUESTION not in text and "git worktree add" not in text, "ids and states, never a text"
+    assert not set(hub_events.OPS) & set(protocol.EVENT_KINDS), "no plugin takes them"
+    d = tables.plugin_deliveries
+    assert not sql(hub_db, select(d.c.id).where(d.c.kind.in_(hub_events.OPS)))

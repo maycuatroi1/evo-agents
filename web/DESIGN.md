@@ -258,6 +258,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Knowledge graph | `Network` |
 | Agents, a project's agent profiles; New agent | `Bot`; `Plus` |
 | Systems, a project's agent systems; the designer's Test | `Workflow`; `FlaskConical` |
+| The default system (its Default tag, Set as default); a system's Ops tab; the Orchestrator holds a notification | `Star`; `RadioTower`; `Bot` |
 | A system's nodes: entry, agent, knowledge graph, Curator, orchestrator | `MessageCircle`, `Bot`, the knowledge-graph glyph (a hub and three nodes, `designer-nodes.tsx`), `MoonStar`, `Network` |
 | Chats, a group chat; New chat; Chat with an agent (its direct chat) | `MessagesSquare`; `Plus`; `MessagesSquare` |
 | A chat's thread, Reply in thread; Add a reaction; a chat's members | `MessageSquareReply`; `SmilePlus`; `Users` |
@@ -1022,6 +1023,11 @@ Shared pieces built on them:
   sidebar's first group after Chats; docs/hub.md, Agent systems). The list is one `DataCard` table: the name with its
   slug, the entry agent, the nodes and edges, the revision, when it last changed; an admin gets New system, which
   creates one at once with no form first ("System 3" at `system-3`, the lowest number free) and opens its designer.
+  The project's default system carries Default, an outline `Star` tag beside its name: information, not a state, so
+  no pill (`default-system.tsx`). An admin gets Set as default on each other row (an outline button named for its
+  system, 44 px tall on a phone); it takes effect at once with a toast, with no dialog, since setting another undoes
+  it. A project with systems and none of them the default gets one `attention` banner over the table, since nothing
+  then handles its operations events.
   The system's name is the page's title: who may change the system clicks it to rename it in place (Enter or leaving
   the field saves it as the next revision, Escape keeps the old name), and a draft of the designer with other changes
   follows the rename instead of meeting a conflict (`system-name.tsx`, `use-designer.ts`). A system's page is its designer, drawn with `@xyflow/react` and loaded on demand
@@ -1053,8 +1059,16 @@ Shared pieces built on them:
   meanwhile shows a banner with Load latest and Keep mine. Test opens the entry agent's chat in a sheet, the chat
   home's frame with its interactive answers, and View trace shows the trace the message opened. Feature folders do not
   import one another, so the route hands the designer the config form, New agent and the chat
-  (`app/(app)/p/[project]/systems/[slug]/designer-slots.tsx`). Tabs over the page switch between Design and Observe
-  (`?mode=observe`; the designer stays mounted once opened, so an unsaved draft survives). Observe draws the saved
+  (`app/(app)/p/[project]/systems/[slug]/designer-slots.tsx`). Tabs over the page switch between Design, Observe
+  (`?mode=observe`; the designer stays mounted once opened, so an unsaved draft survives) and Ops (`?mode=ops`,
+  `ops-panel.tsx`, loaded on demand). Ops shows a banner only when something is wrong: ops paused (the reason and since
+  when, Resume for an admin) or at their daily cap (spent against the cap), or, on a system that is not the default,
+  a neutral note with Set as default. Under it one card: the state, what the threads spent in 24 hours against the
+  cap, the batches waiting and running, Pause ops for an admin (a dialog with an optional reason), and the settings
+  form (`ops-settings.tsx`: a switch, then gather minutes, items that close a batch and the daily cap, each with its
+  bounds under it and its error there, saved as the system's next revision; a reader sees them read-only). Recent
+  batches follow (`ops-batches.tsx`): the cause, a Recurring tag, the state as a pill, items, when it opened and Open
+  thread. Observe draws the saved
   revision read-only (`observer.tsx`, `observe-canvas.tsx`, the logic in `lib/systems-observe.ts`): each node shows
   its state (idle, working, waiting, failed, from the runs of the five newest traces) and its numbers (runs, p50, cost
   over the last 50 traces; queries for a graph, traces for the entry); an edge shows how often work crossed it and is
@@ -1383,13 +1397,16 @@ Shared pieces built on them:
   member's notifications 50 a page, refreshed every 10 seconds: the decisions and proposals still open first under
   "Waiting for your answer", as cards with their answer, then the notices and the decisions answered, expired or
   cancelled, newest first, as rows (`notification-row.tsx`). The toolbar is one line with no card around it
-  (`inbox-toolbar.tsx`): a search of titles and bodies (`q`, with `/`), the facets for unread and kind, and the project
+  (`inbox-toolbar.tsx`): a search of titles and bodies (`q`, with `/`), the facets for unread, kind and who handles it
+  (`handler`: Anyone, Orchestrator, Waits on a person), and the project
   as a select, since a member of many projects would get a wall of chips; all of it lives in the URL like the runs
   page's, and a filter by run (`run`, set from a run's row) shows as a chip that clears it. The rows group by day of the
   page's time zone ("Today", "Yesterday", then the date) under a 13 px heading that stays under the top bar, each day in
   one frame with hairlines between its rows, and the notifications one run sent that day fold into one row ("Run #707",
   "5 updates", "2 unread", the newest title under it) that opens to each of them, with Open run and Only this run. A row
-  is the kind's icon, the title on one line (two on a phone) and, while unread, the first line of the body; the project
+  is the kind's icon, the title on one line (two on a phone) and, while unread, the first line of the body; a row the
+  Orchestrator of the default system holds adds an outline `Bot` tag under it (queued, or on it) and Open thread once
+  its batch's thread opened (`ops-tag.tsx`); the project
   (from 1024 px) and the time sit at its end. A notice opens in place (the row is one button, `aria-expanded`) to its
   kind's tag, its facts, its body and its links; one that asks something of its reader (an answer of the merge queue, a
   baseline or an SRS version to review, a page that wants a sign-in) opens by itself while unread, and so does the run's row that holds

@@ -3910,7 +3910,8 @@
         "entry": "Entry agent",
         "size": "Size",
         "revision": "Revision",
-        "updated": "Changed"
+        "updated": "Changed",
+        "actions": "Actions"
       },
       "noEntry": "None",
       "size": "{nodes, plural, one {# node} other {# nodes}}, {edges, plural, one {# edge} other {# edges}}",
@@ -4103,7 +4104,8 @@
     "modes": {
       "label": "Mode",
       "design": "Design",
-      "observe": "Observe"
+      "observe": "Observe",
+      "ops": "Ops"
     },
     "observe": {
       "states": {
@@ -4289,6 +4291,111 @@
       "field": "System name",
       "failed": "Could not rename the system",
       "conflict": "Someone saved the system meanwhile. Reload it and rename again."
+    },
+    "default": {
+      "tag": "Default",
+      "set": "Set as default",
+      "setFor": "Set {name} as the project's default system",
+      "setDone": "{name} is the default system",
+      "setDoneText": "Its Orchestrator now handles the project's operations events.",
+      "setFailed": "Could not set the default system",
+      "forbidden": "Only an admin of the project sets the default system.",
+      "noneTitle": "No default system",
+      "noneAdmin": "Nothing handles the project's operations events (failed runs, waits, merge stops). Set one system as the default.",
+      "noneReader": "Nothing handles the project's operations events (failed runs, waits, merge stops) until an admin sets a default system."
+    },
+    "ops": {
+      "title": "Ops",
+      "subDefault": "The Orchestrator of this system handles the project's operations events in batches, one thread a batch.",
+      "subOther": "These settings apply once this system is the project's default.",
+      "notDefaultTitle": "This system is not the project's default",
+      "notDefaultText": "The hub queues the project's operations events for the default system only.",
+      "alert": {
+        "pausedTitle": "Ops are paused",
+        "since": "Paused {since}",
+        "pausedAdmin": "Events still queue up, but no thread opens until you resume.",
+        "pausedReader": "Events still queue up, but no thread opens until an admin of the project resumes.",
+        "cappedTitle": "Ops reached their daily cap",
+        "cappedText": "The ops threads spent {spent} of {cap} in the last 24 hours. Batches wait until spending drops under the cap."
+      },
+      "summary": {
+        "state": "Ops",
+        "on": "On",
+        "off": "Off",
+        "paused": "Paused",
+        "spent": "Spent in 24 hours",
+        "spentOf": "{spent} of {cap}",
+        "waiting": "Batches waiting",
+        "running": "Threads running"
+      },
+      "settings": {
+        "title": "Ops settings",
+        "enabled": "Handle operations events",
+        "enabledHint": "Off, the hub reads none of the project's operations events and each one waits on a person in the Inbox.",
+        "fields": {
+          "debounce_minutes": "Gather for (minutes)",
+          "max_items": "Close a batch at (items)",
+          "ops_daily_usd": "Daily cap (USD)"
+        },
+        "hints": {
+          "minutes": "From {min} to {max} minutes.",
+          "items": "From {min} to {max} items.",
+          "usd": "From {min} to {max} USD in 24 hours."
+        },
+        "outOfBounds": "Enter a value from {min} to {max}.",
+        "saved": "Ops settings saved",
+        "savedOn": "They apply to the next batch.",
+        "savedOff": "Ops are off. Operations events wait on a person in the Inbox.",
+        "forbidden": "Only an admin of the project changes the ops settings.",
+        "conflict": "Someone saved this system since you opened it. The page now shows their revision; make your change again.",
+        "refused": "The hub refused these values.",
+        "reset": "Reset",
+        "save": "Save",
+        "saving": "Saving"
+      },
+      "pause": {
+        "pause": "Pause ops",
+        "pausing": "Pausing",
+        "cancel": "Cancel",
+        "confirmTitle": "Pause ops?",
+        "confirmText": "Events keep queuing, but the Orchestrator opens no new thread until someone resumes. Threads already open finish.",
+        "reason": "Reason (optional)",
+        "reasonHint": "Shown on this page. Without one, the hub writes who paused.",
+        "done": "Ops paused",
+        "doneText": "Resume them from this page.",
+        "forbidden": "Only an admin of the project pauses or resumes ops.",
+        "conflict": "Ops changed since you opened the page. Try again.",
+        "resume": "Resume",
+        "resumed": "Ops resumed",
+        "resumedText": "Waiting batches open their threads in the next pass.",
+        "resumeFailed": "Could not resume ops"
+      },
+      "batchState": {
+        "open": "Gathering",
+        "ready": "Waiting for a thread",
+        "empty": "Settled by the hub",
+        "running": "In a thread",
+        "done": "Done"
+      },
+      "batches": {
+        "title": "Recent batches",
+        "sub": "The newest batches of the project's operations queue.",
+        "emptyTitle": "No batches yet",
+        "emptyText": "A batch opens when the project has an operations event: a failed run, a wait, a merge stop.",
+        "noThread": "None",
+        "thread": "Open thread",
+        "threadFor": "Open the thread of batch {id}",
+        "recurring": "Recurring",
+        "columns": {
+          "cause": "Cause",
+          "state": "State",
+          "items": "Items",
+          "opened": "Opened",
+          "thread": "Thread"
+        },
+        "items": "{items, plural, one {# item} other {# items}}, {pending} pending",
+        "caption": "Recent batches of the operations queue"
+      }
     }
   },
   "chats": {
@@ -7402,7 +7509,11 @@
       "searchPlaceholder": "Search titles and text",
       "clearSearch": "Clear the search",
       "run": "Run #{id}",
-      "clearRun": "Show every run, not only run #{id}"
+      "clearRun": "Show every run, not only run #{id}",
+      "handler": "Handled by",
+      "anyHandler": "Anyone",
+      "byOrchestrator": "Orchestrator",
+      "byPerson": "Waits on a person"
     },
     "empty": {
       "title": "Your inbox is empty"
@@ -7476,7 +7587,10 @@
       "system_daily_cap": "An agent system reached its daily spending cap",
       "srs_review": "An SRS version waits for your review",
       "srs_reviewed": "A review of your SRS version",
-      "srs_comment": "A comment on an SRS document"
+      "srs_comment": "A comment on an SRS document",
+      "ops_cap": "The ops threads of a system reached their daily cap",
+      "ops_paused": "The ops of a system paused after failed runs",
+      "ops_digest": "The daily digest of a system's ops"
     },
     "item": {
       "unread": "Unread",
@@ -7758,6 +7872,12 @@
         "other": "{ref}",
         "newTab": "(opens in a new tab)"
       }
+    },
+    "ops": {
+      "handling": "Orchestrator is on it",
+      "queued": "Queued for the Orchestrator",
+      "thread": "Open thread",
+      "threadFor": "Open the Orchestrator's thread for {title}"
     }
   },
   "toast": {

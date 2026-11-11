@@ -43,3 +43,9 @@ export const SystemObserver = dynamic<{ project: string; system: SystemOut }>(
   () => import("./observer").then((module) => module.default).catch(() => DesignerLoadError),
   { ssr: false, loading: DesignerSkeleton },
 );
+
+/** The Ops tab, loaded on demand: its forms, tables and words stay out of the first load of the designer. */
+export const SystemOpsPanel = dynamic<{ project: string; system: SystemOut }>(
+  () => import("./ops-panel").then((module) => module.OpsPanel).catch(() => DesignerLoadError),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full rounded-lg" aria-busy="true" data-testid="ops-panel-loading" /> },
+);

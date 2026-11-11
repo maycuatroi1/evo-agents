@@ -52,7 +52,7 @@ def test_the_rules_actions_and_the_table_agree():
     assert set(triage_rules.RULE_TEXT) == set(triage_rules.ORCHESTRATOR_RULES)
     from importlib import import_module
 
-    migration = import_module("evo_agents.hub.migrations.versions.0221_orchestrator_threads")
+    migration = import_module("evo_agents.hub.migrations.versions.0241_ops_threads")
     assert (
         migration.RULES == triage_rules.ORCHESTRATOR_RULES and migration.OUTCOMES == triage_rules.ORCHESTRATOR_ACTIONS
     )
@@ -82,6 +82,11 @@ def test_work_goes_only_to_another_agent_node_of_the_system():
     assert "no agent of this system" in triage_rules.reassign_problem(None, "stranger", "reviewer")
     assert "not an agent node" in triage_rules.reassign_problem("orchestrator", "lead", "reviewer")
     assert "answer it instead" in triage_rules.reassign_problem("agent", "reviewer", "reviewer")
+
+
+def test_reassign_refuses_an_agent_whose_run_waits_on_the_asker():
+    assert triage_rules.reassign_problem("agent", "fixer", "reviewer", {"writer"}) is None
+    assert "a cycle" in triage_rules.reassign_problem("agent", "fixer", "reviewer", {"fixer"})
 
 
 def worker_args(*argv: str) -> argparse.Namespace:

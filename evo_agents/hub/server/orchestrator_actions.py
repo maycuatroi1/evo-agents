@@ -10,7 +10,8 @@ The routes take the worker token of the worker that holds the chat run; the hub 
   wakes the asking run; a thread with no wait hands the text to the agent it is about, at the hop of the work.
 - POST /v1/worker/runs/{id}/triage/reassign: give the work to another agent node of the system (never the Orchestrator,
   never the agent the thread is about, ``triage_rules.reassign_problem``), at the hop of the work: the work keeps its
-  hop. An escalation's wait goes with it, so the end of that agent's run answers the asking run.
+  hop. An escalation's wait goes with it, so the end of that agent's run answers the asking run; so it is never an
+  agent whose run waits on the asking run (``wait_cycles.upstream_handles``), which would close a cycle of waits.
 - POST /v1/worker/runs/{id}/triage/ask-owner: ask the person at the origin of the work a decision of category triage;
   the Orchestrator's run waits for it as a chat run's decision does, and still answers an escalation when it ends.
 
@@ -34,7 +35,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, profiles, runs, system_context, tables, triage_rules
-from evo_agents.hub.server import audit, orchestrator, run_waits, system_traces, work_chats
+from evo_agents.hub.server import audit, orchestrator, run_waits, system_traces, wait_cycles, work_chats
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
 from evo_agents.hub.server.chat_agents import REFUSALS, AgentRun, agent_run
 from evo_agents.hub.server.chat_runs import agent_access, chat_run, post_agent
@@ -101,6 +102,8 @@ async def frame_of(conn: AsyncConnection, run: AgentRun) -> Frame:
     thread = await orchestrator.thread_at(conn, found.chat_id, found.root_id, lock=True)
     if thread is None:
         raise HTTPException(404, f"chat run {run.run_id} is in no thread the hub opened to an Orchestrator")
+    if thread.rule == triage_rules.OPS:
+        return await _ops_frame(conn, run, thread)
     member = None if thread.subject_run_id is None else await system_traces.of_run(conn, thread.subject_run_id)
     lead = None if member is None else system_context.escalation_target(member.spec, thread.subject)
     if lead is None or run.profile.handle != lead:
@@ -111,6 +114,22 @@ async def frame_of(conn: AsyncConnection, run: AgentRun) -> Frame:
         raise HTTPException(409, f"thread #{thread.id} is closed: its Orchestrator chose {thread.outcome} already")
     assert member is not None  # a lead is read off a member alone
     return Frame(run, thread, lead, member.spec)
+
+
+async def _ops_frame(conn: AsyncConnection, run: AgentRun, thread) -> Frame:
+    """The frame of an ops thread (``ops_threads``): it is about the Orchestrator of the project's default system, the
+    agent it names, which alone acts in it (403); a thread whose batch the hub settled takes no action (409)."""
+    if run.profile.handle != thread.subject:
+        raise HTTPException(
+            403,
+            f"@{run.profile.handle} is not the Orchestrator of ops thread #{thread.id}: only @{thread.subject} acts",
+        )
+    s, b = tables.agent_systems, tables.ops_batches
+    spec = (await conn.execute(select(s.c.spec).where(s.c.id == thread.system_id))).scalar_one()
+    state = (await conn.execute(select(b.c.state).where(b.c.thread_id == thread.id))).scalar_one_or_none()
+    if state != "running":
+        raise HTTPException(409, f"ops thread #{thread.id} is closed: the hub settled its batch")
+    return Frame(run, thread, thread.subject, spec)
 
 
 async def _said(conn: AsyncConnection, frame: Frame, text: str) -> int:
@@ -139,9 +158,16 @@ async def _audit(conn: AsyncConnection, frame: Frame, action: str, tail: str) ->
     )
 
 
+said = _said  # the ops actions' Decision: line (ops_actions)
+audited = _audit
+
+
 async def _close(conn: AsyncConnection, frame: Frame, outcome: str) -> None:
+    """Record ``outcome``; an answer or a reassign closes the thread, but an ops thread closes with its batch."""
     t = tables.orchestrator_threads
-    closed = func.now() if outcome in CLOSING else None
+    if frame.thread.rule == triage_rules.OPS and frame.thread.outcome == "ask_owner":
+        outcome = "ask_owner"  # the decision of the batch stays recorded: one a batch
+    closed = func.now() if outcome in CLOSING and frame.thread.rule != triage_rules.OPS else None
     await conn.execute(update(t).values(outcome=outcome, closed_at=closed).where(t.c.id == frame.thread.id))
 
 
@@ -185,6 +211,8 @@ async def answer(conn: AsyncConnection, sealer, run: AgentRun, body: Orchestrato
     the text to the agent the thread is about; 409 when neither takes it."""
     frame = await frame_of(conn, run)
     thread = frame.thread
+    if thread.rule == triage_rules.OPS:
+        raise HTTPException(409, "an ops thread takes no answer: act with the ops actions, reassign, or ask the owner")
     text = await _masked(conn, sealer, run, body.text)
     wait = await _open_wait(conn, thread.wait_id)
     if wait is not None:
@@ -218,8 +246,11 @@ async def reassign(conn: AsyncConnection, sealer, run: AgentRun, body: Orchestra
     the work, with the escalation's wait when there is one; 409 for an agent the frame refuses."""
     frame = await frame_of(conn, run)
     thread = frame.thread
+    asker, waiting = thread.asker_run_id, set()
+    if asker is not None and await _open_wait(conn, thread.wait_id) is not None:
+        waiting = await wait_cycles.upstream_handles(conn, asker)
     problem = triage_rules.reassign_problem(
-        system_context.node_kind(frame.spec, body.handle), body.handle, thread.subject
+        system_context.node_kind(frame.spec, body.handle), body.handle, thread.subject, waiting
     )
     if problem is not None:
         raise HTTPException(409, problem)
@@ -258,6 +289,8 @@ async def ask_owner(conn: AsyncConnection, run: AgentRun, body: OrchestratorAskO
     ``held_plan_run`` reads it) a decision of category triage; the thread stays open for the answer or reassign that
     follows the owner's answer."""
     frame = await frame_of(conn, run)
+    if frame.thread.rule == triage_rules.OPS and frame.thread.outcome == "ask_owner":
+        raise HTTPException(409, f"ops thread #{frame.thread.id} asked the owner its one decision of the batch already")
     ask = DecisionAsk(
         category=runs.CHAT_DECISION_CATEGORY, question=body.question, context=body.context, options=body.options
     )

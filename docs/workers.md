@@ -1032,11 +1032,33 @@ another agent, 404 for a chat run in no such thread), posts a `Decision:` line i
 | Command | Route | What |
 | --- | --- | --- |
 | `evo-agents worker triage answer --text TEXT --reason TEXT` | `POST .../triage/answer` | answer the thread: an escalation's wait wakes with the text; a thread with no wait hands the text to the agent it is about, at the hop of the work. 200 with the `run_id` that has the answer and the `Decision:` line's `message_id`; 409 when the asking run takes no answer now, or for a thread already closed. Audit `orchestrator.answer` |
-| `evo-agents worker triage reassign HANDLE --note TEXT --reason TEXT` | `POST .../triage/reassign` | give the work to another agent node of the system, never the Orchestrator and never the agent the thread is about (409), at the hop of the work; an escalation's wait goes with it, so that agent's run answers the asking run when it ends. 200 with the new `run_id`. Audit `orchestrator.reassign` |
+| `evo-agents worker triage reassign HANDLE --note TEXT --reason TEXT` | `POST .../triage/reassign` | give the work to another agent node of the system, never the Orchestrator, never the agent the thread is about and never an agent whose run waits on the run that escalated (409), at the hop of the work; an escalation's wait goes with it, so that agent's run answers the asking run when it ends. 200 with the new `run_id`. Audit `orchestrator.reassign` |
 | `evo-agents worker triage ask-owner --question TEXT --option KEY=LABEL[:DESCRIPTION] ... --reason TEXT [--context TEXT]` | `POST .../triage/ask-owner` | ask the person at the origin of the work a decision of category `triage` with 2 to 6 options; the Orchestrator's run waits for the answer, and the thread stays open for the answer or reassign that follows. 200 with `decision_id`. Audit `orchestrator.ask_owner` |
 
 Answer and reassign close the thread. The hub runtime's tools `orchestrator_answer`, `orchestrator_reassign` and
 `orchestrator_ask_owner` do the same for an Orchestrator that runs on the hub.
+
+#### Ops threads
+
+The Orchestrator of a project's default system also gets ops threads: one thread a batch of the project's operations
+queue, in the chat `Ops: <slug>` (`docs/hub.md`, Agent systems). Its chat run there has six more commands, each for
+the items of that thread's batch only. They take `--reason TEXT` (`-` reads stdin) for the `Decision:` line, write an
+audit row, and mark the batch's items they handled as handled by the Orchestrator. A chat run in no ops thread gets
+404, another agent's 403, and a batch the hub already settled 409.
+
+| Command | Route | What |
+| --- | --- | --- |
+| `evo-agents worker ops rerun RUN --reason TEXT` | `POST /v1/worker/runs/{id}/ops/rerun` | hand the work of a failed or lost chat or task run of the batch again, in a new session, to any worker that fits. Audit `ops.rerun` |
+| `evo-agents worker ops redeliver RUN --reason TEXT` | `POST .../ops/redeliver` | the same, to a healthy worker of the project (enough free disk, its runtime logged in); 409 when none is. Audit `ops.redeliver` |
+| `evo-agents worker ops answer-wait DECISION --text TEXT --reason TEXT` | `POST .../ops/answer-wait` | answer a stuck wait of the batch, which wakes its run. Only a decision of category `wait`: a decision the owner must make is refused (409). Audit `ops.answer_wait` |
+| `evo-agents worker ops curator-resume --reason TEXT` | `POST .../ops/curator-resume` | let the Curator's schedules run again that its breaker paused, never those a person paused. Audit `ops.curator_resume` |
+| `evo-agents worker ops read NOTICE --reason TEXT` | `POST .../ops/read` | mark a notice of the project read. Audit `ops.read` |
+| `evo-agents worker ops finding --lens LENS --severity low\|medium\|high --title TEXT --body TEXT --reason TEXT` | `POST .../ops/finding` | write a finding for the Curator under the project's default label, with the batch as its evidence: the fix for a recurring cause. Audit `ops.finding` |
+
+In an ops thread, `triage reassign` works as above and `triage ask-owner` at most once a batch; `triage answer` is
+refused (409), since an ops thread is about a batch, not one agent. The hub runtime's tool `ops_action`, with
+`action` one of `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read` and `finding`, does the same for an
+Orchestrator that runs on the hub.
 
 ### Curator proposals the agent answers
 
@@ -1386,6 +1408,16 @@ the look (`error`), and for each source at most 50, its `source`, `status` (a na
 one of `runs.KG_SYNC_STATES`), `error`, `ref`, `commit`, `behind`, `checked_at`, `read_at`, `pushed_at`, `pulled` and
 `pushed`, at most 50 projects and every error 1 to 500 characters. Each heartbeat replaces what the hub holds
 (`workers.kg_sync`, schema 0053), and one without it clears it; `GET /v1/workers/{id}` shows it as `kg_sync`.
+`health`, optional, is what the daemon last found of its machine (`evo_agents/worker/health.py`): `disk`, the free
+space of the drive that holds its worktrees (`free_gb`, `free_pct`, and `reserve_gb`, the free space it keeps there; null
+when it cannot be read), read at each look;
+and `logins`, the login of each runtime, `ok`, `unauthorized`, `missing` (not on PATH) or `unknown` (no answer within
+10 seconds, or one it cannot read), from the runtime's own status command (`claude auth status --json`,
+`codex login status`, `opencode auth list`), run every 300 seconds in a thread. Only the exit status and the shape of
+the answer are read: no credential value is read or sent. Each heartbeat replaces what the hub holds
+(`workers.health`, schema 0239), one without it clears it, and `GET /v1/workers` shows it as `health`. When its state
+changes (the disk under or over its reserve, 20 GB for a daemon that says none, or a login), the hub writes
+`worker.health` into each project the worker serves (`docs/hub.md`, Operations events).
 
 The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
 heartbeat and by one that comes more than 30 seconds after the one before), extends the lease of each run named that
@@ -1943,7 +1975,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | events kept | 30 days after the run ends (`EVO_HUB_RUN_LOG_DAYS`) |
 | terminal | hello within 10 s, 64 KiB frames, 15 minutes idle, 4 hours, one browser per run, sessions under 12 hours old |
 | daemon spool | 256 MiB |
-| daemon worktrees | removed at the next hourly cleanup once the hub says the run's work merged, 7 days after the run ends at the latest |
+| daemon worktrees | removed at the next hourly cleanup once the hub says the run's work merged, at once while the drive has less than `disk_reserve_gb` (20) free, 7 days after the run ends at the latest (30 when parked) |
 
 ## The daemon
 
@@ -1960,7 +1992,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker service uninstall` | stops the daemon and removes the service; the worker stays registered |
 | `evo-agents worker service status [--json]` | whether the service is installed and the daemon runs, its pid and last exit |
 | `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, tmux and whether the web terminal is allowed, checkouts, the daemon's pid, runs kept, the spool, and what the last look at each graph it keeps fresh found (`kg_sync`, [Keeping the graph fresh](#keeping-the-graph-fresh)) |
-| `evo-agents worker list [--revoked] [--json]` | the workers of the hub this machine is signed in to, yours and those other members share with you (every worker for a hub admin), one line each: status, the evo-agents its daemon runs and its commit, version lock or self-update state, runs held of its slots, last heartbeat; `--json` prints the rows of `GET /v1/workers`. It needs `hub login`, not a worker on this machine, so it answers for a machine ssh cannot reach |
+| `evo-agents worker list [--revoked] [--json]` | the workers of the hub this machine is signed in to, yours and those other members share with you (every worker for a hub admin), one line each: status, the evo-agents its daemon runs and its commit, version lock or self-update state, runs held of its slots, free disk of its worktrees and each runtime's login, last heartbeat; `--json` prints the rows of `GET /v1/workers`. It needs `hub login`, not a worker on this machine, so it answers for a machine ssh cannot reach |
 | `evo-agents worker doctor [--json]` | what the machine holds or allows that a worker should not (another administrator, a readable home, the owner's long-lived credentials, a PATH others write), each finding with a code, a severity, what was found and how to fix it; exits 2 when a finding is high (see [Checking a worker machine](credentials.md#checking-a-worker-machine)) |
 | `evo-agents worker attach N` | puts this terminal on the tmux session `evo-run-N` of an interactive run (`tmux attach`, or `switch-client` from inside tmux on the same server) |
 | `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--timeout S] [--keep] [--background]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise); `--background` (claude-code only) checks that the session waits for a command run in the background: the agent starts `sleep 20 && date -u` that way, ends its turn, and writes the file once the command ended |
@@ -2039,7 +2071,17 @@ and a person who looks. At its start and every hour it cleans up (`Daemon.cleanu
   that commit; `recovery.jsonl` gets a line with when, the run, the repo, the branch, HEAD, the WIP commit, the ref and
   the checkout. `git -C CHECKOUT branch NAME REF` brings it back as a branch. When that commit fails, the run's worktrees stay
   and wait out the 7 days.
-- Every run that ended more than 7 days ago goes too, merged or not, as a net for what the hub never says merged.
+- Every run that ended more than 7 days ago goes too, merged or not, as a net for what the hub never says merged; a
+  parked run's worktrees stay 30 days, for the run that resumes it.
+
+The drive of the worktrees keeps `disk_reserve_gb` of `config.json` free (20 by default; `$EVO_WORKER_DISK_RESERVE_GB`
+wins over it). Under it, at each claim and each hourly cleanup, the daemon removes the worktrees of the ended runs it
+may remove once merged (not a run it holds, a parked run, one another run went on from, nor one whose directory a run
+not ended uses), the run that ended first first and each one's uncommitted changes kept on its recovery ref as above,
+until the drive is over the reserve again (`Cleanup.make_room`). While it stays under, the daemon claims nothing, and
+the hub gives it no run either: its heartbeat's `health.disk` says the reserve, and a worker whose free space is under it
+stops the claim (`disk` of `Claimer.stops`), so the run waits or goes to another worker instead of failing at its
+checkout. The run's rerun candidates say how much is free and the reserve.
 
 Each removal removes the worktree from its checkout and prunes it, deletes the run's local `evo-run/` branch, and
 keeps every other branch (a plan's, a chat's, a task's and the Curator's), then removes the run's record.

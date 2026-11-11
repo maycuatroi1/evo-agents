@@ -1,7 +1,8 @@
 """``evo-agents worker list``: the workers of the hub this machine is signed in to, as GET /v1/workers lists them: the
 caller's own and the live ones other members share with them, every worker for a hub admin (``docs/workers.md``,
 Commands). One line each says what an owner would otherwise ask each machine over ssh: whether it is online, the
-evo-agents its daemon runs, whether it updates itself to the tag nightly, the runs it holds and its last heartbeat.
+evo-agents its daemon runs, whether it updates itself to the tag nightly, the runs it holds, the free disk of its
+worktrees and each runtime's login, and its last heartbeat.
 It needs ``hub login`` only, not a worker on this machine."""
 
 from __future__ import annotations
@@ -33,6 +34,21 @@ def _updating(worker: dict) -> str:
     return f"self-update {report['state']}{reason}"
 
 
+def _health(worker: dict) -> str:
+    """The free disk of its worktrees and each runtime's login, as its last heartbeat said; empty from an older
+    daemon or hub."""
+    health = worker.get("health") or {}
+    parts = []
+    disk = health.get("disk") or {}
+    if isinstance(disk.get("free_gb"), int | float):
+        pct = f" ({disk['free_pct']:g}%)" if isinstance(disk.get("free_pct"), int | float) else ""
+        parts.append(f"disk {disk['free_gb']:g} GB free{pct}")
+    logins = health.get("logins") or {}
+    if logins:
+        parts.append("login " + " ".join(f"{name}={state}" for name, state in sorted(logins.items())))
+    return "".join(f", {part}" for part in parts)
+
+
 def describe(worker: dict, now: datetime) -> str:
     """One line for ``worker``, a row of GET /v1/workers."""
     version = worker.get("agent_version") or "?"
@@ -44,7 +60,8 @@ def describe(worker: dict, now: datetime) -> str:
     return (
         f"#{worker['id']} {worker['owner']}/{worker['name']} on {worker.get('hostname') or '?'}: {worker['status']}"
         f"{shared}, evo-agents {version}, {_updating(worker)}, {worker.get('held_runs', 0)} of "
-        f"{worker.get('slots', 0)} slot(s) held, last heartbeat {_ago(worker.get('last_heartbeat_at'), now)}"
+        f"{worker.get('slots', 0)} slot(s) held{_health(worker)}, last heartbeat "
+        f"{_ago(worker.get('last_heartbeat_at'), now)}"
     )
 
 
@@ -73,7 +90,7 @@ def register_list(wsub) -> None:
     listed = wsub.add_parser(
         "list",
         help="the workers of the hub this machine is signed in to, yours and those shared with you: status, "
-        "evo-agents version, self-update, runs held, last heartbeat (needs `hub login`)",
+        "evo-agents version, self-update, runs held, free disk, runtime logins, last heartbeat (needs `hub login`)",
     )
     listed.add_argument("--revoked", action="store_true", help="also list revoked workers")
     listed.add_argument("--json", action="store_true", help="the rows of GET /v1/workers as they are")

@@ -576,6 +576,7 @@ def _include_member_routes(app: FastAPI) -> None:
         model_catalog,
         opportunities,
         opportunity_evidence,
+        ops_actions,
         orchestrator_actions,
         plan_run_choice,
         plan_systems,
@@ -606,6 +607,7 @@ def _include_member_routes(app: FastAPI) -> None:
         seller_api,
         signal_keys,
         signals,
+        system_ops,
         task_dispatch,
         triage_actions,
         work_cards,
@@ -626,6 +628,7 @@ def _include_member_routes(app: FastAPI) -> None:
         system_trace_views.stream_router,  # before its router, whose /traces/{id} would take /traces/stream
         system_trace_views.router,  # the traces of agent systems (0218)
         agent_systems.router,  # the agent systems of a project (0217)
+        system_ops.router,  # the default system of a project and the ops of a system (0240)
         agent_accounts.router,
         account_pools.router,
         agent_provider_accounts.router,
@@ -669,6 +672,7 @@ def _include_member_routes(app: FastAPI) -> None:
         chat_read.worker_router,
         triage_actions.worker_router,
         orchestrator_actions.worker_router,  # the Orchestrator of a system acts in its threads; agents escalate
+        ops_actions.worker_router,  # and the Orchestrator of a default system in its ops threads
         work_cards.worker_router,  # the entry agent of a system sets the work of its trace
         curator_threads.worker_router,  # the agent of a proposal's thread answers it
         market_install.github_router,  # before plugins.router, whose routes take /v1/plugins/{name}

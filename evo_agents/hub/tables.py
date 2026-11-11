@@ -56,6 +56,7 @@ from evo_agents.hub import (
     tables_merge,
     tables_night,
     tables_opportunities,
+    tables_ops,
     tables_orchestrator,
     tables_org,
     tables_outputs,
@@ -153,6 +154,7 @@ projects = Table(
     Column("trusted_owners", ARRAY(Text), nullable=False, server_default="{}"),  # 0170
     Column("archived_at", DateTime(timezone=True)),  # 0198
     Column("archived_by", BigInteger),  # 0198
+    Column("systems_seeded_at", DateTime(timezone=True)),  # 0240: the hub gave it its first agent system
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="projects_created_by_fkey"),
     ForeignKeyConstraint(["archived_by"], ["users.id"], ondelete="RESTRICT", name="projects_archived_by_fkey"),
     CheckConstraint(column("archived_at").is_(None) == column("archived_by").is_(None), name="projects_archived_check"),
@@ -861,3 +863,4 @@ kg_entity_map_runs = tables_kg.entity_map_runs(metadata)  # each run that maps t
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
 )
+ops_cursors, ops_batches, ops_items = tables_ops.ops_tables(metadata)  # the queue of operations events (0240)

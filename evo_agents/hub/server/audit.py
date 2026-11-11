@@ -126,6 +126,12 @@ RUN_TRIAGE_CANCEL = "run.triage_cancel"  # ... or asked the worker of a stale ru
 ORCHESTRATOR_ANSWER = "orchestrator.answer"  # the Orchestrator of a system answered a thread the hub opened to it
 ORCHESTRATOR_REASSIGN = "orchestrator.reassign"  # ... or gave its work to another agent of the system
 ORCHESTRATOR_ASK_OWNER = "orchestrator.ask_owner"  # ... or asked the person at the origin of the work a decision
+OPS_RERUN = "ops.rerun"  # the Orchestrator ran a failed run of its ops thread's batch again (ops_actions)
+OPS_REDELIVER = "ops.redeliver"  # ... or handed it to a healthy worker
+OPS_ANSWER_WAIT = "ops.answer_wait"  # ... or answered a stuck wait of the batch
+OPS_CURATOR_RESUME = "ops.curator_resume"  # ... or resumed the Curator its breaker paused
+OPS_READ = "ops.read"  # ... or marked a notice of the project read
+OPS_FINDING = "ops.finding"  # ... or wrote a finding for the Curator
 WORK_SET = "work.set"  # the entry agent of a system set the title, goal or done-when of a trace's work (work_cards)
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
@@ -194,6 +200,9 @@ AGENT_PLACEMENT = "agent.placement"  # no longer written: an admin once moved an
 SYSTEM_CREATE = "system.create"  # an admin of the project created an agent system, at revision 1
 SYSTEM_UPDATE = "system.update"  # an admin stored a new revision of it
 SYSTEM_DELETE = "system.delete"  # an admin deleted it with its revisions
+SYSTEM_DEFAULT = "system.default"  # an admin made it the project's default system (plan hub-steward)
+SYSTEM_OPS_PAUSE = "system.ops-pause"  # an admin paused its ops: closed batches open no thread
+SYSTEM_OPS_RESUME = "system.ops-resume"  # an admin resumed them
 # Account pools (evo_agents.hub.server.account_pools), in the project; the target is "<project> account-pool:<id>", with
 # " secret:<id>" for an account added or removed and " agent:@<handle>" for an agent attached, never a name of an
 # account or a value.

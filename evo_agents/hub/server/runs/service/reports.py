@@ -18,7 +18,7 @@ from datetime import timedelta
 from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
-from evo_agents.hub import guard, proofs, runs, spend_store, tables
+from evo_agents.hub import guard, ops_events, proofs, runs, spend_store, tables
 from evo_agents.hub.server import browser_install, update_now, worker_placement
 from evo_agents.hub.server.run_reattach import reattach_lost
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
@@ -69,6 +69,17 @@ def _self_update(body: HeartbeatRequest) -> dict:
 def _kg_sync(body: HeartbeatRequest):
     """What a heartbeat sets workers.kg_sync to: the report it carries, or SQL NULL when it carries none."""
     return null() if body.kg_sync is None else body.kg_sync.model_dump(mode="json", exclude_none=True)
+
+
+def _health(body: HeartbeatRequest) -> dict | None:
+    """What a heartbeat sets workers.health to: the report it carries, or None (SQL NULL) when it carries none. A disk
+    without a reserve is kept without the key, as an older daemon sent it."""
+    if body.health is None:
+        return None
+    found = body.health.model_dump(mode="json")
+    if found.get("disk") and found["disk"].get("reserve_gb") is None:
+        del found["disk"]["reserve_gb"]
+    return found
 
 
 def _browser(body: HeartbeatRequest):
@@ -175,14 +186,17 @@ async def _reattached(
 async def record_heartbeat(
     engine, user: Principal, body: HeartbeatRequest, lease: timedelta, terminals, cache=None
 ) -> HeartbeatAnswer:
-    """Record the machine, extend the leases of the runs it holds by ``lease``, and say what it should do with them;
-    ``terminals`` says which runs a browser waits to drive (``terminal.Terminals.waiting``), and the guard's policy is
-    read through ``cache`` (``evo_agents.hub.cache``) when there is one."""
+    """Record the machine (its health among it, writing ``worker.health`` for the projects it serves when that changed,
+    ``ops_events.worker_health``), extend the leases of the runs it holds by ``lease``, and say what it should do with
+    them; ``terminals`` says which runs a browser waits to drive (``terminal.Terminals.waiting``), and the guard's
+    policy is read through ``cache`` (``evo_agents.hub.cache``) when there is one."""
     reported = list(dict.fromkeys(body.runs))
     runtimes, checkouts = body.stored()
     async with engine.begin() as conn:
         worker_id, _, _, _, _, _, drained_at, *_ = await worker_of(conn, user)
         w = tables.workers
+        health = _health(body)
+        was = await conn.scalar(select(w.c.health).where(w.c.id == worker_id))
         held = await conn.execute(
             update(w)
             .values(
@@ -197,6 +211,7 @@ async def record_heartbeat(
                 **_self_update(body),
                 kg_sync=_kg_sync(body),
                 browser=_browser(body),
+                health=null() if health is None else health,
             )
             .where(w.c.id == worker_id)
             .returning(
@@ -217,6 +232,7 @@ async def record_heartbeat(
             **fields, projects=served_names, guard=guard.digest_of(await guard.cached_policy(conn, cache))
         )
         nightly, asked, install, declared, duties = await _extras(conn, worker_id, body, settings)
+        await _optional(conn, "health", worker_id, lambda: ops_events.worker_health(conn, worker_id, was, health), [])
         # a drained worker claims the run that resumes one it parked, which no other worker can take
         resuming = drained_at is not None and await resume_waits(conn, worker_id)
         reattached = await _reattached(conn, worker_id, fields["name"], body, reported, lease)

@@ -9396,6 +9396,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/default-system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Default
+         * @description The project's default system, its ops and limits; ``slug`` null when it has none.
+         */
+        get: operations["show_default_v1_projects__project__default_system_get"];
+        /**
+         * Set Default
+         * @description Make system ``slug`` the project's default system, and no other.
+         */
+        put: operations["set_default_v1_projects__project__default_system_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Ops
+         * @description The ops of a system: its spec's ops, its ops budget, its pause, and the batches of its queue by state.
+         */
+        get: operations["show_ops_v1_projects__project__systems__slug__ops_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/ops/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Ops
+         * @description Pause the ops of a system: the queue still gathers, and a closed batch opens no thread until resumed.
+         */
+        post: operations["pause_ops_v1_projects__project__systems__slug__ops_pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/ops/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Ops
+         * @description Resume the ops of a system, paused by an admin or by the hub.
+         */
+        post: operations["resume_ops_v1_projects__project__systems__slug__ops_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/ops/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Batches
+         * @description The batches of the project's queue, the newest first; none for a system that is not the default.
+         */
+        get: operations["list_batches_v1_projects__project__systems__slug__ops_batches_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/agents/{handle}/accounts/{name}": {
         parameters: {
             query?: never;
@@ -11099,6 +11203,126 @@ export interface paths {
          * @description Escalate a question to the Orchestrator of this chat run's system; the run parks on the wait the answer wakes.
          */
         post: operations["escalate_v1_worker_runs__run_id__escalate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/ops/rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rerun Route
+         * @description Run the work of a failed run of this ops thread's batch again, as its Orchestrator's chat run.
+         */
+        post: operations["rerun_route_v1_worker_runs__run_id__ops_rerun_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/ops/redeliver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redeliver Route
+         * @description Hand the work of a failed run of this ops thread's batch to a healthy worker, as its Orchestrator's chat run.
+         */
+        post: operations["redeliver_route_v1_worker_runs__run_id__ops_redeliver_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/ops/answer-wait": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Wait Route
+         * @description Answer a stuck wait of this ops thread's batch, as its Orchestrator's chat run.
+         */
+        post: operations["answer_wait_route_v1_worker_runs__run_id__ops_answer_wait_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/ops/curator-resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Curator Resume Route
+         * @description Resume the Curator's schedules its breaker paused, as the Orchestrator's chat run of an ops thread.
+         */
+        post: operations["curator_resume_route_v1_worker_runs__run_id__ops_curator_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/ops/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Route
+         * @description Mark a notice of the project read, as the Orchestrator's chat run of an ops thread.
+         */
+        post: operations["read_route_v1_worker_runs__run_id__ops_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/ops/finding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finding Route
+         * @description Write a finding for the Curator, as the Orchestrator's chat run of an ops thread.
+         */
+        post: operations["finding_route_v1_worker_runs__run_id__ops_finding_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -20956,6 +21180,37 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** DefaultPut */
+        DefaultPut: {
+            /** Slug */
+            slug: string;
+        };
+        /** DefaultSystem */
+        DefaultSystem: {
+            /** Project */
+            project: string;
+            /**
+             * Slug
+             * @description the default system; null when the project has none
+             */
+            slug: string | null;
+            /** Name */
+            name: string | null;
+            /** @description the ops of its spec, defaults filled in; off for a spec with none */
+            ops: components["schemas"]["OpsSettings"] | null;
+            /**
+             * Limits
+             * @description the limits of its spec, ops_daily_usd filled in
+             */
+            limits: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Can Change
+             * @description the caller holds the admin role on the project
+             */
+            can_change: boolean;
+        };
         /** DiffLink */
         DiffLink: {
             /** Sha256 */
@@ -21084,6 +21339,27 @@ export interface components {
              * @default
              */
             reason: string;
+        };
+        /**
+         * DiskReport
+         * @description The free space of the drive that holds the daemon's worktrees.
+         */
+        DiskReport: {
+            /**
+             * Free Gb
+             * @description gigabytes free there
+             */
+            free_gb: number;
+            /**
+             * Free Pct
+             * @description the share of the drive free, in percent
+             */
+            free_pct: number;
+            /**
+             * Reserve Gb
+             * @description the gigabytes the daemon keeps free there (disk_reserve_gb of its config): under it the hub gives the worker no run; null from a daemon that says none, for which the hub's own reserve of 20 holds
+             */
+            reserve_gb?: number | null;
         };
         /** DismissBody */
         DismissBody: {
@@ -23984,6 +24260,22 @@ export interface components {
              */
             failed?: string[];
         };
+        /**
+         * HealthReport
+         * @description What the daemon last found of its machine's health (plan hub-steward, criterion a3): the free disk where its
+         *     worktrees go, and the login of each runtime as the runtime's own status command says it, never a credential.
+         */
+        HealthReport: {
+            /** @description null when the daemon could not read it */
+            disk?: components["schemas"]["DiskReport"] | null;
+            /**
+             * Logins
+             * @description each runtime's login: ok, signed in; unauthorized, its status command says it is not; missing, its program is not on the machine; unknown, the command gave no answer in time or one the daemon cannot read
+             */
+            logins?: {
+                [key: string]: string;
+            };
+        };
         /** HeartbeatAnswer */
         HeartbeatAnswer: {
             /**
@@ -24065,6 +24357,8 @@ export interface components {
             browser?: components["schemas"]["BrowserReport"] | null;
             /** @description for a daemon that says browser_install, where it stands with the owner's Install browser the answer carried; null when it carries none */
             browser_install?: components["schemas"]["BrowserInstallReport"] | null;
+            /** @description the free disk of its worktrees' drive and each runtime's login, as the daemon last looked; each heartbeat sets what the hub shows, and none clears it, as from an older daemon */
+            health?: components["schemas"]["HealthReport"] | null;
         };
         /** HeldAnswer */
         HeldAnswer: {
@@ -29706,6 +30000,8 @@ export interface components {
              * @description the files it carries, oldest first: a decision's, or a notice run_outputs' (an output deleted since is left out), each with the URL its reader fetches the bytes from
              */
             outputs?: components["schemas"]["RunOutput"][];
+            /** @description the batch of the ops queue whose Orchestrator (the project's default system's) holds it, with its thread; null when it waits on a person */
+            ops?: components["schemas"]["OpsHolding"] | null;
         };
         /** NotificationCount */
         NotificationCount: {
@@ -30546,6 +30842,202 @@ export interface components {
              * @description the fields whose value differs from the revision before
              */
             changed: string[];
+        };
+        /** OpsActed */
+        OpsActed: {
+            /**
+             * Message Id
+             * @description the Decision: line the hub posted in the thread, in the Orchestrator's name
+             */
+            message_id: number;
+            /**
+             * Run Id
+             * @description the run the work went to, or the run the answer woke
+             */
+            run_id?: number | null;
+            /**
+             * Finding Id
+             * @description the finding it wrote
+             */
+            finding_id?: number | null;
+            /**
+             * Handled
+             * @description items of the batch it marked handled
+             * @default 0
+             */
+            handled: number;
+        };
+        /** OpsBatch */
+        OpsBatch: {
+            /** Id */
+            id: number;
+            /**
+             * Key
+             * @description kind|cause|subject: the cause key its items share
+             */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Cause */
+            cause: string;
+            /** Subject */
+            subject: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "ready" | "empty" | "running" | "done";
+            /** Items */
+            items: number;
+            /**
+             * Pending
+             * @description its items tier 0 has not handled
+             */
+            pending: number;
+            /**
+             * Opened At
+             * Format: date-time
+             */
+            opened_at: string;
+            /**
+             * Closes At
+             * Format: date-time
+             */
+            closes_at: string;
+            /** Closed At */
+            closed_at: string | null;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * Recurring
+             * @description its cause key closed 3 batches in 7 days: the system needs a fix
+             * @default false
+             */
+            recurring: boolean;
+            /**
+             * Thread
+             * @description the hub web's path of its ops thread; null before it opened one
+             */
+            thread?: string | null;
+        };
+        /** OpsFindingIn */
+        OpsFindingIn: {
+            /**
+             * Lens
+             * @enum {string}
+             */
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "product" | "agent_system" | "kg_health" | "kg_init" | "kg_questions" | "kg_entity_map";
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "low" | "medium" | "high";
+            /** Title */
+            title: string;
+            /**
+             * Body
+             * @description what is wrong with the system, and the fix
+             */
+            body: string;
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** OpsHolding */
+        OpsHolding: {
+            /** Batch Id */
+            batch_id: number;
+            /**
+             * State
+             * @description open while it gathers, ready until its thread opens, running then
+             * @enum {string}
+             */
+            state: "open" | "ready" | "running";
+            /**
+             * Thread
+             * @description the hub web's path of the batch's ops thread; null before it opened
+             */
+            thread: string | null;
+        };
+        /** OpsPause */
+        OpsPause: {
+            /**
+             * Reason
+             * @description why, shown with the pause
+             */
+            reason?: string | null;
+        };
+        /** OpsReadIn */
+        OpsReadIn: {
+            /**
+             * Notification Id
+             * @description a notice of the project
+             */
+            notification_id: number;
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** OpsReasonIn */
+        OpsReasonIn: {
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** OpsRunIn */
+        OpsRunIn: {
+            /**
+             * Run Id
+             * @description a chat or task run of the batch that failed or was lost
+             */
+            run_id: number;
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** OpsSettings */
+        OpsSettings: {
+            /**
+             * Enabled
+             * @description the project's operations events go to the queue of its default system
+             */
+            enabled: boolean;
+            /**
+             * Debounce Minutes
+             * @description a batch closes this long after it opened
+             */
+            debounce_minutes: number;
+            /**
+             * Max Items
+             * @description or once it holds this many items
+             */
+            max_items: number;
+        };
+        /** OpsWaitIn */
+        OpsWaitIn: {
+            /**
+             * Decision Id
+             * @description a stuck wait of the batch: a decision of category wait
+             */
+            decision_id: number;
+            /**
+             * Text
+             * @description the answer that wakes its run
+             */
+            text: string;
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
         };
         /** OptimizeRun */
         OptimizeRun: {
@@ -44550,6 +45042,43 @@ export interface components {
              */
             run_id: number;
         };
+        /** SystemOps */
+        SystemOps: {
+            /** Project */
+            project: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Default
+             * @description it is the project's default system, whose queue the hub fills
+             */
+            default: boolean;
+            ops: components["schemas"]["OpsSettings"];
+            /**
+             * Ops Daily Usd
+             * @description what the runs of its ops threads may spend in 24 hours
+             */
+            ops_daily_usd: number;
+            /** Paused */
+            paused: boolean;
+            /** Paused At */
+            paused_at: string | null;
+            /** Paused Reason */
+            paused_reason: string | null;
+            /**
+             * Spent Usd
+             * @description what the runs of its ops threads queued in the last 24 hours spent
+             * @default 0
+             */
+            spent_usd: number;
+            /**
+             * Batches
+             * @description the batches of the project's queue by state; empty when not default
+             */
+            batches: {
+                [key: string]: number;
+            };
+        };
         /** SystemOut */
         SystemOut: {
             /** Project */
@@ -44655,6 +45184,12 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Default
+             * @description the project's default system (`hub system default`)
+             * @default false
+             */
+            default: boolean;
         };
         /** SystemWritten */
         SystemWritten: {
@@ -45954,7 +46489,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed" | "srs_comment";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed" | "srs_comment" | "ops_cap" | "ops_paused" | "ops_digest";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier; null: back to the hub's default
@@ -45968,7 +46503,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed" | "srs_comment";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed" | "srs_comment" | "ops_cap" | "ops_paused" | "ops_digest";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier
@@ -48090,6 +48625,13 @@ export interface components {
              * @description the free slots its last heartbeat reported; null before the first
              */
             free_slots: number | null;
+            /**
+             * Health
+             * @description what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct, reserve_gb}, logins: {<runtime>: ok, unauthorized, missing or unknown}}; null when it said nothing of it, as an older daemon. Under its reserve (20 GB when it says none) the worker is given no run
+             */
+            health?: {
+                [key: string]: unknown;
+            } | null;
             /** Allow Web Terminal */
             allow_web_terminal: boolean;
             /**
@@ -62843,6 +63385,8 @@ export interface operations {
                 run?: number | null;
                 /** @description only those whose title or body holds these words */
                 q?: string | null;
+                /** @description ops: only those the Orchestrator of a default system holds; person: only the others */
+                handler?: ("ops" | "person") | null;
                 limit?: number;
                 offset?: number;
             };
@@ -84787,6 +85331,370 @@ export interface operations {
             };
         };
     };
+    show_default_v1_projects__project__default_system_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefaultSystem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_default_v1_projects__project__default_system_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DefaultPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefaultSystem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_ops_v1_projects__project__systems__slug__ops_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemOps"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_ops_v1_projects__project__systems__slug__ops_pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsPause"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemOps"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_ops_v1_projects__project__systems__slug__ops_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemOps"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_batches_v1_projects__project__systems__slug__ops_batches_get: {
+        parameters: {
+            query?: {
+                /** @description only the batches in this state */
+                state?: ("open" | "ready" | "empty" | "running" | "done") | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsBatch"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_agent_account_v1_projects__project__agents__handle__accounts__name__get: {
         parameters: {
             query?: never;
@@ -92000,6 +92908,432 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rerun_route_v1_worker_runs__run_id__ops_rerun_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsRunIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    redeliver_route_v1_worker_runs__run_id__ops_redeliver_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsRunIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    answer_wait_route_v1_worker_runs__run_id__ops_answer_wait_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsWaitIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    curator_resume_route_v1_worker_runs__run_id__ops_curator_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsReasonIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_route_v1_worker_runs__run_id__ops_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsReadIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    finding_route_v1_worker_runs__run_id__ops_finding_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsFindingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

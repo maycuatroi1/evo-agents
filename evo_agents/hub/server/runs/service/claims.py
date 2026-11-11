@@ -108,7 +108,8 @@ class RunWakeups:
 
 def worker_columns(w=None) -> list:
     """What the claim reads of a worker row of ``w`` (tables.workers by default): id, owner_id, name, slots, runtimes,
-    checkouts, drained_at, revoked_at, agent_version, dispatch_from, run_kinds, features, labels, plugins and shared."""
+    checkouts, drained_at, revoked_at, agent_version, dispatch_from, run_kinds, features, labels, plugins, shared and
+    health."""
     w = tables.workers if w is None else w
     return [
         w.c.id,
@@ -126,6 +127,7 @@ def worker_columns(w=None) -> list:
         w.c.labels,
         w.c.plugins,
         w.c.shared,
+        w.c.health,
     ]
 
 

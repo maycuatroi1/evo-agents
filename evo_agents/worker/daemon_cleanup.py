@@ -3,8 +3,15 @@
 It asks the hub which ended runs whose worktrees it keeps had their work merged (POST /v1/worker/merged) and removes
 those at once, after it committed what each worktree has not to a ref ``refs/evo-recovery/run-<id>/<folder>`` of its
 checkout and noted it in recovery.jsonl; a run it holds, a parked run, one another run went on from and a directory a
-run not ended uses stay. The worktrees of runs that ended more than 7 days ago go whatever the hub says. Only the
-evo-run branch of a run is deleted with its worktree.
+run not ended uses stay. The worktrees of runs that ended more than 7 days ago go whatever the hub says; a parked run's
+stay 30 days, for the run that resumes it. Only the evo-run branch of a run is deleted with its worktree.
+
+The drive of the worktrees keeps ``WorkerConfig.disk_reserve_gb`` free (plan hub-steward, criterion a4). Below it, the
+cleanup removes at once the worktrees of ended runs the merged ones may go of (``_removable``: not parked, not taken
+over, not used by a run that has not ended), oldest end first and each one's uncommitted changes kept on its recovery
+ref first, until the drive is back over the reserve (``make_room``); the claims take no run while it stays below
+(``daemon_claims``), and the hub gives the worker none either (``Claimer.stops``), so a run waits or goes to another
+worker instead of failing at its checkout.
 """
 
 from __future__ import annotations
@@ -17,7 +24,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evo_agents.worker import gitops
+from evo_agents.worker import gitops, health
 from evo_agents.worker.hubapi import HubProblem, Refused
 
 if TYPE_CHECKING:
@@ -26,7 +33,11 @@ if TYPE_CHECKING:
 log = logging.getLogger("evo_agents.worker")
 
 CLEANUP_EVERY = 3600.0
+# gigabytes the worktrees' drive keeps free, over WorkerConfig.disk_reserve_gb: for an operator, and for tests whose
+# machine has less free than the default
+RESERVE_VARIABLE = "EVO_WORKER_DISK_RESERVE_GB"
 KEEP_WORKTREES = timedelta(days=7)  # the sweep's: the worktrees of a run whose work merged go at the next cleanup
+KEEP_PARKED = timedelta(days=30)  # the sweep's for a parked run, whose worktrees the run that resumes it takes over
 MAX_MERGED_ASKED = 200  # run ids in one POST /v1/worker/merged, as the hub takes them
 # the kinds of run whose record names a directory with a worktree of each repo; a run of one step has one worktree
 DIRECTORY_KINDS = (
@@ -49,6 +60,15 @@ def _paths(record: dict) -> list[Path]:
     found = [record.get("dir"), record.get("worktree")]
     found += [item.get("worktree") for item in record.get("repos") or [] if isinstance(item, dict)]
     return [Path(item) for item in found if isinstance(item, str) and item]
+
+
+def _parked(record: dict) -> bool:
+    return str(record.get("state") or "").startswith("parked")
+
+
+def _old(record: dict, now: datetime) -> bool:
+    """Whether the sweep removes a run's worktrees whatever the hub says: it ended 7 days ago, or 30 when parked."""
+    return now - _finished(record, now) >= (KEEP_PARKED if _parked(record) else KEEP_WORKTREES)
 
 
 def _finished(record: dict, now: datetime) -> datetime:
@@ -74,23 +94,80 @@ class Cleanup:
     def __init__(self, daemon: Daemon):
         self.daemon = daemon
         self.asks_merged = True  # until a hub before POST /v1/worker/merged answers 404
+        self.removing = asyncio.Lock()  # one sweep or making of room at a time
 
     async def loop(self) -> None:
         while True:
             try:
                 await self.sweep()
+                await self.make_room()
             except Exception:
                 log.exception("cleaning up old worktrees failed")
             await asyncio.sleep(CLEANUP_EVERY)
 
-    async def sweep(self, now: datetime | None = None) -> list[int]:
-        """Remove the worktrees and records of runs that ended more than 7 days ago, and those of ended runs whose work
-        the hub says merged (``_merged_work``), each worktree's uncommitted changes kept first (``_recover``); their
-        ids."""
+    def free_gb(self) -> float | None:
+        """The gigabytes free on the drive of the worktrees (``health.disk``); None when they cannot be read."""
+        found = health.disk(self.daemon.home.worktrees_dir)
+        return None if found is None else found["free_gb"]
+
+    @property
+    def reserve_gb(self) -> float:
+        """The gigabytes the drive of the worktrees keeps free: $EVO_WORKER_DISK_RESERVE_GB when it holds a size of 0
+        or more, else ``WorkerConfig.disk_reserve_gb``."""
+        try:
+            found = float(self.daemon.env.get(RESERVE_VARIABLE) or "nan")
+        except ValueError:
+            found = float("nan")
+        return found if found >= 0 else float(self.daemon.config.disk_reserve_gb)
+
+    def short_of_room(self) -> bool:
+        """Whether the drive of the worktrees has less free than ``reserve_gb``; not when it cannot be read."""
+        free = self.free_gb()
+        return free is not None and free < self.reserve_gb
+
+    async def make_room(self) -> list[int]:
+        """While the drive is short of room (``short_of_room``), remove the worktrees and records of the ended runs
+        whose worktrees may go (``_removable``), the run that ended first first, each one's uncommitted changes kept on
+        its recovery ref first (``_recover``); the ids removed. A parked run, one a run went on from, and a directory a
+        run not ended uses stay, however short the drive."""
+        if not self.short_of_room():
+            return []
         home = self.daemon.home
-        now = now or datetime.now(UTC)
+        removed: list[int] = []
+        async with self.removing:
+            now = datetime.now(UTC)
+            records = await asyncio.to_thread(home.load_runs)
+            ended = [r for r in records if self._removable(r, records) and any(p.exists() for p in _paths(r))]
+            for record in sorted(ended, key=lambda found: _finished(found, now)):
+                if not self.short_of_room():
+                    break
+                run_id = record["id"]
+                found = self._still_ended(run_id)
+                if found is None or not await self._recover(found) or self._still_ended(run_id) is None:
+                    continue
+                await self.remove_worktree(found)
+                await asyncio.to_thread(home.remove_run, run_id)
+                removed.append(run_id)
+                where = found.get("dir") or found.get("worktree")
+                log.info("worktree removed to keep the disk reserve", extra={"run_id": run_id, "worktree": where})
+        if removed or self.short_of_room():
+            log.info(
+                "made room on the worktrees' drive",
+                extra={"removed": removed, "free_gb": self.free_gb(), "reserve_gb": self.reserve_gb},
+            )
+        return removed
+
+    async def sweep(self, now: datetime | None = None) -> list[int]:
+        """Remove the worktrees and records of runs that ended more than 7 days ago (30 for a parked run, ``_old``), and
+        those of ended runs whose work the hub says merged (``_merged_work``), each worktree's uncommitted changes
+        kept first (``_recover``); their ids."""
+        async with self.removing:
+            return await self._sweep(now or datetime.now(UTC))
+
+    async def _sweep(self, now: datetime) -> list[int]:
+        home = self.daemon.home
         records = home.load_runs()
-        old = {record["id"] for record in records if now - _finished(record, now) >= KEEP_WORKTREES}
+        old = {record["id"] for record in records if _old(record, now)}
         merged = await self._merged_work([record for record in records if record["id"] not in old], records)
         removed = []
         for record in records:
@@ -156,7 +233,7 @@ class Cleanup:
         held = self.daemon.runs
         if record["id"] in held or not record.get("finished_at") or record.get("resumed_by"):
             return False
-        if str(record.get("state") or "").startswith("parked") or record.get("moved_to"):
+        if _parked(record) or record.get("moved_to"):
             return False
         mine = _paths(record)
         if not mine:

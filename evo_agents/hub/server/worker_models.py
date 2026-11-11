@@ -199,6 +199,12 @@ class Worker(BaseModel):
         description="the checkouts its last heartbeat reported, keyed <project>/<repo>, each {path, branch}"
     )
     free_slots: int | None = Field(description="the free slots its last heartbeat reported; null before the first")
+    health: dict | None = Field(
+        None,
+        description="what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct, reserve_gb}, "
+        "logins: {<runtime>: ok, unauthorized, missing or unknown}}; null when it said nothing of it, as an older "
+        "daemon. Under its reserve (20 GB when it says none) the worker is given no run",
+    )
     allow_web_terminal: bool
     dispatch_from: Literal[DISPATCH_FROM] = Field(
         description="who may hand it runs: any, runs its owner dispatched with any credential; web, only runs "

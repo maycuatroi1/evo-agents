@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Lightbulb, MessageCircleQuestionMark, X } from "lucide-react";
+import { Bell, Bot, Lightbulb, MessageCircleQuestionMark, UserRound, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { FacetGroup } from "@/components/data/facet-group";
@@ -12,9 +12,9 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { type InboxFilters, MAX_QUERY_CHARS, NO_FILTERS } from "./model";
 
 /**
- * The filters on one line: the search of titles and bodies, unread or all, the kind, and the project as a select (a
- * member of many projects would otherwise get a wall of chips); under 768 px the search beside "Filters (n)", whose
- * sheet holds the rest (`ToolbarFilters`). A filter by run, set from a run's row, shows as a chip that clears it.
+ * The filters on one line: the search of titles and bodies, unread or all, the kind, who handles it (the Orchestrator
+ * of the default system, or only a person), and the project as a select (a member of many projects would otherwise
+ * get a wall of chips); under 768 px the search beside "Filters (n)", whose sheet holds the rest (`ToolbarFilters`). A filter by run, set from a run's row, shows as a chip that clears it.
  */
 export function InboxToolbar({
   filters,
@@ -26,7 +26,7 @@ export function InboxToolbar({
   onChange: (next: InboxFilters) => void;
 }) {
   const t = useTranslations("inbox");
-  const active = (filters.unread ? 1 : 0) + (filters.kind ? 1 : 0) + (filters.project ? 1 : 0);
+  const active = [filters.unread, filters.kind, filters.project, filters.handler].filter(Boolean).length;
   const names = [...new Set([...projects, ...(filters.project ? [filters.project] : [])])].sort();
   return (
     <div className="flex flex-col gap-2" role="search" aria-label={t("filters.label")} data-testid="inbox-filters">
@@ -71,6 +71,18 @@ export function InboxToolbar({
             }
             countLabel={(n) => t("count", { count: n })}
             testId="inbox-facet-kind"
+          />
+          <FacetGroup
+            label={t("filters.handler")}
+            options={[
+              { value: null, label: t("filters.anyHandler") },
+              { value: "ops", label: t("filters.byOrchestrator"), icon: Bot },
+              { value: "person", label: t("filters.byPerson"), icon: UserRound },
+            ]}
+            selected={filters.handler}
+            onSelect={(value) => onChange({ ...filters, handler: value === "ops" || value === "person" ? value : null, page: 1 })}
+            countLabel={(n) => t("count", { count: n })}
+            testId="inbox-facet-handler"
           />
           {names.length > 1 || filters.project !== null ? (
             <ToolbarField label={t("filters.project")}>

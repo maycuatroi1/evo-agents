@@ -57,6 +57,7 @@ AGENT_COMMANDS += ("output",)  # any run's agent sends files to the run's output
 AGENT_COMMANDS += ("backup",)  # any run's agent records a backup before it deletes data (floor S2)
 AGENT_COMMANDS += ("escalate",)  # an agent of an agent system asks its Orchestrator
 AGENT_COMMANDS += ("triage answer", "triage reassign", "triage ask-owner")  # the Orchestrator acts in its thread
+AGENT_COMMANDS += ("ops rerun", "ops redeliver", "ops answer-wait", "ops curator-resume", "ops read", "ops finding")
 _FIRST_WORDS = "|".join(dict.fromkeys(name.split()[0] for name in AGENT_COMMANDS))
 HUB_COMMAND = re.compile(rf"(?<![\w./-])evo-agents\s+(hub|worker\s+({_FIRST_WORDS}))\b")
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")

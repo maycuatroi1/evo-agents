@@ -251,6 +251,7 @@ def _listed(*where):
             w.c.runtimes,
             w.c.checkouts,
             w.c.free_slots,
+            w.c.health,
             w.c.allow_web_terminal,
             w.c.dispatch_from,
             held_runs.label("held_runs"),

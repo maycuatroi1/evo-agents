@@ -26,6 +26,7 @@ from evo_agents.hub.server.runs.models.dispatch import (
     SystemDispatched,
 )
 from evo_agents.hub.server.runs.models.heartbeat import (
+    HealthReport,
     HeartbeatAnswer,
     HeartbeatRequest,
     KgDuty,
@@ -112,6 +113,7 @@ __all__ = [
     "ClaimedBudget",
     "CuratorSpec",
     "Dispatch",
+    "HealthReport",
     "HeartbeatAnswer",
     "HeartbeatRequest",
     "KgDuty",

@@ -725,6 +725,74 @@ The agent the entry interacts with is the system's entry agent: at most one per 
 agent of at most one system (a partial unique index holds it). `limits` holds the budgets of the system:
 `trace_usd` (2 by default), `trace_runs` (12) and `daily_usd` (5). A trace keeps to the first two (Budget of a trace).
 `idle_minutes_hub` (10) and `idle_minutes_worker` (30), from 1 to 1440, are the idle limits of The Orchestrator.
+`ops_daily_usd` (5, at most 1000) caps what the runs of its ops threads spend in 24 hours; a spec that does not name
+it keeps not naming it, and the hub reads the default.
+
+A project has at most one default system (`agent_systems.is_default`). An admin of the project sets it with
+`PUT /v1/projects/{p}/default-system {slug}` or `evo-agents hub system default SLUG --project P`; `GET` of the same
+path and the command with no slug read it, and `hub system list` marks it. Deleting the default system leaves the
+project with none until an admin sets another. A project that has no system, new or from before, gets one from the
+hub once (`projects.systems_seeded_at`): `orchestrator`, named "Orchestrator", an entry node and an orchestrator node
+on a profile the hub creates for it, `@<project>-orchestrator`, with its ops off.
+
+`ops` of the spec says how the Orchestrator of the default system handles the project's operations events (plan
+hub-steward): `enabled` (false), `debounce_minutes` (5, from 0 to 1440) and `max_items` (20, from 1 to 1000). A spec
+with no `ops` reads as ops off and is stored as it is. With ops on, the hub reads the project's operations events
+(`run.ended`, `decision.opened`, `curator.paused`, `worker.health`) after a cursor of its own, and puts each that no
+rule of tier 0 handled in the open batch of its cause key (kind, cause, then the worker for a cause of the
+environment, else the plan); a batch closes `debounce_minutes` after it opened or once it holds `max_items`, and one
+whose items tier 0 all handled closes empty, with no run. `evo-agents hub system ops show|pause|resume|batches SLUG
+--project P` reads the ops of a system and its batches; pausing (admin) holds closed batches, and the queue still
+gathers.
+
+Ops threads. For each closed batch with items left, the hub opens one thread in the chat `Ops: <slug>` of the default
+system, as the person who wrote the system, and mentions its Orchestrator with a summary of the batch: each item, its
+cause, a short diagnosis, and the `evo-agents hub inbox` command that shows it. No transcript goes in. The batch is
+then `running` until the runs of its thread end, and `done` after. A cause key that closed 3 batches in 7 days is
+`recurring`, and the summary asks the Orchestrator to fix the system (a finding for the Curator, or a task) instead of
+running the work again. In the thread the Orchestrator acts with `evo-agents worker ops ...` on a worker
+(`docs/workers.md`, Ops threads) or the tool `ops_action` on the hub runtime (Hub runtime): run a failed run again,
+hand it to a healthy worker, answer a stuck wait, resume the Curator its breaker paused, mark a notice read, or write
+a finding. It may also reassign the work to an agent of the system and ask the owner at most one decision a batch.
+It never decides for the owner what is theirs: credentials, scope, spending over the cap, or what cannot be undone
+without a backup.
+
+Cap, breaker and digest. `limits.ops_daily_usd` caps what the runs of the ops threads spend in 24 hours. At the cap
+the hub opens no thread: the batch stays `ready`, and the project's owner gets one `ops_cap` notice a day. When the
+runs of 2 batches in a row fail because of the agent (not the machine), the hub pauses the system's ops itself and
+sends the owner an `ops_paused` notice; `evo-agents hub system ops resume SLUG` resumes them. Once a day the owner
+gets an `ops_digest` notice: what tier 0 and the Orchestrator handled since the last one, and what waits on a person
+and why. A day with nothing sends none.
+
+Turning ops off. Set `ops.enabled` to false in the spec (or switch it off on the system's Ops tab). The hub then
+reads none of the project's operations events: tier 0 does not run either, and each event waits on a person in the
+Inbox. Turned on again, the queue starts at the newest event and never reads what happened while it was off. Pausing
+is the short-term form: the queue keeps gathering and tier 0 keeps working, but no thread opens until someone
+resumes. A project with no default system has no ops at all.
+
+`GET .../ops` also gives `spent_usd`, what the ops threads queued in the last 24 hours spent. Each batch of
+`GET .../ops/batches` gives `recurring` and `thread`, the web path of its ops thread (null before it opens). In the
+Inbox, `GET /v1/me/notifications` gives each notification an `ops` field when a batch of the ops queue holds it:
+`batch_id`, `state` (`open` while it gathers, `ready` until its thread opens, `running` after) and `thread`. A
+notification with `ops` null waits on a person. `?handler=ops` lists only the ones the Orchestrator holds and
+`?handler=person` only the others.
+
+In the web, the Systems page (`/p/<project>/systems`) tags the default system Default and gives an admin Set as
+default on each other system; a project with systems and no default shows a banner, since nothing handles its
+operations events. The Ops tab of a system (`?mode=ops`) shows whether ops are on, what the queue holds, what the
+threads spent against the cap, the settings (`ops.enabled`, `debounce_minutes`, `max_items`, `ops_daily_usd`, saved
+as the next revision of the system by an admin), Pause and Resume, and the recent batches with a link to each thread.
+A banner shows only when ops are paused or at the cap. The Inbox has a Handled by filter (Anyone, Orchestrator,
+Waits on a person), and a row the Orchestrator holds says so, with a link to its thread once it opened.
+
+Tier 0 is what the hub does by itself, with no model, in the same pass. A chat or task run that failed because of its
+machine (`checkout`, `worker_stopped`, `lease_lost`, `network`, `hub_5xx`, `account_auth`) is handed again once: the
+hub says the mention again in the run's thread, or queues the task's next attempt for its plugin. It waits for a
+heartbeat after the failure that says the worker has enough free disk and the run's runtime logged in, or for another
+online worker of the same member and pool that does. A run whose work was handed again before and a run of a step,
+plan or author are not handed again and stay in their batch; a run an Orchestrator answered in a thread of rule
+`failed` is not handed again either, and its item leaves the batch. Unread notices whose work is done are marked read: `run_failed` once the run was done again or its plan is
+completed, `curator_paused` once no schedule of the project is paused and a night-shift run ended done.
 
 The hub checks a spec before it stores it. Errors are an unknown key, an edge whose ends do not fit its kind, a node or
 an edge that is not there, a second entry, curator or orchestrator, and a profile or a named graph the project does
@@ -747,13 +815,18 @@ hub reads the run's rules from `agent_profile_versions`, as for every run. A pro
 | `POST .../systems/validate` `{spec, slug}`, written nowhere | `hub system validate FILE` | a member |
 | `PUT .../systems/{slug}` `{spec, if_revision}` | `hub system put FILE [--slug S] [--if-revision N]` | an admin of the project |
 | `DELETE .../systems/{slug}` | `hub system delete SLUG` | an admin of the project |
+| `GET /v1/projects/{p}/default-system` | `hub system default` | a member |
+| `PUT /v1/projects/{p}/default-system` `{slug}` | `hub system default SLUG` | an admin of the project |
+| `GET .../systems/{slug}/ops` | `hub system ops show SLUG` | a member |
+| `POST .../systems/{slug}/ops/pause` `{reason}`, `.../ops/resume` | `hub system ops pause\|resume SLUG` | an admin of the project |
+| `GET .../systems/{slug}/ops/batches` (`?state=&limit=`) | `hub system ops batches SLUG [--state S]` | a member |
 
 `PUT` without `if_revision` (or 0) creates the system and is 409 when it exists. With it, the spec replaces that
 revision, or the hub answers 409 `revision_conflict` with the system as it holds it now. A spec the hub already holds
 adds no revision (`changed: false`). `export` writes the revision it read in a `# if_revision: N` line, which `put`
 takes when `--if-revision` is not given, so a change someone made in the meantime is refused, not lost. The slug
-`validate` is reserved. The audit rows `system.create`, `system.update` and `system.delete` name
-`<project> system=<slug> revision=<n>`. For example:
+`validate` is reserved. The audit rows `system.create`, `system.update`, `system.delete`, `system.default`,
+`system.ops-pause` and `system.ops-resume` name `<project> system=<slug> revision=<n>`. For example:
 
 ```sh
 evo-agents hub system export support --project northwind -o support.yaml
@@ -1051,6 +1124,19 @@ agent, waiting, coordinator}`, null for every other chat.
 Schema 0235 adds the nullable `system_traces.title`, `goal`, `done_when`, `card_message_id` (set to null when the
 message is deleted) and `card_state`. Going back drops them.
 
+### Operations events
+
+The hub writes five kinds into a project's `hub_events` (`evo_agents/hub/ops_events.py`, plan hub-steward), each in the
+transaction that made what it tells of: `run.ended` when a run of the project comes to be failed or lost
+(`run_id`, `run_kind`, `state`, `failure_cause`, `worker_id`), `run.parked` when one is parked, `decision.opened` when
+a run asks a person a decision (`decision_id`, `category`, `run_id`, `asked_of`; a run that only waits, and a quiet
+credential request, write none), `curator.paused` when the circuit breaker pauses the night shift (`reason`,
+`cause_class`, `schedule_ids`, `run_ids`, `reverts`), and `worker.health` when the health a worker's heartbeat reports
+changes state (`worker_id`, `disk` low or ok against the reserve its daemon says, 20 GB free when it says none,
+`disk_free_pct`, `logins`), once for each project the worker serves. Payloads carry ids and states alone, never an error, a question or a reason. No plugin takes these kinds
+(they are not in `EVENT_KINDS`, `docs/plugins.md`) and they queue no tick of the Loop. Schema 0239 adds the nullable
+`workers.health`; going back drops it.
+
 ### Hub runtime
 
 An agent whose profile has `runs_on: hub` needs no worker and no pool: the hub answers for it in chat through its
@@ -1096,6 +1182,7 @@ The tools do what the worker's commands do, through the same code:
 | `agent_forward` | `evo-agents worker agent forward` |
 | `escalate` | `evo-agents worker escalate` |
 | `orchestrator_answer`, `orchestrator_reassign`, `orchestrator_ask_owner` | `evo-agents worker triage answer`, `triage reassign`, `triage ask-owner` |
+| `ops_action` (`action`: `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read`, `finding`), in an ops thread only | `evo-agents worker ops rerun`, `redeliver`, `answer-wait`, `curator-resume`, `read`, `finding` |
 | `memory_write` | a memory of the project, under the rules of `memory_write` |
 
 A tool that is refused answers the model with the reason, and the turn goes on. Repos, branches, pull requests and
@@ -1152,6 +1239,8 @@ it has three more actions (`orchestrator_actions.py`; `docs/workers.md`, Failure
 
 - answer: an escalation's wait wakes with the answer; a thread with no wait hands it to the agent it is about.
 - reassign: the work goes to another agent node of the system at the hop of the work, with the escalation's wait.
+  While that wait is open, an agent whose run waits on the run that escalated, directly or through other runs, is
+  refused (409): the two runs would wait on each other.
 - ask-owner: a decision of category `triage` for the person at the origin of the work.
 
 Answer and reassign hand their work in the chat of the thread, so in the work chat for a trace that has one. Each
@@ -1160,6 +1249,12 @@ posts a `Decision:` line in the thread and writes the audit row `orchestrator.an
 Answer and reassign close the thread. An escalation adds no hop, the trace's budget does not refuse it, and the work
 the Orchestrator reassigns keeps its hop: the hop limit of 3 stays as it is. An agent with no `orchestrates` edge
 keeps the triage it had; one with only an `escalates` edge escalates to that Orchestrator and has no other thread.
+
+Runs that still wait on each other (each open wait of an ask, `decisions.awaits_run_id`, points from the run that
+holds it to the last run of the chain of resumed runs it awaits) are found by the reaper on each pass
+(`wait_cycles.py`). It breaks each cycle once, at the run below, the one at the deepest hop: that run's wait is
+answered with the last message of the run it awaits, which wakes it, and both runs get a `system` event that starts
+with `Wait cycle broken:` and names the runs of the cycle.
 
 ## Group chats
 
@@ -2111,7 +2206,7 @@ is no longer open 409. The answer names an option of the decision, gives words o
 goes to the run's inbox, which the worker hands to the agent; a parked run is resumed on its worker in its session, as a
 new run that the answer names. `notifications` lists your own (`GET /v1/me/notifications`), filtered by `--unread`,
 `--kind` (`decision`, `notice` or `proposal`), `--project`, `--run` and `--search` (words of the title or the body),
-with `--limit` and `--offset`, and says how many are
+with `--limit` and `--offset` (the API also takes `?handler=ops|person`, Agent systems), and says how many are
 unread and how many decisions and proposals wait for an answer (`GET /v1/me/notifications/count`). `--read all`, or
 `--read` with ids, marks them read (`POST /v1/me/notifications/read`) and lists none, so it takes none of the filters;
 answering a decision reads its notification too. Each of these prints the hub's answer with `--json`, `notifications

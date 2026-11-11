@@ -4,7 +4,7 @@ import { Plus, Workflow } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
 import { DataCard } from "@/components/data/data-card";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
@@ -24,10 +24,22 @@ import { newSpec, nextSystemNumber, type SystemSummary } from "@/lib/systems";
 import { putSystem, systemHref, systemKeys, systemsQuery } from "@/lib/systems-queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { DefaultTag, NoDefaultBanner, SetDefaultButton, useSetDefault } from "./default-system";
+
 const NARROW_HIDDEN = { size: "hidden md:table-cell", updated: "hidden lg:table-cell" };
 
-function SystemsTable({ project, systems }: { project: string; systems: SystemSummary[] }) {
+function SystemsTable({ project, systems, admin }: { project: string; systems: SystemSummary[]; admin: boolean }) {
   const t = useTranslations("systems.list");
+  const setDefault = useSetDefault(project);
+  const pending = setDefault.isPending ? setDefault.variables : null;
+  const { mutate } = setDefault;
+  const action = useCallback(
+    (system: SystemSummary) =>
+      admin && !system.default ? (
+        <SetDefaultButton name={system.name || system.slug} busy={pending === system.slug} onClick={() => mutate(system.slug)} />
+      ) : null,
+    [admin, pending, mutate],
+  );
   const columns = useMemo(() => {
     const helper = dataTableColumns<SystemSummary>();
     return helper.columns([
@@ -39,9 +51,12 @@ function SystemsTable({ project, systems }: { project: string; systems: SystemSu
           const system = info.row.original;
           return (
             <CellMain sub={system.slug} subTitle={system.slug}>
-              <Link href={systemHref(project, system.slug)} className={`${NAME_LINK} truncate`} data-system-link={system.slug}>
-                {system.name || system.slug}
-              </Link>
+              <span className="flex min-w-0 items-center gap-2">
+                <Link href={systemHref(project, system.slug)} className={`${NAME_LINK} truncate`} data-system-link={system.slug}>
+                  {system.name || system.slug}
+                </Link>
+                {system.default ? <DefaultTag /> : null}
+              </span>
             </CellMain>
           );
         },
@@ -70,8 +85,17 @@ function SystemsTable({ project, systems }: { project: string; systems: SystemSu
         meta: { numeric: true },
         cell: (info) => <When value={info.row.original.updated_at} short />,
       }),
+      ...(admin
+        ? [
+            helper.display({
+              id: "actions",
+              header: () => <span className="sr-only">{t("columns.actions")}</span>,
+              cell: (info) => action(info.row.original),
+            }),
+          ]
+        : []),
     ]);
-  }, [t, project]);
+  }, [t, project, admin, action]);
   return (
     <DataTable
       data={systems}
@@ -84,8 +108,10 @@ function SystemsTable({ project, systems }: { project: string; systems: SystemSu
         title: system.name || system.slug,
         titleText: system.name || system.slug,
         href: systemHref(project, system.slug),
+        tags: system.default ? <DefaultTag /> : null,
         meta: <span className="font-mono">{system.slug}</span>,
         metaText: system.slug,
+        actions: action(system),
         data: { "system-slug": system.slug },
       })}
     />
@@ -155,12 +181,13 @@ export function SystemsPage({ project, initialError }: { project: string; initia
       <QueryView state={state} loading={<TableSkeleton rows={3} />}>
         {(rows) =>
           rows.length ? (
-            <section aria-labelledby="systems-list-title">
+            <section aria-labelledby="systems-list-title" className="flex flex-col gap-4">
+              {rows.some((system) => system.default) ? null : <NoDefaultBanner admin={admin} />}
               <h2 id="systems-list-title" className="sr-only">
                 {t("list.caption", { project })}
               </h2>
               <DataCard testId="systems-card">
-                <SystemsTable project={project} systems={rows} />
+                <SystemsTable project={project} systems={rows} admin={admin} />
               </DataCard>
             </section>
           ) : (

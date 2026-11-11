@@ -648,6 +648,10 @@ def test_circuit_breaker_pauses_the_night_shift_after_two_failed_runs_in_a_row(n
     a = tables.audit
     ((actor, target),) = sql(hub_db, select(a.c.actor_id, a.c.target).where(a.c.action == "curator.circuit"))
     assert actor is None and target == f"{PROJECT} night={THE_NIGHT.isoformat()} failed=2 jobs=run:{first},run:{second}"
+    e = tables.hub_events
+    ((payload,),) = sql(hub_db, select(e.c.payload).where(e.c.kind == "curator.paused"))
+    assert payload["run_ids"] == [first, second] and payload["schedule_ids"] == [schedule["id"]]
+    assert (payload["reason"], payload["cause_class"], payload["reverts"]) == ("circuit_breaker", "other", 0)
 
     resumed = client.post(charter_path("resume"), headers=headers["owner"])
     assert resumed.status_code == 200 and resumed.json()["schedules"][0]["pause_reason"] is None

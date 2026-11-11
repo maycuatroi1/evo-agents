@@ -275,6 +275,7 @@ RUNTIME_NAME = "^(" + "|".join(("any", *RUNTIMES)) + r"|[a-z][a-z0-9-]{0,62}/[a-
 HUB_RUNTIME = "hub"
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
+MAX_RUNTIME_LOGINS = 50  # the runtimes whose login one heartbeat reports
 MAX_EVIDENCE_BYTES = 16 * 1024  # runs.evidence, as schema 0009 bounds it
 Mode = Literal["headless", "interactive"]
 MODES: tuple[str, ...] = get_args(Mode)
@@ -439,6 +440,9 @@ NOTICE_KINDS = (
     "srs_review",  # a version of an SRS document waits for its reviewers, after @ba's review (``server.srs.notices``)
     "srs_reviewed",  # a reviewer asked for changes on a version, or approved it, told to its author (same)
     "srs_comment",  # a comment reached a thread of an SRS document the member is in (``server.srs.threads``)
+    "ops_cap",  # the ops threads of a project's default system reached limits.ops_daily_usd (``server.ops_threads``)
+    "ops_paused",  # two ops runs in a row failed of their agent, which paused the system's ops (same)
+    "ops_digest",  # what the ops of a project handled in a day and what waits on a person, to its owner (same)
 )
 # The notices that only report what went as it should (plan hub-attention-runtime, criterion a4): a push or merge into a
 # default branch, a plan finished, a run's files. Stored read, delivered on the web alone (no channel, no device), and

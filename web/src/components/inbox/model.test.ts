@@ -57,6 +57,9 @@ describe("inbox filters", () => {
     expect(readInboxFilters(new URLSearchParams("q=%20deploy%20staging%20&run=707"))).toEqual({ ...NO_FILTERS, q: "deploy staging", run: 707 });
     expect(readInboxFilters(new URLSearchParams(`q=${"x".repeat(250)}&run=-1`))).toEqual({ ...NO_FILTERS, q: "x".repeat(200) });
     expect(readInboxFilters(new URLSearchParams("kind=proposal&proposal=9"))).toEqual({ ...NO_FILTERS, kind: "proposal", proposal: 9 });
+    expect(readInboxFilters(new URLSearchParams("handler=ops"))).toEqual({ ...NO_FILTERS, handler: "ops" });
+    expect(readInboxFilters(new URLSearchParams("handler=robot"))).toEqual(NO_FILTERS);
+    expect(inboxSearch({ ...NO_FILTERS, handler: "person", unread: true })).toBe("?unread=1&handler=person");
     const bad = new URLSearchParams("kind=email&project=Bad%20Name&unread=yes&page=0&decision=-4");
     expect(readInboxFilters(bad)).toEqual(NO_FILTERS);
     expect(readInboxFilters(new URLSearchParams("decision=99999999999999999999")).decision).toBeNull();
@@ -80,9 +83,12 @@ describe("inbox filters", () => {
       unread: true,
       q: "deploy",
       run: null,
+      handler: null,
       limit: 50,
       offset: 100,
     });
+    expect(inboxQuery({ ...NO_FILTERS, handler: "ops" }).handler).toBe("ops");
+    expect(isFiltered({ ...NO_FILTERS, handler: "person" })).toBe(true);
     expect(isFiltered({ ...NO_FILTERS, decision: 4, page: 2 })).toBe(false);
     expect(isFiltered({ ...NO_FILTERS, unread: true })).toBe(true);
     expect(isFiltered({ ...NO_FILTERS, q: "deploy" })).toBe(true);

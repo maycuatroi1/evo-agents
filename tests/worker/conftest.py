@@ -19,3 +19,5 @@ def _no_worker_of_this_machine(monkeypatch):
     for name in list(os.environ):
         if name.startswith(("EVO_WORKER_", "EVO_RUN_")):
             monkeypatch.delenv(name)
+    # the daemons of a test claim on a machine with less free disk than the default reserve (test_worktree_gc tests it)
+    monkeypatch.setenv("EVO_WORKER_DISK_RESERVE_GB", "0")

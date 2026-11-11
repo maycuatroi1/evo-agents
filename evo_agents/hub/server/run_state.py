@@ -71,7 +71,7 @@ from sqlalchemy import Integer, case, cast, extract, func, insert, null, or_, se
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import plugin_events, review, runs, tables, wake
+from evo_agents.hub import ops_events, plugin_events, review, runs, tables, wake
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
@@ -176,7 +176,14 @@ def _move(run_id: int, old: str, new: str, error: str | None, columns: dict, lea
     values |= {name: _column_value(value) for name, value in columns.items()}
     moved = update(r).values(**values).where(r.c.id == run_id, r.c.state == old)
     return moved.returning(
-        r.c.event_seq.label("seq"), r.c.project_id, r.c.kind, r.c.plan_id, r.c.step_key, r.c.error, r.c.failure_cause
+        r.c.event_seq.label("seq"),
+        r.c.project_id,
+        r.c.kind,
+        r.c.plan_id,
+        r.c.step_key,
+        r.c.error,
+        r.c.failure_cause,
+        r.c.worker_id,
     )
 
 
@@ -221,7 +228,8 @@ async def move_run(
     recorded: bool = True,
 ) -> int | None:
     """Move run ``run_id``, whose row the caller holds locked, from ``old`` to ``new`` as ``actor``, setting ``columns``
-    (of MOVE_COLUMNS) too; write the ``state`` event and the plugins' ``run.state`` event, then record the move in the
+    (of MOVE_COLUMNS) too; write the ``state`` event, the plugins' ``run.state`` event and, for a run that fails, is
+    lost or is parked, the hub's operations event (``ops_events.run_moved``), then record the move in the
     plan (see the module's docstring), as the dispatcher with ``token_id`` in the audit row, unless ``recorded`` is
     false. A run that comes to be held without a lease (the claim) is leased for ``lease``. A run that ends puts its
     decisions still open in the state ``decisions`` (but those of ``runs.OUTLIVING_DECISION_CATEGORIES``), or leaves
@@ -246,6 +254,15 @@ async def move_run(
     if new == "failed" and row.kind in CAUSED_KINDS and not row.failure_cause:
         cause, guessed = await infer_failure_cause(conn, run_id, row.error), True
     await plugin_events.emit_run_state(conn, run_id, row, old, new, actor, failure_cause=cause, inferred=guessed)
+    await ops_events.run_moved(
+        conn,
+        project_id=row.project_id,
+        run_id=run_id,
+        kind=row.kind,
+        new=new,
+        failure_cause=cause,
+        worker_id=row.worker_id,
+    )
     if new in runs.TERMINAL_STATES:
         from evo_agents.hub.server import tool_stats  # it reads runs through the routes that import this module
 

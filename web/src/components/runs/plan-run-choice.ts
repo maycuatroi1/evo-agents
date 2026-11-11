@@ -24,7 +24,10 @@ export type PlanTarget = PlanRunChoice["target"];
 export { isSystemDispatched, type PlanInSystem, type PlanRunOutcome, type SystemDispatched } from "./plan-run-outcome";
 
 /** `system_spec.LIMITS` defaults: a spec saved by the hub always holds them, an older one may not. */
-export const DEFAULT_LIMITS: Limits = { trace_usd: 2, trace_runs: 12, daily_usd: 5 };
+export const DEFAULT_LIMITS = { trace_usd: 2, trace_runs: 12, daily_usd: 5 } satisfies Limits;
+
+/** The limits of a trace the dialog shows: a spec's own, over `DEFAULT_LIMITS` for the keys it does not name. */
+export type TraceLimits = Limits & typeof DEFAULT_LIMITS;
 
 /** About how many runs of a trace one step of a plan takes: the entry agent's turn and the agent it hands the step to. */
 export const RUNS_PER_STEP = 2;
@@ -120,7 +123,7 @@ export type SystemOption = {
   name: string;
   entry: string;
   purpose: string | null;
-  limits: Limits | null;
+  limits: TraceLimits | null;
 };
 
 export function systemOptions(systems: readonly SystemSummary[], specs: ReadonlyMap<string, Spec>): SystemOption[] {
@@ -139,7 +142,7 @@ export function systemOptions(systems: readonly SystemSummary[], specs: Readonly
 }
 
 /** The runs a trace may need for `pending` steps when that is more than its limit allows; null when it fits. */
-export function overLimit(pending: number, limits: Limits | null): { runs: number; limit: number } | null {
+export function overLimit(pending: number, limits: TraceLimits | null): { runs: number; limit: number } | null {
   if (!limits) return null;
   const runs = pending * RUNS_PER_STEP;
   return runs > limits.trace_runs ? { runs, limit: limits.trace_runs } : null;

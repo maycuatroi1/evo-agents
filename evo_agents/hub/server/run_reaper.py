@@ -257,13 +257,16 @@ async def recover_runs(
     whose lease ran out ends as ``end_held`` says, the waits whose time or event came wake their runs
     (``run_waits.wake_waits``, after ``workflow_waits.poll`` read at GitHub the workflow runs they name with
     ``github_app``), a run that waited ``decision_wait`` for an answer, or waits only for a time or an
-    event of the hub, is parked and one parked for
+    event of the hub, is parked, each cycle of runs that wait on each other is broken at the run below
+    (``wait_cycles.break_cycles``), and one parked for
     ``parked_for`` cancelled, each in a transaction of its own, a question run queued for
     ``question_runs.QUEUE_SECONDS`` fails (no_worker), a run running or verifying with no event for
     ``triage.STALE_MINUTES`` while its worker heartbeats opens its triage thread (``triage.open_stale``), a trace of an
     agent system idle past its limit opens a thread to its Orchestrator (``orchestrator.open_idle``), a queued run
     dispatched with browser that no worker can take has the hub ask its owner's nearest worker that lacks only Chromium
-    to install it (``browser_install.ask_for_queued``), and a queued run pinned to a revoked worker fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
+    to install it (``browser_install.ask_for_queued``), a project never seeded gets its ``orchestrator`` system when it
+    has none (``system_seed.seed_pass``), the operations events of each project with ops on are gathered by cause
+    (``ops_queue.ops_pass``), and a queued run pinned to a revoked worker fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
     ``github_app`` (``credentials.revoke_tokens``; nothing without the App or ``sealer``). Returns how many runs
     ended in each state, and how many were parked."""
     r, w = tables.runs, tables.workers
@@ -309,6 +312,9 @@ async def recover_runs(
     await run_waits.wake_waits(engine, batch)  # first, so a wait that came wakes before its run is parked or expires
     await park_waiting(engine, batch, decision_wait, ended)
     await run_waits.resume_answered(engine, batch)  # a run parked in the pass its wait woke, the answer untaken
+    from evo_agents.hub.server import wait_cycles  # it wakes waits through run_waits
+
+    await wait_cycles.break_cycles(engine)  # two runs that wait on each other: the one below gets the other's answer
     await expire_parked(engine, batch, parked_for, ended)
     from evo_agents.hub.server import local_runs  # it moves runs through this module
 
@@ -325,6 +331,10 @@ async def recover_runs(
     from evo_agents.hub.server import browser_install  # it reads queued runs through queue_fit
 
     await browser_install.ask_for_queued(engine)  # a queued browser run whose owner's worker lacks only Chromium
+    from evo_agents.hub.server import ops_queue, system_seed  # plan hub-steward
+
+    await system_seed.seed_pass(engine)  # a project with no system gets its default orchestrator system, once
+    await ops_queue.ops_pass(engine)  # the operations events of each project with ops on, gathered by cause
     async with engine.begin() as conn:
         unclaimable = (
             select(r.c.id, w.c.name)

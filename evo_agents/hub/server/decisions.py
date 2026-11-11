@@ -82,7 +82,7 @@ from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from sqlalchemy import and_, case, false, func, insert, or_, select, true, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import autonomy_card, autonomy_levels, credential_requests, runs, tables
+from evo_agents.hub import autonomy_card, autonomy_levels, credential_requests, ops_events, runs, tables
 from evo_agents.hub.autonomy_levels import AUTO
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit, credential_answers, credential_resolver, principals, waiting_on
@@ -409,7 +409,8 @@ async def store_decision(
     ``held_plan_run`` reads, or for a local run (``local_runs``) the same columns. 409 past MAX_OPEN_DECISIONS open,
     422 for a step the plan does not have or an output of another run. A wait (``run_waits``) gives ``wake``, its
     columns wake_at and wake_on, and notifies nobody: it asks nobody anything. So does a credential request the hub
-    answers itself (``quiet``, ``_ask_credential``)."""
+    answers itself (``quiet``, ``_ask_credential``). A decision that asks someone writes ``decision.opened`` too
+    (``ops_events``)."""
     d = tables.decisions
     opened = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
     if (await conn.execute(opened)).scalar_one() >= MAX_OPEN_DECISIONS:
@@ -441,6 +442,14 @@ async def store_decision(
     await link_decision(conn, run_id, decision_id, body.output_ids)
     if wake is None and not quiet:
         await _notify_asked(conn, row, run_id, decision_id, key, body, asked)
+        await ops_events.decision_opened(
+            conn,
+            project_id=row.project_id,
+            decision_id=decision_id,
+            category=body.category,
+            run_id=run_id,
+            asked_of=asked,
+        )
     shown = f"decision #{decision_id} asked ({body.category}): {one_line(body.question)}"
     await write_event(
         conn, run_id, {"text": shown, "decision": {"id": decision_id, "category": body.category, "step": key}}

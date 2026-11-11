@@ -20,8 +20,10 @@
                                 next daemon to stop when this one dies first (``orphans``)
   runs/<run>/cred.sock    0600  the unix socket the daemon hands the run's leases through, to its own uid only, while
                                 the run holds them (``credentials``)
-  worktrees/<project>-<run>/    the run's git worktree, removed 7 days after the run ended; for a plan run, the
-                                agent's directory: a worktree of each repo and .evo-run/ (plan.yaml, result.json)
+  worktrees/<project>-<run>/    the run's git worktree, removed 7 days after the run ended (30 for a parked run),
+                                at once when its work merged or the drive has less free than disk_reserve_gb; for a
+                                plan run, the agent's directory: a worktree of each repo and .evo-run/ (plan.yaml,
+                                result.json)
 ```
 
 Every file is replaced atomically (``evo_agents.hub.client.write_atomic``), so a crash leaves the old file or the new
@@ -54,6 +56,7 @@ REVOKED_EXIT_VARIABLE = "EVO_WORKER_REVOKED_EXIT"
 # A daemon that updated its install to the tag nightly, or found it updated by another daemon of the same install, exits
 # with this status (EX_TEMPFAIL of sysexits.h): neither 0 nor EXIT_REVOKED, so launchd and systemd start the new one.
 EXIT_UPDATED = 75
+DISK_RESERVE_GB = 20.0  # WorkerConfig.disk_reserve_gb by default, the hub's own reserve (ops_events.DISK_LOW_GB)
 
 
 class WorkerStateError(Exception):
@@ -85,6 +88,9 @@ class WorkerConfig:
     repos: dict[str, dict] = field(default_factory=dict)
     # "<project>/<repo>" -> a path, set by hand; wins over what the registry and the hub say
     checkouts: dict[str, str] = field(default_factory=dict)
+    # the gigabytes the drive of worktrees/ keeps free: below it the daemon removes the worktrees of ended runs no
+    # parked or running run needs, and claims no run while it stays below (``daemon_cleanup.Cleanup.make_room``)
+    disk_reserve_gb: float = DISK_RESERVE_GB
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -99,6 +105,9 @@ class WorkerConfig:
             raise ValueError("config.json lacks the hub URL, the worker id or the worker name")
         if not isinstance(config.projects, list) or not all(isinstance(p, str) for p in config.projects):
             raise ValueError("config.json has no list of projects")
+        reserve = config.disk_reserve_gb
+        if isinstance(reserve, bool) or not isinstance(reserve, int | float) or reserve < 0:
+            config.disk_reserve_gb = DISK_RESERVE_GB  # a value set by hand that is not a size: the default holds
         return config
 
 
