@@ -52,6 +52,38 @@ class Window(BaseModel):
         return self
 
 
+class PacingQuietHours(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start: TimeOfDay
+    end: TimeOfDay = Field(description="when it is not after start, the quiet hours run past midnight")
+
+    @model_validator(mode="after")
+    def _not_empty(self):
+        if self.start == self.end:
+            raise ValueError("the quiet hours' start and end are the same time: give them a length")
+        return self
+
+
+class Pacing(BaseModel):
+    """The Curator runs through the day instead of in a window: at any hour outside ``quiet_hours``, spending the
+    period's budget evenly (``curator.pace_line``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    period: curator.PacingPeriod = Field(description="day, from local midnight, or week, from Monday 00:00 local")
+    budget_usd: float = Field(gt=0, le=curator.MAX_PERIOD_BUDGET_USD, description="the most a period may cost")
+    quiet_hours: PacingQuietHours | None = Field(
+        None, description="local hours no run of the Curator is queued; null: none"
+    )
+    timezone: str = Field(
+        min_length=1,
+        max_length=curator.MAX_TIME_ZONE_CHARS,
+        pattern=curator.TIME_ZONE,
+        description="an IANA time zone, such as Asia/Ho_Chi_Minh",
+    )
+
+
 class Goal(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -122,8 +154,16 @@ class CharterBody(BaseModel):
     goals: list[Goal] = Field(
         default_factory=list, max_length=curator.MAX_GOALS, description="the product's goals, highest first"
     )
-    window: Window
-    night_budget_usd: float = Field(gt=0, le=curator.MAX_NIGHT_BUDGET_USD, description="the most a night may cost")
+    window: Window | None = Field(None, description="the night the Curator runs in; null with pacing")
+    pacing: Pacing | None = Field(
+        None, description="the Curator runs through the day on the period's budget instead of a window; null: a window"
+    )
+    night_budget_usd: float | None = Field(
+        None,
+        gt=0,
+        le=curator.MAX_NIGHT_BUDGET_USD,
+        description="the most a night may cost, with a window; null with pacing, whose budget_usd it is",
+    )
     run_budget_usd: float | None = Field(
         None, gt=0, le=curator.MAX_NIGHT_BUDGET_USD, description="the most one run may cost; null: what the night has"
     )
@@ -209,14 +249,28 @@ class CharterBody(BaseModel):
 
     @model_validator(mode="after")
     def _run_within_night(self):
-        if self.run_budget_usd is not None and self.run_budget_usd > self.night_budget_usd:
-            raise ValueError("run_budget_usd is over night_budget_usd: a run never gets more than the night has")
+        if self.pacing is not None and self.window is not None:
+            raise ValueError(
+                "a charter with pacing has no window: drop window, as the Curator runs at any hour outside "
+                "pacing.quiet_hours"
+            )
+        if self.pacing is not None and self.night_budget_usd is not None:
+            raise ValueError("a charter with pacing has no night_budget_usd: its budget is pacing.budget_usd")
+        if self.pacing is None and self.window is None:
+            raise ValueError("a charter needs a window, or pacing to run through the day")
+        if self.pacing is None and self.night_budget_usd is None:
+            raise ValueError("a charter with a window needs night_budget_usd")
+        most, name_of = (
+            (self.pacing.budget_usd, "pacing.budget_usd")
+            if self.pacing
+            else (self.night_budget_usd, "night_budget_usd")
+        )
+        if self.run_budget_usd is not None and self.run_budget_usd > most:
+            raise ValueError(f"run_budget_usd is over {name_of}: a run never gets more than the night has")
         caps = (("review", self.review.budget_usd), ("replay", self.replay.budget_usd))
         for name, cap in (*caps, ("history", self.history.budget_usd)):
-            if cap is not None and cap > self.night_budget_usd:
-                raise ValueError(
-                    f"{name}.budget_usd is over night_budget_usd: a run never gets more than the night has"
-                )
+            if cap is not None and cap > most:
+                raise ValueError(f"{name}.budget_usd is over {name_of}: a run never gets more than the night has")
         if not self.probes.models:  # the probes run on the builder's runtime and model unless the charter names others
             self.probes.models = [ProbeModel(runtime=self.builder.runtime, model=self.builder.model)]
         return self
@@ -257,8 +311,11 @@ class Schedule(BaseModel):
 
 
 class Night(BaseModel):
-    night: date = Field(description="the local date the window opened on: the night now, or the last one")
-    in_window: bool
+    night: date = Field(
+        description="the local date the window opened on: the night now, or the last one; with pacing, the period's "
+        "first date"
+    )
+    in_window: bool = Field(description="inside the window; with pacing, outside the quiet hours")
     local_time: str = Field(description="HH:MM now, in the charter's time zone")
     runs: int = Field(description="the runs the night shift queued that night")
     max_runs: int
@@ -314,7 +371,7 @@ class CuratorOverview(BaseModel):
     """Where a project's Curator stands, for Home: GET /v1/me/overview names it for each project with a charter."""
 
     state: CuratorState = Field(description="as GET /v1/projects/{p}/curator says it")
-    in_window: bool = Field(description="the charter's window is open now")
+    in_window: bool = Field(description="the charter's window is open now; with pacing, outside its quiet hours")
     active_run_id: int | None = Field(description="the run of the night shift queued or held now, if any")
     open_proposals: int = Field(description="the project's proposals that wait for an answer, that you may read")
 

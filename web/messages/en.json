@@ -5761,7 +5761,10 @@
           "waiting": "waiting for a decision",
           "parked": "parked",
           "review": "in review"
-        }
+        },
+        "waitWaiting": "The agent waits on something else{since, select, none {} other { since {since}}}. Nobody needs to answer: the run parks so it holds no worker, and goes on by itself.",
+        "waitParked": "Parked{since, select, none {} other { {since}}} so it holds no worker while it waits. It goes on by itself when what it waits for comes; nobody needs to answer.",
+        "waitReason": "Waits:"
       },
       "toast": {
         "dispatched": "Plan run #{id} dispatched",
@@ -6005,7 +6008,11 @@
         "loading": "Reading the decision…",
         "failed": "The decision could not be read here. It is in the Inbox too.",
         "localYou": "The Claude Code session asked you a question. Your answer reaches it at its next turn.",
-        "local": "The Claude Code session asked {login} a question."
+        "local": "The Claude Code session asked {login} a question.",
+        "waitTitle": "What the run waits for",
+        "waitWaiting": "Nobody needs to answer. The run parks at the end of the agent's turn, so it holds no worker, and goes on by itself when what it waits for comes.",
+        "waitParked": "Parked{since, select, none {} other { since {since}}}, so the run holds no worker while it waits. It goes on by itself when what it waits for comes; nobody needs to answer.",
+        "waitOpen": "The agent waits on something else and goes on by itself when it comes."
       },
       "log": {
         "title": "Log",
@@ -6512,7 +6519,11 @@
           "idle": "Idle for {duration}",
           "ended": "Ended after {duration}"
         },
-        "progressShort": "{done}/{total} steps"
+        "progressShort": "{done}/{total} steps",
+        "waitState": {
+          "waiting": "Waiting for {duration}",
+          "parked": "Parked for {duration}, holding no worker"
+        }
       },
       "preview": {
         "title": "Trace",
@@ -7896,7 +7907,8 @@
     "sub": {
       "duty": "Night shift as {owner}, {start} to {end} {timezone}",
       "paused": "Paused by {login} <ago></ago>",
-      "pausedByHub": "Paused by the circuit breaker <ago></ago>"
+      "pausedByHub": "Paused by the circuit breaker <ago></ago>",
+      "dutyPaced": "Paced shift as {owner}, through the {period} outside quiet hours, {timezone}"
     },
     "pause": "Pause",
     "pausing": "Pausing",
@@ -7974,7 +7986,10 @@
       "paused": "Paused",
       "pausedBy": "by {login},",
       "pausedByHub": "by the circuit breaker,",
-      "pauseReason": "Why"
+      "pauseReason": "Why",
+      "pacedValue": "Through the {period}, quiet {start} to {end}, {timezone}",
+      "pacedAlways": "Through the {period}, no quiet hours, {timezone}",
+      "capsPaced": "Each {period}"
     },
     "lastReview": {
       "title": "Last review run",
@@ -8011,7 +8026,8 @@
         "done": "{done, plural, one {# run} other {# runs}} done",
         "empty": "Nothing queued"
       },
-      "mobileMeta": "{runs, plural, one {# run} other {# runs}}, {cost}, {proposals, plural, one {# proposal} other {# proposals}}"
+      "mobileMeta": "{runs, plural, one {# run} other {# runs}}, {cost}, {proposals, plural, one {# proposal} other {# proposals}}",
+      "emptyPaced": "No run yet: the Curator runs through the {period} outside its quiet hours, {timezone}."
     },
     "proposals": {
       "caption": "Proposals of {project}",
@@ -8494,7 +8510,9 @@
       "historyBudgetOff": "None: no history run",
       "historyModelDefault": "the cheapest model the node reports",
       "probeBudgetNone": "None: no probe runs",
-      "probeModelsBuilder": "The Builder's runtime and model"
+      "probeModelsBuilder": "The Builder's runtime and model",
+      "pacedBudget": "{budget} a {period}, spent evenly",
+      "pacedNote": "This charter is paced: the Curator runs through the {period} outside its quiet hours and spends {budget} evenly over it. The form keeps the pacing as written and edits its time zone; the CLI changes the pacing."
     },
     "metaHistory": "History of {project}",
     "metaGraph": "Graph health of {project}",
@@ -9005,6 +9023,10 @@
       "unreadable": "The probe's weeks could not be read.",
       "retry": "Try again",
       "fixOf": "This proposal fixes the rule of <link>change #{change}</link>, whose probe recurred two weeks in a row."
+    },
+    "periods": {
+      "day": "day",
+      "week": "week"
     }
   },
   "releases": {
@@ -12916,6 +12938,197 @@
       "ended": "Ended",
       "never": "never",
       "notYet": "not yet"
+    }
+  },
+  "wait": {
+    "pill": {
+      "workflow": "Waiting on {workflow} {done}/{total}",
+      "workflowNoSteps": "Waiting on {workflow}",
+      "planStep": "Waiting on {plan} step {step}",
+      "agent": "Waiting on @{handle}",
+      "agentRun": "Waiting on run #{run}",
+      "mergeCheck": "Waiting on the merge check of PR #{number}",
+      "time": "Waiting until {time}",
+      "event": "Waiting on {name}",
+      "reason": "Waiting: {reason}",
+      "unknown": "Waiting on something else"
+    },
+    "span": {
+      "seconds": "{seconds}s",
+      "minutes": "{minutes}m {seconds}s",
+      "hours": "{hours} h {minutes} min"
+    },
+    "headline": {
+      "workflow_run": "Waiting for GitHub Actions",
+      "plan_step": "Waiting for a step of another plan",
+      "agent_answer": "Waiting for the answer of another agent",
+      "merge_check": "Waiting for the merge check of a pull request",
+      "time": "Waiting for a time",
+      "event": "Waiting for an event of the hub",
+      "came": "What the run waited for came, and the agent went on",
+      "youWoke": "You woke the agent",
+      "woke": "{login} woke the agent",
+      "stopped": "The agent went on without it",
+      "closed": "The wait ended"
+    },
+    "reason": "The agent's reason:",
+    "lead": "Nobody needs to answer: when it comes, the hub wakes the agent on the same worker.",
+    "nobody": "Nobody needs to answer: the hub wakes the agent when it comes. Only {owner} can wake it sooner.",
+    "raw": "The wait as the hub keeps it",
+    "timeline": {
+      "label": "Where the wait stands",
+      "asked": "Asked",
+      "askedStep": "by the agent of step {step}",
+      "askedAgent": "by the agent",
+      "parked": "Parked",
+      "parkedNote": "the wait holds no worker",
+      "parksSoon": "at the end of the agent's turn",
+      "notParked": "the run did not park",
+      "source": {
+        "workflow_run": "GitHub Actions: {name}",
+        "plan_step": "The other plan's step",
+        "agent_answer": "The other agent's answer",
+        "merge_check": "The merge check",
+        "time": "The time",
+        "event": "The hub's event"
+      },
+      "sourceSpan": "{state}, {elapsed}",
+      "actions": {
+        "done": "succeeded",
+        "running": "running",
+        "failed": "failed",
+        "skipped": "skipped",
+        "cancelled": "cancelled",
+        "queued": "queued"
+      },
+      "notYet": "not yet",
+      "came": "came",
+      "over": "over",
+      "goesOn": "The agent goes on",
+      "wentOn": "The agent went on",
+      "goesOnWhen": "when it comes, or at {time}",
+      "goesOnCome": "when it comes",
+      "ended": "the wait ended without it",
+      "wokeHub": "the hub woke it",
+      "saidNow": "{login} said Go on now",
+      "saidStop": "{login} said Stop waiting"
+    },
+    "boxes": {
+      "wakesWhen": "Wakes the agent when",
+      "when": {
+        "workflow_run": "the workflow run completes, or a job of it fails",
+        "plan_step": "step {step} of {plan} is {wanted}",
+        "agent_answer": "the other agent answers",
+        "agent_run": "run #{run} ends with its answer, or why it failed",
+        "merge_check": "the judges' verdict is in",
+        "time": "the time comes",
+        "event": "the hub records {name}"
+      },
+      "atLatest": "At the latest",
+      "latest": "{time} ({utc} UTC)",
+      "in": "in {duration}",
+      "woke": "Woke",
+      "byHub": "by the hub",
+      "byLogin": "by {login}"
+    },
+    "source": {
+      "title": {
+        "workflow_run": "A run of GitHub Actions",
+        "plan_step": "A step of another plan",
+        "agent_answer": "The answer of another agent",
+        "merge_check": "The merge check of a pull request",
+        "time": "A time",
+        "event": "An event of the hub"
+      },
+      "plan": {
+        "step": "{plan}, step {step}",
+        "status": "Status: {status}; wakes the agent at {wanted}",
+        "unknown": "not read",
+        "run": "Run #{id}, {state}",
+        "open": "Open step {step}"
+      },
+      "agent": {
+        "someone": "Another agent",
+        "run": "run #{id}",
+        "state": "The run is {state}",
+        "active": "Last active <time></time>",
+        "question": "The question the agent asked",
+        "openChat": "Open the work chat"
+      },
+      "merge": {
+        "pr": "PR #{number} at {sha}",
+        "state": {
+          "judging": "Judging",
+          "passed": "Passed",
+          "failed": "Failed"
+        },
+        "judges": "{spoke} of {total} judges spoke",
+        "judge": "{round} round: {state}",
+        "open": "Open the pull request"
+      },
+      "time": {
+        "until": "Until {time} ({utc} UTC)",
+        "left": "{duration} left",
+        "came": "The time came",
+        "none": "The hub keeps no time for this wait."
+      },
+      "event": {
+        "notYet": "not yet recorded",
+        "contains": "What the event must contain",
+        "unnamed": "A kind the hub has no words for shows its name and these key and value chips."
+      }
+    },
+    "workflow": {
+      "state": {
+        "done": "succeeded",
+        "running": "running",
+        "failed": "failed",
+        "skipped": "skipped",
+        "cancelled": "cancelled",
+        "queued": "queued"
+      },
+      "repo": "Repo",
+      "branch": "Branch",
+      "commit": "Commit",
+      "status": "Status",
+      "opensOnGitHub": " (opens on GitHub)",
+      "took": "took {elapsed}",
+      "soFar": "{elapsed} so far",
+      "eta": "{elapsed} so far, about {left} left",
+      "etaTitle": "Estimated from how long the last runs of {workflow} took",
+      "now": "Step {n} of {total} in {job}: {name}",
+      "failedAt": "Failed at step {n}, {name}",
+      "bar": "{done} of {total} steps done",
+      "barLabel": "Steps of {workflow}",
+      "noJobs": "The hub has not read the jobs of this run yet.",
+      "moreJobs": "{count, plural, one {# more job} other {# more jobs}} the hub has not read yet",
+      "jobSteps": "{done} of {total} steps",
+      "jobStepsAll": "{total} steps",
+      "openJob": "Open the job {job} on GitHub",
+      "stepLink": ", {state}, opens on GitHub"
+    },
+    "actions": {
+      "note": "Nobody needs to answer. Go on now wakes the agent at once; Stop waiting has it go on without what it waits for.",
+      "goOn": "Go on now",
+      "stop": "Stop waiting",
+      "confirmNow": "Wake the agent now?",
+      "confirmNowText": "The agent goes on at once, as if what it waits for came.",
+      "confirmStop": "Go on without it?",
+      "confirmStopText": "The agent stops waiting and goes on without what it waits for.",
+      "noteLabel": "Note for the agent (optional)",
+      "long": "The note is longer than 4 KiB.",
+      "cancel": "Cancel",
+      "wake": "Wake the agent",
+      "stopSend": "Stop waiting",
+      "woke": "The agent goes on now.",
+      "stopped": "The agent goes on without it.",
+      "failed": "The wait could not be ended"
+    },
+    "inbox": {
+      "title": "Runs waiting on something else, no answer needed",
+      "count": "{count, plural, one {# wait} other {# waits}}",
+      "run": "Run #{run}",
+      "asked": "asked <time></time>"
     }
   }
 }

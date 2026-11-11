@@ -29,6 +29,7 @@ import json
 import re
 from collections.abc import Iterable, Mapping
 
+from evo_agents.hub import curator
 from evo_agents.hub.runs import MAX_PROMPT_BYTES, clip
 
 HISTORY_KEY_HEADER = "X-Evo-History-Key"  # a history run's own credential, which its claim hands the daemon alone
@@ -111,12 +112,12 @@ def _number(value) -> float | None:
 
 def budget_usd(charter: Mapping) -> float:
     """The most the night's history run may cost: the charter's ``history.budget_usd``, else the smaller of
-    DEFAULT_BUDGET_USD and DEFAULT_SHARE of its ``night_budget_usd``; 0 when it runs none."""
+    DEFAULT_BUDGET_USD and DEFAULT_SHARE of its night budget (``curator.period_budget``); 0 when it runs none."""
     settings = charter.get("history") if isinstance(charter.get("history"), Mapping) else {}
     cap = _number(settings.get("budget_usd"))
     if cap is not None:
         return max(cap, 0.0)
-    night = _number(charter.get("night_budget_usd")) or 0.0
+    night = curator.period_budget(charter)
     return round(min(DEFAULT_BUDGET_USD, night * DEFAULT_SHARE), 4)
 
 

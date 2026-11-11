@@ -154,7 +154,7 @@ projects = Table(
     Column("trusted_owners", ARRAY(Text), nullable=False, server_default="{}"),  # 0170
     Column("archived_at", DateTime(timezone=True)),  # 0198
     Column("archived_by", BigInteger),  # 0198
-    Column("systems_seeded_at", DateTime(timezone=True)),  # 0237: the hub gave it its first agent system
+    Column("systems_seeded_at", DateTime(timezone=True)),  # 0238: the hub gave it its first agent system
     ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="projects_created_by_fkey"),
     ForeignKeyConstraint(["archived_by"], ["users.id"], ondelete="RESTRICT", name="projects_archived_by_fkey"),
     CheckConstraint(column("archived_at").is_(None) == column("archived_by").is_(None), name="projects_archived_check"),
@@ -604,6 +604,7 @@ runs.append_constraint(
     )
 )
 notifications, notification_channels, notification_deliveries = tables_decisions.notification_tables(metadata)
+workflow_run_reads = tables_decisions.workflow_read_table(metadata)  # the hub's latest read of a waited run (0236)
 secrets, secret_bindings, credential_leases = tables_credentials.credential_tables(metadata)  # 0011
 
 charters, schedules = tables_night.night_tables(metadata)  # the night shift (0012)
@@ -861,4 +862,4 @@ kg_entity_map_runs = tables_kg.entity_map_runs(metadata)  # each run that maps t
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
 )
-ops_cursors, ops_batches, ops_items = tables_ops.ops_tables(metadata)  # the queue of operations events (0237)
+ops_cursors, ops_batches, ops_items = tables_ops.ops_tables(metadata)  # the queue of operations events (0238)

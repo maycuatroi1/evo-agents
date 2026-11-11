@@ -2,7 +2,7 @@
 "Orchestrator", an entry node and an orchestrator node on a profile the hub creates for it, as the project's default
 system with its ops off.
 
-The hub seeds a project once (``projects.systems_seeded_at``, 0237): the pass (``seed_pass``, in the reaper's pass
+The hub seeds a project once (``projects.systems_seeded_at``, 0238): the pass (``seed_pass``, in the reaper's pass
 every minute) looks at each project not seeded yet, gives it the system when it has none, and marks it seeded either
 way. A project whose default system was deleted later stays without one until an admin sets another.
 """
@@ -105,7 +105,7 @@ async def seed(conn: AsyncConnection, project_id: int) -> str | None:
         return None
     await conn.execute(update(p).values(systems_seeded_at=func.now()).where(p.c.id == project_id))
     oldest = await conn.scalar(select(func.min(s.c.id)).where(s.c.project_id == project_id))
-    if oldest is not None:  # one an admin made before this pass: the oldest is the default, as 0237 made it
+    if oldest is not None:  # one an admin made before this pass: the oldest is the default, as 0238 made it
         if await conn.scalar(select(s.c.id).where(s.c.project_id == project_id, s.c.is_default)) is None:
             await conn.execute(update(s).values(is_default=True).where(s.c.id == oldest))
         return None

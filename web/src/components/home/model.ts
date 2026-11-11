@@ -3,6 +3,7 @@ import type { Route } from "next";
 import { workerView } from "@/components/workers/model";
 import type { Worker } from "@/components/workers/queries";
 import type { components } from "@/lib/api/schema";
+import { isWait, onlyWaits } from "@/lib/waits";
 
 /**
  * How Home reads GET /v1/me/overview (web/DESIGN.md, Home): when it asks again, what the metric strip names behind each
@@ -53,9 +54,10 @@ export function homeRefreshInterval(query: { state: { data?: Overview } }): numb
  * The decisions Needs you lists: the open ones asked of the visitor (`yours`: the person the agent asked, else the
  * principal of an autonomy gate's run, else the run's owner). The API sends those first and the oldest first, so the
  * order is kept. A question asked of anyone else shows in In flight, on its waiting run, with whose answer it waits for.
+ * A wait asks nobody anything (web/DESIGN.md, The wait panel): it shows in In flight, on its run, as what it waits for.
  */
 export function decisionsForYou(overview: Pick<Overview, "open_decisions">): OverviewDecision[] {
-  return overview.open_decisions.filter((decision) => decision.yours);
+  return overview.open_decisions.filter((decision) => decision.yours && !isWait(decision));
 }
 
 /** The runs whose agent works now, as the API orders them: the newest first. */
@@ -76,6 +78,12 @@ export function lastFailed(overview: Pick<Overview, "recent_runs">): OverviewRun
 /** The open decision a waiting or parked run waits on, so In flight can say whose answer it needs. */
 export function decisionOfRun(overview: Pick<Overview, "open_decisions">, run: Pick<OverviewRun, "id" | "project">): OverviewDecision | null {
   return overview.open_decisions.find((decision) => decision.run_id === run.id && decision.project === run.project) ?? null;
+}
+
+/** The wait a run is on, when every open decision of it the overview lists is a wait: it asks nobody anything. */
+export function waitOfRun(overview: Pick<Overview, "open_decisions">, run: Pick<OverviewRun, "id" | "project">): OverviewDecision | null {
+  const open = overview.open_decisions.filter((decision) => decision.run_id === run.id && decision.project === run.project);
+  return onlyWaits(open) ? (open.find(isWait) ?? null) : null;
 }
 
 /** Ended badly: the run failed or its worker stopped extending the lease. A cancel is the owner's own choice. */

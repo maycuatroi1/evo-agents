@@ -4,7 +4,8 @@ charter's ``brief_at``, in the charter's time zone.
 ``send_briefs`` is the job ``curator.brief``, every minute in the hub's worker. For each schedule of kind night_shift
 whose charter's brief is due (``curator.brief_due``: from brief_at until BRIEF_GRACE later, on a local day the project
 has no brief yet), in a transaction of its own, it counts the night the brief reports on (the night of
-``curator.night_of``, the one in progress when brief_at falls inside the window) and sends a notification of kind notice
+``curator.night_of``, the one in progress when brief_at falls inside the window; with pacing, the period of the day
+before, ``curator.brief_night``) and sends a notification of kind notice
 (``curator_brief``) to the schedule's owner, who gets it on the web and on every channel they turned on, Telegram
 included, through the outbox (``notifications.notify``). The brief holds:
 
@@ -384,13 +385,19 @@ def compose(project: str, facts: dict, zone: str) -> tuple[str, str]:
     title = f"Morning brief of {project}: {_count(counted['total'], 'run')}, {cost}, {waiting}"
     if not pool["ready"]:
         title += f", pool {pool['name']} has no node ready"
-    window = facts["window"]
+    window, pacing = facts.get("window"), facts.get("pacing")
     ended = ", ".join(
         f"{counted[state]} {state}" for state in ("done", "failed", "cancelled", "active") if counted[state]
     )
+    if pacing:
+        quiet = pacing.get("quiet_hours")
+        hours = f"quiet {quiet['start']} to {quiet['end']}" if quiet else "no quiet hours"
+        when = f"**{pacing['period'].capitalize()} of {facts['night']}** (paced, {hours}, {zone}"
+    else:
+        when = f"**Night of {facts['night']}** (window {window['start']} to {window['end']}, {zone}"
     night = (
-        f"**Night of {facts['night']}** (window {window['start']} to {window['end']}, {zone}"
-        + (", still open" if facts["in_window"] else "")
+        when
+        + (", still open" if facts["in_window"] and not pacing else "")
         + f"): {_count(counted['total'], 'run')}"
         + (f", {ended}" if ended else "")
         + f"; cost {cost}."
@@ -467,12 +474,13 @@ async def _facts(conn: AsyncConnection, due, access: ProjectAccess, night, insid
     paused = (
         await conn.execute(select(tables.schedules.c.paused_at.is_not(None)).where(tables.schedules.c.id == due.id))
     ).scalar_one()
-    moment = await conn.scalar(select(func.timezone(body["window"]["timezone"], literal(due.local_now))))
+    moment = await conn.scalar(select(func.timezone(curator.zone_of(body), literal(due.local_now))))
     loop = await loop_notices.facts(conn, due.project_id, moment)  # None while the project's Loop is off
     found = {
         "night": night.isoformat(),
         "in_window": inside,
-        "window": body["window"],
+        "window": body.get("window"),
+        **({"pacing": body["pacing"]} if body.get("pacing") else {}),
         "paused": paused,
         "state": curator_state(paused, figures.active_run_id, inside),
         "runs": {
@@ -484,7 +492,7 @@ async def _facts(conn: AsyncConnection, due, access: ProjectAccess, night, insid
             "listed": listed[:MAX_LISTED],
         },
         "cost_usd": round(figures.cost_usd, 6),
-        "budget_usd": body["night_budget_usd"],
+        "budget_usd": curator.period_budget(body),
         "review_run": await _review(conn, run_ids),
         "merged": (await _merged(conn, run_ids))[:MAX_LISTED],
         "awaiting_merge": {"total": awaiting_total, "listed": awaiting},
@@ -544,10 +552,9 @@ async def _send(conn: AsyncConnection, due) -> str:
     if access is None or access.role is None:
         log.warning("morning brief skipped: its owner holds no grant", extra={"project": due.project})
         return "owner"
-    window = body["window"]
-    inside, night = curator.window_state(due.local_now, window["start"], window["end"])
+    inside, night = curator.brief_night(body, due.local_now)
     facts = await _facts(conn, due, access, night, inside)
-    title, text = compose(due.project, facts, window["timezone"])
+    title, text = compose(due.project, facts, curator.zone_of(body))
     stored = {"title": one_line(title), **facts}
     if len(json.dumps(stored, ensure_ascii=False).encode()) > MAX_BRIEF_BYTES:
         stored = {

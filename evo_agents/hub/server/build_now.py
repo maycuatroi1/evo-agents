@@ -45,7 +45,8 @@ GATE_REFUSALS = {  # why the night shift's gate stays shut, by the word ``gate_o
     "outside": "the night shift has no change of the Curator waiting",
     "owner": "the night shift's owner holds no writer grant on the project",
     "max_runs": "the night had max_runs_per_night runs already: raise it in the charter, or wait for the next night",
-    "spent": "the night's budget is spent: raise night_budget_usd in the charter, or wait for the next night",
+    "spent": "the night's budget is spent: raise night_budget_usd (pacing.budget_usd) in the charter, or wait for the "
+    "next night",
     "worker": "the worker on duty takes no run now (offline, draining, revoked, or not serving the project)",
     "pool": "the pool on duty has no node ready for a run now",
 }

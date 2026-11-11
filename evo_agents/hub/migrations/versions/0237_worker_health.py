@@ -1,7 +1,7 @@
 """Worker health: the free disk of a worker's worktrees and the login of each of its runtimes.
 
-Revision ID: 0236
-Revises: 0235
+Revision ID: 0237
+Revises: 0236
 Create Date: 2026-11-11
 
 workers takes health, what the worker's last heartbeat said of its machine (plan hub-steward, criterion a3):
@@ -16,8 +16,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision = "0236"
-down_revision = "0235"
+revision = "0237"
+down_revision = "0236"
 branch_labels = None
 depends_on = None
 

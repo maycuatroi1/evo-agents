@@ -1,4 +1,4 @@
-"""The tables of a project's queue of operations events (0237, plan hub-steward), which ``evo_agents.hub.tables`` adds
+"""The tables of a project's queue of operations events (0238, plan hub-steward), which ``evo_agents.hub.tables`` adds
 to its metadata and exposes as its own attributes (``tables.ops_cursors``, ``tables.ops_batches``,
 ``tables.ops_items``): queries name them there. ``evo_agents.hub.ops_queue`` describes the model.
 
@@ -6,7 +6,7 @@ to its metadata and exposes as its own attributes (``tables.ops_cursors``, ``tab
   holds the Loop's.
 - ops_batches: the items of one cause key (kind, cause, subject) of a project, gathered until ``closes_at``: ``open``
   while it gathers (at most one per key, ``ops_batches_open_key``), then ``ready`` when it closed with items left, or
-  ``empty`` when every item left before; ``running`` once the hub opened its ops thread (``thread_id``, 0238) to the
+  ``empty`` when every item left before; ``running`` once the hub opened its ops thread (``thread_id``, 0239) to the
   Orchestrator of the default system, whose run it keeps, and ``done`` when that run ended; ``recurring`` when its
   cause key came back often (``server.ops_threads``).
 - ops_items: each operations event the queue took into a batch, with the ids it names, ``pending`` until tier 0
@@ -74,8 +74,8 @@ def _batches(metadata: MetaData) -> Table:
         Column("closes_at", DateTime(timezone=True), nullable=False),
         _when("closed_at"),
         Column("run_id", BigInteger),
-        Column("thread_id", BigInteger),  # the ops thread opened for it (0238)
-        Column("recurring", Boolean, nullable=False, server_default=false()),  # its cause key came back often (0238)
+        Column("thread_id", BigInteger),  # the ops thread opened for it (0239)
+        Column("recurring", Boolean, nullable=False, server_default=false()),  # its cause key came back often (0239)
         _key(name, "project_id", "projects", ondelete="CASCADE"),
         _key(name, "run_id", "runs", ondelete="SET NULL"),
         _key(name, "thread_id", "orchestrator_threads", ondelete="SET NULL"),

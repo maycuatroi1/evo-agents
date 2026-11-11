@@ -450,6 +450,19 @@ def test_waiting_on_you_counts_the_questions_asked_of_you_not_those_of_your_runs
     assert [(p["name"], p["open_decisions"]) for p in shown["projects"]] == [(B, 1), (A, 3)]
 
 
+def test_waiting_on_you_leaves_out_a_wait_which_asks_nobody(client, members, world, hub_db):
+    decisions = tables.decisions
+    sql(hub_db, decisions.update().values(category="wait").where(decisions.c.id == world["d_vault"]))
+    shown = overview(client, members[OWNER])
+    # The wait is still listed, with its category, so the web can show it as a wait and not as a question to answer.
+    wait = by_id(shown["open_decisions"])[world["d_vault"]]
+    assert (wait["category"], wait["yours"]) == ("wait", True)
+    asks = [item["id"] for item in shown["open_decisions"] if item["yours"] and item["category"] != "wait"]
+    assert shown["counts"]["waiting_on_you"] == len(asks)
+    # the project's own count is still every open decision the caller reads
+    assert [(p["name"], p["open_decisions"]) for p in shown["projects"]] == [(B, 1), (A, 3)]
+
+
 def test_done_by_day_follows_utc_days(client, members, hub_db):
     assert sql(hub_db, select(func.current_setting("TimeZone"))) == [(SESSION_ZONE,)]
     wid = add_worker(client, members[OWNER], "mac-mini")["id"]

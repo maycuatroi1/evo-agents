@@ -30,8 +30,8 @@ class System:
     updated_by: str | None
     created_at: datetime
     updated_at: datetime
-    is_default: bool = False  # the project's default system (0237)
-    ops_paused_at: datetime | None = None  # its ops hold their batches since then (0237)
+    is_default: bool = False  # the project's default system (0238)
+    ops_paused_at: datetime | None = None  # its ops hold their batches since then (0238)
     ops_paused_reason: str | None = None
 
 

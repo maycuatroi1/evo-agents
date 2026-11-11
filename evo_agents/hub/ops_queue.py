@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import hub_events, system_spec, tables
 
-BATCH_STATES = ("open", "ready", "empty", "running", "done")  # 0237; running and done are the run's (a later step)
+BATCH_STATES = ("open", "ready", "empty", "running", "done")  # 0238; running and done are the run's (a later step)
 CLOSED = ("ready", "empty", "running", "done")
 ITEM_STATES = ("pending", "handled")
 # The failure causes of the worker's machine, not of the work: their runs gather by worker, not by plan.

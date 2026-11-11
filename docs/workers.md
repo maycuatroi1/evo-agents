@@ -1410,7 +1410,7 @@ and `logins`, the login of each runtime, `ok`, `unauthorized`, `missing` (not on
 10 seconds, or one it cannot read), from the runtime's own status command (`claude auth status --json`,
 `codex login status`, `opencode auth list`), run every 300 seconds in a thread. Only the exit status and the shape of
 the answer are read: no credential value is read or sent. Each heartbeat replaces what the hub holds
-(`workers.health`, schema 0236), one without it clears it, and `GET /v1/workers` shows it as `health`. When its state
+(`workers.health`, schema 0237), one without it clears it, and `GET /v1/workers` shows it as `health`. When its state
 changes (the disk under or over its reserve, 20 GB for a daemon that says none, or a login), the hub writes
 `worker.health` into each project the worker serves (`docs/hub.md`, Operations events).
 
@@ -2877,7 +2877,8 @@ that names no path never waits. A step already done, or already running, is stil
 ### Runs of the night shift
 
 The night shift of a project's charter (`docs/curator.md`) queues its runs on the charter's worker on duty, as that
-worker's owner, headless and with approval `auto`: the night's review run and history run, judge runs, replay runs, probe runs and
+worker's owner, headless and with approval `auto`, inside the charter's window or, under its `pacing`, at any hour
+outside its quiet hours while a node of the pool holds no run a member dispatched: the night's review run and history run, judge runs, replay runs, probe runs and
 Builders of the Curator, and plan runs of the plans the charter's `night_plans` lists. Each carries caps the daemon
 enforces (`budget` in the claim, `evo_agents.hub.curator`):
 

@@ -41,6 +41,7 @@ export {
   type RoleForm,
   timeZones,
 } from "./charter-model";
+export { periodBudget, type ShiftHours, shiftHours } from "./shift-hours";
 
 function isProposalState(value: string | null | undefined): value is ProposalState {
   return (PROPOSAL_STATES as readonly string[]).includes(value ?? "");

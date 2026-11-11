@@ -19,10 +19,10 @@ from evo_agents.hub import curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server import plans as plan_routes
-from evo_agents.hub.server.curator import NIGHT_SHIFT
+from evo_agents.hub.server.curator import NIGHT_SHIFT, zone_sql
 from evo_agents.hub.server.infra_breaker import infra_of
 from evo_agents.hub.server.night_cost import next_run_budget, night_figures
-from evo_agents.hub.server.night_duty import Duty, on_duty
+from evo_agents.hub.server.night_duty import Duty, idle_nodes, on_duty
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run, plan_run_repos
@@ -52,7 +52,7 @@ def due_schedules(now: datetime | None):
             u.c.login.label("owner"),
             c.c.revision,
             c.c.body,
-            func.timezone(c.c.body["window"]["timezone"].astext, moment).label("local_now"),
+            func.timezone(zone_sql(c.c.body), moment).label("local_now"),
             moment.label("now"),
         )
         .join_from(s, p, p.c.id == s.c.project_id)
@@ -176,7 +176,12 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=F
     (``build_now``) opens it though another run of the schedule is in flight. With
     ``figures_first`` (the job curator.collect), the night's figures are counted as soon as the window is open, before
     a run of the schedule held now ends. With ``on_demand`` (a KG optimize run asked for, ``kg_optimize``) the window
-    is not asked and nothing is cancelled."""
+    is not asked and nothing is cancelled.
+
+    With the charter's pacing, the window is the hours outside ``pacing.quiet_hours``, the night is the period, and
+    quiet hours hold the Curator's changes too (``quiet``) but for ``beside``; besides the caps of a night, a run goes
+    only while the period's cost is on the even-spend line (``pace``, ``curator.on_pace``) and a node of the pool on
+    duty holds no member's run (``taken``), unless ``beside`` or ``on_demand``, which a member asked for."""
     from evo_agents.hub.server.collect import Gate, ensure_figures  # it queues runs through this module
     from evo_agents.hub.server.outcomes import check_circuit  # it pauses through this module
 
@@ -185,14 +190,20 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=F
     found = (await conn.execute(locked)).one_or_none()
     if found is None:
         return "locked", None
-    window = due.body["window"]
-    inside, night = curator.window_state(due.local_now, window["start"], window["end"])
+    inside, night = curator.shift_state(due.body, due.local_now)
+    pacing = curator.pacing_of(due.body)
+    paced = pacing is not None and not beside and not on_demand
     if found.paused_at is None and await check_circuit(conn, due, night, found.updated_at):
         return "circuit", None
     if found.paused_at is not None:
         cancelled = await cancel_queued(conn, [due.id], f"the night shift of {due.project} is paused")
         return ("cancelled" if cancelled else "paused"), None
-    if not inside and not on_demand:
+    if not inside and not on_demand and pacing is not None:
+        why = f"the Curator of {due.project} keeps its quiet hours"
+        cancelled = await cancel_queued(conn, [due.id], why, changes_too=False)
+        if not beside:
+            return ("cancelled" if cancelled else "quiet"), None
+    elif not inside and not on_demand:
         why = f"the night shift of {due.project} is outside its window"
         cancelled = await cancel_queued(conn, [due.id], why, changes_too=False)
         if (cancelled and not beside) or not any_hour or not await changes_waiting(conn, due.project_id):
@@ -212,6 +223,10 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=F
     budget = next_run_budget(due.body, figures)
     if budget is None:
         return "spent", None
+    if paced and not curator.on_pace(
+        figures.cost_usd, pacing["budget_usd"], curator.period_elapsed(due.local_now, pacing["period"])
+    ):
+        return "pace", None
     access = access or await writer_access(conn, due)
     if access is None:
         return "owner", None
@@ -219,6 +234,9 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first=False, any_hour=F
     if duty is None:
         log.info("night shift waits for its pool", extra={"project": due.project, "why": why})
         return "pool", None
+    if paced and not await idle_nodes(conn, duty):
+        log.info("the Curator waits for a node no member's run holds", extra={"project": due.project})
+        return "taken", None
     return "", Gate(night=night, figures=figures, budget=budget, access=access, duty=duty, inside=inside)
 
 

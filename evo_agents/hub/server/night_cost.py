@@ -70,7 +70,7 @@ async def kind_cost(conn: AsyncConnection, schedule_id: int, night: date, kind: 
 
 def next_run_budget(charter: dict, figures: NightFigures) -> dict | None:
     """The caps of the next run of the night, or None when the night has less than MIN_RUN_USD left."""
-    left = charter["night_budget_usd"] - figures.cost_usd
+    left = curator.period_budget(charter) - figures.cost_usd
     if charter.get("run_budget_usd") is not None:
         left = min(left, charter["run_budget_usd"])
     if left < curator.MIN_RUN_USD:

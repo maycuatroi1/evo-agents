@@ -5604,6 +5604,7 @@
         "keys": [
           "goals",
           "window",
+          "pacing",
           "night_budget_usd",
           "run_budget_usd",
           "run_max_turns",
@@ -5670,6 +5671,7 @@
         "keys": [
           "goals",
           "window",
+          "pacing",
           "night_budget_usd",
           "run_budget_usd",
           "run_max_turns",
@@ -7837,6 +7839,7 @@
           "held_at",
           "wake_at",
           "wake_on",
+          "waiting_on",
           "outputs",
           "credential_request",
           "approval"
@@ -7982,6 +7985,7 @@
           "held_at",
           "wake_at",
           "wake_on",
+          "waiting_on",
           "outputs",
           "credential_request",
           "approval"
@@ -49612,6 +49616,28 @@
                 "title": "Q"
               },
               "description": "only those whose title or body holds these words"
+            },
+            {
+              "name": "handler",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "ops",
+                      "person"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "ops: only those the Orchestrator of a default system holds; person: only the others",
+                "title": "Handler"
+              },
+              "description": "ops: only those the Orchestrator of a default system holds; person: only the others"
             },
             {
               "name": "limit",
@@ -110817,6 +110843,105 @@
           ],
           "title": "AgentAccountWritten"
         },
+        "AgentAnswerWait": {
+          "properties": {
+            "handle": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handle",
+              "description": "the agent asked, @ left out"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "the agent's project"
+            },
+            "run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the agent's run whose end answers the wait"
+            },
+            "question": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Question",
+              "description": "what the waiting run asked it"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id",
+              "description": "the chat the question went to"
+            },
+            "thread_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Id",
+              "description": "the message that roots the thread of it"
+            },
+            "last_activity_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Activity At",
+              "description": "when the agent's run last wrote an event"
+            }
+          },
+          "type": "object",
+          "required": [
+            "handle",
+            "project",
+            "run",
+            "question",
+            "chat_id",
+            "thread_id",
+            "last_activity_at"
+          ],
+          "title": "AgentAnswerWait"
+        },
         "AgentAskIn": {
           "properties": {
             "handle": {
@@ -119983,14 +120108,40 @@
               "description": "the product's goals, highest first"
             },
             "window": {
-              "$ref": "#/components/schemas/Window"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Window"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the night the Curator runs in; null with pacing"
+            },
+            "pacing": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Pacing"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the Curator runs through the day on the period's budget instead of a window; null: a window"
             },
             "night_budget_usd": {
-              "type": "number",
-              "maximum": 1000.0,
-              "exclusiveMinimum": 0.0,
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Night Budget Usd",
-              "description": "the most a night may cost"
+              "description": "the most a night may cost, with a window; null with pacing, whose budget_usd it is"
             },
             "run_budget_usd": {
               "anyOf": [
@@ -120193,8 +120344,6 @@
           "additionalProperties": false,
           "type": "object",
           "required": [
-            "window",
-            "night_budget_usd",
             "project",
             "revision",
             "updated_by",
@@ -120239,14 +120388,40 @@
               "description": "the product's goals, highest first"
             },
             "window": {
-              "$ref": "#/components/schemas/Window"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Window"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the night the Curator runs in; null with pacing"
+            },
+            "pacing": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Pacing"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the Curator runs through the day on the period's budget instead of a window; null: a window"
             },
             "night_budget_usd": {
-              "type": "number",
-              "maximum": 1000.0,
-              "exclusiveMinimum": 0.0,
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Night Budget Usd",
-              "description": "the most a night may cost"
+              "description": "the most a night may cost, with a window; null with pacing, whose budget_usd it is"
             },
             "run_budget_usd": {
               "anyOf": [
@@ -120425,10 +120600,6 @@
           },
           "additionalProperties": false,
           "type": "object",
-          "required": [
-            "window",
-            "night_budget_usd"
-          ],
           "title": "CharterWrite"
         },
         "Chat": {
@@ -124258,7 +124429,7 @@
             "in_window": {
               "type": "boolean",
               "title": "In Window",
-              "description": "the charter's window is open now"
+              "description": "the charter's window is open now; with pacing, outside its quiet hours"
             },
             "active_run_id": {
               "anyOf": [
@@ -124894,6 +125065,17 @@
                 }
               ],
               "description": "a wait: the event of the hub that answers it sooner"
+            },
+            "waiting_on": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WaitingOn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a wait: what it waits for and where that stands, as the hub last knew it (``waiting_on``); null for any other decision"
             },
             "outputs": {
               "items": {
@@ -129822,6 +130004,59 @@
             "body"
           ],
           "title": "EventIn"
+        },
+        "EventPair": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "value": {
+              "type": "string",
+              "title": "Value",
+              "description": "the value as text, JSON for one that is not a text"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "value"
+          ],
+          "title": "EventPair"
+        },
+        "EventWait": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name",
+              "description": "what the kind is, for a kind the hub knows"
+            },
+            "contains": {
+              "items": {
+                "$ref": "#/components/schemas/EventPair"
+              },
+              "type": "array",
+              "title": "Contains"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "name",
+            "contains"
+          ],
+          "title": "EventWait"
         },
         "EventsAck": {
           "properties": {
@@ -143265,6 +143500,89 @@
           ],
           "title": "MergeCheckIn"
         },
+        "MergeCheckWait": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number",
+              "description": "the pull request's number"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url"
+            },
+            "head_sha": {
+              "type": "string",
+              "title": "Head Sha"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "judging",
+                "passed",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "judges": {
+              "items": {
+                "$ref": "#/components/schemas/MergeJudge"
+              },
+              "type": "array",
+              "title": "Judges"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "repo",
+            "number",
+            "title",
+            "url",
+            "head_sha",
+            "state",
+            "reason",
+            "judges"
+          ],
+          "title": "MergeCheckWait"
+        },
         "MergeEvent": {
           "properties": {
             "id": {
@@ -143594,6 +143912,59 @@
             "number"
           ],
           "title": "MergeGateIn"
+        },
+        "MergeJudge": {
+          "properties": {
+            "round": {
+              "type": "string",
+              "enum": [
+                "first",
+                "second"
+              ],
+              "title": "Round"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "judging",
+                "passed",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the judge run"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            }
+          },
+          "type": "object",
+          "required": [
+            "round",
+            "state",
+            "run_id",
+            "model"
+          ],
+          "title": "MergeJudge"
         },
         "MergeJudgeInputs": {
           "properties": {
@@ -144920,11 +145291,12 @@
               "type": "string",
               "format": "date",
               "title": "Night",
-              "description": "the local date the window opened on: the night now, or the last one"
+              "description": "the local date the window opened on: the night now, or the last one; with pacing, the period's first date"
             },
             "in_window": {
               "type": "boolean",
-              "title": "In Window"
+              "title": "In Window",
+              "description": "inside the window; with pacing, outside the quiet hours"
             },
             "local_time": {
               "type": "string",
@@ -145610,6 +145982,17 @@
               "type": "array",
               "title": "Outputs",
               "description": "the files it carries, oldest first: a decision's, or a notice run_outputs' (an output deleted since is left out), each with the URL its reader fetches the bytes from"
+            },
+            "ops": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OpsHolding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the batch of the ops queue whose Orchestrator (the project's default system's) holds it, with its thread; null when it waits on a person"
             }
           },
           "type": "object",
@@ -147745,6 +148128,24 @@
                 }
               ],
               "title": "Run Id"
+            },
+            "recurring": {
+              "type": "boolean",
+              "title": "Recurring",
+              "description": "its cause key closed 3 batches in 7 days: the system needs a fix",
+              "default": false
+            },
+            "thread": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread",
+              "description": "the hub web's path of its ops thread; null before it opened one"
             }
           },
           "type": "object",
@@ -147830,6 +148231,43 @@
             "reason"
           ],
           "title": "OpsFindingIn"
+        },
+        "OpsHolding": {
+          "properties": {
+            "batch_id": {
+              "type": "integer",
+              "title": "Batch Id"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "open",
+                "ready",
+                "running"
+              ],
+              "title": "State",
+              "description": "open while it gathers, ready until its thread opens, running then"
+            },
+            "thread": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread",
+              "description": "the hub web's path of the batch's ops thread; null before it opened"
+            }
+          },
+          "type": "object",
+          "required": [
+            "batch_id",
+            "state",
+            "thread"
+          ],
+          "title": "OpsHolding"
         },
         "OpsPause": {
           "properties": {
@@ -149681,7 +150119,7 @@
             "waiting_on_you": {
               "type": "integer",
               "title": "Waiting On You",
-              "description": "open decisions asked of you, which you answer"
+              "description": "open decisions asked of you, which you answer; a wait is not one"
             },
             "running": {
               "type": "integer",
@@ -150215,6 +150653,77 @@
             "error"
           ],
           "title": "OverviewRun"
+        },
+        "Pacing": {
+          "properties": {
+            "period": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week"
+              ],
+              "title": "Period",
+              "description": "day, from local midnight, or week, from Monday 00:00 local"
+            },
+            "budget_usd": {
+              "type": "number",
+              "maximum": 7000.0,
+              "exclusiveMinimum": 0.0,
+              "title": "Budget Usd",
+              "description": "the most a period may cost"
+            },
+            "quiet_hours": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PacingQuietHours"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "local hours no run of the Curator is queued; null: none"
+            },
+            "timezone": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$",
+              "title": "Timezone",
+              "description": "an IANA time zone, such as Asia/Ho_Chi_Minh"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "period",
+            "budget_usd",
+            "timezone"
+          ],
+          "title": "Pacing",
+          "description": "The Curator runs through the day instead of in a window: at any hour outside ``quiet_hours``, spending the\nperiod's budget evenly (``curator.pace_line``)."
+        },
+        "PacingQuietHours": {
+          "properties": {
+            "start": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "Start",
+              "description": "HH:MM, 24 hours, in the window's zone"
+            },
+            "end": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "End",
+              "description": "when it is not after start, the quiet hours run past midnight"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "start",
+            "end"
+          ],
+          "title": "PacingQuietHours"
         },
         "Page": {
           "properties": {
@@ -151559,6 +152068,75 @@
             "plan_id"
           ],
           "title": "PlanRunDispatch"
+        },
+        "PlanStepWait": {
+          "properties": {
+            "plan": {
+              "type": "string",
+              "title": "Plan"
+            },
+            "step": {
+              "type": "string",
+              "title": "Step"
+            },
+            "wanted": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wanted",
+              "description": "the status the wait waits for, such as done; null: any change"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "the step's title; null when the caller does not read the plan"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "the step's status now; null when the caller does not read the plan"
+            },
+            "run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the active run of the plan working on it, when the caller reads the plan"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plan",
+            "step",
+            "wanted",
+            "title",
+            "status",
+            "run"
+          ],
+          "title": "PlanStepWait"
         },
         "PlanSummary": {
           "properties": {
@@ -165974,12 +166552,55 @@
               ],
               "title": "Budget Usd",
               "description": "the most the review run may cost; null: as any run"
+            },
+            "trigger": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReviewTrigger"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "queue the review run of a night or period only when enough new evidence came since the previous one; null: one every night or period, its figures over days"
             }
           },
           "additionalProperties": false,
           "type": "object",
           "title": "ReviewSettings",
           "description": "How the night's review run of the Curator looks (``evo_agents.hub.review``)."
+        },
+        "ReviewTrigger": {
+          "properties": {
+            "min_new": {
+              "type": "integer",
+              "maximum": 1000.0,
+              "minimum": 1.0,
+              "title": "Min New",
+              "description": "new evidence since the previous review that queues one: failed runs of the agent's cause, new traces of an agent system with an optimizes edge, and turns of a person that correct the agent",
+              "default": 1
+            },
+            "min_gap_hours": {
+              "type": "integer",
+              "maximum": 720.0,
+              "minimum": 0.0,
+              "title": "Min Gap Hours",
+              "description": "the hours after the previous review before new evidence queues the next one",
+              "default": 24
+            },
+            "max_gap_days": {
+              "type": "integer",
+              "maximum": 30.0,
+              "minimum": 1.0,
+              "title": "Max Gap Days",
+              "description": "the days after the previous review that queue the next one whatever the evidence",
+              "default": 7
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "ReviewTrigger",
+          "description": "When the review run of a night or period is worth queuing (``curator.review_wait``): enough new evidence since\nthe previous review and a gap after it, or a long enough gap alone."
         },
         "Revision": {
           "properties": {
@@ -169106,6 +169727,29 @@
             "previous"
           ],
           "title": "RunReachWritten"
+        },
+        "RunRef": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "state"
+          ],
+          "title": "RunRef"
         },
         "RunRepo": {
           "properties": {
@@ -179163,6 +179807,12 @@
               ],
               "title": "Paused Reason"
             },
+            "spent_usd": {
+              "type": "number",
+              "title": "Spent Usd",
+              "description": "what the runs of its ops threads queued in the last 24 hours spent",
+              "default": 0
+            },
             "batches": {
               "additionalProperties": {
                 "type": "integer"
@@ -182734,6 +183384,27 @@
           ],
           "title": "TierSetting"
         },
+        "TimeWait": {
+          "properties": {
+            "wake_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wake At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "wake_at"
+          ],
+          "title": "TimeWait"
+        },
         "TimelineMark": {
           "properties": {
             "decision_id": {
@@ -186076,6 +186747,87 @@
           ],
           "title": "WaitIn"
         },
+        "WaitingOn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "workflow_run",
+                "plan_step",
+                "agent_answer",
+                "merge_check",
+                "time",
+                "event"
+              ],
+              "title": "Kind"
+            },
+            "workflow_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkflowRunWait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "plan_step": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PlanStepWait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "agent_answer": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AgentAnswerWait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "merge_check": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MergeCheckWait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "time": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TimeWait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "event": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EventWait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "title": "WaitingOn"
+        },
         "WakeOn": {
           "properties": {
             "kind": {
@@ -188187,6 +188939,415 @@
           ],
           "title": "WorkerUpdateNow",
           "description": "The last Update now of a worker: open while ended_at is null (POST /v1/workers/{id}/update-now)."
+        },
+        "WorkflowJob": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "conclusion": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conclusion"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "completed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Completed At"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "the job's page on GitHub"
+            },
+            "steps": {
+              "items": {
+                "$ref": "#/components/schemas/WorkflowStep"
+              },
+              "type": "array",
+              "title": "Steps"
+            },
+            "steps_total": {
+              "type": "integer",
+              "title": "Steps Total",
+              "description": "the steps GitHub lists for the job; steps keeps at most 60"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "status",
+            "conclusion",
+            "started_at",
+            "completed_at",
+            "url",
+            "steps",
+            "steps_total"
+          ],
+          "title": "WorkflowJob"
+        },
+        "WorkflowRunWait": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo",
+              "description": "owner/name"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "attempt": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt"
+            },
+            "workflow": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow",
+              "description": "the workflow's name"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "the run's title, such as its commit's subject"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            },
+            "sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sha"
+            },
+            "event": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event",
+              "description": "what started the run, such as push"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "as GitHub says it: queued, in_progress, completed ..."
+            },
+            "conclusion": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conclusion"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "updated_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated At"
+            },
+            "read_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Read At",
+              "description": "when the hub last read the run from GitHub; null before its first read"
+            },
+            "typical_seconds": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Typical Seconds",
+              "description": "the median time of the latest runs of the workflow that succeeded; null when not known"
+            },
+            "jobs": {
+              "items": {
+                "$ref": "#/components/schemas/WorkflowJob"
+              },
+              "type": "array",
+              "title": "Jobs",
+              "description": "the jobs of its latest attempt, in GitHub's order; past 40, those that failed or run are kept"
+            },
+            "jobs_total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Jobs Total",
+              "description": "the jobs GitHub lists for that attempt; null before the first read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "run_id",
+            "attempt",
+            "workflow",
+            "title",
+            "branch",
+            "sha",
+            "event",
+            "status",
+            "conclusion",
+            "url",
+            "created_at",
+            "started_at",
+            "updated_at",
+            "read_at",
+            "typical_seconds",
+            "jobs",
+            "jobs_total"
+          ],
+          "title": "WorkflowRunWait"
+        },
+        "WorkflowStep": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "conclusion": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conclusion"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "completed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Completed At"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "the step on GitHub: its job's page at #step:N:1"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "name",
+            "status",
+            "conclusion",
+            "started_at",
+            "completed_at",
+            "url"
+          ],
+          "title": "WorkflowStep"
         },
         "evo_agents__hub__server__memories__Conflict": {
           "properties": {
