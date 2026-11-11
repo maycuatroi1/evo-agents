@@ -1603,6 +1603,32 @@ def test_a_plan_run_whose_agent_stops_with_steps_left_is_sent_back_and_ends_done
     assert machine.origin_rev("beta", "refs/heads/feat/beta") is not None
 
 
+@pytest.mark.parametrize("leaves_work", [False, True])
+def test_a_plan_run_left_on_another_branch_fails_only_when_that_branch_holds_commits_origin_lacks(machine, leaves_work):
+    """Run 5122 of the hub: the agent merged its own PR from another branch and left the worktree there, with nothing
+    origin lacks, and the run failed with branch_mismatch. Now only a branch with work origin lacks fails the run."""
+    switch = [{"sh": "git -C alpha checkout -q -b side"}]
+    if leaves_work:
+        switch.append({"write": {"alpha/c.txt": "c\n"}})
+    machine.scenarios({f"plan:{PLAN}": [*step_one_done(), *step_two_done(), *switch, {"result": {"summary": "Both."}}]})
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()))
+        found.update(run=run_id, hub=hub, state=await hub.wait_state(run_id, "done", "failed"))
+
+    with_daemon(machine, run_it)
+    run = found["hub"].runs[found["run"]]
+    if leaves_work:
+        assert found["state"] == "failed" and run["failure_cause"] == "branch_mismatch", run
+        assert "is on refs/heads/side, not refs/heads/feat/alpha" in run["error"], run["error"]
+    else:
+        assert found["state"] == "done", (run, found["hub"].texts(found["run"]))
+        assert any(
+            "alpha is left on side with no commit origin lacks" in text for text in found["hub"].texts(found["run"])
+        )
+
+
 def test_a_plan_run_whose_agent_keeps_stopping_with_steps_left_pushes_and_fails(machine):
     """An agent that ends keep_going turns in a row after the first with the same steps to do: the run pushes what it
     did, so the next run goes on from it, and fails with steps_left for its triage, never done."""

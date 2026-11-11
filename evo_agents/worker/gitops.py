@@ -592,9 +592,9 @@ async def new_commits(cwd: Path, before: str | None, remote: str = "origin", lim
     return out.split() if code == 0 else []
 
 
-async def unpushed(cwd: Path, remote: str = "origin") -> bool:
-    """Whether HEAD has a commit that no branch of the remote has; True when git cannot tell."""
-    code, out, _ = await git(cwd, "rev-list", "--max-count=1", "HEAD", "--not", f"--remotes={remote}", check=False)
+async def unpushed(cwd: Path, remote: str = "origin", rev: str = "HEAD") -> bool:
+    """Whether ``rev`` has a commit that no branch of the remote has; True when git cannot tell."""
+    code, out, _ = await git(cwd, "rev-list", "--max-count=1", rev, "--not", f"--remotes={remote}", check=False)
     return code != 0 or bool(out.strip())
 
 
