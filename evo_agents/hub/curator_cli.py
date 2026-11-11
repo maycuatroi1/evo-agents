@@ -210,6 +210,13 @@ def _role(role: dict) -> str:
 def _review(settings: dict) -> str:
     cap = settings.get("budget_usd")
     spend = f"at most {money(cap)}" if cap is not None else "the night's caps"
+    trigger = settings.get("trigger")
+    if trigger:
+        return (
+            f"{settings.get('lenses', 3)} lenses, when {trigger['min_new']} new evidence came at least "
+            f"{trigger['min_gap_hours']} hours after the previous review, or {trigger['max_gap_days']} days went by; "
+            f"figures since the previous review, {spend}"
+        )
     return f"{settings.get('lenses', 3)} lenses a night, {settings.get('days', 7)} days of figures, {spend}"
 
 

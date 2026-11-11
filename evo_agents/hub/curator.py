@@ -35,6 +35,14 @@ period gone by, plus PACING_MARGIN of the budget, so what is left may be spent a
 a node no member's run holds, and the period has runs left. Quiet hours hold every run of the Curator, those of its
 changes too; a Builder a member asks for still goes. A charter has the window or pacing, never both.
 
+A charter's ``review.trigger`` ({min_new, min_gap_hours, max_gap_days}, none by default) queues the review run of a
+night or period only when it is worth it (``review_wait``): when the new evidence since the previous review (the
+failed runs whose cause is the agent's, not one of ENVIRONMENT_RUN_CAUSES; the new traces of an agent system with an
+optimizes edge; the turns of a person that correct the agent) reaches ``min_new`` and ``min_gap_hours`` have gone by
+since that review, or when ``max_gap_days`` have, or when there was no review yet. The figures, and the lens
+agent_system, then count from the previous review instead of over ``review.days``. A night or a period still has at
+most one review run; without a trigger every night or period has one, as before.
+
 At the charter's ``brief_at``, in its time zone, the hub sends the schedule's owner the morning brief of the night
 (``brief_due``, ``evo_agents.hub.server.brief``).
 
@@ -126,6 +134,12 @@ INFRA_CAUSES = (
     "runtime",
     "missing_tool",
 )
+# The causes of a failed run review.trigger does not count as new evidence: those of a dependency, and those of a
+# worker, its account or its setup; any other is the agent's.
+ENVIRONMENT_RUN_CAUSES = (*INFRA_CAUSES, "credentials", "environment", "no_worker", "worker_revoked", "origin")
+REVIEW_TRIGGER_NEW = (1, 1000)  # review.trigger.min_new
+REVIEW_TRIGGER_GAP_HOURS = (0, MAX_REVIEW_DAYS * 24)  # review.trigger.min_gap_hours
+REVIEW_TRIGGER_DAYS = (1, MAX_REVIEW_DAYS)  # review.trigger.max_gap_days
 HUB_CAUSES = ("network", "hub_5xx")  # of these the dependency is the hub, which every kind of run uses
 HUB = "hub"
 INFRA_BACKOFF_MINUTES = (
@@ -286,6 +300,35 @@ def brief_due(local_now: datetime, brief_at: str) -> bool:
     after, and a charter written in the afternoon waits for the next morning."""
     opens = datetime.combine(local_now.date(), parse_time(brief_at))
     return opens <= local_now < opens + BRIEF_GRACE
+
+
+# The review's trigger
+
+
+def review_trigger_of(charter: Mapping | None) -> Mapping | None:
+    """The charter's ``review.trigger``, or None: a review every night or period."""
+    settings = charter.get("review") if isinstance(charter, Mapping) else None
+    found = settings.get("trigger") if isinstance(settings, Mapping) else None
+    return found if isinstance(found, Mapping) else None
+
+
+def is_agents(cause: str | None) -> bool:
+    """Whether a run that failed of ``cause`` is new evidence for review.trigger: the cause is not the environment's."""
+    return cause not in ENVIRONMENT_RUN_CAUSES
+
+
+def review_wait(trigger: Mapping, last: datetime | None, now: datetime) -> str:
+    """What the trigger says at ``now`` of a review whose previous one was at ``last`` (None: none yet), before any
+    evidence is counted: ``first`` (no review yet) and ``max_gap`` (``max_gap_days`` went by) queue it; ``gap`` (fewer
+    than ``min_gap_hours`` went by) does not; ``count`` asks whether the new evidence reaches ``min_new``."""
+    if last is None:
+        return "first"
+    gone = now - last
+    if gone >= timedelta(days=int(trigger["max_gap_days"])):
+        return "max_gap"
+    if gone < timedelta(hours=int(trigger["min_gap_hours"])):
+        return "gap"
+    return "count"
 
 
 def _number(value) -> float | None:

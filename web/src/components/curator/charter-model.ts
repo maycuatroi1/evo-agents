@@ -2,6 +2,7 @@ import { PLAN_ID } from "@/lib/plans";
 
 import type { Charter, CharterWrite, Runtime } from "./queries";
 import type { Pacing } from "./shift-hours";
+export { ownTimeZone, timeZones } from "./time-zones";
 import { AUTO_MERGE_TIERS, GOAL_ID, LIMITS, LINE, PLANNED_TIERS, type Tier, TIME_OF_DAY, TIME_ZONE } from "./vocab";
 
 /**
@@ -13,6 +14,7 @@ import { AUTO_MERGE_TIERS, GOAL_ID, LIMITS, LINE, PLANNED_TIERS, type Tier, TIME
 export type RoleForm = { runtime: Runtime; model: string };
 export type ProbeModel = { runtime: Runtime; model?: string | null };
 export type CircuitInfra = NonNullable<NonNullable<Charter["circuit_breaker"]>["infra"]>;
+export type ReviewTrigger = NonNullable<NonNullable<Charter["review"]>["trigger"]>;
 
 /** The charter as the form edits it: every number as typed, every list one entry a line. */
 export type CharterForm = {
@@ -47,6 +49,8 @@ export type CharterForm = {
   reviewLenses: string;
   reviewDays: string;
   reviewBudget: string;
+  /** `review.trigger` as the charter wrote it, kept as it is; null, a review every night or period. */
+  reviewTrigger: ReviewTrigger | null;
   /** `replay.tasks`: the holdout tasks each change of a skill or an AGENTS.md is replayed on. */
   replayTasks: string;
   /** `replay.budget_usd`: what a night's replays may cost; empty, none is run. */
@@ -69,7 +73,7 @@ export type CharterForm = {
 };
 
 export type CharterField =
-  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "moreAutoMerge" | "plannedTiers" | "mergeWithoutCi" | "answerBy" | "probeModels" | "circuitInfra" | "pacing">
+  | Exclude<keyof CharterForm, "goals" | "reviewer" | "builder" | "judge" | "autoMerge" | "moreAutoMerge" | "plannedTiers" | "mergeWithoutCi" | "answerBy" | "probeModels" | "circuitInfra" | "pacing" | "reviewTrigger">
   | "goals"
   | `${"reviewer" | "builder" | "judge"}Model`;
 
@@ -147,6 +151,7 @@ export function charterForm(charter: Charter | null, first: { timezone: string }
       reviewLenses: "3",
       reviewDays: "7",
       reviewBudget: "",
+      reviewTrigger: null,
       replayTasks: String(REPLAY_TASKS),
       replayBudget: "",
       historyBudget: "",
@@ -186,6 +191,7 @@ export function charterForm(charter: Charter | null, first: { timezone: string }
     reviewLenses: String(charter.review?.lenses ?? 3),
     reviewDays: String(charter.review?.days ?? 7),
     reviewBudget: money(charter.review?.budget_usd),
+    reviewTrigger: charter.review?.trigger ?? null,
     replayTasks: String(charter.replay?.tasks ?? REPLAY_TASKS),
     replayBudget: money(charter.replay?.budget_usd),
     historyBudget: money(charter.history?.budget_usd),
@@ -336,7 +342,12 @@ export function charterBody(form: CharterForm): { body: CharterWrite; errors: nu
       protected_paths: protectedPaths ?? [],
       circuit_breaker: { max_failed_in_a_row: maxFailedInARow as number, ...(form.circuitInfra ? { infra: form.circuitInfra } : {}) },
       outcome_days: outcomeDays as number,
-      review: { lenses: reviewLenses as number, days: reviewDays as number, budget_usd: caps.reviewBudget },
+      review: {
+        lenses: reviewLenses as number,
+        days: reviewDays as number,
+        budget_usd: caps.reviewBudget,
+        ...(form.reviewTrigger ? { trigger: form.reviewTrigger } : {}),
+      },
       replay: { tasks: replayTasks as number, budget_usd: caps.replayBudget },
       history: { budget_usd: caps.historyBudget, model: historyModel },
       probes: { k: probeK as number, models: form.probeModels, budget_usd: probeBudget },
@@ -379,21 +390,3 @@ export const CHARTER_FIELDS: readonly CharterField[] = [
   "judgeModel",
   "hiddenChecks",
 ];
-
-/** The time zones the browser knows, for the field's suggestions; the hub checks the one written against Postgres. */
-export function timeZones(): string[] {
-  try {
-    return Intl.supportedValuesOf("timeZone");
-  } catch {
-    return [];
-  }
-}
-
-/** The visitor's own time zone, for a first charter. */
-export function ownTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-}

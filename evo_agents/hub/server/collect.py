@@ -50,7 +50,8 @@ gives the same figures: every list is ordered by its counts and then by keys.
 The review run is a run of kind review, dispatched as the owner of the schedule (dispatched_via schedule), pinned to the
 worker on duty, which must say it runs review runs, over the repos of the project the worker has a checkout of, with the
 Reviewer's runtime and model of the charter and the night's caps, the review's own (``review.budget_usd``) below them.
-A project has at most one review run a night, and one active at a time. Its prompt is ``review.build_review_prompt``
+A project has at most one review run a night, and one active at a time; under the charter's review.trigger, only a
+night it is due (``review_trigger``), with figures from the previous review. Its prompt is ``review.build_review_prompt``
 over the night's figures and the lenses of the night, which the run's first event names, and on a night of the lens
 product the plugins it may propose through (PRODUCT_PLUGINS the project enables); ``looks_through`` tells those
 plugins whether a run is such a review run.
@@ -59,6 +60,7 @@ plugins whether a run is such a review run.
 from __future__ import annotations
 
 import logging
+import math
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -96,6 +98,7 @@ from evo_agents.hub.server import (
     kg_pipeline,
     memory_promotion,
     product_figures,
+    review_trigger,
     runtime_figures,
     system_curation,
 )
@@ -521,7 +524,8 @@ def _night_row(project_id: int, night: date):
 async def ensure_figures(conn: AsyncConnection, due, night: date, access: ProjectAccess):
     """The night's figures of schedule ``due``'s project: counted and kept the first time, read after that; the row
     (id, figures, run_id). The first time also pushes the night's signal ``kg.query.grep_after_rate``
-    (``kg_labels.push_grep_after``)."""
+    (``kg_labels.push_grep_after``). Under the charter's review.trigger they are counted only once the review is due
+    (``review_trigger.review_due``), None until then, and from the previous review rather than over review.days."""
     found = (await conn.execute(_night_row(due.project_id, night))).one_or_none()
     if found is not None:
         return found
@@ -529,6 +533,14 @@ async def ensure_figures(conn: AsyncConnection, due, night: date, access: Projec
     days = int(settings.get("days") or review.REVIEW_DAYS)
     until = (await conn.execute(select(func.now()))).scalar_one()
     since = until - timedelta(days=days)
+    trigger = None
+    if curator.review_trigger_of(due.body) is not None:
+        trigger = await review_trigger.review_due(conn, due, access, until)
+        if trigger is None:
+            return None
+        if trigger["since"] is not None:
+            since = min(datetime.fromisoformat(trigger["since"]), until)
+            days = max(1, math.ceil((until - since) / timedelta(days=1)))
     figures, held, plans = await _counted(conn, access, since, until, due.owner_id)
     waiting = [session for session in held if session.numbers is not None]
     read = await history_figures.figures(conn, access)
@@ -538,6 +550,7 @@ async def ensure_figures(conn: AsyncConnection, due, night: date, access: Projec
         "days": days,
         "since": since.isoformat(),
         "until": until.isoformat(),
+        **({"trigger": trigger} if trigger is not None else {}),
         **figures,
         "kg_sync": await kg_sync_figures(conn, await keeper_of(conn, due.id), due.project),
         "weekly": await facet_figures.weekly(conn, access, plans, until, due.owner_id, waiting),
@@ -633,7 +646,7 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate, *, hold: bool = F
     except Exception:
         log.exception("the night's figures were not counted", extra={"project": due.project})
         return None
-    if row.run_id is not None:
+    if row is None or row.run_id is not None:  # not due yet under review.trigger, or reviewed already
         return None
     optimized = None
     if gate.inside:
@@ -655,7 +668,7 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate, *, hold: bool = F
         return None
     count = int((charter.get("review") or {}).get("lenses") or review.LENSES_PER_NIGHT)
     lenses = kg_optimize.with_lens(review.lenses_for(gate.night, count), optimized)
-    lenses = await system_curation.with_lens(conn, due.project_id, lenses, charter)
+    lenses = await system_curation.with_lens(conn, due.project_id, lenses, charter, row.figures)
     values = {
         "kind": "review",
         "project_id": due.project_id,
@@ -883,7 +896,7 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
     )
     if entities is not None and entities[2] > 0:  # the entities step's items that only a run with claude answers
         prompt += kg_entity_relay.prompt_line(view.project, entities[2])
-    return prompt + await system_curation.prompt_section(conn, row.project_id, list(lenses), charter)
+    return prompt + await system_curation.prompt_section(conn, row.project_id, list(lenses), charter, held)
 
 
 async def looks_through(conn: AsyncConnection, run_id: int, project_id: int, lens: str) -> bool:

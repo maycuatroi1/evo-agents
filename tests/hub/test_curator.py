@@ -476,6 +476,44 @@ def test_a_window_charter_without_pacing_round_trips_unchanged(night, hub_db):
     assert (night_now["budget_usd"], night_now["max_runs"]) == (2.0, 3)
 
 
+TRIGGER = {"min_new": 3, "min_gap_hours": 12, "max_gap_days": 3}
+
+
+def test_review_trigger_waits_its_gaps_before_any_evidence_is_counted():
+    last = NIGHT
+    assert curator.review_wait(TRIGGER, None, NIGHT) == "first"
+    assert curator.review_wait(TRIGGER, last, last + timedelta(hours=11, minutes=59)) == "gap"
+    assert curator.review_wait(TRIGGER, last, last + timedelta(hours=12)) == "count"
+    assert curator.review_wait(TRIGGER, last, last + timedelta(days=3)) == "max_gap"
+    assert curator.review_wait({**TRIGGER, "min_gap_hours": 0}, last, last) == "count"
+    assert curator.review_trigger_of(charter_body()) is None  # off by default
+    assert curator.review_trigger_of(charter_body(review={"trigger": TRIGGER})) == TRIGGER
+    assert curator.is_agents("verify_failed") and curator.is_agents(None) and curator.is_agents("push_conflict")
+    assert not any(curator.is_agents(cause) for cause in (*curator.INFRA_CAUSES, "credentials", "no_worker"))
+
+
+def test_review_trigger_round_trips_and_a_charter_without_one_stores_none(night, hub_db):
+    client, owner = night.client, night.headers["owner"]
+    first = written(client, owner, charter_body())
+    c = tables.charters
+    assert "trigger" not in sql(hub_db, select(c.c.body))[0][0]["review"]  # a4: an old charter stores what it did
+    assert shown(client, owner)["review"]["trigger"] is None
+    assert written(client, owner, shown(client, owner))["revision"] == first["revision"]
+    second = written(client, owner, charter_body(review={"trigger": {"min_new": 2}}))
+    assert second["review"]["trigger"] == {"min_new": 2, "min_gap_hours": 24, "max_gap_days": 7}
+    assert sql(hub_db, select(c.c.body).where(c.c.revision == 2))[0][0]["review"]["trigger"]["min_new"] == 2
+    assert written(client, owner, shown(client, owner))["revision"] == 2
+    for wrong, words in (
+        ({"min_gap_hours": 100, "max_gap_days": 4}, "min_gap_hours is longer than max_gap_days"),
+        ({"min_new": 0}, "min_new"),
+        ({"max_gap_days": 31}, "max_gap_days"),
+        ({"often": True}, "often"),
+    ):
+        response = put_charter(client, owner, charter_body(review={"trigger": wrong}))
+        assert response.status_code == 422 and words in response.text, response.text
+    assert count(hub_db, tables.charters) == 2
+
+
 def test_a_charter_plans_and_merges_tiers_0_to_2_by_default_and_names_3_when_its_owner_adds_it(night, hub_db):
     client, owner = night.client, night.headers["owner"]
     first = written(client, owner, charter_body())  # names none of the keys: tiers 0 to 2 built, CI asked for

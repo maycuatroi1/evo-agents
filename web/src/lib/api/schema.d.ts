@@ -38309,6 +38309,33 @@ export interface components {
              * @description the most the review run may cost; null: as any run
              */
             budget_usd?: number | null;
+            /** @description queue the review run of a night or period only when enough new evidence came since the previous one; null: one every night or period, its figures over days */
+            trigger?: components["schemas"]["ReviewTrigger"] | null;
+        };
+        /**
+         * ReviewTrigger
+         * @description When the review run of a night or period is worth queuing (``curator.review_wait``): enough new evidence since
+         *     the previous review and a gap after it, or a long enough gap alone.
+         */
+        ReviewTrigger: {
+            /**
+             * Min New
+             * @description new evidence since the previous review that queues one: failed runs of the agent's cause, new traces of an agent system with an optimizes edge, and turns of a person that correct the agent
+             * @default 1
+             */
+            min_new: number;
+            /**
+             * Min Gap Hours
+             * @description the hours after the previous review before new evidence queues the next one
+             * @default 24
+             */
+            min_gap_hours: number;
+            /**
+             * Max Gap Days
+             * @description the days after the previous review that queue the next one whatever the evidence
+             * @default 7
+             */
+            max_gap_days: number;
         };
         /** Revision */
         Revision: {

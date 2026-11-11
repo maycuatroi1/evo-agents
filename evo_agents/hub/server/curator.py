@@ -242,6 +242,8 @@ def _stored(body: CharterWrite, current) -> dict:
     for key in ("window", "pacing", "night_budget_usd"):  # a charter has a window or pacing: the other is left out
         if stored[key] is None:
             del stored[key]
+    if stored["review"].get("trigger") is None:  # a charter without a trigger keeps what it stored before
+        stored["review"].pop("trigger", None)
     if stored["judge"]["hidden_checks"] is None:
         kept = (current.body.get("judge") or {}).get("hidden_checks") if current is not None else None
         stored["judge"]["hidden_checks"] = kept or []

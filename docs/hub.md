@@ -2147,7 +2147,8 @@ Each night of a project's charter, or each period of a charter with `pacing` (`d
 the hub reviews the project with a run of kind `review` (schema 0014): the job
 `curator.collect` counts the night's figures, without any model, from the facets of the sessions (Session facets,
 below), the runs and their tool figures, the plans and the decisions of the last `review.days` of the charter (7 by
-default): the failures per tool and per program (each program with its `usage_errors` and `env_errors`, from the
+default; under `review.trigger`, since the previous review, and only on a night with enough new evidence,
+`docs/curator.md`, Review on new evidence): the failures per tool and per program (each program with its `usage_errors` and `env_errors`, from the
 sessions' digests), the skills (per skill its loads in the sessions' digests, typed with `/name` among them, and in
 runs, the friction after each load next to the baseline of every digest that counts skills, the interrupts and
 corrections, and what came of the runs that loaded it: done, the steps whose verify the worker ran again at

@@ -318,6 +318,13 @@ describe("the charter as a form", () => {
     expect(charterBody(charterForm(null, { timezone: "UTC" })).body?.circuit_breaker).toEqual({ max_failed_in_a_row: 2 });
   });
 
+  it("keeps the review's trigger of the charter, and writes none when the charter has none", () => {
+    const trigger = { min_new: 3, min_gap_hours: 12, max_gap_days: 5 };
+    const triggered = { ...CHARTER, review: { lenses: 3, days: 7, budget_usd: null, trigger } };
+    expect(charterBody(charterForm(triggered, { timezone: "" })).body?.review).toEqual(triggered.review);
+    expect(charterBody(charterForm(CHARTER, { timezone: "" })).body?.review).toEqual(CHARTER.review);
+  });
+
   it("refuses the probes' settings the hub refuses, and does not hold a week's budget against a night's", () => {
     const form = charterForm(CHARTER, { timezone: "" });
     expect(charterBody({ ...form, probeK: "0" }).errors).toEqual({ probeK: { code: "whole", min: 1, max: 10 } });

@@ -1074,7 +1074,7 @@ def test_review_migration_0014_goes_down_to_0013_and_up_again(review):
 def test_a_charter_takes_the_review_settings_and_checks_them(review):
     client, owner = review.client, review.headers["owner"]
     shown = written(client, owner, charter_body(review={"lenses": 2, "days": 3, "budget_usd": 0.25}))
-    assert shown["review"] == {"lenses": 2, "days": 3, "budget_usd": 0.25}
+    assert shown["review"] == {"lenses": 2, "days": 3, "budget_usd": 0.25, "trigger": None}
     too_many = len(review_model.LENSES) + 1
     for bad in ({"lenses": 0}, {"lenses": too_many}, {"days": 31}, {"budget_usd": 5.0}, {"mood": "calm"}):
         response = put_charter(client, owner, charter_body(review=bad))
