@@ -162,6 +162,7 @@ class Daemon:
         self.orphans: dict[int, dict] = {}  # run id -> {"agent": agent.json, "record": run.json}, until the hub answers
         self.runtimes: dict[str, dict] = {}
         self.logins: dict[str, str] = {}  # each runtime's login, found with the runtimes (``health``)
+        self.leased = health.load_leased(home.root)  # runtime -> whether its last agent authenticated with a lease
         self.health: dict | None = None  # the heartbeat's health, from the last look; None before the first
         self.plugin_runtimes: dict[str, AcpRuntime] = {}  # the declarations the hub sent, by runtime
         self.plugin_adapters: dict[str, type[Adapter]] = {}  # and the adapter of ACP of each
@@ -253,7 +254,10 @@ class Daemon:
             await self.browser.look()
             self._runtimes_at = now
         self.health = await asyncio.to_thread(
-            health.report, self.home.worktrees_dir, self.logins, self.cleaner.reserve_gb
+            health.report,
+            self.home.worktrees_dir,
+            health.with_leases(self.logins, self.leased),
+            self.cleaner.reserve_gb,
         )
         if force or now - self._checkouts_at > CHECKOUTS_EVERY:
             found = await asyncio.to_thread(checkouts.discover, self.config)
@@ -262,6 +266,19 @@ class Daemon:
                     found[key] = entry
             self.checkouts = found
             self._checkouts_at = now
+
+    def saw_agent(self, runtime: str, *, leased: bool, authenticated: bool) -> None:
+        """An agent of ``runtime`` ended: whether it ran on a model credential the hub leased the run, and whether its
+        account authenticated. The next heartbeat says ``leased`` for the runtime's login when both are true
+        (``health.with_leases``)."""
+        found = leased and authenticated
+        if self.leased.get(runtime) == found:
+            return
+        self.leased[runtime] = found
+        try:
+            health.save_leased(self.home.root, self.leased)
+        except OSError:
+            log.warning("the leased logins were not saved", extra={"runtime": runtime}, exc_info=True)
 
     def look_again(self, *, runtimes: bool = False, checkouts: bool = False) -> None:
         """Have the next heartbeat look at the runtimes, or the checkouts, whatever the time since the last look."""

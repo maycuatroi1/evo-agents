@@ -202,7 +202,7 @@ class Worker(BaseModel):
     health: dict | None = Field(
         None,
         description="what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct, reserve_gb}, "
-        "logins: {<runtime>: ok, unauthorized, missing or unknown}}; null when it said nothing of it, as an older "
+        "logins: {<runtime>: ok, leased, unauthorized, missing or unknown}}; null when it said nothing of it, as an older "
         "daemon. Under its reserve (20 GB when it says none) the worker is given no run",
     )
     allow_web_terminal: bool

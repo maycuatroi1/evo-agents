@@ -48627,7 +48627,7 @@ export interface components {
             free_slots: number | null;
             /**
              * Health
-             * @description what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct, reserve_gb}, logins: {<runtime>: ok, unauthorized, missing or unknown}}; null when it said nothing of it, as an older daemon. Under its reserve (20 GB when it says none) the worker is given no run
+             * @description what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct, reserve_gb}, logins: {<runtime>: ok, leased, unauthorized, missing or unknown}}; null when it said nothing of it, as an older daemon. Under its reserve (20 GB when it says none) the worker is given no run
              */
             health?: {
                 [key: string]: unknown;

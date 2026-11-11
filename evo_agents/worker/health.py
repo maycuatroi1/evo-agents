@@ -7,6 +7,12 @@ counts). Only the exit status and the shape of the answer are read: no credentia
 answer itself never leaves this module. ``ok``: signed in; ``unauthorized``: the command says it is not; ``missing``:
 the program is not on PATH; ``unknown``: no answer within LOGIN_TIMEOUT, or one this module cannot read.
 
+A worker whose runs authenticate with a model credential the hub leases them has no login of its own to show.
+``leased``: the machine's login is not ok, but the last agent of the runtime on this worker ran on such a lease and its
+account did not fail to authenticate (``with_leases``). The daemon keeps that per runtime in LEASED_FILE of its home,
+so a restart does not report the machine's login again; an agent whose lease was refused, or the next one with no
+lease, puts the machine's login back.
+
 The daemon looks at the logins with the runtimes, every ``daemon.RUNTIMES_EVERY`` seconds in a thread, so a heartbeat
 never waits for them; the disk is read at each look, which costs one statfs. Standard library only.
 """
@@ -17,12 +23,14 @@ import json
 import re
 import shutil
 import subprocess
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
 from evo_agents.hub import runs
 
 LOGIN_TIMEOUT = 10.0  # seconds a runtime's status command may take
+LEASED = "leased"  # what the heartbeat says of a runtime whose runs authenticate with the hub's lease
+LEASED_FILE = "leased-logins.json"  # runtime -> whether its last agent authenticated with a lease
 BINARIES = {"claude-code": "claude", "codex": "codex", "opencode": "opencode"}
 STATUS_COMMANDS = {
     "claude-code": ("auth", "status", "--json"),
@@ -103,6 +111,28 @@ def logins(names: Iterable[str] = runs.RUNTIMES, *, path: str | None = None) -> 
     return {name: login(name, path=path) for name in names if name in BINARIES}
 
 
+def with_leases(found_logins: Mapping[str, str], leased: Mapping[str, bool]) -> dict[str, str]:
+    """``found_logins`` with LEASED for each runtime whose login is not ok and whose last agent authenticated with a
+    lease (``leased``)."""
+    return {name: LEASED if state != "ok" and leased.get(name) else state for name, state in found_logins.items()}
+
+
+def load_leased(root: Path) -> dict[str, bool]:
+    """What LEASED_FILE in ``root`` says, by runtime; empty when it is missing or unreadable."""
+    try:
+        found = json.loads((Path(root) / LEASED_FILE).read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(found, dict):
+        return {}
+    return {str(name): value for name, value in found.items() if isinstance(value, bool)}
+
+
+def save_leased(root: Path, leased: Mapping[str, bool]) -> None:
+    """Write ``leased`` to LEASED_FILE in ``root``: runtime names and booleans, no credential."""
+    (Path(root) / LEASED_FILE).write_text(json.dumps(dict(sorted(leased.items()))))
+
+
 def report(worktrees: Path, found_logins: dict[str, str], reserve_gb: float | None = None) -> dict:
     """The heartbeat's ``health``: the free disk of ``worktrees``' drive, with the gigabytes the daemon keeps free
     there (``reserve_gb``, under which the hub gives it no run), and the logins last found."""
@@ -112,4 +142,16 @@ def report(worktrees: Path, found_logins: dict[str, str], reserve_gb: float | No
     return {"disk": found, "logins": dict(found_logins)}
 
 
-__all__ = ["BINARIES", "LOGIN_TIMEOUT", "disk", "login", "logins", "report"]
+__all__ = [
+    "BINARIES",
+    "LEASED",
+    "LEASED_FILE",
+    "LOGIN_TIMEOUT",
+    "disk",
+    "load_leased",
+    "login",
+    "logins",
+    "report",
+    "save_leased",
+    "with_leases",
+]
