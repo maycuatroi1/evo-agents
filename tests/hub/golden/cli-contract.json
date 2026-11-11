@@ -25621,6 +25621,47 @@
       ],
       "json": null
     },
+    "hub system default": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "slug",
+          "name",
+          "ops",
+          "limits",
+          "can_change"
+        ],
+        "schema": "DefaultSystem"
+      }
+    },
     "hub system delete": {
       "positionals": [
         {
@@ -25727,7 +25768,8 @@
           "nodes",
           "edges",
           "updated_by",
-          "updated_at"
+          "updated_at",
+          "default"
         ],
         "schema": "SystemSummary"
       }
@@ -25789,6 +25831,217 @@
           "traces"
         ],
         "schema": "TraceDistribution"
+      }
+    },
+    "hub system ops batches": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "open",
+            "ready",
+            "empty",
+            "running",
+            "done"
+          ]
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 50
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "key",
+          "kind",
+          "cause",
+          "subject",
+          "state",
+          "items",
+          "pending",
+          "opened_at",
+          "closes_at",
+          "closed_at",
+          "run_id"
+        ],
+        "schema": "OpsBatch"
+      }
+    },
+    "hub system ops pause": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "slug",
+          "default",
+          "ops",
+          "ops_daily_usd",
+          "paused",
+          "paused_at",
+          "paused_reason",
+          "batches"
+        ],
+        "schema": "SystemOps"
+      }
+    },
+    "hub system ops resume": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "slug",
+          "default",
+          "ops",
+          "ops_daily_usd",
+          "paused",
+          "paused_at",
+          "paused_reason",
+          "batches"
+        ],
+        "schema": "SystemOps"
+      }
+    },
+    "hub system ops show": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "slug",
+          "default",
+          "ops",
+          "ops_daily_usd",
+          "paused",
+          "paused_at",
+          "paused_reason",
+          "batches"
+        ],
+        "schema": "SystemOps"
       }
     },
     "hub system put": {
@@ -83212,6 +83465,557 @@
           }
         }
       },
+      "/v1/projects/{project}/default-system": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Show Default",
+          "description": "The project's default system, its ops and limits; ``slug`` null when it has none.",
+          "operationId": "show_default_v1_projects__project__default_system_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DefaultSystem"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Set Default",
+          "description": "Make system ``slug`` the project's default system, and no other.",
+          "operationId": "set_default_v1_projects__project__default_system_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefaultPut"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/DefaultSystem"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/systems/{slug}/ops": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Show Ops",
+          "description": "The ops of a system: its spec's ops, its ops budget, its pause, and the batches of its queue by state.",
+          "operationId": "show_ops_v1_projects__project__systems__slug__ops_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SystemOps"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/systems/{slug}/ops/pause": {
+        "post": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Pause Ops",
+          "description": "Pause the ops of a system: the queue still gathers, and a closed batch opens no thread until resumed.",
+          "operationId": "pause_ops_v1_projects__project__systems__slug__ops_pause_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsPause"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SystemOps"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/systems/{slug}/ops/resume": {
+        "post": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "Resume Ops",
+          "description": "Resume the ops of a system, paused by an admin or by the hub.",
+          "operationId": "resume_ops_v1_projects__project__systems__slug__ops_resume_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SystemOps"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/systems/{slug}/ops/batches": {
+        "get": {
+          "tags": [
+            "systems"
+          ],
+          "summary": "List Batches",
+          "description": "The batches of the project's queue, the newest first; none for a system that is not the default.",
+          "operationId": "list_batches_v1_projects__project__systems__slug__ops_batches_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "open",
+                      "ready",
+                      "empty",
+                      "running",
+                      "done"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the batches in this state",
+                "title": "State"
+              },
+              "description": "only the batches in this state"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 500,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/OpsBatch"
+                    },
+                    "title": "Response List Batches V1 Projects  Project  Systems  Slug  Ops Batches Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/agents/{handle}/accounts/{name}": {
         "put": {
           "tags": [
@@ -123801,6 +124605,92 @@
           ],
           "title": "DecisionOut"
         },
+        "DefaultPut": {
+          "properties": {
+            "slug": {
+              "type": "string",
+              "maxLength": 63,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "title": "Slug"
+            }
+          },
+          "type": "object",
+          "required": [
+            "slug"
+          ],
+          "title": "DefaultPut"
+        },
+        "DefaultSystem": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "slug": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slug",
+              "description": "the default system; null when the project has none"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "ops": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OpsSettings"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the ops of its spec, defaults filled in; off for a spec with none"
+            },
+            "limits": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limits",
+              "description": "the limits of its spec, ops_daily_usd filled in"
+            },
+            "can_change": {
+              "type": "boolean",
+              "title": "Can Change",
+              "description": "the caller holds the admin role on the project"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "slug",
+            "name",
+            "ops",
+            "limits",
+            "can_change"
+          ],
+          "title": "DefaultSystem"
+        },
         "DiffLink": {
           "properties": {
             "sha256": {
@@ -145991,6 +146881,145 @@
             "changed"
           ],
           "title": "OpportunityRevision"
+        },
+        "OpsBatch": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "key": {
+              "type": "string",
+              "title": "Key",
+              "description": "kind|cause|subject: the cause key its items share"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "cause": {
+              "type": "string",
+              "title": "Cause"
+            },
+            "subject": {
+              "type": "string",
+              "title": "Subject"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "open",
+                "ready",
+                "empty",
+                "running",
+                "done"
+              ],
+              "title": "State"
+            },
+            "items": {
+              "type": "integer",
+              "title": "Items"
+            },
+            "pending": {
+              "type": "integer",
+              "title": "Pending",
+              "description": "its items tier 0 has not handled"
+            },
+            "opened_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Opened At"
+            },
+            "closes_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Closes At"
+            },
+            "closed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Closed At"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "key",
+            "kind",
+            "cause",
+            "subject",
+            "state",
+            "items",
+            "pending",
+            "opened_at",
+            "closes_at",
+            "closed_at",
+            "run_id"
+          ],
+          "title": "OpsBatch"
+        },
+        "OpsPause": {
+          "properties": {
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why, shown with the pause"
+            }
+          },
+          "type": "object",
+          "title": "OpsPause"
+        },
+        "OpsSettings": {
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "title": "Enabled",
+              "description": "the project's operations events go to the queue of its default system"
+            },
+            "debounce_minutes": {
+              "type": "integer",
+              "title": "Debounce Minutes",
+              "description": "a batch closes this long after it opened"
+            },
+            "max_items": {
+              "type": "integer",
+              "title": "Max Items",
+              "description": "or once it holds this many items"
+            }
+          },
+          "type": "object",
+          "required": [
+            "enabled",
+            "debounce_minutes",
+            "max_items"
+          ],
+          "title": "OpsSettings"
         },
         "OptimizeRun": {
           "properties": {
@@ -177133,6 +178162,79 @@
           ],
           "title": "SystemDeleted"
         },
+        "SystemOps": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "slug": {
+              "type": "string",
+              "title": "Slug"
+            },
+            "default": {
+              "type": "boolean",
+              "title": "Default",
+              "description": "it is the project's default system, whose queue the hub fills"
+            },
+            "ops": {
+              "$ref": "#/components/schemas/OpsSettings"
+            },
+            "ops_daily_usd": {
+              "type": "number",
+              "title": "Ops Daily Usd",
+              "description": "what the runs of its ops threads may spend in 24 hours"
+            },
+            "paused": {
+              "type": "boolean",
+              "title": "Paused"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At"
+            },
+            "paused_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused Reason"
+            },
+            "batches": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Batches",
+              "description": "the batches of the project's queue by state; empty when not default"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "slug",
+            "default",
+            "ops",
+            "ops_daily_usd",
+            "paused",
+            "paused_at",
+            "paused_reason",
+            "batches"
+          ],
+          "title": "SystemOps"
+        },
         "SystemOut": {
           "properties": {
             "project": {
@@ -177354,6 +178456,12 @@
               "type": "string",
               "format": "date-time",
               "title": "Updated At"
+            },
+            "default": {
+              "type": "boolean",
+              "title": "Default",
+              "description": "the project's default system (`hub system default`)",
+              "default": false
             }
           },
           "type": "object",

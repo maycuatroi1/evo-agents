@@ -191,6 +191,9 @@ AGENT_PLACEMENT = "agent.placement"  # no longer written: an admin once moved an
 SYSTEM_CREATE = "system.create"  # an admin of the project created an agent system, at revision 1
 SYSTEM_UPDATE = "system.update"  # an admin stored a new revision of it
 SYSTEM_DELETE = "system.delete"  # an admin deleted it with its revisions
+SYSTEM_DEFAULT = "system.default"  # an admin made it the project's default system (plan hub-steward)
+SYSTEM_OPS_PAUSE = "system.ops-pause"  # an admin paused its ops: closed batches open no thread
+SYSTEM_OPS_RESUME = "system.ops-resume"  # an admin resumed them
 # Account pools (evo_agents.hub.server.account_pools), in the project; the target is "<project> account-pool:<id>", with
 # " secret:<id>" for an account added or removed and " agent:@<handle>" for an agent attached, never a name of an
 # account or a value.

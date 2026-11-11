@@ -9396,6 +9396,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/default-system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Default
+         * @description The project's default system, its ops and limits; ``slug`` null when it has none.
+         */
+        get: operations["show_default_v1_projects__project__default_system_get"];
+        /**
+         * Set Default
+         * @description Make system ``slug`` the project's default system, and no other.
+         */
+        put: operations["set_default_v1_projects__project__default_system_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Ops
+         * @description The ops of a system: its spec's ops, its ops budget, its pause, and the batches of its queue by state.
+         */
+        get: operations["show_ops_v1_projects__project__systems__slug__ops_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/ops/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Ops
+         * @description Pause the ops of a system: the queue still gathers, and a closed batch opens no thread until resumed.
+         */
+        post: operations["pause_ops_v1_projects__project__systems__slug__ops_pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/ops/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Ops
+         * @description Resume the ops of a system, paused by an admin or by the hub.
+         */
+        post: operations["resume_ops_v1_projects__project__systems__slug__ops_resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/systems/{slug}/ops/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Batches
+         * @description The batches of the project's queue, the newest first; none for a system that is not the default.
+         */
+        get: operations["list_batches_v1_projects__project__systems__slug__ops_batches_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/agents/{handle}/accounts/{name}": {
         parameters: {
             query?: never;
@@ -20866,6 +20970,37 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** DefaultPut */
+        DefaultPut: {
+            /** Slug */
+            slug: string;
+        };
+        /** DefaultSystem */
+        DefaultSystem: {
+            /** Project */
+            project: string;
+            /**
+             * Slug
+             * @description the default system; null when the project has none
+             */
+            slug: string | null;
+            /** Name */
+            name: string | null;
+            /** @description the ops of its spec, defaults filled in; off for a spec with none */
+            ops: components["schemas"]["OpsSettings"] | null;
+            /**
+             * Limits
+             * @description the limits of its spec, ops_daily_usd filled in
+             */
+            limits: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Can Change
+             * @description the caller holds the admin role on the project
+             */
+            can_change: boolean;
+        };
         /** DiffLink */
         DiffLink: {
             /** Sha256 */
@@ -30418,6 +30553,74 @@ export interface components {
              * @description the fields whose value differs from the revision before
              */
             changed: string[];
+        };
+        /** OpsBatch */
+        OpsBatch: {
+            /** Id */
+            id: number;
+            /**
+             * Key
+             * @description kind|cause|subject: the cause key its items share
+             */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Cause */
+            cause: string;
+            /** Subject */
+            subject: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "ready" | "empty" | "running" | "done";
+            /** Items */
+            items: number;
+            /**
+             * Pending
+             * @description its items tier 0 has not handled
+             */
+            pending: number;
+            /**
+             * Opened At
+             * Format: date-time
+             */
+            opened_at: string;
+            /**
+             * Closes At
+             * Format: date-time
+             */
+            closes_at: string;
+            /** Closed At */
+            closed_at: string | null;
+            /** Run Id */
+            run_id: number | null;
+        };
+        /** OpsPause */
+        OpsPause: {
+            /**
+             * Reason
+             * @description why, shown with the pause
+             */
+            reason?: string | null;
+        };
+        /** OpsSettings */
+        OpsSettings: {
+            /**
+             * Enabled
+             * @description the project's operations events go to the queue of its default system
+             */
+            enabled: boolean;
+            /**
+             * Debounce Minutes
+             * @description a batch closes this long after it opened
+             */
+            debounce_minutes: number;
+            /**
+             * Max Items
+             * @description or once it holds this many items
+             */
+            max_items: number;
         };
         /** OptimizeRun */
         OptimizeRun: {
@@ -44131,6 +44334,37 @@ export interface components {
             /** Deleted */
             deleted: string;
         };
+        /** SystemOps */
+        SystemOps: {
+            /** Project */
+            project: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Default
+             * @description it is the project's default system, whose queue the hub fills
+             */
+            default: boolean;
+            ops: components["schemas"]["OpsSettings"];
+            /**
+             * Ops Daily Usd
+             * @description what the runs of its ops threads may spend in 24 hours
+             */
+            ops_daily_usd: number;
+            /** Paused */
+            paused: boolean;
+            /** Paused At */
+            paused_at: string | null;
+            /** Paused Reason */
+            paused_reason: string | null;
+            /**
+             * Batches
+             * @description the batches of the project's queue by state; empty when not default
+             */
+            batches: {
+                [key: string]: number;
+            };
+        };
         /** SystemOut */
         SystemOut: {
             /** Project */
@@ -44236,6 +44470,12 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Default
+             * @description the project's default system (`hub system default`)
+             * @default false
+             */
+            default: boolean;
         };
         /** SystemWritten */
         SystemWritten: {
@@ -84203,6 +84443,370 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemRevision"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_default_v1_projects__project__default_system_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefaultSystem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_default_v1_projects__project__default_system_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DefaultPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DefaultSystem"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_ops_v1_projects__project__systems__slug__ops_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemOps"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_ops_v1_projects__project__systems__slug__ops_pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsPause"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemOps"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_ops_v1_projects__project__systems__slug__ops_resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemOps"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_batches_v1_projects__project__systems__slug__ops_batches_get: {
+        parameters: {
+            query?: {
+                /** @description only the batches in this state */
+                state?: ("open" | "ready" | "empty" | "running" | "done") | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsBatch"][];
                 };
             };
             /** @description Unauthorized */

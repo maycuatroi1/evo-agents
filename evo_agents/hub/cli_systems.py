@@ -1,5 +1,5 @@
-"""``evo-agents hub system list|show|put|export|validate|delete|metrics``: the agent systems of a project (``docs/hub.md``,
-Agent systems; ``evo_agents.hub.system_spec``), over /v1/projects/{p}/systems.
+"""``evo-agents hub system list|show|put|export|validate|delete|metrics|default|ops``: the agent systems of a project
+(``docs/hub.md``, Agent systems; ``evo_agents.hub.system_spec``), over /v1/projects/{p}/systems.
 
 A system is a YAML file of spec ``evo-agent-system/1``: its entry, agents, named graphs, curator and orchestrator on a
 canvas, and the typed edges between them. ``export`` writes a system as such a file, with the revision it is at in a
@@ -8,7 +8,9 @@ canvas, and the typed edges between them. ``export`` writes a system as such a f
 asks the hub what is wrong in a file, against the project, and writes nothing. Every member of the project reads its
 systems; ``put`` and ``delete`` need the admin role on it. ``metrics`` prints the spread of the traces of a system,
 or of every system of the project, over the last N days (cost, runs, deepest hop, budget refusals, overrun of
-limits.trace_usd, Orchestrator threads, off design per edge), and reads only.
+limits.trace_usd, Orchestrator threads, off design per edge), and reads only. ``default`` reads the project's default
+system, or makes another one the default (admin). ``ops show|pause|resume|batches`` reads the ops of a system (its
+spec's ``ops``, its pause, the batches of the project's queue) and pauses or resumes them (admin).
 
 Every command finds its project with ``--project``, or in the harness.yaml (``hub.project``) of the harness around the
 current directory. ``--json`` prints what the hub answered. Standard library and PyYAML only.
@@ -28,7 +30,7 @@ from evo_agents.hub.client import EXIT_FAILED, EXIT_USAGE, HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 
 # The keys of the hub's answers in --json (the contract, `evo-agents hub contract print`).
-SUMMARY_KEYS = ("slug", "name", "revision", "entry_agent", "nodes", "edges", "updated_by", "updated_at")
+SUMMARY_KEYS = ("slug", "name", "revision", "entry_agent", "nodes", "edges", "updated_by", "updated_at", "default")
 SYSTEM_KEYS = (
     "project",
     "slug",
@@ -46,6 +48,23 @@ SYSTEM_KEYS = (
     "updated_at",
 )
 CHECKED_KEYS = ("valid", "spec", "problems")
+DEFAULT_KEYS = ("project", "slug", "name", "ops", "limits", "can_change")
+OPS_KEYS = ("project", "slug", "default", "ops", "ops_daily_usd", "paused", "paused_at", "paused_reason", "batches")
+BATCH_KEYS = (
+    "id",
+    "key",
+    "kind",
+    "cause",
+    "subject",
+    "state",
+    "items",
+    "pending",
+    "opened_at",
+    "closes_at",
+    "closed_at",
+    "run_id",
+)
+BATCH_STATES = ("open", "ready", "empty", "running", "done")
 DISTRIBUTION_KEYS = ("system", "days", "since", "withheld", "truncated", "summary", "traces")
 IF_REVISION = re.compile(r"^#\s*if_revision:\s*(\d+)\s*$", re.M)
 
@@ -123,7 +142,7 @@ def cmd_list(args) -> int:
         return 0
     rows = [
         (
-            s["slug"],
+            s["slug"] + (" *" if s.get("default") else ""),
             s["name"],
             str(s["revision"]),
             "@" + s["entry_agent"] if s["entry_agent"] else "-",
@@ -133,6 +152,8 @@ def cmd_list(args) -> int:
         for s in found
     ]
     table(("SYSTEM", "NAME", "REV", "ENTRY AGENT", "NODES/EDGES", "CHANGED"), rows)
+    if any(s.get("default") for s in found):
+        print("* the project's default system")
     return 0
 
 
@@ -299,6 +320,119 @@ def cmd_metrics(args) -> int:
     return 0
 
 
+def _ops_settings(ops: dict | None) -> str:
+    if not ops:
+        return "-"
+    state = "on" if ops.get("enabled") else "off"
+    return f"{state}, a batch closes after {ops.get('debounce_minutes')} min or at {ops.get('max_items')} items"
+
+
+@client_command
+def cmd_default(args) -> int:
+    hub, _ = signed_in()
+    project = project_of(args)
+    path = f"/v1/projects/{quote(project, safe='')}/default-system"
+    found = call_object(hub, "PUT", path, {"slug": args.slug}) if args.slug else call_object(hub, "GET", path)
+    if args.json:
+        print_json(found)
+        return 0
+    if not found.get("slug"):
+        print(f"Project {project} has no default system: set one with `evo-agents hub system default SLUG`.")
+        return 0
+    print(f"default system of project {project}: {found['slug']} ({found['name']})")
+    print(f"  ops: {_ops_settings(found.get('ops'))}")
+    print(f"  ops budget: {(found.get('limits') or {}).get('ops_daily_usd')} USD in 24 hours")
+    return 0
+
+
+def _print_ops(found: dict) -> None:
+    role = "the default system" if found["default"] else "not the default system: its ops take no event"
+    print(f"system {found['slug']} of project {found['project']}: {role}")
+    print(f"  ops: {_ops_settings(found['ops'])}; budget {found['ops_daily_usd']} USD in 24 hours")
+    if found["paused"]:
+        print(f"  paused since {when(found['paused_at'])} UTC: {found['paused_reason'] or '-'}")
+    if found["batches"]:
+        print("  batches: " + ", ".join(f"{n} {state}" for state, n in found["batches"].items()))
+
+
+def _print_batches(found: list[dict], slug: str) -> None:
+    if not found:
+        print(f"System {slug} has no batch.")
+        return
+    rows = [
+        (str(b["id"]), b["state"], b["key"], f"{b['pending']}/{b['items']}", when(b["opened_at"]), when(b["closes_at"]))
+        for b in found
+    ]
+    table(("BATCH", "STATE", "CAUSE KEY", "PENDING/ITEMS", "OPENED", "CLOSES"), rows)
+
+
+@client_command
+def cmd_ops(args) -> int:
+    hub, _ = signed_in()
+    path = _path(project_of(args), args.slug) + "/ops"
+    if args.ops_command == "batches":
+        query = f"?limit={args.limit}" + (f"&state={args.state}" if args.state else "")
+        found = hub.call("GET", f"{path}/batches{query}") or []
+        if args.json:
+            print_json(found)
+        else:
+            _print_batches(found, args.slug)
+        return 0
+    if args.ops_command == "pause":
+        found = call_object(hub, "POST", f"{path}/pause", {"reason": args.reason})
+    elif args.ops_command == "resume":
+        found = call_object(hub, "POST", f"{path}/resume", {})
+    else:
+        found = call_object(hub, "GET", path)
+    if args.json:
+        print_json(found)
+        return 0
+    _print_ops(found)
+    return 0
+
+
+def _register_ops(ssub) -> None:
+    default = ssub.add_parser(
+        "default",
+        help="the project's default system, or make SLUG the default (admin)",
+        description="A project has at most one default system: its Orchestrator handles the project's operations "
+        "events when its spec turns ops on. With no SLUG it prints the default; with one it makes that system the "
+        "default (the admin role on the project).",
+    )
+    default.add_argument("slug", metavar="SLUG", nargs="?", help="the system to make the default")
+    _project(default)
+    json_option(default, returns_object(*DEFAULT_KEYS, schema="DefaultSystem"))
+    default.set_defaults(func=cmd_default)
+
+    ops = ssub.add_parser(
+        "ops",
+        help="show, pause or resume the ops of a system, or list the batches of its queue",
+        description="show: the ops of a system's spec, its budget, its pause and its batches by state; pause and "
+        "resume (admin): a paused system's queue still gathers, and a closed batch waits; batches: the batches of "
+        "the project's queue, the newest first.",
+    )
+    osub = ops.add_subparsers(dest="ops_command", required=True)
+    for name, text in (
+        ("show", "the ops of a system"),
+        ("pause", "pause the ops of a system (admin): closed batches wait"),
+        ("resume", "resume the ops of a system (admin)"),
+    ):
+        each = osub.add_parser(name, help=text)
+        _slug(each)
+        _project(each)
+        if name == "pause":
+            each.add_argument("--reason", help="why, shown with the pause")
+        json_option(each, returns_object(*OPS_KEYS, schema="SystemOps"))
+        each.set_defaults(func=cmd_ops)
+    batches = osub.add_parser("batches", help="the batches of the project's queue, the newest first")
+    _slug(batches)
+    _project(batches)
+    batches.add_argument("--state", choices=BATCH_STATES, help="only the batches in this state")
+    batches.add_argument("--limit", type=int, default=50, metavar="N", help="at most N batches (50)")
+    json_option(batches, returns_array(*BATCH_KEYS, schema="OpsBatch"))
+    batches.set_defaults(func=cmd_ops)
+
+
 def _project(parser) -> None:
     parser.add_argument("--project", help=PROJECT_HELP)
 
@@ -311,7 +445,7 @@ def register(hsub) -> None:
     """``hub system``, under the subparsers ``hsub`` of ``hub``."""
     system = hsub.add_parser(
         "system",
-        help="list, show, put, export, validate, delete or measure the agent systems of a project",
+        help="list, show, put, export, validate, delete or measure the agent systems of a project, and their ops",
         description="An agent system is a project's agents, named graphs, curator and orchestrator on a canvas, with "
         "typed edges between them (evo-agent-system/1, a YAML file). Members read them; admins write them.",
     )
@@ -376,3 +510,5 @@ def register(hsub) -> None:
     metrics.add_argument("--traces", action="store_true", help="also print a line for each trace")
     json_option(metrics, returns_array(*DISTRIBUTION_KEYS, schema="TraceDistribution"))
     metrics.set_defaults(func=cmd_metrics)
+
+    _register_ops(ssub)

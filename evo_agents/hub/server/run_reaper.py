@@ -264,7 +264,9 @@ async def recover_runs(
     ``triage.STALE_MINUTES`` while its worker heartbeats opens its triage thread (``triage.open_stale``), a trace of an
     agent system idle past its limit opens a thread to its Orchestrator (``orchestrator.open_idle``), a queued run
     dispatched with browser that no worker can take has the hub ask its owner's nearest worker that lacks only Chromium
-    to install it (``browser_install.ask_for_queued``), and a queued run pinned to a revoked worker fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
+    to install it (``browser_install.ask_for_queued``), a project never seeded gets its ``orchestrator`` system when it
+    has none (``system_seed.seed_pass``), the operations events of each project with ops on are gathered by cause
+    (``ops_queue.ops_pass``), and a queued run pinned to a revoked worker fails. Last, the GitHub tokens of the leases given back, by these runs or earlier, are revoked at GitHub with
     ``github_app`` (``credentials.revoke_tokens``; nothing without the App or ``sealer``). Returns how many runs
     ended in each state, and how many were parked."""
     r, w = tables.runs, tables.workers
@@ -329,6 +331,10 @@ async def recover_runs(
     from evo_agents.hub.server import browser_install  # it reads queued runs through queue_fit
 
     await browser_install.ask_for_queued(engine)  # a queued browser run whose owner's worker lacks only Chromium
+    from evo_agents.hub.server import ops_queue, system_seed  # plan hub-steward
+
+    await system_seed.seed_pass(engine)  # a project with no system gets its default orchestrator system, once
+    await ops_queue.ops_pass(engine)  # the operations events of each project with ops on, gathered by cause
     async with engine.begin() as conn:
         unclaimable = (
             select(r.c.id, w.c.name)

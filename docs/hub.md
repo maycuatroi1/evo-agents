@@ -725,6 +725,25 @@ The agent the entry interacts with is the system's entry agent: at most one per 
 agent of at most one system (a partial unique index holds it). `limits` holds the budgets of the system:
 `trace_usd` (2 by default), `trace_runs` (12) and `daily_usd` (5). A trace keeps to the first two (Budget of a trace).
 `idle_minutes_hub` (10) and `idle_minutes_worker` (30), from 1 to 1440, are the idle limits of The Orchestrator.
+`ops_daily_usd` (5, at most 1000) caps what the runs of its ops threads spend in 24 hours; a spec that does not name
+it keeps not naming it, and the hub reads the default.
+
+A project has at most one default system (`agent_systems.is_default`). An admin of the project sets it with
+`PUT /v1/projects/{p}/default-system {slug}` or `evo-agents hub system default SLUG --project P`; `GET` of the same
+path and the command with no slug read it, and `hub system list` marks it. Deleting the default system leaves the
+project with none until an admin sets another. A project that has no system, new or from before, gets one from the
+hub once (`projects.systems_seeded_at`): `orchestrator`, named "Orchestrator", an entry node and an orchestrator node
+on a profile the hub creates for it, `@<project>-orchestrator`, with its ops off.
+
+`ops` of the spec says how the Orchestrator of the default system handles the project's operations events (plan
+hub-steward): `enabled` (false), `debounce_minutes` (5, from 0 to 1440) and `max_items` (20, from 1 to 1000). A spec
+with no `ops` reads as ops off and is stored as it is. With ops on, the hub reads the project's operations events
+(`run.ended`, `decision.opened`, `curator.paused`, `worker.health`) after a cursor of its own, and puts each that no
+rule of tier 0 handled in the open batch of its cause key (kind, cause, then the worker for a cause of the
+environment, else the plan); a batch closes `debounce_minutes` after it opened or once it holds `max_items`, and one
+whose items tier 0 all handled closes empty, with no run. `evo-agents hub system ops show|pause|resume|batches SLUG
+--project P` reads the ops of a system and its batches; pausing (admin) holds closed batches, and the queue still
+gathers.
 
 The hub checks a spec before it stores it. Errors are an unknown key, an edge whose ends do not fit its kind, a node or
 an edge that is not there, a second entry, curator or orchestrator, and a profile or a named graph the project does
@@ -747,13 +766,18 @@ hub reads the run's rules from `agent_profile_versions`, as for every run. A pro
 | `POST .../systems/validate` `{spec, slug}`, written nowhere | `hub system validate FILE` | a member |
 | `PUT .../systems/{slug}` `{spec, if_revision}` | `hub system put FILE [--slug S] [--if-revision N]` | an admin of the project |
 | `DELETE .../systems/{slug}` | `hub system delete SLUG` | an admin of the project |
+| `GET /v1/projects/{p}/default-system` | `hub system default` | a member |
+| `PUT /v1/projects/{p}/default-system` `{slug}` | `hub system default SLUG` | an admin of the project |
+| `GET .../systems/{slug}/ops` | `hub system ops show SLUG` | a member |
+| `POST .../systems/{slug}/ops/pause` `{reason}`, `.../ops/resume` | `hub system ops pause\|resume SLUG` | an admin of the project |
+| `GET .../systems/{slug}/ops/batches` (`?state=&limit=`) | `hub system ops batches SLUG [--state S]` | a member |
 
 `PUT` without `if_revision` (or 0) creates the system and is 409 when it exists. With it, the spec replaces that
 revision, or the hub answers 409 `revision_conflict` with the system as it holds it now. A spec the hub already holds
 adds no revision (`changed: false`). `export` writes the revision it read in a `# if_revision: N` line, which `put`
 takes when `--if-revision` is not given, so a change someone made in the meantime is refused, not lost. The slug
-`validate` is reserved. The audit rows `system.create`, `system.update` and `system.delete` name
-`<project> system=<slug> revision=<n>`. For example:
+`validate` is reserved. The audit rows `system.create`, `system.update`, `system.delete`, `system.default`,
+`system.ops-pause` and `system.ops-resume` name `<project> system=<slug> revision=<n>`. For example:
 
 ```sh
 evo-agents hub system export support --project northwind -o support.yaml

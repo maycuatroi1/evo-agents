@@ -69,6 +69,7 @@ class SystemSummary(BaseModel):
     edges: int
     updated_by: str | None
     updated_at: datetime
+    default: bool = Field(False, description="the project's default system (`hub system default`)")
 
 
 class SystemOut(BaseModel):
@@ -151,12 +152,12 @@ def _refusal(request: Request, exc: Refused) -> JSONResponse:
     return JSONResponse(body.model_dump(mode="json", exclude_none=True), status_code=exc.status)
 
 
-def _reader(access: ProjectAccess) -> None:
+def reader_only(access: ProjectAccess) -> None:
     if access.role is None:
         raise HTTPException(403, f"reading the agent systems of project {access.name} needs a grant on it")
 
 
-def _admin(access: ProjectAccess, doing: str) -> None:
+def admin_only(access: ProjectAccess, doing: str) -> None:
     if not has_role(access.role, "admin"):
         held = access.role or "no grant"
         raise HTTPException(
@@ -164,7 +165,7 @@ def _admin(access: ProjectAccess, doing: str) -> None:
         )
 
 
-def _not_found(access: ProjectAccess, slug: str) -> HTTPException:
+def not_found(access: ProjectAccess, slug: str) -> HTTPException:
     return HTTPException(
         404,
         f"project {access.name} has no agent system {slug}: see `evo-agents hub system list --project {access.name}`",
@@ -260,7 +261,7 @@ async def list_systems(request: Request, project: ProjectName, user: CurrentUser
     """The agent systems of the project, by slug."""
     async with request.app.state.engine.connect() as conn:
         access = await project_access(conn, user, project)
-        _reader(access)
+        reader_only(access)
         held = await system_store.listed(conn, access.project_id)
     return [
         SystemSummary(
@@ -272,6 +273,7 @@ async def list_systems(request: Request, project: ProjectName, user: CurrentUser
             edges=len(s.spec.get("edges") or ()),
             updated_by=s.updated_by,
             updated_at=s.updated_at,
+            default=s.is_default,
         )
         for s in held
     ]
@@ -286,7 +288,7 @@ async def validate_system(request: Request, project: ProjectName, body: SystemCh
     """What is wrong in a spec against the project, and the spec as PUT would store it; nothing is written."""
     async with request.app.state.engine.connect() as conn:
         access = await project_access(conn, user, project)
-        _reader(access)
+        reader_only(access)
         refs = await system_store.refs(conn, access.project_id)
     spec, problems = checked(body.spec, refs, body.slug)
     return SystemChecked(valid=not system_spec.errors(problems), spec=spec, problems=_problems(problems))
@@ -307,10 +309,10 @@ async def show_system(
     """One agent system, its spec at a revision, its pins and what is wrong in it now."""
     async with request.app.state.engine.connect() as conn:
         access = await project_access(conn, user, project)
-        _reader(access)
+        reader_only(access)
         held = await system_store.one(conn, access.project_id, slug)
         if held is None:
-            raise _not_found(access, slug)
+            raise not_found(access, slug)
         spec = held.spec
         if revision is not None and revision != held.revision:
             spec = await system_store.revision_spec(conn, held.id, revision)
@@ -329,10 +331,10 @@ async def system_revisions(request: Request, project: ProjectName, slug: Slug, u
     """The revisions of an agent system, the newest first."""
     async with request.app.state.engine.connect() as conn:
         access = await project_access(conn, user, project)
-        _reader(access)
+        reader_only(access)
         held = await system_store.one(conn, access.project_id, slug)
         if held is None:
-            raise _not_found(access, slug)
+            raise not_found(access, slug)
         return [SystemRevision(**row) for row in await system_store.revisions(conn, held.id)]
 
 
@@ -366,7 +368,7 @@ async def put_system(request: Request, project: ProjectName, slug: Slug, body: S
     try:
         async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
-            _admin(access, "changing")
+            admin_only(access, "changing")
             held = await system_store.one(conn, access.project_id, slug, lock=True)
             refs = await system_store.refs(conn, access.project_id)
             if (held is None and body.if_revision) or (held is not None and body.if_revision != held.revision):
@@ -401,10 +403,10 @@ async def delete_system(request: Request, project: ProjectName, slug: Slug, user
     """Delete an agent system with its revisions; its profiles, graphs and runs stay."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
-        _admin(access, "deleting")
+        admin_only(access, "deleting")
         held = await system_store.one(conn, access.project_id, slug, lock=True)
         if held is None:
-            raise _not_found(access, slug)
+            raise not_found(access, slug)
         await system_store.remove(conn, held.id)
         await record(conn, user, access, audit.SYSTEM_DELETE, slug, held.revision)
     return SystemDeleted(project=project, deleted=slug)

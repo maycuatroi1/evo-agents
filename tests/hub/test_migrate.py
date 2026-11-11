@@ -42,6 +42,7 @@ from sqlalchemy import (
     null,
     select,
     table,
+    text,
     union_all,
     update,
 )
@@ -178,6 +179,7 @@ TABLES |= {"system_traces", "system_spans", "agent_ask_briefs"}  # migration 021
 TABLES |= {"orchestrator_threads"}  # migration 0221
 TABLES |= {"srs_use_case_revisions", "srs_use_case_releases"}  # migration 0226
 TABLES |= {"chat_label_shares"}  # migration 0229
+TABLES |= {"ops_cursors", "ops_batches", "ops_items"}  # migration 0237
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -5961,3 +5963,27 @@ def test_0236_gives_workers_their_health_and_going_back_drops_it(hub_db):
     move_to(hub_db, "0235", down=True)
     assert "health" not in columns(hub_db, "workers")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0236") :]
+
+
+def test_0237_makes_the_oldest_system_the_default_and_going_back_drops_the_ops_queue(hub_db):
+    move_to(hub_db, "0236")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        for slug in ("first", "second"):
+            conn.execute(
+                text(
+                    "INSERT INTO agent_systems (project_id, slug, name, spec) "
+                    'VALUES (:p, :slug, :slug, \'{"schema": "evo-agent-system/1"}\')'
+                ),
+                {"p": ids["project"], "slug": slug},
+            )
+    move_to(hub_db, "0237")
+    found = query(hub_db, text("SELECT slug, is_default FROM agent_systems ORDER BY id"))
+    assert [tuple(row) for row in found] == [("first", True), ("second", False)]
+    assert query(hub_db, text("SELECT systems_seeded_at IS NOT NULL FROM projects"))[0][0] is True
+    assert {"is_default", "ops_paused_at", "ops_paused_reason"} <= columns(hub_db, "agent_systems")
+    move_to(hub_db, "0236", down=True)
+    assert "is_default" not in columns(hub_db, "agent_systems")
+    assert "systems_seeded_at" not in columns(hub_db, "projects")
+    assert not columns(hub_db, "ops_batches")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0237") :]

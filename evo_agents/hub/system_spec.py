@@ -66,8 +66,15 @@ LIMITS = {  # name: (default, lowest, highest); the budgets the hub holds a trac
     # (triage_rules.IDLE_MINUTES), for runs of the hub runtime and for runs on a worker
     "idle_minutes_hub": (10, 1, 1440),
     "idle_minutes_worker": (30, 1, 1440),
+    "ops_daily_usd": (5.0, 0.01, 1000.0),  # what the runs of its ops threads spend in 24 hours (plan hub-steward)
 }
-TOP_KEYS = ("schema", "slug", "name", "purpose", "limits", "nodes", "edges")
+OPTIONAL_LIMITS = ("ops_daily_usd",)  # filled in only when given, so a spec from before them reads back unchanged
+OPS = {  # name: (default, lowest, highest); how its Orchestrator handles the operations events of the project
+    "debounce_minutes": (5, 0, 1440),  # a batch closes this long after its first item
+    "max_items": (20, 1, 1000),  # or once it holds this many
+}
+OPS_KEYS = ("enabled", *OPS)  # enabled: the project's operations events go to its queue (its default system only)
+TOP_KEYS = ("schema", "slug", "name", "purpose", "limits", "ops", "nodes", "edges")
 NODE_KEYS = ("id", "kind", "label", "position", "profile", "version", "graph")
 EDGE_KEYS = ("from", "to", "kind", "description")
 ERROR, WARNING = "error", "warning"
@@ -143,7 +150,7 @@ class _Checker:
 
 
 def _limits(c: _Checker, given) -> dict:
-    found = {name: default for name, (default, _, _) in LIMITS.items()}
+    found = {name: default for name, (default, _, _) in LIMITS.items() if name not in OPTIONAL_LIMITS}
     if given is None:
         return found
     if not isinstance(given, dict):
@@ -151,6 +158,8 @@ def _limits(c: _Checker, given) -> dict:
         return found
     c.unknown(given, tuple(LIMITS), "limits")
     for name, (default, low, high) in LIMITS.items():
+        if name not in found and name not in given:
+            continue
         value = given.get(name, default)
         whole = isinstance(default, int)
         number = isinstance(value, int) if whole else isinstance(value, int | float)
@@ -160,6 +169,48 @@ def _limits(c: _Checker, given) -> dict:
             continue
         found[name] = int(value) if whole else float(value)
     return found
+
+
+def _bounded(c: _Checker, path: str, value, low: int, high: int) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+        c.add(path, f"is a whole number from {low} to {high}")
+        return None
+    return value
+
+
+def _ops(c: _Checker, given) -> dict:
+    found: dict = {"enabled": False, **{name: default for name, (default, _, _) in OPS.items()}}
+    if not isinstance(given, dict):
+        c.add("ops", "is a mapping: enabled, debounce_minutes, max_items")
+        return found
+    c.unknown(given, OPS_KEYS, "ops")
+    enabled = given.get("enabled", False)
+    if not isinstance(enabled, bool):
+        c.add("ops.enabled", "is true or false")
+    else:
+        found["enabled"] = enabled
+    for name, (default, low, high) in OPS.items():
+        value = _bounded(c, f"ops.{name}", given.get(name, default), low, high)
+        if value is not None:
+            found[name] = value
+    return found
+
+
+def ops_of(spec) -> dict:
+    """The ``ops`` of a spec with its defaults filled in: ``enabled`` false for a spec that has none, as one written
+    before the key, and the defaults in place of a value out of bounds."""
+    given = spec.get("ops") if isinstance(spec, dict) else None
+    return _ops(_Checker(), given) if isinstance(given, dict) else _ops(_Checker(), {})
+
+
+def limit_of(spec, name: str) -> float | int:
+    """Limit ``name`` of a spec, its default when the spec has none or one out of bounds."""
+    default, low, high = LIMITS[name]
+    limits = spec.get("limits") if isinstance(spec, dict) else None
+    value = limits.get(name, default) if isinstance(limits, dict) else default
+    if isinstance(value, bool) or not isinstance(value, int | float) or not low <= value <= high:
+        return default
+    return value
 
 
 def _position(c: _Checker, given, path: str, node: str | None) -> dict:
@@ -338,6 +389,8 @@ def check(spec) -> tuple[dict, list[Problem]]:
         "purpose": c.text(spec.get("purpose"), "purpose", MAX_PURPOSE_CHARS),
         "limits": _limits(c, spec.get("limits")),
     }
+    if "ops" in spec:  # a spec from before the key has none and reads as ops off (``ops_of``)
+        found["ops"] = _ops(c, spec["ops"])
     found["nodes"] = _nodes(c, spec.get("nodes"))
     found["edges"] = _edges(c, spec.get("edges"), found["nodes"])
     return found, c.problems

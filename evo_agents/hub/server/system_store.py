@@ -30,6 +30,9 @@ class System:
     updated_by: str | None
     created_at: datetime
     updated_at: datetime
+    is_default: bool = False  # the project's default system (0237)
+    ops_paused_at: datetime | None = None  # its ops hold their batches since then (0237)
+    ops_paused_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,9 @@ def _select():
         select(u2.c.login).where(u2.c.id == s.c.updated_by).scalar_subquery().label("updated_by"),
         s.c.created_at,
         s.c.updated_at,
+        s.c.is_default,
+        s.c.ops_paused_at,
+        s.c.ops_paused_reason,
     )
 
 
@@ -73,6 +79,28 @@ async def one(conn: AsyncConnection, project_id: int, slug: str, *, lock: bool =
     query = _select().where(s.c.project_id == project_id, s.c.slug == slug)
     row = (await conn.execute(query.with_for_update(of=s) if lock else query)).one_or_none()
     return None if row is None else System(**row._mapping)
+
+
+async def default_of(conn: AsyncConnection, project_id: int, *, lock: bool = False) -> System | None:
+    """The project's default system, or None when it has none."""
+    s = tables.agent_systems
+    query = _select().where(s.c.project_id == project_id, s.c.is_default)
+    row = (await conn.execute(query.with_for_update(of=s) if lock else query)).one_or_none()
+    return None if row is None else System(**row._mapping)
+
+
+async def set_default(conn: AsyncConnection, project_id: int, system_id: int) -> None:
+    """Make system ``system_id`` the project's default, and no other; the caller locked the project's default."""
+    s = tables.agent_systems
+    await conn.execute(update(s).values(is_default=False).where(s.c.project_id == project_id, s.c.is_default))
+    await conn.execute(update(s).values(is_default=True).where(s.c.id == system_id))
+
+
+async def set_paused(conn: AsyncConnection, system_id: int, reason: str | None) -> None:
+    """Pause the ops of system ``system_id`` for ``reason``, or resume them when it is None."""
+    s = tables.agent_systems
+    paused_at = None if reason is None else func.coalesce(s.c.ops_paused_at, func.now())
+    await conn.execute(update(s).values(ops_paused_at=paused_at, ops_paused_reason=reason).where(s.c.id == system_id))
 
 
 async def revision_spec(conn: AsyncConnection, system_id: int, revision: int) -> dict | None:

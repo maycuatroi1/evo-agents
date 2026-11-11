@@ -604,6 +604,7 @@ def _include_member_routes(app: FastAPI) -> None:
         seller_api,
         signal_keys,
         signals,
+        system_ops,
         task_dispatch,
         triage_actions,
         work_cards,
@@ -624,6 +625,7 @@ def _include_member_routes(app: FastAPI) -> None:
         system_trace_views.stream_router,  # before its router, whose /traces/{id} would take /traces/stream
         system_trace_views.router,  # the traces of agent systems (0218)
         agent_systems.router,  # the agent systems of a project (0217)
+        system_ops.router,  # the default system of a project and the ops of a system (0237)
         agent_accounts.router,
         account_pools.router,
         agent_provider_accounts.router,
