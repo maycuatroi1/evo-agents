@@ -15,6 +15,9 @@ message ever shows.
 A decision of category merge may carry the approval it asks for (``approval``, ``evo_agents.hub.approval_heads``):
 the pull request, its head and the hash of its scope. Its answer opens the gate of the agent's merge for that head and
 scope alone; the person asked reads what it is bound to under the context.
+
+A wait (category wait) shows what it waits for in ``waiting_on`` (``evo_agents.hub.server.waiting_on``), every other
+decision null there.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from evo_agents.hub import approval_heads, credential_requests, decision_asks, o
 from evo_agents.hub.credentials import MAX_SECRET_BYTES
 from evo_agents.hub.server.output_views import RunOutput
 from evo_agents.hub.server.runs.models import LINE, MAX_ID
+from evo_agents.hub.server.waiting_on import WaitingOn
 
 LABEL_CHARS = 200  # an option's label, one line
 DESCRIPTION_CHARS = 1000  # an option's description
@@ -290,6 +294,11 @@ class Decision(BaseModel):
         None, description="a wait (category wait): when the hub answers it at the latest, its time come"
     )
     wake_on: WakeOn | None = Field(None, description="a wait: the event of the hub that answers it sooner")
+    waiting_on: WaitingOn | None = Field(
+        None,
+        description="a wait: what it waits for and where that stands, as the hub last knew it (``waiting_on``); null "
+        "for any other decision",
+    )
     outputs: list[RunOutput] = Field(
         default_factory=list,
         description="the files of its run it carries, oldest first, each with the decision's URL of its bytes",

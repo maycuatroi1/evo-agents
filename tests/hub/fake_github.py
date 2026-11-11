@@ -151,6 +151,7 @@ class FakeWorkflowRun:
     started_at: str
     attempt: int = 1
     jobs: list = field(default_factory=list)  # each {id, name, status, conclusion, step}
+    updated_at: str | None = None  # the start when None
 
 
 @dataclass
@@ -393,13 +394,14 @@ class FakeGitHub:
         conclusion: str | None = "success",
         jobs=(),
         started_at: str | None = None,
+        updated_at: str | None = None,
     ) -> FakeWorkflowRun:
         """A run of ``workflow`` for the push of ``tag`` at ``sha``, with ``jobs``: each {name, conclusion, step (the
         step that failed), log (its text)}."""
         with self._lock:
             run_id = 7_000_000 + len(self.workflow_runs) + 1
             run = FakeWorkflowRun(
-                run_id, owner, name, workflow, sha, tag, status, conclusion, started_at or _now(), 1, []
+                run_id, owner, name, workflow, sha, tag, status, conclusion, started_at or _now(), 1, [], updated_at
             )
             run.jobs = self._jobs(run_id, jobs)
             self.workflow_runs[run_id] = run
@@ -755,6 +757,7 @@ class FakeGitHub:
             "run_attempt": run.attempt,
             "run_started_at": run.started_at,
             "created_at": run.started_at,
+            "updated_at": run.updated_at or run.started_at,
         }
 
     def _job_answer(self, run: FakeWorkflowRun, job: dict) -> dict:
@@ -796,6 +799,7 @@ class FakeGitHub:
                 if run.workflow == rest[2]
                 and run.sha == query.get("head_sha", run.sha)
                 and query.get("event", "push") == "push"
+                and query.get("status") in (None, run.status, run.conclusion)
             ]
             return 200, {"total_count": len(found), "workflow_runs": found}
         run = next((item for item in runs if rest[1:2] == ["runs"] and str(item.id) == rest[2]), None)

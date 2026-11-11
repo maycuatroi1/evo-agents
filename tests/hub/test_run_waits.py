@@ -391,3 +391,99 @@ def test_a_decision_whose_options_all_wait_gets_422(client, hub, hub_db):
         headers=worker["headers"],
     )
     assert response.status_code == 422 and "every option" in response.text
+
+
+def test_waiting_on_names_the_step_an_event_a_time_a_merge_check_or_an_agent_and_is_null_for_another_decision(
+    client, hub, hub_db
+):
+    push(client, hub["owner"], plan_body("northwind-launch"))
+    worker, run = started(client, hub)
+    moved(client, worker, run["id"], "running", session_id=SESSION)
+    reported(client, worker, run["id"], 2, "in_progress")
+    on_step = {"plan": "fleet", "step": 2, "status": "done"}
+    step_wait = waited(client, worker, run["id"], until=soon(12), on=hub_events.PLAN_STEP, contains=on_step)
+    assert step_wait["waiting_on"]["plan_step"] == {
+        "plan": "fleet",
+        "step": "2",
+        "wanted": "done",
+        "title": None,
+        "status": None,
+        "run": None,
+    }, "the worker's view reads no plan"
+    other_step = {"plan": "northwind-launch", "step": 3}
+    other_wait = waited(client, worker, run["id"], until=soon(12), on=hub_events.PLAN_STEP, contains=other_step)
+    contains = {"canvas": "evo-agents", "number": 2}
+    event_wait = waited(client, worker, run["id"], until=soon(48), on=hub_events.BASELINE, contains=contains)
+    time_wait = waited(client, worker, run["id"], until=soon(2))
+    check_wait = waited(client, worker, run["id"], until=soon(2))
+    agent_wait = waited(client, worker, run["id"], until=soon(2))
+    question = asked(client, worker, run["id"])
+
+    m, d = tables.merge_checks, tables.decisions
+    sql(
+        hub_db,
+        m.insert().values(
+            project_id=project_id(hub_db),
+            repo="northwind/lumen",
+            number=42,
+            run_id=run["id"],
+            title="Lumen: read the CI of a tag",
+            web_url="https://github.com/northwind/lumen/pull/42",
+            source_branch="feat/lumen-ci",
+            base_branch="main",
+            head_sha="c" * 40,
+            verdict={"first": {"passed": True, "model": "judge-a", "run_id": None}},
+            decision_id=check_wait["id"],
+        ),
+    )
+    sql(hub_db, update(d).values(awaits_run_id=run["id"]).where(d.c.id == agent_wait["id"]))
+
+    def waiting_on(decision_id: int) -> dict | None:
+        return decision(client, hub["owner"], decision_id)["waiting_on"]
+
+    step = waiting_on(step_wait["id"])
+    assert step["kind"] == "plan_step" and step["event"] is None and step["time"] is None
+    assert step["plan_step"] == {
+        "plan": "fleet",
+        "step": "2",
+        "wanted": "done",
+        "title": "API",
+        "status": "in_progress",
+        "run": {"id": run["id"], "kind": "plan", "state": "running"},
+    }
+    other = waiting_on(other_wait["id"])["plan_step"]
+    assert (other["title"], other["status"], other["wanted"], other["run"]) == ("Skill", "pending", None, None)
+    event = waiting_on(event_wait["id"])
+    assert event["kind"] == "event" and event["event"]["kind"] == hub_events.BASELINE and event["event"]["name"]
+    assert event["event"]["contains"] == [{"key": "canvas", "value": "evo-agents"}, {"key": "number", "value": "2"}]
+    alone = waiting_on(time_wait["id"])
+    assert alone["kind"] == "time" and alone["time"]["wake_at"] == time_wait["wake_at"]
+    check = waiting_on(check_wait["id"])
+    assert check["kind"] == "merge_check"
+    assert (check["merge_check"]["repo"], check["merge_check"]["number"], check["merge_check"]["state"]) == (
+        "northwind/lumen",
+        42,
+        "judging",
+    )
+    assert check["merge_check"]["url"] == "https://github.com/northwind/lumen/pull/42"
+    assert check["merge_check"]["judges"] == [
+        {"round": "first", "state": "passed", "run_id": None, "model": "judge-a"},
+        {"round": "second", "state": "pending", "run_id": None, "model": None},
+    ]
+    agent = waiting_on(agent_wait["id"])
+    assert agent["kind"] == "agent_answer"
+    assert agent["agent_answer"]["run"] == {"id": run["id"], "kind": "plan", "state": "running"}
+    assert waiting_on(question["id"]) is None, "a decision that is not a wait waits on nothing"
+
+    response = client.get(f"/v1/projects/{PROJECT}/decisions", params={"run_id": run["id"]}, headers=hub["owner"])
+    assert response.status_code == 200, response.text
+    kinds = {item["id"]: (item["waiting_on"] or {}).get("kind") for item in response.json()["decisions"]}
+    assert kinds == {
+        step_wait["id"]: "plan_step",
+        other_wait["id"]: "plan_step",
+        event_wait["id"]: "event",
+        time_wait["id"]: "time",
+        check_wait["id"]: "merge_check",
+        agent_wait["id"]: "agent_answer",
+        question["id"]: None,
+    }

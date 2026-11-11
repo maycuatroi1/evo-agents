@@ -178,6 +178,7 @@ TABLES |= {"system_traces", "system_spans", "agent_ask_briefs"}  # migration 021
 TABLES |= {"orchestrator_threads"}  # migration 0221
 TABLES |= {"srs_use_case_revisions", "srs_use_case_releases"}  # migration 0226
 TABLES |= {"chat_label_shares"}  # migration 0229
+TABLES |= {"workflow_run_reads"}  # migration 0236
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -268,8 +269,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_thirty_seven_tables(hub_db):
-    assert len(TABLES) == 237  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_thirty_eight_tables(hub_db):
+    assert len(TABLES) == 238  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -5951,3 +5952,15 @@ def test_0235_gives_traces_the_work_and_its_card_and_going_back_drops_them(hub_d
     move_to(hub_db, "0234", down=True)
     assert not work & columns(hub_db, "system_traces")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0235") :]
+
+
+def test_0236_keeps_the_latest_read_of_a_watched_workflow_run_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0235")
+    assert "workflow_run_reads" not in tables(hub_db)
+    move_to(hub_db, "0236")
+    assert {"project_id", "repo", "run_id", "data", "read_at", "typical_seconds", "typical_read_at"} == columns(
+        hub_db, "workflow_run_reads"
+    )
+    move_to(hub_db, "0235", down=True)
+    assert "workflow_run_reads" not in tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0236") :]
