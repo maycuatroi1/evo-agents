@@ -201,6 +201,9 @@ class BranchWork:
             return dict(NOTHING)  # the agent changed nothing in this repo
         head_branch = await gitops.current_branch(path)
         if head_branch != workspace.local_branch:
+            if not await gitops.unpushed(path):  # the agent checked out commits origin has (a review of a PR): no work
+                run.note(f"{name} is left on {head_branch or 'a detached HEAD'} with no commit origin lacks.")
+                return dict(NOTHING)
             raise RunFailed(
                 f"the worktree of {name} is on "
                 f"{gitops.branch_ref(head_branch) if head_branch else 'a detached HEAD'}, not "
