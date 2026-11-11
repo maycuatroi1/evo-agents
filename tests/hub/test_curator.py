@@ -901,3 +901,21 @@ def test_charter_and_curator_pause_from_the_command_line(served, monkeypatch, ca
     bad.write_text("- just\n- a list\n", encoding="utf-8")
     refused = curator_cli(served, monkeypatch, capsys, "owner", "charter", "set", str(bad))
     assert refused.code == 1 and "holds no mapping" in refused.err
+
+
+def test_pacing_charter_set_show_and_status_from_the_command_line(served, monkeypatch, capsys, hub_db):
+    """A paced charter has no window: set, show and status print its pacing and its period instead of crashing."""
+    path = served.tmp_path / "paced.yaml"
+    path.write_text(yaml.safe_dump(paced_body()), encoding="utf-8")
+    printed = ok(curator_cli(served, monkeypatch, capsys, "owner", "charter", "set", str(path))).out
+    assert f"Charter of {PROJECT} is at revision 1." in printed
+    assert "$2.00 a day, quiet 01:00 to 06:00, Asia/Ho_Chi_Minh" in printed and "window" not in printed
+
+    shown = ok(curator_cli(served, monkeypatch, capsys, "owner", "charter", "show")).out
+    assert "pacing" in shown and "window" not in shown
+
+    status = ok(curator_cli(served, monkeypatch, capsys, "reader", "status")).out
+    assert "  day of 20" in status
+    assert "quiet hours" in status and "window" not in status and "night of" not in status
+    resumed = ok(curator_cli(served, monkeypatch, capsys, "owner", "resume")).out
+    assert "runs again through its period" in resumed and "window" not in resumed
