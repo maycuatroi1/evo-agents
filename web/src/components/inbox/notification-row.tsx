@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { isNoticeKind, NoticeKindBadge } from "./badges";
 import { daysBefore, dayKey, type InboxDay, type InboxEntry, opensByItself, snippet } from "./model";
 import { AskedBadges, NotificationContent, NotificationIcon, NotificationLinks, useFollow } from "./notification-item";
+import { OpsTag } from "./ops-tag";
 import { type Notification, runHref } from "./queries";
 
 /**
@@ -202,6 +203,7 @@ export function NotificationRow({ notification, href, selected, onOpenDecision, 
               <NoticeKindName kind={notification.notice_kind} />
             </span>
           ) : null}
+          <OpsTag notification={notification} />
           <PhoneTime at={notification.created_at} />
         </div>
         <Meta project={nested ? null : notification.project} at={notification.created_at}>

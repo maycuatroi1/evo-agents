@@ -3910,7 +3910,8 @@
         "entry": "Agent lối vào",
         "size": "Kích thước",
         "revision": "Bản",
-        "updated": "Đổi lúc"
+        "updated": "Đổi lúc",
+        "actions": "Thao tác"
       },
       "noEntry": "Chưa có",
       "size": "{nodes, plural, other {# nút}}, {edges, plural, other {# cạnh}}",
@@ -4103,7 +4104,8 @@
     "modes": {
       "label": "Chế độ",
       "design": "Thiết kế",
-      "observe": "Quan sát"
+      "observe": "Quan sát",
+      "ops": "Vận hành"
     },
     "observe": {
       "states": {
@@ -4289,6 +4291,111 @@
       "field": "Tên hệ",
       "failed": "Không đổi được tên hệ",
       "conflict": "Có người vừa lưu hệ này. Tải lại rồi đổi tên lần nữa."
+    },
+    "default": {
+      "tag": "Mặc định",
+      "set": "Đặt làm mặc định",
+      "setFor": "Đặt {name} làm system mặc định của project",
+      "setDone": "{name} là system mặc định",
+      "setDoneText": "Orchestrator của nó giờ xử lý các sự kiện vận hành của project.",
+      "setFailed": "Không đặt được system mặc định",
+      "forbidden": "Chỉ admin của project mới đặt được system mặc định.",
+      "noneTitle": "Chưa có system mặc định",
+      "noneAdmin": "Không ai xử lý các sự kiện vận hành của project (run lỗi, chờ, merge dừng). Hãy đặt một system làm mặc định.",
+      "noneReader": "Không ai xử lý các sự kiện vận hành của project (run lỗi, chờ, merge dừng) cho đến khi admin đặt một system mặc định."
+    },
+    "ops": {
+      "title": "Vận hành",
+      "subDefault": "Orchestrator của system này xử lý các sự kiện vận hành của project theo từng batch, mỗi batch một thread.",
+      "subOther": "Các thiết lập này có hiệu lực khi system này là mặc định của project.",
+      "notDefaultTitle": "System này không phải mặc định của project",
+      "notDefaultText": "Hub chỉ xếp hàng sự kiện vận hành của project cho system mặc định.",
+      "alert": {
+        "pausedTitle": "Vận hành đang tạm dừng",
+        "since": "Tạm dừng từ {since}",
+        "pausedAdmin": "Sự kiện vẫn được xếp hàng, nhưng không thread nào mở cho đến khi bạn tiếp tục.",
+        "pausedReader": "Sự kiện vẫn được xếp hàng, nhưng không thread nào mở cho đến khi admin của project tiếp tục.",
+        "cappedTitle": "Vận hành đã chạm trần trong ngày",
+        "cappedText": "Các thread vận hành đã tiêu {spent} trên {cap} trong 24 giờ qua. Các batch chờ đến khi chi tiêu xuống dưới trần."
+      },
+      "summary": {
+        "state": "Vận hành",
+        "on": "Bật",
+        "off": "Tắt",
+        "paused": "Tạm dừng",
+        "spent": "Đã tiêu trong 24 giờ",
+        "spentOf": "{spent} trên {cap}",
+        "waiting": "Batch đang chờ",
+        "running": "Thread đang chạy"
+      },
+      "settings": {
+        "title": "Thiết lập vận hành",
+        "enabled": "Xử lý sự kiện vận hành",
+        "enabledHint": "Khi tắt, hub không đọc sự kiện vận hành nào của project, và mỗi sự kiện chờ người trong Inbox.",
+        "fields": {
+          "debounce_minutes": "Gom trong (phút)",
+          "max_items": "Đóng batch khi đủ (mục)",
+          "ops_daily_usd": "Trần mỗi ngày (USD)"
+        },
+        "hints": {
+          "minutes": "Từ {min} đến {max} phút.",
+          "items": "Từ {min} đến {max} mục.",
+          "usd": "Từ {min} đến {max} USD trong 24 giờ."
+        },
+        "outOfBounds": "Nhập giá trị từ {min} đến {max}.",
+        "saved": "Đã lưu thiết lập vận hành",
+        "savedOn": "Áp dụng từ batch tiếp theo.",
+        "savedOff": "Vận hành đã tắt. Sự kiện vận hành chờ người trong Inbox.",
+        "forbidden": "Chỉ admin của project mới đổi được thiết lập vận hành.",
+        "conflict": "Có người đã lưu system này sau khi bạn mở. Trang giờ hiện bản của họ; hãy sửa lại.",
+        "refused": "Hub từ chối các giá trị này.",
+        "reset": "Hoàn tác",
+        "save": "Lưu",
+        "saving": "Đang lưu"
+      },
+      "pause": {
+        "pause": "Tạm dừng vận hành",
+        "pausing": "Đang tạm dừng",
+        "cancel": "Hủy",
+        "confirmTitle": "Tạm dừng vận hành?",
+        "confirmText": "Sự kiện vẫn được xếp hàng, nhưng Orchestrator không mở thread mới cho đến khi có người tiếp tục. Các thread đã mở vẫn chạy xong.",
+        "reason": "Lý do (không bắt buộc)",
+        "reasonHint": "Hiện trên trang này. Nếu bỏ trống, hub ghi ai đã tạm dừng.",
+        "done": "Đã tạm dừng vận hành",
+        "doneText": "Tiếp tục từ trang này.",
+        "forbidden": "Chỉ admin của project mới tạm dừng hoặc tiếp tục vận hành.",
+        "conflict": "Vận hành đã đổi sau khi bạn mở trang. Hãy thử lại.",
+        "resume": "Tiếp tục",
+        "resumed": "Đã tiếp tục vận hành",
+        "resumedText": "Các batch đang chờ mở thread ở lượt kế tiếp.",
+        "resumeFailed": "Không tiếp tục được vận hành"
+      },
+      "batchState": {
+        "open": "Đang gom",
+        "ready": "Chờ thread",
+        "empty": "Hub đã tự xử lý",
+        "running": "Trong thread",
+        "done": "Xong"
+      },
+      "batches": {
+        "title": "Batch gần đây",
+        "sub": "Các batch mới nhất trong hàng đợi vận hành của project.",
+        "emptyTitle": "Chưa có batch nào",
+        "emptyText": "Một batch mở khi project có sự kiện vận hành: run lỗi, chờ, merge dừng.",
+        "noThread": "Không có",
+        "thread": "Mở thread",
+        "threadFor": "Mở thread của batch {id}",
+        "recurring": "Lặp lại",
+        "columns": {
+          "cause": "Nguyên nhân",
+          "state": "Trạng thái",
+          "items": "Mục",
+          "opened": "Mở lúc",
+          "thread": "Thread"
+        },
+        "items": "{items, plural, other {# mục}}, {pending} đang chờ",
+        "caption": "Các batch gần đây của hàng đợi vận hành"
+      }
     }
   },
   "chats": {
@@ -7357,7 +7464,11 @@
       "searchPlaceholder": "Tìm trong tiêu đề và nội dung",
       "clearSearch": "Xoá ô tìm",
       "run": "Run #{id}",
-      "clearRun": "Hiện mọi run, không chỉ run #{id}"
+      "clearRun": "Hiện mọi run, không chỉ run #{id}",
+      "handler": "Ai xử lý",
+      "anyHandler": "Bất kỳ",
+      "byOrchestrator": "Orchestrator",
+      "byPerson": "Chờ người"
     },
     "empty": {
       "title": "Inbox đang trống"
@@ -7716,6 +7827,12 @@
         "other": "{ref}",
         "newTab": "(mở trong tab mới)"
       }
+    },
+    "ops": {
+      "handling": "Orchestrator đang xử lý",
+      "queued": "Đang chờ Orchestrator",
+      "thread": "Mở thread",
+      "threadFor": "Mở thread của Orchestrator cho {title}"
     }
   },
   "toast": {

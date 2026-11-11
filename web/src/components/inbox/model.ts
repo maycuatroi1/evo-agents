@@ -6,7 +6,9 @@ import { PROJECT_NAME } from "@/lib/queries";
 import {
   type Decision,
   HUB_DECISION_CATEGORIES,
+  INBOX_HANDLERS,
   INBOX_PAGE,
+  type InboxHandler,
   type InboxQuery,
   MAX_ANSWER_BYTES,
   NOTIFICATION_KINDS,
@@ -38,6 +40,8 @@ export type InboxFilters = {
   decision: number | null;
   /** The proposal of the Curator shown in the sheet over the list, as `/inbox?proposal=ID` names it. */
   proposal: number | null;
+  /** Who handles it: the Orchestrator of the default system (`?handler=ops`) or only a person (`person`). */
+  handler: InboxHandler | null;
 };
 
 export const NO_FILTERS: InboxFilters = {
@@ -49,6 +53,7 @@ export const NO_FILTERS: InboxFilters = {
   page: 1,
   decision: null,
   proposal: null,
+  handler: null,
 };
 
 function isKind(value: string | null): value is NotificationKind {
@@ -59,6 +64,7 @@ export function readInboxFilters(source: ParamSource): InboxFilters {
   const kind = source.get("kind");
   const project = source.get("project")?.trim() ?? "";
   const page = Number(source.get("page") ?? "1");
+  const handler = source.get("handler");
   return {
     kind: isKind(kind) ? kind : null,
     project: PROJECT_NAME.test(project) ? project : null,
@@ -68,6 +74,7 @@ export function readInboxFilters(source: ParamSource): InboxFilters {
     page: Number.isInteger(page) && page >= 1 && page <= MAX_PAGE ? page : 1,
     decision: parseRunId(source.get("decision")?.trim() ?? ""),
     proposal: parseRunId(source.get("proposal")?.trim() ?? ""),
+    handler: (INBOX_HANDLERS as readonly string[]).includes(handler ?? "") ? (handler as InboxHandler) : null,
   };
 }
 
@@ -79,6 +86,7 @@ export function inboxSearch(filters: InboxFilters): string {
   if (filters.kind) params.set("kind", filters.kind);
   if (filters.project) params.set("project", filters.project);
   if (filters.unread) params.set("unread", "1");
+  if (filters.handler) params.set("handler", filters.handler);
   if (filters.run !== null) params.set("run", String(filters.run));
   if (filters.q) params.set("q", filters.q);
   if (filters.page > 1) params.set("page", String(filters.page));
@@ -88,7 +96,8 @@ export function inboxSearch(filters: InboxFilters): string {
 
 /** Whether the list is narrowed by a filter (the page and the decision or proposal shown are not filters). */
 export function isFiltered(filters: InboxFilters): boolean {
-  return filters.kind !== null || filters.project !== null || filters.unread || filters.q !== "" || filters.run !== null;
+  const { kind, project, unread, q, run, handler } = filters;
+  return kind !== null || project !== null || unread || q !== "" || run !== null || handler !== null;
 }
 
 /** What the API is asked for the list a set of filters shows. */
@@ -99,6 +108,7 @@ export function inboxQuery(filters: InboxFilters): InboxQuery {
     unread: filters.unread,
     q: filters.q,
     run: filters.run,
+    handler: filters.handler,
     limit: INBOX_PAGE,
     offset: (filters.page - 1) * INBOX_PAGE,
   };
@@ -239,18 +249,7 @@ export function notificationOfDecision(notifications: readonly Notification[], i
   return notifications.find((notification) => notification.kind === "decision" && notification.decision_id === id) ?? null;
 }
 
-const COMMIT = /^[0-9a-f]{7,64}$/i;
-
-export type NoticeFacts = { repo: string | null; branch: string | null; commits: string[] };
-
-/** A notice's repo, branch and commits from its `details`, keeping only values of the right shape. */
-export function noticeFacts(details: Notification["details"]): NoticeFacts {
-  const text = (value: unknown) => (typeof value === "string" && value.trim() !== "" ? value : null);
-  const commits = Array.isArray(details?.commits)
-    ? details.commits.filter((commit): commit is string => typeof commit === "string" && COMMIT.test(commit))
-    : [];
-  return { repo: text(details?.repo), branch: text(details?.branch), commits };
-}
+export { type NoticeFacts, noticeFacts, type PluginFacts, pluginFacts } from "./notice-details";
 
 /**
  * A notice of a push or merge into a default branch, or of a repo's merge queue that stopped: it names the repo, the
@@ -262,14 +261,6 @@ export function isBranchNotice(notification: Pick<Notification, "notice_kind">):
     notification.notice_kind === "merge_default_branch" ||
     notification.notice_kind === "merge_paused"
   );
-}
-
-export type PluginFacts = { plugin: string | null; topic: string | null };
-
-/** The plugin that sent a notice and its topic, from `details`, keeping only text. */
-export function pluginFacts(details: Notification["details"]): PluginFacts {
-  const text = (value: unknown) => (typeof value === "string" && value.trim() !== "" ? value : null);
-  return { plugin: text(details?.plugin), topic: text(details?.topic) };
 }
 
 /** Commits a notice lists before the rest fold under "and N more". */

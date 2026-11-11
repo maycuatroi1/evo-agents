@@ -108,9 +108,15 @@ export type InboxQuery = {
   /** Words of the title or the body; empty for none. */
   q: string;
   run: number | null;
+  /** Held by the Orchestrator of the default system (`ops`), or by no one but a person (`person`); null for both. */
+  handler: InboxHandler | null;
   limit: number;
   offset: number;
 };
+
+/** The Inbox's filter by who handles a notification (`ops_views.HANDLERS`). */
+export const INBOX_HANDLERS = ["ops", "person"] as const;
+export type InboxHandler = (typeof INBOX_HANDLERS)[number];
 
 export const inboxKeys = {
   /** Every read of the member's notifications: invalidated after a mark read or an answer. */
@@ -150,6 +156,7 @@ export const notificationsQuery = (api: ApiSource, query: InboxQuery) =>
               ...(query.project ? { project: query.project } : {}),
               ...(query.unread ? { unread: true } : {}),
               ...(query.run !== null ? { run: query.run } : {}),
+              ...(query.handler ? { handler: query.handler } : {}),
               ...(query.q ? { q: query.q } : {}),
               limit: query.limit,
               offset: query.offset,

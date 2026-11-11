@@ -1033,6 +1033,28 @@ another agent, 404 for a chat run in no such thread), posts a `Decision:` line i
 Answer and reassign close the thread. The hub runtime's tools `orchestrator_answer`, `orchestrator_reassign` and
 `orchestrator_ask_owner` do the same for an Orchestrator that runs on the hub.
 
+#### Ops threads
+
+The Orchestrator of a project's default system also gets ops threads: one thread a batch of the project's operations
+queue, in the chat `Ops: <slug>` (`docs/hub.md`, Agent systems). Its chat run there has six more commands, each for
+the items of that thread's batch only. They take `--reason TEXT` (`-` reads stdin) for the `Decision:` line, write an
+audit row, and mark the batch's items they handled as handled by the Orchestrator. A chat run in no ops thread gets
+404, another agent's 403, and a batch the hub already settled 409.
+
+| Command | Route | What |
+| --- | --- | --- |
+| `evo-agents worker ops rerun RUN --reason TEXT` | `POST /v1/worker/runs/{id}/ops/rerun` | hand the work of a failed or lost chat or task run of the batch again, in a new session, to any worker that fits. Audit `ops.rerun` |
+| `evo-agents worker ops redeliver RUN --reason TEXT` | `POST .../ops/redeliver` | the same, to a healthy worker of the project (enough free disk, its runtime logged in); 409 when none is. Audit `ops.redeliver` |
+| `evo-agents worker ops answer-wait DECISION --text TEXT --reason TEXT` | `POST .../ops/answer-wait` | answer a stuck wait of the batch, which wakes its run. Only a decision of category `wait`: a decision the owner must make is refused (409). Audit `ops.answer_wait` |
+| `evo-agents worker ops curator-resume --reason TEXT` | `POST .../ops/curator-resume` | let the Curator's schedules run again that its breaker paused, never those a person paused. Audit `ops.curator_resume` |
+| `evo-agents worker ops read NOTICE --reason TEXT` | `POST .../ops/read` | mark a notice of the project read. Audit `ops.read` |
+| `evo-agents worker ops finding --lens LENS --severity low\|medium\|high --title TEXT --body TEXT --reason TEXT` | `POST .../ops/finding` | write a finding for the Curator under the project's default label, with the batch as its evidence: the fix for a recurring cause. Audit `ops.finding` |
+
+In an ops thread, `triage reassign` works as above and `triage ask-owner` at most once a batch; `triage answer` is
+refused (409), since an ops thread is about a batch, not one agent. The hub runtime's tool `ops_action`, with
+`action` one of `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read` and `finding`, does the same for an
+Orchestrator that runs on the hub.
+
 ### Curator proposals the agent answers
 
 A project whose Curator charter has `answer_by: agent` gets a thread in the same triage chat for each proposal a review

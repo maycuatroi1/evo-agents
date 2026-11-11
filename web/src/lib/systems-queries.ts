@@ -106,6 +106,11 @@ export function systemObserveHref(project: string, slug: string, work?: number |
   return `${systemHref(project, slug)}?mode=observe${work ? `&work=${work}` : ""}` as Route;
 }
 
+/** The system's page on its Ops tab: how the Orchestrator of the project's default system handles its events. */
+export function systemOpsHref(project: string, slug: string): Route {
+  return `${systemHref(project, slug)}?mode=ops` as Route;
+}
+
 /** The page of one trace of a system, with its waterfall. */
 export function systemTraceHref(project: string, slug: string, id: number): Route {
   return `${systemHref(project, slug)}/traces/${id}` as Route;
