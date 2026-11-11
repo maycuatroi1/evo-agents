@@ -21,7 +21,7 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import Boolean, column, func, select, table
 
-from evo_agents.hub import autonomy_card, run_prompts, runs, tables
+from evo_agents.hub import autonomy_card, run_prompts, runs, system_spec, tables
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.runs.service import views as run_views
 from tests.hub.live import sql
@@ -768,3 +768,99 @@ def test_the_next_attempt_of_a_lost_plan_run_names_its_session_to_the_worker_tha
     third = claim(client, other)
     assert third["attempt"] == 3 and third["parent_run_id"] == second
     assert third["lost_attempt"] is None, "another worker has neither the session nor the worktrees"
+
+
+CHOICE = f"/v1/projects/{PROJECT}/plan-run-choice"
+DEFAULT_CHOICE = {
+    "target": "worker",
+    "system": None,
+    "agent": None,
+    "runtime": "any",
+    "model": None,
+    "mode": "headless",
+    "timeout_h": 4,
+    "session_per_step": False,
+}
+
+
+def plan_run_choice(client, headers) -> dict:
+    response = client.get(CHOICE, headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def put_choice(client, headers, **body):
+    return client.put(CHOICE, json=body, headers=headers)
+
+
+def saved_choice(client, headers, **body) -> dict:
+    response = put_choice(client, headers, **body)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_plan_run_choice_is_the_callers_own_and_keeps_no_as_me_identity_or_account(client, hub):
+    fresh = plan_run_choice(client, hub["owner"])
+    assert fresh["saved"] is False and fresh["defaulted"] == [] and fresh["updated_at"] is None
+    assert {key: fresh[key] for key in DEFAULT_CHOICE} == DEFAULT_CHOICE
+    chosen = {"runtime": "claude-code", "model": "claude-sonnet-4-5", "mode": "interactive", "timeout_h": 8}
+    saved = saved_choice(client, hub["owner"], **chosen, session_per_step=True)
+    assert saved["saved"] is True and saved["defaulted"] == [] and saved["updated_at"] is not None
+    assert {key: saved[key] for key in (*chosen, "session_per_step")} == {**chosen, "session_per_step": True}
+    assert plan_run_choice(client, hub["owner"]) == saved
+
+    # no one reads another's: someone-else, a writer, and a reader see the defaults; a reader writes none
+    for name in ("other", "reader"):
+        assert plan_run_choice(client, hub[name])["saved"] is False
+    assert put_choice(client, hub["reader"], runtime="codex").status_code == 403
+    assert client.get(CHOICE, headers=hub["stranger"]).status_code == 404
+
+    # as_me, browser identities and an account are never kept: a body naming one is refused, the choice unchanged
+    for extra in ({"as_me": True}, {"account": "claude-b"}, {"identities": ["work"]}, {"browser": True}):
+        assert put_choice(client, hub["owner"], **extra).status_code == 422, extra
+    assert put_choice(client, hub["owner"], target="system").status_code == 422  # a system target names its system
+    assert plan_run_choice(client, hub["owner"]) == saved
+    assert not {"as_me", "account", "identities", "browser"} & set(tables.plan_run_choices.c.keys())
+
+
+def test_plan_run_choice_gives_back_the_defaults_of_what_can_no_longer_be_used_and_lists_them(client, hub):
+    granted = client.put(
+        f"/v1/admin/projects/{PROJECT}/grants/{OWNER}",
+        json={"role": "admin", "max_level": "internal"},
+        headers=hub["admin"],
+    )
+    assert granted.status_code == 200, granted.text
+    models = {"model": {"mode": "allowlist", "allow": ["claude-sonnet-4-5"]}}
+    for handle, permissions in (("planner", models), ("helper", None)):
+        body = {"handle": handle, "name": handle.title(), **({"permissions": permissions} if permissions else {})}
+        response = client.post(f"/v1/projects/{PROJECT}/agents", json=body, headers=hub["owner"])
+        assert response.status_code == 201, response.text
+    spec = {
+        "schema": system_spec.SCHEMA,
+        "name": "Dev",
+        "purpose": "Run plans.",
+        "nodes": [{"id": "in", "kind": "entry"}, {"id": "lead", "kind": "agent", "profile": "helper"}],
+        "edges": [{"from": "in", "to": "lead", "kind": "interacts", "description": "every plan"}],
+    }
+    system = client.put(f"/v1/projects/{PROJECT}/systems/dev", json={"spec": spec}, headers=hub["owner"])
+    assert system.status_code == 200, system.text
+
+    usable = {"target": "system", "system": "dev", "agent": "planner", "model": "claude-sonnet-4-5"}
+    saved = saved_choice(client, hub["owner"], **usable, runtime="claude-code")
+    assert saved["defaulted"] == [] and {key: saved[key] for key in usable} == usable
+    # a model the agent does not allow, a runtime the project does not register
+    saved = saved_choice(client, hub["owner"], **{**usable, "model": "gpt-9"}, runtime="acme/fast")
+    assert saved["defaulted"] == ["runtime", "model"]
+    assert (saved["runtime"], saved["model"], saved["agent"]) == ("any", None, "planner")
+
+    saved_choice(client, hub["owner"], **{**usable, "model": "gpt-9"})
+    # the entry agent deleted: the system has none to hand the plan to
+    assert client.delete(f"/v1/projects/{PROJECT}/agents/helper", headers=hub["owner"]).status_code == 200
+    read = plan_run_choice(client, hub["owner"])
+    assert read["defaulted"] == ["system", "model"] and (read["target"], read["system"]) == ("worker", None)
+    # the system and the agent deleted: the default agent allows every model, so the model is kept
+    assert client.delete(f"/v1/projects/{PROJECT}/systems/dev", headers=hub["owner"]).status_code == 200
+    assert client.delete(f"/v1/projects/{PROJECT}/agents/planner", headers=hub["owner"]).status_code == 200
+    read = plan_run_choice(client, hub["owner"])
+    assert read["defaulted"] == ["system", "agent"] and read["saved"] is True
+    assert (read["target"], read["system"], read["agent"], read["model"]) == ("worker", None, None, "gpt-9")
