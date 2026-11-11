@@ -174,11 +174,14 @@ async def _orchestrated(conn: AsyncConnection, run_id: int) -> str | None:
     return None
 
 
-def healthy(health: dict | None, runtime: str | None) -> bool:
+def healthy(health: dict | None, runtime: str | None, *, leased: bool = False) -> bool:
     """Whether a worker's stored health report says enough free disk and the login of ``runtime`` ok or leased
-    (``ops_events.LOGGED_IN``; of any runtime for a run that asked for any)."""
+    (``ops_events.LOGGED_IN``; of any runtime for a run that asked for any); with ``leased`` (the run logs in with a hub
+    account), enough free disk."""
     if not health or ops_events.disk_band(health) != "ok":
         return False
+    if leased:
+        return True
     logins = health.get("logins") or {}
     if runtime and runtime != "any":
         return logins.get(runtime) in ops_events.LOGGED_IN
@@ -201,7 +204,9 @@ async def healthy_worker(conn: AsyncConnection, project_id: int, failed: Failed)
     )
     if failed.finished_at is not None:
         query = query.where(w.c.last_heartbeat_at > failed.finished_at)
-    fit = [row.id for row in (await conn.execute(query.order_by(w.c.id))).all() if healthy(row.health, failed.runtime)]
+    leased = await ops_queue.run_leased(conn, failed.run_id, failed.runtime)
+    rows = (await conn.execute(query.order_by(w.c.id))).all()
+    fit = [row.id for row in rows if healthy(row.health, failed.runtime, leased=leased)]
     if failed.worker_id in fit:
         return failed.worker_id
     return fit[0] if fit else None

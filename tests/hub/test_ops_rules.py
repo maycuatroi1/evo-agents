@@ -14,13 +14,15 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 
-from evo_agents.hub import runs, tables, triage_rules
+from evo_agents.hub import hub_events, runs, tables, triage_rules
 from evo_agents.hub.server.ops_rules import ORCHESTRATOR, REDELIVER, healthy
+from tests.hub.account_pool_setup import TOKEN_VAR
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (  # noqa: F401 (fixtures)
     EAGER,
+    OWNER,
     app_key,
     chat_worker,
     client,
@@ -29,16 +31,16 @@ from tests.hub.test_chat_runs import (  # noqa: F401 (fixtures)
     started,
     thread,
 )
-from tests.hub.test_ops_batches import project_id, run_pass, system
+from tests.hub.test_ops_batches import project_id, record, run_pass, system
 from tests.hub.test_runs import claim, moved, set_run
 from tests.hub.test_task_runs import enabled, handed, node, plugin_key, set_up, user_id
 
 CHECKOUT = {"error": "git fetch of evo-agents failed: no route to host", "failure_cause": "checkout"}
 
 
-def health_beat(client, worker: dict, free_gb: float = 120.5) -> None:
-    """A heartbeat of ``worker`` that reports its health: ``free_gb`` of free disk, every runtime's login ok."""
-    health = {"disk": {"free_gb": free_gb, "free_pct": 40.0}, "logins": dict.fromkeys(worker["runtimes"], "ok")}
+def health_beat(client, worker: dict, free_gb: float = 120.5, login: str = "ok") -> None:
+    """A heartbeat of ``worker`` that reports its health: ``free_gb`` of free disk, every runtime's login ``login``."""
+    health = {"disk": {"free_gb": free_gb, "free_pct": 40.0}, "logins": dict.fromkeys(worker["runtimes"], login)}
     body = {
         "runtimes": worker["runtimes"],
         "checkouts": worker["checkouts"],
@@ -90,6 +92,35 @@ def test_a_chat_run_failed_of_its_machine_is_said_again_in_its_thread_once_its_w
     assert (again, "pending", None) in items(hub_db)
     bodies = [m["body"] for m in thread(client, hub["owner"], chat["id"], mention["id"])]
     assert sum("the hub hands the work again" in body for body in bodies) == 1
+
+
+def test_a_login_a_hub_account_stands_for_is_no_fault_of_the_worker(client, hub, hub_db):
+    system(hub_db, {"enabled": True})
+    worker = chat_worker(client, hub["owner"], "studio")
+    run_pass(client)
+    chat = created(client, hub["owner"])
+    _, spec = started(client, hub, worker, chat)
+    set_run(hub_db, spec["id"], runtime="claude-code")
+    ra = tables.run_accounts
+    sql(hub_db, delete(ra).where(ra.c.run_id == spec["id"]))  # a run that took no hub account
+    moved(client, worker, spec["id"], "failed", **CHECKOUT)
+    health_beat(client, worker, login="unauthorized")
+    assert run_pass(client)["redelivered"] == 0, "the run logs in with the machine's login, which is out"
+
+    _, second = started(client, hub, worker, created(client, hub["owner"]))
+    set_run(hub_db, second["id"], runtime="claude-code")
+    sec = tables.secrets
+    (secret_id,) = sql(hub_db, select(sec.c.id).where(sec.c.name == "token-reviewer"))[0]  # the fixture's account
+    sql(hub_db, insert(ra).values(run_id=second["id"], env_var=TOKEN_VAR, secret_id=secret_id, how="pool"))
+    moved(client, worker, second["id"], "failed", **CHECKOUT)
+    health_beat(client, worker, login="unauthorized")
+    assert run_pass(client)["redelivered"] == 1, "its lease gave it a hub account: the machine's login is no matter"
+    health = {"worker_id": worker["id"], "disk": "ok", "logins": {"claude-code": "unauthorized", "codex": "missing"}}
+    record(client, hub_db, hub_events.WORKER_HEALTH, **health)
+    run_pass(client)
+    b = tables.ops_batches
+    keys = [key for (key,) in sql(hub_db, select(b.c.key).order_by(b.c.id))]
+    assert keys[-1] == f"worker.health|login:codex:missing|worker:{worker['id']}", "the leased login is no item"
 
 
 def test_a_run_an_orchestrator_took_or_that_failed_of_its_work_is_not_handed_again(client, hub, hub_db):

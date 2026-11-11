@@ -17,7 +17,7 @@ if not pg.DSN:
 
 from sqlalchemy import func, insert, select, update
 
-from evo_agents.hub import tables
+from evo_agents.hub import hub_events, tables
 from evo_agents.hub.server import ops_threads
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (  # noqa: F401 (fixtures)
@@ -31,7 +31,7 @@ from tests.hub.test_chat_runs import (  # noqa: F401 (fixtures)
     moved,
     started,
 )
-from tests.hub.test_ops_batches import project_id
+from tests.hub.test_ops_batches import project_id, record, run_pass
 from tests.hub.test_runs import PROJECT, set_run
 from tests.hub.test_system_orchestrator import LED, audited, led_desk, threads_of
 
@@ -268,3 +268,40 @@ def test_a_recurring_cause_key_asks_for_a_fix_and_the_digest_comes_once_a_day(cl
     assert details["threads"] == 1 and "Waits on you:" in body, body
     threads_pass(client)
     assert len(notices(hub_db, "ops_digest")) == 1, "one a day"
+
+
+def test_a_batch_no_node_of_the_lead_can_take_stays_ready_with_no_thread_until_one_can(client, hub, hub_db):
+    _, _, lead, parent = led_desk(client, hub)
+    ops_on(hub_db)
+    failed(hub_db, parent, "the retry test fails")
+    batch_id = batch(hub_db, parent)
+    w = tables.workers
+    sql(hub_db, update(w).values(dispatch_from="web").where(w.c.id == lead["id"]))  # no node takes the ops run
+    assert threads_pass(client).get("opened", 0) == 0
+    row = batch_row(hub_db, batch_id)
+    assert (row["state"], row["thread_id"], row["run_id"]) == ("ready", None, None), "no run, no thread"
+    assert ops_threads_of(hub_db) == []
+    threads_pass(client)
+    assert batch_row(hub_db, batch_id)["state"] == "ready", "the next pass does not settle it done with its item unread"
+
+    sql(hub_db, update(w).values(dispatch_from="any").where(w.c.id == lead["id"]))
+    assert threads_pass(client)["opened"] == 1
+    (thread,) = ops_threads_of(hub_db)
+    row = batch_row(hub_db, batch_id)
+    assert (row["state"], row["run_id"]) == ("running", thread["orchestrator_run_id"]) and row["run_id"]
+
+
+def test_the_events_of_an_ops_run_are_no_item_of_the_queue(client, hub, hub_db):
+    _, _, _, parent = led_desk(client, hub)
+    ops_on(hub_db)
+    failed(hub_db, parent, "the retry test fails")
+    batch(hub_db, parent)
+    threads_pass(client)
+    (thread,) = ops_threads_of(hub_db)
+    ops_run = thread["orchestrator_run_id"]
+    run_pass(client)  # the pass that turns the queue on starts at the newest event
+    asked = {"run_id": ops_run, "decision_id": 1, "category": "triage", "asked_of": 1}
+    record(client, hub_db, hub_events.DECISION_OPENED, **asked)
+    record(client, hub_db, hub_events.RUN_ENDED, run_id=ops_run, run_kind="chat", state="failed", worker_id=7)
+    record(client, hub_db, hub_events.DECISION_OPENED, **{**asked, "run_id": parent, "decision_id": 2})
+    assert run_pass(client)["queued"] == 1, "the Orchestrator's own decision comes back to it as no batch"
