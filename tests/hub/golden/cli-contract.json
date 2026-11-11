@@ -25903,7 +25903,9 @@
           "opened_at",
           "closes_at",
           "closed_at",
-          "run_id"
+          "run_id",
+          "recurring",
+          "thread"
         ],
         "schema": "OpsBatch"
       }
@@ -25955,6 +25957,7 @@
           "paused",
           "paused_at",
           "paused_reason",
+          "spent_usd",
           "batches"
         ],
         "schema": "SystemOps"
@@ -25999,6 +26002,7 @@
           "paused",
           "paused_at",
           "paused_reason",
+          "spent_usd",
           "batches"
         ],
         "schema": "SystemOps"
@@ -26043,6 +26047,7 @@
           "paused",
           "paused_at",
           "paused_reason",
+          "spent_usd",
           "batches"
         ],
         "schema": "SystemOps"

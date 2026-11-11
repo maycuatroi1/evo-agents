@@ -49,7 +49,18 @@ SYSTEM_KEYS = (
 )
 CHECKED_KEYS = ("valid", "spec", "problems")
 DEFAULT_KEYS = ("project", "slug", "name", "ops", "limits", "can_change")
-OPS_KEYS = ("project", "slug", "default", "ops", "ops_daily_usd", "paused", "paused_at", "paused_reason", "batches")
+OPS_KEYS = (
+    "project",
+    "slug",
+    "default",
+    "ops",
+    "ops_daily_usd",
+    "paused",
+    "paused_at",
+    "paused_reason",
+    "spent_usd",
+    "batches",
+)
 BATCH_KEYS = (
     "id",
     "key",
@@ -63,6 +74,8 @@ BATCH_KEYS = (
     "closes_at",
     "closed_at",
     "run_id",
+    "recurring",
+    "thread",
 )
 BATCH_STATES = ("open", "ready", "empty", "running", "done")
 DISTRIBUTION_KEYS = ("system", "days", "since", "withheld", "truncated", "summary", "traces")
