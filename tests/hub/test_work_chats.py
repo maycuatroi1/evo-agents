@@ -6,7 +6,9 @@ the hub go there too. The coordinator keeps its one session, the thread of the t
 there is copied onto the work chat's main line, a copy that hands no work, and a person's message on that line that
 mentions no one goes to that session. An agent of another project, or one the chat cannot take, gets the work in the
 direct chat, with a line in the work chat. A thread of the Orchestrator about the trace opens in the work chat, and
-the trace is read by the readers of either chat.
+the trace is read by the readers of either chat. A person's message in a direct chat (Home) that mentions an agent of
+a system goes to the system's entry agent through the work chat, not to the agent; an agent of no system still opens
+the group of the thread, and a group a thread opened before stays as it was.
 """
 
 from __future__ import annotations
@@ -48,7 +50,9 @@ from tests.hub.test_chat_runs import (  # noqa: F401
     reply,
     sent,
     started,
+    thread,
 )
+from tests.hub.test_direct_chat_runs import direct, handed, latest, members, opened_groups
 from tests.hub.test_system_traces import SPEC, put_system, traces_path
 
 QUESTION = "fix the retry loop of the wait helper"
@@ -591,3 +595,105 @@ def test_the_entry_agent_is_told_of_the_work_chat_and_the_others_are_not():
     assert system_context.WORK_COMMAND in entry and "opens a work chat" in entry and "final answer" in entry
     other = "\n".join(system_context.system_lines(system_context.Place("northwind", spec, "fix", "lumen-fix")))
     assert system_context.WORK_COMMAND not in other
+
+
+# A direct chat's mention of an agent of a system (Home)
+
+
+def home(client, hub, *others: str) -> dict:
+    """The system review (entry @reviewer, then @fixer) with a worker of @reviewer, and the owner's direct chat with
+    @scout, an agent of no system; ``others`` more agents of no system, each with a worker of its own."""
+    put_system(client, hub["owner"])
+    chat_worker(client, hub["owner"], "studio", slots=3)
+    for handle in ("scout", *others):
+        agent(client, hub["owner"], handle)
+        give_account_pool(client.db, PROJECT, handle, OWNER)
+    for handle in others:
+        chat_worker(client, hub["owner"], f"{handle}-node", slots=3, pool=handle)
+    return direct(client, hub["owner"], "scout")
+
+
+def agents_woken(db) -> list[str]:
+    r, p = tables.runs, tables.agent_profiles
+    query = select(p.c.handle).join_from(r, p, p.c.id == r.c.profile_id).where(r.c.kind == "chat").order_by(r.c.id)
+    return [handle for (handle,) in rows(db, query)]
+
+
+def test_a_home_mention_of_an_agent_of_a_system_goes_to_its_entry_agent_through_the_work_chat(client, hub, hub_db):
+    chat = home(client, hub)
+    said = sent(client, hub["owner"], chat["id"], "@fixer fix the retry loop of the wait helper")
+    assert agents_woken(hub_db) == ["reviewer"]  # neither @fixer nor @scout
+    assert opened_groups(hub_db) == []
+    _, work = opened(hub_db)
+    assert members_of(hub_db, work) == ({OWNER}, {"reviewer"})
+    ((name, via, ran, refusal),) = handed(said)
+    assert (name, via, ran, refusal) == ("fixer", None, True, None)
+    run = said["mentions"][0]["run_id"]
+    assert run_row(hub_db, run)[0] != chat["id"]  # in the owner's direct chat with @reviewer, its session
+    (copy,) = [item for item in messages_in(hub_db, work) if item["copied"] is not None]
+    assert (copy["body"], copy["root"]) == (said["body"], None)
+    note = thread(client, hub["owner"], chat["id"], said["id"])[-1]
+    assert note["author"]["kind"] == "hub" and f"/chats/{work})" in note["body"] and "@reviewer" in note["body"]
+
+
+def test_a_home_mention_of_agents_in_and_out_of_a_system_takes_both_ways(client, hub, hub_db):
+    chat = home(client, hub, "helper")
+    said = sent(client, hub["owner"], chat["id"], "@fixer @helper split the export fix")
+    assert sorted(agents_woken(hub_db)) == ["helper", "reviewer"]
+    ((group_id, _, opened_from),) = opened_groups(hub_db)
+    assert opened_from == said["id"]
+    assert members(client, hub["owner"], group_id) == ("group", [OWNER], ["scout", "helper"])
+    copy = latest(client, hub["owner"], group_id)
+    assert handed(copy) == [("helper", "handle", True, None)]  # @fixer went to the system, not to the group
+    _, work = opened(hub_db)
+    assert members_of(hub_db, work) == ({OWNER}, {"reviewer"})
+    assert [(name, ran) for name, _, ran, _ in handed(said)] == [("fixer", True), ("helper", False)]
+
+
+def test_a_home_mention_of_an_agent_of_no_system_opens_the_group_as_before(client, hub, hub_db):
+    chat = home(client, hub, "helper")
+    sent(client, hub["owner"], chat["id"], "@helper look at the export job")
+    assert agents_woken(hub_db) == ["helper"]
+    assert len(opened_groups(hub_db)) == 1
+    assert rows(hub_db, select(func.count()).select_from(tables.system_traces)) == [(0,)]
+
+
+def test_a_group_a_home_thread_opened_before_stays_as_it_was(client, hub, hub_db):
+    chat = home(client, hub, "helper")
+    first = sent(client, hub["owner"], chat["id"], "@helper look at the export job")
+    ((group_id, _, _),) = opened_groups(hub_db)
+    before = latest(client, hub["owner"], group_id)
+    sent(client, hub["owner"], chat["id"], "@fixer and fix the retry loop", first["id"])
+    assert len(opened_groups(hub_db)) == 1
+    assert members(client, hub["owner"], group_id) == ("group", [OWNER], ["scout", "helper"])
+    assert latest(client, hub["owner"], group_id)["id"] == before["id"]
+    assert agents_woken(hub_db) == ["helper", "reviewer"]
+    _, work = opened(hub_db)
+    assert members_of(hub_db, work) == ({OWNER}, {"reviewer"})
+
+
+def test_a_home_mention_the_entry_agent_takes_no_work_of_opens_no_work_chat_and_no_group(client, hub, hub_db):
+    home(client, hub)
+    chat = direct(client, hub["other"], "scout")
+    reader = {"role": "reader", "max_level": "internal"}
+    lowered = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OTHER}", json=reader, headers=hub["admin"])
+    assert lowered.status_code == 200, lowered.text
+    said = sent(client, hub["other"], chat["id"], "@fixer fix the retry loop of the wait helper")
+    ((name, _, ran, refusal), *_) = handed(said)
+    assert (name, ran) == ("fixer", False) and "took no work" in refusal
+    assert agents_woken(hub_db) == []
+    assert rows(hub_db, select(func.count()).where(tables.chats.c.kind == chats.WORK)) == [(0,)]
+    assert opened_groups(hub_db) == []
+
+
+def test_a_home_mention_of_two_agents_of_one_system_makes_one_run_of_its_entry_agent(client, hub, hub_db):
+    chat = home(client, hub)
+    said = sent(client, hub["owner"], chat["id"], "@fixer @reviewer fix and review the retry loop")
+    assert agents_woken(hub_db) == ["reviewer"]
+    assert opened_groups(hub_db) == []
+    opened(hub_db)  # one trace, with its work chat
+    assert sorted((name, ran, refusal) for name, _, ran, refusal in handed(said)) == [
+        ("fixer", True, None),
+        ("reviewer", True, None),
+    ]
+    assert len({mention["run_id"] for mention in said["mentions"]}) == 1

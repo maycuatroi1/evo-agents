@@ -905,7 +905,9 @@ and the branch. A chat run that asks nothing ends after its turn.
 `evo-agents worker agent ask HANDLE TEXT` hands work to another agent and waits for its answer (`docs/hub.md`, Agents
 across projects). For a run of a trace of an agent system, the question goes in the trace's work chat, in the thread
 of the agent asked, and asking that agent again goes back to its thread (`docs/hub.md`, Work chats); an agent of
-another project gets it in the direct chat, with a line in the work chat. A brief makes the handoff clear; each field
+another project gets it in the direct chat, with a line in the work chat. A person who mentions an agent of a system
+in a direct chat (Home) reaches the system's entry agent through its work chat, not the agent (`docs/hub.md`, Direct
+chats). A brief makes the handoff clear; each field
 is optional, and an ask with none works as before:
 
 | Flag | Body field | What |
