@@ -1,8 +1,8 @@
 name: release
 
-# A v* tag runs the full ci (ci.yml with `full`: Python 3.11 and 3.12 on Linux, macOS and Windows, the web and its
-# end-to-end tests), and only once it passes builds the wheel and publishes it to PyPI. It is the one ci run: pull
-# requests and main run none, and the team's machines follow main through the nightly tag (nightly.yml).
+# A v* tag runs ci (ci.yml: the Python suite on Linux with Python 3.12 and an import of every module on Python 3.11),
+# and only once it passes builds the wheel and publishes it to PyPI. It is the one ci run: pull requests and main run
+# none, and the team's machines follow main through the nightly tag (nightly.yml).
 on:
   push:
     tags: ["v*"]
@@ -29,8 +29,6 @@ jobs:
       contents: read
       pull-requests: read
     uses: ./.github/workflows/ci.yml
-    with:
-      full: true
 
   build:
     needs: ci
