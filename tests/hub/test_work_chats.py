@@ -670,3 +670,30 @@ def test_a_group_a_home_thread_opened_before_stays_as_it_was(client, hub, hub_db
     assert agents_woken(hub_db) == ["helper", "reviewer"]
     _, work = opened(hub_db)
     assert members_of(hub_db, work) == ({OWNER}, {"reviewer"})
+
+
+def test_a_home_mention_the_entry_agent_takes_no_work_of_opens_no_work_chat_and_no_group(client, hub, hub_db):
+    home(client, hub)
+    chat = direct(client, hub["other"], "scout")
+    reader = {"role": "reader", "max_level": "internal"}
+    lowered = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OTHER}", json=reader, headers=hub["admin"])
+    assert lowered.status_code == 200, lowered.text
+    said = sent(client, hub["other"], chat["id"], "@fixer fix the retry loop of the wait helper")
+    ((name, _, ran, refusal), *_) = handed(said)
+    assert (name, ran) == ("fixer", False) and "took no work" in refusal
+    assert agents_woken(hub_db) == []
+    assert rows(hub_db, select(func.count()).where(tables.chats.c.kind == chats.WORK)) == [(0,)]
+    assert opened_groups(hub_db) == []
+
+
+def test_a_home_mention_of_two_agents_of_one_system_makes_one_run_of_its_entry_agent(client, hub, hub_db):
+    chat = home(client, hub)
+    said = sent(client, hub["owner"], chat["id"], "@fixer @reviewer fix and review the retry loop")
+    assert agents_woken(hub_db) == ["reviewer"]
+    assert opened_groups(hub_db) == []
+    opened(hub_db)  # one trace, with its work chat
+    assert sorted((name, ran, refusal) for name, _, ran, refusal in handed(said)) == [
+        ("fixer", True, None),
+        ("reviewer", True, None),
+    ]
+    assert len({mention["run_id"] for mention in said["mentions"]}) == 1

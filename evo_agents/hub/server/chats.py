@@ -422,11 +422,11 @@ async def deliver_message(
     skip: frozenset[str] = frozenset(),
 ) -> int:
     """Store the message with its mentions, the work they hand the agents, the hub's answer to what they refuse and
-        the notices; its id. ``via`` names the kind of channel it came in by and ``via_bridge`` the bridge, which does
-        not get it back (``chat_bridge_events``). ``plugin`` names the isolated plugin that posts it in ``user``'s name
-        (``plugin_chats_api``): the message comes ``via`` plugin, and its audit row ends with plugin:<id>. The names ``skip``
-    names are not read as mentions: the agents of a system a direct chat's message handed to its entry agent, left out of
-    the group the message is copied to (``direct_systems``)."""
+    the notices; its id. ``via`` names the kind of channel it came in by and ``via_bridge`` the bridge, which does not
+    get it back (``chat_bridge_events``). ``plugin`` names the isolated plugin that posts it in ``user``'s name
+    (``plugin_chats_api``): the message comes ``via`` plugin, and its audit row ends with plugin:<id>. The names
+    ``skip`` names are not read as mentions: the agents of a system a direct chat's message handed to its entry agent,
+    left out of the group the message is copied to (``direct_systems``)."""
     if plugin is not None:
         via = chats.PLUGIN_VIA
     came_by = via
