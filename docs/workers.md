@@ -1415,7 +1415,9 @@ and `logins`, the login of each runtime, `ok`, `unauthorized`, `missing` (not on
 10 seconds, or one it cannot read), from the runtime's own status command (`claude auth status --json`,
 `codex login status`, `opencode auth list`), run every 300 seconds in a thread; or `leased` when the machine's login
 is not ok but the last agent of that runtime on the worker ran on a model credential the hub leased its run (an `env`
-lease of a model account, or the gateway's route) and its account did not fail to authenticate. The daemon keeps that
+lease of a variable the runtime authenticates with, or the gateway's route) and its account did not fail to
+authenticate. Only a runtime that reports a refused login (`Adapter.lease_auth_vars`: Claude Code today) can say
+`leased`; Codex and opencode keep the machine's login. The daemon keeps that
 per runtime in `leased-logins.json` of its home, across restarts; an agent whose lease is refused (a 401), or the next
 one with no lease, puts the machine's login back. Only the exit status and the shape of the answer are read: no
 credential value is read or sent. Each heartbeat replaces what the hub holds

@@ -279,6 +279,9 @@ class Adapter(abc.ABC):
     # their MCP servers it connects to; an adapter that names none loads no pack (``pack_refusal``).
     pack_kinds: ClassVar[tuple[str, ...]] = ()
     pack_transports: ClassVar[tuple[str, ...]] = ()
+    # The variables of a model account the runtime authenticates with when a lease sets them, and whose refusal it
+    # reports as ``Outcome.auth``; none: the worker's health keeps the machine's login of the runtime (``health``).
+    lease_auth_vars: ClassVar[tuple[str, ...]] = ()
     # The model the runtime says the agent runs on, once it said so; None: the worker records the model it asked for.
     model_used: str | None = None
 

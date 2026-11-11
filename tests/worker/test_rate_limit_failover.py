@@ -30,6 +30,7 @@ from evo_agents.worker import health
 from evo_agents.worker.adapter import AgentEvent
 from evo_agents.worker.runner.limits import AUTH_FAILOVER_PROMPT, FAILOVER_PROMPT, rate_limit_of
 from evo_agents.worker.runtimes.claude_code import OAUTH_TOKEN, auth_failure_of, limit_of_text
+from tests.worker.fake_adapter import FakeAdapter
 from tests.worker.fake_hub import FakeHub
 from tests.worker.test_plan_runs import PLAN, machine, with_daemon  # noqa: F401 (machine, a fixture)
 
@@ -355,3 +356,25 @@ def test_the_health_says_leased_only_while_the_runtimes_agents_authenticate_with
     assert health.load_leased(found["root"]) == {"claude-code": expected}, "kept for the next daemon"
     said = health.with_leases({"claude-code": "unauthorized", "opencode": "missing"}, found["leased"])
     assert said == {"claude-code": "leased" if expected else "unauthorized", "opencode": "missing"}
+
+
+class NoAuthReport(FakeAdapter):
+    """A runtime that reports no refused login (Codex and opencode today): its leases say nothing of its login."""
+
+    lease_auth_vars = ()
+
+
+def test_a_runtime_that_reports_no_refused_login_keeps_the_machines_login_whatever_its_lease(machine):  # noqa: F811
+    machine.scenarios({"1": [{"fail": "codex ended its turn with an error: 401 Unauthorized"}]})
+    found = {}
+
+    async def body(hub: FakeHub, daemon):
+        daemon.leased["claude-code"] = True  # what an earlier agent left
+        run_id = hub.queue_step_run(PLAN, "1", "alpha", "feat/alpha")
+        hub.leases[run_id] = {"leases": [oauth(1, token(), "claude-a")], "missing": []}
+        await until_ended(hub, run_id)
+        found.update(leased=dict(daemon.leased))
+
+    with_daemon(machine, body, adapters={"claude-code": NoAuthReport})
+    assert found["leased"] == {"claude-code": False}
+    assert health.with_leases({"claude-code": "unauthorized"}, found["leased"]) == {"claude-code": "unauthorized"}
