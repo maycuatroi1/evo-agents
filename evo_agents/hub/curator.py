@@ -25,6 +25,16 @@ plus BUDGET_GRACE_SECONDS, so the cap stops the agent before the timeout does. C
 ``max_turns`` (``ClaudeAgentOptions``); Codex reports no cost, so a Codex run stops at its time cap. A claimed run's
 budget also says what the run spent already (``spent_usd``, ``spent_seconds``), when it goes on from a parked run.
 
+A charter may give ``pacing`` instead of the window: the Curator then runs through the day, at any hour outside
+``pacing.quiet_hours``, and the period (``day``, a local date from midnight, or ``week``, from Monday 00:00 local)
+takes the place of the night in every count: ``pacing.budget_usd`` is the period's budget, ``max_runs_per_night`` its
+runs, ``max_decisions_per_day`` its Inbox items, and the figures, the circuit breaker and ``runs.schedule_night`` (the
+period's first local date) go by it (``shift_state``). Each minute a run of the Curator may be queued when it is outside
+the quiet hours, the period's cost is at most the even-spend line (``pace_line``: the budget times the share of the
+period gone by, plus PACING_MARGIN of the budget, so what is left may be spent as the period ends), the pool on duty has
+a node no member's run holds, and the period has runs left. Quiet hours hold every run of the Curator, those of its
+changes too; a Builder a member asks for still goes. A charter has the window or pacing, never both.
+
 At the charter's ``brief_at``, in its time zone, the hub sends the schedule's owner the morning brief of the night
 (``brief_due``, ``evo_agents.hub.server.brief``).
 
@@ -93,6 +103,10 @@ MAX_ENV_SECRETS = 20  # env secrets of the owner a charter lets the Curator's ru
 MAX_CHARTER_BYTES = 64 * 1024  # the charter as JSON
 
 MAX_NIGHT_BUDGET_USD = 1000.0
+MAX_PERIOD_BUDGET_USD = 7 * MAX_NIGHT_BUDGET_USD  # pacing.budget_usd, of a week at most
+PacingPeriod = Literal["day", "week"]
+PACING_PERIODS: tuple[str, ...] = get_args(PacingPeriod)
+PACING_MARGIN = 0.1  # of the period's budget: what a paced Curator may spend ahead of the even-spend line
 MIN_RUN_USD = 0.01  # a night with less than this left queues no run
 RUN_MINUTES = (10, 720)  # the agent time one run of the schedule may take
 MAX_TURNS = 10_000
@@ -166,6 +180,104 @@ def window_state(local_now: datetime, start: str, end: str) -> tuple[bool, date]
     both HH:MM. Outside the window the night is the last one that opened."""
     opens, closes = parse_time(start), parse_time(end)
     return in_window(local_now.time(), opens, closes), night_of(local_now, opens)
+
+
+# Pacing: the period instead of the night
+
+
+def pacing_of(charter: Mapping | None) -> Mapping | None:
+    """The charter's ``pacing``, or None for a charter that runs in a window."""
+    found = charter.get("pacing") if isinstance(charter, Mapping) else None
+    return found if isinstance(found, Mapping) else None
+
+
+def zone_of(charter: Mapping | None) -> str:
+    """The charter's time zone: its window's, else its pacing's, else UTC."""
+    for key in ("window", "pacing"):
+        found = charter.get(key) if isinstance(charter, Mapping) else None
+        if isinstance(found, Mapping) and isinstance(found.get("timezone"), str) and found["timezone"]:
+            return found["timezone"]
+    return "UTC"
+
+
+def period_budget(charter: Mapping) -> float:
+    """What a night, or a period with pacing, may cost: ``pacing.budget_usd``, else ``night_budget_usd``; 0 for
+    neither."""
+    pacing = pacing_of(charter)
+    found = _number(pacing.get("budget_usd")) if pacing is not None else _number(charter.get("night_budget_usd"))
+    return found or 0.0
+
+
+def period_of(local_now: datetime, period: str) -> date:
+    """The period ``local_now`` (a local time without zone) belongs to, by its first local date: the day itself, or the
+    Monday of its week."""
+    day = local_now.date()
+    return day - timedelta(days=day.weekday()) if period == "week" else day
+
+
+def period_bounds(first: date, period: str) -> tuple[datetime, datetime]:
+    """(start, end) as local times without zone of the period whose first date is ``first``."""
+    start = datetime.combine(first, time())
+    return start, start + timedelta(days=7 if period == "week" else 1)
+
+
+def period_elapsed(local_now: datetime, period: str) -> float:
+    """The share of its period ``local_now`` has gone through, 0 to 1."""
+    start, end = period_bounds(period_of(local_now, period), period)
+    return min(max((local_now - start) / (end - start), 0.0), 1.0)
+
+
+def pace_line(budget: float, elapsed: float, margin: float = PACING_MARGIN) -> float:
+    """The even-spend line: what a period of ``budget`` may have cost once ``elapsed`` of it went by, plus ``margin`` of
+    the budget, never more than the budget."""
+    return budget * min(1.0, max(elapsed, 0.0) + margin)
+
+
+def on_pace(spent: float, budget: float, elapsed: float, margin: float = PACING_MARGIN) -> bool:
+    """Whether a period that cost ``spent`` of ``budget`` may queue a run: its cost does not exceed the line."""
+    return spent <= pace_line(budget, elapsed, margin)
+
+
+def quiet(local: time, quiet_hours: Mapping | None) -> bool:
+    """Whether the local time ``local`` falls in ``quiet_hours`` ({start, end}, HH:MM); never without them."""
+    if not isinstance(quiet_hours, Mapping):
+        return False
+    return in_window(local, parse_time(quiet_hours["start"]), parse_time(quiet_hours["end"]))
+
+
+def pacing_state(local_now: datetime, pacing: Mapping) -> tuple[bool, date]:
+    """(whether a run of the Curator may go at ``local_now``, outside the quiet hours; the period it belongs to)."""
+    return not quiet(local_now.time(), pacing.get("quiet_hours")), period_of(local_now, pacing["period"])
+
+
+def shift_state(charter: Mapping, local_now: datetime) -> tuple[bool, date]:
+    """(whether the charter's Curator is on at ``local_now``, the night or period it belongs to): ``window_state`` for a
+    charter with a window, ``pacing_state`` for one with pacing."""
+    pacing = pacing_of(charter)
+    if pacing is not None:
+        return pacing_state(local_now, pacing)
+    window = charter["window"]
+    return window_state(local_now, window["start"], window["end"])
+
+
+def night_bounds(charter: Mapping, night: date) -> tuple[datetime, datetime]:
+    """(start, end) as local times without zone of ``night``: from the window's start to the next one, or the period."""
+    pacing = pacing_of(charter)
+    if pacing is not None:
+        return period_bounds(night, pacing["period"])
+    opens = parse_time(charter["window"]["start"])
+    return datetime.combine(night, opens), datetime.combine(night + timedelta(days=1), opens)
+
+
+def brief_night(charter: Mapping, local_now: datetime) -> tuple[bool, date]:
+    """(whether the Curator is on now, the night or period the morning brief at ``local_now`` reports on): the night of
+    ``shift_state`` with a window; with pacing, the period of the day before, so a daily brief reports a whole day and
+    the brief of a Monday the week that just ended."""
+    pacing = pacing_of(charter)
+    if pacing is None:
+        return shift_state(charter, local_now)
+    inside, _ = pacing_state(local_now, pacing)
+    return inside, period_of(local_now - timedelta(days=1), pacing["period"])
 
 
 def brief_due(local_now: datetime, brief_at: str) -> bool:

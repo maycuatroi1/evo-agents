@@ -7576,7 +7576,8 @@
     "sub": {
       "duty": "Ca đêm với tư cách {owner}, từ {start} đến {end} {timezone}",
       "paused": "{login} đã tạm dừng <ago></ago>",
-      "pausedByHub": "Cầu dao đã tạm dừng <ago></ago>"
+      "pausedByHub": "Cầu dao đã tạm dừng <ago></ago>",
+      "dutyPaced": "Ca rải đều với tư cách {owner}, suốt {period} ngoài giờ nghỉ, {timezone}"
     },
     "pause": "Tạm dừng",
     "pausing": "Đang tạm dừng",
@@ -7654,7 +7655,10 @@
       "paused": "Tạm dừng",
       "pausedBy": "bởi {login},",
       "pausedByHub": "bởi cầu dao,",
-      "pauseReason": "Lý do"
+      "pauseReason": "Lý do",
+      "pacedValue": "Suốt {period}, nghỉ từ {start} đến {end}, {timezone}",
+      "pacedAlways": "Suốt {period}, không có giờ nghỉ, {timezone}",
+      "capsPaced": "Mỗi {period}"
     },
     "lastReview": {
       "title": "Review run gần nhất",
@@ -7691,7 +7695,8 @@
         "done": "{done} run xong",
         "empty": "Không xếp run nào"
       },
-      "mobileMeta": "{runs} run, {cost}, {proposals} đề xuất"
+      "mobileMeta": "{runs} run, {cost}, {proposals} đề xuất",
+      "emptyPaced": "Chưa có run nào: Curator chạy suốt {period} ngoài giờ nghỉ, {timezone}."
     },
     "proposals": {
       "caption": "Đề xuất của {project}",
@@ -8174,7 +8179,9 @@
       "historyBudgetOff": "Không có: không chạy run lịch sử",
       "historyModelDefault": "model rẻ nhất node báo",
       "probeBudgetNone": "Không có: không chạy probe",
-      "probeModelsBuilder": "Runtime và model của Builder"
+      "probeModelsBuilder": "Runtime và model của Builder",
+      "pacedBudget": "{budget} mỗi {period}, chi đều",
+      "pacedNote": "Charter này chạy rải đều: Curator chạy suốt {period} ngoài giờ nghỉ và chi đều {budget} trong đó. Form giữ nguyên pacing như đã viết và chỉ sửa múi giờ; đổi pacing bằng CLI."
     },
     "metaHistory": "Lịch sử của {project}",
     "metaGraph": "Sức khoẻ graph của {project}",
@@ -8685,6 +8692,10 @@
       "unreadable": "Không đọc được các tuần của probe.",
       "retry": "Thử lại",
       "fixOf": "Đề xuất này sửa luật của <link>thay đổi #{change}</link>, thay đổi có probe tái phát hai tuần liền."
+    },
+    "periods": {
+      "day": "ngày",
+      "week": "tuần"
     }
   },
   "releases": {

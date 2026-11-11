@@ -7576,7 +7576,8 @@
     "sub": {
       "duty": "Night shift as {owner}, {start} to {end} {timezone}",
       "paused": "Paused by {login} <ago></ago>",
-      "pausedByHub": "Paused by the circuit breaker <ago></ago>"
+      "pausedByHub": "Paused by the circuit breaker <ago></ago>",
+      "dutyPaced": "Paced shift as {owner}, through the {period} outside quiet hours, {timezone}"
     },
     "pause": "Pause",
     "pausing": "Pausing",
@@ -7654,7 +7655,10 @@
       "paused": "Paused",
       "pausedBy": "by {login},",
       "pausedByHub": "by the circuit breaker,",
-      "pauseReason": "Why"
+      "pauseReason": "Why",
+      "pacedValue": "Through the {period}, quiet {start} to {end}, {timezone}",
+      "pacedAlways": "Through the {period}, no quiet hours, {timezone}",
+      "capsPaced": "Each {period}"
     },
     "lastReview": {
       "title": "Last review run",
@@ -7691,7 +7695,8 @@
         "done": "{done, plural, one {# run} other {# runs}} done",
         "empty": "Nothing queued"
       },
-      "mobileMeta": "{runs, plural, one {# run} other {# runs}}, {cost}, {proposals, plural, one {# proposal} other {# proposals}}"
+      "mobileMeta": "{runs, plural, one {# run} other {# runs}}, {cost}, {proposals, plural, one {# proposal} other {# proposals}}",
+      "emptyPaced": "No run yet: the Curator runs through the {period} outside its quiet hours, {timezone}."
     },
     "proposals": {
       "caption": "Proposals of {project}",
@@ -8174,7 +8179,9 @@
       "historyBudgetOff": "None: no history run",
       "historyModelDefault": "the cheapest model the node reports",
       "probeBudgetNone": "None: no probe runs",
-      "probeModelsBuilder": "The Builder's runtime and model"
+      "probeModelsBuilder": "The Builder's runtime and model",
+      "pacedBudget": "{budget} a {period}, spent evenly",
+      "pacedNote": "This charter is paced: the Curator runs through the {period} outside its quiet hours and spends {budget} evenly over it. The form keeps the pacing as written and edits its time zone; the CLI changes the pacing."
     },
     "metaHistory": "History of {project}",
     "metaGraph": "Graph health of {project}",
@@ -8685,6 +8692,10 @@
       "unreadable": "The probe's weeks could not be read.",
       "retry": "Try again",
       "fixOf": "This proposal fixes the rule of <link>change #{change}</link>, whose probe recurred two weeks in a row."
+    },
+    "periods": {
+      "day": "day",
+      "week": "week"
     }
   },
   "releases": {

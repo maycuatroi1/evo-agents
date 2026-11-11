@@ -211,7 +211,7 @@ async def week_cost(conn: AsyncConnection, project_id: int, week: date) -> float
 
 async def local_today(conn: AsyncConnection, body: dict) -> date:
     """Today in the charter's time zone (UTC without a charter)."""
-    zone = ((body or {}).get("window") or {}).get("timezone") or "UTC"
+    zone = curator.zone_of(body)
     return (await conn.scalar(select(func.timezone(zone, func.now())))).date()
 
 

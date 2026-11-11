@@ -5,11 +5,11 @@ GET /v1/projects/{p}/curator/charter (reader) shows the project's charter at its
 404 when it has none. The checks of the Judge (``judge.hidden_checks``) are shown to the project's admins alone, and as
 null to anyone else. GET .../curator/charter/revisions lists every revision, newest first: none is ever deleted.
 
-PUT .../curator/charter (admin of the project) writes a new revision: the window's time zone must be one Postgres
-knows; the charter names no worker and no pool: the night shift runs on the pool of the project's default agent
+PUT .../curator/charter (admin of the project) writes a new revision: the time zone of its window, or of its pacing,
+must be one Postgres knows; a charter has one of the two, and with pacing ``night_budget_usd`` is left out. The
+charter names no worker and no pool: the night shift runs on the pool of the project's default agent
 (``evo_agents.hub.server.night_duty``). The project's schedule (one per kind, here ``night_shift``) follows it: its
-owner, the member it dispatches as, is that pool's owner. A body equal to
-the newest revision's writes nothing and answers that revision. ``judge.hidden_checks`` null keeps the checks of the
+owner, the member it dispatches as, is that pool's owner. A body equal to the newest revision's writes nothing and answers that revision. ``judge.hidden_checks`` null keeps the checks of the
 newest revision. The keys ``charter show --json`` prints besides the body (``curator.CHARTER_META``) are ignored, so
 what was shown can be written back. Each revision is audited (curator.charter). A member without the admin role gets
 403, a worker token 403 from the guard of /v1, before any of this.
@@ -116,6 +116,12 @@ PG_TIMEZONES = table("pg_timezone_names", column("name", Text))
 
 
 # Reading
+
+
+def zone_sql(body):
+    """The time zone of a charter's ``body`` (a JSONB column) in SQL: its window's, else its pacing's
+    (``curator.zone_of``)."""
+    return func.coalesce(body["window"]["timezone"].astext, body["pacing"]["timezone"].astext)
 
 
 def _admin(access: ProjectAccess, doing: str) -> None:
@@ -233,6 +239,9 @@ async def _time_zone_known(conn: AsyncConnection, name: str) -> None:
 def _stored(body: CharterWrite, current) -> dict:
     """The body to keep: the Judge's checks of ``current`` when the write gives none."""
     stored = body.model_dump(mode="json")
+    for key in ("window", "pacing", "night_budget_usd"):  # a charter has a window or pacing: the other is left out
+        if stored[key] is None:
+            del stored[key]
     if stored["judge"]["hidden_checks"] is None:
         kept = (current.body.get("judge") or {}).get("hidden_checks") if current is not None else None
         stored["judge"]["hidden_checks"] = kept or []
@@ -271,7 +280,7 @@ async def write_charter(request: Request, project: ProjectName, body: CharterWri
         access = await project_access(conn, user, project)
         _admin(access, "changing the charter")
         current = await charter_row(conn, access.project_id)
-        await _time_zone_known(conn, body.window.timezone)
+        await _time_zone_known(conn, (body.window or body.pacing).timezone)
         stored = _stored(body, current)
         if len(json.dumps(stored, ensure_ascii=False).encode()) > curator.MAX_CHARTER_BYTES:
             raise HTTPException(413, f"the charter is over {curator.MAX_CHARTER_BYTES // 1024} KiB as JSON")
@@ -341,7 +350,7 @@ def curator_state(paused: bool, active_run_id: int | None, in_window: bool) -> s
 def _newest_charters():
     """The newest charter of each project of the list bound as ``projects``, with the time now in its time zone."""
     c = tables.charters
-    local_now = func.timezone(c.c.body["window"]["timezone"].astext, func.now())
+    local_now = func.timezone(zone_sql(c.c.body), func.now())
     return (
         select(c.c.project_id, c.c.body, local_now.label("local_now"))
         .where(one_of(c.c.project_id, name="projects"))
@@ -401,8 +410,7 @@ async def curator_overview(conn: AsyncConnection, accesses: list[ProjectAccess])
     waiting = await open_proposals(conn, [access for access in accesses if access.project_id in charters])
     states = {}
     for project_id, charter in charters.items():
-        window = charter.body["window"]
-        inside, _ = curator.window_state(charter.local_now, window["start"], window["end"])
+        inside, _ = curator.shift_state(charter.body, charter.local_now)
         mine = [row for row in found if row.project_id == project_id]
         paused = bool(mine) and all(row.paused_at is not None for row in mine)
         run_id = min((row.run_id for row in mine if row.run_id is not None), default=None)
@@ -421,9 +429,9 @@ async def _status(conn: AsyncConnection, access: ProjectAccess) -> CuratorStatus
     schedules = [Schedule(**{name: item._mapping[name] for name in Schedule.model_fields}) for item in found]
     night = None
     if row is not None:
-        window = row.body["window"]
-        local_now = (await conn.execute(select(func.timezone(window["timezone"], func.now())))).scalar_one()
-        inside, which = curator.window_state(local_now, window["start"], window["end"])
+        zone = curator.zone_of(row.body)
+        local_now = (await conn.execute(select(func.timezone(zone, func.now())))).scalar_one()
+        inside, which = curator.shift_state(row.body, local_now)
         duty = next((item for item in found if item.kind == NIGHT_SHIFT), None)
         figures = NightFigures(0, 0.0, None) if duty is None else await night_figures(conn, duty.id, which)
         night = Night(
@@ -433,7 +441,7 @@ async def _status(conn: AsyncConnection, access: ProjectAccess) -> CuratorStatus
             runs=figures.runs,
             max_runs=row.body["max_runs_per_night"],
             cost_usd=round(figures.cost_usd, 6),
-            budget_usd=row.body["night_budget_usd"],
+            budget_usd=curator.period_budget(row.body),
             active_run_id=figures.active_run_id,
         )
     paused = bool(schedules) and all(item.paused_at is not None for item in schedules)
@@ -634,7 +642,7 @@ async def nights(
     return NightList(
         project=access.name,
         nights=listed,
-        budget_usd=None if charter is None else charter.body["night_budget_usd"],
+        budget_usd=None if charter is None else curator.period_budget(charter.body),
         max_runs=None if charter is None else charter.body["max_runs_per_night"],
     )
 

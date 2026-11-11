@@ -1,9 +1,9 @@
 # The Curator
 
-The Curator is the hub's night shift for a project. Each night, inside hours the project's admins set, the hub runs
-work on one member's worker without anybody pressing Run: it reviews how the project's sessions and runs went, proposes
+The Curator is the hub's shift for a project. In the hours the project's admins set, a night window or the whole day
+outside its quiet hours, the hub runs work on one member's worker without anybody pressing Run: it reviews how the project's sessions and runs went, proposes
 changes with evidence, builds the ones the owner accepted on a branch of their own, has a second agent judge each one,
-and merges only the smallest kind of change, and only when every check allows it. In the morning the owner gets a brief.
+and merges only the smallest kind of change, and only when every check allows it. Every morning the owner gets a brief.
 
 Everything the Curator may do is written down in one place, the project's **charter**, and every limit that keeps it
 safe is code of the hub or of the worker daemon, never a sentence in a prompt. An agent never sets the tier of its own
@@ -18,7 +18,7 @@ This page is the design in one place. The details live with the parts they belon
 | the leases of the Curator's runs and its own GitHub App | `docs/credentials.md`, "Which leases a run gets" |
 | the morning brief, `curator_paused`, proposals in the Inbox and on Telegram | `docs/notifications.md` |
 
-The code: `evo_agents/hub/curator.py` (the window, the night, the caps), `evo_agents/hub/review.py` (lenses and the
+The code: `evo_agents/hub/curator.py` (the window, the pacing, the night or period, the caps), `evo_agents/hub/review.py` (lenses and the
 review prompt), `evo_agents/hub/tiers.py` (the tiers), `evo_agents/hub/judge.py` (the Builder's plan, the verdict,
 the merge rule), `evo_agents/hub/diff_signs.py` (the signs of score hacking), `evo_agents/hub/ledger.py` (the ledger
 and outcomes), `evo_agents/hub/replay.py` and `evo_agents/hub/replay_suite.py` (the replays and the suite they run on),
@@ -30,7 +30,14 @@ and their routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect
 
 ## One night
 
-1. **The window opens.** At the charter's `window.start`, in its time zone, the job `curator.collect` counts the
+A charter sets when the Curator works in one of two ways. With a `window` it works a night: from `window.start` to
+`window.end` in the window's time zone. With `pacing` it works through a day or a week (the period) at any hour
+outside its `quiet_hours`, and spends the period's budget evenly over it (The night shift, below). Everything this page
+counts a night, its budget, its runs, its `max_decisions_per_day`, its figures and its circuit breaker, is counted a
+period under pacing, and the steps below go the same way through it.
+
+1. **The window opens.** At the charter's `window.start`, in its time zone, or at the first minute of a period outside
+   its quiet hours, the job `curator.collect` counts the
    night's figures of the project once, without any model: tool failures, failures that come from the environment,
    failed runs by cause, commands run again and again, corrections the person made, open items and stuck steps, the
    health of the knowledge graph, the runtime (tokens, the prompt cache, the context, compactions, the cost of each
@@ -71,8 +78,10 @@ and their routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect
 8. **The merge.** The hub merges a change itself, at the commit the Judge passed, only when the charter's
    `auto_merge` names its tier (tier 0 by default), CI is green (or none ran and the charter has `merge_without_ci`),
    and the repo's ruleset keeps the Curator off its default branch. Everything else stays open for the owner.
-9. **The window closes.** The night shift queues nothing more and cancels the runs of the night still queued.
-10. **The brief.** At `brief_at` the owner gets the notice `curator_brief`, on the web and on Telegram.
+9. **The window closes.** The night shift queues nothing more and cancels the runs of the night still queued. Under
+   pacing the quiet hours do the same each day, and the period closes at its end.
+10. **The brief.** At `brief_at` each day the owner gets the notice `curator_brief`, on the web and on Telegram. Under
+    pacing it reports the period of the day before: the day just ended, or on a Monday the week just ended.
 11. **Later.** `outcome_days` after a merge the hub counts the same figures again; a change that made them worse gets
     a revert proposal. Two jobs of a night in a row that failed of the agent's cause or were reverted pause the night shift.
 
@@ -131,15 +140,16 @@ env_secrets: [claude-oauth]
 | Key | Default | What it does |
 | --- | --- | --- |
 | `goals` | none | the product's goals, highest first, each `{id, what}`; at most 20. Since plan loop-engine the project's goals live on the hub (`docs/hub.md`, Goals): a goal of the charter becomes a goal without a metric the first time the goals are read, its `id` kept as its alias, and the lens `product_goals` reads the project's active goals by rank. Change one with `evo-agents hub goal set` |
-| `window` | required | `start` and `end` as HH:MM and an IANA `timezone`. When `end` is not after `start` the window runs past midnight; start and end may not be equal |
-| `night_budget_usd` | required | the most a night may cost, every run of the night together |
+| `window` | required without `pacing` | `start` and `end` as HH:MM and an IANA `timezone`. When `end` is not after `start` the window runs past midnight; start and end may not be equal. A charter with `pacing` has none: one with both is refused (422) |
+| `night_budget_usd` | required with `window` | the most a night may cost, every run of the night together; none with `pacing` |
+| `pacing` | null | `{period, budget_usd, quiet_hours, timezone}`: the Curator works through the period, `day` (from local midnight) or `week` (from Monday 00:00 local), at any hour outside `quiet_hours` (`{start, end}` as HH:MM, null for none), and the period may cost `budget_usd` (at most 7 times the cap of a night), spent evenly (The night shift, below). The period stands for the night in every other key: `max_runs_per_night` counts the runs of a period, `max_decisions_per_day` the decisions of a period, and caps held against `night_budget_usd` are held against `budget_usd` |
 | `run_budget_usd` | null | the most one run may cost; null gives a run what the night has left. Never above `night_budget_usd` |
 | `run_max_turns` | 300 | the agent's turns in one run |
 | `run_minutes` | 120 | the agent time one run may use, 10 to 720 |
 | `max_runs_per_night` | 6 | runs the night shift queues in a night, the review run included |
 | `night_plans` | none | the plans the night shift may run as plan runs, in the order it takes them |
-| `max_decisions_per_day` | 5 | tier 2 proposals that reach the owner's Inbox a day, in the charter's time zone |
-| `brief_at` | `07:00` | when the morning brief goes out, in the charter's time zone |
+| `max_decisions_per_day` | 5 | tier 2 proposals that reach the owner's Inbox a day, in the charter's time zone; a period, under `pacing` |
+| `brief_at` | `07:00` | when the morning brief goes out each day, in the charter's time zone, under `pacing` too |
 | `planned_tiers` | `[0, 1, 2]` | the tiers whose accepted proposals become the Curator's plans, which the night shift builds; any of `0` to `3`, so tier 3 is built only when named (Tiers, below) |
 | `auto_merge` | none | the tiers the hub may merge by itself, any of `0` to `3` (Merging, below) |
 | `merge_without_ci` | false | true lets the hub merge a change the Judge passed when no CI ran on it, or when the ruleset requires no check and what ran passed; a check that ran and failed still blocks, one still running still makes it wait (Merging, below) |
@@ -178,10 +188,14 @@ below).
 A charter makes one schedule of kind `night_shift` (`schedules`, schema 0012). Every minute the job
 `hub.fire_schedules` looks at each schedule that is not paused, under the schedule's row lock:
 
-- outside the window, or paused, it queues nothing and cancels the runs of the schedule still queued;
-- inside the window it queues at most one run, and only when no run of the schedule is queued or held, the night has
-  queued fewer than `max_runs_per_night` runs, at least 0.01 USD of `night_budget_usd` is left, the schedule's owner
-  still holds writer on the project, and a node of the default agent's pool is ready for the run;
+- outside the window, in the quiet hours of its pacing, or paused, it queues nothing and cancels the runs of the
+  schedule still queued;
+- inside the window, or outside the quiet hours, it queues at most one run, and only when no run of the schedule is
+  queued or held, the night has queued fewer than `max_runs_per_night` runs, at least 0.01 USD of `night_budget_usd`
+  (or of `pacing.budget_usd`) is left, the schedule's owner still holds writer on the project, and a node of the
+  default agent's pool is ready for the run;
+- under pacing it also waits while the period's cost is above its even-spend line, and while every ready node of the
+  pool holds a run a member dispatched (below);
 - the run it queues is the first of these that has work: the night's review run, while the night has none; the
   night's history run, once the night's review run was queued, while the night has none, an item waits for a facet of
   the model or a group of facets has no name; the judge run of a change of the Curator that waits for one; the Builder
@@ -192,7 +206,25 @@ A charter makes one schedule of kind `night_shift` (`schedules`, schema 0012). E
   `probes.budget_usd` (Probes, below).
 
 The night a moment belongs to is the local date the window last opened on, so the hours after midnight count toward
-the night that began the evening before. Every run the night shift queues is pinned to the worker on duty, headless,
+the night that began the evening before.
+
+**Pacing.** A charter with `pacing` has no window and no night: the Curator works through the period at any hour
+outside `pacing.quiet_hours`, and its review run, history run, plan runs of `night_plans` and probe runs may go at any
+of those hours. The period is a local day, or a week from Monday 00:00, in `pacing.timezone`; it stands for the night
+in every count of this page (its budget, its runs, `max_decisions_per_day`, its figures and the circuit breaker), and
+`runs.schedule_night` carries the first date of the period, as `--night` and the nights list do. Each minute a run may
+be queued only when, besides the caps above:
+
+- the local time is outside `quiet_hours`;
+- the period's cost is at most its even-spend line, `pacing.budget_usd` times the share of the period gone by, plus a
+  tenth of the budget (`curator.pace_line`), so a period that spent ahead waits until the clock catches up, and the
+  line reaches the whole budget before the period ends, so what is left of it may be spent in its last hours;
+- a ready node of the pool holds no run a member dispatched (a run not of the Curator's schedule), so the Curator
+  does not take a node from a person who works on it;
+- the period has queued fewer than `max_runs_per_night` runs.
+
+A build a member asked for (`build_now`) and a KG optimize run asked for skip the even-spend line and the node check,
+and both go in the quiet hours too. A charter with no `pacing` works as it always has. Every run the night shift queues is pinned to the worker on duty, headless,
 with approval `auto`, `dispatched_via` `schedule`, and names its schedule and night (`runs.schedule_id`,
 `runs.schedule_night`). Its first event says which night, charter revision, owner, worker and caps it was queued
 with. Each is audited as the owner with no token: `curator.review`, `curator.history`, `curator.judge`,
@@ -222,7 +254,7 @@ evo-agents hub curator resume --project demo
 ```
 
 `status` says the night shift's `state` in a word: `paused`; `running` while a run of it is queued or held;
-`on_duty` inside its window with none; `idle` outside it.
+`on_duty` inside its window (or outside its quiet hours) with none; `idle` outside it.
 
 ## Tiers
 

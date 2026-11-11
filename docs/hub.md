@@ -2143,7 +2143,8 @@ list is read from the tables of attachments and outputs.
 `docs/curator.md` describes the Curator as a whole: its charter, the night shift and its caps, the tiers, the three
 roles, its GitHub App and the ruleset it needs, and Telegram. This section and the next two hold the details.
 
-Each night of a project's charter, the hub reviews the project with a run of kind `review` (schema 0014): the job
+Each night of a project's charter, or each period of a charter with `pacing` (`docs/curator.md`, The night shift),
+the hub reviews the project with a run of kind `review` (schema 0014): the job
 `curator.collect` counts the night's figures, without any model, from the facets of the sessions (Session facets,
 below), the runs and their tool figures, the plans and the decisions of the last `review.days` of the charter (7 by
 default): the failures per tool and per program (each program with its `usage_errors` and `env_errors`, from the
@@ -2270,8 +2271,9 @@ stays open), and the charter with its revisions and, for an admin, its form. Tie
 
 **The morning brief.** At the charter's `brief_at`, in its time zone, the job `curator.brief` sends the owner of the
 night shift's schedule a notice `curator_brief` (`evo_agents/hub/server/brief.py`), once a local day: the night it
-reports on (the one in progress when `brief_at` falls inside the window), its runs by how they ended and what they cost
-against the night's budget, its review run with what it wrote, the merges into a default branch its runs reported, the
+reports on (the one in progress when `brief_at` falls inside the window; under `pacing`, the period of the day before,
+which on a Monday is the week just ended), its runs by how they ended and what they cost
+against the night's budget (the period's, under `pacing`), its review run with what it wrote, the merges into a default branch its runs reported, the
 project's runs in review that wait for the owner's approval, the Curator's changes still planned with why each waits,
 the decisions that wait for the owner's answer and the proposals that wait for an admin's (with how many are in the owner's Inbox), and the worker on duty with its last
 heartbeat, so a machine that stopped shows up in the morning. The brief goes out like any notification, on the web and

@@ -55,7 +55,7 @@ import yaml
 from evo_agents.hub.cli_client import client_command, print_json, project_path, signed_in, table, when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
-from evo_agents.hub.curator import CHARTER_META, money
+from evo_agents.hub.curator import CHARTER_META, money, period_budget, zone_of
 from evo_agents.hub.curator_session_cli import register_session
 from evo_agents.hub.history import budget_usd as history_budget
 from evo_agents.hub.history_cli import register_history
@@ -70,6 +70,7 @@ from evo_agents.hub.review import ANSWERS, DEFER_DAYS, LENSES, PROPOSAL_STATES, 
 CHARTER_BODY_KEYS = (
     "goals",
     "window",
+    "pacing",
     "night_budget_usd",
     "run_budget_usd",
     "run_max_turns",
@@ -198,7 +199,7 @@ def _read_charter(source: str) -> dict:
     except yaml.YAMLError as exc:
         raise HubError(f"{source} is neither YAML nor JSON: {exc}") from None
     if not isinstance(data, dict):
-        raise HubError(f"{source} holds no mapping: a charter is one, with window and night_budget_usd")
+        raise HubError(f"{source} holds no mapping: a charter is one, with window and night_budget_usd, or pacing")
     return {key: value for key, value in data.items() if key not in CHARTER_META}
 
 
@@ -230,17 +231,30 @@ def _history(charter: dict) -> str:
 ON_DUTY = "the pool of the default agent"  # where the night shift's runs go: the hub places them
 
 
+def _hours(charter: dict) -> tuple[str, str]:
+    """(label, value) of when the Curator runs: its window, or its pacing."""
+    window, pacing = charter.get("window"), charter.get("pacing")
+    if pacing:
+        quiet = pacing.get("quiet_hours")
+        hours = f"quiet {quiet['start']} to {quiet['end']}" if quiet else "no quiet hours"
+        return "pacing", f"{money(pacing['budget_usd'])} a {pacing['period']}, {hours}, {pacing['timezone']}"
+    return "window", f"{window['start']} to {window['end']}, {window['timezone']}"
+
+
 def _print_charter(charter: dict) -> None:
-    window = charter["window"]
+    paced = bool(charter.get("pacing"))
     print(
         f"Charter of {charter['project']}, revision {charter['revision']}, by {charter['updated_by']} at "
         f"{when(charter['updated_at'])} UTC"
     )
     run_cap = money(charter["run_budget_usd"]) if charter["run_budget_usd"] is not None else "what the night has left"
     lines = [
-        ("window", f"{window['start']} to {window['end']}, {window['timezone']}"),
+        _hours(charter),
         ("on duty", f"{ON_DUTY}, runs dispatched as {charter['schedule_owner']}"),
-        ("night", f"{money(charter['night_budget_usd'])}, at most {charter['max_runs_per_night']} runs"),
+        (
+            "period" if paced else "night",
+            f"{money(period_budget(charter))}, at most {charter['max_runs_per_night']} runs",
+        ),
         ("each run", f"{run_cap}, {charter['run_max_turns']} turns, {charter['run_minutes']} minutes of agent time"),
         ("plans", ", ".join(charter["night_plans"]) or "none"),
         ("decisions", f"at most {charter['max_decisions_per_day']} a day, brief at {charter['brief_at']}"),
@@ -351,7 +365,7 @@ def _print_status(status: dict) -> None:
             f"UTC: {brief['title']}"
         )
     elif charter is not None:
-        print(f"  no morning brief yet: the first goes out at {charter['brief_at']} in {charter['window']['timezone']}")
+        print(f"  no morning brief yet: the first goes out at {charter['brief_at']} in {zone_of(charter)}")
 
 
 @client_command

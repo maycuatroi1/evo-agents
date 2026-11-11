@@ -18338,12 +18338,15 @@ export interface components {
              * @description the product's goals, highest first
              */
             goals?: components["schemas"]["Goal"][];
-            window: components["schemas"]["Window"];
+            /** @description the night the Curator runs in; null with pacing */
+            window?: components["schemas"]["Window"] | null;
+            /** @description the Curator runs through the day on the period's budget instead of a window; null: a window */
+            pacing?: components["schemas"]["Pacing"] | null;
             /**
              * Night Budget Usd
-             * @description the most a night may cost
+             * @description the most a night may cost, with a window; null with pacing, whose budget_usd it is
              */
-            night_budget_usd: number;
+            night_budget_usd?: number | null;
             /**
              * Run Budget Usd
              * @description the most one run may cost; null: what the night has
@@ -18473,12 +18476,15 @@ export interface components {
              * @description the product's goals, highest first
              */
             goals?: components["schemas"]["Goal"][];
-            window: components["schemas"]["Window"];
+            /** @description the night the Curator runs in; null with pacing */
+            window?: components["schemas"]["Window"] | null;
+            /** @description the Curator runs through the day on the period's budget instead of a window; null: a window */
+            pacing?: components["schemas"]["Pacing"] | null;
             /**
              * Night Budget Usd
-             * @description the most a night may cost
+             * @description the most a night may cost, with a window; null with pacing, whose budget_usd it is
              */
-            night_budget_usd: number;
+            night_budget_usd?: number | null;
             /**
              * Run Budget Usd
              * @description the most one run may cost; null: what the night has
@@ -20378,7 +20384,7 @@ export interface components {
             state: "running" | "on_duty" | "idle" | "paused";
             /**
              * In Window
-             * @description the charter's window is open now
+             * @description the charter's window is open now; with pacing, outside its quiet hours
              */
             in_window: boolean;
             /**
@@ -29165,10 +29171,13 @@ export interface components {
             /**
              * Night
              * Format: date
-             * @description the local date the window opened on: the night now, or the last one
+             * @description the local date the window opened on: the night now, or the last one; with pacing, the period's first date
              */
             night: string;
-            /** In Window */
+            /**
+             * In Window
+             * @description inside the window; with pacing, outside the quiet hours
+             */
             in_window: boolean;
             /**
              * Local Time
@@ -31270,6 +31279,44 @@ export interface components {
              * @description the last sign of life of a local run's session
              */
             last_activity_at?: string | null;
+        };
+        /**
+         * Pacing
+         * @description The Curator runs through the day instead of in a window: at any hour outside ``quiet_hours``, spending the
+         *     period's budget evenly (``curator.pace_line``).
+         */
+        Pacing: {
+            /**
+             * Period
+             * @description day, from local midnight, or week, from Monday 00:00 local
+             * @enum {string}
+             */
+            period: "day" | "week";
+            /**
+             * Budget Usd
+             * @description the most a period may cost
+             */
+            budget_usd: number;
+            /** @description local hours no run of the Curator is queued; null: none */
+            quiet_hours?: components["schemas"]["PacingQuietHours"] | null;
+            /**
+             * Timezone
+             * @description an IANA time zone, such as Asia/Ho_Chi_Minh
+             */
+            timezone: string;
+        };
+        /** PacingQuietHours */
+        PacingQuietHours: {
+            /**
+             * Start
+             * @description HH:MM, 24 hours, in the window's zone
+             */
+            start: string;
+            /**
+             * End
+             * @description when it is not after start, the quiet hours run past midnight
+             */
+            end: string;
         };
         /** Page */
         Page: {

@@ -2812,7 +2812,8 @@ that names no path never waits. A step already done, or already running, is stil
 ### Runs of the night shift
 
 The night shift of a project's charter (`docs/curator.md`) queues its runs on the charter's worker on duty, as that
-worker's owner, headless and with approval `auto`: the night's review run and history run, judge runs, replay runs, probe runs and
+worker's owner, headless and with approval `auto`, inside the charter's window or, under its `pacing`, at any hour
+outside its quiet hours while a node of the pool holds no run a member dispatched: the night's review run and history run, judge runs, replay runs, probe runs and
 Builders of the Curator, and plan runs of the plans the charter's `night_plans` lists. Each carries caps the daemon
 enforces (`budget` in the claim, `evo_agents.hub.curator`):
 

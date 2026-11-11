@@ -5601,6 +5601,7 @@
         "keys": [
           "goals",
           "window",
+          "pacing",
           "night_budget_usd",
           "run_budget_usd",
           "run_max_turns",
@@ -5667,6 +5668,7 @@
         "keys": [
           "goals",
           "window",
+          "pacing",
           "night_budget_usd",
           "run_budget_usd",
           "run_max_turns",
@@ -118175,14 +118177,40 @@
               "description": "the product's goals, highest first"
             },
             "window": {
-              "$ref": "#/components/schemas/Window"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Window"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the night the Curator runs in; null with pacing"
+            },
+            "pacing": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Pacing"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the Curator runs through the day on the period's budget instead of a window; null: a window"
             },
             "night_budget_usd": {
-              "type": "number",
-              "maximum": 1000.0,
-              "exclusiveMinimum": 0.0,
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Night Budget Usd",
-              "description": "the most a night may cost"
+              "description": "the most a night may cost, with a window; null with pacing, whose budget_usd it is"
             },
             "run_budget_usd": {
               "anyOf": [
@@ -118385,8 +118413,6 @@
           "additionalProperties": false,
           "type": "object",
           "required": [
-            "window",
-            "night_budget_usd",
             "project",
             "revision",
             "updated_by",
@@ -118431,14 +118457,40 @@
               "description": "the product's goals, highest first"
             },
             "window": {
-              "$ref": "#/components/schemas/Window"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Window"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the night the Curator runs in; null with pacing"
+            },
+            "pacing": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Pacing"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the Curator runs through the day on the period's budget instead of a window; null: a window"
             },
             "night_budget_usd": {
-              "type": "number",
-              "maximum": 1000.0,
-              "exclusiveMinimum": 0.0,
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Night Budget Usd",
-              "description": "the most a night may cost"
+              "description": "the most a night may cost, with a window; null with pacing, whose budget_usd it is"
             },
             "run_budget_usd": {
               "anyOf": [
@@ -118617,10 +118669,6 @@
           },
           "additionalProperties": false,
           "type": "object",
-          "required": [
-            "window",
-            "night_budget_usd"
-          ],
           "title": "CharterWrite"
         },
         "Chat": {
@@ -122437,7 +122485,7 @@
             "in_window": {
               "type": "boolean",
               "title": "In Window",
-              "description": "the charter's window is open now"
+              "description": "the charter's window is open now; with pacing, outside its quiet hours"
             },
             "active_run_id": {
               "anyOf": [
@@ -142921,11 +142969,12 @@
               "type": "string",
               "format": "date",
               "title": "Night",
-              "description": "the local date the window opened on: the night now, or the last one"
+              "description": "the local date the window opened on: the night now, or the last one; with pacing, the period's first date"
             },
             "in_window": {
               "type": "boolean",
-              "title": "In Window"
+              "title": "In Window",
+              "description": "inside the window; with pacing, outside the quiet hours"
             },
             "local_time": {
               "type": "string",
@@ -147870,6 +147919,77 @@
             "error"
           ],
           "title": "OverviewRun"
+        },
+        "Pacing": {
+          "properties": {
+            "period": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week"
+              ],
+              "title": "Period",
+              "description": "day, from local midnight, or week, from Monday 00:00 local"
+            },
+            "budget_usd": {
+              "type": "number",
+              "maximum": 7000.0,
+              "exclusiveMinimum": 0.0,
+              "title": "Budget Usd",
+              "description": "the most a period may cost"
+            },
+            "quiet_hours": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PacingQuietHours"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "local hours no run of the Curator is queued; null: none"
+            },
+            "timezone": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$",
+              "title": "Timezone",
+              "description": "an IANA time zone, such as Asia/Ho_Chi_Minh"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "period",
+            "budget_usd",
+            "timezone"
+          ],
+          "title": "Pacing",
+          "description": "The Curator runs through the day instead of in a window: at any hour outside ``quiet_hours``, spending the\nperiod's budget evenly (``curator.pace_line``)."
+        },
+        "PacingQuietHours": {
+          "properties": {
+            "start": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "Start",
+              "description": "HH:MM, 24 hours, in the window's zone"
+            },
+            "end": {
+              "type": "string",
+              "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+              "title": "End",
+              "description": "when it is not after start, the quiet hours run past midnight"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "start",
+            "end"
+          ],
+          "title": "PacingQuietHours"
         },
         "Page": {
           "properties": {

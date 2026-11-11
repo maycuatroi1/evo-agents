@@ -294,6 +294,23 @@ describe("the charter as a form", () => {
     expect(charterBody(charterForm(null, { timezone: "UTC" })).body?.probes).toEqual({ k: 3, models: [], budget_usd: null });
   });
 
+  it("keeps the pacing of a charter that runs through the day, writing no window and no night budget", () => {
+    const { window: _w, night_budget_usd: _n, ...rest } = CHARTER;
+    const pacing = { period: "week" as const, budget_usd: 20, quiet_hours: { start: "23:00", end: "07:00" }, timezone: "Asia/Ho_Chi_Minh" };
+    const paced: Charter = { ...rest, window: null, night_budget_usd: null, pacing };
+    const form = charterForm(paced, { timezone: "UTC" });
+    expect(form).toMatchObject({ pacing, timezone: "Asia/Ho_Chi_Minh", nightBudget: "" });
+    const result = charterBody(form);
+    expect(result.errors).toBeNull();
+    const { project: _p, revision: _r, updated_by: _u, updated_at: _a, schedule_owner: _o, ...body } = { ...rest, pacing };
+    expect(result.body).toEqual(body);
+    expect(result.body).not.toHaveProperty("window");
+    expect(result.body).not.toHaveProperty("night_budget_usd");
+    // Its zone is the one field of the pacing the form edits; a cap above the period's budget is refused.
+    expect(charterBody({ ...form, timezone: "Europe/Berlin" }).body?.pacing).toEqual({ ...pacing, timezone: "Europe/Berlin" });
+    expect(charterBody({ ...form, runBudget: "25" }).errors?.runBudget).toEqual({ code: "overNight" });
+  });
+
   it("keeps the infra breaker of the charter, and leaves it to the hub's defaults when the charter has none", () => {
     expect(charterBody(charterForm(CHARTER, { timezone: "" })).body?.circuit_breaker).toEqual(CHARTER.circuit_breaker);
     const old = charterForm({ ...CHARTER, circuit_breaker: { max_failed_in_a_row: 3 } }, { timezone: "" });
