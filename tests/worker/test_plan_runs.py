@@ -1602,6 +1602,37 @@ def test_a_plan_run_whose_agent_stops_with_steps_left_is_sent_back_and_ends_done
     assert machine.origin_rev("beta", "refs/heads/feat/beta") is not None
 
 
+def test_a_plan_run_whose_agent_pushed_its_work_on_a_branch_of_its_own_ends_done(machine):
+    """Run 5122 of the hub: the agent put its commits on a branch of its own, pushed it and merged its pull request,
+    and the run failed with branch_mismatch though origin had every commit. Now such a repo is left as it is; a branch
+    with commits origin lacks still fails the run."""
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [
+                *step_one_done(),
+                {"sh": "cd alpha && git checkout -q -b feat/own && git push -q origin feat/own"},
+                *step_two_done(),
+                {"sh": "cd beta && git checkout -q -b feat/unpushed && git commit -q --allow-empty -m more"},
+                {"result": {"summary": "Both."}},
+            ]
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()))
+        await hub.wait_state(run_id, "done", "failed")
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    run = hub.runs[run_id]
+    assert run["state"] == "failed" and run.get("failure_cause") == "branch_mismatch", run
+    assert "the worktree of beta is on refs/heads/feat/unpushed" in run["error"], run["error"]
+    assert any("alpha is left on feat/own with no commit origin lacks." in text for text in hub.texts(run_id))
+    assert machine.origin_rev("alpha", "refs/heads/feat/own") is not None
+
+
 def test_a_plan_run_whose_agent_keeps_stopping_with_steps_left_pushes_and_fails(machine):
     """An agent that ends keep_going turns in a row after the first with the same steps to do: the run pushes what it
     did, so the next run goes on from it, and fails with steps_left for its triage, never done."""

@@ -349,6 +349,10 @@ class PlanRun:
         except gitops.GitError as exc:
             raise RunFailed(f"committing what the agent left in {name} failed: {exc}") from None
         head_branch = await gitops.current_branch(path)
+        if head_branch != workspace.local_branch and not await gitops.unpushed(path):
+            # the agent pushed its work on a branch of its own (a pull request it merged): origin has every commit
+            run.note(f"{name} is left on {head_branch or 'a detached HEAD'} with no commit origin lacks.")
+            return {"files": 0, "insertions": 0, "deletions": 0}
         if head_branch is None:
             raise RunFailed(f"HEAD is detached in the worktree of {name}: the worker does not push a detached HEAD")
         if head_branch != workspace.local_branch:
