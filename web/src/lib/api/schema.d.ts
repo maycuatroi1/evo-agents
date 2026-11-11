@@ -31212,7 +31212,7 @@ export interface components {
         OverviewCounts: {
             /**
              * Waiting On You
-             * @description open decisions asked of you, which you answer
+             * @description open decisions asked of you, which you answer; a wait is not one
              */
             waiting_on_you: number;
             /**

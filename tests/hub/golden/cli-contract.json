@@ -7837,6 +7837,7 @@
           "held_at",
           "wake_at",
           "wake_on",
+          "waiting_on",
           "outputs",
           "credential_request",
           "approval"
@@ -7982,6 +7983,7 @@
           "held_at",
           "wake_at",
           "wake_on",
+          "waiting_on",
           "outputs",
           "credential_request",
           "approval"
@@ -109282,6 +109284,105 @@
           ],
           "title": "AgentAccountWritten"
         },
+        "AgentAnswerWait": {
+          "properties": {
+            "handle": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handle",
+              "description": "the agent asked, @ left out"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "the agent's project"
+            },
+            "run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the agent's run whose end answers the wait"
+            },
+            "question": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Question",
+              "description": "what the waiting run asked it"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id",
+              "description": "the chat the question went to"
+            },
+            "thread_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Id",
+              "description": "the message that roots the thread of it"
+            },
+            "last_activity_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Activity At",
+              "description": "when the agent's run last wrote an event"
+            }
+          },
+          "type": "object",
+          "required": [
+            "handle",
+            "project",
+            "run",
+            "question",
+            "chat_id",
+            "thread_id",
+            "last_activity_at"
+          ],
+          "title": "AgentAnswerWait"
+        },
         "AgentAskIn": {
           "properties": {
             "handle": {
@@ -123360,6 +123461,17 @@
               ],
               "description": "a wait: the event of the hub that answers it sooner"
             },
+            "waiting_on": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WaitingOn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a wait: what it waits for and where that stands, as the hub last knew it (``waiting_on``); null for any other decision"
+            },
             "outputs": {
               "items": {
                 "$ref": "#/components/schemas/RunOutput"
@@ -128164,6 +128276,59 @@
             "body"
           ],
           "title": "EventIn"
+        },
+        "EventPair": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "value": {
+              "type": "string",
+              "title": "Value",
+              "description": "the value as text, JSON for one that is not a text"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "value"
+          ],
+          "title": "EventPair"
+        },
+        "EventWait": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name",
+              "description": "what the kind is, for a kind the hub knows"
+            },
+            "contains": {
+              "items": {
+                "$ref": "#/components/schemas/EventPair"
+              },
+              "type": "array",
+              "title": "Contains"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "name",
+            "contains"
+          ],
+          "title": "EventWait"
         },
         "EventsAck": {
           "properties": {
@@ -141563,6 +141728,89 @@
           ],
           "title": "MergeCheckIn"
         },
+        "MergeCheckWait": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "number": {
+              "type": "integer",
+              "title": "Number",
+              "description": "the pull request's number"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url"
+            },
+            "head_sha": {
+              "type": "string",
+              "title": "Head Sha"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "judging",
+                "passed",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "judges": {
+              "items": {
+                "$ref": "#/components/schemas/MergeJudge"
+              },
+              "type": "array",
+              "title": "Judges"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "repo",
+            "number",
+            "title",
+            "url",
+            "head_sha",
+            "state",
+            "reason",
+            "judges"
+          ],
+          "title": "MergeCheckWait"
+        },
         "MergeEvent": {
           "properties": {
             "id": {
@@ -141892,6 +142140,59 @@
             "number"
           ],
           "title": "MergeGateIn"
+        },
+        "MergeJudge": {
+          "properties": {
+            "round": {
+              "type": "string",
+              "enum": [
+                "first",
+                "second"
+              ],
+              "title": "Round"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "judging",
+                "passed",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the judge run"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            }
+          },
+          "type": "object",
+          "required": [
+            "round",
+            "state",
+            "run_id",
+            "model"
+          ],
+          "title": "MergeJudge"
         },
         "MergeJudgeInputs": {
           "properties": {
@@ -147633,7 +147934,7 @@
             "waiting_on_you": {
               "type": "integer",
               "title": "Waiting On You",
-              "description": "open decisions asked of you, which you answer"
+              "description": "open decisions asked of you, which you answer; a wait is not one"
             },
             "running": {
               "type": "integer",
@@ -149511,6 +149812,75 @@
             "plan_id"
           ],
           "title": "PlanRunDispatch"
+        },
+        "PlanStepWait": {
+          "properties": {
+            "plan": {
+              "type": "string",
+              "title": "Plan"
+            },
+            "step": {
+              "type": "string",
+              "title": "Step"
+            },
+            "wanted": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wanted",
+              "description": "the status the wait waits for, such as done; null: any change"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "the step's title; null when the caller does not read the plan"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "the step's status now; null when the caller does not read the plan"
+            },
+            "run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the active run of the plan working on it, when the caller reads the plan"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plan",
+            "step",
+            "wanted",
+            "title",
+            "status",
+            "run"
+          ],
+          "title": "PlanStepWait"
         },
         "PlanSummary": {
           "properties": {
@@ -167059,6 +167429,29 @@
           ],
           "title": "RunReachWritten"
         },
+        "RunRef": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "state"
+          ],
+          "title": "RunRef"
+        },
         "RunRepo": {
           "properties": {
             "repo": {
@@ -180601,6 +180994,27 @@
           ],
           "title": "TierSetting"
         },
+        "TimeWait": {
+          "properties": {
+            "wake_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Wake At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "wake_at"
+          ],
+          "title": "TimeWait"
+        },
         "TimelineMark": {
           "properties": {
             "decision_id": {
@@ -183943,6 +184357,87 @@
           ],
           "title": "WaitIn"
         },
+        "WaitingOn": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "workflow_run",
+                "plan_step",
+                "agent_answer",
+                "merge_check",
+                "time",
+                "event"
+              ],
+              "title": "Kind"
+            },
+            "workflow_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkflowRunWait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "plan_step": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PlanStepWait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "agent_answer": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AgentAnswerWait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "merge_check": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MergeCheckWait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "time": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TimeWait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "event": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EventWait"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "title": "WaitingOn"
+        },
         "WakeOn": {
           "properties": {
             "kind": {
@@ -186041,6 +186536,415 @@
           ],
           "title": "WorkerUpdateNow",
           "description": "The last Update now of a worker: open while ended_at is null (POST /v1/workers/{id}/update-now)."
+        },
+        "WorkflowJob": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "conclusion": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conclusion"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "completed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Completed At"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "the job's page on GitHub"
+            },
+            "steps": {
+              "items": {
+                "$ref": "#/components/schemas/WorkflowStep"
+              },
+              "type": "array",
+              "title": "Steps"
+            },
+            "steps_total": {
+              "type": "integer",
+              "title": "Steps Total",
+              "description": "the steps GitHub lists for the job; steps keeps at most 60"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "status",
+            "conclusion",
+            "started_at",
+            "completed_at",
+            "url",
+            "steps",
+            "steps_total"
+          ],
+          "title": "WorkflowJob"
+        },
+        "WorkflowRunWait": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo",
+              "description": "owner/name"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "attempt": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Attempt"
+            },
+            "workflow": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow",
+              "description": "the workflow's name"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "the run's title, such as its commit's subject"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            },
+            "sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sha"
+            },
+            "event": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event",
+              "description": "what started the run, such as push"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "as GitHub says it: queued, in_progress, completed ..."
+            },
+            "conclusion": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conclusion"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url"
+            },
+            "created_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created At"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "updated_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated At"
+            },
+            "read_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Read At",
+              "description": "when the hub last read the run from GitHub; null before its first read"
+            },
+            "typical_seconds": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Typical Seconds",
+              "description": "the median time of the latest runs of the workflow that succeeded; null when not known"
+            },
+            "jobs": {
+              "items": {
+                "$ref": "#/components/schemas/WorkflowJob"
+              },
+              "type": "array",
+              "title": "Jobs",
+              "description": "the jobs of its latest attempt, in GitHub's order; past 40, those that failed or run are kept"
+            },
+            "jobs_total": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Jobs Total",
+              "description": "the jobs GitHub lists for that attempt; null before the first read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "run_id",
+            "attempt",
+            "workflow",
+            "title",
+            "branch",
+            "sha",
+            "event",
+            "status",
+            "conclusion",
+            "url",
+            "created_at",
+            "started_at",
+            "updated_at",
+            "read_at",
+            "typical_seconds",
+            "jobs",
+            "jobs_total"
+          ],
+          "title": "WorkflowRunWait"
+        },
+        "WorkflowStep": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "conclusion": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Conclusion"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "completed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Completed At"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "the step on GitHub: its job's page at #step:N:1"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "name",
+            "status",
+            "conclusion",
+            "started_at",
+            "completed_at",
+            "url"
+          ],
+          "title": "WorkflowStep"
         },
         "evo_agents__hub__server__memories__Conflict": {
           "properties": {
