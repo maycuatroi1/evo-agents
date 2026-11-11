@@ -697,7 +697,9 @@ def test_post_search_from_the_cache_imports_neither_the_harness_nor_yaml(linked,
     project = linked()
     event = bash(tmp_path / "demo-app", 'grep -rn "def search" .', "./app/search.py:5:def search(query):\n")
     code = (
-        "import sys\nfrom evo_agents.cli import main\nmain(['kg', 'hook', 'post-search', '--only', 'grep'])\n"
+        "import sys\nfrom evo_agents.cli import main\nfrom evo_agents.kg import post_search\n"
+        "post_search.BUDGET = 30.0\n"  # a loaded CI runner can take past 0.35s on a cold store
+        "main(['kg', 'hook', 'post-search', '--only', 'grep'])\n"
         "print(','.join(m for m in ('yaml', 'evo_agents.harness', 'evo_agents.kg.project') if m in sys.modules),"
         " file=sys.stderr)\n"
     )
