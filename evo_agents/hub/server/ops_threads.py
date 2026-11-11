@@ -268,10 +268,18 @@ async def open_batch(conn: AsyncConnection, system: OpsSystem, batch) -> str:
     times = await recurring_times(conn, system.ref.project_id, batch.key)
     text = await summary(conn, batch, times)
     person = await orchestrator.machine_person(conn, system.owner)
-    async with conn.begin_nested():
+    savepoint = await conn.begin_nested()
+    try:
         opened = await orchestrator.open_ops(conn, system.ref, lead, person, KEY.format(id=batch.id), text)
-    if opened is None:
+    except BaseException:
+        await savepoint.rollback()
+        raise
+    if opened is None or opened.run_id is None:
+        # No run took the thread (the lead's pool has no free slot, say): the thread and its refusal go, and the
+        # batch stays ready for the next pass instead of settling done with its items unread.
+        await savepoint.rollback()
         return "refused"
+    await savepoint.commit()
     b = tables.ops_batches
     values = {"state": "running", "run_id": opened.run_id, "thread_id": opened.thread_id}
     await conn.execute(update(b).values(**values, recurring=times >= RECURRING_TIMES).where(b.c.id == batch.id))
