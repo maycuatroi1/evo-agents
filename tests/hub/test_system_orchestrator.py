@@ -84,6 +84,11 @@ def test_work_goes_only_to_another_agent_node_of_the_system():
     assert "answer it instead" in triage_rules.reassign_problem("agent", "reviewer", "reviewer")
 
 
+def test_reassign_refuses_an_agent_whose_run_waits_on_the_asker():
+    assert triage_rules.reassign_problem("agent", "fixer", "reviewer", {"writer"}) is None
+    assert "a cycle" in triage_rules.reassign_problem("agent", "fixer", "reviewer", {"fixer"})
+
+
 def worker_args(*argv: str) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="evo-agents worker")
     sub = parser.add_subparsers(dest="command")

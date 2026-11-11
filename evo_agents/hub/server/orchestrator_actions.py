@@ -10,7 +10,8 @@ The routes take the worker token of the worker that holds the chat run; the hub 
   wakes the asking run; a thread with no wait hands the text to the agent it is about, at the hop of the work.
 - POST /v1/worker/runs/{id}/triage/reassign: give the work to another agent node of the system (never the Orchestrator,
   never the agent the thread is about, ``triage_rules.reassign_problem``), at the hop of the work: the work keeps its
-  hop. An escalation's wait goes with it, so the end of that agent's run answers the asking run.
+  hop. An escalation's wait goes with it, so the end of that agent's run answers the asking run; so it is never an
+  agent whose run waits on the asking run (``wait_cycles.upstream_handles``), which would close a cycle of waits.
 - POST /v1/worker/runs/{id}/triage/ask-owner: ask the person at the origin of the work a decision of category triage;
   the Orchestrator's run waits for it as a chat run's decision does, and still answers an escalation when it ends.
 
@@ -34,7 +35,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, profiles, runs, system_context, tables, triage_rules
-from evo_agents.hub.server import audit, orchestrator, run_waits, system_traces, work_chats
+from evo_agents.hub.server import audit, orchestrator, run_waits, system_traces, wait_cycles, work_chats
 from evo_agents.hub.server.agent_account_mask import mask_run, mask_values
 from evo_agents.hub.server.chat_agents import REFUSALS, AgentRun, agent_run
 from evo_agents.hub.server.chat_runs import agent_access, chat_run, post_agent
@@ -218,8 +219,11 @@ async def reassign(conn: AsyncConnection, sealer, run: AgentRun, body: Orchestra
     the work, with the escalation's wait when there is one; 409 for an agent the frame refuses."""
     frame = await frame_of(conn, run)
     thread = frame.thread
+    asker, waiting = thread.asker_run_id, set()
+    if asker is not None and await _open_wait(conn, thread.wait_id) is not None:
+        waiting = await wait_cycles.upstream_handles(conn, asker)
     problem = triage_rules.reassign_problem(
-        system_context.node_kind(frame.spec, body.handle), body.handle, thread.subject
+        system_context.node_kind(frame.spec, body.handle), body.handle, thread.subject, waiting
     )
     if problem is not None:
         raise HTTPException(409, problem)

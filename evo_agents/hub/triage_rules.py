@@ -25,6 +25,7 @@ Anything else is asked of the owner with a decision. Standard library only: the 
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 
 KINDS = ("step", "plan", "author")  # the kinds of run whose failure opens a thread
 RERUN_CAP = 2  # automatic reruns in one chain of runs (each rerun has its failed run as ``parent_run_id``)
@@ -222,13 +223,22 @@ def idle_minutes(limits: dict | None, runtime: str) -> int:
     return int(value) if isinstance(value, int) and not isinstance(value, bool) and value > 0 else IDLE_MINUTES[kind]
 
 
-def reassign_problem(target_kind: str | None, target: str, subject: str | None) -> str | None:
+def reassign_problem(
+    target_kind: str | None, target: str, subject: str | None, waiting: Collection[str] = ()
+) -> str | None:
     """Why the Orchestrator may not give the work of a thread to agent ``target`` (its node's kind, None when the
-    system lacks it); None when it may: an agent node of the same system, other than the Orchestrator."""
+    system lacks it); None when it may: an agent node of the same system, other than the Orchestrator, and none of
+    ``waiting``, the agents whose runs wait on the asking run while the thread's wait is open
+    (``server.wait_cycles.upstream_handles``): the wait would go to a run that waits on it, a cycle."""
     if target_kind is None:
         return f"@{target} is no agent of this system: give the work to an agent node of its spec"
     if target_kind != "agent":
         return f"@{target} is the system's {target_kind}, not an agent node: give the work to an agent"
     if subject is not None and target == subject:
         return f"@{target} is the agent this thread is about: answer it instead (`triage answer`)"
+    if target in waiting:
+        return (
+            f"@{target} waits on the run that escalated, through its session: given this work and its wait, the two "
+            "runs would wait on each other (a cycle). Answer it instead (`triage answer`), or give it to another agent"
+        )
     return None
