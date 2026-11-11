@@ -299,7 +299,7 @@ async def _taken(conn: AsyncConnection, run_id: int, env_var: str) -> tuple[int 
     return row.secret_id, row.how, row.failovers if row.run_id == run_id else 0
 
 
-async def _cool(conn: AsyncConnection, secret_id: int, until: datetime, reason: str) -> datetime:
+async def cool(conn: AsyncConnection, secret_id: int, until: datetime, reason: str) -> datetime:
     """Put the account in cooldown until ``until`` at least; the end of its cooldown."""
     a = tables.accounts
     statement = (
@@ -341,7 +341,7 @@ async def fail_over(
     until = (
         resets_at if resets_at is not None and resets_at > now else now + timedelta(seconds=policy["cooldown_seconds"])
     )
-    until = await _cool(conn, current, until, reason)
+    until = await cool(conn, current, until, reason)
     taken, how, failovers = await _taken(conn, run.id, env_var)
     others = [s for s in own if s.id != current]
     if failovers and taken != current and taken in {s.id for s in others}:
@@ -370,7 +370,7 @@ RELOGIN_SPAN = timedelta(days=3650)  # a cooldown only a new sign-in ends
 
 async def mark_relogin(conn: AsyncConnection, secret_id: int) -> None:
     """Account ``secret_id`` needs a new sign-in: no run is given it until the member logs in again."""
-    await _cool(conn, secret_id, datetime.now(UTC) + RELOGIN_SPAN, RELOGIN_REASON)
+    await cool(conn, secret_id, datetime.now(UTC) + RELOGIN_SPAN, RELOGIN_REASON)
 
 
 async def clear_relogin(conn: AsyncConnection, secret_id: int) -> None:

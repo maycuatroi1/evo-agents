@@ -252,7 +252,9 @@ class Daemon:
             self.logins = await asyncio.to_thread(health.logins, path=self.env.get("PATH"))
             await self.browser.look()
             self._runtimes_at = now
-        self.health = await asyncio.to_thread(health.report, self.home.worktrees_dir, self.logins)
+        self.health = await asyncio.to_thread(
+            health.report, self.home.worktrees_dir, self.logins, self.cleaner.reserve_gb
+        )
         if force or now - self._checkouts_at > CHECKOUTS_EVERY:
             found = await asyncio.to_thread(checkouts.discover, self.config)
             for key, entry in self._set_up.items():  # set up while the look ran, before config.json held it

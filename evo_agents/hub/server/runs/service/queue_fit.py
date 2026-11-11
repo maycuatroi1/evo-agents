@@ -9,8 +9,9 @@ reads are those of the run's owner and those shared in the run's project, the wo
 run of an agent in pool mode, the nodes of the agent's pool (``agent_placement``), whoever owns them.
 
 A worker fits when nothing but a wait keeps it from the run: no free slot, a run of another member on a shared worker,
-a lost attempt of the run while it is not steady yet, another run of the plan editing the same files, no free
-browser, or Chromium the hub asked it to install less than ``browser_install.UNFINISHED_AFTER`` ago. Anything else,
+a lost attempt of the run while it is not steady yet, another run of the plan editing the same files, too little
+free disk on its worktrees' drive (its daemon frees room), no free browser, or Chromium the hub asked it to install
+less than ``browser_install.UNFINISHED_AFTER`` ago. Anything else,
 an offline worker included, keeps it from the run until someone acts; a worker of the run's owner that lacks only
 Chromium gets the hub's request to install it on the reaper's next pass (``browser_install.ask_for_queued``)."""
 
@@ -22,7 +23,7 @@ from datetime import UTC, datetime
 from sqlalchemy import and_, exists, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import ops_events, runs, tables
 from evo_agents.hub.server import agent_placement, browser_install, kg_shared_pool, worker_placement
 from evo_agents.hub.server.profile_store import profile_of, profile_select
 from evo_agents.hub.server.runs.service import claim_rules, claims, overlap
@@ -148,6 +149,14 @@ def _stop_reasons(key: str, row, run, claimer: claim_rules.Claimer) -> tuple[str
         return f"has no free slot ({claimer.holding} of {row.slots} held): it takes the run once one frees", True
     if key == "runtime":
         return "reports no runtime available: install one on its machine (claude-code, codex, ...)", False
+    if key == "disk":
+        free = ((row.health or {}).get("disk") or {}).get("free_gb")
+        reserve = ops_events.disk_reserve(row.health)
+        return (
+            f"has {free} GB free on its worktrees' drive, under its reserve of {reserve:g} GB: it takes "
+            "runs again once its daemon removed the worktrees of ended runs or its owner freed room",
+            True,
+        )
     return (
         f"has no checkout of a project it serves, and its daemon (evo-agents {version}) does not clone what it lacks: "
         "update its daemon",

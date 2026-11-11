@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import ops_events, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import agent_placement, gateway_accounts, kg_shared_pool, pool_accounts, worker_placement
 from evo_agents.hub.server.runs.models import available
@@ -247,13 +247,16 @@ class Claimer:
     def stops(self) -> list[str]:
         """What keeps the worker from taking any run now, before the queue is read, each by its key, in the order the
         claim checks them: unready (a node of a pool that is not ready), full (no free slot), runtime (none it takes),
-        checkout (none of a project it serves, and a daemon that clones nothing). Draining is a condition on the run
+        checkout (none of a project it serves, and a daemon that clones nothing), disk (its last heartbeat said less
+        free disk on its worktrees' drive than its reserve, ``ops_events.disk_band``, so the run waits for another
+        worker or for this one to free room instead of failing at its checkout). Draining is a condition on the run
         (``conditions``), since a drained worker still takes the runs that resume one it parked."""
         checks = (
             (not self.node.ready, "unready"),
             (self.holding >= self.row.slots, "full"),
             (not self.runtimes and not self.offered, "runtime"),
             (not self.pairs and not self.clones, "checkout"),
+            (ops_events.disk_band(self.row.health) == "low", "disk"),
         )
         return [key for failed, key in checks if failed]
 

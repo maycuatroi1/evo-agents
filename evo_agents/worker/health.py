@@ -103,9 +103,13 @@ def logins(names: Iterable[str] = runs.RUNTIMES, *, path: str | None = None) -> 
     return {name: login(name, path=path) for name in names if name in BINARIES}
 
 
-def report(worktrees: Path, found_logins: dict[str, str]) -> dict:
-    """The heartbeat's ``health``: the free disk of ``worktrees``' drive and the logins last found."""
-    return {"disk": disk(worktrees), "logins": dict(found_logins)}
+def report(worktrees: Path, found_logins: dict[str, str], reserve_gb: float | None = None) -> dict:
+    """The heartbeat's ``health``: the free disk of ``worktrees``' drive, with the gigabytes the daemon keeps free
+    there (``reserve_gb``, under which the hub gives it no run), and the logins last found."""
+    found = disk(worktrees)
+    if found is not None and reserve_gb is not None:
+        found["reserve_gb"] = round(float(reserve_gb), 2)
+    return {"disk": found, "logins": dict(found_logins)}
 
 
 __all__ = ["BINARIES", "LOGIN_TIMEOUT", "disk", "login", "logins", "report"]

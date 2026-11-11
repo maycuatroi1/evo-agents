@@ -1,5 +1,6 @@
 """The health a worker's heartbeat reports (plan hub-steward, criterion a3): the hub keeps it on the worker, GET
-/v1/workers shows it, and a change of its state writes one ``worker.health`` event into each project it serves."""
+/v1/workers shows it, and a change of its state writes one ``worker.health`` event into each project it serves. A worker
+under its disk reserve is given no run (criterion a4)."""
 
 from __future__ import annotations
 
@@ -14,8 +15,9 @@ from sqlalchemy import insert, select  # noqa: E402
 
 from evo_agents.hub import tables  # noqa: E402
 from tests.hub.live import sql  # noqa: E402
+from tests.hub.test_decisions import fit_of  # noqa: E402
 from tests.hub.test_plans import registration  # noqa: E402
-from tests.hub.test_runs import PROJECT, add_worker, beat, client, hub  # noqa: E402, F401 (fixtures)
+from tests.hub.test_runs import PROJECT, add_worker, beat, claim, client, dispatched, hub  # noqa: E402, F401 (fixtures)
 
 SECOND = "evo-agents-second"
 HEALTHY = {"disk": {"free_gb": 120.5, "free_pct": 41.0}, "logins": {"claude-code": "ok", "codex": "unauthorized"}}
@@ -76,3 +78,26 @@ def test_a_heartbeat_with_a_login_of_no_runtime_or_a_bad_disk_is_refused(client,
         body = {"runtimes": worker["runtimes"], "checkouts": worker["checkouts"], "free_slots": 1, "health": health}
         refused = client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"])
         assert refused.status_code == 422, health
+
+
+def test_a_worker_under_its_disk_reserve_is_given_no_run_which_waits_or_goes_to_another(
+    client,  # noqa: F811
+    hub,  # noqa: F811
+    hub_db,
+):
+    low = add_worker(client, hub["owner"], "mac-mini")
+    beat(client, low, health={"disk": {"free_gb": 4.0, "free_pct": 1.5}, "logins": {}})  # under the hub's own 20
+    run = dispatched(client, hub["owner"], [2])[0]
+    assert claim(client, low) is None, "the run waits instead of failing at its checkout"
+    _, fit, reasons = fit_of(client, hub, run["id"], "mac-mini")
+    assert fit is True and any("under its reserve of 20 GB" in reason for reason in reasons), reasons
+
+    beat(client, low, health={"disk": {"free_gb": 30.0, "free_pct": 10.0, "reserve_gb": 50}, "logins": {}})
+    other = add_worker(client, hub["owner"], "linux-box")
+    beat(client, other, health={"disk": {"free_gb": 30.0, "free_pct": 10.0, "reserve_gb": 10}, "logins": {}})
+    assert claim(client, low) is None, "a daemon's own reserve holds over the hub's"
+    assert claim(client, other)["id"] == run["id"], "another worker over its reserve takes it"
+
+    later = dispatched(client, hub["owner"], [4])[0]
+    beat(client, low, health={"disk": {"free_gb": 60.0, "free_pct": 20.0, "reserve_gb": 50}, "logins": {}})
+    assert claim(client, low)["id"] == later["id"], "once its daemon made room it takes runs again"
