@@ -440,6 +440,9 @@ NOTICE_KINDS = (
     "srs_review",  # a version of an SRS document waits for its reviewers, after @ba's review (``server.srs.notices``)
     "srs_reviewed",  # a reviewer asked for changes on a version, or approved it, told to its author (same)
     "srs_comment",  # a comment reached a thread of an SRS document the member is in (``server.srs.threads``)
+    "ops_cap",  # the ops threads of a project's default system reached limits.ops_daily_usd (``server.ops_threads``)
+    "ops_paused",  # two ops runs in a row failed of their agent, which paused the system's ops (same)
+    "ops_digest",  # what the ops of a project handled in a day and what waits on a person, to its owner (same)
 )
 # The notices that only report what went as it should (plan hub-attention-runtime, criterion a4): a push or merge into a
 # default branch, a plan finished, a run's files. Stored read, delivered on the web alone (no channel, no device), and

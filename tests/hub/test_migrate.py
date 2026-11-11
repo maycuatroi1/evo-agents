@@ -5987,3 +5987,19 @@ def test_0237_makes_the_oldest_system_the_default_and_going_back_drops_the_ops_q
     assert "systems_seeded_at" not in columns(hub_db, "projects")
     assert not columns(hub_db, "ops_batches")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0237") :]
+
+
+def test_0238_takes_the_ops_rule_the_thread_of_a_batch_and_the_ops_breaker(hub_db):
+    move_to(hub_db, "0237")
+    move_to(hub_db, "0238")
+    assert {"thread_id", "recurring"} <= columns(hub_db, "ops_batches")
+    assert "ops_failures" in columns(hub_db, "agent_systems")
+    check = query(
+        hub_db,
+        text("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'orchestrator_threads_rule_check'"),
+    )[0][0]
+    assert "'ops'" in check, check
+    move_to(hub_db, "0237", down=True)
+    assert "thread_id" not in columns(hub_db, "ops_batches")
+    assert "ops_failures" not in columns(hub_db, "agent_systems")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0238") :]

@@ -61,6 +61,9 @@ def system_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("is_default", Boolean, nullable=False, server_default=false()),  # 0237
         Column("ops_paused_at", DateTime(timezone=True)),  # 0237
         Column("ops_paused_reason", Text),  # 0237
+        Column(
+            "ops_failures", Integer, nullable=False, server_default="0"
+        ),  # ops runs in a row failed of the agent (0238)
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
         ForeignKeyConstraint(
             ["entry_profile_id"], ["agent_profiles.id"], ondelete="SET NULL", name=f"{name}_entry_profile_id_fkey"

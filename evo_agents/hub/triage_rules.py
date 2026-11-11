@@ -172,7 +172,8 @@ def edit_problems(old: dict, new: dict, repos: set[str]) -> list[str]:
 
 FAILED, STALE, ESCALATE = "failed", "stale", "escalate"  # what an agent's run or turn did
 LOOP, IDLE, ROUNDS, BUDGET = "loop", "idle", "rounds", "budget"  # the rules of progress on a trace
-ORCHESTRATOR_RULES = (FAILED, STALE, ESCALATE, LOOP, IDLE, ROUNDS, BUDGET)
+OPS = "ops"  # a batch of the ops queue closed with items left (``evo_agents.hub.server.ops_threads``)
+ORCHESTRATOR_RULES = (FAILED, STALE, ESCALATE, LOOP, IDLE, ROUNDS, BUDGET, OPS)
 LOOP_COUNT = 3  # an agent that receives the same work this many times in one trace is in a loop
 IDLE_MINUTES = {"hub": 10, "worker": 30}  # a trace with no new span this long is idle, by the runtime of its runs
 IDLE_LIMITS = {"hub": "idle_minutes_hub", "worker": "idle_minutes_worker"}  # their names in the spec's limits
@@ -186,6 +187,7 @@ RULE_TEXT = {
     IDLE: "the trace is open and wrote no span for longer than its idle limit",
     ROUNDS: "a turn of the agent used all its tool rounds without a final answer",
     BUDGET: "the trace reached its budget (limits.trace_runs or limits.trace_usd)",
+    OPS: "a batch of the project's ops queue closed with items that wait on you",
 }
 
 _RUN_REF = re.compile(r"#\d+|\b\d+\b")

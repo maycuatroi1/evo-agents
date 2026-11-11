@@ -31,7 +31,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 
 # triage_rules.ORCHESTRATOR_RULES and ORCHESTRATOR_ACTIONS; a test keeps them equal
-RULES = ("failed", "stale", "escalate", "loop", "idle", "rounds", "budget")
+RULES = ("failed", "stale", "escalate", "loop", "idle", "rounds", "budget", "ops")  # ops: 0238
 OUTCOMES = ("answer", "reassign", "ask_owner")
 
 

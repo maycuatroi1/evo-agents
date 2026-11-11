@@ -6,7 +6,9 @@ to its metadata and exposes as its own attributes (``tables.ops_cursors``, ``tab
   holds the Loop's.
 - ops_batches: the items of one cause key (kind, cause, subject) of a project, gathered until ``closes_at``: ``open``
   while it gathers (at most one per key, ``ops_batches_open_key``), then ``ready`` when it closed with items left, or
-  ``empty`` when every item left before; the run a later step opens for it.
+  ``empty`` when every item left before; ``running`` once the hub opened its ops thread (``thread_id``, 0238) to the
+  Orchestrator of the default system, whose run it keeps, and ``done`` when that run ended; ``recurring`` when its
+  cause key came back often (``server.ops_threads``).
 - ops_items: each operations event the queue took into a batch, with the ids it names, ``pending`` until tier 0
   handled it, ``handled`` then (by what, when); one per event (``ops_items_event_key``).
 """
@@ -15,6 +17,7 @@ from __future__ import annotations
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKeyConstraint,
@@ -24,6 +27,7 @@ from sqlalchemy import (
     PrimaryKeyConstraint,
     Table,
     Text,
+    false,
     func,
     text,
 )
@@ -70,8 +74,11 @@ def _batches(metadata: MetaData) -> Table:
         Column("closes_at", DateTime(timezone=True), nullable=False),
         _when("closed_at"),
         Column("run_id", BigInteger),
+        Column("thread_id", BigInteger),  # the ops thread opened for it (0238)
+        Column("recurring", Boolean, nullable=False, server_default=false()),  # its cause key came back often (0238)
         _key(name, "project_id", "projects", ondelete="CASCADE"),
         _key(name, "run_id", "runs", ondelete="SET NULL"),
+        _key(name, "thread_id", "orchestrator_threads", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="ops_batches_pkey"),
     )
     Index("ops_batches_open_key", table.c.project_id, table.c.key, unique=True, postgresql_where=text("state = 'open'"))
