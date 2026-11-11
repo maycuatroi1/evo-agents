@@ -31,6 +31,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import hub_events, system_spec, tables, triage_rules
+from evo_agents.hub.ops_events import LOGGED_IN
 
 BATCH_STATES = ("open", "ready", "empty", "running", "done")  # 0240; running and done are the run's (a later step)
 CLOSED = ("ready", "empty", "running", "done")
@@ -95,10 +96,10 @@ def _subject(worker_id, plan_id: str | None, cause: str) -> str:
 
 def health_causes(payload: dict) -> list[str]:
     """What a ``worker.health`` event says is wrong: ``disk_low``, and ``login:<runtime>:<state>`` for each runtime
-    whose login is not ok; empty when the worker is healthy."""
+    whose login is neither ok nor leased (``ops_events.LOGGED_IN``); empty when the worker is healthy."""
     found = ["disk_low"] if payload.get("disk") == "low" else []
     logins = payload.get("logins") or {}
-    found += [f"login:{name}:{state}" for name, state in sorted(logins.items()) if state != "ok"]
+    found += [f"login:{name}:{state}" for name, state in sorted(logins.items()) if state not in LOGGED_IN]
     return found
 
 

@@ -259,6 +259,7 @@ class FakeAdapter(Adapter):
     interactive = True
     pack_kinds = packs.KINDS  # a run with a browser carries the browser agent pack
     pack_transports = packs.TRANSPORTS
+    lease_auth_vars = ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY")  # as Claude Code's: a scenario's auth reports it
     starts: dict[int, int] = {}  # run id -> the starts of its agent in this process
 
     @classmethod

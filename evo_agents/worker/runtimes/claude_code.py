@@ -368,6 +368,7 @@ class ClaudeCodeAdapter(QueueAdapter):
     interactive = True
     pack_kinds = packs.KINDS
     pack_transports = packs.TRANSPORTS
+    lease_auth_vars = (OAUTH_TOKEN, API_KEY)  # a refused one ends the turn with Outcome.auth (``auth_failure_of``)
     background_wait = BACKGROUND_WAIT
     follow_up_after = FOLLOW_UP_AFTER
     turn_grace = TURN_GRACE

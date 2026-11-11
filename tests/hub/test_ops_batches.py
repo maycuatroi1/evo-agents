@@ -161,3 +161,22 @@ def test_read_ops_defaults_and_bounds():
     assert ops_queue.read_ops({"schema": "evo-agent-system/1"}).enabled is False, "a spec from before ops"
     found = ops_queue.read_ops({"ops": {"enabled": True, "debounce_minutes": -3, "max_items": "x"}})
     assert (found.enabled, found.debounce_minutes, found.max_items) == (True, 5, 20)
+
+
+def test_a_login_the_worker_holds_by_lease_is_no_item_and_a_failing_one_is(client, hub, hub_db):
+    """A worker whose runs authenticate with the hub's lease says ``leased`` for the runtime the machine has no login
+    of: no item. One whose lease failed with a 401, or whose run had no lease, says the machine's login again."""
+    system(hub_db, {"enabled": True})
+    run_pass(client)
+    payload = {"worker_id": 7, "disk": "ok", "disk_free_pct": 40}
+    record(client, hub_db, hub_events.WORKER_HEALTH, **payload, logins={"claude-code": "leased", "opencode": "ok"})
+    assert run_pass(client)["queued"] == 0, "leased is no item"
+    assert not batches(hub_db)
+    record(client, hub_db, hub_events.WORKER_HEALTH, **payload, logins={"claude-code": "unauthorized"})
+    record(client, hub_db, hub_events.WORKER_HEALTH, **payload, logins={"claude-code": "missing", "codex": "leased"})
+    assert run_pass(client)["queued"] == 2
+    assert [key for key, *_ in batches(hub_db)] == [
+        "worker.health|login:claude-code:unauthorized|worker:7",
+        "worker.health|login:claude-code:missing|worker:7",
+    ]
+    assert ops_queue.health_causes({"logins": {"claude-code": "leased", "codex": "unknown"}}) == ["login:codex:unknown"]

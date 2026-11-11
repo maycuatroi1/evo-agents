@@ -17,7 +17,7 @@ if not pg.DSN:
 from sqlalchemy import delete, func, insert, select, update
 
 from evo_agents.hub import hub_events, runs, tables, triage_rules
-from evo_agents.hub.server.ops_rules import ORCHESTRATOR, REDELIVER
+from evo_agents.hub.server.ops_rules import ORCHESTRATOR, REDELIVER, healthy
 from tests.hub.account_pool_setup import TOKEN_VAR
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (  # noqa: F401 (fixtures)
@@ -212,3 +212,12 @@ def test_a_task_failed_of_its_machine_is_handed_again_for_its_plugin_and_done_no
     sql(hub_db, update(s).values(paused_at=None, pause_reason=None).where(s.c.id == schedule))
     assert run_pass(client)["read"] == 1
     assert unread(hub_db) == []
+
+
+def test_a_runtime_whose_runs_authenticate_with_a_lease_counts_as_logged_in():
+    disk = {"free_gb": 120.5, "free_pct": 40.0}
+    assert healthy({"disk": disk, "logins": {"claude-code": "leased"}}, "claude-code")
+    assert healthy({"disk": disk, "logins": {"claude-code": "leased"}}, "any")
+    for state in ("unauthorized", "missing", "unknown"):
+        assert not healthy({"disk": disk, "logins": {"claude-code": state}}, "claude-code")
+        assert not healthy({"disk": disk, "logins": {"claude-code": state}}, None)

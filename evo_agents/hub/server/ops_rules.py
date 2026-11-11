@@ -175,16 +175,17 @@ async def _orchestrated(conn: AsyncConnection, run_id: int) -> str | None:
 
 
 def healthy(health: dict | None, runtime: str | None, *, leased: bool = False) -> bool:
-    """Whether a worker's stored health report says enough free disk and the login of ``runtime`` ok (of any runtime
-    for a run that asked for any); with ``leased`` (the run logs in with a hub account), enough free disk."""
+    """Whether a worker's stored health report says enough free disk and the login of ``runtime`` ok or leased
+    (``ops_events.LOGGED_IN``; of any runtime for a run that asked for any); with ``leased`` (the run logs in with a hub
+    account), enough free disk."""
     if not health or ops_events.disk_band(health) != "ok":
         return False
     if leased:
         return True
     logins = health.get("logins") or {}
     if runtime and runtime != "any":
-        return logins.get(runtime) == "ok"
-    return any(state == "ok" for state in logins.values())
+        return logins.get(runtime) in ops_events.LOGGED_IN
+    return any(state in ops_events.LOGGED_IN for state in logins.values())
 
 
 async def healthy_worker(conn: AsyncConnection, project_id: int, failed: Failed) -> int | None:
