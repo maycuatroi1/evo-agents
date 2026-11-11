@@ -1382,14 +1382,15 @@ one of `runs.KG_SYNC_STATES`), `error`, `ref`, `commit`, `behind`, `checked_at`,
 `pushed`, at most 50 projects and every error 1 to 500 characters. Each heartbeat replaces what the hub holds
 (`workers.kg_sync`, schema 0053), and one without it clears it; `GET /v1/workers/{id}` shows it as `kg_sync`.
 `health`, optional, is what the daemon last found of its machine (`evo_agents/worker/health.py`): `disk`, the free
-space of the drive that holds its worktrees (`free_gb`, `free_pct`, null when it cannot be read), read at each look;
+space of the drive that holds its worktrees (`free_gb`, `free_pct`, and `reserve_gb`, the free space it keeps there; null
+when it cannot be read), read at each look;
 and `logins`, the login of each runtime, `ok`, `unauthorized`, `missing` (not on PATH) or `unknown` (no answer within
 10 seconds, or one it cannot read), from the runtime's own status command (`claude auth status --json`,
 `codex login status`, `opencode auth list`), run every 300 seconds in a thread. Only the exit status and the shape of
 the answer are read: no credential value is read or sent. Each heartbeat replaces what the hub holds
 (`workers.health`, schema 0236), one without it clears it, and `GET /v1/workers` shows it as `health`. When its state
-changes (the disk under or over 20 GB free, or a login), the hub writes `worker.health` into each project the worker
-serves (`docs/hub.md`, Operations events).
+changes (the disk under or over its reserve, 20 GB for a daemon that says none, or a login), the hub writes
+`worker.health` into each project the worker serves (`docs/hub.md`, Operations events).
 
 The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
 heartbeat and by one that comes more than 30 seconds after the one before), extends the lease of each run named that
@@ -1947,7 +1948,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | events kept | 30 days after the run ends (`EVO_HUB_RUN_LOG_DAYS`) |
 | terminal | hello within 10 s, 64 KiB frames, 15 minutes idle, 4 hours, one browser per run, sessions under 12 hours old |
 | daemon spool | 256 MiB |
-| daemon worktrees | removed at the next hourly cleanup once the hub says the run's work merged, 7 days after the run ends at the latest |
+| daemon worktrees | removed at the next hourly cleanup once the hub says the run's work merged, at once while the drive has less than `disk_reserve_gb` (20) free, 7 days after the run ends at the latest (30 when parked) |
 
 ## The daemon
 
@@ -2043,7 +2044,17 @@ and a person who looks. At its start and every hour it cleans up (`Daemon.cleanu
   that commit; `recovery.jsonl` gets a line with when, the run, the repo, the branch, HEAD, the WIP commit, the ref and
   the checkout. `git -C CHECKOUT branch NAME REF` brings it back as a branch. When that commit fails, the run's worktrees stay
   and wait out the 7 days.
-- Every run that ended more than 7 days ago goes too, merged or not, as a net for what the hub never says merged.
+- Every run that ended more than 7 days ago goes too, merged or not, as a net for what the hub never says merged; a
+  parked run's worktrees stay 30 days, for the run that resumes it.
+
+The drive of the worktrees keeps `disk_reserve_gb` of `config.json` free (20 by default; `$EVO_WORKER_DISK_RESERVE_GB`
+wins over it). Under it, at each claim and each hourly cleanup, the daemon removes the worktrees of the ended runs it
+may remove once merged (not a run it holds, a parked run, one another run went on from, nor one whose directory a run
+not ended uses), the run that ended first first and each one's uncommitted changes kept on its recovery ref as above,
+until the drive is over the reserve again (`Cleanup.make_room`). While it stays under, the daemon claims nothing, and
+the hub gives it no run either: its heartbeat's `health.disk` says the reserve, and a worker whose free space is under it
+stops the claim (`disk` of `Claimer.stops`), so the run waits or goes to another worker instead of failing at its
+checkout. The run's rerun candidates say how much is free and the reserve.
 
 Each removal removes the worktree from its checkout and prunes it, deletes the run's local `evo-run/` branch, and
 keeps every other branch (a plan's, a chat's, a task's and the Curator's), then removes the run's record.

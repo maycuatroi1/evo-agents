@@ -2,8 +2,9 @@
 stopping, one long poll of up to 25 seconds at a time; each run it gets (``run.Run``) runs next to the others.
 
 It claims no new run for a while after the machine slept (``power.WakeWatch``), nor while another daemon of its
-install updates it, nor once it changed under it (``selfupdate``). A claimed run it cannot even start is failed at
-once, so it does not wait for its lease to run out.
+install updates it, nor once it changed under it (``selfupdate``), nor while the drive of its worktrees stays under
+``disk_reserve_gb`` once the cleanup made what room it may (``daemon_cleanup``). A claimed run it cannot even start
+is failed at once, so it does not wait for its lease to run out.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ class Claims:
         self.daemon = daemon
         self.claiming = False
         self._held_for_wake = False
+        self._held_for_disk = False
 
     async def loop(self) -> None:
         daemon = self.daemon
@@ -79,7 +81,36 @@ class Claims:
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(daemon.stopping.wait(), daemon.heartbeat_s)
             return True
+        if await self._short_of_room():
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(daemon.stopping.wait(), daemon.heartbeat_s)
+            return True
         return False
+
+    async def _short_of_room(self) -> bool:
+        """Whether the drive of the worktrees stays under ``disk_reserve_gb`` once the cleanup removed the worktrees
+        of the ended runs it may (``Cleanup.make_room``): no run is claimed then, so none fails at its checkout. Said in
+        the log once each time it starts and ends."""
+        cleaner = self.daemon.cleaner
+        if not cleaner.short_of_room():
+            short = False
+        else:
+            try:
+                await cleaner.make_room()
+            except Exception:
+                log.exception("making room on the worktrees' drive failed")
+            short = cleaner.short_of_room()
+        if short != self._held_for_disk:
+            self._held_for_disk = short
+            reserve = cleaner.reserve_gb
+            if short:
+                log.warning(
+                    "no claims: the worktrees' drive is under its reserve",
+                    extra={"free_gb": cleaner.free_gb(), "reserve_gb": reserve},
+                )
+            else:
+                log.info("claiming again: the worktrees' drive is over its reserve", extra={"reserve_gb": reserve})
+        return short
 
     async def _claim(self, backoff: Backoff) -> tuple[dict | None, float]:
         """One claim: the run it got, if any, and how long to wait before the next one."""

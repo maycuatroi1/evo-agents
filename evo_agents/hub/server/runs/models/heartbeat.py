@@ -97,6 +97,12 @@ class DiskReport(BaseModel):
 
     free_gb: float = Field(ge=0, description="gigabytes free there")
     free_pct: float = Field(ge=0, le=100, description="the share of the drive free, in percent")
+    reserve_gb: float | None = Field(
+        None,
+        ge=0,
+        description="the gigabytes the daemon keeps free there (disk_reserve_gb of its config): under it the hub gives "
+        "the worker no run; null from a daemon that says none, for which the hub's own reserve of 20 holds",
+    )
 
 
 class HealthReport(BaseModel):

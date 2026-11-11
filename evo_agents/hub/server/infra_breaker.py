@@ -133,7 +133,7 @@ async def _tell_owner(conn: AsyncConnection, due, outage: curator.Outage, most: 
 async def _cool_accounts(conn: AsyncConnection, outage: curator.Outage, steps: tuple[int, ...], key: int) -> None:
     """Cool the accounts the failed run of ``outage`` took until the probe after the next may go, so the next probe's
     lease takes another account when the charter has one ready (``account_choice``)."""
-    from evo_agents.hub.server.account_choice import _cool  # it imports the routes that import this module
+    from evo_agents.hub.server.account_choice import cool  # it imports the routes that import this module
 
     if outage.cause not in triage_rules.NEW_ACCOUNT:
         return
@@ -141,4 +141,4 @@ async def _cool_accounts(conn: AsyncConnection, outage: curator.Outage, steps: t
     taken = (await conn.execute(select(ra.c.secret_id).where(ra.c.run_id == outage.last_run_id))).scalars().all()
     until = outage.retry_at + curator.backoff(outage.failures + 1, steps, f"{key}:{outage.dependency}:next")
     for secret_id in sorted(set(taken)):
-        await _cool(conn, secret_id, until, f"{INFRA_REASON}: {outage.cause} in run #{outage.last_run_id}")
+        await cool(conn, secret_id, until, f"{INFRA_REASON}: {outage.cause} in run #{outage.last_run_id}")

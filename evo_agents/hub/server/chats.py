@@ -489,15 +489,7 @@ async def deliver_message(
     refusals = [mention["refusal"] for mention in kept if mention["refusal"]]
     refusals += await _to_coordinator(conn, chat, user, hand, kept)
     said = ([] if opened is None else [opened.note()]) + to_systems + refusals
-    if said:  # the hub's answer, which the sender has read as they read their own
-        await hub_reply(conn, chat.chat_id, root or message_id, "\n".join(said))
-        seq = (
-            await conn.execute(select(tables.chats.c.event_seq).where(tables.chats.c.id == chat.chat_id))
-        ).scalar_one()
-    await mark_read(conn, chat.member_id, seq)
-    for user_id in dict.fromkeys(people):
-        if user_id != user.user_id:
-            await notice_mention(conn, chat, user_id, message_id, body.body)
+    await _answered_and_noticed(conn, chat, user, (message_id, root or message_id, seq), said, people, body.body)
     target = f"chat:{chat.chat_id} message:{message_id}" + ("" if plugin is None else f" plugin:{plugin}")
     await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.CHAT_MESSAGE, target=target)
     if opened is not None and opened.chat_id is not None:  # the person's words, where the agents they named are
@@ -506,6 +498,30 @@ async def deliver_message(
         handed = frozenset(mention["name"] for mention in routed)
         await deliver_message(conn, group, user, copy, via=came_by, plugin=plugin, skip=handed)
     return message_id
+
+
+async def _answered_and_noticed(
+    conn: AsyncConnection,
+    chat: ChatAccess,
+    user: Principal,
+    at: tuple[int, int, int],
+    said: list[str],
+    people: list[int],
+    text: str,
+) -> None:
+    """After ``deliver_message`` stored message ``at`` (its id, its thread's root and the chat's event seq then): the
+    hub's answer ``said`` in its thread, which the sender has read as they read their own, the chat read up to there
+    for the sender, and a notice to each person of ``people`` it mentions but the sender."""
+    message_id, root, seq = at
+    if said:
+        await hub_reply(conn, chat.chat_id, root, "\n".join(said))
+        seq = (
+            await conn.execute(select(tables.chats.c.event_seq).where(tables.chats.c.id == chat.chat_id))
+        ).scalar_one()
+    await mark_read(conn, chat.member_id, seq)
+    for user_id in dict.fromkeys(people):
+        if user_id != user.user_id:
+            await notice_mention(conn, chat, user_id, message_id, text)
 
 
 async def _open_group(conn: AsyncConnection, chat: ChatAccess, user: Principal, root: int, kept: list[dict]):

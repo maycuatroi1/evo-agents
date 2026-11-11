@@ -21145,6 +21145,11 @@ export interface components {
              * @description the share of the drive free, in percent
              */
             free_pct: number;
+            /**
+             * Reserve Gb
+             * @description the gigabytes the daemon keeps free there (disk_reserve_gb of its config): under it the hub gives the worker no run; null from a daemon that says none, for which the hub's own reserve of 20 holds
+             */
+            reserve_gb?: number | null;
         };
         /** DismissBody */
         DismissBody: {
@@ -47894,7 +47899,7 @@ export interface components {
             free_slots: number | null;
             /**
              * Health
-             * @description what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct}, logins: {<runtime>: ok, unauthorized, missing or unknown}}; null when it said nothing of it, as an older daemon
+             * @description what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct, reserve_gb}, logins: {<runtime>: ok, unauthorized, missing or unknown}}; null when it said nothing of it, as an older daemon. Under its reserve (20 GB when it says none) the worker is given no run
              */
             health?: {
                 [key: string]: unknown;

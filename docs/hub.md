@@ -1017,8 +1017,8 @@ transaction that made what it tells of: `run.ended` when a run of the project co
 a run asks a person a decision (`decision_id`, `category`, `run_id`, `asked_of`; a run that only waits, and a quiet
 credential request, write none), `curator.paused` when the circuit breaker pauses the night shift (`reason`,
 `cause_class`, `schedule_ids`, `run_ids`, `reverts`), and `worker.health` when the health a worker's heartbeat reports
-changes state (`worker_id`, `disk` low or ok against 20 GB free, `disk_free_pct`, `logins`), once for each project the
-worker serves. Payloads carry ids and states alone, never an error, a question or a reason. No plugin takes these kinds
+changes state (`worker_id`, `disk` low or ok against the reserve its daemon says, 20 GB free when it says none,
+`disk_free_pct`, `logins`), once for each project the worker serves. Payloads carry ids and states alone, never an error, a question or a reason. No plugin takes these kinds
 (they are not in `EVENT_KINDS`, `docs/plugins.md`) and they queue no tick of the Loop. Schema 0236 adds the nullable
 `workers.health`; going back drops it.
 

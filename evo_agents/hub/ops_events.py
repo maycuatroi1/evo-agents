@@ -9,7 +9,8 @@ plugin takes these kinds (they are not in ``evo_agents.plugins.protocol.EVENT_KI
 Loop.
 
 A worker belongs to no project, so its health is written once for each project it serves (worker_projects), and only
-when its state changes: the band of its free disk (``DISK_LOW_GB``) or the login of one of its runtimes. The
+when its state changes: the band of its free disk (under the reserve its daemon says, ``DISK_LOW_GB`` when it says
+none) or the login of one of its runtimes. The
 percentage of free disk rides along but changes nothing by itself.
 
 SQLAlchemy Core on ``evo_agents.hub.tables``; nothing here imports ``evo_agents.hub.server``.
@@ -25,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import hub_events, tables
 
 ENDED_STATES = ("failed", "lost")  # the moves of a run that write run.ended
-DISK_LOW_GB = 20.0  # below this much free disk on its worktrees' drive a worker's disk is low
+DISK_LOW_GB = 20.0  # below this much free disk on its worktrees' drive a worker's disk is low, when it says no reserve
 LOGIN_STATES = ("ok", "unauthorized", "missing", "unknown")  # a runtime's login, as its daemon checked it
 VERSION = hub_events.VERSION
 
@@ -114,13 +115,25 @@ async def curator_paused(
     return await hub_events.record(conn, hub_events.CURATOR_PAUSED, project_id, payload)
 
 
+def _size(value) -> float | None:
+    return None if isinstance(value, bool) or not isinstance(value, int | float) else float(value)
+
+
+def disk_reserve(health: dict | None) -> float:
+    """The gigabytes a worker keeps free on its worktrees' drive, as its stored health report says (``reserve_gb``,
+    its config's ``disk_reserve_gb``); ``DISK_LOW_GB`` when it says none."""
+    found = _size(((health or {}).get("disk") or {}).get("reserve_gb"))
+    return DISK_LOW_GB if found is None else found
+
+
 def disk_band(health: dict | None) -> str | None:
-    """``low`` or ``ok`` for the free disk a stored health report says, None when it says nothing of it."""
-    disk = (health or {}).get("disk") or {}
-    free = disk.get("free_gb")
-    if not isinstance(free, int | float) or isinstance(free, bool):
+    """``low`` or ``ok`` for the free disk a stored health report says, against the worker's reserve
+    (``disk_reserve``); None when it says nothing of it. The claim gives a worker whose disk is low no run
+    (``claim_rules.Claimer.stops``)."""
+    free = _size(((health or {}).get("disk") or {}).get("free_gb"))
+    if free is None:
         return None
-    return "low" if free < DISK_LOW_GB else "ok"
+    return "low" if free < disk_reserve(health) else "ok"
 
 
 def health_state(health: dict | None) -> tuple | None:
@@ -160,6 +173,7 @@ __all__ = [
     "curator_paused",
     "decision_opened",
     "disk_band",
+    "disk_reserve",
     "health_state",
     "pause_class",
     "run_moved",
