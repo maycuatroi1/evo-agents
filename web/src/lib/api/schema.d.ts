@@ -14533,6 +14533,41 @@ export interface components {
              */
             created: boolean;
         };
+        /** AgentAnswerWait */
+        AgentAnswerWait: {
+            /**
+             * Handle
+             * @description the agent asked, @ left out
+             */
+            handle: string | null;
+            /**
+             * Project
+             * @description the agent's project
+             */
+            project: string | null;
+            /** @description the agent's run whose end answers the wait */
+            run: components["schemas"]["RunRef"] | null;
+            /**
+             * Question
+             * @description what the waiting run asked it
+             */
+            question: string | null;
+            /**
+             * Chat Id
+             * @description the chat the question went to
+             */
+            chat_id: number | null;
+            /**
+             * Thread Id
+             * @description the message that roots the thread of it
+             */
+            thread_id: number | null;
+            /**
+             * Last Activity At
+             * @description when the agent's run last wrote an event
+             */
+            last_activity_at: string | null;
+        };
         /** AgentAskIn */
         AgentAskIn: {
             /**
@@ -20705,6 +20740,8 @@ export interface components {
             wake_at?: string | null;
             /** @description a wait: the event of the hub that answers it sooner */
             wake_on?: components["schemas"]["WakeOn"] | null;
+            /** @description a wait: what it waits for and where that stands, as the hub last knew it (``waiting_on``); null for any other decision */
+            waiting_on?: components["schemas"]["WaitingOn"] | null;
             /**
              * Outputs
              * @description the files of its run it carries, oldest first, each with the decision's URL of its bytes
@@ -22836,6 +22873,28 @@ export interface components {
             body: {
                 [key: string]: unknown;
             };
+        };
+        /** EventPair */
+        EventPair: {
+            /** Key */
+            key: string;
+            /**
+             * Value
+             * @description the value as text, JSON for one that is not a text
+             */
+            value: string;
+        };
+        /** EventWait */
+        EventWait: {
+            /** Kind */
+            kind: string;
+            /**
+             * Name
+             * @description what the kind is, for a kind the hub knows
+             */
+            name: string | null;
+            /** Contains */
+            contains: components["schemas"]["EventPair"][];
         };
         /** EventsAck */
         EventsAck: {
@@ -28553,6 +28612,33 @@ export interface components {
              */
             branch?: string | null;
         };
+        /** MergeCheckWait */
+        MergeCheckWait: {
+            /** Id */
+            id: number;
+            /** Repo */
+            repo: string;
+            /**
+             * Number
+             * @description the pull request's number
+             */
+            number: number;
+            /** Title */
+            title: string | null;
+            /** Url */
+            url: string | null;
+            /** Head Sha */
+            head_sha: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "judging" | "passed" | "failed";
+            /** Reason */
+            reason: string | null;
+            /** Judges */
+            judges: components["schemas"]["MergeJudge"][];
+        };
         /** MergeEvent */
         MergeEvent: {
             /** Id */
@@ -28687,6 +28773,26 @@ export interface components {
              * @description the head of the pull request as the hook read it now; null when it could not
              */
             head?: string | null;
+        };
+        /** MergeJudge */
+        MergeJudge: {
+            /**
+             * Round
+             * @enum {string}
+             */
+            round: "first" | "second";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "judging" | "passed" | "failed";
+            /**
+             * Run Id
+             * @description the judge run
+             */
+            run_id: number | null;
+            /** Model */
+            model: string | null;
         };
         /**
          * MergeJudgeInputs
@@ -31115,7 +31221,7 @@ export interface components {
         OverviewCounts: {
             /**
              * Waiting On You
-             * @description open decisions asked of you, which you answer
+             * @description open decisions asked of you, which you answer; a wait is not one
              */
             waiting_on_you: number;
             /**
@@ -32025,6 +32131,30 @@ export interface components {
              * @default false
              */
             as_me: boolean;
+        };
+        /** PlanStepWait */
+        PlanStepWait: {
+            /** Plan */
+            plan: string;
+            /** Step */
+            step: string;
+            /**
+             * Wanted
+             * @description the status the wait waits for, such as done; null: any change
+             */
+            wanted: string | null;
+            /**
+             * Title
+             * @description the step's title; null when the caller does not read the plan
+             */
+            title: string | null;
+            /**
+             * Status
+             * @description the step's status now; null when the caller does not read the plan
+             */
+            status: string | null;
+            /** @description the active run of the plan working on it, when the caller reads the plan */
+            run: components["schemas"]["RunRef"] | null;
         };
         /** PlanSummary */
         PlanSummary: {
@@ -39935,6 +40065,15 @@ export interface components {
              */
             previous: ("agents" | "workers" | "curator" | "releases" | "answers" | "runs")[];
         };
+        /** RunRef */
+        RunRef: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** State */
+            state: string;
+        };
         /**
          * RunRepo
          * @description A repo of a plan run, with the branch the plan names for it.
@@ -45602,6 +45741,11 @@ export interface components {
              */
             chosen: boolean;
         };
+        /** TimeWait */
+        TimeWait: {
+            /** Wake At */
+            wake_at: string | null;
+        };
         /** TimelineMark */
         TimelineMark: {
             /** Decision Id */
@@ -47130,6 +47274,20 @@ export interface components {
              */
             step_key?: string | null;
         };
+        /** WaitingOn */
+        WaitingOn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "workflow_run" | "plan_step" | "agent_answer" | "merge_check" | "time" | "event";
+            workflow_run?: components["schemas"]["WorkflowRunWait"] | null;
+            plan_step?: components["schemas"]["PlanStepWait"] | null;
+            agent_answer?: components["schemas"]["AgentAnswerWait"] | null;
+            merge_check?: components["schemas"]["MergeCheckWait"] | null;
+            time?: components["schemas"]["TimeWait"] | null;
+            event?: components["schemas"]["EventWait"] | null;
+        };
         /** WakeOn */
         WakeOn: {
             /**
@@ -48065,6 +48223,119 @@ export interface components {
              * @description why it failed or was impossible, as the daemon or the hub said
              */
             reason: string | null;
+        };
+        /** WorkflowJob */
+        WorkflowJob: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string | null;
+            /** Status */
+            status: string | null;
+            /** Conclusion */
+            conclusion: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Url
+             * @description the job's page on GitHub
+             */
+            url: string | null;
+            /** Steps */
+            steps: components["schemas"]["WorkflowStep"][];
+            /**
+             * Steps Total
+             * @description the steps GitHub lists for the job; steps keeps at most 60
+             */
+            steps_total: number;
+        };
+        /** WorkflowRunWait */
+        WorkflowRunWait: {
+            /**
+             * Repo
+             * @description owner/name
+             */
+            repo: string;
+            /** Run Id */
+            run_id: number;
+            /** Attempt */
+            attempt: number | null;
+            /**
+             * Workflow
+             * @description the workflow's name
+             */
+            workflow: string | null;
+            /**
+             * Title
+             * @description the run's title, such as its commit's subject
+             */
+            title: string | null;
+            /** Branch */
+            branch: string | null;
+            /** Sha */
+            sha: string | null;
+            /**
+             * Event
+             * @description what started the run, such as push
+             */
+            event: string | null;
+            /**
+             * Status
+             * @description as GitHub says it: queued, in_progress, completed ...
+             */
+            status: string | null;
+            /** Conclusion */
+            conclusion: string | null;
+            /** Url */
+            url: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Updated At */
+            updated_at: string | null;
+            /**
+             * Read At
+             * @description when the hub last read the run from GitHub; null before its first read
+             */
+            read_at: string | null;
+            /**
+             * Typical Seconds
+             * @description the median time of the latest runs of the workflow that succeeded; null when not known
+             */
+            typical_seconds: number | null;
+            /**
+             * Jobs
+             * @description the jobs of its latest attempt, in GitHub's order; past 40, those that failed or run are kept
+             */
+            jobs: components["schemas"]["WorkflowJob"][];
+            /**
+             * Jobs Total
+             * @description the jobs GitHub lists for that attempt; null before the first read
+             */
+            jobs_total: number | null;
+        };
+        /** WorkflowStep */
+        WorkflowStep: {
+            /** Number */
+            number: number;
+            /** Name */
+            name: string | null;
+            /** Status */
+            status: string | null;
+            /** Conclusion */
+            conclusion: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Url
+             * @description the step on GitHub: its job's page at #step:N:1
+             */
+            url: string | null;
         };
         /** Conflict */
         evo_agents__hub__server__memories__Conflict: {

@@ -6,7 +6,13 @@ import { type ApiClient, call } from "../../src/lib/api/client";
 import type { components } from "../../src/lib/api/schema";
 
 import { API_URL, STACK_URL } from "./env";
-import { type Account, bearerClient, HubAdmin, machineToken, type Repo } from "./hub";
+import {
+  type Account,
+  bearerClient,
+  HubAdmin,
+  machineToken,
+  type Repo,
+} from "./hub";
 import { HOST, PROTOCOL_HEADER } from "./workers";
 
 /**
@@ -60,7 +66,11 @@ export function runPlanBody(id = RUN_PLAN) {
 }
 
 /** Push the runs plan into `project` as `writer`, who holds the writer role there. */
-export async function seedRunPlan(writer: Account, project: string, id = RUN_PLAN): Promise<void> {
+export async function seedRunPlan(
+  writer: Account,
+  project: string,
+  id = RUN_PLAN,
+): Promise<void> {
   const api = bearerClient(await machineToken(writer));
   await call(
     api.PUT("/v1/projects/{project}/plans/{plan_id}", {
@@ -83,7 +93,11 @@ export async function liveWorker(
   project: string,
   name: string,
   slots = 1,
-  { terminal = false, report = {}, agent = project }: { terminal?: boolean; report?: MachineReport; agent?: string | null } = {},
+  {
+    terminal = false,
+    report = {},
+    agent = project,
+  }: { terminal?: boolean; report?: MachineReport; agent?: string | null } = {},
 ): Promise<LiveWorker> {
   const api = bearerClient(await machineToken(account));
   const credential = await call(
@@ -110,23 +124,40 @@ export async function liveWorker(
  * finding, as `evo-agents worker doctor` sends one: a node of a pool takes no run until it has a fresh report with no
  * high finding. A worker is a node of one pool at a time.
  */
-export async function joinAgentPool(live: LiveWorker, handle: string): Promise<void> {
+export async function joinAgentPool(
+  live: LiveWorker,
+  handle: string,
+): Promise<void> {
   const response = await fetch(`${STACK_URL}/workers/pool`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ worker_id: live.worker.id, agent: handle }),
   });
-  if (!response.ok) throw new Error(`hub_stack /workers/pool: ${response.status} ${await response.text()}`);
+  if (!response.ok)
+    throw new Error(
+      `hub_stack /workers/pool: ${response.status} ${await response.text()}`,
+    );
   await workerCall(live, "/v1/worker/doctor", { findings: [] });
 }
 
-async function workerCall(live: LiveWorker, path: string, body: unknown): Promise<unknown> {
+async function workerCall(
+  live: LiveWorker,
+  path: string,
+  body: unknown,
+): Promise<unknown> {
   const response = await fetch(`${API_URL}${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${live.token}`, ...PROTOCOL_HEADER },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${live.token}`,
+      ...PROTOCOL_HEADER,
+    },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`POST ${path}: ${response.status} ${await response.text()}`);
+  if (!response.ok)
+    throw new Error(
+      `POST ${path}: ${response.status} ${await response.text()}`,
+    );
   return response.json();
 }
 
@@ -134,26 +165,54 @@ async function workerCall(live: LiveWorker, path: string, body: unknown): Promis
  * What a heartbeat may say beyond the default: the repos checked out, the models Claude Code lists, and whether the
  * daemon starts a Chromium for a browser run (the feature browser, which a run dispatched with browser needs).
  */
-export type MachineReport = { repos?: string[]; models?: string[] | null; browser?: boolean };
+export type MachineReport = {
+  repos?: string[];
+  models?: string[] | null;
+  browser?: boolean;
+};
 
 /** The Chromium a daemon with the feature browser reports: headless, two at once. */
-const BROWSER_REPORT = { chromium: "153.0.8010.12", display: "headless", max: 2, sandbox: true };
+const BROWSER_REPORT = {
+  chromium: "153.0.8010.12",
+  display: "headless",
+  max: 2,
+  sandbox: true,
+};
 
 /**
  * The daemon's heartbeat: Claude Code available (listing `models` when given), a checkout of each repo in `repos` (the
  * plan's repo by default), the Chromium it starts when `browser`, the runs it holds.
  */
-export async function workerHeartbeat(live: LiveWorker, runs: number[] = [], report: MachineReport = {}): Promise<void> {
+export async function workerHeartbeat(
+  live: LiveWorker,
+  runs: number[] = [],
+  report: MachineReport = {},
+): Promise<void> {
   const repos = report.repos ?? [REPO];
   await workerCall(live, "/v1/worker/heartbeat", {
     runtimes: {
-      "claude-code": { available: true, version: "2.1.289", ...(report.models ? { models: report.models } : {}) },
+      "claude-code": {
+        available: true,
+        version: "2.1.289",
+        ...(report.models ? { models: report.models } : {}),
+      },
       codex: { available: false, reason: "not found on PATH" },
     },
-    checkouts: Object.fromEntries(repos.map((repo) => [`${live.project}/${repo}`, { path: `~/github/${repo}`, branch: "main" }])),
+    checkouts: Object.fromEntries(
+      repos.map((repo) => [
+        `${live.project}/${repo}`,
+        { path: `~/github/${repo}`, branch: "main" },
+      ]),
+    ),
     free_slots: Math.max(live.worker.slots - runs.length, 0),
     runs,
-    ...(report.browser ? { features: ["browser"], browser: BROWSER_REPORT, run_kinds: ["step", "plan", "browser"] } : {}),
+    ...(report.browser
+      ? {
+          features: ["browser"],
+          browser: BROWSER_REPORT,
+          run_kinds: ["step", "plan", "browser"],
+        }
+      : {}),
   });
 }
 
@@ -161,46 +220,96 @@ export async function workerHeartbeat(live: LiveWorker, runs: number[] = [], rep
 export type Credentials = components["schemas"]["Credentials"];
 
 /** The daemon asking for the leases of a run it holds, right after its claim. */
-export async function leaseCredentials(live: LiveWorker, runId: number): Promise<Credentials> {
-  return (await workerCall(live, `/v1/worker/runs/${runId}/credentials`, {})) as Credentials;
+export async function leaseCredentials(
+  live: LiveWorker,
+  runId: number,
+): Promise<Credentials> {
+  return (await workerCall(
+    live,
+    `/v1/worker/runs/${runId}/credentials`,
+    {},
+  )) as Credentials;
 }
 
 /** The daemon's claim, answered at once: the run it leased, or null. */
-export async function claimRun(live: LiveWorker): Promise<{ id: number } | null> {
-  const answer = (await workerCall(live, "/v1/worker/claim", { wait_s: 0 })) as { run: { id: number } | null };
+export async function claimRun(
+  live: LiveWorker,
+): Promise<{ id: number } | null> {
+  const answer = (await workerCall(live, "/v1/worker/claim", {
+    wait_s: 0,
+  })) as { run: { id: number } | null };
   return answer.run;
 }
 
 /** The daemon reporting a move of a run it holds, such as {state: "failed", error}. */
-export async function reportState(live: LiveWorker, runId: number, report: Record<string, unknown>): Promise<Run> {
-  return (await workerCall(live, `/v1/worker/runs/${runId}/state`, report)) as Run;
+export async function reportState(
+  live: LiveWorker,
+  runId: number,
+  report: Record<string, unknown>,
+): Promise<Run> {
+  return (await workerCall(
+    live,
+    `/v1/worker/runs/${runId}/state`,
+    report,
+  )) as Run;
 }
 
 /** Dispatch through the API as `account`, the way `evo-agents hub run` will. */
-export async function dispatch(account: Account, project: string, steps: string[], extra: Record<string, unknown> = {}): Promise<Run[]> {
+export async function dispatch(
+  account: Account,
+  project: string,
+  steps: string[],
+  extra: Record<string, unknown> = {},
+): Promise<Run[]> {
   const api: ApiClient = bearerClient(await machineToken(account));
   return call(
     api.POST("/v1/projects/{project}/runs", {
       params: { path: { project } },
-      body: { plan_id: RUN_PLAN, steps, runtime: "any", mode: "headless", approval: "review", timeout_min: 60, browser: false, identities: [], as_me: false, ...extra },
+      body: {
+        plan_id: RUN_PLAN,
+        steps,
+        runtime: "any",
+        mode: "headless",
+        approval: "review",
+        timeout_min: 60,
+        browser: false,
+        identities: [],
+        as_me: false,
+        ...extra,
+      },
     }),
   );
 }
 
 /** The project's runs as `account` reads them through the API, newest first. */
-export async function runsOf(account: Account, project: string): Promise<Run[]> {
+export async function runsOf(
+  account: Account,
+  project: string,
+): Promise<Run[]> {
   const api = bearerClient(await machineToken(account));
-  const list = await call(api.GET("/v1/projects/{project}/runs", { params: { path: { project }, query: { limit: 200 } } }));
+  const list = await call(
+    api.GET("/v1/projects/{project}/runs", {
+      params: { path: { project }, query: { limit: 200 } },
+    }),
+  );
   return list.runs;
 }
 
 /** The row of run `id` in a runs table. */
 export function runRow(page: Page, id: number, table = "runs-table") {
-  return page.locator("#main").getByTestId(table).locator("tbody tr").filter({ has: page.locator(`[data-run-id="${id}"]`) });
+  return page
+    .locator("#main")
+    .getByTestId(table)
+    .locator("tbody tr")
+    .filter({ has: page.locator(`[data-run-id="${id}"]`) });
 }
 
 /** The daemon's report that the agent started, with its session id. */
-export async function startRun(live: LiveWorker, runId: number, sessionId = "3f2a9c1e-0000-4000-8000-000000000001"): Promise<Run> {
+export async function startRun(
+  live: LiveWorker,
+  runId: number,
+  sessionId = "3f2a9c1e-0000-4000-8000-000000000001",
+): Promise<Run> {
   await workerHeartbeat(live, [runId]);
   return reportState(live, runId, { state: "running", session_id: sessionId });
 }
@@ -209,7 +318,10 @@ export async function startRun(live: LiveWorker, runId: number, sessionId = "3f2
 export const COMMIT = "7c1e9a2f3b4c5d6e7f8091a2b3c4d5e6f7081920";
 
 /** The daemon's reports after the agent finished: verifying, then review with what it verified. */
-export async function runToReview(live: LiveWorker, runId: number): Promise<Run> {
+export async function runToReview(
+  live: LiveWorker,
+  runId: number,
+): Promise<Run> {
   await reportState(live, runId, { state: "verifying" });
   return reportState(live, runId, {
     state: "review",
@@ -221,15 +333,25 @@ export async function runToReview(live: LiveWorker, runId: number): Promise<Run>
   });
 }
 
-export type WorkerEvent = { kind: string; body: Record<string, unknown>; at?: string };
+export type WorkerEvent = {
+  kind: string;
+  body: Record<string, unknown>;
+  at?: string;
+};
 
 /**
  * Events of a run as the daemon sends them: numbered on from what the hub acknowledged (an empty batch asks), in
  * batches of at most 500. Answers the hub's ack_seq.
  */
-export async function sendEvents(live: LiveWorker, runId: number, events: WorkerEvent[]): Promise<number> {
+export async function sendEvents(
+  live: LiveWorker,
+  runId: number,
+  events: WorkerEvent[],
+): Promise<number> {
   const path = `/v1/worker/runs/${runId}/events`;
-  let { ack_seq: seq } = (await workerCall(live, path, { events: [] })) as { ack_seq: number };
+  let { ack_seq: seq } = (await workerCall(live, path, { events: [] })) as {
+    ack_seq: number;
+  };
   for (let start = 0; start < events.length; start += 500) {
     const batch = events.slice(start, start + 500).map((event) => ({
       seq: ++seq,
@@ -237,7 +359,9 @@ export async function sendEvents(live: LiveWorker, runId: number, events: Worker
       kind: event.kind,
       body: event.body,
     }));
-    const answer = (await workerCall(live, path, { events: batch })) as { ack_seq: number };
+    const answer = (await workerCall(live, path, { events: batch })) as {
+      ack_seq: number;
+    };
     seq = answer.ack_seq;
   }
   return seq;
@@ -250,20 +374,40 @@ export function say(text: string): WorkerEvent {
 
 /** A tool the agent ran, as one event. */
 export function tool(title: string, command: string): WorkerEvent {
-  return { kind: "tool_call", body: { toolCallId: `call-${command.length}`, title, rawInput: { command }, status: "in_progress" } };
+  return {
+    kind: "tool_call",
+    body: {
+      toolCallId: `call-${command.length}`,
+      title,
+      rawInput: { command },
+      status: "in_progress",
+    },
+  };
 }
 
 /** The messages waiting in the run's inbox, as the worker holding it takes them (without acknowledging any). */
-export async function workerInbox(live: LiveWorker, runId: number): Promise<{ id: number; text: string; sent_by: string }[]> {
-  const answer = (await workerCall(live, `/v1/worker/runs/${runId}/inbox`, {})) as { messages: { id: number; text: string; sent_by: string }[] };
+export async function workerInbox(
+  live: LiveWorker,
+  runId: number,
+): Promise<{ id: number; text: string; sent_by: string }[]> {
+  const answer = (await workerCall(
+    live,
+    `/v1/worker/runs/${runId}/inbox`,
+    {},
+  )) as { messages: { id: number; text: string; sent_by: string }[] };
   return answer.messages;
 }
 
 /** The daemon's heartbeat answer for one run: what the owner asked of it. */
-export async function runControl(live: LiveWorker, runId: number): Promise<Record<string, unknown>> {
+export async function runControl(
+  live: LiveWorker,
+  runId: number,
+): Promise<Record<string, unknown>> {
   const answer = (await workerCall(live, "/v1/worker/heartbeat", {
     runtimes: { "claude-code": { available: true, version: "2.1.289" } },
-    checkouts: { [`${live.project}/${REPO}`]: { path: `~/github/${REPO}`, branch: "main" } },
+    checkouts: {
+      [`${live.project}/${REPO}`]: { path: `~/github/${REPO}`, branch: "main" },
+    },
     free_slots: 0,
     runs: [runId],
   })) as { runs: Record<string, unknown>[] };
@@ -271,32 +415,54 @@ export async function runControl(live: LiveWorker, runId: number): Promise<Recor
 }
 
 /** The run's diff, uploaded as the daemon does when the run ends: ask, PUT to the presigned URL, commit. */
-export async function uploadDiff(live: LiveWorker, runId: number, text: string): Promise<string> {
+export async function uploadDiff(
+  live: LiveWorker,
+  runId: number,
+  text: string,
+): Promise<string> {
   const data = Buffer.from(text, "utf8");
   const sha256 = createHash("sha256").update(data).digest("hex");
   const asked = (await workerCall(live, `/v1/worker/runs/${runId}/uploads`, {
     items: [{ sha256, size: data.length, kind: "run-diff" }],
   })) as { uploads: { upload_id: string; url: string }[] };
   for (const ticket of asked.uploads) {
-    const put = await fetch(ticket.url, { method: "PUT", body: new Uint8Array(data), headers: { "content-type": "application/octet-stream" } });
+    const put = await fetch(ticket.url, {
+      method: "PUT",
+      body: new Uint8Array(data),
+      headers: { "content-type": "application/octet-stream" },
+    });
     if (!put.ok) throw new Error(`PUT to the presigned URL: ${put.status}`);
   }
   if (asked.uploads.length) {
-    await workerCall(live, `/v1/worker/runs/${runId}/blobs`, { upload_ids: asked.uploads.map((ticket) => ticket.upload_id) });
+    await workerCall(live, `/v1/worker/runs/${runId}/blobs`, {
+      upload_ids: asked.uploads.map((ticket) => ticket.upload_id),
+    });
   }
   return sha256;
 }
 
 /** A run as `account` reads it through the API. */
-export async function runOf(account: Account, project: string, id: number): Promise<Run> {
+export async function runOf(
+  account: Account,
+  project: string,
+  id: number,
+): Promise<Run> {
   const api = bearerClient(await machineToken(account));
-  return call(api.GET("/v1/projects/{project}/runs/{run_id}", { params: { path: { project, run_id: id } } }));
+  return call(
+    api.GET("/v1/projects/{project}/runs/{run_id}", {
+      params: { path: { project, run_id: id } },
+    }),
+  );
 }
 
 /** A run's events as `account` reads them through the API. */
 export async function eventsOf(account: Account, project: string, id: number) {
   const api = bearerClient(await machineToken(account));
-  return call(api.GET("/v1/projects/{project}/runs/{run_id}/events", { params: { path: { project, run_id: id }, query: { limit: 1000 } } }));
+  return call(
+    api.GET("/v1/projects/{project}/runs/{run_id}/events", {
+      params: { path: { project, run_id: id }, query: { limit: 1000 } },
+    }),
+  );
 }
 
 /** The run's page. */
@@ -314,7 +480,12 @@ export const HARNESS_REPO = "harness";
  * HARNESS_REPO as a project lists it. The stack's projects list only REPO, and the hub refuses (409) a plan run that
  * needs a repo its project lists no origin for, so seeding a plan-run plan adds this listing to its project.
  */
-const HARNESS_LISTING: Repo = { name: HARNESS_REPO, origin: "https://github.com/example-org/harness", default_branch: "main", path: HARNESS_REPO };
+const HARNESS_LISTING: Repo = {
+  name: HARNESS_REPO,
+  origin: "https://github.com/example-org/harness",
+  default_branch: "main",
+  path: HARNESS_REPO,
+};
 export const PLAN_RUN_BRANCH = "feat/plan-runs";
 export const PLAN_RUN_TITLES: Record<string, string> = {
   "1": "Plan run model",
@@ -325,7 +496,10 @@ export const PLAN_RUN_TITLES: Record<string, string> = {
 /** The models the plan-run worker's Claude Code lists. */
 export const MODELS = ["claude-opus-4-1", "claude-sonnet-4-5"];
 
-export function planRunBody(id = PLAN_RUN_PLAN, { allDone = false }: { allDone?: boolean } = {}) {
+export function planRunBody(
+  id = PLAN_RUN_PLAN,
+  { allDone = false }: { allDone?: boolean } = {},
+) {
   const step = (key: number, repo: string, extra: Record<string, unknown>) => ({
     id: key,
     title: PLAN_RUN_TITLES[String(key)],
@@ -347,7 +521,10 @@ export function planRunBody(id = PLAN_RUN_PLAN, { allDone = false }: { allDone?:
       step(1, REPO, { status: "done", evidence: "api@abc1234: 40 tests pass" }),
       step(2, REPO, { status: allDone ? "done" : "pending", depends_on: [1] }),
       step(3, REPO, { status: allDone ? "done" : "pending", depends_on: [2] }),
-      step(4, HARNESS_REPO, { status: allDone ? "done" : "pending", depends_on: [3] }),
+      step(4, HARNESS_REPO, {
+        status: allDone ? "done" : "pending",
+        depends_on: [3],
+      }),
     ],
   };
 }
@@ -356,7 +533,12 @@ export function planRunBody(id = PLAN_RUN_PLAN, { allDone = false }: { allDone?:
 const admin = new HubAdmin();
 
 /** Push the plan-run plan into `project` as `writer`, once the project lists both of its repos (HARNESS_LISTING). */
-export async function seedPlanRunPlan(writer: Account, project: string, id = PLAN_RUN_PLAN, options: { allDone?: boolean } = {}): Promise<void> {
+export async function seedPlanRunPlan(
+  writer: Account,
+  project: string,
+  id = PLAN_RUN_PLAN,
+  options: { allDone?: boolean } = {},
+): Promise<void> {
   await admin.addRepo(project, HARNESS_LISTING);
   const api = bearerClient(await machineToken(writer));
   await call(
@@ -371,42 +553,83 @@ export async function seedPlanRunPlan(writer: Account, project: string, id = PLA
 export const LONG_PLAN_RUN_PLAN = "fleet-long";
 
 /** Push LONG_PLAN_RUN_PLAN into `project` as `writer`: a plan run of it lists eleven steps on its page. */
-export async function seedLongPlanRunPlan(writer: Account, project: string): Promise<void> {
+export async function seedLongPlanRunPlan(
+  writer: Account,
+  project: string,
+): Promise<void> {
   await admin.addRepo(project, HARNESS_LISTING);
   const body = planRunBody(LONG_PLAN_RUN_PLAN);
   const more = Array.from({ length: 7 }, (_, index) => {
     const key = body.steps.length + index + 1;
-    return { id: key, title: `Follow-up ${key}`, repo: REPO, what: `Do step ${key}.`, verify: "pnpm test", status: "pending", depends_on: [key - 1] };
+    return {
+      id: key,
+      title: `Follow-up ${key}`,
+      repo: REPO,
+      what: `Do step ${key}.`,
+      verify: "pnpm test",
+      status: "pending",
+      depends_on: [key - 1],
+    };
   });
   const api = bearerClient(await machineToken(writer));
   await call(
     api.PUT("/v1/projects/{project}/plans/{plan_id}", {
       params: { path: { project, plan_id: LONG_PLAN_RUN_PLAN } },
-      body: { body: { ...body, steps: [...body.steps, ...more] }, area: "active" },
+      body: {
+        body: { ...body, steps: [...body.steps, ...more] },
+        area: "active",
+      },
     }),
   );
 }
 
 /** A worker with checkouts of both repos of the plan run, whose Claude Code lists MODELS; `terminal` as liveWorker's. */
-export function planRunWorker(account: Account, project: string, name: string, { terminal = false }: { terminal?: boolean } = {}): Promise<LiveWorker> {
-  return liveWorker(account, project, name, 1, { terminal, report: { repos: [REPO, HARNESS_REPO], models: MODELS } });
+export function planRunWorker(
+  account: Account,
+  project: string,
+  name: string,
+  { terminal = false }: { terminal?: boolean } = {},
+): Promise<LiveWorker> {
+  return liveWorker(account, project, name, 1, {
+    terminal,
+    report: { repos: [REPO, HARNESS_REPO], models: MODELS },
+  });
 }
 
 /** Dispatch a plan run through the API as `account`, the way `evo-agents hub run plan` does. */
-export async function dispatchPlan(account: Account, project: string, extra: Record<string, unknown> = {}): Promise<Run> {
+export async function dispatchPlan(
+  account: Account,
+  project: string,
+  extra: Record<string, unknown> = {},
+): Promise<Run> {
   const api: ApiClient = bearerClient(await machineToken(account));
   return call(
     api.POST("/v1/projects/{project}/plan-runs", {
       params: { path: { project } },
       // as the command line, which sends session_per_step only when it is on: the hub defaults it to false
-      body: { plan_id: PLAN_RUN_PLAN, runtime: "any", mode: "headless", timeout_h: 4, ...extra } as components["schemas"]["PlanRunDispatch"],
+      body: {
+        plan_id: PLAN_RUN_PLAN,
+        runtime: "any",
+        mode: "headless",
+        timeout_h: 4,
+        ...extra,
+      } as components["schemas"]["PlanRunDispatch"],
     }),
   );
 }
 
 /** The agent's `evo-agents worker step KEY in_progress`, through the worker's token. */
-export async function reportStep(live: LiveWorker, runId: number, key: string, status: "in_progress" | "pending", repo = REPO): Promise<void> {
-  await workerCall(live, `/v1/worker/runs/${runId}/steps/${key}`, { status, repo });
+export async function reportStep(
+  live: LiveWorker,
+  runId: number,
+  key: string,
+  status: "in_progress" | "pending",
+  repo = REPO,
+): Promise<void> {
+  await workerCall(live, `/v1/worker/runs/${runId}/steps/${key}`, {
+    status,
+    repo,
+  });
 }
 
 /** What an agent's ask may say beyond the default: its category, context, options and pick; no step for an author run's. */
@@ -424,7 +647,11 @@ export type DecisionAsk = {
   /** Outputs of the run the question carries (`worker ask --attach`). */
   output_ids?: number[];
   /** A credential request (`worker ask --category credential --env-var ... --hub-account`): the hub gives its options. */
-  credential_request?: { env_var?: string | null; secret_name?: string | null; hub_account?: boolean };
+  credential_request?: {
+    env_var?: string | null;
+    secret_name?: string | null;
+    hub_account?: boolean;
+  };
 };
 
 /**
@@ -432,19 +659,52 @@ export type DecisionAsk = {
  * question, whether the checkpoint goes now or tomorrow: the plan runs of the specs run at A5, whose card leaves deploy
  * (K6) to the agent, and the hub refuses a question in category deploy there with 409 (docs/autonomy.md).
  */
-export async function askDecision(live: LiveWorker, runId: number, question: string, step = "3", ask: DecisionAsk = {}): Promise<number> {
-  const decision = (await workerCall(live, `/v1/worker/runs/${runId}/decisions`, {
-    category: "scope",
-    question,
-    context: "The checkpoint deploys **staging**.",
-    options: [
-      { key: "deploy", label: "Deploy to staging now" },
-      { key: "wait", label: "Wait until tomorrow" },
-    ],
-    recommended: "deploy",
-    step_key: step,
-    ...ask,
-  })) as { id: number };
+export async function askDecision(
+  live: LiveWorker,
+  runId: number,
+  question: string,
+  step = "3",
+  ask: DecisionAsk = {},
+): Promise<number> {
+  const decision = (await workerCall(
+    live,
+    `/v1/worker/runs/${runId}/decisions`,
+    {
+      category: "scope",
+      question,
+      context: "The checkpoint deploys **staging**.",
+      options: [
+        { key: "deploy", label: "Deploy to staging now" },
+        { key: "wait", label: "Wait until tomorrow" },
+      ],
+      recommended: "deploy",
+      step_key: step,
+      ...ask,
+    },
+  )) as { id: number };
+  return decision.id;
+}
+
+/**
+ * A wait of the run's agent, as `evo-agents worker wait` asks it (docs/workers.md): a decision of category wait that
+ * asks nobody anything, woken by the hub at `until` or on the event `on`. Returns the decision's id.
+ */
+export async function askWait(
+  live: LiveWorker,
+  runId: number,
+  wait: {
+    reason: string;
+    until?: string;
+    on?: string;
+    contains?: Record<string, unknown>;
+    step_key?: string;
+  },
+): Promise<number> {
+  const decision = (await workerCall(
+    live,
+    `/v1/worker/runs/${runId}/waits`,
+    wait,
+  )) as { id: number };
   return decision.id;
 }
 
@@ -461,18 +721,39 @@ export async function planRunUnderway(
     waiting = false,
     dispatch = {},
     terminal = false,
-  }: { waiting?: boolean; dispatch?: Record<string, unknown>; terminal?: boolean } = {},
+  }: {
+    waiting?: boolean;
+    dispatch?: Record<string, unknown>;
+    terminal?: boolean;
+  } = {},
 ): Promise<{ live: LiveWorker; run: Run; decision: number | null }> {
   const live = await planRunWorker(owner, project, name, { terminal });
-  const run = await dispatchPlan(owner, project, { runtime: "claude-code", model: MODELS[1], ...dispatch });
+  const run = await dispatchPlan(owner, project, {
+    runtime: "claude-code",
+    model: MODELS[1],
+    ...dispatch,
+  });
   const claimed = await claimRun(live);
-  if (claimed?.id !== run.id) throw new Error(`the worker claimed ${claimed?.id ?? "nothing"}, not plan run #${run.id}`);
-  await workerHeartbeat(live, [run.id], { repos: [REPO, HARNESS_REPO], models: MODELS });
-  await reportState(live, run.id, { state: "running", session_id: "3f2a9c1e-0000-4000-8000-0000000000aa" });
+  if (claimed?.id !== run.id)
+    throw new Error(
+      `the worker claimed ${claimed?.id ?? "nothing"}, not plan run #${run.id}`,
+    );
+  await workerHeartbeat(live, [run.id], {
+    repos: [REPO, HARNESS_REPO],
+    models: MODELS,
+  });
+  await reportState(live, run.id, {
+    state: "running",
+    session_id: "3f2a9c1e-0000-4000-8000-0000000000aa",
+  });
   await reportStep(live, run.id, "2", "in_progress");
   let decision: number | null = null;
   if (waiting) {
-    decision = await askDecision(live, run.id, "Deploy the plan-runs build to staging now?");
+    decision = await askDecision(
+      live,
+      run.id,
+      "Deploy the plan-runs build to staging now?",
+    );
     await reportState(live, run.id, { state: "waiting" });
   }
   return { live, run: await runOf(owner, project, run.id), decision };
@@ -482,7 +763,11 @@ export async function planRunUnderway(
 
 /** A notice of a push or merge, as `evo-agents worker notify` sends it. */
 export type NoticeIn = {
-  kind: "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed";
+  kind:
+    | "push_default_branch"
+    | "merge_default_branch"
+    | "plan_finished"
+    | "run_failed";
   title: string;
   body?: string;
   repo?: string;
@@ -491,39 +776,71 @@ export type NoticeIn = {
 };
 
 /** The worker's notice for the owner of a plan run it holds. Returns the notification's id. */
-export async function sendNotice(live: LiveWorker, runId: number, notice: NoticeIn): Promise<number> {
-  const answer = (await workerCall(live, `/v1/worker/runs/${runId}/notices`, notice)) as { id: number };
+export async function sendNotice(
+  live: LiveWorker,
+  runId: number,
+  notice: NoticeIn,
+): Promise<number> {
+  const answer = (await workerCall(
+    live,
+    `/v1/worker/runs/${runId}/notices`,
+    notice,
+  )) as { id: number };
   return answer.id;
 }
 
 /** The member's unread notifications, open decisions and open proposals, as the bell reads them. */
-export async function notificationCount(account: Account): Promise<components["schemas"]["NotificationCount"]> {
+export async function notificationCount(
+  account: Account,
+): Promise<components["schemas"]["NotificationCount"]> {
   const api = bearerClient(await machineToken(account));
   return call(api.GET("/v1/me/notifications/count"));
 }
 
 /** Answer a decision through the API as `account`, the way `evo-agents hub decision answer` does; the HTTP status. */
-export async function answerByApi(account: Account, project: string, decision: number, body: { option?: string; text?: string }): Promise<number> {
+export async function answerByApi(
+  account: Account,
+  project: string,
+  decision: number,
+  body: { option?: string; text?: string },
+): Promise<number> {
   const token = await machineToken(account);
-  const response = await fetch(`${API_URL}/v1/projects/${project}/decisions/${decision}/answer`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
+  const response = await fetch(
+    `${API_URL}/v1/projects/${project}/decisions/${decision}/answer`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    },
+  );
   return response.status;
 }
 
 /** A decision as `account` reads it through the API. */
-export async function decisionOf(account: Account, project: string, decision: number) {
+export async function decisionOf(
+  account: Account,
+  project: string,
+  decision: number,
+) {
   const api = bearerClient(await machineToken(account));
-  return call(api.GET("/v1/projects/{project}/decisions/{decision_id}", { params: { path: { project, decision_id: decision } } }));
+  return call(
+    api.GET("/v1/projects/{project}/decisions/{decision_id}", {
+      params: { path: { project, decision_id: decision } },
+    }),
+  );
 }
 
 /** Open a toggle (a button with aria-expanded), again until the page took the click: it may come before hydration. */
 async function openToggle(toggle: Locator): Promise<void> {
   await expect(async () => {
-    if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "true", { timeout: 1_000 });
+    if ((await toggle.getAttribute("aria-expanded")) !== "true")
+      await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true", {
+      timeout: 1_000,
+    });
   }).toPass();
 }
 
@@ -532,7 +849,10 @@ async function openToggle(toggle: Locator): Promise<void> {
  * behind Show all details too (the session, lease, timeout, and the owner's accounts and credentials). The page does
  * not keep them open across a navigation: call it after each open.
  */
-export async function openRunDetails(page: Page, { all = false }: { all?: boolean } = {}): Promise<void> {
+export async function openRunDetails(
+  page: Page,
+  { all = false }: { all?: boolean } = {},
+): Promise<void> {
   const main = page.locator("#main");
   await openToggle(main.getByTestId("run-details-open"));
   if (all) await openToggle(main.getByTestId("run-details-toggle"));
@@ -545,7 +865,10 @@ export async function openRunDetails(page: Page, { all = false }: { all?: boolea
 export async function openPlanStepFolds(scope: Locator): Promise<void> {
   const steps = scope.getByTestId("run-plan-steps");
   await expect(steps.getByTestId("run-plan-steps-count")).toBeVisible(); // the plan is read, its folds drawn
-  for (const testId of ["run-plan-steps-done-toggle", "run-plan-steps-todo-toggle"]) {
+  for (const testId of [
+    "run-plan-steps-done-toggle",
+    "run-plan-steps-todo-toggle",
+  ]) {
     const fold = steps.getByTestId(testId);
     if ((await fold.count()) > 0) await openToggle(fold);
   }
@@ -556,11 +879,15 @@ export async function openPlanStepFolds(scope: Locator): Promise<void> {
  * The trigger's aria-expanded says whether the menu is open: a menu closing (after Escape) still shows its items while
  * it fades out, so their being visible is no sign it will stay open for the click.
  */
-export async function chooseRunAction(page: Page, testId: string): Promise<void> {
+export async function chooseRunAction(
+  page: Page,
+  testId: string,
+): Promise<void> {
   const trigger = page.locator("#main").getByTestId("run-actions-menu");
   const item = page.getByTestId(testId);
   await expect(async () => {
-    if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
+    if ((await trigger.getAttribute("aria-expanded")) !== "true")
+      await trigger.click();
     await item.click({ timeout: 1_000 });
   }).toPass();
 }

@@ -74,6 +74,7 @@ project's runs on no plan (``views.sees_unplanned``).
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Annotated, Literal
 
@@ -84,7 +85,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import autonomy_card, autonomy_levels, credential_requests, runs, tables
 from evo_agents.hub.autonomy_levels import AUTO
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
-from evo_agents.hub.server import audit, credential_answers, credential_resolver, principals
+from evo_agents.hub.server import audit, credential_answers, credential_resolver, principals, waiting_on
 from evo_agents.hub.server import decision_resume as resume
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -234,14 +235,19 @@ def _decision(row) -> Decision:
     return Decision(**fields, options=shown, recommended=recommended, wake_on=shown_wake)
 
 
-async def decision_view(conn: AsyncConnection, decision_id: int) -> Decision:
+async def decision_view(conn: AsyncConnection, decision_id: int, plans: Collection[str] | None = None) -> Decision:
+    """Decision ``decision_id`` as every view shows it; ``plans`` are those its reader reads (``waiting_on.fill``)."""
     row = (await conn.execute(_decisions().where(tables.decisions.c.id == decision_id))).one()
-    (view,) = await with_outputs(conn, [_decision(row)])
+    (view,) = await with_outputs(conn, [_decision(row)], plans)
     return view
 
 
-async def with_outputs(conn: AsyncConnection, decisions: list[Decision]) -> list[Decision]:
-    """``decisions``, each with the outputs it carries."""
+async def with_outputs(
+    conn: AsyncConnection, decisions: list[Decision], plans: Collection[str] | None = None
+) -> list[Decision]:
+    """``decisions``, each with the outputs it carries, and a wait with what it waits for (``waiting_on.fill``, with
+    the plans the reader reads)."""
+    await waiting_on.fill(conn, decisions, plans)
     by_project: dict[str, list[int]] = {}
     for decision in decisions:
         by_project.setdefault(decision.project, []).append(decision.id)
@@ -309,7 +315,7 @@ async def list_decisions(
         unplanned = sees_unplanned(access, sink)
         where = _listed(access.project_id, plans, unplanned, list(dict.fromkeys(state)), run_id, plan_id, user.user_id)
         query = _decisions().where(*where).order_by(d.c.id.desc()).limit(limit).offset(offset)
-        page = await with_outputs(conn, [_decision(row) for row in (await conn.execute(query)).all()])
+        page = await with_outputs(conn, [_decision(row) for row in (await conn.execute(query)).all()], plans)
         counted = select(func.count()).select_from(d.join(r, r.c.id == d.c.run_id)).where(*where)
         total = (await conn.execute(counted)).scalar_one()
     return DecisionList(decisions=page, total=total, limit=limit, offset=offset)
@@ -328,8 +334,8 @@ async def show_decision(
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> Decision:
     async with request.app.state.engine.begin() as conn:
-        await readable_decision(conn, user, project, decision_id, sink)
-        return await decision_view(conn, decision_id)
+        access = await readable_decision(conn, user, project, decision_id, sink)
+        return await decision_view(conn, decision_id, await visible_plans(conn, access, sink))
 
 
 # Asking

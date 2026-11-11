@@ -98,7 +98,7 @@ token; dots, bars and progress segments use the solid one. Ratios are text on th
 | Tone | Text / ground / mark (Tailwind) | Light | Dark | Means |
 | --- | --- | --- | --- | --- |
 | Running | `running` / `running-soft` / `running` | `#2f4bd8` / `#ebeefd` (5.8:1) | `#8c9dff` / `#19204a` (6.2:1) | an agent is working now: leased, running, busy, plan run active |
-| Attention | `attention` / `attention-soft` / `attention-solid` | `#8a4b00` / `#fdf0da` (6.0:1) / `#bc7800` | `#f2b54a` / `#2d2210` (8.5:1) / `#e9a23b` | a person is needed: waiting for you, parked, draining, blocked |
+| Attention | `attention` / `attention-soft` / `attention-solid` | `#8a4b00` / `#fdf0da` (6.0:1) / `#bc7800` | `#f2b54a` / `#2d2210` (8.5:1) / `#e9a23b` | a person is needed: waiting for you, parked, draining, blocked (a run on a wait, which asks nobody, is neutral) |
 | Review | `review` / `review-soft` / `review-solid` | `#6136c2` / `#f1ecfd` (6.5:1) / `#7c4de8` | `#b9a0ff` / `#241b3e` (7.3:1) / `#9d7df6` | done, waiting to be checked: verifying, review |
 | Success | `success` / `success-soft` / `success-solid` | `#11713d` / `#e4f4ea` (5.3:1) / `#1e9e58` | `#5fd394` / `#0f2a1c` (8.2:1) / `#34b86e` | finished well, healthy: done, idle, received heartbeat |
 | Danger | `danger` / `danger-soft` / `danger-solid` (`destructive`) | `#b3261e` / `#fcebea` (5.7:1) / `#d93a2f` | `#ff8178` / `#33161a` (6.8:1) / `#ef5a4e` | failed or unreachable: failed, offline, errors, destructive buttons |
@@ -710,7 +710,7 @@ Shared pieces built on them:
 - `components/home`, Today (`/today`; Home until the chat home took `/`), the kit's MissionControl: Today first, then one read of `GET /v1/me/overview` (prefetched on the
   server with the workers list, then asked every 5 seconds while a run is in flight or a decision is open and every 30
   otherwise; the page's LiveIndicator query) and the workers list for the Fleet card. The page head is "Today"; under
-  it the MetricStrip of five cells: Waiting on you (`attention`, the oldest of the visitor's open decisions named),
+  it the MetricStrip of five cells: Waiting on you (`attention`, the oldest of the visitor's open decisions named, waits left out),
   Running (`running` with the live dot, the run and its worker), Queued (the run that waited longest), Done in 7 days
   with the sparkline of `done_by_day` (UTC days, every value in its label) and Failed in 7 days with "and N lost" and
   the last failure's reason. With no run in flight and no decision open it gives way to the quiet line, which still says
@@ -1490,6 +1490,39 @@ Shared pieces built on them:
   above the session, or at the top of the side column once Details is open (`runs/run-decisions.tsx`, "Waiting for
   your decision" and a link to the Inbox), read every 5 seconds while the run is active; a decision answered there, or
   found answered after a 409, stays with its answer until the visitor leaves.
+- `components/inbox/wait-card.tsx`, The wait panel: a decision of category `wait` (a plan run's `evo-agents worker
+  wait`) asks nobody anything, so DecisionCard hands it to this panel wherever a decision shows (the run's side
+  column, the Inbox's sheet and phone screen, Home's sheet, the chat). Nothing of it says a person is needed: no
+  "Waiting for you", no `attention`, no answer form. The head on `surface-sunken` with a neutral `WaitPill`
+  (`status/wait-pill.tsx`, `Hourglass`) naming what it waits for: "Waiting on deploy 6/10", "Waiting on
+  northwind-launch step 8", "Waiting on @ea-researcher", "Waiting on the merge check of PR #580", "Waiting until 09:00",
+  "Waiting on canvas.claim"; then the category tag, the step and when it was asked (or who woke it: "hub woke it" once
+  the hub answered). The headline per kind ("Waiting for GitHub Actions"), the agent's reason in 15/22 px, and "Nobody
+  needs to answer: when it comes, the hub wakes the agent on the same worker." A timeline of four nodes: Asked, Parked
+  (when the run parked, else that it parks at the end of the turn), the source (live while it waits, a `running` dot
+  that keeps still under reduced motion), and The agent goes on. Then the source's card (`inbox/wait-sources.tsx`, one
+  per `waiting_on.kind`), never raw JSON as its main content:
+  - GitHub Actions (`inbox/wait-workflow.tsx`): the workflow as a link to its run on GitHub, the repo, branch, short
+    commit and event, its status, the time it ran and about how long it has left (from `typical_seconds`, its tooltip
+    says so), counted in the browser between two reads of the hub; the step running now, and the step a run failed
+    at; a progress bar by step (`role="progressbar"`, steps over of all the hub read); the jobs as folds, a running or
+    failed one open at first, each step a link to GitHub at `#step:N:1` with its state icon and time.
+  - A plan step: the plan and step as a link to the step's page, the status wanted and the status now, and the run on
+    it. An agent's answer: the agent's handle, its run, its question and a link to the chat. A merge check: the pull
+    request as a link, the commit, the check's state and the judges that spoke of all. A time: when, in the
+    visitor's zone and UTC, and how long until then. An event: the kind and the pairs its payload must contain.
+  Two boxes side by side from 640 px: "Wakes the agent when" (what comes) and "At the latest" (`wake_at`), and once
+  over who woke it (the hub, the owner, or another person). The raw wait folds closed under "The wait as the hub keeps
+  it". For the run's owner, while it is open, Go on now and Stop waiting as secondary buttons (44 px under 768 px),
+  each opening a confirmation in place (`inbox/wait-actions.tsx`): a heading that takes focus, what happens, an
+  optional note for the agent, Cancel and the send button; they send option `now` or `stop` with the note as text.
+  Anyone else reads "Only octo can wake it sooner". On the run's page the side column titles the card "What the run
+  waits for" and says, while the run waits, that it parks at the end of the agent's turn and so holds no worker, or,
+  once parked, that it holds no worker and goes on by itself; the header shows the `WaitPill` in place of an
+  `attention` status, and a plan's banner too. The Inbox lists the visitor's waits in a group of their own under the
+  decisions, "Runs waiting on something else, no answer needed" (`inbox/inbox-waits.tsx`, read from the overview's
+  open decisions since a wait notifies nobody), each row the run, its `WaitPill` and the reason. Home's Needs you and
+  its Waiting on you count leave waits out; In flight shows a waiting run's `WaitPill` with the agent's reason.
 - `components/inbox/credential-decisions.tsx`, a credential request (a decision of category credential that asks the
   run's owner for a variable's value, their hub account or both; docs/credentials.md, "A run that asks for a
   credential"): its grounds open with what it asks for (`KeyRound`, the variable and the secret that will keep it in

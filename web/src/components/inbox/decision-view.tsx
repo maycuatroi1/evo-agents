@@ -16,6 +16,7 @@ import { utf8Bytes } from "@/components/runs/run-model";
 import { Ago } from "@/components/workers/ago";
 import { isSendShortcut } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
+import { isWait } from "@/lib/waits";
 
 import { AnswerFormView, type AnswerFormState } from "./answer-form";
 import { answerNotice } from "./answer-notice";
@@ -29,6 +30,7 @@ import { type HeadingLevel, OptionList, Question } from "./decision-options";
 import { useAnswerDecision, useAnswerFailure, useDecisionRunTitle, useDecisionTerminalHref, useInboxViewer, useParksAt } from "./hooks";
 import { type AnswerAccess, answerAccess, answerBody, answerProblem, optionWaits, isHubDecision, runLinkWords, type AnswerProblem, chosenOption, initialOption, parkTiming } from "./model";
 import { type Decision, MAX_ANSWER_BYTES } from "./queries";
+import { WaitCard } from "./wait-card";
 
 /**
  * The kit's DecisionCard (web/DESIGN.md, components/inbox): an agent's question to the owner of its plan run, the
@@ -327,6 +329,7 @@ export function DecisionCard({
   headingRef,
   flush = false,
   parksAt: knownParksAt,
+  parkedAt,
   onAnswered,
   onConflict,
   onTakeOver,
@@ -337,6 +340,8 @@ export function DecisionCard({
   flush?: boolean;
   /** When the run parks, if the caller holds it already (the Home's overview); read from the overview otherwise. */
   parksAt?: string | null;
+  /** When the run parked, for a wait's timeline (the run's page knows it). */
+  parkedAt?: string | null;
   onAnswered?: (decision: Decision) => void;
   onConflict?: (decision: Decision) => void;
   /** On the run's own page: show its Terminal tab, rather than going to the page. */
@@ -348,6 +353,10 @@ export function DecisionCard({
   const parksAt = useParksAt(decision, knownParksAt);
   const level: HeadingLevel = where === "inbox" ? 2 : 3;
   const open = decision.state === "open";
+  // A wait asks nobody anything: its panel says what it waits for instead (web/DESIGN.md, The wait panel).
+  if (isWait(decision)) {
+    return <WaitCard decision={decision} where={where} headingRef={headingRef} flush={flush} parkedAt={parkedAt ?? null} onAnswered={onAnswered} onConflict={onConflict} />;
+  }
 
   return (
     <article

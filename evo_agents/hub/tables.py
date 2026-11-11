@@ -602,6 +602,7 @@ runs.append_constraint(
     )
 )
 notifications, notification_channels, notification_deliveries = tables_decisions.notification_tables(metadata)
+workflow_run_reads = tables_decisions.workflow_read_table(metadata)  # the hub's latest read of a waited run (0236)
 secrets, secret_bindings, credential_leases = tables_credentials.credential_tables(metadata)  # 0011
 
 charters, schedules = tables_night.night_tables(metadata)  # the night shift (0012)

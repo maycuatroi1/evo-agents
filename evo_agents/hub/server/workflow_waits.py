@@ -26,6 +26,13 @@ The payload (``VERSION`` 1): ``repo`` (owner/name), ``run_id``, ``attempt``, ``w
 ``head_sha``, ``status`` and ``conclusion`` as GitHub says them, ``failed`` (a job of the attempt failed, or the run
 did), ``failed_jobs`` (their names, at most ``release_ci.MAX_FAILED_JOBS``) and ``url``.
 
+Each read is kept too, whether or not it records an event (``store``, table workflow_run_reads, schema 0236): the run,
+the jobs of its latest attempt (at most MAX_JOBS, those that run or failed first, with how many GitHub lists) and the
+steps of each (at most MAX_STEPS), as ``snapshot`` keeps them, so the views of a wait (``waiting_on``) show where the run
+stands as of the latest pass and nobody's look calls GitHub. The first read of a run also reads how long the latest
+TYPICAL_RUNS runs of its workflow that succeeded took (``typical_seconds``, their median), once. A read nobody refreshed
+for KEEP_READS goes.
+
 ``checked``, in the route of a wait, takes the repo of ``contains`` (owner/name, the project's name for it, or nothing
 when the project has one GitHub repo) to be one of the project's GitHub repos, and the run to be there: a wait the hub
 cannot keep is 422 at once, saying what to do instead, rather than a sleep until ``--until``.
@@ -34,18 +41,21 @@ cannot keep is 422 at once, saying what to do instead, rather than a sleep until
 from __future__ import annotations
 
 import logging
+import statistics
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from functools import partial
 
 from fastapi import HTTPException
-from sqlalchemy import exists, select
+from sqlalchemy import delete, exists, func, select, tuple_
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import hub_events, release_ci, runs, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.release_actions import run_by_id, run_jobs, with_actions
+from evo_agents.hub.server.release_actions import recent_successes, run_by_id, run_jobs, with_actions
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +77,24 @@ WOKE_HINT = (
     "status=completed."
 )
 WAIT_INSTEAD = "wait with --until alone and look at the run with gh when it wakes"
+MAX_JOBS = 40  # jobs of a read kept: a matrix can list hundreds
+MAX_STEPS = 60  # steps of a job kept
+TYPICAL_RUNS = 5  # runs of the workflow that succeeded whose median time is its typical one
+KEEP_READS = timedelta(days=30)  # a read nobody refreshed that long goes
+RUN_FIELDS = {  # the key a snapshot keeps: GitHub's for it
+    "workflow": "name",
+    "title": "display_title",
+    "branch": "head_branch",
+    "sha": "head_sha",
+    "event": "event",
+    "status": "status",
+    "conclusion": "conclusion",
+    "url": "html_url",
+    "created_at": "created_at",
+    "started_at": "run_started_at",
+    "updated_at": "updated_at",
+}
+TIMES = ("started_at", "completed_at", "status", "conclusion")
 
 
 @dataclass(frozen=True)
@@ -203,12 +231,137 @@ def payload_of(repo: str, run_id: int, data: dict, jobs: list[dict]) -> dict | N
     }
 
 
-async def _read(app: GitHubApp, item: Watched, token: str) -> dict | None:
+# What a read keeps
+
+
+def _step(job_url: str | None, item: dict) -> dict | None:
+    number = item.get("number")
+    if type(number) is not int:
+        return None
+    url = f"{job_url}#step:{number}:1" if job_url else None
+    return {
+        "number": number,
+        "name": _text(item.get("name")),
+        **{key: _text(item.get(key)) for key in TIMES},
+        "url": url,
+    }
+
+
+def _job(item: dict) -> dict | None:
+    job_id = item.get("id")
+    if type(job_id) is not int:
+        return None
+    url = _text(item.get("html_url"))
+    listed = item.get("steps") if isinstance(item.get("steps"), list) else []
+    steps = [found for step in listed if isinstance(step, dict) and (found := _step(url, step)) is not None]
+    return {
+        "id": job_id,
+        "name": _text(item.get("name")),
+        **{key: _text(item.get(key)) for key in TIMES},
+        "url": url,
+        "steps": steps[:MAX_STEPS],
+        "steps_total": len(steps),
+    }
+
+
+def _first(job: dict) -> int:
+    """0 for a job that failed, 1 for one that runs, 2 for any other: the order jobs are kept in past MAX_JOBS."""
+    if job.get("conclusion") in release_ci.FAILED_CONCLUSIONS:
+        return 0
+    return 1 if job.get("status") in ("in_progress", "queued", "waiting", "pending") else 2
+
+
+def snapshot(repo: str, run_id: int, data: dict, jobs: list[dict]) -> dict:
+    """What a read of run ``run_id`` of ``repo`` keeps of GitHub's answer (``data``) and the jobs of its latest attempt:
+    the run, and at most MAX_JOBS jobs in GitHub's order, those that failed or run kept first, with ``jobs_total``."""
+    attempt = data.get("run_attempt")
+    shown = [found for item in jobs if isinstance(item, dict) and (found := _job(item)) is not None]
+    kept = sorted(sorted(range(len(shown)), key=lambda index: _first(shown[index]))[:MAX_JOBS])
+    return {
+        "repo": repo,
+        "run_id": run_id,
+        "attempt": attempt if type(attempt) is int and attempt > 0 else None,
+        **{key: _text(data.get(field)) for key, field in RUN_FIELDS.items()},
+        "jobs": [shown[index] for index in kept],
+        "jobs_total": len(shown),
+    }
+
+
+def _at(value) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")) if isinstance(value, str) else None
+    except ValueError:
+        return None
+
+
+def took(item: dict) -> int | None:
+    """The seconds a completed run of a workflow took, from its start to its last update, as GitHub lists it."""
+    start, end = _at(item.get("run_started_at") or item.get("created_at")), _at(item.get("updated_at"))
+    if start is None or end is None or end < start:
+        return None
+    return int((end - start).total_seconds())
+
+
+async def _typical(app: GitHubApp, token: str, item: Watched, data: dict) -> int | None:
+    """The median time of the latest TYPICAL_RUNS runs of the workflow of ``data`` that succeeded, but this one."""
+    path = data.get("path")
+    workflow = path.rsplit("/", 1)[-1] if isinstance(path, str) and path else data.get("workflow_id")
+    if not isinstance(workflow, str | int) or not workflow:
+        return None
+    listed = await recent_successes(app, token, item.owner, item.repo, workflow, TYPICAL_RUNS + 1)
+    times = [found for run in listed if run.get("id") != item.run_id and (found := took(run)) is not None]
+    return int(statistics.median(times[:TYPICAL_RUNS])) if times else None
+
+
+@dataclass(frozen=True)
+class Read:
+    """A read of a watched run: the event's payload when one is due, what the read keeps, and the typical time of its
+    workflow when this read looked for it."""
+
+    payload: dict | None
+    data: dict
+    typical: int | None
+    looked: bool
+
+
+async def _read(app: GitHubApp, item: Watched, typical: bool, token: str) -> Read | None:
     data = await run_by_id(app, token, item.owner, item.repo, item.run_id)
     if data is None:
         return None
     jobs = await run_jobs(app, token, item.owner, item.repo, item.run_id)
-    return payload_of(f"{item.owner}/{item.repo}", item.run_id, data, jobs)
+    repo = f"{item.owner}/{item.repo}"
+    seconds = None
+    if typical:
+        try:
+            seconds = await _typical(app, token, item, data)
+        except (GitHubUnavailable, GitHubRefused) as exc:  # the run's read stands without it
+            log.info("typical time of a workflow not read", extra={"run_id": item.run_id, "why": str(exc)})
+    return Read(payload_of(repo, item.run_id, data, jobs), snapshot(repo, item.run_id, data, jobs), seconds, typical)
+
+
+async def _looked(conn: AsyncConnection, watched: list[Watched]) -> set[tuple[int, str, int]]:
+    """The watched runs whose workflow's typical time the hub looked for already."""
+    w = tables.workflow_run_reads
+    keys = [(item.project_id, f"{item.owner}/{item.repo}", item.run_id) for item in watched]
+    if not keys:
+        return set()
+    query = select(w.c.project_id, w.c.repo, w.c.run_id).where(
+        tuple_(w.c.project_id, w.c.repo, w.c.run_id).in_(keys), w.c.typical_read_at.is_not(None)
+    )
+    return {tuple(row) for row in await conn.execute(query)}
+
+
+async def store(conn: AsyncConnection, item: Watched, read: Read) -> None:
+    """Keep ``read`` as the latest of its run, and the typical time of its workflow when it looked for one."""
+    w = tables.workflow_run_reads
+    values = {"project_id": item.project_id, "repo": f"{item.owner}/{item.repo}", "run_id": item.run_id}
+    fresh = {"data": read.data, "read_at": func.now()}
+    if read.looked:
+        fresh |= {"typical_seconds": read.typical, "typical_read_at": func.now()}
+    statement = insert(w).values(**values, **fresh)
+    await conn.execute(
+        statement.on_conflict_do_update(index_elements=[w.c.project_id, w.c.repo, w.c.run_id], set_=fresh)
+    )
 
 
 async def _record(conn: AsyncConnection, item: Watched, payload: dict) -> bool:
@@ -227,23 +380,29 @@ async def _record(conn: AsyncConnection, item: Watched, payload: dict) -> bool:
 
 
 async def poll(engine: AsyncEngine, app: GitHubApp | None, batch: int) -> int:
-    """Read each run of a workflow an open wait names, of at most ``batch`` waits, and record its event when it
-    completed or a job of it failed (see the module), each in a transaction of its own; how many were recorded."""
+    """Read each run of a workflow an open wait names, of at most ``batch`` waits, keep the read, and record its event
+    when it completed or a job of it failed (see the module), each in a transaction of its own; how many were
+    recorded."""
     if app is None:
         return 0
-    async with engine.connect() as conn:
+    async with engine.begin() as conn:
+        w = tables.workflow_run_reads
+        await conn.execute(delete(w).where(w.c.read_at < func.now() - KEEP_READS))
         watched = await _watched(conn, batch)
+        looked = await _looked(conn, watched)
     recorded = 0
     for item in watched:
+        typical = (item.project_id, f"{item.owner}/{item.repo}", item.run_id) not in looked
         try:
-            payload = await with_actions(app, item.owner, item.repo, "ci", partial(_read, app, item))
+            read = await with_actions(app, item.owner, item.repo, "ci", partial(_read, app, item, typical))
         except (GitHubUnavailable, GitHubRefused) as exc:
             log.info("workflow run of a wait not read", extra={"run_id": item.run_id, "why": str(exc)})
             continue
-        if payload is None:
+        if read is None:
             continue
         async with engine.begin() as conn:
-            if await _record(conn, item, payload):
+            await store(conn, item, read)
+            if read.payload is not None and await _record(conn, item, read.payload):
                 recorded += 1
-                log.info("workflow run event recorded", extra={"run_id": item.run_id, "status": payload["status"]})
+                log.info("workflow run event recorded", extra={"run_id": item.run_id, "status": read.payload["status"]})
     return recorded

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
+import { WaitPill } from "@/components/status/wait-pill";
 import { Button } from "@/components/ui/button";
 import { useNow } from "@/hooks/use-now";
 import { percent, stepLabel } from "@/lib/plans";
@@ -19,6 +20,7 @@ import { isActiveState, type Run } from "./queries";
 import { AsOwnerBadge } from "./run-access";
 import { usePlanProgress } from "./run-plan-steps";
 import { useGap } from "./run-timeline";
+import { useRunWait } from "./run-wait";
 
 /** How long the run has been in its state, for the status line: since it was queued, began waiting, or ran. */
 function stateDuration(run: Run, now: number | null): number | null {
@@ -32,14 +34,16 @@ function stateDuration(run: Run, now: number | null): number | null {
  * runs ("Running for 42m 10s on binhna-macbook-m4"), the attempt after it once there was more than one. It ticks every
  * second while the run is active.
  */
-export function useStatusLine(run: Run): string {
+export function useStatusLine(run: Run, wait = false): string {
   const t = useTranslations("runs.detail.header");
   const tRuntime = useRuntimeName();
   const gap = useGap();
   const now = useNow(isActiveState(run.state));
   const ms = stateDuration(run, now);
   const duration = ms !== null ? gap(ms) : run.run_seconds > 0 ? gap(run.run_seconds * 1000) : "0s";
-  const sentence = t(`state.${run.state}`, { duration, worker: run.worker ?? t("worker"), runtime: tRuntime(run.runtime) });
+  // A run on a wait asks nobody: its line says how long it waits, not that it waits for an answer.
+  const key = wait && (run.state === "waiting" || run.state === "parked") ? (`waitState.${run.state}` as const) : (`state.${run.state}` as const);
+  const sentence = t(key, { duration, worker: run.worker ?? t("worker"), runtime: tRuntime(run.runtime) });
   return run.attempt > 1 ? t("attempt", { sentence, attempt: run.attempt, max: run.max_attempts }) : sentence;
 }
 
@@ -71,7 +75,8 @@ export function RunHeader({
 }) {
   const t = useTranslations("runs.detail.header");
   const tRun = useTranslations("runs.detail");
-  const line = useStatusLine(run);
+  const wait = useRunWait(run);
+  const line = useStatusLine(run, wait !== null);
   const plan = run.kind === "plan";
   const { pending, counts, current } = usePlanProgress(run);
   return (
@@ -133,8 +138,10 @@ export function RunHeader({
         ) : null}
         {/* A run acting as its owner says so while it may; its Hub access card has who, since when and Revoke. */}
         {isActiveState(run.state) ? <AsOwnerBadge run={run} className="shrink-0" /> : null}
+        {/* A run on a wait names what it waits for in a neutral pill: nobody needs to answer. */}
+        {wait ? <WaitPill subject={wait.subject} className="max-w-full" data-testid="run-wait-pill" /> : null}
         {/* A run going as it should (running, verifying) needs no words: the line says only what is not usual. */}
-        <span className={cn("tabular-nums", STATE_TONE[run.state], (run.state === "running" || run.state === "verifying") && "sr-only")} data-testid="run-status-line">
+        <span className={cn("tabular-nums", wait ? null : STATE_TONE[run.state], (run.state === "running" || run.state === "verifying") && "sr-only")} data-testid="run-status-line">
           {line}
         </span>
       </div>
