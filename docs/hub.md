@@ -903,8 +903,10 @@ span says so.
 The first hand-off of a trace opens its work chat: one group chat of kind `work` (`chats.WORK`), where the agents the
 trace's work goes to answer, each in a thread of its own (`evo_agents/hub/server/work_chats.py`, migration 0234). A
 hand-off is an agent's ask (Agents across projects), an escalation, or any other thread of the Orchestrator about a
-run of the trace (The Orchestrator). `system_traces.work_chat_id` names the chat; a trace with no hand-off has none.
-An advisory lock per trace, under which that column is read again, makes concurrent hand-offs open one chat. Its title
+run of the trace (The Orchestrator). A person's mention, in a direct chat (Home), of an agent of a system that the
+chat does not have opens one too: the work goes to the entry agent, whose run opens the trace, and the message is
+copied onto the work chat's main line (Direct chats). `system_traces.work_chat_id` names the chat; a trace with no
+hand-off has none. An advisory lock per trace, under which that column is read again, makes concurrent hand-offs open one chat. Its title
 is "Work: " and the start of the trace's first message.
 
 Its creator is the person who opened the trace, who gets no `chat_added` notice. The hub puts in it the coordinator
@@ -1237,9 +1239,9 @@ leaving, are refused (409); a group chat is for more. Each message of the person
 goes to its agent as if it mentioned it (`via` direct): a message outside a thread is a new task, in a new session at
 hop 1 for the person, and a reply in the thread of the agent's answer goes on in that session
 (`via` thread), as in any chat of one person; an `@` of the agent makes the same one run. A mention of another agent
-the person may add to a chat opens a group chat instead (`evo_agents/hub/server/chat_groups.py`, schema 0232): the
-person, the direct chat's agent and the agents mentioned, titled with the agent's name, the agents mentioned and the
-thread's first line. The group keeps the first message of the direct chat's thread it came from
+the person may add to a chat opens a group chat instead (`evo_agents/hub/server/chat_groups.py`, schema 0232),
+unless that agent is in an agent system (below): the person, the direct chat's agent and the agents of no system
+mentioned, titled with the agent's name, the agents mentioned and the thread's first line. The group keeps the first message of the direct chat's thread it came from
 (`chats.opened_from_message_id`, unique), so a later mention in that thread adds to the same group. The person's message
 is posted there again as theirs and hands the work there, as any message of a group does; in the direct chat it hands
 none, and the hub answers in its thread with the group's link. An agent the person may not add (no writer role on its
@@ -1247,7 +1249,16 @@ project, deleted, a label the people do not clear) stays out with why, and when 
 chat's agent's work as before. The direct chat's agent brings another agent in the same way with `evo-agents worker
 chat mention HANDLE TEXT` (`docs/workers.md`, Chat runs): the group of the thread is opened or found, the agent's
 message goes there, and the person is told (`chat_added`) of a group made now. An @ of another agent in the agent's
-reply hands no work and shows no note, as in a group chat. The prompt of its run shows, instead of the chat before the
+reply hands no work and shows no note, as in a group chat.
+
+A mention there of an agent the chat does not have that is in an agent system (the one it is the entry agent of, else
+the first system of its project with it) goes to that system's entry agent instead, and the agent mentioned is not
+woken (`evo_agents/hub/server/direct_systems.py`): the person's message goes to the entry agent in the person's direct
+chat with it (the message itself when this direct chat is the entry agent's), whose run opens a trace and its work
+chat, and a copy of the message goes on the work chat's main line (Work chats). The mention keeps the entry agent's
+run, and the hub answers in the thread with the work chat's link. A message that names agents in and out of a system
+takes both ways: the agents of no system go to the group of the thread, and its copy there leaves the others out. A
+group a thread opened before stays as it was. The prompt of its run shows, instead of the chat before the
 thread, the latest turns: at most 30 messages of the earlier threads, the person's messages and the agent's answers,
 within the snapshot's 12 KiB, the oldest left out first. Opening one is audited as `chat.create` in the agent's project.
 
