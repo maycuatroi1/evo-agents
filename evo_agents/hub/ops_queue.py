@@ -131,7 +131,12 @@ async def cause_of(conn: AsyncConnection, event: hub_events.HubEvent) -> Cause |
         wrong = health_causes(payload)
         if any(cause.startswith("login:") for cause in wrong):
             leased = await leased_runtimes(conn, worker_id)
-            wrong = [cause for cause in wrong if not (cause.startswith("login:") and cause.split(":")[1] in leased)]
+            used = await used_runtimes(conn, worker_id)
+            wrong = [
+                cause
+                for cause in wrong
+                if not (cause.startswith("login:") and _login_unneeded(cause.split(":")[1], leased, used))
+            ]
         if not wrong:
             return None
         return Cause(kind, ",".join(wrong), f"worker:{worker_id}", worker_id=worker_id)
@@ -172,6 +177,24 @@ async def leased_runtimes(conn: AsyncConnection, worker_id, days: int = LEASE_DA
         .distinct()
     )
     return {LEASE_RUNTIMES[name] for name in (await conn.execute(query)).scalars()}
+
+
+async def used_runtimes(conn: AsyncConnection, worker_id, days: int = LEASE_DAYS) -> set[str] | None:
+    """The runtimes of the runs worker ``worker_id`` took in the last ``days``; None when it took none, so a new or idle
+    worker still has each of its logins checked."""
+    if not isinstance(worker_id, int):
+        return None
+    r = tables.runs
+    query = select(r.c.runtime).where(r.c.worker_id == worker_id, r.c.leased_at >= func.now() - timedelta(days=days))
+    found = set((await conn.execute(query.distinct())).scalars())
+    return found or None
+
+
+def _login_unneeded(runtime: str, leased: set[str], used: set[str] | None) -> bool:
+    """Whether the machine's login of ``runtime`` is no fault of its worker: its runs take a hub lease of it, or the
+    worker ran in the last days and none of its runs was of it (an agent pinned to another runtime, as an orchestrator
+    on claude-code, never needs the machine's opencode)."""
+    return runtime in leased or (used is not None and runtime not in used)
 
 
 async def run_leased(conn: AsyncConnection, run_id, runtime: str | None) -> bool:

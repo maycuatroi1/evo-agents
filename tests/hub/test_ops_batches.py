@@ -180,3 +180,12 @@ def test_a_login_the_worker_holds_by_lease_is_no_item_and_a_failing_one_is(clien
         "worker.health|login:claude-code:missing|worker:7",
     ]
     assert ops_queue.health_causes({"logins": {"claude-code": "leased", "codex": "unknown"}}) == ["login:codex:unknown"]
+
+
+def test_a_login_of_a_runtime_the_worker_does_not_run_is_no_item():
+    """A worker whose recent runs were all of claude-code (an orchestrator's pool) says nothing of its opencode; a
+    worker with no recent run still has each login checked."""
+    assert ops_queue._login_unneeded("opencode", set(), {"claude-code"})
+    assert not ops_queue._login_unneeded("claude-code", set(), {"claude-code"})
+    assert not ops_queue._login_unneeded("opencode", set(), None)
+    assert ops_queue._login_unneeded("claude-code", {"claude-code"}, None)
