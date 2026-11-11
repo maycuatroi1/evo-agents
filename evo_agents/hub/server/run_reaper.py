@@ -257,7 +257,8 @@ async def recover_runs(
     whose lease ran out ends as ``end_held`` says, the waits whose time or event came wake their runs
     (``run_waits.wake_waits``, after ``workflow_waits.poll`` read at GitHub the workflow runs they name with
     ``github_app``), a run that waited ``decision_wait`` for an answer, or waits only for a time or an
-    event of the hub, is parked and one parked for
+    event of the hub, is parked, each cycle of runs that wait on each other is broken at the run below
+    (``wait_cycles.break_cycles``), and one parked for
     ``parked_for`` cancelled, each in a transaction of its own, a question run queued for
     ``question_runs.QUEUE_SECONDS`` fails (no_worker), a run running or verifying with no event for
     ``triage.STALE_MINUTES`` while its worker heartbeats opens its triage thread (``triage.open_stale``), a trace of an
@@ -309,6 +310,9 @@ async def recover_runs(
     await run_waits.wake_waits(engine, batch)  # first, so a wait that came wakes before its run is parked or expires
     await park_waiting(engine, batch, decision_wait, ended)
     await run_waits.resume_answered(engine, batch)  # a run parked in the pass its wait woke, the answer untaken
+    from evo_agents.hub.server import wait_cycles  # it wakes waits through run_waits
+
+    await wait_cycles.break_cycles(engine)  # two runs that wait on each other: the one below gets the other's answer
     await expire_parked(engine, batch, parked_for, ended)
     from evo_agents.hub.server import local_runs  # it moves runs through this module
 

@@ -30,6 +30,7 @@ named in its answer, as the question asks), or why it failed, was cancelled or l
 asked line went, once an asker. A run asked that goes on in its session (a parked run resumed, an inbox untaken)
 carries both columns, and every wait whose ``awaits_run_id`` is in its chain of resumed runs is answered too, so the
 run that really ends answers each ask that reached it. A wait answered already, by its time or by a person, is left as it is.
+Waits that close a cycle, two runs each waiting on the other's end, are broken by the reaper (``wait_cycles``).
 """
 
 from __future__ import annotations

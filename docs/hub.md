@@ -1086,6 +1086,8 @@ it has three more actions (`orchestrator_actions.py`; `docs/workers.md`, Failure
 
 - answer: an escalation's wait wakes with the answer; a thread with no wait hands it to the agent it is about.
 - reassign: the work goes to another agent node of the system at the hop of the work, with the escalation's wait.
+  While that wait is open, an agent whose run waits on the run that escalated, directly or through other runs, is
+  refused (409): the two runs would wait on each other.
 - ask-owner: a decision of category `triage` for the person at the origin of the work.
 
 Answer and reassign hand their work in the chat of the thread, so in the work chat for a trace that has one. Each
@@ -1094,6 +1096,12 @@ posts a `Decision:` line in the thread and writes the audit row `orchestrator.an
 Answer and reassign close the thread. An escalation adds no hop, the trace's budget does not refuse it, and the work
 the Orchestrator reassigns keeps its hop: the hop limit of 3 stays as it is. An agent with no `orchestrates` edge
 keeps the triage it had; one with only an `escalates` edge escalates to that Orchestrator and has no other thread.
+
+Runs that still wait on each other (each open wait of an ask, `decisions.awaits_run_id`, points from the run that
+holds it to the last run of the chain of resumed runs it awaits) are found by the reaper on each pass
+(`wait_cycles.py`). It breaks each cycle once, at the run below, the one at the deepest hop: that run's wait is
+answered with the last message of the run it awaits, which wakes it, and both runs get a `system` event that starts
+with `Wait cycle broken:` and names the runs of the cycle.
 
 ## Group chats
 
