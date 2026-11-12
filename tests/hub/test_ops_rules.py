@@ -115,12 +115,12 @@ def test_a_login_a_hub_account_stands_for_is_no_fault_of_the_worker(client, hub,
     moved(client, worker, second["id"], "failed", **CHECKOUT)
     health_beat(client, worker, login="unauthorized")
     assert run_pass(client)["redelivered"] == 1, "its lease gave it a hub account: the machine's login is no matter"
-    health = {"worker_id": worker["id"], "disk": "ok", "logins": {"claude-code": "unauthorized", "codex": "missing"}}
+    health = {"worker_id": worker["id"], "disk": "ok", "logins": {"claude-code": "unauthorized", "codex": "unknown"}}
     record(client, hub_db, hub_events.WORKER_HEALTH, **health)
     run_pass(client)
     b = tables.ops_batches
     keys = [key for (key,) in sql(hub_db, select(b.c.key).order_by(b.c.id))]
-    assert keys[-1] == f"worker.health|login:codex:missing|worker:{worker['id']}", "the leased login is no item"
+    assert keys[-1] == f"worker.health|login:codex:unknown|worker:{worker['id']}", "the leased login is no item"
 
 
 def test_a_run_an_orchestrator_took_or_that_failed_of_its_work_is_not_handed_again(client, hub, hub_db):

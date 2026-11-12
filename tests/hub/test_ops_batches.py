@@ -173,10 +173,10 @@ def test_a_login_the_worker_holds_by_lease_is_no_item_and_a_failing_one_is(clien
     assert run_pass(client)["queued"] == 0, "leased is no item"
     assert not batches(hub_db)
     record(client, hub_db, hub_events.WORKER_HEALTH, **payload, logins={"claude-code": "unauthorized"})
-    record(client, hub_db, hub_events.WORKER_HEALTH, **payload, logins={"claude-code": "missing", "codex": "leased"})
+    record(client, hub_db, hub_events.WORKER_HEALTH, **payload, logins={"claude-code": "missing", "codex": "unknown"})
     assert run_pass(client)["queued"] == 2
     assert [key for key, *_ in batches(hub_db)] == [
         "worker.health|login:claude-code:unauthorized|worker:7",
-        "worker.health|login:claude-code:missing|worker:7",
-    ]
+        "worker.health|login:codex:unknown|worker:7",
+    ], "a runtime the machine does not have is no item"
     assert ops_queue.health_causes({"logins": {"claude-code": "leased", "codex": "unknown"}}) == ["login:codex:unknown"]
