@@ -138,7 +138,7 @@ def test_with_the_broker_every_listener_gets_a_wake_up_after_the_commit_and_none
     asyncio.run(main())
 
 
-def test_with_the_broker_a_run_queued_on_one_api_process_is_claimed_on_another_within_two_seconds(
+def test_with_the_broker_a_run_queued_on_one_api_process_is_claimed_on_another_long_before_its_poll(
     start, hub_db, tmp_path, github, rabbit, monkeypatch
 ):
     monkeypatch.setattr(run_claims, "CLAIM_POLL_SECONDS", 60.0)  # only the wake-up can wake the claim in time
@@ -156,8 +156,10 @@ def test_with_the_broker_a_run_queued_on_one_api_process_is_claimed_on_another_w
         thread = threading.Thread(target=wait)
         thread.start()
         time.sleep(2.0)  # the claim looks, and again once the listener of the other process is on the broker
-        queued = time.monotonic()
         run = dispatched(one.client, one.headers["owner"], [2])[0]
+        queued = time.monotonic()  # the run is committed by the time the dispatch answers
         thread.join(25)
         assert answer["run"]["id"] == run["id"]
-        assert answer["at"] - queued < 2, "the run is claimed within two seconds of being queued"
+        # within five seconds of the dispatch's answer, the poll being 60: the bound of two from before the dispatch
+        # failed on a loaded runner at 2.6 s (release CI of v0.63.7)
+        assert answer["at"] - queued < 5, "the run is claimed within five seconds of being queued"
