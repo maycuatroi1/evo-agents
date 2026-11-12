@@ -29433,7 +29433,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.63.9"
+      "version": "0.64.1"
     },
     "paths": {
       "/v1/health": {
