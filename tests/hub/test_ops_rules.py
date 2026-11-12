@@ -116,6 +116,9 @@ def test_a_login_a_hub_account_stands_for_is_no_fault_of_the_worker(client, hub,
     health_beat(client, worker, login="unauthorized")
     assert run_pass(client)["redelivered"] == 1, "its lease gave it a hub account: the machine's login is no matter"
     health = {"worker_id": worker["id"], "disk": "ok", "logins": {"claude-code": "unauthorized", "codex": "missing"}}
+    w = tables.workers
+    offered = {**worker["runtimes"], "codex": {"available": True}}  # codex taken off it would be no item either
+    sql(hub_db, update(w).values(runtimes=offered).where(w.c.id == worker["id"]))
     record(client, hub_db, hub_events.WORKER_HEALTH, **health)
     run_pass(client)
     b = tables.ops_batches

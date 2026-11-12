@@ -10,12 +10,13 @@ project, so the queue never reads what happened before; a pass while it is off d
 Queue. Each pass (``take``, in the reaper's pass every minute) reads the project's hub_events past its cursor, as the
 Loop does, and keeps the operations events (``hub_events.OPS``). An event a rule of tier 0 handles (``Rule``, the
 rules a later step passes in) goes no further; an event that tells of nothing to do (``cause_of`` gives None: a run
-parked for an answer, whose ``decision.opened`` is the item, and a worker whose health came back ok) goes nowhere. Any
-other becomes an item of the open batch of its cause key (``cause_key``: kind, cause, and the worker or the plan, as
-``inbox.fold_same_cause`` folds failed runs), which the first item opens and which closes ``debounce_minutes`` after it
-opened, or at once when it holds ``max_items`` pending items. An item tier 0 handled before its batch closed leaves it
-(``settle``); a batch that closes with no pending item left is ``empty`` and opens no run, one with some is ``ready``
-for the step that opens the Orchestrator's run. Nothing here calls a model.
+parked for an answer, whose ``decision.opened`` is the item, a worker whose health came back ok, and one whose only
+fault is the login of a runtime its runs do not use or that the hub leases them an account of: ``idle_logins``) goes
+nowhere. Any other becomes an item of the open batch of its cause key (``cause_key``: kind, cause, and the worker or
+the plan, as ``inbox.fold_same_cause`` folds failed runs), which the first item opens and which closes
+``debounce_minutes`` after it opened, or at once when it holds ``max_items`` pending items. An item tier 0 handled
+before its batch closed leaves it (``settle``); a batch that closes with no pending item left is ``empty`` and opens
+no run, one with some is ``ready`` for the step that opens the Orchestrator's run. Nothing here calls a model.
 
 SQLAlchemy Core on ``evo_agents.hub.tables``; nothing here imports ``evo_agents.hub.server``.
 """
@@ -26,23 +27,29 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import and_, case, delete, func, insert, or_, select, text, update
+from sqlalchemy import and_, case, delete, exists, func, insert, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import hub_events, system_spec, tables, triage_rules
+from evo_agents.hub.account_providers import MODEL_ENV_VARS
+from evo_agents.hub.credentials import PROVIDER_KIND
+from evo_agents.hub.gateway_runs import GATEWAY_RUNTIMES, PICK_PREFIX
 from evo_agents.hub.ops_events import LOGGED_IN
 
 BATCH_STATES = ("open", "ready", "empty", "running", "done")  # 0240; running and done are the run's (a later step)
 CLOSED = ("ready", "empty", "running", "done")
 ITEM_STATES = ("pending", "handled")
-# The variables of a hub account that log a runtime in, and the days a run that took one speaks for its worker.
-LEASE_RUNTIMES = {
-    "CLAUDE_CODE_OAUTH_TOKEN": "claude-code",
-    "ANTHROPIC_API_KEY": "claude-code",
-    "OPENAI_API_KEY": "codex",
+# The variables of a hub account that log each runtime in: a run leased one authenticates with it, whatever the
+# machine's own login is. opencode reads the key of each provider it knows from that provider's variable (zhipu-glm
+# sets ZHIPU_API_KEY). A provider account, reached through the gateway, logs every runtime of the gateway in.
+LEASE_VARS: dict[str, tuple[str, ...]] = {
+    "claude-code": ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"),
+    "codex": ("OPENAI_API_KEY",),
+    "opencode": ("ZHIPU_API_KEY", "ZAI_API_KEY", "OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"),
 }
-LEASE_DAYS = 7
+LEASE_ENV_VARS = tuple(sorted({name for names in LEASE_VARS.values() for name in names}))
+LEASE_DAYS = 7  # the days a run that took such an account speaks for its worker
 # The kinds whose event names a run, which ``cause_of`` skips when the run is one of an ops thread.
 RUN_KINDS = (hub_events.RUN_ENDED, hub_events.RUN_PARKED, hub_events.DECISION_OPENED)
 # The failure causes of the worker's machine, not of the work: their runs gather by worker, not by plan.
@@ -103,10 +110,11 @@ def health_causes(payload: dict) -> list[str]:
     return found
 
 
-async def cause_of(conn: AsyncConnection, event: hub_events.HubEvent) -> Cause | None:
-    """The cause of operations event ``event``, or None when it tells of nothing to do: a run parked for an answer
-    (its ``decision.opened`` is the item), an event of a run of an ops thread (``ops_run``), a worker whose health is
-    ok, or a kind that is no operations event."""
+async def cause_of(conn: AsyncConnection, event: hub_events.HubEvent, project_id: int | None = None) -> Cause | None:
+    """The cause of operations event ``event`` of project ``project_id``, or None when it tells of nothing to do: a
+    run parked for an answer (its ``decision.opened`` is the item), an event of a run of an ops thread (``ops_run``), a
+    worker whose health is ok, or whose only fault is the login of a runtime no run there uses (``idle_logins``), or a
+    kind that is no operations event."""
     payload = event.payload or {}
     kind = event.kind
     if kind in RUN_KINDS and await ops_run(conn, payload.get("run_id")):
@@ -130,8 +138,8 @@ async def cause_of(conn: AsyncConnection, event: hub_events.HubEvent) -> Cause |
         worker_id = payload.get("worker_id")
         wrong = health_causes(payload)
         if any(cause.startswith("login:") for cause in wrong):
-            leased = await leased_runtimes(conn, worker_id)
-            wrong = [cause for cause in wrong if not (cause.startswith("login:") and cause.split(":")[1] in leased)]
+            idle = await idle_logins(conn, worker_id, project_id)
+            wrong = [cause for cause in wrong if not (cause.startswith("login:") and cause.split(":")[1] in idle)]
         if not wrong:
             return None
         return Cause(kind, ",".join(wrong), f"worker:{worker_id}", worker_id=worker_id)
@@ -158,6 +166,112 @@ async def ops_run(conn: AsyncConnection, run_id) -> bool:
     return await conn.scalar(query) is not None
 
 
+def lease_runtimes(env_var: str | None) -> set[str]:
+    """The runtimes an account of variable ``env_var`` logs in (LEASE_VARS); every runtime of the gateway for a
+    provider account picked by hand (run_accounts.env_var ``gateway:<prefix>``)."""
+    if not env_var:
+        return set()
+    if env_var.startswith(PICK_PREFIX):
+        return set(GATEWAY_RUNTIMES)
+    return {runtime for runtime, names in LEASE_VARS.items() if env_var in names}
+
+
+def _leases(env_var):
+    """An env_var column names a variable of LEASE_VARS, or a provider account picked by hand."""
+    return or_(env_var.in_(LEASE_ENV_VARS), env_var.startswith(PICK_PREFIX))
+
+
+async def idle_logins(conn: AsyncConnection, worker_id, project_id: int | None) -> set[str]:
+    """The runtimes whose login on worker ``worker_id`` no run of project ``project_id`` there depends on: those the
+    worker does not offer (``unoffered``), and those the hub leases an account of to its runs, by what it would lease
+    (``leasable_runtimes``) or what a run there took lately (``leased_runtimes``)."""
+    if not isinstance(worker_id, int):
+        return set()
+    idle = await unoffered(conn, worker_id)
+    idle |= await leasable_runtimes(conn, worker_id, project_id)
+    return idle | await leased_runtimes(conn, worker_id)
+
+
+def _offered(report) -> bool:
+    """Whether a runtime's stored report says it takes runs (``runs.models.heartbeat.available``)."""
+    if isinstance(report, dict):
+        return report.get("available", True) is True
+    return report is True or (isinstance(report, str) and bool(report))
+
+
+async def unoffered(conn: AsyncConnection, worker_id: int) -> set[str]:
+    """The runtimes of LEASE_VARS worker ``worker_id`` reports it cannot run (workers.runtimes): no run of them goes
+    there, so their login is no matter (codex taken off a machine that has no login of it). Empty when it reported no
+    runtime at all."""
+    w = tables.workers
+    reported = await conn.scalar(select(w.c.runtimes).where(w.c.id == worker_id))
+    if not isinstance(reported, dict) or not reported:
+        return set()
+    return {name for name in LEASE_VARS if not _offered(reported.get(name))}
+
+
+def _live(s):
+    """A row of secrets ``s`` the hub leases: not deleted, and not past its end unless it signed in with OAuth, whose
+    lease refreshes it first (``pool_accounts.usable_member``). Paused or cooling down it still counts: that is the
+    account's state, no fault of the worker."""
+    a = tables.accounts
+    return and_(
+        s.c.deleted_at.is_(None),
+        or_(
+            s.c.expires_at.is_(None),
+            s.c.expires_at > func.now(),
+            exists().where(a.c.secret_id == s.c.id, a.c.oauth_sealed.is_not(None)),
+        ),
+    )
+
+
+def _reaches(b, worker_id: int):
+    """A row of secret_bindings ``b`` reaches worker ``worker_id``: bound to any worker of its owner, to this one, or
+    to its pool (``server.worker_placement.bound_on``, which this module does not import)."""
+    w = tables.workers
+    of_worker = select(w.c.pool_id).where(w.c.id == worker_id).scalar_subquery()
+    return or_(
+        and_(b.c.worker_id.is_(None), b.c.pool_id.is_(None)),
+        b.c.worker_id == worker_id,
+        and_(b.c.pool_id.is_not(None), b.c.pool_id == of_worker),
+    )
+
+
+async def leasable_runtimes(conn: AsyncConnection, worker_id: int, project_id: int | None) -> set[str]:
+    """The runtimes the hub has an account of to lease the runs of project ``project_id`` on worker ``worker_id``,
+    whether or not one ran there yet. On a node of an agent's pool (worker_pools.agent_id) its runs take their model
+    account from the agent's account pool alone: its env accounts of a model variable and its provider accounts
+    (``credentials.survey_run``, ``gateway_accounts.usable_accounts``). Any worker also gets the env secrets bound to
+    the project that reach it, but for a model variable or a provider account only off an agent's node."""
+    w, wp, ap = tables.workers, tables.worker_pools, tables.agent_profiles
+    s, m, b = tables.secrets, tables.account_pool_members, tables.secret_bindings
+    node = (
+        await conn.execute(
+            select(wp.c.agent_id, ap.c.account_pool_id)
+            .select_from(w.outerjoin(wp, wp.c.id == w.c.pool_id).outerjoin(ap, ap.c.id == wp.c.agent_id))
+            .where(w.c.id == worker_id)
+        )
+    ).first()
+    if node is None:
+        return set()
+    model = or_(s.c.kind == PROVIDER_KIND, and_(s.c.kind == "env", s.c.env_var.in_(MODEL_ENV_VARS)))
+    rows = []
+    if node.account_pool_id is not None:
+        of_pool = exists().where(m.c.secret_id == s.c.id, m.c.pool_id == node.account_pool_id)
+        rows += (await conn.execute(select(s.c.kind, s.c.env_var).where(of_pool, _live(s), model))).all()
+    if project_id is not None:
+        bound = exists().where(b.c.secret_id == s.c.id, b.c.project_id == project_id, _reaches(b, worker_id))
+        leases = or_(s.c.kind == PROVIDER_KIND, and_(s.c.kind == "env", s.c.env_var.in_(LEASE_ENV_VARS)))
+        query = select(s.c.kind, s.c.env_var).where(bound, _live(s), leases)
+        if node.agent_id is not None:
+            query = query.where(~model)
+        rows += (await conn.execute(query.distinct())).all()
+    found: set[str] = set()
+    for row in rows:
+        found |= set(GATEWAY_RUNTIMES) if row.kind == PROVIDER_KIND else lease_runtimes(row.env_var)
+    return found
+
+
 async def leased_runtimes(conn: AsyncConnection, worker_id, days: int = LEASE_DAYS) -> set[str]:
     """The runtimes whose runs on worker ``worker_id`` took a hub account (run_accounts) in the last ``days``: a run of
     one logs in with the account its lease gives, so the machine's own login of it is no fault of the worker."""
@@ -168,20 +282,27 @@ async def leased_runtimes(conn: AsyncConnection, worker_id, days: int = LEASE_DA
         select(ra.c.env_var)
         .join_from(ra, r, r.c.id == ra.c.run_id)
         .where(r.c.worker_id == worker_id, ra.c.chosen_at >= func.now() - timedelta(days=days))
-        .where(ra.c.env_var.in_(list(LEASE_RUNTIMES)))
+        .where(_leases(ra.c.env_var))
         .distinct()
     )
-    return {LEASE_RUNTIMES[name] for name in (await conn.execute(query)).scalars()}
+    found: set[str] = set()
+    for name in (await conn.execute(query)).scalars():
+        found |= lease_runtimes(name)
+    return found
 
 
 async def run_leased(conn: AsyncConnection, run_id, runtime: str | None) -> bool:
-    """Whether run ``run_id`` took a hub account that logs ``runtime`` in (``leased_runtimes``)."""
-    names = [name for name, of in LEASE_RUNTIMES.items() if of == runtime]
-    if not isinstance(run_id, int) or not names:
+    """Whether run ``run_id`` took a hub account that logs ``runtime`` in (``lease_runtimes``), or ran through the
+    gateway on a runtime of it."""
+    if not isinstance(run_id, int) or runtime not in LEASE_VARS:
         return False
+    if runtime in GATEWAY_RUNTIMES:
+        r = tables.runs
+        if await conn.scalar(select(r.c.gateway_provider.is_not(None)).where(r.c.id == run_id)):
+            return True
     ra = tables.run_accounts
-    query = select(ra.c.run_id).where(ra.c.run_id == run_id, ra.c.env_var.in_(names)).limit(1)
-    return await conn.scalar(query) is not None
+    names = (await conn.execute(select(ra.c.env_var).where(ra.c.run_id == run_id, _leases(ra.c.env_var)))).scalars()
+    return any(runtime in lease_runtimes(name) for name in names)
 
 
 async def _plan_of(conn: AsyncConnection, run_id) -> str | None:
@@ -337,7 +458,7 @@ async def take(conn: AsyncConnection, project_id: int, rules: Sequence[Rule] = (
     for event in events:
         if event.kind not in hub_events.OPS or await _ruled(conn, project_id, event, rules):
             continue
-        cause = await cause_of(conn, event)
+        cause = await cause_of(conn, event, project_id)
         if cause is None:
             continue
         await enqueue(conn, project_id, config, event.id, cause)
@@ -393,6 +514,9 @@ __all__ = [
     "default_system_spec",
     "enqueue",
     "health_causes",
+    "idle_logins",
+    "lease_runtimes",
+    "leasable_runtimes",
     "leased_runtimes",
     "ops_config",
     "ops_run",
@@ -400,4 +524,5 @@ __all__ = [
     "run_leased",
     "settle",
     "take",
+    "unoffered",
 ]
