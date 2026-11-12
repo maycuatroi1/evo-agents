@@ -73,11 +73,11 @@ def summary(messages: list[dict]) -> list[dict]:
 
 
 def _digest_after(corpus: Corpus, runs: list[tuple[str, list[dict]]]) -> str:
-    db = sqlite3.connect(":memory:")
-    db.executescript(SCHEMA)
-    for run_id, records in runs:
-        corpus.merge(records, run_id, db)
-    return corpus.state_digest(db)
+    with contextlib.closing(sqlite3.connect(":memory:")) as db:
+        db.executescript(SCHEMA)
+        for run_id, records in runs:
+            corpus.merge(records, run_id, db)
+        return corpus.state_digest(db)
 
 
 def _truncated_listing(source: dict, harness: Harness | None, env, items: int, tmp: Path) -> Check:
