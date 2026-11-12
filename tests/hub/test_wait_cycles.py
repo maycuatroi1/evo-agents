@@ -10,8 +10,12 @@ the work with wait #1119 to @ea-lead, whose session went on as #4982 and asked @
 
 from __future__ import annotations
 
-from evo_agents.hub.server import wait_cycles
-from evo_agents.hub.server.wait_cycles import Edge, Node
+import pytest
+
+pytest.importorskip("sqlalchemy")  # wait_cycles reads the waits with SQLAlchemy: a core install has none
+
+from evo_agents.hub.server import wait_cycles  # noqa: E402
+from evo_agents.hub.server.wait_cycles import Edge, Node  # noqa: E402
 
 RESUMED_BEFORE = {4565: 4573, 4575: 4980}  # when the Orchestrator #4980 reassigned
 RESUMED_AFTER = {**RESUMED_BEFORE, 4573: 4982, 4574: 4984}

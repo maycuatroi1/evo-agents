@@ -13,12 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from evo_agents.worker import daemon_cleanup
-from evo_agents.worker.home import DISK_RESERVE_GB, WorkerConfig, WorkerHome
-
 pytest.importorskip("aiohttp")
 
+from evo_agents.worker import daemon_cleanup  # noqa: E402
 from evo_agents.worker.daemon import Daemon  # noqa: E402
+from evo_agents.worker.home import DISK_RESERVE_GB, WorkerConfig, WorkerHome  # noqa: E402
 
 GIT = {"GIT_AUTHOR_NAME": "a", "GIT_AUTHOR_EMAIL": "a@b", "GIT_COMMITTER_NAME": "a", "GIT_COMMITTER_EMAIL": "a@b"}
 
