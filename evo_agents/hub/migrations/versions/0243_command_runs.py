@@ -1,7 +1,7 @@
 """Command runs: a run of kind ``command``, the shell command line of a cron job a worker runs with no agent.
 
-Revision ID: 0242
-Revises: 0241
+Revision ID: 0243
+Revises: 0242
 Create Date: 2026-11-12
 
 Plan hub-cron-jobs, criterion a5 (``evo_agents.hub.command_runs``). runs_kind_check takes ``command``. A command run
@@ -16,8 +16,8 @@ Going back deletes the command runs, retries first, and puts the checks as they 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0242"
-down_revision = "0241"
+revision = "0243"
+down_revision = "0242"
 branch_labels = None
 depends_on = None
 

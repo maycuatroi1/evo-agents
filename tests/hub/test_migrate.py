@@ -6072,13 +6072,13 @@ def _command_run(ids, **extra):
     return insert(runs).values(row | extra).returning(runs.c.id)
 
 
-def test_0242_takes_command_runs_of_at_most_240_minutes_and_going_back_deletes_them(hub_db):
-    move_to(hub_db, "0241")
+def test_0243_takes_command_runs_of_at_most_240_minutes_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0242")
     with live.connect(hub_db) as conn:
         ids = seed(conn)
-        with pytest.raises(errors.CheckViolation):  # no command run before 0242
+        with pytest.raises(errors.CheckViolation):  # no command run before 0243
             conn.execute(_command_run(ids))
-    move_to(hub_db, "0242")
+    move_to(hub_db, "0243")
     with live.connect(hub_db) as conn:
         first = one(conn, _command_run(ids, repos=[{"repo": "harness"}]))
         one(conn, _command_run(ids, attempt=2, parent_run_id=first, timeout_s=14400))
@@ -6092,6 +6092,6 @@ def test_0242_takes_command_runs_of_at_most_240_minutes_and_going_back_deletes_t
                 conn.execute(bad)
 
     # Going back deletes the command runs, the retry first; the rest stays.
-    move_to(hub_db, "0241", down=True)
+    move_to(hub_db, "0242", down=True)
     assert query(hub_db, select(hub_tables.runs.c.id, hub_tables.runs.c.kind)) == [(author, "author")]
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0242") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0243") :]
