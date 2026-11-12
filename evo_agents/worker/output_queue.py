@@ -136,6 +136,19 @@ class OutputQueue:
         """The bytes of the file of ``item``; OSError when they are gone."""
         return (self.files / str(item.entry.get("file"))).read_bytes()
 
+    def size(self, item: Item) -> int:
+        """The bytes of the file of ``item``: 0 for a scan, or when they are gone."""
+        if not item.entry.get("file"):
+            return 0
+        try:
+            return (self.files / str(item.entry["file"])).stat().st_size
+        except OSError:
+            return 0
+
+    def pending_bytes(self) -> int:
+        """The bytes of the files of the items waiting."""
+        return sum(self.size(item) for item in self.items())
+
     def finish(self, item: Item, answer: dict | None = None) -> None:
         """Take ``item`` out, with its file; ``answer`` is kept for the command that waits on it."""
         if item.waits and answer is not None:

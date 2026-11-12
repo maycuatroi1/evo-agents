@@ -10,20 +10,28 @@ its agent made that the run's readers see on the hub.
   the run's outputs) gets a line saying why in place of its link, and a limit is said once in a ``system`` event.
 - The files the agent left in the run's .evo-run/outputs/ (``outputs.OUTPUTS_DIR``, under the agent's directory: in
   the run's checkout, or above the worktrees of a plan run), as outputs of source outputs named by their path below
-  it, when the agent reports a step (``worker step`` puts a scan in the queue) and when the run ends (``settle``,
-  ``close``). Each file goes once: SENT_FILE, next to the directory, keeps the size, the time and the SHA-256 of each
-  file sent, so a file is sent again only when its bytes changed, and a run that resumes a parked one in the same
-  directory sends only what is new. Links, hidden files and folders, and files over the limit are left out.
+  it. The daemon looks at the directory every LOOK_EVERY seconds while the run runs, and puts a new file once its size
+  and time are those of the look before (one the agent still writes waits); it puts every file new or changed when
+  the agent reports a step (``worker step`` puts a scan in the queue) and when the run ends (``settle``, ``close``).
+  Each file goes once: SENT_FILE, next to the directory, keeps the size, the time and the SHA-256 of each file sent,
+  so a file is sent again only when its bytes changed (at a step or at the end, never by a look while running), and a
+  run that resumes a parked one in the same directory sends only what is new. Links, hidden files and folders, and
+  files over the limit are left out.
 
 A loop of its own sends the queue in batches (at most ``outputs.MAX_BATCH`` items, BATCH_BYTES of bytes, one item per
-SHA-256): the presigned PUTs of what the project lacks, the bytes, then the outputs, each with its upload. A file of
-text (``outputs.is_text``) goes through the redaction of the run's events first (``credentials.scrub``, the values of
-the leases the daemon holds). A hub that does not answer holds nothing up: the items wait on disk and go with the
-backoff of the worker. A refusal is never a failure of the run: a batch the hub refuses is sent again one item at a
-time, and an item it refuses is a ``system`` event of the run (an image of a tool only once per limit); the hub
-refusing the run's outputs altogether (404, 403) stops them for the run. The end of the run waits END_GRACE seconds
-for the queue to empty before its last report, and CLOSE_GRACE more once the run is over here; what is left then
-stays on this worker, which the cleanup of the run's state removes.
+SHA-256), the files a command waits on first, then the smaller before the larger: past a limit, or out of time, what
+is left out is a few large files, not hundreds of small ones. A batch is the presigned PUTs of what the project lacks,
+the bytes, then the outputs, each with its upload. A file of text (``outputs.is_text``) goes through the redaction of
+the run's events first (``credentials.scrub``, the values of the leases the daemon holds). A hub that does not answer
+holds nothing up: the items wait on disk and go with the backoff of the worker. A refusal is never a failure of the
+run: a batch the hub refuses is sent again one item at a time, and an item it refuses is a ``system`` event of the
+run, an image of a tool only once per limit, and a file past a limit of the run as a whole (``outputs_per_run``,
+``bytes_per_run``) only once for the run; the hub refusing the run's outputs altogether (404, 403) stops them for the
+run. The end of the run waits for the queue to empty before its last report, END_GRACE seconds at least and longer
+when what is left needs it at the rate the hub took the run's uploads (ASSUMED_RATE before the first, RATE_MARGIN
+over it), and CLOSE_GRACE more at least once the run is over here; the two wait MOST_GRACE at most together, and the
+daemon's hard stop waits for nothing. What is left then stays on this worker, which the cleanup of the run's state
+removes, and is said in one ``system`` event.
 """
 
 from __future__ import annotations
@@ -49,9 +57,14 @@ if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
 
 POLL = 0.5  # seconds between looks at the queue, unless something pokes it
-END_GRACE = 60.0  # seconds the end of a run waits for its outputs, before its last report
-CLOSE_GRACE = 30.0  # seconds more once the run is over here
+LOOK_EVERY = 30.0  # seconds between looks at .evo-run/outputs/ while the run runs
+END_GRACE = 60.0  # seconds the end of a run waits for its outputs at least, before its last report
+CLOSE_GRACE = 30.0  # seconds more at least once the run is over here
+MOST_GRACE = 600.0  # seconds the two wait at most together, however much is left
+ASSUMED_RATE = 1 * outputs.MiB  # bytes a second the hub takes, until the run has measured it
+RATE_MARGIN = 1.5  # the wait for what is left is this many times what the measured rate needs
 BATCH_BYTES = 64 * outputs.MiB
+SIZE_LIMITS = ("outputs_per_run", "bytes_per_run")  # the limits of a run as a whole, said once
 SENT_FILE = "outputs-sent.json"  # in .evo-run/, next to outputs/
 HASH_CHUNK = 1024 * 1024
 GONE = (401, 403, 404)  # the hub takes no outputs of the run: the run is not this worker's, or the hub is older
@@ -118,9 +131,16 @@ class Outputs:
         self.closing = False
         self.task: asyncio.Task | None = None
         self.backoff = Backoff()
+        self.looked: dict[str, list[int]] = {}  # name -> [size, mtime_ns] of a new file at the last look while running
+        self.next_look = 0.0  # loop time of the next look at .evo-run/outputs/ while the run runs
+        self.put_bytes = 0  # bytes uploaded, and the seconds the batches that uploaded them took: the hub's rate
+        self.put_seconds = 0.0
+        self.waited = 0.0  # seconds the end of the run waited for the queue
+        self.full: str | None = None  # the limit of the run as a whole the hub refused an output past, said once
 
     def start(self) -> None:
         if self.task is None:
+            self.next_look = asyncio.get_running_loop().time() + LOOK_EVERY
             self.task = asyncio.create_task(self._loop())
 
     def poke(self) -> None:
@@ -180,9 +200,12 @@ class Outputs:
 
     # .evo-run/outputs/
 
-    def _scan(self) -> tuple[int, list[str]]:
+    def _scan(self, running: bool = False) -> tuple[int, list[str]]:
         """Put each file of the run's .evo-run/outputs/ not sent before, or changed since, in the queue: how many, and
-        the notes for the run's log. Runs in a thread: it reads and hashes the files."""
+        the notes for the run's log. Runs in a thread: it reads and hashes the files.
+
+        ``running``, a look while the run runs, puts only a new file whose size and time are those of the look before
+        it: one the agent may still write waits, and one sent and changed since waits for the next step or the end."""
         worktree = self.run.worktree
         base = Path(worktree) / outputs.OUTPUTS_DIR if worktree is not None else None
         if base is None or not base.is_dir():
@@ -201,6 +224,10 @@ class Outputs:
                 seen = sent.get(name)
                 if isinstance(seen, list) and seen[:2] == mark:
                     continue
+                if running:
+                    if isinstance(seen, list) or self.looked.get(name) != mark:
+                        self.looked[name] = mark
+                        continue
                 sha = file_sha256(path)
                 if not (isinstance(seen, list) and seen[2:] == [sha]):
                     notes += self._put_found(name, path, stat.st_size)
@@ -226,8 +253,8 @@ class Outputs:
         self.queue.put_file(path, name=name, media_type=media_type, source=outputs.OUTPUTS)
         return []
 
-    async def scan(self) -> None:
-        put, notes = await asyncio.to_thread(self._scan)
+    async def scan(self, running: bool = False) -> None:
+        put, notes = await asyncio.to_thread(self._scan, running)
         for text in notes:
             self.run.note(text)
         if put:
@@ -235,38 +262,63 @@ class Outputs:
 
     # The end of the run
 
+    def rate(self) -> float:
+        """Bytes a second the hub took the run's uploads at, ASSUMED_RATE before the first."""
+        if self.put_bytes <= 0 or self.put_seconds <= 0:
+            return ASSUMED_RATE
+        return self.put_bytes / self.put_seconds
+
+    async def _wait(self, floor: float, most: float) -> None:
+        """Wait for the queue to empty: ``floor`` seconds, or as long as sending what the wait began with takes at
+        the run's rate (RATE_MARGIN over it), at most ``most``; the hard stop of the daemon ends it at once. What the
+        wait began with is what it sent since and what is left, the files the last scan adds included, so the end
+        does not move while the hub does not answer."""
+        loop = asyncio.get_running_loop()
+        started, put = loop.time(), self.put_bytes
+        deadline, checked = started + floor, started - 1.0
+        stop = self.run.daemon.hard_stop
+        try:
+            while self.queue.pending() and self.task is not None and not self.task.done() and not stop.is_set():
+                now = loop.time()
+                if now - checked >= 1.0 or now >= deadline:  # the queue's sizes on disk, once a second
+                    checked = now
+                    needed = (self.put_bytes - put + self.queue.pending_bytes()) / self.rate() * RATE_MARGIN
+                    deadline = started + min(max(floor, needed), max(floor, most))
+                if now >= deadline:
+                    return
+                await asyncio.sleep(0.05)
+        finally:
+            self.waited += loop.time() - started
+
     async def settle(self, grace: float = END_GRACE) -> None:
-        """At the end of the run, before its last report: scan .evo-run/outputs/, and wait at most ``grace`` seconds
-        for the queue to empty."""
+        """At the end of the run, before its last report: scan .evo-run/outputs/, and wait for the queue to empty, at
+        least ``grace`` seconds, longer as what is left needs at the run's rate, at most MOST_GRACE."""
         if self.task is None or self.task.done():
             return
         with contextlib.suppress(OSError):
             self.queue.put_scan()
         self.poke()
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + grace
-        stop = self.run.daemon.hard_stop
-        while self.queue.pending() and loop.time() < deadline and not self.task.done() and not stop.is_set():
-            await asyncio.sleep(0.05)
+        await self._wait(grace, MOST_GRACE)
 
     async def close(self, grace: float = CLOSE_GRACE) -> None:
-        """The run is over here: a last scan, at most ``grace`` seconds more for the queue, then the loop ends; what is
-        left is said in the run's log."""
+        """The run is over here: a last scan, at least ``grace`` seconds more for the queue, longer as what is left
+        needs while the end's wait (``settle``) has not used MOST_GRACE, then the loop ends; what is left is said in
+        the run's log. ``grace`` 0, at the daemon's hard stop, waits for nothing."""
         if self.task is None:
             return
         with contextlib.suppress(OSError):
             self.queue.put_scan()
         self.closing = True
         self.poke()
-        with contextlib.suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(asyncio.shield(self.task), grace)
+        await self._wait(grace, max(grace, MOST_GRACE - self.waited) if grace > 0 else 0.0)
         if not self.task.done():
             self.task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await self.task
-        left = self.queue.pending()
+        left = sum(1 for item in self.queue.items() if not item.scan)  # a scan left undone is no output
         if left:
-            self.run.note(f"{left} output(s) of the run were not sent: the hub did not take them in time.", left=left)
+            text = f"{left} output(s) of the run were not sent: the hub did not take them in the {self.waited:.0f}s"
+            self.run.note(f"{text} the end of the run waited.", left=left)
 
     # Sending
 
@@ -284,9 +336,15 @@ class Outputs:
                 await asyncio.wait_for(self.poked.wait(), delay)
 
     async def _round(self) -> float:
-        """Send what the queue holds; the seconds to wait before the next round."""
+        """Send what the queue holds, the files a command waits on first, then the smaller before the larger; the
+        seconds to wait before the next round. Every LOOK_EVERY seconds while the run runs, look at its
+        .evo-run/outputs/ first."""
         if not self.settings_read:
             await self._read_settings()
+        now = asyncio.get_running_loop().time()
+        if not self.closing and self.refused is None and now >= self.next_look:
+            self.next_look = now + LOOK_EVERY
+            await self.scan(running=True)
         files = []
         for item in self.queue.items():
             if item.scan:
@@ -296,6 +354,7 @@ class Outputs:
                 self._drop(item, self.refused, said=True)
             else:
                 files.append(item)
+        files.sort(key=lambda item: (not item.waits, self.queue.size(item)))  # stable: same size, the order put
         if files and not await self._send_all(files):
             return self.backoff.next()
         self.backoff.reset()
@@ -375,7 +434,16 @@ class Outputs:
 
     async def _upload(self, batch: list[tuple[Item, dict, bytes]]) -> list[dict]:
         """The uploads of what the project lacks, then the outputs recorded, in order; once more when the project lost
-        bytes in between (409)."""
+        bytes in between (409). A call that uploaded bytes counts them and its whole time in the run's rate."""
+        loop = asyncio.get_running_loop()
+        started, put = loop.time(), self.put_bytes
+        try:
+            return await self._upload_once(batch)
+        finally:
+            if self.put_bytes > put:
+                self.put_seconds += loop.time() - started
+
+    async def _upload_once(self, batch: list[tuple[Item, dict, bytes]]) -> list[dict]:
         hub = self.run.daemon.hub
         data_of = {entry["sha256"]: data for _, entry, data in batch}
         for attempt in (1, 2):
@@ -386,6 +454,7 @@ class Outputs:
                 for ticket in answer.get("uploads") or []:
                     await hub.put(ticket["url"], data_of[ticket["sha256"]])
                     uploads[ticket["sha256"]] = ticket["upload_id"]
+                    self.put_bytes += len(data_of[ticket["sha256"]])
             except (KeyError, TypeError, AttributeError):
                 raise Refused("the hub's answer of the uploads does not read") from None
             entries = [{**entry, "upload_id": uploads.get(entry["sha256"])} for _, entry, _ in batch]
@@ -424,16 +493,29 @@ class Outputs:
                     return False
             return True
         item, entry, _ = batch[0]
+        detail = exc.payload.get("detail") if isinstance(exc.payload, dict) else None
+        limit = detail[0].get("limit") if isinstance(detail, list) and detail and isinstance(detail[0], dict) else None
         if entry["source"] == outputs.TOOL:
-            detail = exc.payload.get("detail") if isinstance(exc.payload, dict) else None
-            limit = (
-                detail[0].get("limit") if isinstance(detail, list) and detail and isinstance(detail[0], dict) else None
-            )
             self._limit(str(limit or exc.status), str(exc))
+            self._drop(item, str(exc), said=True)
+        elif exc.status == 413 and limit in SIZE_LIMITS:
+            self._full(str(limit), entry["name"], str(exc))
             self._drop(item, str(exc), said=True)
         else:
             self._drop(item, str(exc))
         return True
+
+    def _full(self, limit: str, name: str, text: str) -> None:
+        """The hub refused file ``name`` past a limit of the run as a whole: said once in the run's log, as the files
+        after it that do not fit are refused the same way."""
+        if self.full is None:
+            self.full = limit
+            self.run.note(
+                f"Outputs past the run's limit on the hub are not sent, {name} the first of them: {text}. The run's "
+                "log names no other one left out.",
+                limit=limit,
+                output=name,
+            )
 
     def _drop(self, item: Item, why: str, *, said: bool = False) -> None:
         """Take ``item`` out unsent, with ``why`` for the command that waits on it, and in the run's log unless it was
