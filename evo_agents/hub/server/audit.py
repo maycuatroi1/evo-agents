@@ -203,6 +203,14 @@ SYSTEM_DELETE = "system.delete"  # an admin deleted it with its revisions
 SYSTEM_DEFAULT = "system.default"  # an admin made it the project's default system (plan hub-steward)
 SYSTEM_OPS_PAUSE = "system.ops-pause"  # an admin paused its ops: closed batches open no thread
 SYSTEM_OPS_RESUME = "system.ops-resume"  # an admin resumed them
+# A project's cron jobs (evo_agents.hub.server.cron_jobs), in the project; the target is
+# "<project> cron=<name> revision=<n>", never a prompt or a command line.
+CRON_CREATE = "cron.create"  # a writer of the project made a cron job, at revision 1
+CRON_UPDATE = "cron.update"  # its owner stored a new revision of it
+CRON_DELETE = "cron.delete"  # its owner or an admin deleted it with its fires
+CRON_PAUSE = "cron.pause"  # its owner or an admin paused it
+CRON_RESUME = "cron.resume"  # its owner or an admin resumed it
+CRON_RUN = "cron.run"  # its owner or an admin fired it now
 # Account pools (evo_agents.hub.server.account_pools), in the project; the target is "<project> account-pool:<id>", with
 # " secret:<id>" for an account added or removed and " agent:@<handle>" for an agent attached, never a name of an
 # account or a value.

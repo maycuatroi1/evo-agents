@@ -127,6 +127,7 @@ WRITES_REFUSED = (
             rf"{_PROJECT}/runs$",
             rf"{_PROJECT}/plan-runs",
             rf"{_PROJECT}/author-runs",
+            rf"{_PROJECT}/cron-jobs",  # a cron job starts runs as its owner
             rf"{_RUN}/(?:rerun|messages)",
             rf"{_PROJECT}/local-runs/[^/]+/inbox",
             r"/v1/x/editorial/[^/]+/posts/[^/]+/run",

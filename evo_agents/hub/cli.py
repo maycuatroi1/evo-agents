@@ -340,6 +340,10 @@ def _register_workspace_commands(hsub) -> None:
 
     register_systems(hsub)
 
+    from evo_agents.hub.cli_cron import register as register_cron
+
+    register_cron(hsub)
+
     from evo_agents.hub.cli_chats import register_chats
 
     register_chats(hsub)

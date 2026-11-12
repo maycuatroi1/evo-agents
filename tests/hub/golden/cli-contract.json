@@ -5447,6 +5447,527 @@
         "schema": "CrmContactDetail"
       }
     },
+    "hub cron delete": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "deleted"
+        ],
+        "schema": "CronJobDeleted"
+      }
+    },
+    "hub cron fires": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 50
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "scheduled_for",
+          "manual",
+          "actor",
+          "outcome",
+          "reason",
+          "run_id",
+          "created_at",
+          "handled_at"
+        ],
+        "schema": "CronFireOut"
+      }
+    },
+    "hub cron list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "project",
+          "name",
+          "cron",
+          "timezone",
+          "kind",
+          "agent",
+          "chat_id",
+          "prompt",
+          "plan",
+          "command",
+          "repo",
+          "timeout_minutes",
+          "owner",
+          "revision",
+          "paused",
+          "paused_at",
+          "paused_by",
+          "paused_reason",
+          "next_fire_at",
+          "last_fire",
+          "cost_24h_usd",
+          "can_change",
+          "can_manage",
+          "created_at",
+          "updated_at",
+          "updated_by"
+        ],
+        "schema": "CronJobOut"
+      }
+    },
+    "hub cron pause": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "name",
+          "cron",
+          "timezone",
+          "kind",
+          "agent",
+          "chat_id",
+          "prompt",
+          "plan",
+          "command",
+          "repo",
+          "timeout_minutes",
+          "owner",
+          "revision",
+          "paused",
+          "paused_at",
+          "paused_by",
+          "paused_reason",
+          "next_fire_at",
+          "last_fire",
+          "cost_24h_usd",
+          "can_change",
+          "can_manage",
+          "created_at",
+          "updated_at",
+          "updated_by"
+        ],
+        "schema": "CronJobOut"
+      }
+    },
+    "hub cron resume": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "name",
+          "cron",
+          "timezone",
+          "kind",
+          "agent",
+          "chat_id",
+          "prompt",
+          "plan",
+          "command",
+          "repo",
+          "timeout_minutes",
+          "owner",
+          "revision",
+          "paused",
+          "paused_at",
+          "paused_by",
+          "paused_reason",
+          "next_fire_at",
+          "last_fire",
+          "cost_24h_usd",
+          "can_change",
+          "can_manage",
+          "created_at",
+          "updated_at",
+          "updated_by"
+        ],
+        "schema": "CronJobOut"
+      }
+    },
+    "hub cron run": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "scheduled_for",
+          "manual",
+          "actor",
+          "outcome",
+          "reason",
+          "run_id",
+          "created_at",
+          "handled_at"
+        ],
+        "schema": "CronFireOut"
+      }
+    },
+    "hub cron set": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--cron"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--tz"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--prompt"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--chat"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--plan"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--command"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--timeout"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "name",
+          "cron",
+          "timezone",
+          "kind",
+          "agent",
+          "chat_id",
+          "prompt",
+          "plan",
+          "command",
+          "repo",
+          "timeout_minutes",
+          "owner",
+          "revision",
+          "paused",
+          "paused_at",
+          "paused_by",
+          "paused_reason",
+          "next_fire_at",
+          "last_fire",
+          "cost_24h_usd",
+          "can_change",
+          "can_manage",
+          "created_at",
+          "updated_at",
+          "updated_by",
+          "created",
+          "changed"
+        ],
+        "schema": "CronJobWritten"
+      }
+    },
+    "hub cron show": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "name",
+          "cron",
+          "timezone",
+          "kind",
+          "agent",
+          "chat_id",
+          "prompt",
+          "plan",
+          "command",
+          "repo",
+          "timeout_minutes",
+          "owner",
+          "revision",
+          "paused",
+          "paused_at",
+          "paused_by",
+          "paused_reason",
+          "next_fire_at",
+          "last_fire",
+          "cost_24h_usd",
+          "can_change",
+          "can_manage",
+          "created_at",
+          "updated_at",
+          "updated_by"
+        ],
+        "schema": "CronJobOut"
+      }
+    },
     "hub curator change close": {
       "positionals": [
         {
@@ -28911,7 +29432,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.63.3"
+      "version": "0.63.6"
     },
     "paths": {
       "/v1/health": {
@@ -84232,6 +84753,744 @@
           }
         }
       },
+      "/v1/projects/{project}/cron-jobs": {
+        "get": {
+          "tags": [
+            "cron-jobs"
+          ],
+          "summary": "List Cron Jobs",
+          "description": "The cron jobs of the project, by name, with their next fire, last fire and cost in 24 hours.",
+          "operationId": "list_cron_jobs_v1_projects__project__cron_jobs_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CronJobOut"
+                    },
+                    "title": "Response List Cron Jobs V1 Projects  Project  Cron Jobs Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/cron-jobs/{name}": {
+        "get": {
+          "tags": [
+            "cron-jobs"
+          ],
+          "summary": "Show Cron Job",
+          "description": "One cron job.",
+          "operationId": "show_cron_job_v1_projects__project__cron_jobs__name__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "description": "the job's name",
+                "title": "Name"
+              },
+              "description": "the job's name"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CronJobOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "cron-jobs"
+          ],
+          "summary": "Put Cron Job",
+          "description": "Create the cron job, owned by the caller, or store what it starts as its next revision.",
+          "operationId": "put_cron_job_v1_projects__project__cron_jobs__name__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "description": "the job's name",
+                "title": "Name"
+              },
+              "description": "the job's name"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CronJobPut"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CronJobWritten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CronJobConflict"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "cron-jobs"
+          ],
+          "summary": "Delete Cron Job",
+          "description": "Delete a cron job with its fires; its runs stay.",
+          "operationId": "delete_cron_job_v1_projects__project__cron_jobs__name__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "description": "the job's name",
+                "title": "Name"
+              },
+              "description": "the job's name"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CronJobDeleted"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/cron-jobs/{name}/fires": {
+        "get": {
+          "tags": [
+            "cron-jobs"
+          ],
+          "summary": "Cron Job Fires",
+          "description": "The fires of a cron job, the latest due first.",
+          "operationId": "cron_job_fires_v1_projects__project__cron_jobs__name__fires_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "description": "the job's name",
+                "title": "Name"
+              },
+              "description": "the job's name"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 500,
+                "minimum": 1,
+                "description": "at most this many fires",
+                "default": 50,
+                "title": "Limit"
+              },
+              "description": "at most this many fires"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/CronFireOut"
+                    },
+                    "title": "Response Cron Job Fires V1 Projects  Project  Cron Jobs  Name  Fires Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/cron-jobs/{name}/pause": {
+        "post": {
+          "tags": [
+            "cron-jobs"
+          ],
+          "summary": "Pause Cron Job",
+          "description": "Pause a cron job: it does not fire until resumed.",
+          "operationId": "pause_cron_job_v1_projects__project__cron_jobs__name__pause_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "description": "the job's name",
+                "title": "Name"
+              },
+              "description": "the job's name"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CronJobPause"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CronJobOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/cron-jobs/{name}/resume": {
+        "post": {
+          "tags": [
+            "cron-jobs"
+          ],
+          "summary": "Resume Cron Job",
+          "description": "Resume a paused cron job: it fires from its next minute on.",
+          "operationId": "resume_cron_job_v1_projects__project__cron_jobs__name__resume_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "description": "the job's name",
+                "title": "Name"
+              },
+              "description": "the job's name"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CronJobOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/cron-jobs/{name}/run": {
+        "post": {
+          "tags": [
+            "cron-jobs"
+          ],
+          "summary": "Run Cron Job",
+          "description": "Fire a cron job now: a fire due at this moment, which the hub handles as any fire.",
+          "operationId": "run_cron_job_v1_projects__project__cron_jobs__name__run_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+                "description": "the job's name",
+                "title": "Name"
+              },
+              "description": "the job's name"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CronFireOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/agents/{handle}/accounts/{name}": {
         "put": {
           "tags": [
@@ -124446,6 +125705,844 @@
             "happened_at"
           ],
           "title": "CrmTouchpoint"
+        },
+        "CronFireOut": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "scheduled_for": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Scheduled For",
+              "description": "the minute it was due; for run now, the moment it was pressed"
+            },
+            "manual": {
+              "type": "boolean",
+              "title": "Manual",
+              "description": "someone pressed run now"
+            },
+            "actor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor",
+              "description": "who pressed run now; null for a fire of the schedule"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "started",
+                    "busy",
+                    "missed",
+                    "refused"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "started a run; busy: the run of a fire before was still queued or running; missed: the hub was down at its minute; refused, with the reason; null until the hub handled it"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run it started"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "handled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handled At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "scheduled_for",
+            "manual",
+            "actor",
+            "outcome",
+            "reason",
+            "run_id",
+            "created_at",
+            "handled_at"
+          ],
+          "title": "CronFireOut"
+        },
+        "CronJobConflict": {
+          "properties": {
+            "error": {
+              "type": "string",
+              "title": "Error"
+            },
+            "message": {
+              "type": "string",
+              "title": "Message"
+            },
+            "request_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Request Id"
+            },
+            "detail": {
+              "anyOf": [
+                {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Detail"
+            },
+            "current": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CronJobOut"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the job as the hub holds it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "error",
+            "message"
+          ],
+          "title": "CronJobConflict"
+        },
+        "CronJobDeleted": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "deleted": {
+              "type": "string",
+              "title": "Deleted"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "deleted"
+          ],
+          "title": "CronJobDeleted"
+        },
+        "CronJobOut": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "cron": {
+              "type": "string",
+              "title": "Cron",
+              "description": "five fields: minute, hour, day of month, month, day of week"
+            },
+            "timezone": {
+              "type": "string",
+              "title": "Timezone",
+              "description": "the IANA time zone its cron reads in"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "plan",
+                "command"
+              ],
+              "title": "Kind",
+              "description": "agent: a message to an agent in a new thread; plan: a plan run; command: a shell"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "kind agent: the handle of the agent it messages"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id",
+              "description": "kind agent: the chat of its threads; null: the owner's direct chat"
+            },
+            "prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prompt",
+              "description": "kind agent: the message"
+            },
+            "plan": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan",
+              "description": "kind plan: the plan it runs"
+            },
+            "command": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Command",
+              "description": "kind command: the shell command line"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "kind command: the repo it runs in; null: an empty directory"
+            },
+            "timeout_minutes": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timeout Minutes",
+              "description": "kind command: how long it may run"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of who made it: its runs run as them"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "paused": {
+              "type": "boolean",
+              "title": "Paused"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At"
+            },
+            "paused_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused By",
+              "description": "who paused it; null when the hub did, or it runs"
+            },
+            "paused_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused Reason"
+            },
+            "next_fire_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Next Fire At",
+              "description": "its next minute, in UTC; null while paused"
+            },
+            "last_fire": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CronFireOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cost_24h_usd": {
+              "type": "number",
+              "title": "Cost 24H Usd",
+              "description": "what the runs of its fires cost in the last 24 hours"
+            },
+            "can_change": {
+              "type": "boolean",
+              "title": "Can Change",
+              "description": "the caller may change what it starts: its owner, holding writer"
+            },
+            "can_manage": {
+              "type": "boolean",
+              "title": "Can Manage",
+              "description": "the caller may pause, resume, fire and delete it: its owner, or an admin"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "updated_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated By"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "name",
+            "cron",
+            "timezone",
+            "kind",
+            "agent",
+            "chat_id",
+            "prompt",
+            "plan",
+            "command",
+            "repo",
+            "timeout_minutes",
+            "owner",
+            "revision",
+            "paused",
+            "paused_at",
+            "paused_by",
+            "paused_reason",
+            "next_fire_at",
+            "last_fire",
+            "cost_24h_usd",
+            "can_change",
+            "can_manage",
+            "created_at",
+            "updated_at",
+            "updated_by"
+          ],
+          "title": "CronJobOut"
+        },
+        "CronJobPause": {
+          "properties": {
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why, shown with the pause"
+            }
+          },
+          "type": "object",
+          "title": "CronJobPause"
+        },
+        "CronJobPut": {
+          "properties": {
+            "cron": {
+              "type": "string",
+              "title": "Cron",
+              "description": "five fields: minute, hour, day of month, month, day of week"
+            },
+            "timezone": {
+              "type": "string",
+              "title": "Timezone",
+              "description": "an IANA time zone, such as Asia/Ho_Chi_Minh",
+              "default": "UTC"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "plan",
+                "command"
+              ],
+              "title": "Kind"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "kind agent: the handle of an agent of the project"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id",
+              "description": "kind agent: a chat of yours; none: your direct chat with the agent"
+            },
+            "prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prompt",
+              "description": "kind agent: the message"
+            },
+            "plan": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan",
+              "description": "kind plan: a plan of the project"
+            },
+            "command": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Command",
+              "description": "kind command: the shell command line"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "kind command: a repo of the project; none: an empty directory"
+            },
+            "timeout_minutes": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timeout Minutes",
+              "description": "kind command: 1 to 240 minutes (30)"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision",
+              "description": "the revision it is at now; none or 0 creates it, and is 409 when it exists"
+            }
+          },
+          "type": "object",
+          "required": [
+            "cron",
+            "kind"
+          ],
+          "title": "CronJobPut"
+        },
+        "CronJobWritten": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "cron": {
+              "type": "string",
+              "title": "Cron",
+              "description": "five fields: minute, hour, day of month, month, day of week"
+            },
+            "timezone": {
+              "type": "string",
+              "title": "Timezone",
+              "description": "the IANA time zone its cron reads in"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "plan",
+                "command"
+              ],
+              "title": "Kind",
+              "description": "agent: a message to an agent in a new thread; plan: a plan run; command: a shell"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "kind agent: the handle of the agent it messages"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id",
+              "description": "kind agent: the chat of its threads; null: the owner's direct chat"
+            },
+            "prompt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prompt",
+              "description": "kind agent: the message"
+            },
+            "plan": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan",
+              "description": "kind plan: the plan it runs"
+            },
+            "command": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Command",
+              "description": "kind command: the shell command line"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "kind command: the repo it runs in; null: an empty directory"
+            },
+            "timeout_minutes": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timeout Minutes",
+              "description": "kind command: how long it may run"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of who made it: its runs run as them"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "paused": {
+              "type": "boolean",
+              "title": "Paused"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At"
+            },
+            "paused_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused By",
+              "description": "who paused it; null when the hub did, or it runs"
+            },
+            "paused_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused Reason"
+            },
+            "next_fire_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Next Fire At",
+              "description": "its next minute, in UTC; null while paused"
+            },
+            "last_fire": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CronFireOut"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cost_24h_usd": {
+              "type": "number",
+              "title": "Cost 24H Usd",
+              "description": "what the runs of its fires cost in the last 24 hours"
+            },
+            "can_change": {
+              "type": "boolean",
+              "title": "Can Change",
+              "description": "the caller may change what it starts: its owner, holding writer"
+            },
+            "can_manage": {
+              "type": "boolean",
+              "title": "Can Manage",
+              "description": "the caller may pause, resume, fire and delete it: its owner, or an admin"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "updated_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated By"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created"
+            },
+            "changed": {
+              "type": "boolean",
+              "title": "Changed",
+              "description": "false when the hub held exactly this: no revision was added"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "name",
+            "cron",
+            "timezone",
+            "kind",
+            "agent",
+            "chat_id",
+            "prompt",
+            "plan",
+            "command",
+            "repo",
+            "timeout_minutes",
+            "owner",
+            "revision",
+            "paused",
+            "paused_at",
+            "paused_by",
+            "paused_reason",
+            "next_fire_at",
+            "last_fire",
+            "cost_24h_usd",
+            "can_change",
+            "can_manage",
+            "created_at",
+            "updated_at",
+            "updated_by",
+            "created",
+            "changed"
+          ],
+          "title": "CronJobWritten"
         },
         "CrossRead": {
           "properties": {

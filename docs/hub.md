@@ -1267,6 +1267,75 @@ holds it to the last run of the chain of resumed runs it awaits) are found by th
 answered with the last message of the run it awaits, which wakes it, and both runs get a `system` event that starts
 with `Wait cycle broken:` and names the runs of the cycle.
 
+## Cron jobs
+
+A cron job is a schedule of a project that starts work as its owner: a message to an agent in a new thread, a run of
+a plan, or a shell command. The hub keeps the jobs in Postgres (`cron_jobs`, migration 0242), with each fire of a job
+in `cron_fires`.
+
+A job has:
+
+- a name, unique in the project, which the CLI uses to find it (lowercase letters, digits and hyphens, up to 63);
+- a cron of five fields (minute, hour, day of month, month, day of week) and an IANA time zone in which the cron is
+  read, so `0 9 * * 1-5` in `Asia/Ho_Chi_Minh` fires at 09:00 there on weekdays;
+- one kind of work:
+  - `agent`: an agent of the project, a prompt, and the chat its threads go in (none means the owner's direct chat
+    with the agent);
+  - `plan`: a plan of the project;
+  - `command`: a shell command line, the repo of the project it runs in (none means an empty directory), and a time
+    limit of 1 to 240 minutes (30 by default);
+- an owner (its creator, whose account its runs use), a revision, and a pause: when, by whom and why.
+
+`evo_agents.hub.cron` is the single helper for reading a cron, checking its zone and finding its next fire, using
+croniter. The hub refuses with 422 and the reason:
+
+- a cron that is not five fields croniter reads;
+- an alias such as `@daily` or a hashed `H`;
+- a cron that never fires (`0 0 30 2 *`);
+- an unknown time zone;
+- an agent or plan job whose cron fires more often than every 15 minutes;
+- a command job whose cron fires more often than every 5 minutes;
+- work that names an agent, plan, repo or chat the project or the caller does not have.
+
+Each fire is one row per job and scheduled minute (`cron_fires_job_id_scheduled_for_key`). Its outcome is
+`started`, `busy` (the run of an earlier fire was still queued or running), `missed` (the hub was down at that
+minute) or `refused`, with a reason and the run it started. The outcome stays empty until the hub handles the fire.
+"Run now" records a fire whose scheduled time is the moment of the press, marked `manual` with who pressed it. A run
+that a fire queued carries `runs.cron_job_id`. The hub uses that link to count a job as busy and to sum, in the list,
+what its runs cost in the last 24 hours.
+
+Who may do what:
+
+- Every member of the project reads its jobs and their fires.
+- A writer creates jobs and manages their own: changes, pauses, resumes, runs and deletes them.
+- An admin of the project may pause, resume, run and delete anyone's job. An admin does not change the work another
+  person's job starts, because it runs as that person.
+- A run's token is refused writes here, as for other routes that start runs.
+
+| Route | Command | Who |
+| --- | --- | --- |
+| `GET /v1/projects/{p}/cron-jobs`, with next fire, last fire and cost in 24 hours | `hub cron list` | a member |
+| `GET .../cron-jobs/{name}` | `hub cron show NAME` | a member |
+| `PUT .../cron-jobs/{name}` `{cron, timezone, kind, ..., if_revision}` | `hub cron set NAME --cron C ...` | a writer; its owner to change it |
+| `POST .../cron-jobs/{name}/pause` `{reason}`, `.../resume` | `hub cron pause\|resume NAME` | its owner, or an admin |
+| `POST .../cron-jobs/{name}/run` | `hub cron run NAME` | its owner, or an admin |
+| `GET .../cron-jobs/{name}/fires` (`?limit=N`), the latest first | `hub cron fires NAME [--limit N]` | a member |
+| `DELETE .../cron-jobs/{name}`, with its fires; its runs stay | `hub cron delete NAME` | its owner, or an admin |
+
+`PUT` without `if_revision` (or with 0) creates the job and returns 409 when it exists. With `if_revision`, the work
+replaces that revision, or the hub returns 409 `revision_conflict` with the job as it holds it now. Sending what the
+hub already holds adds no revision (`changed: false`). Pause and resume leave the revision as it is. `hub cron set`
+reads the job first, keeps the flags you do not pass and sends the revision it read. The list gives each job's next
+fire, in UTC, computed in the job's time zone. The audit rows `cron.create`, `cron.update`, `cron.delete`,
+`cron.pause`, `cron.resume` and `cron.run` name `<project> cron=<name> revision=<n>`. For example:
+
+```sh
+evo-agents hub cron set standup --project northwind --cron '0 9 * * 1-5' --tz Asia/Ho_Chi_Minh --agent lumen-pm --prompt 'Post the standup summary'
+evo-agents hub cron set nightly-tests --project northwind --cron '30 2 * * *' --command 'make test' --repo lumen-api
+evo-agents hub cron pause nightly-tests --project northwind --reason 'flaky runner'
+evo-agents hub cron fires standup --project northwind
+```
+
 ## Group chats
 
 A group chat holds people and the agents of projects (`evo_agents/hub/chats.py`). A signed-in member creates one with a

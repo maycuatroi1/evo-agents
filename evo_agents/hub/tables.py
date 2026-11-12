@@ -41,6 +41,7 @@ from evo_agents.hub import (
     tables_browser,
     tables_context,
     tables_credentials,
+    tables_cron,
     tables_curator,
     tables_decisions,
     tables_delivery,
@@ -864,3 +865,5 @@ release_schedules, release_cycles, release_runs, release_tags, release_checks = 
     metadata, runs, RUN_ACTIVE
 )
 ops_cursors, ops_batches, ops_items = tables_ops.ops_tables(metadata)  # the queue of operations events (0240)
+cron_jobs, cron_fires = tables_cron.cron_tables(metadata)  # the cron jobs of a project and their fires (0242)
+tables_cron.cron_columns(runs)  # the cron job whose fire queued a run (0242)
