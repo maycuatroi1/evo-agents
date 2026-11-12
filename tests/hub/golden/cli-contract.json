@@ -7158,6 +7158,100 @@
         "schema": "Probe"
       }
     },
+    "hub curator probe edit": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--commit"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--task"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--task-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--verify"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "proposal_id",
+          "change_id",
+          "repo",
+          "commit",
+          "task",
+          "verify",
+          "state",
+          "source",
+          "created_by",
+          "created_run_id",
+          "retired_at",
+          "retired_note",
+          "created_at",
+          "updated_at",
+          "replaces",
+          "plugin",
+          "ref"
+        ],
+        "schema": "Probe"
+      }
+    },
     "hub curator probe list": {
       "positionals": [],
       "options": [
@@ -7277,6 +7371,45 @@
           "replacements"
         ],
         "schema": "ProbeWeekly"
+      }
+    },
+    "hub curator probe requeue": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "probe_id",
+          "week",
+          "requeued",
+          "kept"
+        ],
+        "schema": "ProbeRequeue"
       }
     },
     "hub curator probe retire": {
@@ -60730,6 +60863,101 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/Probe"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/probes/{probe_id}/requeue": {
+        "post": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Requeue Probe",
+          "description": "Measure an active probe again this ISO week: its rows of the week that are stale, failed or unmeasured go back to\nqueued with no attempt, for the next night; the project's admins alone may.",
+          "operationId": "requeue_probe_v1_projects__project__curator_probes__probe_id__requeue_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "probe_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Probe Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProbeRequeue"
                   }
                 }
               }
@@ -158945,7 +159173,7 @@
             "created_at"
           ],
           "title": "ProbeReplacement",
-          "description": "A probe a review run wrote in place of one not reproduced two weeks in a row (criterion a5)."
+          "description": "A probe a review run wrote in place of one not reproduced, or stale, two weeks in a row (criterion a5)."
         },
         "ProbeReport": {
           "properties": {
@@ -158973,7 +159201,23 @@
                 }
               ],
               "title": "Harness Sha",
-              "description": "the tip of the default branch of the change's repo arm on runs with"
+              "description": "the commit of the change's repo arm on runs with"
+            },
+            "arms_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "tip",
+                    "change"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Arms At",
+              "description": "tip: arm on at the tip of the default branch, arm off that tip less the change's diff; change: the diff no longer comes off the tip, so arm on at the change's commit and arm off at the one before it. None from a worker that names none, which ran at the tip"
             },
             "session": {
               "anyOf": [
@@ -158997,13 +159241,51 @@
                 }
               ],
               "title": "Stale",
-              "description": "why arm off cannot be made: the probe is stale for the week"
+              "description": "why the arms cannot be made: the probe is stale for the week"
             }
           },
           "additionalProperties": false,
           "type": "object",
           "title": "ProbeReport",
-          "description": "A session's result with the commits the arms run from; or why the change's diff no longer comes off the tip of\nthe default branch (``stale``)."
+          "description": "A session's result with the commits the arms run from and where (``arms_at``); or why the arms cannot be made,\nneither at the tip of the default branch nor at the change's commits (``stale``)."
+        },
+        "ProbeRequeue": {
+          "properties": {
+            "probe_id": {
+              "type": "integer",
+              "title": "Probe Id"
+            },
+            "week": {
+              "type": "string",
+              "format": "date",
+              "title": "Week",
+              "description": "the Monday of the ISO week in progress, in the charter's time zone"
+            },
+            "requeued": {
+              "items": {
+                "$ref": "#/components/schemas/ProbeRun"
+              },
+              "type": "array",
+              "title": "Requeued",
+              "description": "the rows put back to queued, with no attempt: the next night runs them"
+            },
+            "kept": {
+              "items": {
+                "$ref": "#/components/schemas/ProbeRun"
+              },
+              "type": "array",
+              "title": "Kept",
+              "description": "the week's other rows of the probe, queued, running or done, as they were"
+            }
+          },
+          "type": "object",
+          "required": [
+            "probe_id",
+            "week",
+            "requeued",
+            "kept"
+          ],
+          "title": "ProbeRequeue"
         },
         "ProbeRetire": {
           "properties": {
@@ -159122,6 +159404,22 @@
                 }
               ],
               "title": "Harness Sha"
+            },
+            "arms_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "tip",
+                    "change"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Arms At",
+              "description": "where the arms ran: tip or change; null without a session, and for a plugin's probe"
             },
             "sessions": {
               "items": {
@@ -159499,7 +159797,8 @@
             },
             "reason": {
               "type": "string",
-              "title": "Reason"
+              "title": "Reason",
+              "description": "why it has no probe; for a change that places a file a probe arm places, whether it was born of a correction"
             }
           },
           "type": "object",
@@ -159511,7 +159810,7 @@
             "reason"
           ],
           "title": "ProbeUnprobed",
-          "description": "A merged change born of a correction that has no active probe."
+          "description": "A merged change with no active probe that changes a file a probe arm places (``probes.probe_paths``), or that was\nborn of a correction (its evidence cites ``corrections`` of the night's figures); the reason says which."
         },
         "ProbeWeek": {
           "properties": {
@@ -159673,6 +159972,22 @@
               "title": "Run Id",
               "description": "the probe run that measured it last"
             },
+            "arms_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "tip",
+                    "change"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Arms At",
+              "description": "where its arms ran: tip (arm on at the tip of the default branch, arm off that tip less the change's diff) or change (the diff no longer came off the tip: arm on at the change's commit, arm off at the one before it); null when the week has no session of it, and for a plugin's rule"
+            },
             "plugin": {
               "anyOf": [
                 {
@@ -159799,7 +160114,7 @@
               },
               "type": "array",
               "title": "Unprobed",
-              "description": "merged changes born of a correction without an active probe"
+              "description": "merged changes without an active probe that change a file a probe arm places, or that were born of a correction, the newest first"
             },
             "fixes": {
               "items": {
@@ -159815,7 +160130,7 @@
               },
               "type": "array",
               "title": "Replacements",
-              "description": "the probes written in place of probes not reproduced two weeks in a row"
+              "description": "the probes written in place of probes not reproduced, or stale, two weeks in a row"
             }
           },
           "type": "object",

@@ -7,8 +7,9 @@ tip less the change's diff (on claude-code the repo's .claude/settings.json and 
 the session's directory); the agent given the task alone; a trace of the commands the agent ran and the files it
 changed written after its turn, read-only, and named to the verify, which runs as code the worker does not trust; each
 session posted with the run's key, the runtime and the model it ran on; 1/2k of the run's caps for each session; no
-event that carries the verify; nothing pushed; and a change whose diff no longer comes off the tip stale, without an
-agent."""
+event that carries the verify; nothing pushed. Plan probes-measure-both-arms: a change whose diff no longer comes off
+the tip has both arms made at its own commits (``arms_at`` change), and a probe whose arms neither the tip nor the
+change's commits make is stale, without an agent."""
 
 from __future__ import annotations
 
@@ -144,6 +145,7 @@ def test_probe_run_runs_k_sessions_of_each_arm_and_posts_each_with_its_key(machi
     assert all(
         item["base_sha"] == found_commits["base"] and item["harness_sha"] == found_commits["tip"] for item in sent
     )
+    assert {item["arms_at"] for item in sent} == {"tip"}
     assert [item["session"]["passed"] for item in sent] == [True, False, True, False]
     for item in sent:
         session = item["session"]
@@ -178,11 +180,50 @@ def test_probe_run_runs_k_sessions_of_each_arm_and_posts_each_with_its_key(machi
     assert hub.judge_refused == []
 
 
-def test_probe_run_of_a_change_whose_diff_no_longer_comes_off_is_stale_without_an_agent(machine):  # noqa: F811
+def test_probe_run_arms_at_the_change_when_its_diff_no_longer_comes_off_the_tip(machine):  # noqa: F811
+    """AGENTS.md rewritten on main after the change: arm on runs at the merge commit, arm off at its first parent, and
+    each session says so (arms_at change)."""
+    found_commits = history(machine, rewrite=True)
+    names = ["on-1", "off-1"]
+    keys = ["probe", "probe/2"]
+    machine.scenarios(
+        {key: [look(machine, name), ACT, {"say": "Done."}] for key, name in zip(keys, names, strict=True)}
+    )
+    spec = curator(found_commits, k=1)
+    spec["probe"]["verify"] = spec["probe"]["verify"].format(out=machine.tmp)
+    found = {}
+
+    async def body(hub, daemon):
+        run_id = hub.queue_probe_run([{"repo": "alpha", "branch": None}], spec, budget=BUDGET)
+        assert await hub.wait_state(run_id, "done", "failed", timeout=60) == "done", hub.texts(run_id)
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, body)
+    hub, run_id = found["hub"], found["run"]
+    sent = hub.probes
+    assert [item["session"]["arm"] for item in sent] == ["on", "off"]
+    assert all(item["arms_at"] == "change" and "stale" not in item for item in sent)
+    assert all(item["harness_sha"] == found_commits["merge"] for item in sent)
+    assert [item["session"]["passed"] for item in sent] == [True, False]
+    # arm on has the rule as the merge commit had it, arm off the harness of its first parent, the tip's rewrite in none
+    for name in names:
+        agents = seen(machine, name, "agents")
+        assert (RULE in agents) == name.startswith("on"), (name, agents)
+        assert "rules v2" not in agents
+        assert ("guard.sh" in seen(machine, name, "hooks")) == name.startswith("on")
+    events = json.dumps(hub.runs[run_id]["events"])
+    assert f"no longer comes off main at {found_commits['tip'][:12]}" in events
+    assert f"so arm on is at {found_commits['merge'][:12]}" in events
+
+
+def test_probe_run_arms_at_neither_the_tip_nor_the_change_is_stale_without_an_agent(machine):  # noqa: F811
+    """The change's diff no longer comes off the tip and origin has neither its merge commit nor its head: stale, with
+    why, and no agent runs."""
     found_commits = history(machine, rewrite=True)
     machine.scenarios({"probe": [{"say": "never"}]})
     spec = curator(found_commits)
     spec["probe"]["verify"] = spec["probe"]["verify"].format(out=machine.tmp)
+    spec["probe"]["merge_sha"] = "f" * 40
     found = {}
 
     async def body(hub, daemon):
@@ -194,7 +235,8 @@ def test_probe_run_of_a_change_whose_diff_no_longer_comes_off_is_stale_without_a
     hub, run_id = found["hub"], found["run"]
     (sent,) = hub.probes
     assert set(sent) == {"run_id", "stale"}
-    assert "the change's diff no longer comes off main" in sent["stale"]
+    assert "neither at main less the change's diff nor at the change's commits" in sent["stale"]
+    assert "no merge commit ffffffffffff" in sent["stale"]
     starts = machine.starts() if machine.starts_path.exists() else []
     assert [item for item in starts if item["run"] == run_id] == []
     assert hub.runs[run_id]["summary"].startswith("Nothing probed: the probe is stale this week")

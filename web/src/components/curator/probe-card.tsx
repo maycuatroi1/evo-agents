@@ -64,7 +64,7 @@ function ResultLine({ result }: { result: ProbeWeekResult }) {
           </dd>
         </div>
       </dl>
-      <ResultNotes status={result.status} previous={result.previous} reason={result.reason} />
+      <ResultNotes status={result.status} previous={result.previous} reason={result.reason} armsAt={result.arms_at} />
     </div>
   );
 }

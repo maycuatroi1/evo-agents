@@ -1,18 +1,23 @@
-"""``evo-agents hub curator probe list|show|add|retire|report``: the probes of the Curator's proposals and changes
-(``evo_agents.hub.probes``; GET, POST .../curator/probes, POST .../curator/probes/{id}/retire and GET
-.../curator/probe-report).
+"""``evo-agents hub curator probe list|show|add|edit|retire|requeue|report``: the probes of the Curator's proposals and
+changes (``evo_agents.hub.probes``; GET, POST .../curator/probes, PATCH .../curator/probes/{id}, POST
+.../curator/probes/{id}/retire, POST .../curator/probes/{id}/requeue and GET .../curator/probe-report).
 
 ``probe list`` lists the probes the caller may read, newest first, by ``--change``, ``--proposal`` and ``--state``,
 a core plugin's probe with its plugin and rule key (RULE, ``plugin:ref``);
 ``probe show`` prints one. Their verify is the answer key: the hub sends it to the project's admins alone, and prints
 ``(hidden)`` for the others. ``probe add`` (admins) adds one to ``--change`` or ``--proposal``: the ``--repo``, the base
 ``--commit`` (none: the tip of the default branch), the task (``--task``, or ``--task-file``, ``-`` for stdin) and the
-one-line ``--verify``. ``probe retire`` (admins) retires one, with ``--note``. ``probe report`` prints the weekly report
+one-line ``--verify``. ``probe edit`` (admins) changes the ``--repo``, ``--commit``, task or ``--verify`` of an active
+one, at least one of them. ``probe retire`` (admins) retires one, with ``--note``. ``probe requeue`` (admins) puts the
+rows of the ISO week in progress of an active probe that are stale, failed or unmeasured back to queued with no attempt,
+so that the next night measures them again, and prints the rows it requeued and those it kept. ``probe report`` prints the weekly report
 of ``--weeks`` ISO weeks, the newest first (the week of ``--week``, default the one in progress): each week's cost
 against ``probes.budget_usd``, each probe on each runtime and model, arm on and arm off (failed of sessions), its
-status and the week before's (``--json`` adds each arm's 1 - pass^k, ``recurrence``); then the changes born of a
-correction that have no probe, with why, the fix proposals of recurring probes with their state, and the probes
-written in place of probes not reproduced.
+status and the week before's, and where its arms ran (ARMS AT: ``tip``, the tip of the default branch, or ``change``,
+the change's own commits when its diff no longer comes off the tip; ``--json`` adds each arm's 1 - pass^k,
+``recurrence``); then the merged changes with no active probe
+whose proposal changes a file a probe arm places, or born of a correction, with why, the fix proposals of recurring probes with their state, and the probes
+written in place of probes not reproduced or stale.
 
 The project is ``--project``, or ``hub.project`` in the harness.yaml around the current directory. ``--json`` prints
 what the hub answered, with the keys declared next to the flag. Standard library only, like the client.
@@ -51,6 +56,10 @@ PROBE_KEYS = (
     "ref",
 )
 PROBE = returns_object(*PROBE_KEYS, schema="Probe")
+
+
+REQUEUE = returns_object("probe_id", "week", "requeued", "kept", schema="ProbeRequeue")
+EDITED = ("repo", "commit", "verify")  # with the task, what ``probe edit`` may change
 
 
 REPORT_KEYS = ("project", "k", "budget_usd", "weeks", "unprobed", "fixes", "replacements")
@@ -153,6 +162,45 @@ def cmd_probe_add(args) -> int:
 
 
 @client_command
+def cmd_probe_edit(args) -> int:
+    body = {key: getattr(args, key) for key in EDITED if getattr(args, key) is not None}
+    if args.task is not None or args.task_file is not None:
+        body["task"] = _task(args)
+    if not body:
+        raise HubError("give at least one of --repo, --commit, --task, --task-file or --verify")
+    hub, _ = signed_in()
+    found = hub.call("PATCH", _path(project_of_args(args), str(args.id)), body)
+    if args.json:
+        print_json(found)
+        return 0
+    print(f"edited probe #{found['id']}: {', '.join(sorted(body))}")
+    return 0
+
+
+def _run_words(item: dict) -> str:
+    model = f" {item['model']}" if item.get("model") else ""
+    return f"  {item['runtime']}{model}: {item['state']}"
+
+
+@client_command
+def cmd_probe_requeue(args) -> int:
+    hub, _ = signed_in()
+    found = hub.call("POST", _path(project_of_args(args), str(args.id), "requeue"), {})
+    if args.json:
+        print_json(found)
+        return 0
+    week = found["week"]
+    print(f"probe #{found['probe_id']}, the week of {week}: {len(found['requeued'])} row(s) requeued")
+    for item in found["requeued"]:
+        print(_run_words(item))
+    if found["kept"]:
+        print(f"kept as they are: {len(found['kept'])}")
+        for item in found["kept"]:
+            print(_run_words(item))
+    return 0
+
+
+@client_command
 def cmd_probe_retire(args) -> int:
     hub, _ = signed_in()
     body = {"note": args.note} if args.note else {}
@@ -198,14 +246,20 @@ def cmd_probe_report(args) -> int:
                 f"{item['off']['failed']}/{item['off']['runs']}",
                 item["status"],
                 item["previous"] or "-",
+                item.get("arms_at") or "-",
             )
             for item in week["probes"]
         ]
         if rows:
-            table(("PROBE", "CHANGE", "RULE", "MODEL", "ON FAILED", "OFF FAILED", "STATUS", "WEEK BEFORE"), rows)
+            table(
+                ("PROBE", "CHANGE", "RULE", "MODEL", "ON FAILED", "OFF FAILED", "STATUS", "WEEK BEFORE", "ARMS AT"),
+                rows,
+            )
+        if any(item.get("arms_at") == "change" for item in week["probes"]):
+            print("ARMS AT change: the change's diff no longer comes off the tip, so its arms ran at its own commits")
     if found["unprobed"]:
         print()
-        print(f"changes born of a correction without a probe: {len(found['unprobed'])}")
+        print(f"changes without a probe a probe could measure, or born of a correction: {len(found['unprobed'])}")
         for item in found["unprobed"]:
             print(f"  #{item['change_id']} {item['title']}: {item['reason']}")
     for fix in found["fixes"]:
@@ -216,7 +270,7 @@ def cmd_probe_report(args) -> int:
 
 
 def register_probe(csub, with_project) -> None:
-    """``curator probe list|show|add|retire|report``."""
+    """``curator probe list|show|add|edit|retire|requeue|report``."""
     probe = csub.add_parser("probe", help="the probes of the Curator's proposals and changes")
     psub = probe.add_subparsers(dest="probe_command", required=True, metavar="COMMAND")
 
@@ -251,12 +305,34 @@ def register_probe(csub, with_project) -> None:
     json_option(added, PROBE)
     added.set_defaults(func=cmd_probe_add)
 
+    edited = psub.add_parser(
+        "edit", help="change an active probe's repo, commit, task or verify (the project's admins)"
+    )
+    with_project(edited)
+    edited.add_argument("id", type=int)
+    edited.add_argument("--repo", help="the repo of the project the task runs in")
+    edited.add_argument("--commit", help="the base commit")
+    task = edited.add_mutually_exclusive_group()
+    task.add_argument("--task", help="the task text the agent is given")
+    task.add_argument("--task-file", metavar="PATH", help="a file holding the task text; - for stdin")
+    edited.add_argument("--verify", help="one shell line that exits 0 when the agent does not repeat the mistake")
+    json_option(edited, PROBE)
+    edited.set_defaults(func=cmd_probe_edit)
+
     retired = psub.add_parser("retire", help="retire a probe (the project's admins)")
     with_project(retired)
     retired.add_argument("id", type=int)
     retired.add_argument("--note", help="why it is retired")
     json_option(retired, PROBE)
     retired.set_defaults(func=cmd_probe_retire)
+
+    requeued = psub.add_parser(
+        "requeue", help="measure an active probe again this week: its stale, failed or unmeasured rows (admins)"
+    )
+    with_project(requeued)
+    requeued.add_argument("id", type=int)
+    json_option(requeued, REQUEUE)
+    requeued.set_defaults(func=cmd_probe_requeue)
 
     report = psub.add_parser("report", help="the weekly report of the probes: arm on and off, status, cost")
     with_project(report)

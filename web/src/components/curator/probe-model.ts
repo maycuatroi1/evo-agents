@@ -19,6 +19,11 @@ export function flaggedCounts(week: ProbeWeek): { status: FlaggedStatus; count: 
   return FLAGGED.map((status) => ({ status, count: week.totals[status] })).filter((item) => item.count > 0);
 }
 
+/** How many of a week's results ran their arms at the change's own commits, its diff no longer coming off the tip. */
+export function armsAtChange(week: ProbeWeek): number {
+  return week.probes.filter((item) => item.arms_at === "change").length;
+}
+
 export function flaggedTotal(week: ProbeWeek): number {
   return FLAGGED.reduce((sum, status) => sum + week.totals[status], 0);
 }

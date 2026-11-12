@@ -192,6 +192,27 @@ def test_probe_run_that_ends_short_is_queued_again_once_then_fails_with_why(worl
     assert night(world, NIGHT + timedelta(days=2)).get("probe") is None
 
 
+def test_probe_run_arms_at_is_where_the_first_session_ran_and_a_new_run_starts_it_afresh(world):
+    """Plan probes-measure-both-arms, a2: the row keeps the arms_at of its first session (change: the worker made the
+    arms at the change's commits), a later run of the row starts with none, and a session that names none ran at the
+    tip, as an older worker's did."""
+    probing(world)
+    spec = probe_run(world)
+    key = spec["curator"]["probe_key"]
+    assert report(world, spec["id"], {**session("on", 1), "arms_at": "elsewhere"}, key).status_code == 422
+    first = report(world, spec["id"], {**session("on", 1), "harness_sha": MERGE, "arms_at": "change"}, key)
+    assert first.status_code == 200, first.text
+    assert (first.json()["arms_at"], first.json()["harness_sha"]) == ("change", MERGE)
+    second = report(world, spec["id"], {**session("off", 1), "arms_at": "tip"}, key)
+    assert second.status_code == 200 and second.json()["arms_at"] == "change"
+    moved(world.client, world.worker, spec["id"], "failed", error="the agent crashed")
+    again = probe_run(world, NIGHT + timedelta(days=1))
+    (row,) = rows(world)
+    assert (row.state, row.sessions, row.arms_at) == ("running", [], None)
+    found = report(world, again["id"], session("on", 1), again["curator"]["probe_key"])
+    assert found.status_code == 200 and found.json()["arms_at"] == "tip"
+
+
 def test_probe_run_takes_the_pair_measured_longest_ago_first(world):
     probe = probing(world, models=(OPUS, SONNET))
     pw = tables.curator_probe_runs

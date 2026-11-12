@@ -3129,8 +3129,12 @@ the probe's repo and of the change's, with no hook or fsmonitor of either, and r
   run's directory (`scratch/`), which arm `off` runs with. The files are the harness files a replay places (AGENTS.md,
   CLAUDE.md, a skill's files) and, on claude-code, the repo's `.claude/settings.json` and `.claude/hooks/`.
 
-When the change places no such file, or its diff no longer comes off the tip, the daemon posts the probe as stale,
-with why, and the run ends `done` without an agent.
+When the change's diff no longer comes off the tip (its rule was edited since), the daemon makes both arms at the
+change's own commits instead: arm `on` at its merge commit (else its head), arm `off` at its first parent (else its
+merge base). Each session it posts says where its arms ran, `arms_at`: `tip` or `change`. When the change places no
+such file, or neither the tip nor the change's commits make the arms (a commit the checkout no longer has), the daemon
+posts the probe as stale, with why, and the run ends `done` without an agent. An admin who fixes the probe
+(`evo-agents hub curator probe edit`) can measure it again the same week with `evo-agents hub curator probe requeue`.
 
 Each session then gets a directory of its own under the run's (`on-1/`, `off-1/`, `on-2/`, ...; the arms take turns),
 laid out as a replay arm's: a new repository of the probe's repo at the base commit, the harness files of the change

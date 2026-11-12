@@ -11,7 +11,7 @@ import { renderVi } from "@/test/render";
 import en from "../../../messages/en.json";
 
 import { ProbeCard } from "./probe-card";
-import { flaggedCounts, flaggedTotal, isFlagged, reportShown, taskLine, weeksOfProbe } from "./probe-model";
+import { armsAtChange, flaggedCounts, flaggedTotal, isFlagged, reportShown, taskLine, weeksOfProbe } from "./probe-model";
 import { type Probe, probeKeys, PROBE_WEEKS, type ProbeWeek, type ProbeWeekly, type ProbeWeekResult } from "./probe-queries";
 import { ProbeReport } from "./probe-report";
 
@@ -38,6 +38,7 @@ function result(probe: number, status: ProbeWeekResult["status"], extra: Partial
     previous: null,
     reason: null,
     run_id: 90 + probe,
+    arms_at: "tip",
     ...extra,
   };
 }
@@ -71,7 +72,7 @@ const REPORT: ProbeWeekly = {
     week("2026-10-19", false, [
       result(1, "recurring", { previous: "holds" }),
       result(2, "holds"),
-      result(3, "unmeasured", { on: ARM_NONE, off: ARM_NONE, k: null, reason: "not measured yet this week", run_id: null }),
+      result(3, "unmeasured", { on: ARM_NONE, off: ARM_NONE, k: null, reason: "not measured yet this week", run_id: null, arms_at: null }),
     ]),
     week("2026-10-12", true, [result(1, "holds"), result(2, "holds")]),
   ],
@@ -151,6 +152,7 @@ describe("ProbeReport", () => {
     expect(within(weeks[0]!).getByTestId("probe-week-flags")).toHaveTextContent("2 results flagged");
     expect(within(weeks[1]!).queryByTestId("probe-week-flags")).toBeNull();
     expect(within(panel).getByTestId("probe-week-summary")).toHaveTextContent("3 results1 recurring1 not measured$1.20 of $5.00 spent");
+    expect(within(panel).queryByTestId("probe-week-arms-at")).toBeNull();
 
     const rows = within(panel).getAllByTestId("probe-result");
     expect(rows).toHaveLength(3);
@@ -174,6 +176,20 @@ describe("ProbeReport", () => {
     expect(within(panel).getAllByTestId("probe-week").map((item) => item.getAttribute("aria-pressed"))).toEqual(["false", "true"]);
     expect(within(panel).getAllByTestId("probe-result")).toHaveLength(2);
     expect(within(panel).queryAllByTestId("probe-flag")).toHaveLength(0);
+  });
+
+  it("notes the arms_at of a result whose arms ran at the change's commits, and counts them in the week's summary", () => {
+    const latest = REPORT.weeks[0]!;
+    const atChange = week("2026-10-19", false, [result(1, "holds", { arms_at: "change" }), ...latest.probes.slice(1)]);
+    expect(armsAtChange(latest)).toBe(0);
+    expect(armsAtChange(atChange)).toBe(1);
+    renderEn(withData(<ProbeReport project="demo" />, { ...REPORT, weeks: [atChange, REPORT.weeks[1]!] }));
+    const panel = screen.getByTestId("probe-report");
+    expect(within(panel).getByTestId("probe-week-arms-at")).toHaveTextContent("1 ran at the change's commits");
+    const [changed, tip] = within(panel).getAllByTestId("probe-result") as [HTMLElement, HTMLElement];
+    expect(within(changed).getByTestId("probe-arms-at")).toHaveTextContent("Ran at the change's own commits");
+    expect(within(changed).queryByTestId("probe-flag")).toBeNull();
+    expect(within(tip).queryByTestId("probe-arms-at")).toBeNull();
   });
 
   it("shows nothing for a project whose charter runs no probe and that has nothing to list", () => {

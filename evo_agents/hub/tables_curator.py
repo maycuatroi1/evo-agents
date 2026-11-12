@@ -415,7 +415,8 @@ def probe_run_tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -
         Column("attempts", SmallInteger, nullable=False, server_default="0"),
         Column("probe_key", Text),  # SHA-256 of the key the claim of its run handed the daemon
         Column("base_sha", Text),  # the commit of the task's repo the sessions started from
-        Column("harness_sha", Text),  # the tip of the default branch of the change's repo arm on ran with
+        Column("harness_sha", Text),  # the commit of the change's repo arm on ran with
+        Column("arms_at", Text),  # tip | change: where the arms ran (0246); None without a session, or a plugin's
         Column("sessions", JSONB, nullable=False, server_default="[]"),  # each session's result, as reported
         Column("reason", Text),
         _stamp("created_at"),

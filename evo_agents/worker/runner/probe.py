@@ -10,8 +10,12 @@ of the default branch's first-parent line that was its tip when the probe was ma
 the change's repo, which arm on runs with; and a commit of the change's repo whose tree is that tip less the change's
 diff (its merge commit against its first parent, else its head against its merge base), applied in reverse in an index
 of its own, which arm off runs with. The diff taken off is that of the files a probe arm places
-(``probes.placed_paths``). A change that places no such file, or whose diff no longer comes off the tip, makes the probe
-stale for the week: the worker posts why and the run ends done without an agent.
+(``probes.placed_paths``). When that diff no longer comes off the tip (a later commit changed the lines around it), both
+arms run at the change's own commits instead: arm on at its merge commit (else its head), arm off at its first parent
+(else the merge base), with the same files placed. Each session's result names where the arms ran (``arms_at``: tip or
+change), and a note of the run says it. A change that places no such file, or that lacks its merge commit, the parent
+of it or its head, makes the probe stale for the week, as a probe lacking its base commit does: the worker posts why
+and the run ends done without an agent.
 
 A core plugin's probe of a rule of its own (the claim's ``arms``, ``plugin`` and ``ref``) has no change: both arms start
 at the base commit of the probe's repo, arm on with the files the plugin rendered with the rule and arm off with those
@@ -80,7 +84,8 @@ class SessionFigures(ArmFigures):
 
 
 class ProbeRun(ReplayRun):
-    """A probe run: the probe's base commit, the tip of the change's repo and that tip less the change's diff, k
+    """A probe run: the probe's base commit, the tip of the change's repo and that tip less the change's diff (else the
+    change's commit and the one before it), k
     sessions of each arm each in a new repository at the base commit with its agent and the probe's verify run on its
     work and a trace of it, each session's result posted; nothing pushed. It lays its sessions out as a replay run
     lays out its arms."""
@@ -144,13 +149,15 @@ class ProbeRun(ReplayRun):
                 run.check()
                 session = await self.session(cls, arm, index, plan)
                 passed[arm] += session["passed"]
-                await self.post({"base_sha": plan["base"], "harness_sha": plan["refs"]["on"], "session": session})
+                found = {"base_sha": plan["base"], "harness_sha": plan["refs"]["on"], "session": session}
+                await self.post(found | ({"arms_at": plan["arms_at"]} if plan.get("arms_at") else {}))
         words = ", ".join(f"arm {arm} passed {passed[arm]} of {self.k}" for arm in probes.ARMS)
         await self.end(f"Probed #{probe.get('probe_id')} on {run.runtime}: {words}.")
 
     async def read(self, source: Path, harness: Path) -> dict:
-        """``prepare``'s reading of the checkouts ``source`` (the probe's repo) and ``harness`` (the change's); Refused,
-        the probe stale, when arm off cannot be made."""
+        """``prepare``'s reading of the checkouts ``source`` (the probe's repo) and ``harness`` (the change's): the arms
+        at the tip of the default branch, else at the change's commits; Refused, the probe stale, when neither can be
+        made."""
         run, change = self.run, self.change
         base = await self.base_of(source)
         if self.arms is not None:
@@ -160,31 +167,43 @@ class ProbeRun(ReplayRun):
         tip = await files.commit_of(harness, f"refs/remotes/origin/{branch}", self.env)
         if tip is None:
             raise Refused(f"origin of {self.harness_repo} has no {branch}")
-        new, old = await self.diff_of(harness, tip)
+        try:
+            new, old = await self.diff_of(harness, tip)
+        except Refused as exc:
+            raise Refused(
+                f"the arms are made neither at {branch} less the change's diff nor at the change's commits: {exc.reason}"
+            ) from None
         paths = probes.placed_paths(await files.changed_between(harness, old, new, self.env), run.runtime)
         if not paths:
             raise Refused(f"the change places no harness file of {self.harness_repo} a probe on {run.runtime} places")
         try:
             off = await files.without_diff(harness, tip, old, new, paths, self.directory.path / SCRATCH, self.env)
+            on, arms_at = tip, probes.ARMS_AT_TIP
+            where = f"arm on at {tip[:12]} of {branch}, arm off at {off[:12]}, that tip less the change's diff"
         except gitops.GitError as exc:
-            raise Refused(f"the change's diff no longer comes off {branch} at {tip[:12]} ({exc})") from None
+            on, off, arms_at = new, old, probes.ARMS_AT_CHANGE
+            where = (
+                f"the change's diff no longer comes off {branch} at {tip[:12]} ({cut(str(exc), 300)}), so arm on is at "
+                f"{new[:12]}, the change's commit, and arm off at {old[:12]}, the commit before it"
+            )
         skills = sorted({found for found in map(replay.skill_dir, paths) if found})
         claude = run.runtime == probes.CLAUDE_CODE  # its arms carry the repo's settings and hooks, whole
         whole = set(paths) | ({probes.SETTINGS_FILE} if claude else set())
-        for ref in (tip, off):
+        for ref in (on, off):
             for directory in (*skills, *([probes.HOOKS_DIR] if claude else [])):
                 whole.update(await files.files_under(harness, ref, directory, self.env))
         run.note(
             f"Probe from {base[:12]}, with {len(paths)} file(s) of the change ({', '.join(paths[:5])}"
-            f"{', ...' if len(paths) > 5 else ''}): arm on at {tip[:12]} of {branch}, arm off at {off[:12]}, that tip "
-            "less the change's diff.",
+            f"{', ...' if len(paths) > 5 else ''}): {where}.",
             base_sha=base,
+            arms_at=arms_at,
         )
         return {
             "base": base,
             "source": source,
             "harness": harness,
-            "refs": {"on": tip, "off": off},
+            "refs": {"on": on, "off": off},
+            "arms_at": arms_at,
             "paths": paths,
             "whole": sorted(whole),
             "skills": skills,

@@ -10,7 +10,7 @@ what looks like a credential becomes ``***``. The verify is the answer key: ``ve
 project's admins, never the agent of a run), and everyone else reads it null.
 
 This module holds the models and what other modules call (``store``, ``attach``, ``of_proposal``); the routes are
-``evo_agents.hub.server.probe_routes``.
+``evo_agents.hub.server.probe_routes`` (add, edit, retire, and requeue, which ``probe_runs.requeue`` does).
 """
 
 from __future__ import annotations

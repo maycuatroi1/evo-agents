@@ -9012,6 +9012,8 @@
       "failed": "{failed} trên {runs} thất bại",
       "notRun": "Chưa chạy",
       "recurrence": "tái phát {share}",
+      "armsAtChange": "Chạy tại chính các commit của thay đổi: diff của nó không còn gỡ được khỏi nhánh mặc định",
+      "armsAtChangeCount": "{count, plural, other {# chạy tại commit của thay đổi}}",
       "previous": "Tuần trước: {status}",
       "word": {
         "holds": "giữ được",

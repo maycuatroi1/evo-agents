@@ -15,7 +15,8 @@ fails with why (``probe_ended``).
 
 The claim of a probe run tells its worker the probe (its repo, base commit, task and verify), the change (its repo,
 merge commit, head and default branch), k, and hands it the run's own key (``probe_claim``), which the hub keeps as a
-SHA-256: the worker posts each session's result, or why the change's diff no longer comes off the default branch's tip
+SHA-256: the worker posts each session's result, with where the arms ran (``arms_at``: tip, else change, which the row
+keeps), or why neither the tip of the default branch less the change's diff nor the change's commits make the arms
 (stale), with POST /v1/worker/runs/{id}/probe and that key alone (``probes.PROBE_KEY_HEADER``). The run's events never
 hold the verify, the answer key, and the agent of a run reads no probe run (``views.agent_reads``).
 """
@@ -89,17 +90,23 @@ class ProbeSession(BaseModel):
 
 
 class ProbeReport(BaseModel):
-    """A session's result with the commits the arms run from; or why the change's diff no longer comes off the tip of
-    the default branch (``stale``)."""
+    """A session's result with the commits the arms run from and where (``arms_at``); or why the arms cannot be made,
+    neither at the tip of the default branch nor at the change's commits (``stale``)."""
 
     model_config = ConfigDict(extra="forbid")
 
     base_sha: str | None = Field(None, pattern=OBJECT_NAME, description="the task's base commit the sessions start at")
     harness_sha: str | None = Field(
-        None, pattern=OBJECT_NAME, description="the tip of the default branch of the change's repo arm on runs with"
+        None, pattern=OBJECT_NAME, description="the commit of the change's repo arm on runs with"
+    )
+    arms_at: Literal[probes.ARMS_AT] | None = Field(
+        None,
+        description="tip: arm on at the tip of the default branch, arm off that tip less the change's diff; change: "
+        "the diff no longer comes off the tip, so arm on at the change's commit and arm off at the one before it. "
+        "None from a worker that names none, which ran at the tip",
     )
     session: ProbeSession | None = None
-    stale: Reason | None = Field(None, description="why arm off cannot be made: the probe is stale for the week")
+    stale: Reason | None = Field(None, description="why the arms cannot be made: the probe is stale for the week")
 
     @model_validator(mode="after")
     def _one(self):
@@ -123,6 +130,9 @@ class ProbeRun(BaseModel):
     attempts: int
     base_sha: str | None
     harness_sha: str | None
+    arms_at: Literal[probes.ARMS_AT] | None = Field(
+        None, description="where the arms ran: tip or change; null without a session, and for a plugin's probe"
+    )
     sessions: list[dict] = Field(description="ProbeSession, in the order they were reported")
     reason: str | None
     created_at: datetime
@@ -264,7 +274,7 @@ async def _queued(conn: AsyncConnection, due, gate, week: date, k: int, found, r
         values |= {"project_id": due.project_id, "probe_id": probe.id, "change_id": probe.change_id, "week": week}
         await conn.execute(pg_insert(pw).values(**values, runtime=runtime, model=model))
     else:
-        values |= {"base_sha": None, "harness_sha": None, "updated_at": func.now()}
+        values |= {"base_sha": None, "harness_sha": None, "arms_at": None, "updated_at": func.now()}
         await conn.execute(update(pw).values(**values).where(pw.c.id == row.id))
     caps = f"cost cap {curator.money(budget['max_usd'])}, {budget['max_seconds'] // 60} minutes of agent time"
     whose = "the change's" if probe.change_id is not None else "the plugin's"
@@ -326,6 +336,48 @@ async def queue_probe(conn: AsyncConnection, due, gate) -> int | None:
         await _queued(conn, due, gate, week, k, found, run_id, budget)
         return run_id
     return None
+
+
+# An admin's requeue
+
+REQUEUED = ("stale", "failed", "unmeasured")  # the states of a week's row an admin puts back to queued
+
+
+class ProbeRequeue(BaseModel):
+    probe_id: int
+    week: date = Field(description="the Monday of the ISO week in progress, in the charter's time zone")
+    requeued: list[ProbeRun] = Field(
+        description="the rows put back to queued, with no attempt: the next night runs them"
+    )
+    kept: list[ProbeRun] = Field(
+        description="the week's other rows of the probe, queued, running or done, as they were"
+    )
+
+
+async def requeue(conn: AsyncConnection, probe_id: int, week: date) -> ProbeRequeue:
+    """Put the rows of probe ``probe_id`` of the ISO week of Monday ``week`` that are stale, failed or unmeasured back
+    to queued, their attempts at 0 and no reason, so that the next night measures them again (``_pairs`` takes a queued
+    row); the sessions a row holds stay until its next run starts. Any other row is kept as it is."""
+    pw = tables.curator_probe_runs
+    rows = (
+        await conn.execute(
+            select(pw.c.id, pw.c.state)
+            .where(pw.c.probe_id == probe_id, pw.c.week == week)
+            .order_by(pw.c.id)
+            .with_for_update()
+        )
+    ).all()
+    again = [row.id for row in rows if row.state in REQUEUED]
+    if again:
+        values = {"state": "queued", "attempts": 0, "reason": None, "probe_key": None, "updated_at": func.now()}
+        await conn.execute(update(pw).values(**values).where(pw.c.id.in_(again)))
+    found = [await _view(conn, row.id) for row in rows]
+    return ProbeRequeue(
+        probe_id=probe_id,
+        week=week,
+        requeued=[item for item in found if item.id in again],
+        kept=[item for item in found if item.id not in again],
+    )
 
 
 # The claim of a probe run
@@ -425,6 +477,8 @@ async def _session(conn: AsyncConnection, row, body: ProbeReport, run_id: int) -
     sessions = [*(row.sessions or []), session.model_dump()]
     values = {"sessions": sessions, "base_sha": row.base_sha or body.base_sha}
     values |= {"harness_sha": row.harness_sha or body.harness_sha, "updated_at": func.now()}
+    if row.change_id is not None:  # a worker that names no arms_at ran the arms at the tip
+        values["arms_at"] = row.arms_at or body.arms_at or probes.ARMS_AT_TIP
     if len(sessions) >= 2 * row.k:
         values |= {"state": "done", "reason": None}
     await conn.execute(update(pw).values(**values).where(pw.c.id == row.id))

@@ -9012,6 +9012,8 @@
       "failed": "{failed} of {runs} failed",
       "notRun": "Not run",
       "recurrence": "recurs {share}",
+      "armsAtChange": "Ran at the change's own commits: its diff no longer comes off the default branch",
+      "armsAtChangeCount": "{count, plural, one {# ran at the change's commits} other {# ran at the change's commits}}",
       "previous": "Last week: {status}",
       "word": {
         "holds": "held",
