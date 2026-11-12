@@ -1,4 +1,4 @@
-import { displayName, kindStyle, nodeLabel } from "./graph";
+import { displayName, kindTone, nodeLabel } from "./graph";
 import { type ExplorerElement, kindsOfMembers, nodeDiameter } from "./explorer";
 import type { GraphEdge, GraphNode, Neighbourhood, NeighbourGroup } from "./types";
 
@@ -100,7 +100,7 @@ export function openGroup(expansions: readonly Expansion[], id: string, key: str
 export function workingElements(set: WorkingSet, hiddenKinds: ReadonlySet<string> = new Set()): ExplorerElement[] {
   const highest = Math.max(0, ...[...set.nodes.values()].map((node) => Math.log1p(node.degree)));
   const nodes: ExplorerElement[] = [...set.nodes.values()].map((node) => {
-    const { tone, shape } = kindStyle(node.kind);
+    const tone = kindTone(node.kind);
     return {
       group: "nodes",
       data: {
@@ -109,7 +109,6 @@ export function workingElements(set: WorkingSet, hiddenKinds: ReadonlySet<string
         name: displayName(node),
         kind: node.kind,
         tone,
-        shape,
         degree: node.degree,
         diameter: nodeDiameter(Math.log1p(node.degree), highest),
         anchor: node.origin === node.id ? undefined : node.origin,

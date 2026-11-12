@@ -1,4 +1,4 @@
-import { displayName, kindStyle, nodeLabel, type Shape, type Tone } from "./graph";
+import { displayName, kindTone, nodeLabel, type Tone } from "./graph";
 import { clusterColour, clusterIndex } from "./map";
 import type { ClusterDetail, ClusterLink, ClusterSummary, MapNode } from "./types";
 
@@ -7,7 +7,7 @@ import type { ClusterDetail, ClusterLink, ClusterSummary, MapNode } from "./type
  * scope reads in the URL, and how the neighbourhoods a reader expands merge into one working set.
  *
  * Three scopes, one canvas. The overview draws the level-1 clusters as circles sized by their members, joined by the
- * links between them; a cluster draws its members inside boxes for its parts (level-2 clusters); a node draws itself
+ * links between them; a cluster draws its parts (level-2 clusters) as discs, a part its members; a node draws itself
  * and its direct neighbours, and each neighbour the reader expands adds its own (./explorer-working.ts). Every scope
  * reads only what the hub sends the reader, so nothing here filters for visibility.
  */
@@ -43,15 +43,15 @@ export function withScope(params: Params & { toString(): string }, scope: Scope)
 /** What the inspector shows: a cluster or a node of the canvas. */
 export type Selection = { type: "cluster"; id: string } | { type: "node"; id: string } | null;
 
-/** One element of the canvas, as Cytoscape takes it; `classes` drive the stylesheet (explorer-style.ts). */
+/** One element of the canvas; `classes` say how it is drawn (./explorer-graph.ts). */
 export type ExplorerElement = {
   group: "nodes" | "edges";
   data: Record<string, string | number | boolean | undefined>;
   classes?: string[];
 };
 
-/** A drawable node's look: the kind's tone and shape, so colour is never the only signal. */
-export type NodeLook = { tone: Tone; shape: Shape };
+/** A drawable node's look: the kind's tone; the kind is in the label's tooltip, the rail and the inspector. */
+export type NodeLook = { tone: Tone };
 
 // -- Overview -----------------------------------------------------------------------------------------------------
 
@@ -185,7 +185,7 @@ export function clusterElements(detail: ClusterDetail, hidden: ReadonlySet<strin
 }
 
 function memberNode(member: MapNode, degree: number, highest: number, hidden: ReadonlySet<string>): ExplorerElement {
-  const { tone, shape } = kindStyle(member.kind);
+  const tone = kindTone(member.kind);
   return {
     group: "nodes",
     data: {
@@ -194,7 +194,6 @@ function memberNode(member: MapNode, degree: number, highest: number, hidden: Re
       name: displayName(member),
       kind: member.kind,
       tone,
-      shape,
       degree,
       diameter: nodeDiameter(degree, highest),
     },

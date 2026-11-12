@@ -18,7 +18,7 @@ import { kgNodeQuery } from "@/lib/kg/queries";
 import { explorerHref, kgHref } from "@/lib/kg/routes";
 import type { Hops, NodeDetail } from "@/lib/kg/types";
 
-import { KindShape, LabelBadge } from "./badges";
+import { KindDot, LabelBadge } from "./badges";
 import { NodeDecisions } from "./decisions";
 import { NeighbourhoodSection } from "./neighbourhood";
 import { NodeEvidence, NodeFacts, NodeRelations } from "./node-details";
@@ -56,7 +56,7 @@ function Node({ project, detail, hops, neighbourhoodError }: { project: string; 
         tags={
           <>
             <Tag data-testid="kg-node-kind">
-              <KindShape kind={node.kind} className="size-3" />
+              <KindDot kind={node.kind} className="size-3" />
               {node.kind}
             </Tag>
             <LabelBadge label={node.label} />

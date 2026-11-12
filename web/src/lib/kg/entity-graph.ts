@@ -2,11 +2,16 @@ import Graph from "graphology";
 
 import type { components } from "@/lib/api/schema";
 
+import { type CanvasEdge, type CanvasNode, restEdgeColour, seedPosition } from "./canvas-graph";
+import type { Theme } from "./canvas-theme";
+import { kindTone } from "./graph";
+
 /**
  * The model of the explorer's Entities view (`/p/{project}/kg?view=entities`), without the renderer: the graph of
  * entities and relations the hub reads for the reader (`/v1/kg/{project}/entity-graph`, `.../entity-graph/around`),
- * merged with the neighbourhoods the reader opens, filtered by type, and turned into a graphology graph that sigma.js
- * draws (components/kg/entity-canvas.tsx). Kept apart from sigma, which needs WebGL, so it runs under vitest's jsdom.
+ * merged with the neighbourhoods the reader opens, filtered by type, and turned into the graphology graph every canvas
+ * of the graph draws (components/kg/sigma-canvas.tsx). Kept apart from sigma, which needs WebGL, so it runs under
+ * vitest's jsdom.
  * Every node and edge here is one the hub sent the reader: nothing filters for visibility.
  */
 type Schemas = components["schemas"];
@@ -146,8 +151,8 @@ export const ENTITY_PALETTE: { light: string; dark: string }[] = [
   { light: "#5b6577", dark: "#9aa6b8" },
 ];
 
-/** The palette index of a kind: its own tone, or one picked from its name for a kind outside the known ones. */
-export function kindTone(kind: string): number {
+/** The palette index of an entity type: its own tone, or one picked from its name for a type outside the known ones. */
+export function entityTone(kind: string): number {
   const known = KIND_TONES[kind];
   if (known !== undefined) return known;
   let hash = 0;
@@ -156,86 +161,51 @@ export function kindTone(kind: string): number {
 }
 
 export function kindColour(kind: string, dark: boolean): string {
-  const tone = ENTITY_PALETTE[kindTone(kind)];
+  const tone = ENTITY_PALETTE[entityTone(kind)];
   return dark ? tone.dark : tone.light;
 }
 
-/** A place in [-1, 1]² picked from the id, so the same graph starts the layout from the same places on every visit. */
-export function seedPosition(id: string): { x: number; y: number } {
-  let a = 2166136261;
-  let b = 5381;
-  for (const char of id) {
-    a = Math.imul(a ^ char.charCodeAt(0), 16777619) >>> 0;
-    b = ((b << 5) + b + char.charCodeAt(0)) >>> 0;
-  }
-  return { x: (a / 0xffffffff) * 2 - 1, y: (b / 0xffffffff) * 2 - 1 };
-}
-
-/** The code kinds, each with a slate of its own: neutral, so no entity type reads as code. */
-export const CODE_TONES: Record<string, { light: string; dark: string }> = {
-  Directory: { light: "#334155", dark: "#cbd5e1" },
-  File: { light: "#52627a", dark: "#a3b1c6" },
-  Symbol: { light: "#72829a", dark: "#7c8aa0" },
-};
-
-export function codeColour(kind: string, dark: boolean): string {
-  const tone = CODE_TONES[kind] ?? CODE_TONES.File;
-  return dark ? tone.dark : tone.light;
-}
-
-/** The sigma program of a node: a disc for an entity, a rounded square for code (components/kg/entity-canvas.tsx). */
-export type NodeShape = "circle" | "square";
-
-export type EntityNodeAttributes = {
-  label: string;
-  kind: string;
-  x: number;
-  y: number;
-  size: number;
-  color: string;
+export type EntityNodeAttributes = CanvasNode & {
   docs: number;
   hop: number | null;
   /** An entity's visible code links (Directories, Files, Symbols); 0 for a code node. */
   code: number;
-  type: NodeShape;
+  /** A Directory, File or Symbol an entity points to, drawn in its kind's tone as on every canvas of the graph. */
+  isCode: boolean;
 };
 
-export type EntityEdgeAttributes = { label: string; rel: string; size: number; weight: number; color: string; code: boolean };
+export type EntityEdgeAttributes = CanvasEdge & { rel: string; weight: number; code: boolean };
 
 /**
- * The graphology graph sigma draws from a working set: one node per entity, coloured by kind and sized by documents,
- * one undirected edge per relation (LightRAG relations have no direction), labelled by its keywords; with code, one
- * square slate node per code node, sized by the entities that point to it, and one thin edge from each entity to it.
- * Places already laid out in `previous` are kept, so an opened neighbourhood grows beside the node it came from.
+ * The graphology graph the canvas draws from a working set: one node per entity, coloured by type and sized by
+ * documents, one undirected edge per relation (LightRAG relations have no direction), labelled by its keywords; with
+ * code, one node per code node in its kind's tone (the explorer's colour for it), sized by the entities that point to
+ * it, and one thin edge from each entity to it. Every node starts at a place seeded by its id; the canvas keeps the
+ * places of the graph it drew before (lib/kg/canvas-graph.ts, placeNodes).
  */
-export function buildGraph(
-  set: WorkingSet,
-  options: { dark: boolean; edgeColour: string; codeEdgeColour?: string; previous?: ReadonlyMap<string, { x: number; y: number }> },
-): Graph<EntityNodeAttributes, EntityEdgeAttributes> {
+export function buildGraph(set: WorkingSet, theme: Theme): Graph<EntityNodeAttributes, EntityEdgeAttributes> {
   const graph = new Graph<EntityNodeAttributes, EntityEdgeAttributes>({ type: "undirected", multi: true });
   const most = Math.max(1, ...set.nodes.map((node) => node.docs));
   const heaviest = Math.max(1, ...set.edges.map((edge) => edge.weight));
-  const placed = new Map(options.previous ?? []);
+  const rest = restEdgeColour(theme);
   for (const node of set.nodes) {
-    let place = placed.get(node.id);
-    if (!place) {
-      // A new node starts next to a neighbour already placed, else at its seeded place.
-      const near = set.edges.find((edge) => (edge.src === node.id && placed.has(edge.dst)) || (edge.dst === node.id && placed.has(edge.src)));
-      const anchor = near ? placed.get(near.src === node.id ? near.dst : near.src) : undefined;
-      const seed = seedPosition(node.id);
-      place = anchor ? { x: anchor.x + seed.x * 0.05, y: anchor.y + seed.y * 0.05 } : seed;
-    }
+    const seed = seedPosition(node.id);
+    const code = node.code ?? 0;
     graph.addNode(node.id, {
       label: node.name,
       kind: node.kind,
-      x: place.x,
-      y: place.y,
+      x: seed.x * 100,
+      y: seed.y * 100,
       size: nodeSize(node.docs, most),
-      color: kindColour(node.kind, options.dark),
+      color: kindColour(node.kind, theme.dark),
+      ringColor: theme.surface,
+      ring: 0,
+      weight: node.docs,
+      badge: code ? `</> ${code}` : undefined,
       docs: node.docs,
       hop: node.hop ?? null,
-      code: node.code ?? 0,
-      type: "circle",
+      code,
+      isCode: false,
     });
   }
   for (const edge of set.edges) {
@@ -245,31 +215,31 @@ export function buildGraph(
       rel: edge.rel,
       size: edgeSize(edge.weight, heaviest),
       weight: edge.weight,
-      color: options.edgeColour,
+      color: rest,
+      type: "line",
       code: false,
     });
   }
   const mostPointed = Math.max(1, ...(set.codeNodes ?? []).map((node) => node.entities));
   for (const node of set.codeNodes ?? []) {
     if (graph.hasNode(node.id)) continue;
-    let place = placed.get(node.id);
-    if (!place) {
-      const near = (set.codeEdges ?? []).find((edge) => edge.dst === node.id && graph.hasNode(edge.src));
-      const anchor = near ? graph.getNodeAttributes(near.src) : undefined;
-      const seed = seedPosition(node.id);
-      place = anchor ? { x: anchor.x + seed.x * 0.08, y: anchor.y + seed.y * 0.08 } : seed;
-    }
+    const near = (set.codeEdges ?? []).find((edge) => edge.dst === node.id && graph.hasNode(edge.src));
+    const seed = seedPosition(node.id);
     graph.addNode(node.id, {
       label: node.name,
       kind: node.kind,
-      x: place.x,
-      y: place.y,
+      x: seed.x * 100,
+      y: seed.y * 100,
       size: Math.max(3, nodeSize(node.entities, mostPointed) * 0.75),
-      color: codeColour(node.kind, options.dark),
+      color: theme.tones[kindTone(node.kind)],
+      ringColor: theme.surface,
+      ring: 0,
+      weight: node.entities,
+      anchor: near?.src,
       docs: 0,
       hop: null,
       code: 0,
-      type: "square",
+      isCode: true,
     });
   }
   for (const edge of set.codeEdges ?? []) {
@@ -280,7 +250,9 @@ export function buildGraph(
       rel: edge.rel,
       size: 0.5,
       weight: edge.conf,
-      color: options.codeEdgeColour ?? options.edgeColour,
+      color: theme.subtle,
+      type: "line",
+      quiet: true,
       code: true,
     });
   }
@@ -288,8 +260,8 @@ export function buildGraph(
 }
 
 /** Whether a canvas node is code, not an entity: the canvas selects it by opening its node page instead. */
-export function isCodeNode(attributes: Pick<EntityNodeAttributes, "type">): boolean {
-  return attributes.type === "square";
+export function isCodeNode(attributes: Pick<EntityNodeAttributes, "isCode">): boolean {
+  return attributes.isCode;
 }
 
 /** A code link's group in the inspector: its repo and package, the repo's root named `/`. */

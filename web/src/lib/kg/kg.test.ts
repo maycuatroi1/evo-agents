@@ -4,7 +4,7 @@ import { buildDurations, durationParts, isWebLink, shortHash } from "./format";
 import {
   displayName,
   groupRelations,
-  kindStyle,
+  kindTone,
   neighbourGroups,
   neighboursOf,
   orderNodes,
@@ -169,13 +169,11 @@ describe("graph model", () => {
     ]);
   });
 
-  it("draws every kind with a colour and a shape, unknown kinds included", () => {
-    expect(kindStyle("Requirement")).toEqual({ tone: 2, shape: "diamond" });
-    expect(kindStyle("Document").shape).not.toBe(kindStyle("Section").shape);
-    expect(kindStyle("SomethingNew")).toEqual({ tone: 5, shape: "ellipse" });
-    // A canvas's claims beside requirements and tickets, a signal key among the measures from outside.
-    expect(kindStyle("Claim")).toEqual({ tone: 2, shape: "hexagon" });
-    expect(kindStyle("SignalKey")).toEqual({ tone: 5, shape: "diamond" });
+  it("colours every kind by its family on every canvas, unknown kinds included", () => {
+    expect(kindTone("Requirement")).toBe(2);
+    expect(kindTone("File")).toBe(kindTone("Symbol"));
+    expect(kindTone("Document")).not.toBe(kindTone("File"));
+    expect(kindTone("SomethingNew")).toBe(5);
   });
 });
 

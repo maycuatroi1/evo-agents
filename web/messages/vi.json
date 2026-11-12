@@ -1916,7 +1916,7 @@
         "title": "Chú giải",
         "clusterSize": "Hình tròn: một cụm hoặc một phần của cụm, to theo số node",
         "linkWidth": "Đường nối: các cạnh giữa hai cụm, càng dày càng nhiều",
-        "weakLink": "Nét đứt: liên kết yếu hơn, hiện khi trỏ vào cụm",
+        "weakLink": "Nét mờ: liên kết yếu hơn, hiện khi trỏ vào cụm",
         "seed": "Điểm bắt đầu",
         "expanded": "Đã mở rộng",
         "more": "Thêm hàng xóm của một nhóm",
@@ -2097,7 +2097,10 @@
         "codeLeftOut": "{count, plural, other {# node code}} sau 500 node đầu bị bỏ ra",
         "legendCode": "Hình vuông: một Directory, File hay Symbol mà thực thể trỏ tới (công tắc Code). Số sau tên: số liên kết code của thực thể.",
         "codeCount": "{count, plural, other {# liên kết code}}"
-      }
+      },
+      "noWebgl": "Trình duyệt này không vẽ được đồ thị vì WebGL đang tắt hoặc không được hỗ trợ. Danh sách bên cạnh có đủ các node và quan hệ.",
+      "tipEntity": "{kind}, {count, plural, other {# tài liệu}}",
+      "tipCode": "{kind}: bấm để mở trang của nó"
     },
     "status": {
       "queued": "Đang chờ",
@@ -2279,11 +2282,6 @@
       "hops": "Số bước",
       "hopsValue": "{count, plural, other {# bước}}",
       "layout": "Bố cục",
-      "layouts": {
-        "concentric": "Vòng đồng tâm",
-        "cose": "Lực đẩy",
-        "breadthfirst": "Phân tầng"
-      },
       "help": "Bảng bên cạnh liệt kê cùng dữ liệu. Trong đồ thị: phím mũi tên chuyển node, Home về node đang xem, Enter mở node, + và - phóng to hoặc thu nhỏ, 0 vừa khung.",
       "canvasLabel": "Đồ thị quanh {name}: {nodes} node, {edges} cạnh",
       "zoomIn": "Phóng to",
