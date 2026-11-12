@@ -6,7 +6,8 @@ and exposes as its own attributes (``tables.cron_jobs``, ``tables.cron_fires``):
   kind of work it starts (``agent``: an agent profile, the chat its threads go in, NULL for the owner's direct chat
   with the agent, and a prompt; ``plan``: a plan of the project; ``command``: a shell command line, the repo it runs
   in, NULL for an empty directory, and its time limit in minutes), its owner (who made it; runs are dispatched as
-  them), its revision, who changed it last and when, and its pause: when, by whom (NULL: the hub paused it) and why.
+  them), its revision, who changed it last and when, its pause: when, by whom (NULL: the hub paused it) and why, and
+  when it was resumed last (0244; NULL: never), from which it fires and its breaker counts.
 - cron_fires: each fire of a job, one per (job, scheduled minute) (``cron_fires_job_id_scheduled_for_key``): when it
   was due, whether someone pressed "run now" (``manual``, its ``actor_id``), its outcome (``started``, ``busy``,
   ``missed`` or ``refused``; NULL while the hub has not handled it yet), why, and the run it started.
@@ -78,6 +79,7 @@ def _jobs(metadata: MetaData) -> Table:
         _when("paused_at"),
         Column("paused_by", BigInteger),
         Column("paused_reason", Text),
+        _when("resumed_at"),
         _key(name, "project_id", "projects", ondelete="CASCADE"),
         _key(name, "profile_id", "agent_profiles", ondelete="SET NULL"),
         _key(name, "chat_id", "chats", ondelete="SET NULL"),

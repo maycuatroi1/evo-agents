@@ -10,7 +10,7 @@ admin pauses, runs and deletes another's but does not change its work; run now r
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -152,7 +152,7 @@ def hub(client, github):
     admin = headers["stranger"]
     made = client.post(f"/v1/projects/{PROJECT}/agents", json={"handle": AGENT, "name": AGENT}, headers=admin)
     assert made.status_code in (200, 201), made.text
-    return {**headers, "admin": admin, "project": PROJECT}
+    return {**headers, "admin": admin, "hub_admin": headers["admin"], "project": PROJECT}
 
 
 def path(hub, name: str | None = None) -> str:
@@ -270,3 +270,409 @@ def test_role_an_admin_pauses_runs_and_deletes_another_persons_job_but_does_not_
     deleted = client.delete(path(hub, "standup"), headers=hub["admin"])
     assert deleted.status_code == 200 and deleted.json()["deleted"] == "standup"
     assert client.get(path(hub, "standup"), headers=hub["owner"]).status_code == 404
+
+
+# Firing (``evo_agents.hub.server.cron_fire``; criteria a2, a3, a4 and a6)
+
+DAY = datetime(2026, 11, 10, tzinfo=UTC)
+
+
+def at(hour: int, minute: int = 0, second: int = 0, day: datetime = DAY) -> datetime:
+    return day.replace(hour=hour, minute=minute, second=second)
+
+
+def fired(client, now: datetime, times: int = 1) -> list[dict]:
+    """``times`` passes of the cron job, run together, at ``now``; what each counted."""
+    import asyncio
+
+    from evo_agents.hub.server.cron_fire import cron_pass
+
+    async def passes() -> list[dict]:
+        engine = client.app.state.engine
+        return list(await asyncio.gather(*(cron_pass(engine, now=now) for _ in range(times))))
+
+    return client.portal.call(passes)
+
+
+def made(client, hub, name: str, body: dict, created: datetime, headers: str = "owner") -> int:
+    """Job ``name`` of ``body``, made by ``headers``' member, as if made at ``created``; its id."""
+    from sqlalchemy import update
+
+    from evo_agents.hub import tables
+    from tests.hub import live
+    from tests.hub.live import sql
+
+    response = client.put(path(hub, name), json=body, headers=hub[headers])
+    assert response.status_code == 200, response.text
+    j = tables.cron_jobs
+    query = update(j).values(created_at=created).where(j.c.name == name).returning(j.c.id)
+    return sql(live.database_of(client), query)[0][0]
+
+
+def fires_of(client, job_id: int) -> list[tuple]:
+    """(scheduled_for, manual, outcome, reason, run_id) of each fire of job ``job_id``, the oldest due first."""
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+    from tests.hub import live
+    from tests.hub.live import sql
+
+    f = tables.cron_fires
+    query = select(f.c.scheduled_for, f.c.manual, f.c.outcome, f.c.reason, f.c.run_id).where(f.c.job_id == job_id)
+    return [tuple(row) for row in sql(live.database_of(client), query.order_by(f.c.scheduled_for, f.c.id))]
+
+
+def runs_of(client, job_id: int) -> list[tuple]:
+    """(id, kind, state, dispatched_by login, dispatched_via) of each run job ``job_id`` queued."""
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+    from tests.hub import live
+    from tests.hub.live import sql
+
+    r, u = tables.runs, tables.users
+    query = (
+        select(r.c.id, r.c.kind, r.c.state, u.c.login, r.c.dispatched_via)
+        .join_from(r, u, u.c.id == r.c.dispatched_by)
+        .where(r.c.cron_job_id == job_id)
+        .order_by(r.c.id)
+    )
+    return [tuple(row) for row in sql(live.database_of(client), query)]
+
+
+def shown(client, hub, name: str) -> dict:
+    return client.get(path(hub, name), headers=hub["owner"]).json()
+
+
+def paused_notices(client) -> list[tuple]:
+    """(login, title, body) of each cron_paused notice."""
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+    from tests.hub import live
+    from tests.hub.live import sql
+
+    n, u = tables.notifications, tables.users
+    query = (
+        select(u.c.login, n.c.title, n.c.body)
+        .join_from(n, u, u.c.id == n.c.user_id)
+        .where(n.c.notice_kind == "cron_paused")
+        .order_by(n.c.id)
+    )
+    return [tuple(row) for row in sql(live.database_of(client), query)]
+
+
+def command_worker(client, hub) -> dict:
+    """A worker of the owner's that serves the project and runs command runs."""
+    from evo_agents.hub import runs
+    from tests.hub.test_runs import add_worker, beat
+
+    worker = add_worker(client, hub["owner"], "mac-mini")
+    beat(client, worker, run_kinds=list(runs.RUN_KINDS))
+    return worker
+
+
+def command_job(cron_expr: str = "0 9 * * *", tz: str = "UTC") -> dict:
+    return {"cron": cron_expr, "timezone": tz, "kind": "command", "command": "make nightly-report"}
+
+
+def test_dst_fall_back_fires_a_wall_clock_time_shown_twice_once():
+    """Europe/Paris goes back from 03:00 CEST to 02:00 CET on 2026-10-25: 02:30 is 00:30 and 01:30 UTC."""
+    night = datetime(2026, 10, 24, 22, 0, tzinfo=UTC)
+    assert cron.fires_between("30 2 * * *", "Europe/Paris", night, night.replace(day=25, hour=4)) == [
+        datetime(2026, 10, 25, 0, 30, tzinfo=UTC)
+    ]
+    spring = datetime(2026, 3, 28, 22, 0, tzinfo=UTC)  # 02:30 does not exist on 2026-03-29: the next minute that does
+    assert cron.fires_between("30 2 * * *", "Europe/Paris", spring, spring.replace(day=29, hour=4)) == [
+        datetime(2026, 3, 29, 1, 0, tzinfo=UTC)
+    ]
+    assert cron.fires_between("0 9 * * *", "UTC", at(9), at(9, day=DAY.replace(day=11))) == [
+        at(9, day=DAY.replace(day=11))
+    ]
+
+
+@needs_pg
+def test_fire_each_scheduled_minute_once_whatever_the_passes_that_overlap(client, hub):
+    command_worker(client, hub)
+    job = made(client, hub, "nightly", command_job(), at(8))
+    assert fired(client, at(8, 59, 50)) == [{}], "not due yet"
+    counts = fired(client, at(9, 0, 20), times=3)  # three passes at once, as two workers and a restart give
+    assert sum(count.get("started", 0) for count in counts) == 1 and not any("error" in count for count in counts)
+    assert fired(client, at(9, 1, 5)) == [{}], "a later pass of the same day fires the minute no more"
+    (fire,) = fires_of(client, job)
+    assert fire[:3] == (at(9), False, "started") and fire[4] is not None
+    assert runs_of(client, job) == [(fire[4], "command", "queued", "owner", "machine")]
+
+
+@needs_pg
+def test_fire_handles_a_run_now_press(client, hub):
+    command_worker(client, hub)
+    job = made(client, hub, "nightly", command_job(), datetime.now(UTC))
+    pressed = client.post(f"{path(hub, 'nightly')}/run", json={}, headers=hub["owner"])
+    assert pressed.status_code == 200 and pressed.json()["outcome"] is None
+    assert fired(client, datetime.now(UTC)) == [{"started": 1}]
+    (fire,) = fires_of(client, job)
+    assert fire[1:3] == (True, "started")
+
+
+@needs_pg
+def test_catch_up_fires_the_latest_minute_of_the_hour_and_records_the_others_missed(client, hub):
+    command_worker(client, hub)
+    every = made(client, hub, "every-quarter", command_job("*/15 * * * *"), at(8))
+    early = made(client, hub, "early", command_job("0 6 * * *"), at(5))
+    assert fired(client, at(8, 50, 10)) == [{"missed": 3, "started": 1}]
+    assert [(f[0], f[2]) for f in fires_of(client, every)] == [
+        (at(8, 15), "missed"),
+        (at(8, 30), "missed"),
+        (at(8, 45), "started"),
+    ]
+    assert [(f[0], f[2]) for f in fires_of(client, early)] == [(at(6), "missed")], "older than an hour: not fired"
+    assert len(runs_of(client, every)) == 1 and runs_of(client, early) == []
+
+
+@needs_pg
+def test_busy_while_the_last_run_is_active_or_the_plan_has_a_plan_run(client, hub):
+    from tests.hub.test_runs import PLAN, PROJECT
+
+    command_worker(client, hub)
+    job = made(client, hub, "every-quarter", command_job("*/15 * * * *"), at(8, 59))
+    assert fired(client, at(9, 0, 5)) == [{"started": 1}]
+    assert fired(client, at(9, 15, 5)) == [{"busy": 1}]
+    (first, second) = fires_of(client, job)
+    assert second[2] == "busy" and f"run #{first[4]}" in second[3] and second[4] is None
+    assert len(runs_of(client, job)) == 1
+
+    dispatched = client.post(f"/v1/projects/{PROJECT}/plan-runs", json={"plan_id": PLAN}, headers=hub["owner"])
+    assert dispatched.status_code == 201, dispatched.text
+    plan = made(client, hub, "rollout", {"cron": "30 9 * * *", "kind": "plan", "plan": PLAN}, at(9, 20))
+    assert fired(client, at(9, 30, 5)) == [{"busy": 2}]  # the quarter's job, whose run is still queued, and the plan's
+    ((_, _, outcome, reason, run_id),) = fires_of(client, plan)
+    assert (outcome, run_id) == ("busy", None) and f"plan run #{dispatched.json()['id']}" in reason
+
+
+@needs_pg
+def test_dst_a_job_in_a_zone_with_daylight_saving_fires_once_at_the_fall_back(client, hub):
+    command_worker(client, hub)
+    job = made(client, hub, "night", command_job("30 2 * * *", "Europe/Paris"), datetime(2026, 10, 24, 20, tzinfo=UTC))
+    assert fired(client, datetime(2026, 10, 25, 0, 30, 10, tzinfo=UTC)) == [{"started": 1}]
+    assert fired(client, datetime(2026, 10, 25, 1, 30, 10, tzinfo=UTC)) == [{}], "02:30 again in CET fires no more"
+    assert [f[0] for f in fires_of(client, job)] == [datetime(2026, 10, 25, 0, 30, tzinfo=UTC)]
+
+
+def agent_worker(client, hub) -> dict:
+    """A worker of the owner's in the pool of agent AGENT, with an account pool of the owner's for it, so a mention of
+    AGENT by the owner starts a chat run."""
+    from evo_agents.hub import runs
+    from tests.hub import live
+    from tests.hub.account_pool_setup import give_account_pool
+    from tests.hub.test_runs import OWNER, PROJECT, add_worker, beat
+
+    give_account_pool(live.database_of(client), PROJECT, AGENT, OWNER)
+    worker = add_worker(client, hub["owner"], "agent-box", pool=AGENT)
+    features = [feature for feature in runs.WORKER_FEATURES if feature != runs.LAZY_CHAT_REPOS]
+    beat(client, worker, run_kinds=list(runs.RUN_KINDS), features=features)
+    assert client.post("/v1/worker/doctor", json={"findings": []}, headers=worker["headers"]).status_code == 200
+    return worker
+
+
+def messages_of(client, chat_id: int) -> list[tuple]:
+    """(author user, author profile, thread root, body) of each message of chat ``chat_id``, the oldest first."""
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+    from tests.hub import live
+    from tests.hub.live import sql
+
+    m = tables.chat_messages
+    query = select(m.c.author_user_id, m.c.author_profile_id, m.c.thread_root_id, m.c.body).where(
+        m.c.chat_id == chat_id
+    )
+    return [tuple(row) for row in sql(live.database_of(client), query.order_by(m.c.seq))]
+
+
+@needs_pg
+def test_agent_job_writes_a_hub_thread_in_the_owners_direct_chat_that_starts_a_chat_run_as_the_owner(client, hub):
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+    from tests.hub import live
+    from tests.hub.live import sql
+
+    agent_worker(client, hub)
+    job = made(client, hub, "standup", {**agent_job(), "cron": "0 9 * * *", "timezone": "UTC"}, at(8))
+    assert fired(client, at(9, 0, 5)) == [{"started": 1}]
+    ((_, _, outcome, reason, run_id),) = fires_of(client, job)
+    assert (outcome, reason) == ("started", None)
+    assert runs_of(client, job) == [(run_id, "chat", "queued", "owner", "machine")]
+    r, c = tables.runs, tables.chats
+    db = live.database_of(client)
+    ((chat_id, kind),) = sql(
+        db, select(c.c.id, c.c.kind).join_from(r, c, c.c.id == r.c.chat_id).where(r.c.id == run_id)
+    )
+    assert kind == "direct"
+    ((author, profile, root, body),) = messages_of(client, chat_id)
+    assert (author, profile, root) == (None, None, None), "a message of the hub that starts a thread"
+    assert body.startswith("Cron job standup of owner:") and "Standup" in body and body.endswith(f"@{AGENT}")
+
+
+@needs_pg
+def test_agent_job_in_a_chat_the_agent_is_not_in_is_refused_with_the_reason(client, hub):
+    agent_worker(client, hub)
+    group = client.post("/v1/chats", json={"title": "Standups", "people": [], "agents": []}, headers=hub["owner"])
+    assert group.status_code == 201, group.text
+    chat_id = group.json()["id"]
+    body = {**agent_job(), "cron": "0 9 * * *", "timezone": "UTC", "chat_id": chat_id}
+    job = made(client, hub, "standup", body, at(8))
+    assert fired(client, at(9, 0, 5)) == [{"refused": 1}]
+    ((_, _, outcome, reason, run_id),) = fires_of(client, job)
+    assert (outcome, run_id) == ("refused", None) and f"@{AGENT}" in reason, reason
+    assert runs_of(client, job) == []
+    said = messages_of(client, chat_id)
+    assert said[0][3].endswith(f"@{AGENT}") and reason in said[-1][3], "the refusal is said in the thread too"
+
+
+@needs_pg
+def test_agent_job_of_an_owner_whose_seat_ended_pauses_and_tells_them(client, hub):
+    job = made(client, hub, "standup", {**agent_job(), "cron": "0 9 * * *", "timezone": "UTC"}, at(8))
+    with pytest.MonkeyPatch.context() as patch:
+        from evo_agents.hub.server import cron_fire
+
+        async def ended(conn, user_id, login, *, what, lock=False):
+            return f"{login}'s seat ended on 2026-11-01: {what} cannot start"
+
+        patch.setattr(cron_fire, "ended_refusal", ended)
+        assert fired(client, at(9, 0, 5)) == [{"paused": 1, "refused": 1}]
+    ((_, _, outcome, reason, _),) = fires_of(client, job)
+    assert outcome == "refused" and "seat ended" in reason
+    held = shown(client, hub, "standup")
+    assert (held["paused"], held["paused_by"]) == (True, None) and "seat ended" in held["paused_reason"]
+    assert [(login, title) for login, title, _ in paused_notices(client)] == [
+        ("owner", "Cron job standup of evo-agents paused")
+    ]
+    assert fired(client, at(9, 0, 5, day=DAY.replace(day=11))) == [{}], "a paused job fires nothing"
+
+
+@needs_pg
+def test_plan_job_dispatches_a_plan_run_as_its_owner(client, hub):
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+    from tests.hub import live
+    from tests.hub.live import sql
+    from tests.hub.test_runs import PLAN
+
+    job = made(client, hub, "rollout", {"cron": "0 3 * * *", "kind": "plan", "plan": PLAN}, at(2))
+    assert fired(client, at(3, 0, 5)) == [{"started": 1}]
+    ((_, _, outcome, _, run_id),) = fires_of(client, job)
+    assert outcome == "started" and runs_of(client, job) == [(run_id, "plan", "queued", "owner", "machine")]
+    r = tables.runs
+    assert sql(live.database_of(client), select(r.c.plan_id).where(r.c.id == run_id)) == [(PLAN,)]
+    assert fired(client, at(3, 0, 5, day=DAY.replace(day=11))) == [{"busy": 1}], "its plan run is still queued"
+
+
+@needs_pg
+def test_plan_job_of_a_plan_with_no_pending_step_is_refused_and_pauses(client, hub):
+    from tests.hub.test_runs import PLAN, PROJECT, plan_body
+
+    job = made(client, hub, "rollout", {"cron": "0 3 * * *", "kind": "plan", "plan": PLAN}, at(2))
+    done = plan_body()
+    done["steps"] = [{**step, "status": "done", "evidence": "evo-agents@abc1234: done"} for step in done["steps"]]
+    pushed = client.put(
+        f"/v1/projects/{PROJECT}/plans/{PLAN}", json={"body": done, "if_revision": 1}, headers=hub["owner"]
+    )
+    assert pushed.status_code == 200, pushed.text
+    assert fired(client, at(3, 0, 5)) == [{"paused": 1, "refused": 1}]
+    ((_, _, outcome, reason, run_id),) = fires_of(client, job)
+    assert (outcome, run_id) == ("refused", None) and "has no pending step" in reason
+    held = shown(client, hub, "rollout")
+    assert held["paused"] is True and "has no pending step" in held["paused_reason"]
+    assert [login for login, _, _ in paused_notices(client)] == ["owner"]
+
+
+@needs_pg
+def test_plan_job_of_a_writer_who_is_now_a_reader_pauses_and_tells_them(client, hub):
+    from tests.hub.test_runs import OWNER, PLAN, PROJECT, READ_ONLY
+
+    job = made(client, hub, "rollout", {"cron": "0 3 * * *", "kind": "plan", "plan": PLAN}, at(2))
+    regranted = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=READ_ONLY, headers=hub["hub_admin"])
+    assert regranted.status_code == 200, regranted.text
+    assert fired(client, at(3, 0, 5)) == [{"paused": 1, "refused": 1}]
+    ((_, _, outcome, reason, _),) = fires_of(client, job)
+    assert outcome == "refused" and "no longer a writer" in reason
+    assert runs_of(client, job) == []
+    held = shown(client, hub, "rollout")
+    assert (held["paused"], held["paused_by"]) == (True, None)
+    ((login, title, body),) = paused_notices(client)
+    assert login == "owner" and "rollout" in title and "no longer a writer" in body
+
+
+@needs_pg
+def test_breaker_pauses_a_job_whose_last_three_runs_failed_not_counting_infra_failures(client, hub):
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+    from tests.hub import live
+    from tests.hub.live import sql
+    from tests.hub.test_runs import claim, moved
+
+    worker = command_worker(client, hub)
+    job = made(client, hub, "every-quarter", command_job("*/15 * * * *"), at(8, 59))
+
+    def failed_run(quarter: int, cause: str) -> None:
+        assert fired(client, at(9, quarter, 5)) == [{"started": 1}]
+        spec = claim(client, worker)
+        moved(client, worker, spec["id"], "running")
+        moved(client, worker, spec["id"], "failed", error="it went wrong", failure_cause=cause)
+
+    failed_run(0, "command_failed")
+    failed_run(15, "command_failed")
+    failed_run(30, "network")  # the network's, not the job's
+    failed_run(45, "command_failed")  # the third of the job's, but with the network's between: still three in a row
+    assert fired(client, at(10, 0, 5)) == [{"paused": 1, "refused": 1}]
+    held = shown(client, hub, "every-quarter")
+    assert held["paused"] is True and "failed in a row" in held["paused_reason"]
+    assert [login for login, _, _ in paused_notices(client)] == ["owner"]
+    assert fires_of(client, job)[-1][2:4] == ("refused", f"the job is paused: {held['paused_reason']}")
+
+    resumed = client.post(f"{path(hub, 'every-quarter')}/resume", json={}, headers=hub["owner"])
+    assert resumed.status_code == 200, resumed.text
+    r = tables.runs
+    states = sql(live.database_of(client), select(r.c.state).where(r.c.cron_job_id == job).order_by(r.c.id))
+    assert [state for (state,) in states] == ["failed"] * 4
+    later = datetime.now(UTC).replace(second=0, microsecond=0) + timedelta(minutes=16)
+    counts = fired(client, later)
+    assert "paused" not in counts[0], "a resumed job's breaker counts only the runs since"
+    assert shown(client, hub, "every-quarter")["paused"] is False
+
+
+@needs_pg
+def test_breaker_of_a_job_with_a_run_that_did_its_work_does_not_trip(client, hub):
+    from sqlalchemy import func
+
+    from tests.hub import live
+    from tests.hub.test_runs import claim, moved, set_run
+
+    worker = command_worker(client, hub)
+    made(client, hub, "every-quarter", command_job("*/15 * * * *"), at(8, 59))
+    for quarter, state in ((0, "failed"), (15, "done"), (30, "failed"), (45, "failed")):
+        assert fired(client, at(9, quarter, 5)) == [{"started": 1}]
+        spec = claim(client, worker)
+        moved(client, worker, spec["id"], "running")
+        if state == "failed":
+            moved(client, worker, spec["id"], "failed", error="it went wrong", failure_cause="command_failed")
+        else:  # the command exited 0, as the daemon's report of its verify says
+            set_run(live.database_of(client), spec["id"], state="done", finished_at=func.now())
+    assert fired(client, at(10, 0, 5)) == [{"started": 1}]
+    assert shown(client, hub, "every-quarter")["paused"] is False
+
+
+@needs_pg
+def test_archived_project_fires_nothing(client, hub):
+    from tests.hub.test_runs import PROJECT
+
+    command_worker(client, hub)
+    job = made(client, hub, "nightly", command_job(), at(8))
+    archived = client.post(f"/v1/projects/{PROJECT}/archive", headers=hub["admin"])
+    assert archived.status_code == 200, archived.text
+    assert fired(client, at(9, 0, 5)) == [{}]
+    assert fires_of(client, job) == [] and runs_of(client, job) == []

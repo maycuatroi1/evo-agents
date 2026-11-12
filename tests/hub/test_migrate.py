@@ -6095,3 +6095,13 @@ def test_0243_takes_command_runs_of_at_most_240_minutes_and_going_back_deletes_t
     move_to(hub_db, "0242", down=True)
     assert query(hub_db, select(hub_tables.runs.c.id, hub_tables.runs.c.kind)) == [(author, "author")]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0243") :]
+
+
+def test_0244_gives_cron_jobs_the_time_they_were_resumed(hub_db):
+    move_to(hub_db, "0243")
+    assert "resumed_at" not in columns(hub_db, "cron_jobs")
+    move_to(hub_db, "0244")
+    assert "resumed_at" in columns(hub_db, "cron_jobs")
+    move_to(hub_db, "0243", down=True)
+    assert "resumed_at" not in columns(hub_db, "cron_jobs")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0244") :]

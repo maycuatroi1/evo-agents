@@ -113,6 +113,7 @@ def cmd_worker(args) -> int:
     try:
         from evo_agents.hub import worker
         from evo_agents.hub.server.app import (
+            cron_pass,
             entity_key,
             hub_turn,
             init_sentry,
@@ -132,6 +133,7 @@ def cmd_worker(args) -> int:
         memory_upkeep=memory_upkeep,
         entity_key=entity_key,
         hub_turn=hub_turn,
+        cron_pass=cron_pass,
     )
 
 

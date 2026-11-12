@@ -391,6 +391,7 @@ def test_decisions_and_notices_the_plan_names():
         "ops_cap",
         "ops_paused",
         "ops_digest",
+        "cron_paused",
     )
     assert (runs.MUTABLE_NOTICE_KINDS, runs.OUTPUT_NOTICE_SECONDS) == (("run_outputs",), 60)
     assert runs.NOTIFICATION_KINDS == ("decision", "notice", "proposal")

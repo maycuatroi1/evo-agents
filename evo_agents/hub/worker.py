@@ -82,6 +82,11 @@ Jobs (names in ``evo_agents.hub.jobs``):
   same App (``evo_agents.hub.server.release_land``). The pass is the server's: the ``hub worker`` command hands it
   down (``HubContext.release_pass``), since this module imports no server module beyond its job list
   (docs/structure.md, section Package boundaries).
+- ``hub.cron_jobs``, every minute, one pass at a time: each cron job of a project not archived that is due fires once
+  per scheduled minute as its owner: a message to an agent in a new thread, a plan run or a command run; a fire whose
+  earlier run is still active is busy, minutes missed are recorded, and a job whose owner lost their role or seat, or
+  whose runs failed three times in a row, pauses with a notice (``evo_agents.hub.server.cron_fire``). The pass is the
+  server's, handed down by the ``hub worker`` command (``HubContext.cron_pass``).
 - ``hub.loop_ticks``, every 5 minutes: a ``hub.loop_tick`` of each project whose Loop is on, queued under the
   project's Loop lock (``evo_agents.hub.loop_jobs``); ``hub.loop_tick`` runs one tick of a project's Loop, one at a
   time per project and at most one waiting, also queued by each event of the project. The tick is the server's
@@ -217,6 +222,9 @@ class HubContext:
     # the server's turn of a chat run on the hub runtime (evo_agents.hub.server.hub_runtime.take_turn), handed down the
     # same way; None takes no turn
     hub_turn: Callable[..., Awaitable[dict]] | None = None
+    # the server's pass over the cron jobs of projects (evo_agents.hub.server.cron_fire.cron_pass), handed down the
+    # same way; None fires no cron job
+    cron_pass: Callable[[AsyncEngine], Awaitable[dict]] | None = None
 
     def __post_init__(self):
         if self.engine is None:  # an engine keeps no connection of its own (NullPool): nothing to dispose of
@@ -530,6 +538,17 @@ async def release_schedules(context: JobContext, timestamp: int | None = None) -
     return await release_pass(found.engine, found.github_app)
 
 
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.CRON_JOBS, pass_context=True, lock=jobs.CRON_JOBS, queueing_lock=jobs.CRON_JOBS)
+async def cron_jobs(context: JobContext, timestamp: int | None = None) -> dict:
+    found = hub(context)
+    cron_pass = getattr(found, "cron_pass", None)
+    if cron_pass is None:
+        log.warning("no cron pass was handed to this worker: no cron job fires")
+        return {"no_cron_pass": 1}
+    return await cron_pass(found.engine)
+
+
 @queue.periodic(cron="*/5 * * * *")
 @queue.task(name=jobs.LOOP_TICKS, pass_context=True, queueing_lock=jobs.LOOP_TICKS)
 async def loop_ticks(context: JobContext, timestamp: int | None = None) -> dict:
@@ -783,11 +802,13 @@ async def run(
     memory_upkeep=None,
     entity_key=None,
     hub_turn=None,
+    cron_pass=None,
 ) -> int:
     """Migrate, then run jobs of ``queues`` (None: every queue) until a signal stops the worker. The exit status: 0
     when a signal stopped it, 1 when it could not start or stopped by itself. ``release_pass``, ``loop_tick``, ``memory_upkeep``,
     ``entity_key`` and ``hub_turn`` are the server's (``HubContext.release_pass``, ``HubContext.loop_tick``,
-    ``HubContext.memory_upkeep``, ``HubContext.entity_key``, ``HubContext.hub_turn``)."""
+    ``HubContext.memory_upkeep``, ``HubContext.entity_key``, ``HubContext.hub_turn``), and so is ``cron_pass``
+    (``HubContext.cron_pass``)."""
     from evo_agents.hub.server.github_app import GitHubApp
     from evo_agents.hub.server.sealing import Sealer
 
@@ -847,6 +868,7 @@ async def run(
                     memory_upkeep,
                     entity_key,
                     hub_turn,
+                    cron_pass,
                 )
                 log.info("worker ready", extra={"schema": ",".join(result.after), "applied": list(result.applied)})
                 signalled = await work(
@@ -882,9 +904,10 @@ def main(
     memory_upkeep=None,
     entity_key=None,
     hub_turn=None,
+    cron_pass=None,
 ) -> int:
     if concurrency < 1:
         raise ValueError(f"concurrency must be at least 1, not {concurrency}")
     passes = {"release_pass": release_pass, "loop_tick": loop_tick, "memory_upkeep": memory_upkeep}
-    passes["entity_key"], passes["hub_turn"] = entity_key, hub_turn
+    passes["entity_key"], passes["hub_turn"], passes["cron_pass"] = entity_key, hub_turn, cron_pass
     return asyncio.run(run(config, concurrency, queues=queues, **passes))

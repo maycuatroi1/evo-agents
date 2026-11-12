@@ -48,6 +48,7 @@ class Job:
     paused_at: datetime | None
     paused_by: str | None
     paused_reason: str | None
+    resumed_at: datetime | None  # when it was resumed last; None: never
 
     def work(self) -> dict:
         """What the job starts, as a write takes it: the columns of WORK."""
@@ -83,6 +84,7 @@ def _select() -> Select:
             j.c.paused_at,
             pauser.c.login.label("paused_by"),
             j.c.paused_reason,
+            j.c.resumed_at,
         )
         .join_from(j, p, p.c.id == j.c.project_id)
         .join(owner, owner.c.id == j.c.owner_id)
@@ -147,8 +149,10 @@ async def pause(conn: AsyncConnection, job_id: int, by: int | None, reason: str 
 
 
 async def resume(conn: AsyncConnection, job_id: int) -> None:
+    """Resume job ``job_id``: it fires again from now, and its breaker counts the runs queued from now."""
     j = tables.cron_jobs
-    await conn.execute(update(j).where(j.c.id == job_id).values(paused_at=None, paused_by=None, paused_reason=None))
+    values = {"paused_at": None, "paused_by": None, "paused_reason": None, "resumed_at": func.now()}
+    await conn.execute(update(j).where(j.c.id == job_id).values(**values))
 
 
 async def remove(conn: AsyncConnection, job_id: int) -> None:
@@ -200,3 +204,47 @@ async def last_fires(conn: AsyncConnection, job_ids: list[int]) -> dict[int, dic
         .order_by(f.c.job_id, f.c.scheduled_for.desc(), f.c.id.desc())
     )
     return {row.job_id: dict(row._mapping) for row in await conn.execute(query)}
+
+
+async def live_ids(conn: AsyncConnection) -> list[int]:
+    """The ids of the jobs not paused, of projects not archived, the oldest first: those the hub fires."""
+    j, p = tables.cron_jobs, tables.projects
+    query = (
+        select(j.c.id)
+        .join(p, p.c.id == j.c.project_id)
+        .where(j.c.paused_at.is_(None), p.c.archived_at.is_(None))
+        .order_by(j.c.id)
+    )
+    return list((await conn.execute(query)).scalars())
+
+
+async def held(conn: AsyncConnection, job_id: int) -> Job | None:
+    """Job ``job_id``, its row locked for the transaction; None when it is gone or another transaction holds it."""
+    j = tables.cron_jobs
+    query = _select().where(j.c.id == job_id).with_for_update(of=j, skip_locked=True)
+    row = (await conn.execute(query)).one_or_none()
+    return None if row is None else _job(row)
+
+
+async def last_scheduled(conn: AsyncConnection, job_id: int) -> datetime | None:
+    """The latest minute job ``job_id`` has a fire of the schedule for (not "run now"), whatever its outcome."""
+    f = tables.cron_fires
+    query = select(func.max(f.c.scheduled_for)).where(f.c.job_id == job_id, f.c.manual.is_(False))
+    return (await conn.execute(query)).scalar_one()
+
+
+async def pending_fires(conn: AsyncConnection, job_id: int) -> list[dict]:
+    """The fires of job ``job_id`` the hub has not handled yet (outcome NULL), the oldest due first."""
+    f = tables.cron_fires
+    query = _fire_select().where(f.c.job_id == job_id, f.c.outcome.is_(None)).order_by(f.c.scheduled_for, f.c.id)
+    return [dict(row._mapping) for row in await conn.execute(query)]
+
+
+async def settle_fire(
+    conn: AsyncConnection, fire_id: int, outcome: str, reason: str | None = None, run_id: int | None = None
+) -> None:
+    """Record the outcome of fire ``fire_id``: ``started`` with its run, or ``busy``, ``missed`` or ``refused`` with
+    why."""
+    f = tables.cron_fires
+    values = {"outcome": outcome, "reason": reason, "run_id": run_id, "handled_at": func.now()}
+    await conn.execute(update(f).where(f.c.id == fire_id).values(**values))

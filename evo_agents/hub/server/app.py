@@ -59,6 +59,7 @@ from evo_agents.hub.server import (
     user_emails,
     web_auth,
 )
+from evo_agents.hub.server.cron_fire import cron_pass as cron_pass  # handed down to the hub worker, as those below
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_runtime import take_turn as hub_turn  # noqa: F401

@@ -117,3 +117,20 @@ def next_fire(expr: str, tz: str, after: datetime | None = None) -> datetime:
     in UTC."""
     after = (after or datetime.now(UTC)).astimezone(zone(tz))
     return _cron(expr, after).get_next(datetime).astimezone(UTC)
+
+
+def fires_between(expr: str, tz: str, after: datetime, until: datetime) -> list[datetime]:
+    """The minutes, in UTC and oldest first, at which the checked cron ``expr`` fires in time zone ``tz`` after
+    ``after`` and up to ``until``, both included at the top. A wall-clock time the fall back of daylight saving time
+    shows twice fires the first time only: croniter gives both instants, and the second one, of fold 1 in ``tz``, is
+    left out. A time the spring forward skips fires at croniter's next minute that exists."""
+    where = zone(tz)
+    found = _cron(expr, after.astimezone(where))
+    minutes: list[datetime] = []
+    while True:
+        at = found.get_next(datetime)
+        if at.astimezone(UTC) > until:
+            return minutes
+        local = at.astimezone(UTC).astimezone(where)
+        if local.fold == 0:
+            minutes.append(at.astimezone(UTC).replace(second=0, microsecond=0))

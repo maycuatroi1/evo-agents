@@ -1304,6 +1304,42 @@ minute) or `refused`, with a reason and the run it started. The outcome stays em
 that a fire queued carries `runs.cron_job_id`. The hub uses that link to count a job as busy and to sum, in the list,
 what its runs cost in the last 24 hours.
 
+### Firing
+
+The job `hub.cron_jobs` of the hub's worker runs every minute, one pass at a time, on queue `default`
+(`evo_agents.hub.server.cron_fire`). It takes each job that is not paused, in a project that is not archived, with the
+job's row locked, so two workers never handle the same job at once:
+
+- It reads the minutes the job was due at since its last scheduled fire, its creation or its last resume, whichever is
+  latest. It looks back at most one day. The latest minute fires when it is within the last 60 minutes. The other
+  minutes are recorded `missed`. A minute that already has a fire is left alone, so overlapping ticks, a second worker
+  or a restart fire each minute once.
+- A wall-clock time that shows twice when daylight saving time ends fires the first time only. A time that the spring
+  change skips fires at the next minute that exists.
+- It then handles every fire that has no outcome yet, oldest first, "run now" presses included.
+
+Each fire first checks the owner again. When the owner is no longer a writer of the project, or their seat ended, the
+fire is `refused`, the hub pauses the job and the owner gets a `cron_paused` notice. When a run of the job is still
+queued or running, the fire is `busy` and starts nothing. For a plan job, an active run of the plan makes it `busy`
+too. Otherwise the fire starts the work as the owner, with the checks the owner's own action would meet. A refusal is
+the fire's reason, and its outcome is `refused`:
+
+- `agent`: the hub writes a new thread in the job's chat, or in the owner's direct chat with the agent. The message
+  names the job and its owner, holds the prompt and mentions the agent. The mention goes through every check of the
+  owner's own mention: their role, the agent's `mentioned_by`, the seat, the agent's pool and its membership of the
+  chat. The hub also says a refusal in the thread.
+- `plan`: a plan run with the checks of `hub run plan`: a writer on a live seat, a plan they can see that is not a
+  Curator plan, a pending step, and a repo for every step not done. A plan with no pending step also pauses the job.
+- `command`: a command run of the command line in its repo, with the job's time limit (at least the 5 minutes of any
+  run). The fire is refused when no worker of the owner's serves the project and runs command runs.
+
+The runs carry `cron_job_id`, the owner as `dispatched_by`, and `dispatched_via` `machine`, as a run that the owner's
+token dispatches. A worker set to take only runs dispatched from the web therefore takes none of them. When the last
+three runs of a job that ended since its creation or resume all failed, the hub pauses the job and the owner gets a
+`cron_paused` notice. A failure of an infrastructure cause (`curator.INFRA_CAUSES`) does not count, as for the night
+shift. Resuming a job (`resumed_at`, migration 0244) starts both the minutes it fires at and the count of its breaker
+from then.
+
 Who may do what:
 
 - Every member of the project reads its jobs and their fires.
@@ -4480,6 +4516,8 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   time came within the hour, once a local day, then the landing of the release runs that are done and the watch of the
   CI of each open cycle's tag (The daily release, above; `docs/releases.md`). The `hub worker` command hands the
   server's release pass to the job runner (`HubContext.release_pass`).
+- `hub.cron_jobs`, every minute, one pass at a time: fires the cron jobs that are due (Cron jobs, above). The `hub
+  worker` command hands the server's cron pass to the job runner (`HubContext.cron_pass`).
 - `hub.loop_ticks`, every 5 minutes: a `hub.loop_tick` for each project whose Loop is on (`loop.enabled` of its
   autonomy policy), which each event of such a project also queues in its own transaction; one tick of a project runs
   at a time and at most one waits (lock `loop:<project id>`). A tick reads the events past the project's cursor, its
