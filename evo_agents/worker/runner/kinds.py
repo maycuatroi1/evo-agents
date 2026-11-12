@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from evo_agents.worker.runner.author import AuthorRun
 from evo_agents.worker.runner.browser_login import BrowserLoginRun
 from evo_agents.worker.runner.chat import ChatRun
+from evo_agents.worker.runner.command import CommandRun
 from evo_agents.worker.runner.history import HistoryRun
 from evo_agents.worker.runner.judge import JudgeRun
 from evo_agents.worker.runner.plan import PlanRun
@@ -36,6 +37,7 @@ KINDS = {
     "release": ReleaseRun,
     "question": QuestionRun,
     "browser": BrowserLoginRun,
+    "command": CommandRun,
 }
 
 

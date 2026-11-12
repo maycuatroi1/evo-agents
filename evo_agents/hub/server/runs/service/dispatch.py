@@ -218,13 +218,17 @@ def unfit(
             "run with a session for each step, and would run every step in one session: upgrade it and restart its "
             "daemon, or dispatch the plan run without a session per step"
         )
-    if (kind in runs.CURATOR_KINDS or kind in ("author", "chat", "browser")) and kind not in worker.run_kinds:
+    if (
+        kind in runs.CURATOR_KINDS or kind in ("author", "chat", "browser", "command")
+    ) and kind not in worker.run_kinds:
         problems.append(
             f"its daemon (evo-agents {worker.agent_version or 'of an unknown version'}) does not say it runs {kind} "
             "runs: upgrade it and restart its daemon"
         )
     usable = [name for name in runs.RUNTIMES if available(worker.runtimes.get(name))]
-    if runtime == "any" and not usable:
+    if kind == "command":  # the machine's shell runs it, with no runtime
+        pass
+    elif runtime == "any" and not usable:
         problems.append("it reports no runtime available")
     elif is_plugin_runtime(runtime):
         problems += plugin_runtimes.unfit(
@@ -521,6 +525,9 @@ def _pending(step) -> bool:
     return not isinstance(step, dict) or step.get("status") in (None, "pending")
 
 
+NO_PENDING = "has no pending step"  # in the refusal of a plan run of a plan with nothing to do (a cron job pauses)
+
+
 def plan_run_repos(held) -> list[dict]:
     """The repos of a plan run of the plan ``held``: the repo of each step not done, in plan order, each once with the
     branch the plan's repos name for it. 409 when no step is pending, or a step not done names no repo and the plan
@@ -534,7 +541,7 @@ def plan_run_repos(held) -> list[dict]:
     ]
     if not any(_pending(step) for _, step in open_steps):
         raise HTTPException(
-            409, f"plan {held.plan_id} has no pending step, so a plan run has nothing to do; nothing was dispatched"
+            409, f"plan {held.plan_id} {NO_PENDING}, so a plan run has nothing to do; nothing was dispatched"
         )
     repos: dict[str, dict] = {}
     for key, step in open_steps:
@@ -556,86 +563,94 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
     not say it runs that, 409."""
     run_access.refuse_onward(user, body.as_me)
     async with engine.begin() as conn:
-        access = await project_access(conn, user, project)
-        check_dispatcher(access)
-        await check_seat(conn, user)
-        held = await plan_routes._visible(conn, access, body.plan_id, None)
-        await refuse_curator_plan(conn, access, body.plan_id)
-        picked = await _picked(conn, user, access, body)
-        await lock_plan(conn, access.project_id, body.plan_id)
-        activity = await plan_activity(conn, access.project_id, body.plan_id)
-        if activity.plan_run is not None:
-            raise HTTPException(409, f"{plan_busy(body.plan_id, activity.plan_run)}; nothing was dispatched")
-        no_plan_run(activity, body.plan_id)  # a system's trace that runs the plan
-        if activity.steps:
-            key, active = min(activity.steps.items(), key=lambda item: item[1].id)
-            busy = f"has run #{active.id}, {active.state}, dispatched by {active.dispatched_by}"
-            raise HTTPException(
-                409,
-                f"step {key} of plan {body.plan_id} {busy}: a plan run waits until no run of the plan's steps is "
-                "active; nothing was dispatched",
-            )
-        repos = plan_run_repos(held)
-        names = [entry["repo"] for entry in repos]
-        await _refuse_without_origin(conn, access, user, names, f"plan {held.plan_id}")
-        asked = Asked("plan", body.runtime, body.model, None, _picks(picked))
-        chosen = await choose(conn, user, access, body.profile, asked)
-        identities, pinned = await identity_pin(conn, user, access, chosen, body.identities)
-        browser = body.browser or bool(identities)
-        _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step, browser=browser)
-        values = {
-            "kind": "plan",
-            "project_id": access.project_id,
-            "plan_id": held.plan_id,
-            "title": runs.step_title(held.body),
-            "plan_revision": held.revision,
-            "dispatched_by": user.user_id,
-            "dispatched_via": dispatch_credential(user.kind),
-            "pinned_worker_id": None if pinned is None else pinned.id,
-            "requested_runtime": body.runtime,
-            "runtime": body.runtime,
-            "model": chosen.model,
-            "mode": body.mode,
-            "approval": "auto",
-            "timeout_s": body.timeout_h * 3600,
-            "repos": repos,
-            "session_per_step": body.session_per_step,
-            "browser": browser,
-            "browser_identities": identities,
-            "as_owner": body.as_me,
-            **chosen.columns(),
-        }
-        try:
-            run_id = await insert_run(conn, values)
-        except IntegrityError as exc:
-            if isinstance(exc.orig, psycopg.errors.UniqueViolation):  # another plan run of the plan got in first
-                busy = f"plan {held.plan_id} has an active plan run already; nothing was dispatched"
-                raise HTTPException(409, busy) from None
-            if isinstance(exc.orig, psycopg.errors.CheckViolation):
-                raise HTTPException(
-                    422,
-                    f"plan {held.plan_id}: a repo or branch name, or the number of repos, is not one a run can hold",
-                ) from None
-            raise
-        await record_pick(conn, run_id, picked)
-        await notify_queued(conn, run_id)
-        target = run_target(project, held.plan_id, None, run_id) + _account_text(picked) + chosen.audit_text()
-        await audit_run(conn, user, access, audit.RUN_DISPATCH_PLAN, target)
-        if body.as_me:
-            granted = f"{run_target(project, held.plan_id, None, run_id)} by=dispatch"
-            await run_access.record(conn, user, access.project_id, granted, granted=True)
+        run_id = await queue_plan_run(conn, user, project, body)
         view = await warned(conn, await run_view(conn, run_id))
     log.info(
         "plan run dispatched",
         extra={
             "project": project,
-            "plan_id": held.plan_id,
+            "plan_id": body.plan_id,
             "run_id": run_id,
             "repos": len(view.repos or []),
             "session_per_step": body.session_per_step,
         },
     )
     return view
+
+
+async def queue_plan_run(conn: AsyncConnection, user: Principal, project: str, body: PlanRunDispatch, **columns) -> int:
+    """The checks and the insert of ``dispatch_plan_run`` in the caller's transaction, ``columns`` added to the run's
+    row (a cron job's ``cron_job_id``); the run's id. The refusals are its HTTPExceptions."""
+    access = await project_access(conn, user, project)
+    check_dispatcher(access)
+    await check_seat(conn, user)
+    held = await plan_routes._visible(conn, access, body.plan_id, None)
+    await refuse_curator_plan(conn, access, body.plan_id)
+    picked = await _picked(conn, user, access, body)
+    await lock_plan(conn, access.project_id, body.plan_id)
+    activity = await plan_activity(conn, access.project_id, body.plan_id)
+    if activity.plan_run is not None:
+        raise HTTPException(409, f"{plan_busy(body.plan_id, activity.plan_run)}; nothing was dispatched")
+    no_plan_run(activity, body.plan_id)  # a system's trace that runs the plan
+    if activity.steps:
+        key, active = min(activity.steps.items(), key=lambda item: item[1].id)
+        busy = f"has run #{active.id}, {active.state}, dispatched by {active.dispatched_by}"
+        raise HTTPException(
+            409,
+            f"step {key} of plan {body.plan_id} {busy}: a plan run waits until no run of the plan's steps is "
+            "active; nothing was dispatched",
+        )
+    repos = plan_run_repos(held)
+    names = [entry["repo"] for entry in repos]
+    await _refuse_without_origin(conn, access, user, names, f"plan {held.plan_id}")
+    asked = Asked("plan", body.runtime, body.model, None, _picks(picked))
+    chosen = await choose(conn, user, access, body.profile, asked)
+    identities, pinned = await identity_pin(conn, user, access, chosen, body.identities)
+    browser = body.browser or bool(identities)
+    _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step, browser=browser)
+    values = {
+        "kind": "plan",
+        "project_id": access.project_id,
+        "plan_id": held.plan_id,
+        "title": runs.step_title(held.body),
+        "plan_revision": held.revision,
+        "dispatched_by": user.user_id,
+        "dispatched_via": dispatch_credential(user.kind),
+        "pinned_worker_id": None if pinned is None else pinned.id,
+        "requested_runtime": body.runtime,
+        "runtime": body.runtime,
+        "model": chosen.model,
+        "mode": body.mode,
+        "approval": "auto",
+        "timeout_s": body.timeout_h * 3600,
+        "repos": repos,
+        "session_per_step": body.session_per_step,
+        "browser": browser,
+        "browser_identities": identities,
+        "as_owner": body.as_me,
+        **chosen.columns(),
+        **columns,
+    }
+    try:
+        run_id = await insert_run(conn, values)
+    except IntegrityError as exc:
+        if isinstance(exc.orig, psycopg.errors.UniqueViolation):  # another plan run of the plan got in first
+            busy = f"plan {held.plan_id} has an active plan run already; nothing was dispatched"
+            raise HTTPException(409, busy) from None
+        if isinstance(exc.orig, psycopg.errors.CheckViolation):
+            raise HTTPException(
+                422,
+                f"plan {held.plan_id}: a repo or branch name, or the number of repos, is not one a run can hold",
+            ) from None
+        raise
+    await record_pick(conn, run_id, picked)
+    await notify_queued(conn, run_id)
+    target = run_target(project, held.plan_id, None, run_id) + _account_text(picked) + chosen.audit_text()
+    await audit_run(conn, user, access, audit.RUN_DISPATCH_PLAN, target)
+    if body.as_me:
+        granted = f"{run_target(project, held.plan_id, None, run_id)} by=dispatch"
+        await run_access.record(conn, user, access.project_id, granted, granted=True)
+    return run_id
 
 
 async def author_repos(

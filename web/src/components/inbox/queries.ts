@@ -66,6 +66,7 @@ export const NOTICE_KINDS = [
   "ops_cap",
   "ops_paused",
   "ops_digest",
+  "cron_paused",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [

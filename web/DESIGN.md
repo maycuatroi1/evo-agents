@@ -236,6 +236,9 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Insights | `ChartColumn` |
 | Curator, its night shift | `MoonStar` |
 | Releases, a project's daily release; a decision of a stopped cycle, a notice of the release | `Tags` |
+| Cron jobs, a project's cron jobs (its menu item); a job of kind agent, plan, command | `AlarmClock`; `Bot`, `ListChecks`, `Terminal` |
+| A cron job's actions: History, Edit, Run now, Pause, Resume, Delete; New cron job | `History`, `PencilLine`, `Play`, `CirclePause`, `CirclePlay`, `Trash2`; `Plus` |
+| A cron fire's outcome: started, busy, missed, refused, pending; a paused job | `CircleCheck`, `Hourglass`, `TimerOff`, `CircleX`, `Clock`; `CirclePause` |
 | A release cycle: published, closed, stopped; a check that found nothing, waits for a cycle, the owner without the admin role | `PackageCheck`, `CircleMinus`, `OctagonPause`; `CircleMinus`, `Hourglass`, `UserX` |
 | The Curator's History, its search; Graph health; Runtime and harness | `TextSearch`; `Network`; `Layers` |
 | A change's replays; replays that won | `FlaskConical`; `Trophy` |
@@ -550,7 +553,7 @@ Shared pieces built on them:
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
   "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Today, Inbox, Chats and the
   current project's Systems and Knowledge graph (project areas marked `top`, the core of a project one click from
-  anywhere), the current project (Overview, Decisions, Plans, Runs, then the folds Delivery: Merge queue, Releases;
+  anywhere), the current project (Overview, Decisions, Plans, Runs, then the folds Delivery: Merge queue, Releases, Cron jobs;
   Improvement: Goals, Signals, Loop, Insights, Curator; Knowledge: Agents, Memories, Skills, Browser; Apps: the pages its
   enabled plugins add and Plugins, section Plugins below), the hub (Workers, Org chart, My memories, Shared skills, then
   the fold Settings: Secrets, Accounts, Administration for a hub admin), and at the foot the fleet line and the account.
@@ -1882,6 +1885,17 @@ Shared pieces built on them:
   decisions and opens it in a sheet of its own (`/inbox?proposal=ID`, `inbox/proposal-sheet.tsx`); Home's Projects
   card says each project's Curator state and what waits. A review run's page carries the Review run tag and links to
   the Curator and to the run's proposals.
+- `components/cron`, a project's cron jobs (`/p/{project}/cron-jobs`, in the sidebar's Delivery fold after Releases;
+  docs/hub.md, Cron jobs), for any member. The head is "Cron jobs" with New cron job for a writer. One table, by name:
+  the name (it opens the job's history) with its kind as a `Tag` and what it starts under it (`@agent`, the plan, the
+  command line), the schedule in words over the expression in mono and its time zone, the next fire as a relative time,
+  or, paused, the only pill of a healthy list (`attention`) with its reason, the last fire as its run link and when, a
+  pill only when it started none (busy, missed, refused or pending) and a refusal's reason in `danger`, the cost of its
+  runs over 24 hours, and a menu that offers only what the visitor may do (`can_change`, `can_manage`). The dialog
+  makes or edits a job: kind as three radio cards, each kind's own fields, the expression read back in words as its
+  help, the zone starting as the browser's; a 409 reads the job again and the form starts over from the newest
+  revision. Pause asks for an optional reason in `ConfirmAction`; Run now and Resume answer with a toast. A job's
+  fires open in a sheet from the right (`?job=`), its facts over a table of due time, outcome, run and reason.
 - `components/releases`, a project's daily release (`/p/{project}/releases`, in the sidebar's Delivery fold after the
   Merge queue; docs/releases.md). The head is "Releases" with a pill only while the schedule is paused (`attention`), Run now
   (`Play`, busy while the hub reads GitHub; hidden while paused) and Pause (confirmed in `ConfirmAction`, since it

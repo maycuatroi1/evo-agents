@@ -181,6 +181,7 @@ TABLES |= {"chat_label_shares"}  # migration 0229
 TABLES |= {"workflow_run_reads"}  # migration 0236
 TABLES |= {"plan_run_choices"}  # migration 0238
 TABLES |= {"ops_cursors", "ops_batches", "ops_items"}  # migration 0240
+TABLES |= {"cron_jobs", "cron_fires"}  # migration 0243
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -271,8 +272,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_forty_two_tables(hub_db):
-    assert len(TABLES) == 242  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_forty_four_tables(hub_db):
+    assert len(TABLES) == 244  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -6073,3 +6074,46 @@ def test_0242_takes_the_draft_rule_of_orchestrator_threads(hub_db):
     move_to(hub_db, "0241", down=True)
     assert "'draft'" not in query(hub_db, rule_check)[0][0]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0242") :]
+
+
+def _command_run(ids, **extra):
+    """The INSERT of a queued command run of the seeded user in demo, in no repo, returning its id."""
+    runs = hub_tables.runs
+    row = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "command", "request": "make nightly"}
+    row |= {"requested_runtime": "any", "runtime": "any", "mode": "headless", "approval": "auto", "timeout_s": 1800}
+    return insert(runs).values(row | extra).returning(runs.c.id)
+
+
+def test_0244_takes_command_runs_of_at_most_240_minutes_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0243")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        with pytest.raises(errors.CheckViolation):  # no command run before 0244
+            conn.execute(_command_run(ids))
+    move_to(hub_db, "0244")
+    with live.connect(hub_db) as conn:
+        first = one(conn, _command_run(ids, repos=[{"repo": "harness"}]))
+        one(conn, _command_run(ids, attempt=2, parent_run_id=first, timeout_s=14400))
+        author = one(conn, _author_run(ids))
+        for bad in (
+            _command_run(ids, timeout_s=14460),  # runs_command_timeout_check
+            _command_run(ids, request=None),  # runs_author_request_check: the command line is its request
+            _command_run(ids, plan_id="a-plan"),  # runs_kind_plan_check
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+
+    # Going back deletes the command runs, the retry first; the rest stays.
+    move_to(hub_db, "0243", down=True)
+    assert query(hub_db, select(hub_tables.runs.c.id, hub_tables.runs.c.kind)) == [(author, "author")]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0244") :]
+
+
+def test_0245_gives_cron_jobs_the_time_they_were_resumed(hub_db):
+    move_to(hub_db, "0244")
+    assert "resumed_at" not in columns(hub_db, "cron_jobs")
+    move_to(hub_db, "0245")
+    assert "resumed_at" in columns(hub_db, "cron_jobs")
+    move_to(hub_db, "0244", down=True)
+    assert "resumed_at" not in columns(hub_db, "cron_jobs")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0245") :]

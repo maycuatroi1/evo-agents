@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
+  AlarmClock,
   Bandage,
   BookOpen,
   BookMarked,
@@ -78,6 +79,7 @@ export type NavLabel =
   | "loop"
   | "curator"
   | "releases"
+  | "cronJobs"
   | "browser"
   | "agents"
   | "systems"
@@ -162,6 +164,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "runs", icon: Activity, segment: "runs", count: "activeRuns" },
   { label: "mergeQueue", icon: GitMerge, segment: "merge-queue", group: "delivery" },
   { label: "releases", icon: Tags, segment: "releases", group: "delivery" },
+  { label: "cronJobs", icon: AlarmClock, segment: "cron-jobs", group: "delivery" },
   { label: "problems", icon: Bandage, segment: "problems", group: "improvement" },
   { label: "opportunities", icon: Telescope, segment: "opportunities", group: "improvement" },
   { label: "goals", icon: Goal, segment: "goals", group: "improvement" },

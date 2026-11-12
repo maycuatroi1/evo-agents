@@ -223,7 +223,7 @@ def test_ls_refs_asks_for_the_prefixes_and_reads_what_an_annotated_tag_peels_to(
 
 
 def test_release_is_a_run_kind_that_the_release_schedule_alone_dispatches():
-    assert runs.RUN_KINDS[-3] == releases.RELEASE_KIND == "release"  # question (0100) and browser (0118) come after it
+    assert runs.RUN_KINDS[-4] == releases.RELEASE_KIND == "release"  # question (0100), browser (0118), command after it
     assert "release" in runs.SHOWN_KINDS
 
 
@@ -581,6 +581,7 @@ def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkey
         dsn="postgresql://hub@127.0.0.1:1/hub", data_dir=str(tmp_path), concurrency=1, hub_command="worker", queues=None
     )
     assert hub_cli.cmd_worker.__wrapped__(args) == 0
+    from evo_agents.hub.server.cron_fire import cron_pass
     from evo_agents.hub.server.hub_runtime import take_turn as hub_turn
     from evo_agents.hub.server.kg_entity_key import find as entity_key
 
@@ -592,6 +593,7 @@ def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkey
             "memory_upkeep": memory_upkeep,
             "entity_key": entity_key,
             "hub_turn": hub_turn,
+            "cron_pass": cron_pass,
         }
     ]
 

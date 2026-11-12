@@ -129,6 +129,7 @@ FAILURE_CAUSES = (
     "no_worker",  # the hub: no worker claimed a question run in time (question_runs.QUEUE_SECONDS)
     "no_answer",  # the agent of a question run wrote no answer
     "steps_left",  # a plan run's agent kept ending its turn with steps of the plan to do and no decision open
+    "command_failed",  # the shell command of a command run exited other than 0
 )
 PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool", "environment")  # what a run checks before its agent starts
 FAILURE_CAUSE = r"^[a-z][a-z0-9_]{0,31}$"  # a cause a worker may send, known to this hub or not
@@ -150,7 +151,8 @@ KEEP_GOING_TURNS = 3
 # runs (``hub.history``); a cut or a fix of a release cycle (``hub.releases``); a read-only question a core plugin asks
 # an agent type of its own (``hub.question_runs``); the login session of a browser identity, which a person drives in
 # the identity's Chromium with no agent (``hub.browser_login``); the weekly probe of a change of the Curator, k sessions
-# with its rule on and k with it off (``hub.probes``). A session on a member's own machine, which no worker
+# with its rule on and k with it off (``hub.probes``); the shell command of a cron job, which the worker runs with no
+# agent (``hub.command_runs``). A session on a member's own machine, which no worker
 # runs, is LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
 RunKind = Literal[
     "step",
@@ -166,6 +168,7 @@ RunKind = Literal[
     "release",
     "question",
     "browser",
+    "command",
 ]
 RUN_KINDS: tuple[str, ...] = get_args(RunKind)
 LOCAL_KIND = "local"
@@ -443,6 +446,7 @@ NOTICE_KINDS = (
     "ops_cap",  # the ops threads of a project's default system reached limits.ops_daily_usd (``server.ops_threads``)
     "ops_paused",  # two ops runs in a row failed of their agent, which paused the system's ops (same)
     "ops_digest",  # what the ops of a project handled in a day and what waits on a person, to its owner (same)
+    "cron_paused",  # the hub paused a cron job: its owner lost a role or seat, or its runs failed (``server.cron_fire``)
 )
 # The notices that only report what went as it should (plan hub-attention-runtime, criterion a4): a push or merge into a
 # default branch, a plan finished, a run's files. Stored read, delivered on the web alone (no channel, no device), and

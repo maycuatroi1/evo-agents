@@ -113,6 +113,7 @@ def cmd_worker(args) -> int:
     try:
         from evo_agents.hub import worker
         from evo_agents.hub.server.app import (
+            cron_pass,
             entity_key,
             hub_turn,
             init_sentry,
@@ -132,6 +133,7 @@ def cmd_worker(args) -> int:
         memory_upkeep=memory_upkeep,
         entity_key=entity_key,
         hub_turn=hub_turn,
+        cron_pass=cron_pass,
     )
 
 
@@ -339,6 +341,10 @@ def _register_workspace_commands(hsub) -> None:
     from evo_agents.hub.cli_systems import register as register_systems
 
     register_systems(hsub)
+
+    from evo_agents.hub.cli_cron import register as register_cron
+
+    register_cron(hsub)
 
     from evo_agents.hub.cli_chats import register_chats
 

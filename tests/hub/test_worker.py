@@ -441,6 +441,13 @@ def test_the_nightly_read_runs_every_minute_and_queues_at_most_one():
     assert queue.tasks[jobs.READ_NIGHTLY].queueing_lock == jobs.READ_NIGHTLY
 
 
+def test_the_cron_jobs_pass_runs_every_minute_under_its_lock_and_queues_at_most_one():
+    periodic = {p.task.name: p for p in queue.periodic_registry.periodic_tasks.values()}
+    assert periodic[jobs.CRON_JOBS].cron == "* * * * *"
+    task = queue.tasks[jobs.CRON_JOBS]
+    assert (task.queueing_lock, task.lock) == (jobs.CRON_JOBS, jobs.CRON_JOBS)
+
+
 def test_the_nightly_read_asks_git_for_the_tag_alone_and_takes_the_commit_an_annotated_tag_peels_to():
     assert nightly.LS_REFS == (b"0014command=ls-refs\n00010009peel\n0021ref-prefix refs/tags/nightly\n0000")
     plain = nightly.pkt_line(f"{NIGHTLY_COMMIT} refs/tags/nightly\n") + b"0000"

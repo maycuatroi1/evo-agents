@@ -9500,6 +9500,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/cron-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Cron Jobs
+         * @description The cron jobs of the project, by name, with their next fire, last fire and cost in 24 hours.
+         */
+        get: operations["list_cron_jobs_v1_projects__project__cron_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/cron-jobs/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Cron Job
+         * @description One cron job.
+         */
+        get: operations["show_cron_job_v1_projects__project__cron_jobs__name__get"];
+        /**
+         * Put Cron Job
+         * @description Create the cron job, owned by the caller, or store what it starts as its next revision.
+         */
+        put: operations["put_cron_job_v1_projects__project__cron_jobs__name__put"];
+        post?: never;
+        /**
+         * Delete Cron Job
+         * @description Delete a cron job with its fires; its runs stay.
+         */
+        delete: operations["delete_cron_job_v1_projects__project__cron_jobs__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/cron-jobs/{name}/fires": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cron Job Fires
+         * @description The fires of a cron job, the latest due first.
+         */
+        get: operations["cron_job_fires_v1_projects__project__cron_jobs__name__fires_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/cron-jobs/{name}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Cron Job
+         * @description Pause a cron job: it does not fire until resumed.
+         */
+        post: operations["pause_cron_job_v1_projects__project__cron_jobs__name__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/cron-jobs/{name}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Cron Job
+         * @description Resume a paused cron job: it fires from its next minute on.
+         */
+        post: operations["resume_cron_job_v1_projects__project__cron_jobs__name__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/cron-jobs/{name}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Cron Job
+         * @description Fire a cron job now: a fire due at this moment, which the hub handles as any fire.
+         */
+        post: operations["run_cron_job_v1_projects__project__cron_jobs__name__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/agents/{handle}/accounts/{name}": {
         parameters: {
             query?: never;
@@ -20619,6 +20747,360 @@ export interface components {
              * Format: date-time
              */
             happened_at: string;
+        };
+        /** CronFireOut */
+        CronFireOut: {
+            /** Id */
+            id: number;
+            /**
+             * Scheduled For
+             * Format: date-time
+             * @description the minute it was due; for run now, the moment it was pressed
+             */
+            scheduled_for: string;
+            /**
+             * Manual
+             * @description someone pressed run now
+             */
+            manual: boolean;
+            /**
+             * Actor
+             * @description who pressed run now; null for a fire of the schedule
+             */
+            actor: string | null;
+            /**
+             * Outcome
+             * @description started a run; busy: the run of a fire before was still queued or running; missed: the hub was down at its minute; refused, with the reason; null until the hub handled it
+             */
+            outcome: ("started" | "busy" | "missed" | "refused") | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Run Id
+             * @description the run it started
+             */
+            run_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Handled At */
+            handled_at: string | null;
+        };
+        /** CronJobConflict */
+        CronJobConflict: {
+            /** Error */
+            error: string;
+            /** Message */
+            message: string;
+            /** Request Id */
+            request_id?: string | null;
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** @description the job as the hub holds it */
+            current?: components["schemas"]["CronJobOut"] | null;
+        };
+        /** CronJobDeleted */
+        CronJobDeleted: {
+            /** Project */
+            project: string;
+            /** Deleted */
+            deleted: string;
+        };
+        /** CronJobOut */
+        CronJobOut: {
+            /** Project */
+            project: string;
+            /** Name */
+            name: string;
+            /**
+             * Cron
+             * @description five fields: minute, hour, day of month, month, day of week
+             */
+            cron: string;
+            /**
+             * Timezone
+             * @description the IANA time zone its cron reads in
+             */
+            timezone: string;
+            /**
+             * Kind
+             * @description agent: a message to an agent in a new thread; plan: a plan run; command: a shell
+             * @enum {string}
+             */
+            kind: "agent" | "plan" | "command";
+            /**
+             * Agent
+             * @description kind agent: the handle of the agent it messages
+             */
+            agent: string | null;
+            /**
+             * Chat Id
+             * @description kind agent: the chat of its threads; null: the owner's direct chat
+             */
+            chat_id: number | null;
+            /**
+             * Prompt
+             * @description kind agent: the message
+             */
+            prompt: string | null;
+            /**
+             * Plan
+             * @description kind plan: the plan it runs
+             */
+            plan: string | null;
+            /**
+             * Command
+             * @description kind command: the shell command line
+             */
+            command: string | null;
+            /**
+             * Repo
+             * @description kind command: the repo it runs in; null: an empty directory
+             */
+            repo: string | null;
+            /**
+             * Timeout Minutes
+             * @description kind command: how long it may run
+             */
+            timeout_minutes: number | null;
+            /**
+             * Owner
+             * @description the login of who made it: its runs run as them
+             */
+            owner: string;
+            /** Revision */
+            revision: number;
+            /** Paused */
+            paused: boolean;
+            /** Paused At */
+            paused_at: string | null;
+            /**
+             * Paused By
+             * @description who paused it; null when the hub did, or it runs
+             */
+            paused_by: string | null;
+            /** Paused Reason */
+            paused_reason: string | null;
+            /**
+             * Next Fire At
+             * @description its next minute, in UTC; null while paused
+             */
+            next_fire_at: string | null;
+            last_fire: components["schemas"]["CronFireOut"] | null;
+            /**
+             * Cost 24H Usd
+             * @description what the runs of its fires cost in the last 24 hours
+             */
+            cost_24h_usd: number;
+            /**
+             * Can Change
+             * @description the caller may change what it starts: its owner, holding writer
+             */
+            can_change: boolean;
+            /**
+             * Can Manage
+             * @description the caller may pause, resume, fire and delete it: its owner, or an admin
+             */
+            can_manage: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string | null;
+        };
+        /** CronJobPause */
+        CronJobPause: {
+            /**
+             * Reason
+             * @description why, shown with the pause
+             */
+            reason?: string | null;
+        };
+        /** CronJobPut */
+        CronJobPut: {
+            /**
+             * Cron
+             * @description five fields: minute, hour, day of month, month, day of week
+             */
+            cron: string;
+            /**
+             * Timezone
+             * @description an IANA time zone, such as Asia/Ho_Chi_Minh
+             * @default UTC
+             */
+            timezone: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "agent" | "plan" | "command";
+            /**
+             * Agent
+             * @description kind agent: the handle of an agent of the project
+             */
+            agent?: string | null;
+            /**
+             * Chat Id
+             * @description kind agent: a chat of yours; none: your direct chat with the agent
+             */
+            chat_id?: number | null;
+            /**
+             * Prompt
+             * @description kind agent: the message
+             */
+            prompt?: string | null;
+            /**
+             * Plan
+             * @description kind plan: a plan of the project
+             */
+            plan?: string | null;
+            /**
+             * Command
+             * @description kind command: the shell command line
+             */
+            command?: string | null;
+            /**
+             * Repo
+             * @description kind command: a repo of the project; none: an empty directory
+             */
+            repo?: string | null;
+            /**
+             * Timeout Minutes
+             * @description kind command: 1 to 240 minutes (30)
+             */
+            timeout_minutes?: number | null;
+            /**
+             * If Revision
+             * @description the revision it is at now; none or 0 creates it, and is 409 when it exists
+             */
+            if_revision?: number | null;
+        };
+        /** CronJobWritten */
+        CronJobWritten: {
+            /** Project */
+            project: string;
+            /** Name */
+            name: string;
+            /**
+             * Cron
+             * @description five fields: minute, hour, day of month, month, day of week
+             */
+            cron: string;
+            /**
+             * Timezone
+             * @description the IANA time zone its cron reads in
+             */
+            timezone: string;
+            /**
+             * Kind
+             * @description agent: a message to an agent in a new thread; plan: a plan run; command: a shell
+             * @enum {string}
+             */
+            kind: "agent" | "plan" | "command";
+            /**
+             * Agent
+             * @description kind agent: the handle of the agent it messages
+             */
+            agent: string | null;
+            /**
+             * Chat Id
+             * @description kind agent: the chat of its threads; null: the owner's direct chat
+             */
+            chat_id: number | null;
+            /**
+             * Prompt
+             * @description kind agent: the message
+             */
+            prompt: string | null;
+            /**
+             * Plan
+             * @description kind plan: the plan it runs
+             */
+            plan: string | null;
+            /**
+             * Command
+             * @description kind command: the shell command line
+             */
+            command: string | null;
+            /**
+             * Repo
+             * @description kind command: the repo it runs in; null: an empty directory
+             */
+            repo: string | null;
+            /**
+             * Timeout Minutes
+             * @description kind command: how long it may run
+             */
+            timeout_minutes: number | null;
+            /**
+             * Owner
+             * @description the login of who made it: its runs run as them
+             */
+            owner: string;
+            /** Revision */
+            revision: number;
+            /** Paused */
+            paused: boolean;
+            /** Paused At */
+            paused_at: string | null;
+            /**
+             * Paused By
+             * @description who paused it; null when the hub did, or it runs
+             */
+            paused_by: string | null;
+            /** Paused Reason */
+            paused_reason: string | null;
+            /**
+             * Next Fire At
+             * @description its next minute, in UTC; null while paused
+             */
+            next_fire_at: string | null;
+            last_fire: components["schemas"]["CronFireOut"] | null;
+            /**
+             * Cost 24H Usd
+             * @description what the runs of its fires cost in the last 24 hours
+             */
+            cost_24h_usd: number;
+            /**
+             * Can Change
+             * @description the caller may change what it starts: its owner, holding writer
+             */
+            can_change: boolean;
+            /**
+             * Can Manage
+             * @description the caller may pause, resume, fire and delete it: its owner, or an admin
+             */
+            can_manage: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by: string | null;
+            /** Created */
+            created: boolean;
+            /**
+             * Changed
+             * @description false when the hub held exactly this: no revision was added
+             */
+            changed: boolean;
         };
         /** CrossRead */
         CrossRead: {
@@ -31896,7 +32378,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -39430,7 +39912,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan, or a Judge of a merge request of the merge queue, on no plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "local";
             /** Project */
             project: string;
             /**
@@ -40865,7 +41347,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command";
             /** Project */
             project: string;
             /**
@@ -41036,6 +41518,11 @@ export interface components {
              * @description a chat run's: the chat message that opened it, whose files the worker saves under .evo-run/inbox/chat-<id>/; null for any other run
              */
             chat_message_id?: number | null;
+            /**
+             * Command
+             * @description a command run's: the shell command line of its cron job, which the worker runs with the machine's shell and no agent (evo_agents.hub.command_runs); left out of any other run's spec
+             */
+            command?: string | null;
         };
         /** RunSpend */
         RunSpend: {
@@ -46500,7 +46987,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed" | "srs_comment" | "ops_cap" | "ops_paused" | "ops_digest";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed" | "srs_comment" | "ops_cap" | "ops_paused" | "ops_digest" | "cron_paused";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier; null: back to the hub's default
@@ -46514,7 +47001,7 @@ export interface components {
              * @description a kind of notification: decision, proposal or a notice's
              * @enum {string}
              */
-            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed" | "srs_comment" | "ops_cap" | "ops_paused" | "ops_digest";
+            kind: "decision" | "proposal" | "push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal" | "canvas_baseline" | "merge_paused" | "release" | "pm_daily" | "pm_escalation" | "run_outputs" | "loop_paused" | "goal_review" | "loop_brief" | "plugin_notice" | "autonomy" | "worker_doctor" | "browser_needs_login" | "curator_probe_report" | "opportunity_window" | "market_install_request" | "market_license_expiring" | "today" | "kg_optimize" | "agent_pool_empty" | "srs_adopt" | "kg_pipeline" | "system_daily_cap" | "srs_review" | "srs_reviewed" | "srs_comment" | "ops_cap" | "ops_paused" | "ops_digest" | "cron_paused";
             /**
              * Tier
              * @description interrupt: pushed to the member's devices; brief: only in Today and the Inbox; off: in the Inbox alone. The Inbox, the bell and the channels get every notification whatever its tier
@@ -59904,7 +60391,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -85666,6 +86153,504 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OpsBatch"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cron_jobs_v1_projects__project__cron_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CronJobOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_cron_job_v1_projects__project__cron_jobs__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the job's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CronJobOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_cron_job_v1_projects__project__cron_jobs__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the job's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CronJobPut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CronJobWritten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CronJobConflict"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_cron_job_v1_projects__project__cron_jobs__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the job's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CronJobDeleted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cron_job_fires_v1_projects__project__cron_jobs__name__fires_get: {
+        parameters: {
+            query?: {
+                /** @description at most this many fires */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                /** @description the job's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CronFireOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_cron_job_v1_projects__project__cron_jobs__name__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the job's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CronJobPause"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CronJobOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_cron_job_v1_projects__project__cron_jobs__name__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the job's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CronJobOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_cron_job_v1_projects__project__cron_jobs__name__run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the job's name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CronFireOut"];
                 };
             };
             /** @description Unauthorized */

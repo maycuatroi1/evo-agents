@@ -96,6 +96,7 @@ def test_the_table_covers_every_state_and_only_known_actors():
         "release",
         "question",
         "browser",
+        "command",
     )
     assert ACTORS == ("worker", "owner", "reaper")
     assert set(TRANSITIONS) == set(RUN_STATES)
@@ -390,6 +391,7 @@ def test_decisions_and_notices_the_plan_names():
         "ops_cap",
         "ops_paused",
         "ops_digest",
+        "cron_paused",
     )
     assert (runs.MUTABLE_NOTICE_KINDS, runs.OUTPUT_NOTICE_SECONDS) == (("run_outputs",), 60)
     assert runs.NOTIFICATION_KINDS == ("decision", "notice", "proposal")

@@ -59,6 +59,7 @@ from evo_agents.hub.server import (
     user_emails,
     web_auth,
 )
+from evo_agents.hub.server.cron_fire import cron_pass as cron_pass  # handed down to the hub worker, as those below
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_runtime import take_turn as hub_turn  # noqa: F401
@@ -561,6 +562,7 @@ def _include_member_routes(app: FastAPI) -> None:
         context_answer_reuse,
         credential_shares,
         credentials,
+        cron_jobs,
         curator_threads,
         features,
         gateway_proxy,
@@ -629,6 +631,7 @@ def _include_member_routes(app: FastAPI) -> None:
         system_trace_views.router,  # the traces of agent systems (0218)
         agent_systems.router,  # the agent systems of a project (0217)
         system_ops.router,  # the default system of a project and the ops of a system (0240)
+        cron_jobs.router,  # the cron jobs of a project (0243)
         agent_accounts.router,
         account_pools.router,
         agent_provider_accounts.router,

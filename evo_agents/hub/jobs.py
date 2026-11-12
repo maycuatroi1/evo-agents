@@ -79,6 +79,7 @@ DELIVER_PLUGIN_EVENTS = "hub.deliver_plugin_events"  # every minute, on commit a
 READ_NIGHTLY = "hub.read_nightly"  # every minute: where the tag nightly points, for every heartbeat answer
 VALUE_CHECK = "hub.value_check"  # on a batch of a project's signals: its plugins' value_check jobs, for it alone
 RELEASE_SCHEDULES = "hub.release_schedules"  # every minute: the daily check of each release schedule, at its time
+CRON_JOBS = "hub.cron_jobs"  # every minute: the fires of the cron jobs of projects that are due
 LOOP_TICKS = "hub.loop_ticks"  # every 5 minutes: a tick of the Loop of each project that has it on
 LOOP_TICK = "hub.loop_tick"  # one tick of a project's Loop, under its lock; also queued by each of its events
 LOOP_NOTICES = "hub.loop_notices"  # every 5 minutes: the month's review of goals and the Loop's brief, when due

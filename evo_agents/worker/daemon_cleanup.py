@@ -52,6 +52,7 @@ DIRECTORY_KINDS = (
     "release",
     "question",
     "probe",
+    "command",
 )
 
 

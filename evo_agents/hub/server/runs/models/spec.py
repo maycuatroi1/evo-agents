@@ -279,6 +279,12 @@ class RunSpec(BaseModel):
         description="a chat run's: the chat message that opened it, whose files the worker saves under "
         ".evo-run/inbox/chat-<id>/; null for any other run",
     )
+    command: str | None = Field(
+        None,
+        description="a command run's: the shell command line of its cron job, which the worker runs with the "
+        "machine's shell and no agent (evo_agents.hub.command_runs); left out of any other run's spec",
+        exclude_if=lambda value: value is None,
+    )
 
 
 class Claim(BaseModel):
