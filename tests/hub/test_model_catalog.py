@@ -247,7 +247,9 @@ def test_model_catalog_route_answers_a_member_and_a_stranger_gets_nothing(hub):
     local = hub.client.get("/v1/model-catalog?group=local", headers=owner).json()["providers"]
     assert local and {p["group"] for p in local} == {"local"}
     assert hub.client.get("/v1/model-catalog").status_code == 401
-    assert "/v1/model-catalog" in hub.client.get("/v1/openapi.json").json()["paths"]
+    # the app builds its OpenAPI document of every route on the first ask: past the client's 10 s on a loaded runner
+    # (release CI of v0.63.9), whose test_openapi takes 30 to 45 s for it
+    assert "/v1/model-catalog" in hub.client.get("/v1/openapi.json", timeout=120).json()["paths"]
 
 
 def test_model_catalog_command_is_in_the_contract():
