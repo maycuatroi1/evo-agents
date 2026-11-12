@@ -71,6 +71,8 @@ KIND_TEXTS = {  # what `run show` says a run of each kind but step and plan is
     "task": "task run: one turn of a plugin's agent type on a task the plugin handed it, on the branch task/<run>; "
     "it pushes that branch and the hub opens a draft pull request, never merged",
     "local": "local run: a Claude Code session on a member's own machine, which the hub only watches",
+    "command": "command run: a cron job's shell command line, run by the machine's shell with no agent and no model; "
+    "exit 0 ends it done, any other code failed",
 }
 QUEUE_JUDGE_TEXT = (  # a judge run on no plan
     "judge run: a Judge of the merge queue reads a merge request and says whether it may merge; it pushes nothing"

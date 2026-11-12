@@ -56,7 +56,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.mirror import render
-from evo_agents.hub.server import run_reaper
+from evo_agents.hub.server import command_dispatch, run_reaper
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.sealing import KEY_BYTES
 from evo_agents.worker import doctor, list_cli
@@ -894,6 +894,54 @@ def test_a_revoked_worker_stops_its_daemon_with_the_status_a_service_does_not_re
     again = stack.cli("run", env={**stack.env, "EVO_WORKER_REVOKED_EXIT": "0"})
     assert again.returncode == 0, again.stderr
     assert (stack.state / "worker.log").read_text(encoding="utf-8").count("the hub no longer takes this worker") == 2
+
+
+# A cron job's command run (plan hub-cron-jobs, criterion a5)
+
+
+def queue_command(stack: Stack, command: str) -> int:
+    """A command run of ``command`` with no repo for owner, as a cron job queues one (``queue_command_run``)."""
+    p, u = tables.projects, tables.users
+    ((project_id,),) = live.sql(stack.db, select(p.c.id).where(p.c.name == PROJECT))
+    ((owner_id,),) = live.sql(stack.db, select(u.c.id).where(u.c.login == OWNER))
+
+    async def once() -> int:
+        config = HubConfig(dsn=stack.server.config.dsn, data_dir=stack.tmp, pool_min_size=1, pool_max_size=1)
+        pool = await open_pool(config)
+        engine = make_engine(pool)
+        try:
+            async with engine.begin() as conn:
+                return await command_dispatch.queue_command_run(
+                    conn, project_id=project_id, owner_id=owner_id, command=command, repo=None
+                )
+        finally:
+            await engine.dispose()
+            await pool.close()
+
+    return asyncio.run(once())
+
+
+def test_a_command_run_that_exits_0_ends_done_on_the_hub_and_one_that_exits_other_than_0_failed(make_stack):
+    """The hub takes the daemon's report of done for a command run, which carries no verify command (run #5454 of
+    the live trial sat in verifying: the hub refused its done as if it were a step run)."""
+    stack = make_stack()
+    stack.register()
+    proc = stack.start_daemon()
+    good = queue_command(stack, "echo made-$((1 + 1))")
+    run = stack.wait_state(good, "done", "failed")
+    assert run["state"] == "done", (run["error"], stack.daemon_output()[-6000:])
+    lines = [event["body"]["line"] for event in stack.events(good) if event["kind"] == "output"]
+    assert lines == ["made-2"]
+    bad = queue_command(stack, "echo broke >&2; exit 4")
+    run = stack.wait_state(bad, "done", "failed")
+    assert run["state"] == "failed" and "exited 4" in run["error"], run["error"]
+    r = tables.runs
+    assert live.sql(stack.db, select(r.c.failure_cause).where(r.c.id.in_([good, bad])).order_by(r.c.id)) == [
+        (None,),
+        ("command_failed",),
+    ]
+    assert "the hub refused" not in (stack.state / "worker.log").read_text(encoding="utf-8")
+    finished_cleanly(stack, proc)
 
 
 # What a run's commit leaves out, and the agents a dead daemon left

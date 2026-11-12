@@ -561,7 +561,7 @@ def _what(run: dict, hub_url: str) -> list[tuple[str, str]]:
         link = origin(hub_url) + chat_link(run["chat_id"], run["chat_message_id"]) if run.get("chat_id") else "-"
         lines.append(("chat", f"#{run.get('chat_id')}, message #{run.get('chat_message_id')}, hop {run.get('hop')}"))
         lines.append(("message", link))
-    if kind not in ("review", "author", "chat", "task", "local", "judge") or run.get("plan_id"):
+    if kind not in ("review", "author", "chat", "task", "local", "judge", "command") or run.get("plan_id"):
         lines.append(("plan", plan))
     return lines
 
@@ -617,9 +617,12 @@ def _placement(run: dict) -> list[tuple[str, str]]:
     )
     runtime += f", model {run['model']}" if run["model"] else ""
     approval = "" if plan_run else f", approval {run['approval']}"
+    runtime = f"{runtime}, {run['mode']}{approval}, timeout {_timeout(run)}"
+    if run["kind"] == "command":  # its runtime and mode are of record only: the machine's shell runs the command
+        runtime = f"none, the machine's shell runs the command, timeout {_timeout(run)}"
     return lines + [
         ("worker", worker),
-        ("runtime", f"{runtime}, {run['mode']}{approval}, timeout {_timeout(run)}"),
+        ("runtime", runtime),
         ("dispatched", f"by {run['dispatched_by']} at {when(run['queued_at'])} UTC{_as_owner(run)}"),
     ]
 

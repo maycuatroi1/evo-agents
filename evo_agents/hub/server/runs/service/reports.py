@@ -478,8 +478,10 @@ def _move_reason(body: StateReport, name: str, error: str | None, cancel_request
 
 def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> None:
     """409 for a verdict the run's approval, or its kind, does not allow. A plan run ends done without verify
-    results, since each of its steps was verified when it was reported, and never waits in review."""
+    results, since each of its steps was verified when it was reported, and never waits in review; a command run
+    (``command_runs``) has no verify command either: its command's exit 0 is what ends it done."""
     if kind in (
+        "command",
         "plan",
         "review",
         "judge",
