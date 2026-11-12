@@ -29,6 +29,7 @@ from tests.hub.test_curator_changes import (  # noqa: F401 (world is a fixture)
     curator_charter,
     one_change,
     path,
+    taking,
     world,
 )
 from tests.hub.test_migrate import move_to
@@ -258,6 +259,38 @@ def test_probe_runs_go_only_to_a_worker_that_lists_probe_in_its_run_kinds(world)
     assert response.status_code == 200, response.text
     assert fire(world.client, NIGHT).get("probe") is None
     assert rows(world) == [] and claim(world.client, world.worker) is None
+
+
+def older_daemon(world) -> None:
+    """A heartbeat of the worker on duty from a daemon that runs every kind of run but does not build a probe's arms at
+    the change's commits (``runs.PROBE_CHANGE_ARMS``): one from before plan probes-measure-both-arms."""
+    body = {
+        "runtimes": world.worker["runtimes"],
+        "checkouts": world.worker["checkouts"],
+        "free_slots": 1,
+        "runs": [],
+        "agent_version": "0.64.1",
+        "run_kinds": list(runs.RUN_KINDS),
+        "features": [feature for feature in runs.WORKER_FEATURES if feature != runs.PROBE_CHANGE_ARMS],
+    }
+    response = world.client.post("/v1/worker/heartbeat", json=body, headers=world.worker["headers"])
+    assert response.status_code == 200, response.text
+
+
+def test_probe_runs_go_only_to_a_daemon_that_builds_the_arms_at_the_changes_commits(world):
+    probing(world)
+    older_daemon(world)
+    assert night(world, NIGHT).get("probe") is None  # the night shift queues none for an older daemon
+    assert rows(world) == []
+    taking(world.client, world.worker)
+    assert night(world, NIGHT).get("probe") == 1
+    older_daemon(world)  # the daemon on duty is an older one again: it does not claim the queued probe run
+    assert claim(world.client, world.worker) is None
+    (run_id,) = [row.run_id for row in rows(world)]
+    why = world.client.get(f"/v1/projects/evo-agents/runs/{run_id}/rerun-candidates", headers=world.headers["owner"])
+    assert why.status_code == 200 and "does not build a probe's arms at the change's commits" in why.text, why.text
+    taking(world.client, world.worker)
+    assert claim(world.client, world.worker)["kind"] == "probe"
 
 
 def test_probe_schema_0131_goes_down_to_0130_and_up_again(world):

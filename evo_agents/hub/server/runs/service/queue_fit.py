@@ -311,6 +311,8 @@ _DAEMON_REASONS = {  # the conditions a newer daemon passes: {version} is the wo
     "gateway": "runs evo-agents {version}, which takes no run of the model gateway: update its daemon",
     "merge_judge": "its daemon (evo-agents {version}) does not say it judges merge requests: update it and restart it",
     "repoless_review": "its daemon (evo-agents {version}) runs no review with no repo: update it and restart it",
+    "probe_change_arms": "its daemon (evo-agents {version}) does not build a probe's arms at the change's commits: "
+    "update it and restart it",
 }
 _REASONS = {
     "project": _project_reason,

@@ -219,6 +219,10 @@ AUTONOMY_RUNTIME = "claude-code"
 # a daemon whose review run works with no repo: the KG init of a project that has none, one fed by uploads alone
 # (evo_agents.hub.server.kg_init); the hub queues it only on such a worker and hands it to no other
 REPOLESS_REVIEW = "repoless_review"
+# a daemon whose probe run builds both arms at the change's commits when the change's diff no longer comes off the tip
+# (plan probes-measure-both-arms, evo_agents.worker.runner.probe): the hub hands a probe run to no other, since an older
+# daemon reports such a probe stale without measuring it
+PROBE_CHANGE_ARMS = "probe_change_arms"
 AGENT_HOME = "agent_home"  # a daemon that gives a claude-code agent of a non-default profile its own config dir
 # a daemon whose heartbeat names apart (``orphans``) the runs a previous daemon left, and that takes a run's leases again
 # when the answer says ``renew``: the hub re-attaches a run it lost for no other (evo_agents.hub.server.run_reattach)
@@ -264,6 +268,7 @@ WORKER_FEATURES = (
     SKILL_SYNC,
     REPOLESS_REVIEW,
     REATTACH,
+    PROBE_CHANGE_ARMS,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 Runtime = Literal["claude-code", "opencode", "codex"]

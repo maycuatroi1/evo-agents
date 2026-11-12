@@ -347,8 +347,8 @@ def _conditions(at: ClaimShape) -> tuple[Condition, ...]:
 
 def _gates(at: ClaimShape) -> list[Condition]:
     """What the run's agent profile (``profiles.claim_clause``, with the plugins' environments the worker takes), its
-    browser, the model gateway, a judge of merge requests, a review with no repo, the agent pools, the account pools
-    and the worker's labels and taints ask of the worker of ``at``, each by its key."""
+    browser, the model gateway, a judge of merge requests, a review with no repo, a probe run, the agent pools, the
+    account pools and the worker's labels and taints ask of the worker of ``at``, each by its key."""
     clause = claim_clause(
         at.name,
         list(at.runtimes),
@@ -363,6 +363,7 @@ def _gates(at: ClaimShape) -> list[Condition]:
         ("gateway", gateway_accounts.claim_gate(at.agent_version)),
         ("merge_judge", merge_judge_gate(at.features)),
         ("repoless_review", repoless_review_gate(at.features)),
+        ("probe_change_arms", probe_gate(at.features)),
         ("agent_pool", agent_placement.claim_gate(at.worker_id)),
         ("pool_accounts", pool_accounts.claim_gate()),
         ("placement", or_(agent_placement.home_run(at.worker_id), at.node.gate(at.worker_id))),
@@ -383,6 +384,15 @@ def repoless_review_gate(features):
         return true()
     r = tables.runs
     return or_(r.c.kind != "review", func.coalesce(func.jsonb_array_length(r.c.repos), 0) > 0)
+
+
+def probe_gate(features):
+    """The condition a queued run meets for a worker whose daemon says ``features``: a probe run goes only to a daemon
+    that builds its arms at the change's commits when the diff no longer comes off the tip (``runs.PROBE_CHANGE_ARMS``),
+    since an older one reports the probe stale without measuring it."""
+    if runs.PROBE_CHANGE_ARMS in (features or ()):
+        return true()
+    return tables.runs.c.kind != "probe"
 
 
 def merge_judge_gate(features):

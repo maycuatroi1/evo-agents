@@ -13,6 +13,7 @@ from evo_agents.hub.server.runs.models.browser import BrowserInstallReport, Brow
 from evo_agents.hub.server.runs.models.limits import (
     CHECKOUT_KEY,
     LINE,
+    MAX_FEATURES,
     MAX_HEARTBEAT_RUNS,
     MAX_ID,
     MAX_REPORT_BYTES,
@@ -205,7 +206,7 @@ class HeartbeatRequest(BaseModel):
     )
     features: list[Annotated[str, Field(pattern=RUN_KIND)]] | None = Field(
         None,
-        max_length=MAX_RUN_KINDS,
+        max_length=MAX_FEATURES,
         description="what the daemon does besides its kinds of run: session_per_step, a plan run with a session for "
         "each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; "
         "agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the "

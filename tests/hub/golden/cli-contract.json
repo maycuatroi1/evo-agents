@@ -135220,7 +135220,7 @@
                     "pattern": "^[a-z][a-z0-9_]{0,31}$"
                   },
                   "type": "array",
-                  "maxItems": 20
+                  "maxItems": 40
                 },
                 {
                   "type": "null"

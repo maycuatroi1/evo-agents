@@ -218,6 +218,11 @@ def unfit(
             "run with a session for each step, and would run every step in one session: upgrade it and restart its "
             "daemon, or dispatch the plan run without a session per step"
         )
+    if kind == "probe" and runs.PROBE_CHANGE_ARMS not in worker.features:
+        problems.append(
+            f"its daemon (evo-agents {worker.agent_version or 'of an unknown version'}) does not build a probe's arms "
+            "at the change's commits, and would report the probe stale: upgrade it and restart its daemon"
+        )
     if (
         kind in runs.CURATOR_KINDS or kind in ("author", "chat", "browser", "command")
     ) and kind not in worker.run_kinds:
