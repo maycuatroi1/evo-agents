@@ -56,6 +56,9 @@ def repo(tmp_path) -> Path:
     clone = tmp_path / "clone"
     git(tmp_path, "clone", "--quiet", str(origin), str(clone))
     git(clone, "checkout", "--quiet", "-b", "chat/1", "origin/main")
+    # gitops.commit_run commits as the machine's git identity, which a CI runner has none of (release CI of v0.64.0)
+    for key, value in (("user.name", "Test"), ("user.email", "test@example.invalid"), ("commit.gpgsign", "false")):
+        git(clone, "config", key, value)
     return clone
 
 
