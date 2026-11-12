@@ -33,6 +33,10 @@ A release run gets its runtime's login alone of its owner's secrets (``credentia
 and for its repo on GitHub a token of the workers' App without workflows (``credentials.github_workflows``), which its
 worker hands the daemon's git alone (``evo_agents.worker.credentials.RunCredentials.guarded``).
 
+A command run (``evo_agents.hub.command_runs``) gets what any run of its owner over its repo gets, K7 of its principal
+narrowing it as any run's, less every model account: no env secret of MODEL_ENV_VARS, no account of a pool and no KG
+pool's login, since its shell calls no model.
+
 A run's agent profile (``evo_agents.hub.profiles``), at the version the run went under, narrows that further: of the
 secrets above, only those its credential allowlist names are leased, and a token of the hub's GitHub App only when it
 names ``github-app`` (a repo it would cover is missing, with the profile as the reason). Each lease records the profile
@@ -97,7 +101,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import profiles, releases, runs, tables
+from evo_agents.hub import command_runs, profiles, releases, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.account_providers import MODEL_ENV_VARS
 from evo_agents.hub.credentials import (
@@ -219,6 +223,11 @@ class _Run:
     def release(self) -> bool:
         """A release run: leased its runtime's login and a token of the workers' App alone (see the module)."""
         return self.kind == releases.RELEASE_KIND
+
+    @property
+    def command(self) -> bool:
+        """A command run (``evo_agents.hub.command_runs``): its shell calls no model, so no model account is leased."""
+        return self.kind == command_runs.KIND
 
     def allows(self, name: str) -> bool:
         """Whether the run's profile lets it be leased the credential ``name`` (a secret's, or github-app)."""
@@ -465,11 +474,16 @@ async def survey_run(
         rows += shared
     allowed = _allowed(run.curator)
     rows = [row for row in rows if _leasable(run, allowed, row)]
-    rows += await kg_pool_logins(conn, run, worker_id, rows, lock=lock, refreshable=refreshable)  # no charter's login
+    if run.command:  # no model is called: no model account of the owner's, a share's or a pool's
+        rows = [row for row in rows if not (row.kind == "env" and row.env_var in MODEL_ENV_VARS)]
+    else:
+        rows += await kg_pool_logins(conn, run, worker_id, rows, lock=lock, refreshable=refreshable)  # no charter's
     lending = [row.share_id for row in rows if getattr(row, "share_id", None) is not None]
     k7 = await lease_autonomy.k7(conn, run.id, lending)  # a share's level holds the run from the lease that lends it
     accounts = []
-    if run.pooled:  # the account pool's accounts alone: no model account of the dispatcher's or a share's
+    if (
+        run.pooled and not run.command
+    ):  # the account pool's accounts alone: no model account of the dispatcher's or a share's
         rows = [row for row in rows if not (row.kind == "env" and row.env_var in MODEL_ENV_VARS)]
         if run.account_pool_id is not None:
             accounts = [

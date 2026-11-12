@@ -31890,7 +31890,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -39424,7 +39424,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan, or a Judge of a merge request of the merge queue, on no plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "local";
             /** Project */
             project: string;
             /**
@@ -40859,7 +40859,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command";
             /** Project */
             project: string;
             /**
@@ -41030,6 +41030,11 @@ export interface components {
              * @description a chat run's: the chat message that opened it, whose files the worker saves under .evo-run/inbox/chat-<id>/; null for any other run
              */
             chat_message_id?: number | null;
+            /**
+             * Command
+             * @description a command run's: the shell command line of its cron job, which the worker runs with the machine's shell and no agent (evo_agents.hub.command_runs); left out of any other run's spec
+             */
+            command?: string | null;
         };
         /** RunSpend */
         RunSpend: {
@@ -59893,7 +59898,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */

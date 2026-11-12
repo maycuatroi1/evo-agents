@@ -27,7 +27,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub import runs, tables
 from evo_agents.hub.server import agent_placement, run_autonomy, worker_placement
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.plugin_configs import record_run_plugins
@@ -242,7 +242,10 @@ async def _claim_once(
                 await move_run(conn, run_id, "queued", "failed", "reaper", reason=refused, error=refused)
                 log.warning("author run failed at its claim", extra={"run_id": run_id, "worker_id": worker_id})
                 return None
-        runtime = run_autonomy.claim_runtime(found) or pick_runtime(asked, runtimes, rule)
+        if kind == "command":  # the shell runs it: a leased run names a runtime (0009), here one of record only
+            runtime = next(iter(runtimes or ()), runs.RUNTIMES[0])
+        else:
+            runtime = run_autonomy.claim_runtime(found) or pick_runtime(asked, runtimes, rule)
         await move_run(
             conn,
             run_id,

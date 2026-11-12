@@ -20,6 +20,8 @@ it, and the parts every kind of run shares. The run's kind is composed into it, 
   headless turn, HEAD pushed to release/<version> for the hub to merge and tag.
 - ``runner.question``, ``QuestionRun``: one headless turn of a core plugin's agent type on a question from outside the
   hub, in worktrees detached at origin's default branch, reading only; its answer goes with the report of done.
+- ``runner.command``, ``CommandRun``: a cron job's shell command line, run with the machine's shell and no agent, in a
+  worktree of its repo at the default branch or an empty directory; nothing it leaves is committed or pushed.
 
 The parts they share, each a module of ``runner``: ``sender`` (the events on their way to the hub), ``reports`` (the
 moves of the run and the blobs of its log and diff), ``agent`` and ``terminal`` (the agent, headless or in its
@@ -36,6 +38,7 @@ from __future__ import annotations
 from evo_agents.worker.runner.agent import HANDBACK_PROMPT
 from evo_agents.worker.runner.author import AuthorRun
 from evo_agents.worker.runner.chat import ChatRun
+from evo_agents.worker.runner.command import CommandRun
 from evo_agents.worker.runner.common import Parked, ReportRefused, RunFailed, RunGone, Stopped
 from evo_agents.worker.runner.context import Run, RunKind
 from evo_agents.worker.runner.conversation import ANSWER_PROMPT, RESUME_PROMPT, read_asked
@@ -57,6 +60,7 @@ __all__ = [
     "WORKTREE_FIGURES",
     "AuthorRun",
     "ChatRun",
+    "CommandRun",
     "JudgeRun",
     "Parked",
     "PlanRun",

@@ -1130,6 +1130,48 @@ refuses a question run), opens no pull request, calls no `task/pulls` and upload
 `done` with the answer in the report's `answer`, cut to 8000 characters. Without an answer the run fails with the cause
 `no_answer`. When it ends done, failed or cancelled, the plugin of its agent type gets the event `agent.answer`.
 
+## Command runs
+
+A command run (kind `command`, `evo_agents.hub.command_runs`, `runner/command.py`) is the shell command line of a cron
+job, which the worker runs with the machine's shell and no agent. The hub queues it for the job's owner
+(`evo_agents.hub.server.command_dispatch.queue_command_run`), under the project's default profile and its principal
+and autonomy snapshot as any run of the owner, with the line in the run's `request` (at most 16 KiB, no NUL), at most
+one repo, one attempt, no budget and a timeout of 30 minutes unless the job names another, 5 to 240
+(`runs_command_timeout_check` holds the 240). The spec carries the line as `command` and an empty `prompt`.
+
+Who claims it: a worker of the owner, or one shared with them under the rules of [Shared workers](#shared-workers),
+whose heartbeat has `command` in `run_kinds`. A daemon from before command runs never says it, so it never claims one.
+The run asks for no runtime, so a worker that reports none still claims it; the run records one of the worker's
+runtimes, for the record only. `command` is not a kind of the night shift (`runs.CURATOR_KINDS`): the night shift
+queues none. **A worker with `dispatch_from` set to `web` takes no cron run**:
+the hub dispatches a cron job's run, not a web session, so such a worker never claims it, and
+`command_dispatch.command_workers` leaves it out of the workers that could.
+
+What the worker does:
+
+- It takes the run's leases (`docs/credentials.md`): every lease a run of the owner gets for that repo, narrowed by K7
+  as any run's are, and no model account. The hub leases no pooled account and no secret of a model's variable
+  (`account_providers.MODEL_ENV_VARS`) to a command run, and the daemon takes the model keys of its own environment out
+  of the command's.
+- With a repo, it makes `~/.evo/worker/worktrees/<project>-<run>` with a worktree of that repo detached at the commit
+  origin's default branch has, and runs the line there. With no repo, it runs the line in that directory, empty.
+- It runs `$SHELL -c '<line>'` (`/bin/sh` when `SHELL` names no program), stdin closed, in a session of its own, with
+  the environment the daemon gives any run's commands and `EVO_RUN_KIND=command`.
+- Each line of stdout and stderr goes to the run's log as an `output` event, `{"stream": "stdout" | "stderr", "line":
+  ...}`, up to 10,000 lines of up to 4,000 characters; the end's summary counts the lines left out.
+- Exit 0 reports `verifying`, then `done` with the summary "The command exited 0, after N line(s) of output." Any other
+  exit fails the run with the cause `command_failed`.
+- Past its timeout, which counts from the command's start, or on a cancel, the daemon sends SIGTERM to the command's
+  whole process group, then SIGKILL 5 seconds later, and the run ends as any stopped run does: a timeout fails it with
+  the cause `timeout`.
+- No model is called and no runtime account is leased. After the command the daemon commits nothing, pushes nothing,
+  opens no pull request and uploads no diff. The worktree stays until the cleanup of old runs.
+
+**The risk.** The command runs with the full rights of the machine's owner, as an agent's commands do: it reads and
+writes whatever that user can, on that machine and on the network, with the run's leases in its environment. On a
+shared worker it runs with the rights of the worker's owner, not of the job's owner. Share a worker only with people
+you would let run commands as you, and set `dispatch_from` to `web` on a worker that should run no one's cron jobs.
+
 ## Local runs
 
 A local run (kind `local`, `evo_agents.hub.server.local_runs`) is a Claude Code session on a member's own machine
@@ -1867,7 +1909,7 @@ adapters could move to ACP later at little cost, plus four of the hub's own.
 | `plan` | worker | the agent's own task list |
 | `usage_update` | worker | tokens and cost, as the runtime reports them |
 | `system` | worker | the daemon's own lines: checkout, verify commands and their exit codes, push |
-| `output` | worker | a runtime event no adapter recognises, kept raw |
+| `output` | worker | a runtime event no adapter recognises, kept raw; in a command run, one line of the command's stdout or stderr, `{"stream", "line"}` ([Command runs](#command-runs)) |
 | `user_message` | hub | a message the owner sent |
 | `state` | hub | a move between run states, with its actor |
 

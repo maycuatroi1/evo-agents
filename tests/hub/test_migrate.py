@@ -6062,3 +6062,36 @@ def test_0241_takes_the_ops_rule_the_thread_of_a_batch_and_the_ops_breaker(hub_d
     assert "thread_id" not in columns(hub_db, "ops_batches")
     assert "ops_failures" not in columns(hub_db, "agent_systems")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0241") :]
+
+
+def _command_run(ids, **extra):
+    """The INSERT of a queued command run of the seeded user in demo, in no repo, returning its id."""
+    runs = hub_tables.runs
+    row = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "command", "request": "make nightly"}
+    row |= {"requested_runtime": "any", "runtime": "any", "mode": "headless", "approval": "auto", "timeout_s": 1800}
+    return insert(runs).values(row | extra).returning(runs.c.id)
+
+
+def test_0242_takes_command_runs_of_at_most_240_minutes_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0241")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        with pytest.raises(errors.CheckViolation):  # no command run before 0242
+            conn.execute(_command_run(ids))
+    move_to(hub_db, "0242")
+    with live.connect(hub_db) as conn:
+        first = one(conn, _command_run(ids, repos=[{"repo": "harness"}]))
+        one(conn, _command_run(ids, attempt=2, parent_run_id=first, timeout_s=14400))
+        author = one(conn, _author_run(ids))
+        for bad in (
+            _command_run(ids, timeout_s=14460),  # runs_command_timeout_check
+            _command_run(ids, request=None),  # runs_author_request_check: the command line is its request
+            _command_run(ids, plan_id="a-plan"),  # runs_kind_plan_check
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+
+    # Going back deletes the command runs, the retry first; the rest stays.
+    move_to(hub_db, "0241", down=True)
+    assert query(hub_db, select(hub_tables.runs.c.id, hub_tables.runs.c.kind)) == [(author, "author")]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0242") :]
