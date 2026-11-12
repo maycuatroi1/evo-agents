@@ -5,8 +5,9 @@ owner, or one shared with them, runs with the machine's shell and no agent.
 profile, its principal and autonomy snapshot as any run of the owner, and an archived project or a stop of autonomy
 refuses it. The run asks for no runtime and no model, has one attempt and no budget, and the claim gives it to a
 daemon that says it runs command runs (``claim_rules``); a worker set to take only runs dispatched from the web takes
-it only when its ``via`` is ``web``. ``command_workers`` counts the workers that could take one now, for the caller to
-refuse a job no worker runs.
+it only when its ``via`` is ``web``. The run is of the project's default agent, so only a node of that agent's pool
+claims it (``agent_placement.claim_gate``). ``command_workers`` counts the workers that could take one now, for the
+caller to refuse a job no worker runs.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import command_runs
+from evo_agents.hub.server import agent_placement
 from evo_agents.hub.server.runs.service import dispatch, worker_fit
 
 
@@ -60,10 +62,14 @@ async def queue_command_run(
 
 async def command_workers(conn: AsyncConnection, project_id: int, owner_id: int, via: str = "machine") -> list[str]:
     """The names of the workers that could take a command run of ``owner_id`` in project ``project_id`` dispatched
-    through ``via``: theirs and those shared with them there (``worker_fit.workers_of``), whose daemon says it runs
-    command runs (``worker_fit.takes_kind``), a worker set to take runs dispatched from the web alone only when ``via``
-    is ``web``."""
-    found = await conn.execute(worker_fit.workers_of(owner_id, project_id))
+    through ``via``: the nodes of the pool of the project's default agent, whose run it is (``agent_placement``), that
+    serve the project (``worker_fit.workers_of``) and whose daemon says it runs command runs (``worker_fit.takes_kind``),
+    a worker set to take runs dispatched from the web alone only when ``via`` is ``web``. None when that agent has no
+    pool: the claim gives its runs to no worker."""
+    home = await agent_placement.default_home(conn, project_id)
+    if home is None:
+        return []
+    found = await conn.execute(worker_fit.workers_of(owner_id, project_id, pool_id=home.pool_id))
     return [
         row.name
         for row in found

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import Select, delete, func, insert, select, update
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import aliased
@@ -200,7 +201,7 @@ async def last_fires(conn: AsyncConnection, job_ids: list[int]) -> dict[int, dic
     query = (
         _fire_select()
         .where(f.c.job_id.in_(job_ids))
-        .distinct(f.c.job_id)
+        .ext(distinct_on(f.c.job_id))
         .order_by(f.c.job_id, f.c.scheduled_for.desc(), f.c.id.desc())
     )
     return {row.job_id: dict(row._mapping) for row in await conn.execute(query)}

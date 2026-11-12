@@ -120,6 +120,17 @@ def test_a_worker_of_dispatch_from_web_takes_no_command_run_the_hub_queued(clien
     assert claim(client, anywhere)["kind"] == "command"
 
 
+def test_a_worker_in_no_pool_of_the_default_agent_is_none_of_the_command_workers(client, hub):
+    node = kinds_worker(client, hub["owner"], "node", runs.RUN_KINDS)
+    loose = kinds_worker(client, hub["owner"], "loose", runs.RUN_KINDS)
+    w = tables.workers
+    sql(live.database_of(client), update(w).values(pool_id=None).where(w.c.id == loose["id"]))
+    assert workers_for(client) == ["node"], "the claim gives a run of the default agent to its pool's nodes alone"
+    run_id = queued(client)
+    assert claim(client, loose) is None
+    assert claim(client, node)["id"] == run_id
+
+
 def test_a_command_run_is_leased_its_owners_secrets_and_repo_token_but_no_model_account(client, hub, github):
     install(github, "evo-agents")
     env_secret(client, hub["owner"], "deploy-token", "DEPLOY_TOKEN", sample("deploy-"))

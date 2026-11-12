@@ -22195,6 +22195,7 @@
             "release",
             "question",
             "browser",
+            "command",
             "local"
           ]
         },
@@ -29432,7 +29433,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.63.6"
+      "version": "0.63.9"
     },
     "paths": {
       "/v1/health": {
@@ -44796,6 +44797,7 @@
                       "release",
                       "question",
                       "browser",
+                      "command",
                       "local"
                     ],
                     "type": "string"
@@ -148548,7 +148550,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 42,
+              "maxItems": 43,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -152770,6 +152772,7 @@
                 "release",
                 "question",
                 "browser",
+                "command",
                 "local"
               ],
               "title": "Kind"
@@ -169675,6 +169678,7 @@
                 "release",
                 "question",
                 "browser",
+                "command",
                 "local"
               ],
               "title": "Kind",
@@ -172594,7 +172598,8 @@
                 "probe",
                 "release",
                 "question",
-                "browser"
+                "browser",
+                "command"
               ],
               "title": "Kind"
             },
@@ -173001,6 +173006,18 @@
               ],
               "title": "Chat Message Id",
               "description": "a chat run's: the chat message that opened it, whose files the worker saves under .evo-run/inbox/chat-<id>/; null for any other run"
+            },
+            "command": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Command",
+              "description": "a command run's: the shell command line of its cron job, which the worker runs with the machine's shell and no agent (evo_agents.hub.command_runs); left out of any other run's spec"
             }
           },
           "type": "object",
@@ -186011,7 +186028,8 @@
                 "srs_comment",
                 "ops_cap",
                 "ops_paused",
-                "ops_digest"
+                "ops_digest",
+                "cron_paused"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -186087,7 +186105,8 @@
                 "srs_comment",
                 "ops_cap",
                 "ops_paused",
-                "ops_digest"
+                "ops_digest",
+                "cron_paused"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
