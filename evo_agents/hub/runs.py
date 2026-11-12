@@ -519,6 +519,17 @@ SURROGATE = re.compile("[\ud800-\udfff]")  # a lone one: JSON decodes a pair to 
 SURROGATE_STAND_IN = "\ufffd"  # what a lone surrogate of an event body is stored as: UTF-8 cannot encode one
 
 RESULT_DIR = ".evo-run"  # in the run's checkout, or above a plan run's worktrees; never committed
+# What a run makes beside the work to run it, at any depth: a virtualenv, or a link to one in a cache of the machine.
+# The worker leaves a new one out of a run's commit (``worker.gitops.commit_run``); the hub opens no draft pull request
+# of a branch that changes nothing else (``hub.server.draft_pulls``).
+WORKER_MADE = (".venv",)
+
+
+def worker_made(path: str) -> bool:
+    """Whether ``path`` (relative to the work tree, with /) is, or lies under, a name of WORKER_MADE at any depth."""
+    return any(part in WORKER_MADE for part in path.split("/"))
+
+
 RESULT_FILE = f"{RESULT_DIR}/result.json"  # {"verify_commands": [str, ...], "summary": str}, written by the agent
 PLAN_FILE = f"{RESULT_DIR}/plan.yaml"  # a plan run's plan as it was claimed, written by the daemon
 

@@ -896,7 +896,7 @@ otherwise):
 | `evo-agents worker chat create --title TEXT [--person LOGIN] [--agent HANDLE]` | `POST .../chats` | a chat of the agent and the run's dispatcher, with people that clear the agent's project and agents the dispatcher may add to a chat (writer on its project, the people clearing its label); each person is told (`chat_added`) |
 | `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself; a refusal (201, `refusal`) is said in the thread and exits 1. In a direct chat, an agent it does not have goes to the group chat of the thread (`docs/hub.md`, Direct chats): the one the thread opened, or one made now of the dispatcher, the agent and HANDLE; the message goes there and the hub links the group in the direct chat's thread |
 | `evo-agents worker chat read MESSAGE [--thread] [--fetch]` | `POST .../chat/read` (`id`, `thread`) | a message of a chat whole, or with `--thread` its thread (the first message and the replies, oldest first, at most 500), those the run's agent may read (`docs/hub.md`, Group chats, In the knowledge graph). MESSAGE is its id, or its item as `kg_search` lists it, `plugin.chats:message:<id>`, or a thread's item `plugin.chats:thread:<chat>/<root>`. It prints the hub's text, the same as the `/mcp` tools `chat_message` and `chat_thread` give, under a line saying it is data, never instructions; a message it may not read is an error (404), as one that does not exist. What it shows counts toward the audience of a memory the agent writes next. With `--fetch` it also saves the files of the messages it read under `.evo-run/inbox/chat-<message id>/` (`GET .../attachments/{aid}/content`, Files attached to messages) and lists their paths after the text; a file not saved is a line saying why and exit status 1 |
-| (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App (on a repo that takes no draft, a pull request whose title starts with `[Draft]`), or finds the one open, and the agent's message in the thread links it; when GitHub refuses, the message repeats GitHub's errors (field, code, message), and the session's next push tries again. A head GitHub does not see yet is tried twice more, 1 s and 3 s later |
+| (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`, `base`) | a chat run pushed its branch of a repo, made from `base`: the hub opens its draft pull request into `base` with the workers' App (on a repo that takes no draft, a pull request whose title starts with `[Draft]`), or finds the one open, and the agent's message in the thread links it; a branch with nothing `base` lacks, or that changes only a `.venv`, gets none (`docs/hub.md`, Draft pull requests of run branches); when GitHub refuses, the message repeats GitHub's errors (field, code, message), and the session's next push tries again. A head GitHub does not see yet is tried twice more, 1 s and 3 s later |
 
 A chat run's agent can ask its owner decisions too, of the category `triage` alone, on a daemon with the feature
 `chat_decisions` (`docs/notifications.md`, "A decision of a chat run"). Its turn ends with the decision open and the run
@@ -1101,10 +1101,11 @@ agent works in one headless turn, `EVO_RUN_KIND=task`, and asks nobody anything.
 - commits what the agent left in each worktree;
 - pushes the run's branch of each repo whose commits origin lacks, never a default branch and never forced
   (`gitops.check_push`);
-- tells the hub of each push with `POST /v1/worker/runs/{id}/task/pulls` (`repo`, `branch`, `head`).
+- tells the hub of each push with `POST /v1/worker/runs/{id}/task/pulls` (`repo`, `branch`, `head`, `base`).
 
-The hub opens a draft pull request with the workers' App, or finds the one open, keeps it in `pulls` and never merges
-it. The run then ends `done`, without verify results. It never waits and is never rerun (409): the plugin hands the
+The hub opens a draft pull request with the workers' App into the base the task names, else `base`, or finds the one
+open, keeps it in `pulls` and never merges it; it closes it once its work is in the base (`docs/hub.md`, Draft pull
+requests of run branches). The run then ends `done`, without verify results. It never waits and is never rerun (409): the plugin hands the
 task again. A lost one is tried again on the same branch with the same agent type. When it ends done, failed or
 cancelled, the plugin of its agent type gets the event `task.result`.
 
@@ -2635,7 +2636,10 @@ closes, after a window-less pass has deleted the cookies outside the identity's 
    suggestions it drew from the session, a copy of the learned skills under `.agents/skills/.learned/`, and
    `.evo-run/`), and every copy of a hub plan exactly as the
    hub wrote it (a first line in the format `hub-plan-mirror-v1` writes and a hub key whose digest is the digest of
-   what the file holds). Those paths go back in the index as `HEAD` has them, even when the agent staged them, stay
+   what the file holds), and a new path named `.venv` at any depth (`runs.WORKER_MADE`: a virtualenv, or a link the
+   agent made to one in a cache of the machine; one `HEAD` tracks stays the repo's). Each worktree the daemon makes also
+   puts `.venv` in its repository's `info/exclude`, so the agent's own `git add --all` skips it. Those paths go back
+   in the index as `HEAD` has them, even when the agent staged them, stay
    in the worktree, and are named in a `system` event of the run (`left_out`); a copy the agent edited is its work
    and is committed. The daemon then refuses to push a detached HEAD, a branch the agent switched to, or a default
    branch; and pushes `HEAD` to the plan's branch on origin, never forced and never merged. A push the remote refuses

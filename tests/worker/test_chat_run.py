@@ -96,6 +96,37 @@ def test_a_chat_run_answers_in_the_thread_and_pushes_the_branch_of_each_repo_it_
     with_daemon(machine, body)
 
 
+def test_a_chat_run_moved_onto_another_branch_names_it_as_the_base_and_leaves_its_venv_link_out(machine):  # noqa: F811
+    seed = machine.tmp / "seed" / "alpha"  # origin gets develop, a commit ahead of main
+    git("checkout", "--quiet", "-b", "develop", cwd=seed)
+    (seed / "develop.txt").write_text("develop\n", encoding="utf-8")
+    git("add", "develop.txt", cwd=seed)
+    git("commit", "--quiet", "-m", "develop", cwd=seed)
+    git("push", "--quiet", str(machine.origins["alpha"]), "develop", cwd=seed)
+    cache = machine.tmp / "cache-venv"
+    cache.mkdir()
+    machine.scenarios(
+        {
+            "chat": [
+                {"sh": f"git -C alpha reset --quiet --hard origin/develop && ln -s {cache} alpha/.venv"},
+                {"write": {"alpha/fix.py": "FIXED = True\n"}},
+                {"say": "Fixed it on develop."},
+            ]
+        }
+    )
+
+    async def body(hub, daemon):
+        run_id = hub.queue_chat_run(["alpha"])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        branch = f"chat/{run_id}"
+        ((call),) = [c for c in hub.chat_calls if c["route"] == "chat/pulls"]
+        assert (call["branch"], call["base"]) == (branch, "develop"), "the branch it was made from, not main"
+        files = machine.origin("alpha", "show", "--name-only", "--format=", branch).splitlines()
+        assert files == ["fix.py"], "the .venv link is no part of the run's commit"
+
+    with_daemon(machine, body)
+
+
 def test_a_chat_run_takes_a_message_of_the_thread_in_a_second_turn_of_its_session(machine):  # noqa: F811
     go_on = machine.tmp / "go-on"
     machine.scenarios(

@@ -10929,7 +10929,8 @@ export interface paths {
         put?: never;
         /**
          * Pushed
-         * @description The worker pushed the chat run's branch of a repo: its draft pull request, linked in the thread.
+         * @description The worker pushed the chat run's branch of a repo: its draft pull request into the branch it was made from
+         *     (``draft_pulls.open_for``), kept on the run and linked in the thread; none for a branch with nothing to merge.
          */
         post: operations["pushed_v1_worker_runs__run_id__chat_pulls_post"];
         delete?: never;
@@ -19534,6 +19535,11 @@ export interface components {
              * @description the commit the branch has now
              */
             head: string;
+            /**
+             * Base
+             * @description the branch of origin the branch was made from, which its pull request goes into; null: the hub picks one (``draft_pulls.pick_base``)
+             */
+            base?: string | null;
         };
         /** ChatReaction */
         ChatReaction: {
@@ -45383,6 +45389,11 @@ export interface components {
              * @description the commit the branch has now
              */
             head: string;
+            /**
+             * Base
+             * @description the branch of origin the branch was made from; the base the task names goes first
+             */
+            base?: string | null;
         };
         /** TaskQueued */
         TaskQueued: {

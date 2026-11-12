@@ -6061,3 +6061,15 @@ def test_0241_takes_the_ops_rule_the_thread_of_a_batch_and_the_ops_breaker(hub_d
     assert "thread_id" not in columns(hub_db, "ops_batches")
     assert "ops_failures" not in columns(hub_db, "agent_systems")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0241") :]
+
+
+def test_0242_takes_the_draft_rule_of_orchestrator_threads(hub_db):
+    move_to(hub_db, "0241")
+    move_to(hub_db, "0242")
+    rule_check = select(func.pg_get_constraintdef(PG_CONSTRAINT.c.oid, type_=Text)).where(
+        PG_CONSTRAINT.c.conname == "orchestrator_threads_rule_check"
+    )
+    assert "'draft'" in query(hub_db, rule_check)[0][0]
+    move_to(hub_db, "0241", down=True)
+    assert "'draft'" not in query(hub_db, rule_check)[0][0]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0242") :]

@@ -1214,6 +1214,29 @@ service and no setting. The `worker` service gets the gateway settings (`EVO_HUB
 evo-agents hub agent edit lumen-helper --project northwind --runs-on hub --allow model:openrouter/auto
 ```
 
+### Draft pull requests of run branches
+
+The hub opens a draft pull request for the branch a chat run or a task run pushed (`evo_agents/hub/server/draft_pulls.py`),
+and follows it to its end; it never merges one.
+
+- Base. The base the run's task names goes first, then the one the worker names (`base` of `POST .../chat/pulls` and
+  `.../task/pulls`: the branch of origin the run's branch was made from, `worker.runner.pull_base`), then, for a
+  worker that names none, whichever of the project's `default_branch` and the repo's default branch on GitHub the head
+  has fewer commits beyond. A draft open into another base than the one named moves there.
+- Nothing to open. The hub compares base...head on GitHub first. A branch with no commit the base lacks, or that
+  changes only what a run makes beside the work (`runs.WORKER_MADE`: a `.venv`, or a link to a virtualenv), gets no
+  pull request: the thread says why, and the draft open of it is closed with a comment.
+- Kept. The run keeps each pull request in `runs.pulls`: repo, url, number, branch, base, head and `state`. A task's
+  plugin still reads `{repo, url, number}` of each.
+- Settled. On each pass of the reaper, at most 20 drafts kept open on runs queued in the last 30 days are read, each at
+  most every 10 minutes, with the workers' App (`pulls.SERVER_PERMISSIONS["settle"]`). A draft merged or closed on
+  GitHub is kept so. One whose head is in its base is closed with a comment naming the merged pull request that holds
+  the head; one that changes only what a run makes beside the work is closed too. Once its trace ended (no run of the
+  trace, or of the session for a run of no trace, still to end, the last ended 30 minutes ago), a merged pull request
+  into the same base that a message or the evidence of those runs links, and that changes a file the draft changes,
+  closes it with a comment naming it. Else the hub opens a thread of rule `draft` to the Orchestrator of the agent,
+  once (The Orchestrator); an agent with no Orchestrator keeps its draft as it is.
+
 ### The Orchestrator
 
 An agent with an `orchestrates` edge from the system's Orchestrator has the Orchestrator for its triage, in place of
@@ -1239,9 +1262,10 @@ A thread opens when:
 | `idle` | an open trace with a run that should move (queued, leased, running or verifying) writes no span for `limits.idle_minutes_hub` minutes (10) when all its open runs are on the hub runtime, else `limits.idle_minutes_worker` (30) | trace |
 | `rounds` | a turn of the hub runtime uses its 8 rounds of tools without a final answer | run |
 | `budget` | the trace refuses an ask or a mention for its budget (Budget of a trace) | trace |
+| `draft` | the trace ended with a draft pull request of the agent's branch still open, which the hub cannot close for another one (Draft pull requests of run branches; migration 0242) | pull request |
 
-The rules call no model. Loop and budget are checked when a span is written, rounds when the turn ends, and idle by
-the reaper on each pass (`run_reaper`). A run that waits for an answer (parked or waiting) is not idle. Each check
+The rules call no model. Loop and budget are checked when a span is written, rounds when the turn ends, and idle and
+draft by the reaper on each pass (`run_reaper`). A run that waits for an answer (parked or waiting) is not idle. Each check
 runs in a savepoint: a thread that cannot open is logged and undoes nothing.
 
 A thread for a run of kind step, plan or author is a triage thread too (`run_triage`), so the Orchestrator has the

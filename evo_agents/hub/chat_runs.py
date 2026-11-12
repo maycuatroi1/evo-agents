@@ -641,3 +641,10 @@ def pull_text(
             "push of this session tries again."
         )
     return f"Pushed {branch} of {repo}. Its origin is not on GitHub, or the hub has no GitHub App: no pull request."
+
+
+def nothing_text(repo: str, branch: str, why: str, closed: str | None = None) -> str:
+    """The message in the thread once the worker pushed ``branch`` of ``repo`` with nothing for a pull request to
+    merge (``draft_pulls.nothing_to_open`` says ``why``), the draft open of it closed at ``closed``."""
+    said = f"Pushed {branch} of {repo}, but {why}: no pull request."
+    return said + (f" The hub closed its draft pull request {closed}." if closed else "")

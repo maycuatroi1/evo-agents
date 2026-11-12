@@ -15,6 +15,10 @@ no redirect, one log line without the token): GitHub failing raises ``GitHubUnav
 again next pass"; GitHub refusing raises ``Refused`` (a ``GitHubRefused``) with a message safe to show, which repeats
 GitHub's ``message`` and the field, code and message of each item of its ``errors`` (``Refused.errors``).
 
+For the draft pull requests of run branches (``evo_agents.hub.server.draft_pulls``, ``SERVER_PERMISSIONS["settle"]``)
+it compares a branch with its base and lists the paths that changes (``compare_paths``), lists the pull requests that
+hold a commit (``commit_pulls``), and closes a pull request or moves its base (``update_pull``).
+
 ``open_pull`` tries again, after HEAD_WAITS, while GitHub's errors say the head branch is not there (field ``head``),
 as it may not be for a moment after the push; any other refusal is final.
 
@@ -59,6 +63,9 @@ T = TypeVar("T")
 
 SERVER_PERMISSIONS = {
     "open": {"pull_requests": "write", "contents": "read", "metadata": "read"},
+    # a draft of a run's branch settled (``draft_pulls``): compared with its base, its commit's pull requests read,
+    # commented on, moved to another base or closed
+    "settle": {"pull_requests": "write", "contents": "read", "metadata": "read"},
     "read": {"pull_requests": "read", "checks": "read", "statuses": "read", "metadata": "read"},
     "pulls": {"pull_requests": "read", "metadata": "read"},
     "merged": {"pull_requests": "read", "contents": "read", "metadata": "read"},  # a merged pull request and its base
@@ -72,6 +79,7 @@ SERVER_PERMISSIONS = {
 }
 PAGE = 100
 MAX_PAGES = 30  # GitHub lists at most 3000 files of a pull request
+COMPARE_FILES = 300  # the files GitHub lists of a comparison at most
 MERGE_METHOD = "merge"  # a merge commit, which `git revert -m 1` undoes
 HEAD_WAITS = (1.0, 3.0)  # seconds before each new try of a pull request whose head GitHub does not see yet
 MAX_ERRORS = 5  # items of GitHub's errors a refusal repeats
@@ -270,6 +278,57 @@ async def compare_files(app: GitHubApp, token: str, owner: str, repo: str, base:
         "ahead_by": ahead if type(ahead) is int else None,
         "files": len(files) if isinstance(files, list) else None,
     }
+
+
+async def compare_paths(app: GitHubApp, token: str, owner: str, repo: str, base: str, head: str) -> dict | None:
+    """What ``head`` of owner/repo changes against ``base`` as GitHub compares base...head: its ``status`` (ahead,
+    behind, identical, diverged), the commits ``head`` has that ``base`` lacks (``ahead_by``), and the paths the
+    comparison changes (``paths``, at most the 300 GitHub lists, ``truncated`` when it may list no more; None when it
+    lists none); None when GitHub does not see one of them (404), or answers without a status."""
+    doing = f"comparing {head[:40]} with {base} on {owner}/{repo}"
+    path = _path("repos", owner, repo, "compare", f"{base}...{head}")
+    response = await _api(app, token, "GET", path, doing, params={"per_page": 1, "page": 1})
+    if response.status_code == 404:
+        return None
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    data = app._json(response, doing)
+    status, ahead, files = data.get("status"), data.get("ahead_by"), data.get("files")
+    if not isinstance(status, str):
+        return None
+    paths = None  # GitHub lists no files: the hub does not know them
+    if isinstance(files, list):
+        paths = [item["filename"] for item in files if isinstance(item, dict) and isinstance(item.get("filename"), str)]
+    return {
+        "status": status,
+        "ahead_by": ahead if type(ahead) is int else None,
+        "paths": paths,
+        "truncated": isinstance(files, list) and len(files) >= COMPARE_FILES,
+    }
+
+
+async def update_pull(app: GitHubApp, token: str, owner: str, repo: str, number: int, **fields) -> dict:
+    """Change pull request ``number`` of owner/repo as ``fields`` say (``state="closed"``, ``base=...``); GitHub's
+    answer."""
+    doing = f"changing pull request #{number} of {owner}/{repo}"
+    response = await _api(app, token, "PATCH", _path("repos", owner, repo, "pulls", number), doing, json=fields)
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    return app._json(response, doing)
+
+
+async def commit_pulls(app: GitHubApp, token: str, owner: str, repo: str, sha: str) -> list[dict]:
+    """The pull requests of owner/repo that hold commit ``sha``, as GitHub lists them (the first page); empty when
+    GitHub does not know the commit."""
+    doing = f"reading the pull requests of {sha[:12]} on {owner}/{repo}"
+    params = {"per_page": PAGE}
+    response = await _api(app, token, "GET", _path("repos", owner, repo, "commits", sha, "pulls"), doing, params=params)
+    if response.status_code in (404, 422):
+        return []
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    items = response.json()
+    return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
 
 
 async def compare_commits(
