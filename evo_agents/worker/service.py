@@ -649,6 +649,16 @@ def doctor_warnings(spec: Spec) -> list[str]:
     return doctor.warnings(doctor.examine(doctor.Machine.here(path=spec.path)))
 
 
+def self_update_warning() -> str | None:
+    """A warning when the install this command runs from, which the service will run, cannot update itself to
+    nightly (a pipx or pip install, an editable one): the daemon would stay on this version until a person installs
+    it again."""
+    from evo_agents.worker.selfupdate.install import here
+
+    reason = here().reason
+    return f"warning: the daemon will not update itself to nightly: {reason}" if reason else None
+
+
 def _refuse_foreign_daemon(home: WorkerHome, service: Manager) -> None:
     pid = home.read_pid()
     if pid is None:
@@ -734,7 +744,11 @@ def cmd_install(args) -> int:
         warned = doctor_warnings(spec)
     except Exception as exc:  # the doctor only warns: nothing it meets stops the install
         warned = [f"warning: `evo-agents worker doctor` did not finish ({type(exc).__name__}: {exc})"]
-    for line in warned:
+    try:
+        stays = self_update_warning()
+    except Exception as exc:  # it only warns, like the doctor
+        stays = f"warning: could not read whether the daemon can update itself ({type(exc).__name__}: {exc})"
+    for line in [*warned, *([stays] if stays else [])]:
         print(line, file=sys.stderr)
     if not status.running:
         print(

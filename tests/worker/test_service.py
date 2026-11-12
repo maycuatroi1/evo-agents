@@ -19,6 +19,7 @@ from evo_agents.worker.home import PidLock, WorkerConfig, WorkerHome
 
 EVO = "/opt/tools/bin/evo-agents"
 SYSTEM = ["/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+SELF_UPDATE_WARNING = service.self_update_warning  # the fixture home stubs it out
 
 
 @pytest.fixture
@@ -33,6 +34,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "missing_extra", lambda: None)
     monkeypatch.setattr(service.time, "sleep", lambda seconds: None)
     monkeypatch.setattr(service, "doctor_warnings", lambda spec: [])  # tests/worker/test_doctor.py covers it
+    monkeypatch.setattr(service, "self_update_warning", lambda: None)
     return path
 
 
@@ -556,6 +558,23 @@ def test_install_refuses_while_a_daemon_runs_outside_the_service(home, joined, m
     err = capsys.readouterr().err
     assert f"a worker daemon runs here already outside the service (pid {os.getpid()})" in err
     assert not service.Launchd().file().exists()
+
+
+def test_install_warns_when_the_daemon_cannot_update_itself(home, joined, monkeypatch, capsys):
+    from evo_agents.worker.selfupdate import install
+
+    forbid_real_commands(monkeypatch)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(subprocess, "run", FakeLaunchctl())
+    monkeypatch.setattr(service, "self_update_warning", SELF_UPDATE_WARNING)
+    venv = home / ".local" / "share" / "pipx" / "venvs" / "evo-ak"
+    venv.mkdir(parents=True)
+    (venv / "pipx_metadata.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(install, "here", lambda: install.read_install(venv, "/usr/bin/python3"))
+    assert main(["worker", "service", "install"]) == 0, "a warning, not an error: the service runs"
+    err = capsys.readouterr().err
+    assert "warning: the daemon will not update itself to nightly: installed with pipx" in err
+    assert "`pipx uninstall evo-ak`" in err and install.REINSTALL in err
 
 
 def test_install_fails_when_the_daemon_does_not_keep_running(home, joined, monkeypatch, capsys):
