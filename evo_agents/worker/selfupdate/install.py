@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,8 @@ UV_PLACES = ("~/.local/bin", "~/.cargo/bin", "/opt/homebrew/bin", "/usr/local/bi
 UPDATABLE = ("git", "pypi")
 DROPPED_KEYS = ("constraints", "overrides", "build-constraint-dependencies")
 WORKER_EXTRA = "worker"  # aiohttp and the runtimes' SDKs, without which `evo-agents worker run` does not start
+REINSTALL = f"uv tool install --force '{PACKAGE}[{WORKER_EXTRA}] @ git+{REPO_URL}@{TAG}'"
+PIPX_METADATA = "pipx_metadata.json"  # what pipx writes into each environment it makes
 
 
 @dataclass(frozen=True)
@@ -150,6 +153,28 @@ def _commands(data) -> dict[str, Path]:
     return found
 
 
+def without_receipt(prefix: Path) -> str:
+    """Why the environment at ``prefix``, which has no receipt, cannot be updated, and the commands that make it a uv
+    tool install the daemon can update, said before the path, which a heartbeat may clip. pipx and uv both put
+    commands in ~/.local/bin by default, so once pipx's install is gone the service's absolute path names uv's
+    evo-agents and a restart is enough; a venv made by pip has a path of its own, which the service names until it is
+    installed again."""
+    if (prefix / PIPX_METADATA).is_file():
+        return (
+            f"installed with pipx, not `uv tool install`: run `pipx uninstall {PACKAGE}` and `{REINSTALL}` while the "
+            f"worker is idle, then restart the worker's service ({prefix} has no {RECEIPT})"
+        )
+    return (
+        f"not installed with `uv tool install`: run `{REINSTALL}`, then `evo-agents worker service install` with "
+        f"that evo-agents so the service runs it ({prefix} has no {RECEIPT})"
+    )
+
+
+def here() -> Install:
+    """The install this Python runs from."""
+    return read_install(Path(sys.prefix), getattr(sys, "_base_executable", None) or sys.executable)
+
+
 def read_install(prefix: Path, python: str | None) -> Install:
     """The install whose environment is ``prefix``, made from the interpreter ``python``
     (``sys._base_executable``)."""
@@ -160,7 +185,7 @@ def read_install(prefix: Path, python: str | None) -> Install:
     try:
         data = tomllib.loads(receipt.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return Install(prefix, "none", f"not installed with `uv tool install` ({prefix} has no {RECEIPT})", **facts)
+        return Install(prefix, "none", without_receipt(prefix), **facts)
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         return Install(prefix, "other", f"cannot read {receipt}: {exc}", **facts)
     requirement, problem = _parse_receipt(data)

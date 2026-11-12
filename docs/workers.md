@@ -3610,7 +3610,12 @@ decides whether to reinstall its own install, and it does when all of these hold
 - **uv installed it as a tool, from this repository or from PyPI.** The receipt uv writes into the environment
   (`uv-receipt.toml`) names evo-ak as its one requirement, from git of maycuatroi1/evo-agents or from an index, and the
   `evo-agents` command. An editable install, a local path, a URL, another repository, `pip install`, or a tool
-  installed with `--with`, constraints or overrides beside evo-ak (which an update would drop) is not updated.
+  installed with `--with`, constraints or overrides beside evo-ak (which an update would drop) is not updated. An
+  install with no receipt says how to make it one in its reason: one that pipx made (its `pipx_metadata.json`),
+  `pipx uninstall evo-ak` and the `uv tool install` above while the worker is idle, then a restart of the service,
+  whose path in `~/.local/bin` then names uv's command; any other, the `uv tool install` and `evo-agents worker
+  service install` again from the new command. `evo-agents worker service install` warns when the install it runs
+  from cannot update itself, and goes on.
 - **launchd or systemd runs the daemon and starts it again after exit 75.** For launchd the daemon is a child of
   pid 1 with a label in `XPC_SERVICE_NAME`, and its plist in `~/Library/LaunchAgents` has `KeepAlive` true or
   `{SuccessfulExit: false}`. For systemd `INVOCATION_ID` is set, `/proc/self/cgroup` names the unit, and `systemctl

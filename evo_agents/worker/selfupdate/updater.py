@@ -43,17 +43,16 @@ import asyncio
 import contextlib
 import functools
 import logging
-import sys
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 from evo_agents.hub import runs
 from evo_agents.worker.home import WorkerHome
 from evo_agents.worker.power import clock_through_sleep
 from evo_agents.worker.selfupdate.detached import Line, ScopeError, Scopes, holds_back, line_of, live_runs
-from evo_agents.worker.selfupdate.install import COMMIT, Install, find_uv, read_install
+from evo_agents.worker.selfupdate.install import COMMIT, Install, find_uv
+from evo_agents.worker.selfupdate.install import here as install_here
 from evo_agents.worker.selfupdate.installer import Installer, Outcome, nightly_commit
 from evo_agents.worker.selfupdate.peers import Peers, root_of
 from evo_agents.worker.selfupdate.supervisor import BY_HAND, Supervision, detect
@@ -152,7 +151,7 @@ class SelfUpdate:
     @classmethod
     def here(cls, home: WorkerHome, env: Mapping[str, str]) -> SelfUpdate:
         """The install this Python runs from, as the daemon of ``home`` with the environment ``env`` sees it."""
-        install = read_install(Path(sys.prefix), getattr(sys, "_base_executable", None) or sys.executable)
+        install = install_here()
         if install.reason is not None:
             return cls(install)
         uv = find_uv(env.get("PATH"))

@@ -38,7 +38,7 @@ from evo_agents.worker.home import EXIT_UPDATED, PidLock, WorkerConfig, WorkerHo
 from evo_agents.worker.selfupdate import backup as backup_module
 from evo_agents.worker.selfupdate import detached
 from evo_agents.worker.selfupdate import installer as installer_module
-from evo_agents.worker.selfupdate.install import find_uv, read_install, repo_of
+from evo_agents.worker.selfupdate.install import REINSTALL, find_uv, read_install, repo_of
 from evo_agents.worker.selfupdate.installer import Done, Installer, api_commit, nightly_commit, parse_ls_remote
 from evo_agents.worker.selfupdate.peers import Peers
 from evo_agents.worker.selfupdate.supervisor import BY_HAND, Supervision, detect, launchd, systemd
@@ -276,6 +276,18 @@ def test_an_install_with_more_than_evo_ak_or_without_a_receipt_cannot_be_updated
     bare.mkdir()
     install = read_install(bare, PYTHON)
     assert install.kind == "none" and "not installed with `uv tool install`" in install.reason
+    assert REINSTALL in install.reason and "`evo-agents worker service install`" in install.reason
+
+
+def test_an_install_pipx_made_says_how_to_move_it_to_uv(tmp_path):
+    venv = tmp_path / "pipx" / "venvs" / "evo-ak"
+    venv.mkdir(parents=True)
+    (venv / "pipx_metadata.json").write_text("{}", encoding="utf-8")
+    install = read_install(venv, PYTHON)
+    assert install.kind == "none" and install.reason.startswith("installed with pipx, not `uv tool install`")
+    assert "`pipx uninstall evo-ak`" in install.reason and REINSTALL in install.reason
+    assert REINSTALL == f"uv tool install --force '{NIGHTLY_REQUIREMENT}'", "what docs/workers.md tells to run"
+    assert install.reason.index(REINSTALL) < install.reason.index(str(venv)), "a heartbeat clips a long path, not this"
 
 
 def test_repo_of_reads_the_git_urls_of_receipts():
