@@ -603,6 +603,8 @@ def test_a_chat_runs_agent_opens_the_repo_it_needs_and_the_session_goes_on_with_
     assert empty["stdout"] == "", "the run started with no worktree"
     assert beta["exit"] == 0 and beta["stdout"] == f"{directory / 'beta'}\n", beta
     assert again["exit"] == 0 and again["stdout"] == beta["stdout"], "a repo open already: the same path"
+    # stdout is the path alone; stderr says how a shell of the agent takes the run's credential for the repo
+    assert f'eval "$(evo-agents worker env --run {first})"' in beta["stderr"], beta
     assert delta["exit"] == 1 and delta["stdout"] == ""
     no_checkout = (
         f"worker mac has no checkout of delta of project {PROJECT}: and no project of the run's owner lists an origin "

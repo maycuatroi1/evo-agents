@@ -69,7 +69,10 @@ A chat run's agent opens a repo of its project the same way (``{"op": "open", "r
 worker repo open``): the daemon asks the hub to add the repo to the run, takes the run's leases again so they cover it
 (``RunCredentials.add``), fetches its checkout with them and makes its worktree (``runner.chat``), and answers the
 worktree's path. The agent gets that path and nothing else: no lease value, and a guarded run's agent no credential
-helper either, since ``_hand_over`` gives it none whatever the run's repos are.
+helper either, since ``_hand_over`` gives it none whatever the run's repos are. The agent's environment was set when it
+started, so its own git and gh reach a repo opened since only once a shell evaluates ``evo-agents worker env --run N``,
+which answers the git configuration ``_hand_over`` made for it; the chat prompt and the command both say so
+(``chat_runs.OPENED_CREDENTIAL``).
 """
 
 from __future__ import annotations

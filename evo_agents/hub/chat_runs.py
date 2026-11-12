@@ -117,6 +117,9 @@ PROGRESS_STEPS = ("waiting", *SETUP_STEPS, "inbox")  # waiting: for its worker; 
 PREPARING_STATES = ("queued", "leased")  # its agent has not started yet
 
 OPEN_COMMAND = "evo-agents worker repo open"  # the agent of a chat run opens a repo of its project, LAZY_CHAT_REPOS
+# What a shell of the agent runs before its own git or gh reaches a repo opened during the run: the agent's environment
+# was set when it started, so the run's credential for that repo is in the daemon's answer alone (``worker env``).
+OPENED_CREDENTIAL = 'eval "$(evo-agents worker env --run "$EVO_RUN_ID")"'
 _NAME_CHARS = "A-Za-z0-9_-"  # what a repo's name runs into when it is part of a longer name, as in evo-agents-harness
 
 POST_COMMAND = "evo-agents worker chat post"
@@ -396,8 +399,10 @@ def _repo_rule(branch: str, lazy: bool, harness: str | None, ships: bool = False
     return (
         "- Of the project's repos below, only those marked open are in this run. Open a repo with "
         f"`{OPEN_COMMAND} REPO` before you read or change its code: the worker makes its worktree on the branch "
-        f"{branch} under the current directory and prints its path, the same path for a repo open already.{roles} Open "
-        f"only the repos the message needs. You may change code in the open repos: {keep}"
+        f"{branch} under the current directory and prints its path, the same path for a repo open already, fetched "
+        f"as it opens it. Before your own `git fetch`, `git pull` or `gh` on a repo you opened, run `{OPENED_CREDENTIAL}` "
+        f"in that shell, which gives it the run's credential for the repo.{roles} Open only the repos the message "
+        f"needs. You may change code in the open repos: {keep}"
     )
 
 
