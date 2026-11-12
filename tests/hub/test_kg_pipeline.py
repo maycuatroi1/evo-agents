@@ -154,8 +154,7 @@ if pg.DSN:
     from fastapi.testclient import TestClient
     from sqlalchemy import func, insert, select, update
 
-    from evo_agents.hub import tables
-    from evo_agents.hub.kg_build import STOPPED
+    from evo_agents.hub import kg_build, tables
     from evo_agents.hub.server import kg_pipeline as served
     from evo_agents.hub.server.app import create_app
     from tests.hub import live
@@ -294,7 +293,8 @@ def test_the_route_follows_an_upload_to_ready_and_its_sender_and_admins_are_told
 
 
 @needs_pg
-def test_a_rebuild_its_worker_stopped_is_followed_by_the_build_queued_in_its_place(world):
+@pytest.mark.parametrize("replaced", ["STOPPED", "ORPHANED"])
+def test_a_rebuild_its_worker_stopped_is_followed_by_the_build_queued_in_its_place(world, replaced):
     """Run on agents.omelet.tech 2026-11-05 (plan kg-zip-to-answers, step 7): the hub restarted under the Curator's
     rebuild, which failed as STOPPED and queued another; the flow said failed though the new build went on."""
     set_build(world, world.build_id, status="succeeded", nodes=4, edges=6, coverage={"sources": 1})
@@ -302,7 +302,7 @@ def test_a_rebuild_its_worker_stopped_is_followed_by_the_build_queued_in_its_pla
     ((stopped,),) = live.sql(world.db, insert(b).values(project_id=world.project_id, status="queued").returning(b.c.id))
     decided = {"questions": {"state": "done", "version": 1}, "applied": {"change": {"build_id": stopped}}}
     init_run(world, state="done", build_id=world.build_id, body=decided)
-    set_build(world, stopped, status="failed", error=STOPPED)
+    set_build(world, stopped, status="failed", error=getattr(kg_build, replaced))
     ((again,),) = live.sql(world.db, insert(b).values(project_id=world.project_id, status="queued").returning(b.c.id))
     set_build(world, again, status="running")
     read = world.client.get(world.path, headers=world.sender).json()

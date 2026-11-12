@@ -4333,6 +4333,8 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 
 - `hub.kg_build`: one build of a project's graph. Builds of one project run one at a time, and at most one waits.
 - `hub.recover_kg_builds`, every 5 minutes: fails builds whose worker stopped sending heartbeats and queues a new one.
+  It also fails builds still queued or running whose job ended (failed, cancelled, aborted, or pruned) without
+  recording them, and queues a new build of the project unless a later build already took their place.
 - `hub.prune_kg_artifacts`, hourly at minute 31: deletes the artifacts of graphs older than each project's
   `EVO_HUB_KG_KEEP_ARTIFACTS` newest.
 - `hub.recover_runs`, every minute: runs whose worker stopped extending the lease become lost and their step is

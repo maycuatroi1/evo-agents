@@ -1404,11 +1404,26 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
         assert secret not in served.log()
 
 
-def test_a_build_whose_worker_died_is_failed_and_queued_again(hub, tmp_path):
-    from evo_agents.hub import jobs as hub_jobs
+def recover(hub, data_dir: Path) -> dict:
+    """One pass of ``hub.recover_kg_builds``."""
     from evo_agents.hub.db import make_engine, open_pool
     from evo_agents.hub.jobs import JobQueue
-    from evo_agents.hub.kg_build import STOPPED, recover_stalled
+    from evo_agents.hub.kg_build import recover_stalled
+
+    async def main():
+        pool = await open_pool(make_config(hub.db, data_dir, hub.s3))
+        try:
+            job_queue = await JobQueue.open(pool)
+            return await recover_stalled(SimpleNamespace(engine=make_engine(pool)), job_queue._manager)
+        finally:
+            await pool.close()
+
+    return asyncio.run(main())
+
+
+def test_a_build_whose_worker_died_is_failed_and_queued_again(hub, tmp_path):
+    from evo_agents.hub import jobs as hub_jobs
+    from evo_agents.hub.kg_build import STOPPED
 
     periodic = {p.task.name: p for p in queue.periodic_registry.periodic_tasks.values()}
     assert periodic[hub_jobs.RECOVER_KG_BUILDS].cron == "*/5 * * * *"
@@ -1423,19 +1438,54 @@ def test_a_build_whose_worker_died_is_failed_and_queued_again(hub, tmp_path):
     set_job_status(hub.db, job_id, "doing")
     query(hub.db, update(builds).values(status="running", started_at=func.now()).where(builds.c.job_id == job_id))
 
-    async def recover():
-        pool = await open_pool(make_config(hub.db, tmp_path / "recover", hub.s3))
-        try:
-            job_queue = await JobQueue.open(pool)
-            return await recover_stalled(SimpleNamespace(engine=make_engine(pool)), job_queue._manager)
-        finally:
-            await pool.close()
-
-    assert asyncio.run(recover()) == {"failed": 1, "queued": [PROJECT]}
+    recovered = recover(hub, tmp_path / "recover")
+    assert (recovered["failed"], recovered["orphaned"], recovered["queued"]) == (1, 0, [PROJECT])
     first, second = query(hub.db, select(builds.c.status, builds.c.error, builds.c.job_id).order_by(builds.c.id))
     assert first == ("failed", STOPPED, job_id)
     assert second[0] == "queued" and [row[1] for row in jobs(hub.db)] == ["failed", "todo"]
-    assert asyncio.run(recover()) == {"failed": 0, "queued": []}
+    again = recover(hub, tmp_path / "recover")
+    assert (again["failed"], again["orphaned"], again["queued"]) == (0, 0, [])
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert latest(hub)["status"] == "succeeded"
+
+
+def test_a_build_whose_job_ended_without_recording_it_is_failed(hub, tmp_path):
+    """A build left running after its job ended failed (or was cancelled, aborted, or pruned) holds no lock, so the
+    stalled-job pass never sees it and it said running for days. The pass fails it, and queues a build only when no
+    later build of the project took its place."""
+    from evo_agents.hub.kg_build import ORPHANED
+
+    builds = tables.kg_builds
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."))
+    assert push(hub, laptop).ok
+    ((job_id, *_),) = jobs(hub.db)
+    query(hub.db, update(builds).values(status="running", started_at=func.now()).where(builds.c.job_id == job_id))
+    set_job_status(hub.db, job_id, "failed")  # the job ended; the build row was never written
+
+    recovered = recover(hub, tmp_path / "recover")
+    assert (recovered["failed"], recovered["orphaned"], recovered["queued"]) == (0, 1, [PROJECT])
+    orphan, replacement = query(
+        hub.db, select(builds.c.status, builds.c.error, builds.c.finished_at).order_by(builds.c.id)
+    )
+    assert orphan[:2] == ("failed", ORPHANED) and orphan[2] is not None
+    assert replacement[:2] == ("queued", None) and [row[1] for row in jobs(hub.db)] == ["failed", "todo"]
+    again = recover(hub, tmp_path / "recover")
+    assert (again["orphaned"], again["queued"]) == (0, [])
+
+    # The replacement's job is pruned before it ran, and a later push queued another build: that build takes its
+    # place, so the pass fails it and queues nothing.
+    ((replacement_id, replacement_job),) = query(
+        hub.db, select(builds.c.id, builds.c.job_id).where(builds.c.status == "queued")
+    )
+    query(hub.db, delete(procrastinate_events).where(procrastinate_events.c.job_id == replacement_job))
+    query(hub.db, delete(procrastinate_jobs).where(procrastinate_jobs.c.id == replacement_job))
+    laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "How to set it up."))
+    assert push(hub, laptop).ok
+    recovered = recover(hub, tmp_path / "recover")
+    assert (recovered["orphaned"], recovered["queued"]) == (1, [])
+    statuses = dict(query(hub.db, select(builds.c.id, builds.c.status)))
+    assert statuses[replacement_id] == "failed" and list(statuses.values()).count("queued") == 1
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert latest(hub)["status"] == "succeeded"
 
