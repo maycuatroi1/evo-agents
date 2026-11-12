@@ -29,7 +29,6 @@ from sqlalchemy import (
     Text,
     false,
     func,
-    text,
 )
 
 
@@ -81,7 +80,9 @@ def _batches(metadata: MetaData) -> Table:
         _key(name, "thread_id", "orchestrator_threads", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="ops_batches_pkey"),
     )
-    Index("ops_batches_open_key", table.c.project_id, table.c.key, unique=True, postgresql_where=text("state = 'open'"))
+    Index(
+        "ops_batches_open_key", table.c.project_id, table.c.key, unique=True, postgresql_where=table.c.state == "open"
+    )
     Index("ops_batches_project_idx", table.c.project_id, table.c.id)
     return table
 
@@ -112,7 +113,7 @@ def _items(metadata: MetaData) -> Table:
     )
     Index("ops_items_event_key", table.c.event_id, unique=True)
     Index("ops_items_batch_idx", table.c.batch_id)
-    Index("ops_items_pending_idx", table.c.project_id, table.c.run_id, postgresql_where=text("state = 'pending'"))
+    Index("ops_items_pending_idx", table.c.project_id, table.c.run_id, postgresql_where=table.c.state == "pending")
     return table
 
 

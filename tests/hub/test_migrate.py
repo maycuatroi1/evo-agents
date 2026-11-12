@@ -42,7 +42,6 @@ from sqlalchemy import (
     null,
     select,
     table,
-    text,
     union_all,
     update,
 )
@@ -6018,20 +6017,28 @@ def test_0239_gives_workers_their_health_and_going_back_drops_it(hub_db):
 
 def test_0240_makes_the_oldest_system_the_default_and_going_back_drops_the_ops_queue(hub_db):
     move_to(hub_db, "0239")
+    systems = table(
+        "agent_systems",
+        column("id"),
+        column("project_id"),
+        column("slug", Text),
+        column("name", Text),
+        column("spec", JSONB),
+        column("is_default", Boolean),
+    )
+    projects = table("projects", column("systems_seeded_at"))
     with live.connect(hub_db) as conn:
         ids = seed(conn)
         for slug in ("first", "second"):
             conn.execute(
-                text(
-                    "INSERT INTO agent_systems (project_id, slug, name, spec) "
-                    'VALUES (:p, :slug, :slug, \'{"schema": "evo-agent-system/1"}\')'
-                ),
-                {"p": ids["project"], "slug": slug},
+                insert(systems).values(
+                    project_id=ids["project"], slug=slug, name=slug, spec={"schema": "evo-agent-system/1"}
+                )
             )
     move_to(hub_db, "0240")
-    found = query(hub_db, text("SELECT slug, is_default FROM agent_systems ORDER BY id"))
+    found = query(hub_db, select(systems.c.slug, systems.c.is_default).order_by(systems.c.id))
     assert [tuple(row) for row in found] == [("first", True), ("second", False)]
-    assert query(hub_db, text("SELECT systems_seeded_at IS NOT NULL FROM projects"))[0][0] is True
+    assert query(hub_db, select(projects.c.systems_seeded_at.is_not(None)))[0][0] is True
     assert {"is_default", "ops_paused_at", "ops_paused_reason"} <= columns(hub_db, "agent_systems")
     move_to(hub_db, "0239", down=True)
     assert "is_default" not in columns(hub_db, "agent_systems")
@@ -6045,10 +6052,10 @@ def test_0241_takes_the_ops_rule_the_thread_of_a_batch_and_the_ops_breaker(hub_d
     move_to(hub_db, "0241")
     assert {"thread_id", "recurring"} <= columns(hub_db, "ops_batches")
     assert "ops_failures" in columns(hub_db, "agent_systems")
-    check = query(
-        hub_db,
-        text("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'orchestrator_threads_rule_check'"),
-    )[0][0]
+    rule_check = select(func.pg_get_constraintdef(PG_CONSTRAINT.c.oid, type_=Text)).where(
+        PG_CONSTRAINT.c.conname == "orchestrator_threads_rule_check"
+    )
+    check = query(hub_db, rule_check)[0][0]
     assert "'ops'" in check, check
     move_to(hub_db, "0240", down=True)
     assert "thread_id" not in columns(hub_db, "ops_batches")

@@ -27,7 +27,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import and_, case, delete, exists, func, insert, or_, select, text, update
+from sqlalchemy import and_, case, delete, exists, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -367,7 +367,7 @@ async def enqueue(conn: AsyncConnection, project_id: int, config: OpsConfig, eve
             subject=cause.subject,
             closes_at=closes_at,
         )
-        .on_conflict_do_nothing(index_elements=["project_id", "key"], index_where=text("state = 'open'"))
+        .on_conflict_do_nothing(index_elements=["project_id", "key"], index_where=b.c.state == "open")
         .returning(b.c.id)
     )
     batch_id = await conn.scalar(opened)
