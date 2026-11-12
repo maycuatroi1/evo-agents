@@ -1135,8 +1135,17 @@ credential request, write none), `curator.paused` when the circuit breaker pause
 changes state (`worker_id`, `disk` low or ok against the reserve its daemon says, 20 GB free when it says none,
 `disk_free_pct`, `logins`), once for each project the worker serves. A login `leased` (the worker's runs of that
 runtime authenticate with the hub's lease) is no item of the ops queue, and a worker with it counts as logged in when
-tier 0 hands work again. Payloads carry ids and states alone, never an error, a question or a reason. No plugin takes these kinds
-(they are not in `EVENT_KINDS`, `docs/plugins.md`) and they queue no tick of the Loop. Schema 0239 adds the nullable
+tier 0 hands work again. Nor is any other login of a runtime no run of the project on that worker depends on
+(`ops_queue.idle_logins`): one the worker does not offer (codex taken off a machine with no login of it), and one the
+hub has an account to lease its runs, whether or not one ran there yet. On a node of an agent's pool that is a model
+account of the agent's account pool (an env account of a model variable, or a provider account); on any worker, an
+env secret bound to the project that reaches it, but a model variable or a provider account only off an agent's node;
+and an account a run there took in the last 7 days. The variables that log each runtime in are
+`ops_queue.LEASE_VARS`: claude-code `CLAUDE_CODE_OAUTH_TOKEN` and `ANTHROPIC_API_KEY`, codex `OPENAI_API_KEY`,
+opencode the keys of its providers (`ZHIPU_API_KEY`, `ZAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`); a provider account, reached through the gateway, logs every runtime of the gateway in. Payloads
+carry ids and states alone, never an error, a question or a reason. No plugin takes these kinds (they are not in
+`EVENT_KINDS`, `docs/plugins.md`) and they queue no tick of the Loop. Schema 0239 adds the nullable
 `workers.health`; going back drops it.
 
 ### Hub runtime

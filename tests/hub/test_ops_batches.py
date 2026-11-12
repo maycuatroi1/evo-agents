@@ -18,7 +18,7 @@ from sqlalchemy import func, insert, select, update
 from evo_agents.hub import hub_events, ops_queue, tables
 from evo_agents.hub.server.ops_queue import ops_pass
 from tests.hub.live import sql
-from tests.hub.test_runs import PROJECT, client, hub  # noqa: F401 (fixtures)
+from tests.hub.test_runs import OWNER, PROJECT, add_worker, client, hub  # noqa: F401 (fixtures)
 
 
 def project_id(db) -> int:
@@ -180,3 +180,58 @@ def test_a_login_the_worker_holds_by_lease_is_no_item_and_a_failing_one_is(clien
         "worker.health|login:claude-code:missing|worker:7",
     ]
     assert ops_queue.health_causes({"logins": {"claude-code": "leased", "codex": "unknown"}}) == ["login:codex:unknown"]
+
+
+def bound_secret(db, name: str, env_var: str) -> int:
+    """An env secret of owner, ``name`` for ``env_var``, bound to the project on any worker of theirs."""
+    u, s = tables.users, tables.secrets
+    owner_id = sql(db, select(u.c.id).where(u.c.login == OWNER))[0][0]
+    sealed = {"sealed": b"x" * 32, "nonce": b"n" * 12, "key_id": "0123abcd"}
+    made = insert(s).values(owner_id=owner_id, name=name, kind="env", env_var=env_var, **sealed).returning(s.c.id)
+    secret_id = sql(db, made)[0][0]
+    sql(db, insert(tables.secret_bindings).values(secret_id=secret_id, project_id=project_id(db)))
+    return secret_id
+
+
+def test_a_login_the_hub_would_lease_an_account_of_or_no_run_uses_is_no_item(client, hub, hub_db):
+    """The login of a runtime the hub leases the runs on the worker an account of is no item, though no run there took
+    one yet: on an agent's node, the model accounts of its account pool (claude-code here) and the other env secrets
+    bound to the project that reach it (ZHIPU_API_KEY for opencode); off it, any secret so bound. Nor is the login of a
+    runtime the worker does not offer. Any other login still is."""
+    system(hub_db, {"enabled": True})
+    run_pass(client)
+    runtimes = {"claude-code": {"available": True}, "opencode": {"available": True}, "codex": {"available": False}}
+    worker = add_worker(client, hub["owner"], "node", runtimes=runtimes)  # a node of @evo-agents' pool
+    health = {"worker_id": worker["id"], "disk": "ok", "disk_free_pct": 40}
+    out = {"claude-code": "unauthorized", "codex": "missing", "opencode": "unauthorized"}
+    record(client, hub_db, hub_events.WORKER_HEALTH, **health, logins=out)
+    assert run_pass(client)["queued"] == 1
+    assert batches(hub_db)[-1][0] == f"worker.health|login:opencode:unauthorized|worker:{worker['id']}"
+
+    bound_secret(hub_db, "openai", "OPENAI_API_KEY")  # a model account: an agent's runs take their pool's alone
+    w = tables.workers
+    sql(hub_db, update(w).values(runtimes={**runtimes, "codex": {"available": True}}).where(w.c.id == worker["id"]))
+    out = {"claude-code": "unauthorized", "codex": "unauthorized", "opencode": "unauthorized"}
+    record(client, hub_db, hub_events.WORKER_HEALTH, **health, logins=out)
+    assert run_pass(client)["queued"] == 1
+    assert batches(hub_db)[-1][0].startswith("worker.health|login:codex:unauthorized,login:opencode:unauthorized|")
+
+    bound_secret(hub_db, "zhipu-glm", "ZHIPU_API_KEY")
+    record(client, hub_db, hub_events.WORKER_HEALTH, **health, logins=out)
+    assert run_pass(client)["queued"] == 1
+    assert batches(hub_db)[-1][0] == f"worker.health|login:codex:unauthorized|worker:{worker['id']}"
+
+    sql(hub_db, update(w).values(pool_id=None).where(w.c.id == worker["id"]))  # off the node: no pool, any binding
+    record(client, hub_db, hub_events.WORKER_HEALTH, **health, logins=out)
+    assert run_pass(client)["queued"] == 1
+    assert batches(hub_db)[-1][0] == f"worker.health|login:claude-code:unauthorized|worker:{worker['id']}"
+
+
+def test_the_runtimes_an_account_logs_in():
+    assert ops_queue.lease_runtimes("CLAUDE_CODE_OAUTH_TOKEN") == {"claude-code"}
+    assert ops_queue.lease_runtimes("ANTHROPIC_API_KEY") == {"claude-code", "opencode"}
+    assert ops_queue.lease_runtimes("OPENAI_API_KEY") == {"codex", "opencode"}
+    assert ops_queue.lease_runtimes("ZHIPU_API_KEY") == {"opencode"}
+    assert ops_queue.lease_runtimes("gateway:glm") == {"claude-code", "codex", "opencode"}, "a provider account"
+    assert ops_queue.lease_runtimes("GH_TOKEN") == set()
+    assert ops_queue.lease_runtimes(None) == set()
