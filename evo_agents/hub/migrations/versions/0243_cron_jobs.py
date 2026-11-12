@@ -85,7 +85,7 @@ def _jobs() -> None:
         sa.PrimaryKeyConstraint("id", name=f"{name}_pkey"),
         sa.UniqueConstraint("project_id", "name", name=f"{name}_project_id_name_key"),
         sa.CheckConstraint(col("kind").in_(KINDS), name=f"{name}_kind_check"),
-        sa.CheckConstraint(sa.text(f"name ~ '{NAME_PATTERN}'"), name=f"{name}_name_check"),
+        sa.CheckConstraint(col("name").regexp_match(NAME_PATTERN), name=f"{name}_name_check"),
         sa.CheckConstraint(work, name=f"{name}_work_check"),
         sa.CheckConstraint(
             sa.or_(col("timeout_minutes").is_(None), col("timeout_minutes").between(1, 240)),
@@ -118,7 +118,7 @@ def _fires() -> None:
             sa.or_(col("outcome").is_(None), col("outcome").in_(OUTCOMES)), name=f"{name}_outcome_check"
         ),
     )
-    op.create_index(f"{name}_pending_idx", name, ["id"], postgresql_where=sa.text("outcome IS NULL"))
+    op.create_index(f"{name}_pending_idx", name, ["id"], postgresql_where=col("outcome").is_(None))
 
 
 def upgrade() -> None:
@@ -129,8 +129,8 @@ def upgrade() -> None:
     op.create_index(
         "runs_cron_job_idx",
         "runs",
-        ["cron_job_id", sa.text("id DESC")],
-        postgresql_where=sa.text("cron_job_id IS NOT NULL"),
+        ["cron_job_id", col("id").desc()],
+        postgresql_where=col("cron_job_id").is_not(None),
     )
 
 

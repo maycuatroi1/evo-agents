@@ -16,21 +16,26 @@ Going back drops the column.
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "0246"
 down_revision = "0245"
 branch_labels = None
 depends_on = None
 
+col = sa.column
+
 
 def upgrade() -> None:
     op.add_column("curator_probe_runs", sa.Column("arms_at", sa.Text()))
     op.create_check_constraint(
-        "curator_probe_runs_arms_at_check", "curator_probe_runs", sa.column("arms_at").in_(("tip", "change"))
+        "curator_probe_runs_arms_at_check", "curator_probe_runs", col("arms_at").in_(("tip", "change"))
     )
-    op.execute(
-        "UPDATE curator_probe_runs SET arms_at = 'tip' WHERE change_id IS NOT NULL AND jsonb_array_length(sessions) > 0"
+    probe_runs = sa.table(
+        "curator_probe_runs", col("arms_at", sa.Text()), col("change_id", sa.BigInteger()), col("sessions", JSONB())
     )
+    sessions = sa.func.jsonb_array_length(probe_runs.c.sessions)
+    op.execute(sa.update(probe_runs).where(probe_runs.c.change_id.is_not(None), sessions > 0).values(arms_at="tip"))
 
 
 def downgrade() -> None:
