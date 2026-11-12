@@ -20,8 +20,9 @@ import { nodeHref } from "@/lib/kg/routes";
 import { type GraphNode, type Hops, MAX_NODES, type Neighbourhood } from "@/lib/kg/types";
 import { cn } from "@/lib/utils";
 
-import { KindShape } from "./badges";
-import { GraphCanvas, type LayoutName, LAYOUTS } from "./graph-canvas";
+import { KindDot } from "./badges";
+import type { ExplorerLayout } from "./explorer-layout";
+import { GraphCanvas, LAYOUTS } from "./graph-canvas";
 import { NeighbourTable } from "./neighbour-table";
 
 const SEGMENT =
@@ -54,7 +55,7 @@ function Legend({ nodes, more }: { nodes: GraphNode[]; more: boolean }) {
       <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
         {kindsOf(nodes).map((kind) => (
           <li key={kind} className="inline-flex items-center gap-1.5">
-            <KindShape kind={kind} />
+            <KindDot kind={kind} />
             {kind}
           </li>
         ))}
@@ -63,12 +64,12 @@ function Legend({ nodes, more }: { nodes: GraphNode[]; more: boolean }) {
           {t("legendFocus")}
         </li>
         <li className="inline-flex items-center gap-1.5">
-          <span className="size-3 rounded-full border-2 border-dashed border-muted-foreground" aria-hidden="true" />
+          <span className="size-3 rounded-full border-2 border-muted-foreground bg-chart-5" aria-hidden="true" />
           {t("legendHub")}
         </li>
         {more ? (
           <li className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-4 rounded-xs border-[1.5px] border-dashed border-muted-foreground" aria-hidden="true" />
+            <span className="size-3 rounded-full border-[3px] border-fg-subtle bg-background" aria-hidden="true" />
             {t("legendMore")}
           </li>
         ) : null}
@@ -89,10 +90,11 @@ function View({
   onOpenGroup: (key: string) => void;
 }) {
   const t = useTranslations("kg.graph");
+  const tLayouts = useTranslations("kg.explorer.layouts");
   const router = useRouter();
   const isMobile = useIsMobile();
   const [selected, setSelected] = useState(view.focus);
-  const [layout, setLayout] = useState<LayoutName>("concentric");
+  const [layout, setLayout] = useState<ExplorerLayout>("radial");
   const byId = useMemo(() => new Map(view.nodes.map((node) => [node.id, node])), [view.nodes]);
   const focus = byId.get(view.focus) ?? view.nodes[0];
   const node = byId.get(selected) ?? focus;
@@ -130,12 +132,12 @@ function View({
               <select
                 id="kg-layout"
                 value={layout}
-                onChange={(event) => setLayout(event.target.value as LayoutName)}
+                onChange={(event) => setLayout(event.target.value as ExplorerLayout)}
                 className="h-8 cursor-pointer rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
               >
                 {LAYOUTS.map((value) => (
                   <option key={value} value={value}>
-                    {t(`layouts.${value}`)}
+                    {tLayouts(value)}
                   </option>
                 ))}
               </select>

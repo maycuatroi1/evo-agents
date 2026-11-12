@@ -1,64 +1,42 @@
 import type { GraphEdge, GraphNode, Neighbourhood, NeighbourGroup, Relation } from "./types";
 
 /**
- * The graph view's model, independent of the canvas: how each kind of node is drawn (a chart colour and a shape,
- * so colour is never the only signal), the order nodes are stepped through by keyboard, and the neighbours of the
- * selected node that the table beside the canvas lists.
+ * The graph view's model, independent of the canvas: the colour each kind of node is drawn in (every node is a disc;
+ * the kind is in text beside it), the order nodes are stepped through by keyboard, and the neighbours of the selected
+ * node that the table beside the canvas lists.
  */
 
 /** The chart tokens of DESIGN.md: 1 blue, 2 amber, 3 emerald, 4 violet, 5 slate. */
 export type Tone = 1 | 2 | 3 | 4 | 5;
-export type Shape =
-  | "ellipse"
-  | "round-rectangle"
-  | "rectangle"
-  | "diamond"
-  | "hexagon"
-  | "octagon"
-  | "triangle"
-  | "pentagon"
-  | "tag";
-
-export type KindStyle = { tone: Tone; shape: Shape };
 
 /**
  * Prose in blue, code in emerald, plans in violet, requirements, tickets and a canvas's claims in amber, the rest in
- * slate (a signal key among them, a measure from outside like a source).
+ * slate (a signal key among them, a measure from outside like a source). Every canvas and legend reads this one table.
  */
-const KIND_STYLES: Record<string, KindStyle> = {
-  Document: { tone: 1, shape: "round-rectangle" },
-  Section: { tone: 1, shape: "ellipse" },
-  File: { tone: 3, shape: "rectangle" },
-  Directory: { tone: 3, shape: "tag" },
-  Repo: { tone: 3, shape: "octagon" },
-  Symbol: { tone: 3, shape: "ellipse" },
-  Commit: { tone: 3, shape: "triangle" },
-  Plan: { tone: 4, shape: "hexagon" },
-  PlanStep: { tone: 4, shape: "ellipse" },
-  Seam: { tone: 4, shape: "octagon" },
-  Requirement: { tone: 2, shape: "diamond" },
-  UseCase: { tone: 2, shape: "pentagon" },
-  Ticket: { tone: 2, shape: "tag" },
-  Claim: { tone: 2, shape: "hexagon" },
-  Source: { tone: 5, shape: "hexagon" },
-  Person: { tone: 5, shape: "triangle" },
-  SignalKey: { tone: 5, shape: "diamond" },
+const KIND_TONES: Record<string, Tone> = {
+  Document: 1,
+  Section: 1,
+  File: 3,
+  Directory: 3,
+  Repo: 3,
+  Symbol: 3,
+  Commit: 3,
+  Plan: 4,
+  PlanStep: 4,
+  Seam: 4,
+  Requirement: 2,
+  UseCase: 2,
+  Ticket: 2,
+  Claim: 2,
+  Source: 5,
+  Person: 5,
+  SignalKey: 5,
 };
-const OTHER_KIND: KindStyle = { tone: 5, shape: "ellipse" };
+const OTHER_TONE: Tone = 5;
 
-export function kindStyle(kind: string): KindStyle {
-  return KIND_STYLES[kind] ?? OTHER_KIND;
+export function kindTone(kind: string): Tone {
+  return KIND_TONES[kind] ?? OTHER_TONE;
 }
-
-/** Points of each shape on [-1, 1], as Cytoscape draws them; the legend draws the same outline in SVG. */
-export const SHAPE_POINTS: Record<Exclude<Shape, "ellipse" | "round-rectangle" | "rectangle">, string> = {
-  diamond: "0,-1 1,0 0,1 -1,0",
-  hexagon: "-1,0 -0.5,-0.87 0.5,-0.87 1,0 0.5,0.87 -0.5,0.87",
-  octagon: "-0.41,-1 0.41,-1 1,-0.41 1,0.41 0.41,1 -0.41,1 -1,0.41 -1,-0.41",
-  triangle: "0,-1 1,1 -1,1",
-  pentagon: "0,-1 0.95,-0.31 0.59,0.81 -0.59,0.81 -0.95,-0.31",
-  tag: "-1,-1 0.25,-1 1,0 0.25,1 -1,1",
-};
 
 export function displayName(node: { id: string; name?: string | null }): string {
   return node.name && node.name.trim() ? node.name : node.id;

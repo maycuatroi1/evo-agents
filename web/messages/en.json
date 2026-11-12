@@ -1916,7 +1916,7 @@
         "title": "Legend",
         "clusterSize": "Circle: a cluster or one of its parts, sized by its nodes",
         "linkWidth": "Line: edges between two clusters, wider for more",
-        "weakLink": "Dashed: a weaker link, shown for the cluster you point at",
+        "weakLink": "Faint: a weaker link, shown for the cluster you point at",
         "seed": "Where you started",
         "expanded": "Expanded",
         "more": "More neighbours of a group",
@@ -2097,7 +2097,10 @@
         "codeLeftOut": "{count, plural, one {# code node} other {# code nodes}} past the first 500 left out",
         "legendCode": "Square: a Directory, File or Symbol an entity points to (Code switch). A number after a name: the entity's code links.",
         "codeCount": "{count, plural, one {# code link} other {# code links}}"
-      }
+      },
+      "noWebgl": "This browser cannot draw the graph: WebGL is off or not supported. The lists beside it hold the same nodes and relations.",
+      "tipEntity": "{kind}, {count, plural, one {# document} other {# documents}}",
+      "tipCode": "{kind}: click to open its page"
     },
     "status": {
       "queued": "Queued",
@@ -2279,11 +2282,6 @@
       "hops": "Steps",
       "hopsValue": "{count, plural, one {# step} other {# steps}}",
       "layout": "Layout",
-      "layouts": {
-        "concentric": "Concentric",
-        "cose": "Force-directed",
-        "breadthfirst": "Layered"
-      },
       "help": "The table beside it lists the same data. In the graph: arrow keys move between nodes, Home returns to the node shown, Enter opens a node, + and - zoom, 0 fits the graph.",
       "canvasLabel": "Graph around {name}: {nodes} nodes, {edges} edges",
       "zoomIn": "Zoom in",

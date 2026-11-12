@@ -124,47 +124,16 @@ export function buildsPath(project: string): string {
   return `/p/${project}/kg/builds`;
 }
 
-/** The explorer drew its scope: Cytoscape loaded in the browser and laid the view out. */
+/** The explorer drew its scope: sigma loaded in the browser and laid the view out. */
 export async function explorerReady(page: Page, scope?: "overview" | "cluster" | "node"): Promise<void> {
   const canvas = page.getByTestId("kg-explorer-canvas");
   if (scope) await expect(canvas).toHaveAttribute("data-scope", scope);
   await expect(canvas).toHaveAttribute("data-ready", "true");
 }
 
-type Box = { x1: number; y1: number; x2: number; y2: number };
-type LabelledNode = {
-  hasClass(name: string): boolean;
-  visible(): boolean;
-  data(key: string): unknown;
-  style(name: string): string;
-  boundingBox(options: Record<string, boolean>): Box;
-};
-
-/**
- * How many labels the explorer's canvas shows, how many pairs of them cover each other, and the smallest size on
- * screen of their text, read from Cytoscape's instance on the canvas (`_cyreg`): a label the explorer shows (not
- * `crowded`) never covers another, and keeps its size on screen whatever the zoom.
- */
-export async function explorerLabels(page: Page): Promise<{ shown: number; overlapping: number; smallest: number }> {
-  return page.getByTestId("kg-explorer-canvas").evaluate((element) => {
-    const cy = (element as unknown as { _cyreg?: { cy?: { zoom(): number; nodes(): { toArray(): LabelledNode[] } } } })._cyreg?.cy;
-    if (!cy) return { shown: 0, overlapping: -1, smallest: 0 };
-    const nodes = cy
-      .nodes()
-      .toArray()
-      .filter((node) => node.visible() && !node.hasClass("crowded") && !node.hasClass("dim") && String(node.data("label") ?? ""));
-    const smallest = Math.min(...nodes.map((node) => Number.parseFloat(node.style("font-size")) * cy.zoom()));
-    const boxes = nodes.map((node) =>
-      node.boundingBox({ includeNodes: false, includeEdges: false, includeLabels: true, includeOverlays: false }),
-    );
-    let overlapping = 0;
-    boxes.forEach((a, i) =>
-      boxes.slice(i + 1).forEach((b) => {
-        if (a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2) overlapping += 1;
-      }),
-    );
-    return { shown: boxes.length, overlapping, smallest: Math.round(smallest * 10) / 10 };
-  });
+/** How many labels the explorer's canvas shows now, as the canvas counts them after each drawing (`data-labels`). */
+export async function explorerLabels(page: Page): Promise<number> {
+  return Number((await page.getByTestId("kg-explorer-canvas").getAttribute("data-labels")) ?? 0);
 }
 
 export function nodePath(project: string, id: string, hops?: 1 | 2): string {
@@ -212,7 +181,7 @@ export async function open(page: Page, path: string): Promise<void> {
   await page.waitForFunction(() => document.querySelector('div[hidden][id^="S:"]') === null);
 }
 
-/** The canvas finished drawing (Cytoscape loaded in the browser and laid the graph out). */
+/** The canvas finished drawing (sigma loaded in the browser and laid the graph out). */
 export async function graphReady(page: Page): Promise<void> {
   await expect(page.getByTestId("kg-canvas")).toHaveAttribute("data-ready", "true");
 }

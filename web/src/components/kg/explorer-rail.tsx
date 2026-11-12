@@ -17,7 +17,7 @@ import { buildsHref } from "@/lib/kg/routes";
 import type { GraphSummary, KgBuild, KgNode, KindCount } from "@/lib/kg/types";
 import { cn } from "@/lib/utils";
 
-import { KindShape } from "./badges";
+import { KindDot } from "./badges";
 
 /** A section of the rail: an overline title, an optional count and its content. */
 export function RailSection({
@@ -62,7 +62,7 @@ function Results({ query, kind, data, onPick }: { query: string; kind: string; d
           {data.results.map((node) => (
             <li key={node.id}>
               <button type="button" className={ROW} onClick={() => onPick(node)} data-testid="kg-result" data-node-id={node.id}>
-                <KindShape kind={node.kind} />
+                <KindDot kind={node.kind} />
                 <span className="flex min-w-0 flex-col">
                   <span className="truncate font-medium">{displayName(node)}</span>
                   <span className="truncate font-mono text-[11px] text-fg-subtle">{node.id}</span>
@@ -241,7 +241,7 @@ export function RailKinds({
                 data-kind={k.kind}
                 data-drawn={absent ? "false" : "true"}
               >
-                <KindShape kind={k.kind} className={cn(off && "opacity-30")} />
+                <KindDot kind={k.kind} className={cn(off && "opacity-30")} />
                 <span className={cn("min-w-0 flex-1 truncate", off && "line-through")}>{k.kind}</span>
                 <span className="text-xs text-muted-foreground tabular-nums">{format.number(k.count)}</span>
                 {off ? (
@@ -357,7 +357,7 @@ export function ExpandedList({
               className={cn(ROW, "flex-1", row.id === selected && "bg-sidebar-accent")}
               data-testid="kg-expanded-row"
             >
-              <KindShape kind={row.kind} />
+              <KindDot kind={row.kind} />
               <span className="min-w-0 flex-1 truncate" title={row.name}>
                 {row.name}
               </span>

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import type { Scope } from "@/lib/kg/explorer";
 import { cn } from "@/lib/utils";
 
-import { KindShape } from "./badges";
+import { KindDot } from "./badges";
 import { type ExplorerLayout, SCOPE_LAYOUTS } from "./explorer-layout";
 
 /** The id of the line that tells a keyboard or screen reader user how the canvas works. */
@@ -74,7 +74,7 @@ export function Legend({ scope, kinds, counts, circles = false }: { scope: Scope
               {t("linkWidth")}
             </li>
             <li className="flex items-center gap-2">
-              <span className="w-3 shrink-0 border-t border-dashed border-fg-subtle" aria-hidden="true" />
+              <span className="w-3 shrink-0 border-t border-fg-subtle/50" aria-hidden="true" />
               {t("weakLink")}
             </li>
           </ul>
@@ -82,7 +82,7 @@ export function Legend({ scope, kinds, counts, circles = false }: { scope: Scope
           <ul className="flex flex-wrap gap-x-3 gap-y-1">
             {kinds.map((kind) => (
               <li key={kind} className="inline-flex items-center gap-1.5">
-                <KindShape kind={kind} />
+                <KindDot kind={kind} />
                 {kind}
               </li>
             ))}
@@ -97,7 +97,7 @@ export function Legend({ scope, kinds, counts, circles = false }: { scope: Scope
                   {t("expanded")}
                 </li>
                 <li className="inline-flex items-center gap-1.5">
-                  <span className="h-2.5 w-4 rounded-xs border-[1.5px] border-dashed border-fg-subtle" aria-hidden="true" />
+                  <span className="size-3 rounded-full border-[3px] border-fg-subtle bg-background" aria-hidden="true" />
                   {t("more")}
                 </li>
               </>

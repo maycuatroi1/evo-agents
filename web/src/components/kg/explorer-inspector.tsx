@@ -11,13 +11,13 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import { isWebLink } from "@/lib/kg/format";
-import { displayName, groupRelations, kindStyle, type RelationGroup } from "@/lib/kg/graph";
+import { displayName, groupRelations, kindTone, type RelationGroup } from "@/lib/kg/graph";
 import { kgNodeQuery } from "@/lib/kg/queries";
 import { clusterHref, nodeHref, reviewHref } from "@/lib/kg/routes";
 import type { ClusterSummary, NodeDetail, Relation } from "@/lib/kg/types";
 import { cn } from "@/lib/utils";
 
-import { CopyButton, KindShape, LabelBadge } from "./badges";
+import { CopyButton, KindDot, LabelBadge } from "./badges";
 import type { ClusterRow } from "./explorer-rail";
 
 const TONE_BG = { 1: "bg-chart-1", 2: "bg-chart-2", 3: "bg-chart-3", 4: "bg-chart-4", 5: "bg-chart-5" } as const;
@@ -64,13 +64,13 @@ function KindBreakdown({ kinds }: { kinds: Record<string, number> }) {
       <SubTitle>{t("kinds")}</SubTitle>
       <div className="flex h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
         {rows.map(([kind, count]) => (
-          <span key={kind} className={cn("h-full", TONE_BG[kindStyle(kind).tone])} style={{ width: `${(count / total) * 100}%` }} />
+          <span key={kind} className={cn("h-full", TONE_BG[kindTone(kind)])} style={{ width: `${(count / total) * 100}%` }} />
         ))}
       </div>
       <ul className="flex flex-col gap-1 text-[13px]">
         {rows.map(([kind, count]) => (
           <li key={kind} className="flex items-center gap-2">
-            <KindShape kind={kind} />
+            <KindDot kind={kind} />
             <span className="min-w-0 flex-1 truncate">{kind}</span>
             <span className="text-xs text-muted-foreground tabular-nums">{format.number(count)}</span>
           </li>
@@ -208,7 +208,7 @@ function Relations({ detail, onPick }: { detail: NodeDetail; onPick: (relation: 
                     data-testid="kg-relation"
                     data-node-id={relation.node}
                   >
-                    <KindShape kind={relation.kind} />
+                    <KindDot kind={relation.kind} />
                     <span className="min-w-0 flex-1 truncate" title={relation.node}>
                       {displayName({ id: relation.node, name: relation.name })}
                     </span>
@@ -259,7 +259,7 @@ function NodeBody({ project, detail, actions }: { project: string; detail: NodeD
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <Tag>
-            <KindShape kind={node.kind} className="size-3" />
+            <KindDot kind={node.kind} className="size-3" />
             {node.kind}
           </Tag>
           <LabelBadge label={node.label} />

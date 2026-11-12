@@ -25,6 +25,7 @@ import {
   splitShown,
   typeCounts,
 } from "./entity-graph";
+import { FALLBACK_THEME } from "./canvas-theme";
 
 const label = { level: "internal", location: "any", integrity: "U" };
 const node = (id: string, kind: string, name: string, docs = 1, hop?: number): EntityGraphNode => ({
@@ -138,7 +139,7 @@ describe("sizes and labels", () => {
 
 describe("buildGraph", () => {
   it("draws one node per entity and one undirected edge per relation, sized and labelled", () => {
-    const graph = buildGraph(SET, { dark: false, edgeColour: "#ccc" });
+    const graph = buildGraph(SET, FALLBACK_THEME);
     expect(graph.order).toBe(4);
     expect(graph.size).toBe(2);
     expect(graph.type).toBe("undirected");
@@ -148,21 +149,10 @@ describe("buildGraph", () => {
     expect(graph.getEdgeAttribute("r:2", "size")).toBe(4);
   });
 
-  it("keeps the places laid out before and starts a new node beside a placed neighbour", () => {
-    const previous = new Map([
-      [ENGINE.id, { x: 100, y: 100 }],
-      [ADA.id, { x: 90, y: 110 }],
-    ]);
-    const graph = buildGraph(SET, { dark: true, edgeColour: "#333", previous });
-    expect(graph.getNodeAttributes(ENGINE.id)).toMatchObject({ x: 100, y: 100 });
-    const { x, y } = graph.getNodeAttributes(BABBAGE.id);
-    expect(Math.abs(x - 100)).toBeLessThan(1);
-    expect(Math.abs(y - 100)).toBeLessThan(1);
-  });
 
   it("places the same graph the same way twice", () => {
-    const one = buildGraph(SET, { dark: false, edgeColour: "#ccc" });
-    const two = buildGraph(SET, { dark: false, edgeColour: "#ccc" });
+    const one = buildGraph(SET, FALLBACK_THEME);
+    const two = buildGraph(SET, FALLBACK_THEME);
     expect(one.getNodeAttributes(LONDON.id)).toEqual(two.getNodeAttributes(LONDON.id));
   });
 });
@@ -222,17 +212,18 @@ describe("the code of the entities drawn", () => {
     expect(isolated).toEqual([]);
   });
 
-  it("builds code as square slate nodes with a thin edge from the entity, and counts an entity's code", () => {
+  it("builds code in its kind's tone with a thin edge from the entity, and counts an entity's code", () => {
     const g = buildGraph(
       { nodes: [{ ...ADA, code: 3 }], edges: [], codeNodes: [RELAY], codeEdges: [pointing(ADA.id, RELAY.id)] },
-      { dark: false, edgeColour: "#e4e4e7", codeEdgeColour: "#6b6b73" },
+      FALLBACK_THEME,
     );
     expect(g.getNodeAttribute(ADA.id, "code")).toBe(3);
     expect(isCodeNode(g.getNodeAttributes(ADA.id))).toBe(false);
     expect(isCodeNode(g.getNodeAttributes(RELAY.id))).toBe(true);
-    expect(g.getNodeAttribute(RELAY.id, "color")).not.toBe(kindColour("File", false));
+    expect(g.getNodeAttribute(RELAY.id, "color")).toBe(FALLBACK_THEME.tones[3]);
+    expect(g.getNodeAttribute(ADA.id, "badge")).toBe("</> 3");
     const key = codeEdgeKey(pointing(ADA.id, RELAY.id));
-    expect(g.getEdgeAttributes(key)).toMatchObject({ code: true, color: "#6b6b73", label: "implemented by" });
+    expect(g.getEdgeAttributes(key)).toMatchObject({ code: true, quiet: true, color: FALLBACK_THEME.subtle, label: "implemented by" });
   });
 
   it("groups an entity's code links by repo and package, the repo's root as /", () => {

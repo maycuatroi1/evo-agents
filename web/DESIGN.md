@@ -769,21 +769,22 @@ Shared pieces built on them:
   height), inspector, rail. Three scopes, one canvas, the scope in the URL (`?cluster=`, `?node=`) through
   `history.pushState`, so back and forward walk the exploration and a view can be shared: the overview draws the
   level-1 clusters as circles in their cluster colour sized by members (square root), joined by their links (width on
-  a log scale), each cluster keeping its three heaviest links and the others shown dashed while it is hovered or
+  a log scale), each cluster keeping its three heaviest links and the others shown faint while it is hovered or
   selected; a cluster with parts draws its parts the same way, joined by the edges between their members, and a part
-  (or a cluster without parts) its members in their kinds' tones and shapes, the 600 most linked when it holds more; a
+  (or a cluster without parts) its members as discs in their kinds' tones, the 600 most linked when it holds more; a
   node draws itself and its direct neighbours (the six most linked of each group of edge type, direction and kind, a
-  dashed "+N kind" node for the rest) and each node the reader expands adds its own beside it while the others keep
-  their places (`lib/kg/explorer.ts` merges the neighbourhoods, up to 400 nodes). Cytoscape.js with the fcose layout
-  draws it (`explorer-canvas.tsx`, loaded once the canvas mounts; `explorer-layout.ts` and `explorer-style.ts` hold
-  its layouts and stylesheet, colours read from the tokens of the theme in use). Labels keep their size on screen (13
-  px for a circle, 11 px for a node) whatever the zoom, and never cover each other: the node selected or under the
-  pointer shows its label first, then its neighbours, then the largest or most linked; a label that would cover one
-  already shown, or a node already shown with its label, waits for a zoom (which makes room) or a pointer, and a node
-  whose label shows is drawn above the rest (`declutter` of explorer-layout.ts, run again after each zoom, pan, layout
-  or change of what is lit). A file is named by its file name, with its folder when that name is generic
+  hollow "+N kind" node for the rest) and each node the reader expands adds its own beside it while the others keep
+  their places (`lib/kg/explorer.ts` merges the neighbourhoods, up to 400 nodes). sigma.js 3 (WebGL) over graphology
+  draws it, the one canvas of every view of the graph (`sigma-canvas.tsx`, loaded with next/dynamic once the canvas
+  mounts; `lib/kg/explorer-graph.ts` turns the scope's elements into its graph and `lib/kg/canvas-graph.ts` lays it out
+  by force with ForceAtlas2, in rings or as a tree, colours read from the tokens of the theme in use). Every node is a
+  disc in its kind's tone, the kind said in text beside it; a ring marks the node the view grew from (`brand`), a node
+  expanded (`fg`) and a hub (`fg-muted`), and a "+N" node is hollow. Labels keep their size on screen whatever the zoom
+  and never cover each other (`canvas-labels.ts`): the node selected or under the pointer shows its label first, then
+  its neighbours, then the largest; a label without room waits for a zoom or a pointer, and one near the right edge
+  sits left of its disc. A file is named by its file name, with its folder when that name is generic
   (`kg/page.tsx`); the node a URL names by an alias reads as its own id once read. A click selects, a double click
-  opens a cluster or expands a node, hovering lights a node's neighbourhood, dims the rest and names it in a tooltip;
+  opens a cluster or expands a node, hovering lights a node's neighbourhood, dims the rest and names it with its kind;
   on the focused canvas the arrows step through the nodes, Enter opens or expands, Backspace goes up a scope, Delete
   hides a node, Escape clears, + and - zoom and 0 fits. The canvas is a labelled `role="application"` described by the
   keys; the rail's lists and the inspector (a cluster's kinds, parts and linked clusters; a node's facts and

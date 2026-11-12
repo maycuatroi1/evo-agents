@@ -143,7 +143,7 @@ test.describe("knowledge graph", () => {
     const member = newAccount("kg-member");
     await grantOn(kg.project, member.login, "writer", "customer");
     await signInAs(member);
-    // Cytoscape runs under the nonce CSP as it is: no eval, no inline script, nothing the browser refuses.
+    // sigma runs under the nonce CSP as it is: no eval, no inline script, nothing the browser refuses.
     const refused: string[] = [];
     page.on("console", (message) => {
       if (/content security policy/i.test(message.text())) refused.push(message.text());
@@ -198,8 +198,8 @@ test.describe("knowledge graph", () => {
     await page.keyboard.press("ArrowLeft");
     await expect(canvas).toHaveAttribute("data-selected", SHARED_NODE);
     await page.getByRole("button", { name: "Vừa khung" }).click();
-    await page.getByLabel("Bố cục").selectOption("cose");
-    await page.getByLabel("Bố cục").selectOption("breadthfirst");
+    await page.getByLabel("Bố cục").selectOption("force");
+    await page.getByLabel("Bố cục").selectOption("tree");
     await expect(canvas).toHaveAttribute("data-selected", SHARED_NODE);
     expect(refused).toEqual([]);
   });

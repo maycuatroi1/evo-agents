@@ -17,7 +17,7 @@ import { useVisibilityName } from "@/components/data/visibility";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { type DurationParts, durationParts } from "@/lib/kg/format";
-import { kindStyle, SHAPE_POINTS, type Tone } from "@/lib/kg/graph";
+import { kindTone, type Tone } from "@/lib/kg/graph";
 import type { BuildStatus, NodeLabel } from "@/lib/kg/types";
 import { cn } from "@/lib/utils";
 
@@ -62,35 +62,23 @@ export function LabelBadge({ label }: { label: NodeLabel }) {
   );
 }
 
-const TONE_FILL: Record<Tone, string> = {
-  1: "fill-chart-1",
-  2: "fill-chart-2",
-  3: "fill-chart-3",
-  4: "fill-chart-4",
-  5: "fill-chart-5",
+const TONE_BG: Record<Tone, string> = {
+  1: "bg-chart-1",
+  2: "bg-chart-2",
+  3: "bg-chart-3",
+  4: "bg-chart-4",
+  5: "bg-chart-5",
 };
 
-/** The outline a kind of node is drawn with in the graph view, in its colour. Decoration: the kind is in text. */
-export function KindShape({ kind, className }: { kind: string; className?: string }) {
-  const { tone, shape } = kindStyle(kind);
-  const fill = cn(TONE_FILL[tone], "stroke-card");
-  return (
-    <svg viewBox="-1.2 -1.2 2.4 2.4" aria-hidden="true" className={cn("size-3.5 shrink-0", className)}>
-      {shape === "ellipse" ? (
-        <circle r="1" className={fill} strokeWidth="0.15" />
-      ) : shape === "rectangle" || shape === "round-rectangle" ? (
-        <rect x="-1" y="-0.8" width="2" height="1.6" rx={shape === "round-rectangle" ? 0.4 : 0} className={fill} strokeWidth="0.15" />
-      ) : (
-        <polygon points={SHAPE_POINTS[shape]} className={fill} strokeWidth="0.15" />
-      )}
-    </svg>
-  );
+/** The disc a kind of node is drawn with on every canvas of the graph, in its colour. Decoration: the kind is in text. */
+export function KindDot({ kind, className }: { kind: string; className?: string }) {
+  return <span aria-hidden="true" className={cn("size-2.5 shrink-0 rounded-full", TONE_BG[kindTone(kind)], className)} data-tone={kindTone(kind)} />;
 }
 
 export function KindBadge({ kind }: { kind: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap" data-testid="kind">
-      <KindShape kind={kind} />
+      <KindDot kind={kind} />
       {kind}
     </span>
   );
