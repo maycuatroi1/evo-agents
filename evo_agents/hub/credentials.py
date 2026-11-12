@@ -84,6 +84,10 @@ GITHUB_WORKFLOW_PERMISSIONS = {"workflows": "write"}
 # request of its branch with the run's token, and GitHub refuses that without it (the preflight probes it). Never for
 # the Curator's App.
 GITHUB_PULL_REQUEST_PERMISSIONS = {"pull_requests": "write"}
+# Asked as well for every token, each where the App holds it on the installation, of either App: the agent reads the
+# checks, workflow runs and commit statuses of its pull request, which GitHub refuses a token without them (403
+# "Resource not accessible by integration"). Read only, so a token that reads stays one that reads.
+GITHUB_CI_READ_PERMISSIONS = {"checks": "read", "actions": "read", "statuses": "read"}
 # the kinds of run whose GitHub token reads only
 READ_ONLY_KINDS = ("review", "judge", "author", "replay", "history", "probe")
 NO_WORKFLOW_KINDS = ("release",)  # the kinds of run whose GitHub token never asks GITHUB_WORKFLOW_PERMISSIONS

@@ -36,6 +36,9 @@ list them; without evo-kg, evo-hub serves them from the hub's graph.
 - To mark a step, call `plan_step` with `plan_id`, `step`, `status` (`pending`, `in_progress`, `done`, `blocked`)
   and `evidence` (commit, test run, link) or a `note`. `done` sets `done_at` to today. The hub retries on a newer
   revision when another write landed meanwhile, and refuses when that write changed the same keys.
+- Once every step is done, call `plan_complete` with `plan_id` to move the plan to the completed area, as
+  `evo-agents hub plan complete` does; it refuses while a step is not done. Inside a run, prefer these tools to the
+  hub CLI, which has a sign-in only when the run's owner let it run as them.
 - In a harness whose `harness.yaml` names `hub.project`, every `plans/*/*.yaml` is a read-only copy: its first line
   says `Mirror of evo-agents hub plan`, and its `hub:` key holds the project, revision and digest. Never edit or
   write those files, not even to tick a status. A hand edit is detected (`evo-agents harness validate` reports a
@@ -142,6 +145,7 @@ list them; without evo-kg, evo-hub serves them from the hub's graph.
 | `plan_show` | a plan, or one step, as the hub holds it |
 | `plan_handoff` | a plan's goal, steps done with commits and Decision lines, and steps left, within a token budget |
 | `plan_step` | set a step's status with evidence or a note |
+| `plan_complete` | move a plan whose every step is done to the completed area |
 | `problem_list` | the project's problems (P-<number>) by rank, with status, owner and metric |
 | `problem_show` | one problem whole: what hurts, who, when, the workaround, its metric, and the goals that answer it |
 | `problem_evidence` | the lines of evidence of a problem (E-<number>): source, place, speaker, excerpt, signal, label, who confirmed, and the count of independent sources |

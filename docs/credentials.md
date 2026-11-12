@@ -227,7 +227,11 @@ bound to the run's project, bound to no worker, to this one or to this worker's 
   creates or updates a file of `.github/workflows` without it. To let runs push such a change, give the App the
   Workflows permission (read and write) in its settings and accept it on the installation; a run asks its token at
   its start, so a run that began before keeps its token without it until that token is renewed. A run of the
-  Curator never gets it.
+  Curator never gets it. Every token, of a run that writes or one that reads, also asks `checks: read`,
+  `actions: read` and `statuses: read` (`GITHUB_CI_READ_PERMISSIONS`), each where the installation holds it, so the
+  agent reads the CI of its own pull request (`gh pr checks`, the check runs and statuses of its head); without them
+  GitHub answers 403 "Resource not accessible by integration". To let runs read CI, give the App Checks, Actions and
+  Commit statuses (read) and accept them on the installation.
 
 A repo's origin is the one the run's project registers for it, else the one another project registers for a repo of
 that name, among the projects the run's owner holds a grant on, when they agree on it (`repo_origins`).
