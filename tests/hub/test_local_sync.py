@@ -225,6 +225,8 @@ def test_the_log_holds_the_narrations_the_claude_app_shows_but_not_the_thinking(
 
 
 def test_a_tool_hook_asks_the_hub_at_most_once_in_a_while_and_stop_sends_the_rest(own_home, fake, monkeypatch, capsys):
+    # an hour, not the 2 s of FLUSH_EVERY: three hooks on a loaded runner took longer than that (release CI of v0.63.7)
+    monkeypatch.setattr(local_sync, "FLUSH_EVERY", 3600.0)
     fire("user-prompt", payload(own_home, prompt="go"), monkeypatch, capsys)
     for n in range(1, 4):
         fire("local-tool", tool_data(own_home, n), monkeypatch, capsys)
