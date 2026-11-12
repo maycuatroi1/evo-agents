@@ -468,6 +468,7 @@ def installing(here, monkeypatch):
     """A worker of this HOME and a fake launchctl, as tests/worker/test_service.py has them."""
     monkeypatch.setattr(sys, "argv", ["/opt/tools/bin/evo-agents"])
     monkeypatch.setattr(service, "missing_extra", lambda: None)
+    monkeypatch.setattr(service, "self_update_warning", lambda: None)  # tests/worker/test_service.py covers it
     monkeypatch.setattr(service.time, "sleep", lambda seconds: None)
     monkeypatch.delenv("EVO_WORKER_HOME", raising=False)
     config = WorkerConfig(url="https://hub.example.org", worker_id=7, name="mac-mini", projects=["demo"])

@@ -1117,7 +1117,11 @@ def test_op_open_asks_the_chat_runs_opener_on_a_socket_it_opens_without_leases(m
     assert exists, "a chat run's socket opens with no lease, for its agent's repo open"
     assert answer == {"repo": "app", "path": f"/runs/{RUN}/app", "opened": True}
     assert blank == {"error": "name the repo to open"}
-    assert printed.returncode == 0 and printed.stdout == f"/runs/{RUN}/app\n" and printed.stderr == ""
+    assert printed.returncode == 0 and printed.stdout == f"/runs/{RUN}/app\n"
+    assert printed.stderr == (
+        "note: the worktree was fetched as it opened; before your own git or gh on it, run "
+        f'`eval "$(evo-agents worker env --run {RUN})"` in that shell for the run\'s credential\n'
+    ), "the path alone on stdout; how a shell takes the run's credential on stderr"
     assert opened == ["app", "app"]
     assert plan.returncode == 1 and plan.stdout == ""
     assert plan.stderr.startswith(f"error: run {RUN} is a plan run: only the agent of a chat run opens a repo")

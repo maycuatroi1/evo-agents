@@ -164,7 +164,7 @@ def test_browser_login_session_is_refused_for_what_cannot_take_it(stored):
     assert login(client, headers["owner"], identity["id"]).status_code == 409  # held by the session
     assert control(client, headers["owner"], run["id"], "cancel").status_code == 200
 
-    assert runs.RUN_KINDS[-1] == "browser"
+    assert "browser" in runs.RUN_KINDS
 
 
 def test_browser_login_session_finish_is_for_author_and_browser_runs_only(stored):
