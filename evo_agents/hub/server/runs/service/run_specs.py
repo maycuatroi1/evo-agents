@@ -277,7 +277,7 @@ async def run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...]
     if view.kind in OWN_PROMPTS:
         prompt = await _own_prompt(conn, view, features, card is not None and card.ships)
         title = view.title
-    elif view.kind == "browser":  # a person drives its Chromium: no agent, so no prompt
+    elif view.kind in ("browser", "command"):  # a person drives its Chromium, or the shell runs a command: no agent
         prompt, title = "", view.title
     elif view.kind == "author":
         skill = await author_skill(conn)
@@ -317,10 +317,13 @@ async def run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...]
     from evo_agents.hub.server.context_answers import with_answers
     from evo_agents.hub.server.memory_upkeep import with_index  # it reads memories through their routes' module
 
-    prompt = await with_answers(conn, run_id, prompt)  # the confirmed answers that match the run, when the policy says
-    prompt = await with_index(conn, run_id, prompt)  # the memories of an agent profile, not the project's default
-    if view.kind != "plan":  # the plan's prompt has it first already
-        prompt = autonomy_card.with_card(prompt, autonomy)
+    if view.kind != "command":  # a command run has no agent to read a prompt
+        prompt = await with_answers(
+            conn, run_id, prompt
+        )  # the confirmed answers that match the run, when the policy says
+        prompt = await with_index(conn, run_id, prompt)  # the memories of an agent profile, not the project's default
+        if view.kind != "plan":  # the plan's prompt has it first already
+            prompt = autonomy_card.with_card(prompt, autonomy)
     return RunSpec.model_validate(  # routing and autonomy are dicts the model reads
         dict(
             id=view.id,
@@ -365,6 +368,7 @@ async def run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...]
             autonomy=autonomy,
             attachments=await _opening_files(conn, view),
             chat_message_id=view.chat_message_id if view.kind == "chat" else None,
+            command=view.request if view.kind == "command" else None,
         )
     )
 

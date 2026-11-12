@@ -91,14 +91,15 @@ def usable_member():
 def claim_gate():
     """The condition on the run being claimed that account pools hold: a run of an agent in pool mode is taken only
     while the agent's account pool has an account the run can use, or when the run took an account already (a resumed
-    run, a run that failed over). The Curator's runs and a browser login take their accounts as before."""
+    run, a run that failed over). The Curator's runs and a browser login take their accounts as before, and a command
+    run, whose shell calls no model, none."""
     from evo_agents.hub.server import agent_placement  # it reads this module's neighbours: imported when used
 
     r, ra = tables.runs, tables.run_accounts
     took = exists().where(ra.c.run_id == r.c.id)
     return or_(
         ~agent_placement.pooled_run(),
-        r.c.kind.in_((*runs.CURATOR_KINDS, "browser")),
+        r.c.kind.in_((*runs.CURATOR_KINDS, "browser", "command")),
         took,
         usable_member(),
     )
@@ -106,11 +107,11 @@ def claim_gate():
 
 async def is_pooled(conn: AsyncConnection, run_id: int) -> bool:
     """Whether run ``run_id`` is one of an agent in pool mode whose model account is its account pool's alone: not a run
-    of the Curator nor a browser login (``claim_gate``)."""
+    of the Curator, a browser login nor a command run (``claim_gate``)."""
     r, ap = tables.runs, tables.agent_profiles
     query = (
         select(ap.c.id)
         .join_from(r, ap, ap.c.id == r.c.profile_id)
-        .where(r.c.id == run_id, r.c.kind.not_in((*runs.CURATOR_KINDS, "browser")))
+        .where(r.c.id == run_id, r.c.kind.not_in((*runs.CURATOR_KINDS, "browser", "command")))
     )
     return (await conn.execute(query)).scalar_one_or_none() is not None

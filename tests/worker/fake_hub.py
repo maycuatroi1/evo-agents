@@ -695,6 +695,35 @@ class FakeHub:
             },
         )
 
+    def queue_command_run(self, command: str, repo: str | None = None, *, timeout_min: int = 30) -> int:
+        """A command run of ``command`` in a worktree of ``repo``, or in an empty directory when None, as the hub hands
+        it when a cron job fires (``evo_agents.hub.server.command_dispatch``): no prompt, no model, one attempt."""
+        return self.queue_run(
+            kind="command",
+            project=self.project,
+            plan_id="",
+            step_key=None,
+            title=f"cron nightly: {command[:80]}",
+            plan_revision=None,
+            attempt=1,
+            max_attempts=1,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime="any",
+            model=None,
+            mode="headless",
+            approval="auto",
+            timeout_min=timeout_min,
+            repo=None,
+            branch=None,
+            repos=[{"repo": repo}] if repo else None,
+            lease_expires_at=_now(),
+            prompt="",
+            plan=None,
+            command=command,
+        )
+
     def attach(self, name: str, data: bytes, media_type: str = "text/plain", *, sha256: str | None = None) -> dict:
         """A file a person uploaded, as a message lists it (id, name, media_type, size, sha256); ``sha256`` other
         than its bytes', as a hub whose blob went bad."""
