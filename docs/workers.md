@@ -2720,20 +2720,31 @@ Claude Code only:
   saying why; a limit is said once in a `system` event of the run. Codex and opencode send no tool images: their
   agents use `worker output` and `.evo-run/outputs/`.
 - **The outputs directory.** The files the agent leaves in `.evo-run/outputs/` of the run's directory (in the run's
-  checkout, or above the worktrees of a plan run) become outputs of source `outputs`, named by their path below it,
-  when the agent reports a step (`worker step` asks the daemon to look) and when the run ends. Each file goes once:
+  checkout, or above the worktrees of a plan run) become outputs of source `outputs`, named by their path below it.
+  While the run runs, the daemon looks at the directory every 30 seconds and sends a new file once two looks in a row
+  found the same size and time, so a file the agent still writes waits; when the agent reports a step (`worker step`
+  asks the daemon to look) and when the run ends, every file new or changed goes. Each file goes once:
   `.evo-run/outputs-sent.json` keeps the size, time and SHA-256 of each file sent, so a file goes again only when its
-  bytes changed, and the run that resumes a parked one in the same directory sends only what is new. Links and hidden
-  files and folders are left out.
+  bytes changed (at a step or at the end, not by a look while the run runs), and the run that resumes a parked one in
+  the same directory sends only what is new. Links and hidden files and folders are left out.
 
 The daemon sends the queue in batches of at most 100 files and 64 MiB, through `.../output-uploads`, the presigned
-PUTs and `.../outputs`. A file of text (Markdown, text, JSON, CSV, HTML, SVG, logs, code) goes through the redaction of
-the run's events first: every value of a lease the run holds is masked as `***`. A hub that does not answer holds
+PUTs and `.../outputs`: the files a command waits on first (`worker output`, `--attach`), then the smaller before the
+larger, so that past the run's limit of 500 outputs, or out of time, what is left out is a few large files and not
+hundreds of screenshots. A file of text (Markdown, text, JSON, CSV, HTML, SVG, logs, code) goes through the redaction
+of the run's events first: every value of a lease the run holds is masked as `***`. A hub that does not answer holds
 nothing up: the files wait on disk and go with the worker's backoff. An upload that fails never fails the run: a batch
-the hub refuses is sent again one file at a time, a file it refuses is a `system` event of the run, and a hub that
-takes no outputs of the run (404, 403) stops them for the run. The end of a run waits up to 60 seconds for the queue
-before its last report, and 30 seconds more once the run is over here; what is still left then stays on this worker
-until the cleanup removes the run's state.
+the hub refuses is sent again one file at a time, a file it refuses is a `system` event of the run, a file past the
+run's limit of outputs or bytes is said in one `system` event for the whole run, naming the first file left out, and
+a hub that takes no outputs of the run (404, 403) stops them for the run.
+
+The end of a run waits for the queue before its last report, and once more after the run is over here. The first
+wait lasts at least 60 seconds and the second at least 30; either lasts longer when the bytes still queued need it at
+the rate the hub took the run's uploads so far (1 MiB/s before the first upload, with half again as much as margin),
+and the two last at most 10 minutes together. A light run ends as soon as its queue is empty; a run that left about
+1 GiB of traces and screenshots on a hub that takes 1 to 2 MiB/s has sent most of it while it ran and gets the time
+the rest needs. The daemon's hard stop waits for nothing. What is still left after the second wait stays on this
+worker until the cleanup removes the run's state, and one `system` event says how many outputs were not sent.
 
 ### The Python environment of a worktree
 

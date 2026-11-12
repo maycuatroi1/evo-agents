@@ -9,10 +9,12 @@ outputs as the hub does (uploads, presigned PUTs, outputs, settings, limits, the
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
 import secrets
+from types import SimpleNamespace
 
 import pytest
 
@@ -24,8 +26,10 @@ from evo_agents.hub.credentials import Lease
 from evo_agents.worker import credentials, interactive
 from evo_agents.worker.daemon import Daemon
 from evo_agents.worker.home import WorkerHome
+from evo_agents.worker.hubapi import Refused
 from evo_agents.worker.output_queue import OutputQueue
-from evo_agents.worker.runner.outputs import SENT_FILE, outputs_files, redacted
+from evo_agents.worker.runner import outputs as run_outputs
+from evo_agents.worker.runner.outputs import SENT_FILE, Outputs, outputs_files, redacted
 from evo_agents.worker.runtimes import claude_code, claude_events
 from tests.worker.fake_hub import FakeHub
 from tests.worker.test_plan_runs import PLAN, machine, plan_body, run_repos, wait_for, with_daemon  # noqa: F401
@@ -181,6 +185,162 @@ def test_the_commands_refuse_outside_a_run(monkeypatch, tmp_path, capsys):
     (tmp_path / "a.png").write_bytes(PNG)
     assert cli_main(["worker", "output", str(tmp_path / "a.png")]) == 1
     assert "works only inside a run of this worker" in capsys.readouterr().err
+
+
+# The daemon's sending of one run, with a hub of its own
+
+
+class OutputsHub:
+    """The outputs routes as the hub answers them, held to ``max_outputs``; each PUT takes ``put_seconds``, or waits
+    forever with ``stuck``."""
+
+    def __init__(self, max_outputs: int = 500, put_seconds: float = 0.0, stuck: bool = False):
+        self.max_outputs, self.put_seconds, self.stuck = max_outputs, put_seconds, stuck
+        self.names: list[str] = []  # the outputs recorded, in order
+        self.held: set[str] = set()
+
+    async def output_settings(self, run_id):
+        return {"tool_images": True, "outputs": len(self.held), "bytes": 0}
+
+    async def output_uploads(self, run_id, items):
+        new = {item["sha256"] for item in items} - self.held
+        if len(self.held) + len(new) > self.max_outputs:
+            message = f"run {run_id} holds {len(self.held)} outputs, and a run holds at most {self.max_outputs}"
+            raise Refused(message, 413, "payload_too_large", {"detail": [{"limit": "outputs_per_run"}]})
+        return {"uploads": [{"url": f"put/{sha}", "sha256": sha, "upload_id": sha} for sha in sorted(new)]}
+
+    async def put(self, url, data):
+        if self.stuck:
+            await asyncio.Event().wait()
+        await asyncio.sleep(self.put_seconds)
+
+    async def record_outputs(self, run_id, entries):
+        for entry in entries:
+            if entry["sha256"] not in self.held:
+                self.held.add(entry["sha256"])
+                self.names.append(entry["name"])
+        return {"outputs": [{"id": n} for n, _ in enumerate(entries, 1)]}
+
+
+def run_of(tmp_path, hub: OutputsHub) -> SimpleNamespace:
+    """What ``Outputs`` reads of a run: its id, worktree, daemon (home, hub, hard stop) and its notes."""
+    notes: list[str] = []
+    daemon = SimpleNamespace(home=WorkerHome(tmp_path / "worker"), hub=hub, hard_stop=asyncio.Event())
+    run = SimpleNamespace(id=1, worktree=tmp_path / "run", daemon=daemon, notes=notes)
+    run.note = lambda text, **extra: notes.append(text)
+    (tmp_path / "run" / outputs.OUTPUTS_DIR).mkdir(parents=True)
+    return run
+
+
+def test_a_look_while_the_run_runs_sends_new_files_once_they_stopped_changing(tmp_path):
+    hub = OutputsHub()
+    run = run_of(tmp_path, hub)
+    base = run.worktree / outputs.OUTPUTS_DIR
+
+    async def look(sent: Outputs) -> None:
+        sent.next_look = 0  # a look is due
+        await sent._round()
+
+    async def go():
+        sent = Outputs(run)
+        (base / "shot.png").write_bytes(PNG)
+        (base / "trace.zip").write_bytes(b"part one")
+        await look(sent)
+        assert hub.names == [], "a file is sent only once two looks found it the same"
+        (base / "trace.zip").write_bytes(b"part one, part two")  # still being written
+        (base / "late.json").write_text("{}")
+        await look(sent)
+        assert hub.names == ["shot.png"]
+        await look(sent)
+        assert hub.names == ["shot.png", "late.json", "trace.zip"]
+        (base / "shot.png").write_bytes(OTHER_PNG)  # changed after it went: not by a look, at a step or the end
+        await look(sent)
+        await look(sent)
+        assert hub.names == ["shot.png", "late.json", "trace.zip"]
+        sent.next_look = float("inf")
+        await sent.scan()
+        await sent._round()
+        assert hub.names == ["shot.png", "late.json", "trace.zip", "shot.png"]
+
+    asyncio.run(go())
+
+
+def test_smaller_files_go_first_and_the_run_s_limit_is_said_once(tmp_path):
+    hub = OutputsHub(max_outputs=3)
+    run = run_of(tmp_path, hub)
+    base = run.worktree / outputs.OUTPUTS_DIR
+    for name, size in (("a-trace.zip", 5000), ("b-shot.png", 10), ("c-network.har", 800), ("d-shot.png", 20)):
+        (base / name).write_bytes(secrets.token_bytes(size))
+    sent_by_hand = tmp_path / "summary.md"
+    sent_by_hand.write_text("x" * 3000)
+
+    async def go():
+        sent = Outputs(run)
+        sent.next_look = float("inf")
+        waited = sent.queue.put_file(sent_by_hand, name="summary.md", media_type="text/markdown", wait=True)
+        await sent.scan()  # files queued in the order of their names
+        await sent._round()
+        return sent.queue.answer(waited)
+
+    answer = asyncio.run(go())
+    assert hub.names == ["summary.md", "b-shot.png", "d-shot.png"], "a waited file first, then the smaller"
+    assert "output_id" in answer
+    limit = [text for text in run.notes if "past the run's limit" in text]
+    assert len(limit) == 1 and "c-network.har the first of them" in limit[0], run.notes
+    assert "a run holds at most 3" in limit[0]
+    assert not [text for text in run.notes if "a-trace.zip" in text], "the second file left out is not named"
+
+
+def test_the_end_waits_as_long_as_what_is_left_needs_at_the_run_s_rate_within_its_ceiling(tmp_path, monkeypatch):
+    base_of = lambda run: run.worktree / outputs.OUTPUTS_DIR  # noqa: E731
+
+    async def settle(hub: OutputsHub, files: int, rate: float | None, grace: float) -> tuple[float, Outputs]:
+        run = run_of(tmp_path / str(len(list(tmp_path.iterdir()))), hub)
+        for n in range(files):
+            (base_of(run) / f"shot-{n}.png").write_bytes(secrets.token_bytes(1000))
+        sent = Outputs(run)
+        if rate is not None:  # what the run measured before its end
+            sent.put_bytes, sent.put_seconds = int(rate), 1.0
+        sent.start()
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        await sent.settle(grace)
+        took = loop.time() - started
+        await sent.close(0)
+        return took, sent
+
+    async def go():
+        monkeypatch.setattr(run_outputs, "MOST_GRACE", 5.0)
+        # A slow hub (0.05 s a file, 20 kB/s) and 10 kB left: past the floor of 0.05 s, the end waits for all of it.
+        hub = OutputsHub(put_seconds=0.05)
+        took, sent = await settle(hub, 10, rate=20_000, grace=0.05)
+        assert len(hub.names) == 10 and 0.4 < took < 5.0, (took, hub.names)
+        assert not [text for text in sent.run.notes if "were not sent" in text], sent.run.notes
+        # A light run on a fast hub ends as soon as its queue is empty, well before the floor.
+        hub = OutputsHub()
+        took, _ = await settle(hub, 2, rate=None, grace=30.0)
+        assert len(hub.names) == 2 and took < 5.0, took
+        # A hub that does not take the bytes: the measured rate asks 75 s, the ceiling ends the wait at 0.8 s.
+        monkeypatch.setattr(run_outputs, "MOST_GRACE", 0.8)
+        hub = OutputsHub(stuck=True)
+        took, sent = await settle(hub, 50, rate=1000, grace=0.05)
+        assert hub.names == [] and 0.7 < took < 3.0, took
+        assert sent.waited >= 0.7
+        # The daemon's hard stop ends the wait at once.
+        hub = OutputsHub(stuck=True)
+        run = run_of(tmp_path / "stop", hub)
+        (base_of(run) / "shot.png").write_bytes(PNG)
+        sent = Outputs(run)
+        sent.queue.put_file(base_of(run) / "shot.png", name="shot.png", media_type="image/png")
+        sent.start()
+        run.daemon.hard_stop.set()
+        started = asyncio.get_running_loop().time()
+        await sent.settle(60.0)
+        await sent.close(0)
+        assert asyncio.get_running_loop().time() - started < 0.5
+        assert any("were not sent: the hub did not take them" in text for text in run.notes), run.notes
+
+    asyncio.run(go())
 
 
 # A plan run
