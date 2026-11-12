@@ -8,6 +8,7 @@ and the WHERE of a partial index, which the migrations alone hold (``tests.hub.t
 ``tests.hub.test_run_tables`` exercise them).
 """
 
+import functools
 import gc
 import warnings
 
@@ -39,13 +40,20 @@ def engine_on(db):
     return create_engine("postgresql+psycopg://", creator=lambda: psycopg.connect(db.dsn), poolclass=NullPool)
 
 
+@functools.cache
+def plugin_tables() -> frozenset[str]:
+    """The tables crm, pm and marketing keep, with those of the core plugins installed here, read once as ``env.py``
+    does: ``installed_tables()`` loads every plugin's metadata, and the filters below run for each table, column,
+    index and constraint Alembic reflects (calling it each time took the comparison past the 300 s test timeout on
+    the release CI of v0.63.4 and v0.63.6)."""
+    return PLUGIN_OWNED_TABLES | installed_tables()
+
+
 def _plugins(name: str | None) -> bool:
     """A table crm, pm or marketing keeps, or the version table of a core plugin's chain (``alembic_version_<id>``),
     as the migration environment leaves them out (``env.py``), with the tables of the core plugins installed here
     (editorial and okr keep theirs, which their own chains migrate)."""
-    return name is not None and (
-        name in PLUGIN_OWNED_TABLES or name in installed_tables() or name.startswith("alembic_version_")
-    )
+    return name is not None and (name in plugin_tables() or name.startswith("alembic_version_"))
 
 
 def include_name(name, type_, parent_names) -> bool:
