@@ -3135,6 +3135,9 @@ merge base). Each session it posts says where its arms ran, `arms_at`: `tip` or 
 such file, or neither the tip nor the change's commits make the arms (a commit the checkout no longer has), the daemon
 posts the probe as stale, with why, and the run ends `done` without an agent. An admin who fixes the probe
 (`evo-agents hub curator probe edit`) can measure it again the same week with `evo-agents hub curator probe requeue`.
+A daemon that makes the arms at the change's commits says so in its heartbeat's `features` (`probe_change_arms`); the
+night shift queues a probe run only when a worker on duty says it, and the claim hands a probe run to no other, since an
+older daemon posts such a probe stale without measuring it. A queued probe run no worker on duty takes says why in its candidates (`evo-agents hub run candidates`).
 
 Each session then gets a directory of its own under the run's (`on-1/`, `off-1/`, `on-2/`, ...; the arms take turns),
 laid out as a replay arm's: a new repository of the probe's repo at the base commit, the harness files of the change

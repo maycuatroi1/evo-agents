@@ -30,6 +30,7 @@ StepReportStatus = Literal["in_progress", "done", "pending"]
 STEP_REPORT_STATUSES: tuple[str, ...] = get_args(StepReportStatus)  # what a plan run's worker reports of a step
 RUN_KIND = r"^[a-z][a-z0-9_]{0,31}$"  # a kind of run a heartbeat names, known to this hub or not
 MAX_RUN_KINDS = 20
+MAX_FEATURES = 40  # features a heartbeat names (runs.WORKER_FEATURES, more than 20)
 MAX_SELF_UPDATE_REASON = runs.SELF_UPDATE_REASON_CHARS  # characters of self_update.reason in a heartbeat
 MAX_SELF_UPDATE_ERROR = runs.SELF_UPDATE_ERROR_CHARS  # characters of self_update.error in a heartbeat
 MAX_STEP_EVIDENCE_CHARS = MAX_EVIDENCE_BYTES  # the agent's evidence of one step; the hub's adds to it, within the bytes

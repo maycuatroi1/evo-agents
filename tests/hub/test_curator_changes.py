@@ -98,7 +98,8 @@ SUCCESS = {"state": "success", "total_count": 1, "statuses": [{"state": "success
 
 
 def taking(client, worker: dict) -> dict:
-    """``worker`` after a heartbeat that says its daemon runs every kind of run, judge runs included."""
+    """``worker`` after a heartbeat that says its daemon runs every kind of run, judge runs included, and builds a
+    probe's arms at the change's commits."""
     body = {
         "runtimes": worker["runtimes"],
         "checkouts": worker["checkouts"],
@@ -106,6 +107,7 @@ def taking(client, worker: dict) -> dict:
         "runs": [],
         "agent_version": "0.7.0",
         "run_kinds": list(runs.RUN_KINDS),
+        "features": [runs.PROBE_CHANGE_ARMS],
     }
     response = client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"])
     assert response.status_code == 200, response.text
