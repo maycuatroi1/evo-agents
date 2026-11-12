@@ -688,7 +688,14 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
         item for item in leased(world.client, world.worker, run_id)["leases"] if item["provider"] == "github-app"
     )
     app, permissions = token_permissions(world.github, lease["value"])
-    assert app == "workers" and permissions == {"contents": "write", "metadata": "read", "pull_requests": "write"}
+    # and the reads of CI the installation holds (GITHUB_CI_READ_PERMISSIONS)
+    ci_reads = {"checks": "read", "statuses": "read"}
+    assert app == "workers" and permissions == {
+        "contents": "write",
+        "metadata": "read",
+        "pull_requests": "write",
+        **ci_reads,
+    }
 
 
 @contextmanager

@@ -262,6 +262,29 @@ HUB_TOOLS = [
         },
     },
     {
+        "name": "plan_complete",
+        "description": (
+            "Move a plan whose every step is done or descoped to the completed area on the hub, as `evo-agents hub "
+            "plan complete` does; refused while a step is not done, so mark each with plan_step and its evidence "
+            "first. Writes to the hub only: the YAML copy in git moves at the next `evo-agents hub plan export`."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "string", "pattern": NAME_PATTERN},
+                "if_revision": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAX_REVISION,
+                    "description": "the revision you read; default: the latest",
+                },
+                "project": _PROJECT,
+            },
+            "required": ["plan_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "problem_list",
         "description": (
             "The problems of a project on the hub by rank, each with its code (P-<number>), status (open, solved, "

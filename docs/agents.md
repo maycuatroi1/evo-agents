@@ -83,8 +83,8 @@ claude plugin install evo-hub@evo-agents
 
 The `evo-hub` plugin registers the MCP server `evo-hub` (`evo-agents hub mcp`, which carries the session to the
 hub's `/mcp`), a `using-agent-hub` skill, and six hooks. Its tools include the seven `kg_*` tools and `memory_search`,
-`memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`, `skill_list`, `hub_projects` and
-`run_tool_stats`. A session that has the evo-kg plugin too gets the `kg_*` tools and the graph's instructions from
+`memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`, `plan_complete`, `skill_list`,
+`hub_projects` and `run_tool_stats`. A session that has the evo-kg plugin too gets the `kg_*` tools and the graph's instructions from
 evo-kg alone: evo-hub leaves them out (it reads `enabledPlugins` of Claude Code's settings). In a harness
 whose `harness.yaml` names `hub.project`, plans live on the hub and the files under `plans/` are read-only copies:
 mark a step with `plan_step`, `evo-agents hub plan step` or `evo harness step`, never by editing the YAML. To hand a

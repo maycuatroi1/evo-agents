@@ -203,6 +203,7 @@ class HubMcp(MCPServer):
             "plan_show": self._plan_show,
             "plan_handoff": self._plan_handoff,
             "plan_step": self._plan_step,
+            "plan_complete": self._plan_complete,
             "problem_list": self._problem_list,
             "problem_show": self._problem_show,
             "problem_evidence": self._problem_evidence,
@@ -534,6 +535,29 @@ class HubMcp(MCPServer):
             "summary": f"step {step} {status}",
         }
         return "\n".join(lines), data
+
+    async def _plan_complete(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
+        """POST .../plans/{plan_id}/complete, as `evo-agents hub plan complete` does: never with mark_steps_done, so a
+        step left undone is refused rather than marked done without evidence."""
+        project = self._project(caller, arguments)
+        plan_id = arguments["plan_id"]
+        payload = plans.PlanComplete(if_revision=arguments.get("if_revision"))
+        outcome = await plans.complete(caller.request, project, plan_id, caller.user, payload)
+        if isinstance(outcome, JSONResponse):
+            raise Refusal(json.loads(outcome.body)["message"])
+        state = "is now" if outcome.changed else "was already"
+        text = (
+            f"Plan {plan_id} {state} completed on the hub: revision {outcome.revision}. Nothing was written on this "
+            "machine: `evo-agents hub plan export` moves the copy in git to plans/completed/."
+        )
+        data = {
+            "project": project,
+            "plan_id": plan_id,
+            "revision": outcome.revision,
+            "changed": outcome.changed,
+            "summary": f"plan {plan_id} completed",
+        }
+        return text, data
 
     # The member's answer to a question of a local session
 

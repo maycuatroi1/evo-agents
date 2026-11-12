@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
 from evo_agents.hub.config import ConfigError, HubConfig
-from evo_agents.hub.credentials import GITHUB_PERMISSIONS, GITHUB_READ_PERMISSIONS
+from evo_agents.hub.credentials import GITHUB_CI_READ_PERMISSIONS, GITHUB_PERMISSIONS, GITHUB_READ_PERMISSIONS
 from evo_agents.hub.log import JsonFormatter
 from evo_agents.hub.server import github_app
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
@@ -226,6 +226,32 @@ def test_a_token_that_writes_asks_pull_requests_where_the_workers_app_holds_it(f
     assert only_reads == GITHUB_READ_PERMISSIONS
     curator_config = config(fake, app_key, curator_app_id="77", curator_app_private_key=app_key[0])
     assert with_app(curator_config, asks, curator=True) == GITHUB_PERMISSIONS
+
+
+def test_every_token_asks_the_ci_reads_the_installation_holds(fake, app_key):
+    """Decisions #302, #310 and #327 of a hub project: a plan run could not read the checks of its own pull request
+    (403 "Resource not accessible by integration") though the App held checks, actions and statuses on the
+    installation, since the hub asked contents alone. Each read of GITHUB_CI_READ_PERMISSIONS is asked where the
+    installation holds it, for a token that writes and one that reads alike, never one it lacks, and never above
+    read."""
+    held = {**GITHUB_PERMISSIONS, "checks": "write", "actions": "write", "statuses": "read"}
+    with_ci = fake.install(OWNER, "evo-agents", permissions=held)
+    installation = Installation(with_ci, OWNER, tuple(held.items()))
+    without = Installation(with_ci + 1, OWNER, tuple({**GITHUB_PERMISSIONS, "statuses": "read"}.items()))
+
+    async def asks(app, permissions=None, on=installation):
+        return app.run_permissions(on, permissions)
+
+    reads = {"checks": "read", "actions": "read", "statuses": "read"}
+    assert GITHUB_CI_READ_PERMISSIONS == reads
+    assert with_app(config(fake, app_key), asks) == {**GITHUB_PERMISSIONS, **reads}
+    only_reads = with_app(config(fake, app_key), lambda app: asks(app, GITHUB_READ_PERMISSIONS))
+    assert only_reads == {**GITHUB_READ_PERMISSIONS, **reads}
+    partly = with_app(config(fake, app_key), lambda app: asks(app, on=without))
+    assert partly == {**GITHUB_PERMISSIONS, "statuses": "read"}
+
+    result = tokens(config(fake, app_key), [(OWNER, "evo-agents")])
+    assert [token.permissions for token in result.tokens] == [{**GITHUB_PERMISSIONS, **reads}]
 
 
 # Whose token it is

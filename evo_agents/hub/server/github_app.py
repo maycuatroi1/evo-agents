@@ -5,7 +5,9 @@ RS256): issued 60 seconds back, for a hub clock ahead of GitHub's, and ending 9 
 GitHub allows. With it the hub finds the App's installation that covers a repo (GET /repos/{owner}/{repo}/installation),
 kept 10 minutes per owner/repo, and asks that installation for a token (POST /app/installations/{id}/access_tokens)
 naming the run's repos of that installation and the permissions ``GITHUB_PERMISSIONS``, nothing more (a review run's
-``GITHUB_READ_PERMISSIONS``, which only read): GitHub makes a token that lives an hour and opens those repos alone.
+``GITHUB_READ_PERMISSIONS``, which only read), but the read of CI below: GitHub makes a token that lives an hour and
+opens those repos alone. Any token asks each of ``GITHUB_CI_READ_PERMISSIONS`` (checks, actions and statuses, read) the
+installation holds, so a run reads the CI of its own pull request.
 A token that writes, of the workers' App, asks ``GITHUB_WORKFLOW_PERMISSIONS`` as well when the installation holds it
 (the ``permissions`` GitHub answers for it), so a run may push a change to .github/workflows, unless the ask says
 ``workflows=False`` (a release run's, ``credentials.github_workflows``); the Curator's App never asks it. It asks
@@ -51,6 +53,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from evo_agents.hub.config import CURATOR_APP_VARIABLES, GITHUB_APP_VARIABLES, LOGIN, ConfigError, HubConfig
 from evo_agents.hub.credentials import (
+    GITHUB_CI_READ_PERMISSIONS,
     GITHUB_PERMISSIONS,
     GITHUB_PULL_REQUEST_PERMISSIONS,
     GITHUB_WORKFLOW_PERMISSIONS,
@@ -390,15 +393,20 @@ class GitHubApp(GitHubClient):
     ) -> dict[str, str]:
         """``permissions`` (GITHUB_PERMISSIONS by default), with ``GITHUB_PULL_REQUEST_PERMISSIONS`` too for a token
         that writes contents, of the workers' App, on an installation that holds them, unless ``pull_requests`` is False,
-        and ``GITHUB_WORKFLOW_PERMISSIONS`` the same way unless ``workflows`` is False: GitHub refuses a token naming a permission the installation lacks,
-        a pull request opened with a token without ``pull_requests``, and a push that edits .github/workflows with a
-        token without ``workflows``."""
+        and ``GITHUB_WORKFLOW_PERMISSIONS`` the same way unless ``workflows`` is False, and each of
+        ``GITHUB_CI_READ_PERMISSIONS`` the installation holds, for any token: GitHub refuses a token naming a permission
+        the installation lacks, a pull request opened with a token without ``pull_requests``, a push that edits
+        .github/workflows with a token without ``workflows``, and a read of a pull request's checks, workflow runs or
+        statuses with a token without them."""
         permissions = dict(permissions or GITHUB_PERMISSIONS)
         writes = permissions.get("contents") == "write" and not self.curator
         if writes and pull_requests and installation.holds(GITHUB_PULL_REQUEST_PERMISSIONS):
             permissions.update(GITHUB_PULL_REQUEST_PERMISSIONS)
         if writes and workflows and installation.holds(GITHUB_WORKFLOW_PERMISSIONS):
             permissions.update(GITHUB_WORKFLOW_PERMISSIONS)
+        for name, level in GITHUB_CI_READ_PERMISSIONS.items():
+            if name not in permissions and installation.holds({name: level}):
+                permissions[name] = level
         return permissions
 
     async def _revoke_quietly(self, token: InstallationToken) -> None:
