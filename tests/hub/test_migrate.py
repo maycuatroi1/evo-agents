@@ -6117,3 +6117,41 @@ def test_0245_gives_cron_jobs_the_time_they_were_resumed(hub_db):
     move_to(hub_db, "0244", down=True)
     assert "resumed_at" not in columns(hub_db, "cron_jobs")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0245") :]
+
+
+def test_0246_gives_probe_runs_where_their_arms_ran_tip_for_those_with_sessions(hub_db):
+    move_to(hub_db, "0245")
+    assert "arms_at" not in columns(hub_db, "curator_probe_runs")
+    t = hub_tables
+    label = {"level": "internal"}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        proposal = {"project_id": ids["project"], "run_id": run_id, "lens": "corrections", "kind": "memory"}
+        proposal |= {"title": "Remember the port", "paths": [], "tier": 1, "tier_reasons": ["memory"]}
+        proposal |= {"evidence": [], "evidence_count": 1, "draft": {}, "fingerprint": "f" * 64, "label": label}
+        proposal_id = one(conn, insert(t.proposals).values(proposal).returning(t.proposals.c.id))
+        change = {"project_id": ids["project"], "proposal_id": proposal_id, "tier": 1, "state": "open"}
+        change_id = one(conn, insert(t.curator_changes).values(change).returning(t.curator_changes.c.id))
+        probe = {"project_id": ids["project"], "change_id": change_id, "repo": "demo", "task": "Add a test"}
+        probe |= {"verify": "pytest -q tests/test_x.py", "source": "admin", "label": label}
+        probe_id = one(conn, insert(t.curator_probes).values(probe).returning(t.curator_probes.c.id))
+        week = {"project_id": ids["project"], "probe_id": probe_id, "change_id": change_id, "k": 1}
+        session = [{"arm": "on", "index": 1, "passed": True}]
+        for day, model, sessions in (
+            (date(2026, 10, 26), "opus", session),  # measured: by a worker that knew only the tip
+            (date(2026, 10, 26), "sonnet", []),  # no session yet
+        ):
+            row = {**week, "week": day, "runtime": "claude-code", "model": model, "sessions": sessions}
+            conn.execute(insert(t.curator_probe_runs).values(row))
+    move_to(hub_db, "0246")
+    pw = t.curator_probe_runs
+    assert query(hub_db, select(pw.c.model, pw.c.arms_at).order_by(pw.c.model)) == [("opus", "tip"), ("sonnet", None)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(update(pw).values(arms_at="elsewhere"))
+    with live.connect(hub_db) as conn:
+        conn.execute(update(pw).values(arms_at="change").where(pw.c.model == "sonnet"))
+    move_to(hub_db, "0245", down=True)
+    assert "arms_at" not in columns(hub_db, "curator_probe_runs")
+    assert query(hub_db, select(func.count()).select_from(pw)) == [(2,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0246") :]

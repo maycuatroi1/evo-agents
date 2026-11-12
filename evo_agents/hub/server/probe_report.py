@@ -6,10 +6,14 @@ failed sessions of arm on and of arm off, their 1 - pass^k (``probes.recurrence`
 holds, recurring, not_reproduced, stale, unmeasured) and the status of the week before. An active probe of a merged
 change that has no row of the week on a model of the charter is unmeasured too. Each week adds up its statuses and its
 sessions, and what its probe runs cost (the usage of the project's runs of kind probe whose night falls in the week)
-against the charter's probes.budget_usd. The report also names the merged changes born of a correction (their
-proposal's evidence cites ``corrections`` of the night's figures, ``ledger.cites_corrections``) that have no active
-probe, each with why, the fix proposals of recurring probes with their state (``fixes``) and the probes written in
-place of probes not reproduced (``replacements``), those still open or made since the oldest week shown
+against the charter's probes.budget_usd, and where the arms of each result ran (``arms_at``: ``tip``, the tip of the
+default branch, or ``change``, the change's own commits when its diff no longer came off the tip; null without a
+session). The report also names the merged changes that have no active probe (``unprobed``, plan
+probes-measure-both-arms, criterion a4): each whose proposal changes a file a probe arm places (``probes.probe_paths``),
+whatever its evidence, its reason saying whether it was born of a correction (its proposal's evidence cites
+``corrections`` of the night's figures, ``ledger.cites_corrections``), and each born of a correction that places no
+such file, as a probe cannot measure it; each with why, the fix proposals of recurring probes with their state (``fixes``) and the probes written in
+place of probes not reproduced or stale (``replacements``), those still open or made since the oldest week shown
 (``evo_agents.hub.server.probe_fixes`` says when a review run is asked for them).
 
 GET /v1/projects/{p}/curator/probe-report (reader) answers it for ``weeks`` weeks, the newest first: the week of
@@ -65,6 +69,8 @@ NOT_PLACED = (
     ".claude/hooks/): a probe cannot measure it"
 )
 NOT_WRITTEN = "no probe was written for it: a review run or an admin adds one (evo-agents hub curator probe add)"
+BORN = "it was born of a correction"
+NOT_BORN = "it changes a file a probe arm places, though its evidence cites no correction"
 
 router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
 READ_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404)}
@@ -95,6 +101,12 @@ class ProbeWeekResult(BaseModel):
     previous: Status | None = Field(description="the status of the week before; null when it had none")
     reason: str | None = Field(description="why it is stale or unmeasured")
     run_id: int | None = Field(description="the probe run that measured it last")
+    arms_at: Literal[probes.ARMS_AT] | None = Field(
+        None,
+        description="where its arms ran: tip (arm on at the tip of the default branch, arm off that tip less the "
+        "change's diff) or change (the diff no longer came off the tip: arm on at the change's commit, arm off at the "
+        "one before it); null when the week has no session of it, and for a plugin's rule",
+    )
     plugin: str | None = Field(None, description="the core plugin whose rule it probes, when it has no change")
     ref: str | None = Field(None, description="the key of that plugin's rule")
 
@@ -120,13 +132,17 @@ class ProbeWeek(BaseModel):
 
 
 class ProbeUnprobed(BaseModel):
-    """A merged change born of a correction that has no active probe."""
+    """A merged change with no active probe that changes a file a probe arm places (``probes.probe_paths``), or that was
+    born of a correction (its evidence cites ``corrections`` of the night's figures); the reason says which."""
 
     change_id: int
     proposal_id: int
     title: str
     merged_at: datetime | None
-    reason: str
+    reason: str = Field(
+        description="why it has no probe; for a change that places a file a probe arm places, whether it was born "
+        "of a correction"
+    )
 
 
 class ProbeFix(BaseModel):
@@ -139,7 +155,7 @@ class ProbeFix(BaseModel):
 
 
 class ProbeReplacement(BaseModel):
-    """A probe a review run wrote in place of one not reproduced two weeks in a row (criterion a5)."""
+    """A probe a review run wrote in place of one not reproduced, or stale, two weeks in a row (criterion a5)."""
 
     probe_id: int
     replaces: int = Field(description="the probe it replaced, now retired")
@@ -153,10 +169,14 @@ class ProbeWeekly(BaseModel):
     k: int = Field(description="the charter's probes.k")
     budget_usd: float | None = Field(description="the charter's probes.budget_usd per ISO week; null: no probes")
     weeks: list[ProbeWeek] = Field(description="the newest first")
-    unprobed: list[ProbeUnprobed] = Field(description="merged changes born of a correction without an active probe")
+    unprobed: list[ProbeUnprobed] = Field(
+        description="merged changes without an active probe that change a file a probe arm places, or that were born "
+        "of a correction, the newest first"
+    )
     fixes: list[ProbeFix] = Field(description="the fix proposals of recurring probes, with their state")
     replacements: list[ProbeReplacement] = Field(
-        default_factory=list, description="the probes written in place of probes not reproduced two weeks in a row"
+        default_factory=list,
+        description="the probes written in place of probes not reproduced, or stale, two weeks in a row",
     )
 
 
@@ -177,13 +197,22 @@ def _result(row, *, k: int | None = None, reason: str | None = None) -> dict:
     """The week's result of a curator_probe_runs row (``k`` and ``reason`` alone for a pair the week has no row of)."""
     if row is None:
         none = ProbeArmCount(runs=0, failed=0, recurrence=None)
-        return {"k": k, "on": none, "off": none, "status": "unmeasured", "reason": reason, "run_id": None}
+        return {
+            "k": k,
+            "on": none,
+            "off": none,
+            "status": "unmeasured",
+            "reason": reason,
+            "run_id": None,
+            "arms_at": None,
+        }
     on, off = _arm(row.sessions, "on", row.k), _arm(row.sessions, "off", row.k)
     status = probes.status_of(row.state, on.failed, off.runs, off.failed)
     why = row.reason if status in ("stale", "unmeasured") else None
     if status == "unmeasured" and not why:
         why = f"its probe run is {row.state}"
-    return {"k": row.k, "on": on, "off": off, "status": status, "reason": why, "run_id": row.run_id}
+    arms_at = row.arms_at if row.sessions else None
+    return {"k": row.k, "on": on, "off": off, "status": status, "reason": why, "run_id": row.run_id, "arms_at": arms_at}
 
 
 def _totals(results: list[ProbeWeekResult]) -> ProbeWeekTotals:
@@ -301,7 +330,11 @@ async def _unprobed(conn: AsyncConnection, access: ProjectAccess, reach: _Reach)
     for row in rows:
         if len(found) >= MAX_UNPROBED:
             break
-        if not await reach(row.label) or not await ledger_lines.cites_corrections(conn, row):
+        if not await reach(row.label):
+            continue
+        placed = probes.probe_paths(item.get("path") for item in row.paths or [] if isinstance(item, dict))
+        born = await ledger_lines.cites_corrections(conn, row)
+        if not placed and not born:
             continue
         retired = (
             await conn.execute(
@@ -311,12 +344,13 @@ async def _unprobed(conn: AsyncConnection, access: ProjectAccess, reach: _Reach)
                 .limit(1)
             )
         ).one_or_none()
-        if not probes.probe_paths(item.get("path") for item in row.paths or [] if isinstance(item, dict)):
+        if not placed:
             why = NOT_PLACED
         elif retired is not None:
             why = f"its probe #{retired.id} was retired" + (f": {retired.retired_note}" if retired.retired_note else "")
         else:
             why = NOT_WRITTEN
+        why += f"; {BORN if born else NOT_BORN}"
         found.append(
             ProbeUnprobed(
                 change_id=row.id, proposal_id=row.proposal_id, title=row.title, merged_at=row.merged_at, reason=why
@@ -471,6 +505,12 @@ def _who(item: ProbeWeekResult) -> str:
     return f"probe #{item.probe_id} of {what} on {item.runtime}{f' {item.model}' if item.model else ''}"
 
 
+ARMS_AT_WORDS = {
+    probes.ARMS_AT_TIP: "arms at the tip of the default branch",
+    probes.ARMS_AT_CHANGE: "arms at the change's commits, its diff no longer comes off the tip",
+}
+
+
 def _rate(arm: ProbeArmCount) -> str:
     return "-" if arm.recurrence is None else f"{arm.recurrence:.2f}"
 
@@ -485,6 +525,8 @@ def result_line(item: ProbeWeekResult) -> str:
             f", on failed {item.on.failed} of {item.on.runs} (1 - pass^k {_rate(item.on)}), off failed "
             f"{item.off.failed} of {item.off.runs} (1 - pass^k {_rate(item.off)})"
         )
+    if item.arms_at is not None:
+        words += f", {ARMS_AT_WORDS[item.arms_at]}"
     if item.previous is not None:
         words += f"; the week before {item.previous.replace('_', ' ')}"
     return words
@@ -493,6 +535,11 @@ def result_line(item: ProbeWeekResult) -> str:
 def _cost(week: ProbeWeek) -> str:
     cap = f" of {curator.money(week.budget_usd)}" if week.budget_usd is not None else ""
     return f"{curator.money(week.cost_usd)}{cap}"
+
+
+def arms_at_counts(week: ProbeWeek) -> dict[str, int]:
+    """The results of ``week`` whose arms ran at the tip, and at the change's commits."""
+    return {where: sum(item.arms_at == where for item in week.probes) for where in probes.ARMS_AT}
 
 
 def week_lines(week: ProbeWeek, *, listed: int | None = None) -> list[str]:
@@ -504,6 +551,12 @@ def week_lines(week: ProbeWeek, *, listed: int | None = None) -> list[str]:
         f"stale, {totals.unmeasured} unmeasured; arm on failed {totals.on.failed} of {totals.on.runs} sessions, arm "
         f"off {totals.off.failed} of {totals.off.runs}; cost {_cost(week)}."
     ]
+    places = arms_at_counts(week)
+    if any(places.values()):
+        lines[0] += (
+            f" Arms at the tip of the default branch: {places[probes.ARMS_AT_TIP]}; at the change's commits, its diff no "
+            f"longer coming off the tip: {places[probes.ARMS_AT_CHANGE]}."
+        )
     shown = week.probes if listed is None else flagged[:listed]
     lines += [f"- {result_line(item)}" for item in shown]
     if listed is not None and len(flagged) > listed:
@@ -522,7 +575,9 @@ def answer_lines(found: ProbeWeekly, *, listed: int | None = None) -> list[str]:
         ]
     if found.replacements:
         shown = found.replacements if listed is None else found.replacements[:listed]
-        lines.append(f"Probes written in place of probes not reproduced two weeks in a row: {len(found.replacements)}")
+        lines.append(
+            f"Probes written in place of probes not reproduced or stale two weeks in a row: {len(found.replacements)}"
+        )
         lines += [
             f"- probe #{item.probe_id} of change #{item.change_id} in place of probe #{item.replaces}" for item in shown
         ]
@@ -533,7 +588,7 @@ def unprobed_lines(found: ProbeWeekly, *, listed: int | None = None) -> list[str
     if not found.unprobed:
         return []
     shown = found.unprobed if listed is None else found.unprobed[:listed]
-    lines = [f"Changes born of a correction without a probe: {len(found.unprobed)}"]
+    lines = [f"Changes without a probe a probe could measure, or born of a correction: {len(found.unprobed)}"]
     lines += [f"- change #{item.change_id} ({item.title}): {item.reason}" for item in shown]
     return lines
 
@@ -602,6 +657,7 @@ async def send(conn: AsyncConnection, due) -> str | None:
     details = {"week": week.isoformat(), **totals.model_dump(include=set(probes.STATUSES) | {"probes"})}
     details |= {"cost_usd": shown.cost_usd, "budget_usd": shown.budget_usd, "unprobed": len(found.unprobed)}
     details |= {"fixes": len(found.fixes), "replacements": len(found.replacements)}
+    details |= {f"arms_at_{where}": count for where, count in arms_at_counts(shown).items()}
     await notify(
         conn,
         user_id=due.owner_id,

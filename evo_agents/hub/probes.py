@@ -9,7 +9,9 @@ change: the files the plugin renders with the rule are its arm on, the same file
 A proposal whose evidence cites a correction of the session figures (``ledger.evidence_metrics`` names
 ``corrections``) and that changes a file a probe arm can place (``probe_path``) carries one probe, or the hub refuses
 it; accepting the proposal attaches its probe to the change. A review run may add one to a merged change that has none,
-and the project's admins add, edit and retire them. The verify is the answer key: its admins alone read it.
+and the project's admins add, edit, requeue (measure again this week) and retire them. The verify is the answer key: its
+admins alone read it. A probe run makes its arms at the tip of the default branch, or at the change's own commits when
+its diff no longer comes off the tip (``ARMS_AT``, plan probes-measure-both-arms).
 
 Nothing here touches the database: the shape of a probe, read the same way by the hub and by the worker.
 """
@@ -46,12 +48,19 @@ MAX_MODELS = 10
 MAX_WEEK_BUDGET_USD = 7000.0  # probes.budget_usd, per ISO week: seven nights of curator.MAX_NIGHT_BUDGET_USD
 
 # A probe run (run kind ``probe``): one probe measured once on one runtime and model of the charter in an ISO week, k
-# new sessions with the change's rule on (arm ``on``: the harness files of the default branch's tip) and k with it off
-# (arm ``off``: that tip less the change's diff). One row of curator_probe_runs per probe, week, runtime and model.
+# new sessions with the change's rule on (arm ``on``: the harness files of the default branch's tip, else of the
+# change's commit) and k with it off (arm ``off``: that tip less the change's diff, else the commit before the change's).
+# One row of curator_probe_runs per probe, week, runtime and model.
 ARMS = ("on", "off")
+# Where the arms of a change's probe run: at the tip of the default branch of its repo (arm off that tip less the
+# change's diff), or, when that diff no longer comes off the tip, at the change's own commits (arm on its merge commit or
+# head, arm off the first parent or merge base)
+ARMS_AT_TIP = "tip"
+ARMS_AT_CHANGE = "change"
+ARMS_AT = (ARMS_AT_TIP, ARMS_AT_CHANGE)
 RUN_STATES = ("queued", "running", "done", "stale", "failed", "unmeasured")
-# queued: to run (again) this week; running: its run holds it; done: every session reported; stale: the change's diff
-# no longer comes off the tip, with why; failed: its runs ended short PROBE_ATTEMPTS times; unmeasured: the week's
+# queued: to run (again) this week; running: its run holds it; done: every session reported; stale: the arms cannot be
+# made, neither at the tip nor at the change's commits, with why; failed: its runs ended short PROBE_ATTEMPTS times; unmeasured: the week's
 # money ran out before it
 PROBE_ATTEMPTS = 2  # the probe runs of one probe, model and week, before it fails
 MAX_REASON_CHARS = 2000
@@ -64,8 +73,9 @@ CLAUDE_CODE = "claude-code"  # the runtime whose arms carry the repo's .claude/s
 
 # The weekly report of the probes: the status of one probe on one runtime and model in an ISO week. holds: arm on did
 # not fail once; recurring: arm on failed at least once; not_reproduced: arm off did not fail once either, so the probe
-# did not reproduce the mistake and says nothing of the rule; stale: the change's diff no longer comes off the tip;
-# unmeasured: no result of both arms this week (the money ran out, the runs ended short, or it has not run yet).
+# did not reproduce the mistake and says nothing of the rule; stale: the arms could not be made, neither at the tip nor
+# at the change's commits; unmeasured: no result of both arms this week (the money ran out, the runs ended short, or it
+# has not run yet).
 STATUSES = ("holds", "recurring", "not_reproduced", "stale", "unmeasured")
 FLAGGED = ("recurring", "not_reproduced", "stale", "unmeasured")  # the statuses a report points out
 MAX_REPORT_WEEKS = 52
@@ -203,10 +213,12 @@ def status_of(state: str | None, on_failed: int, off_runs: int, off_failed: int)
 
 # What a review run is asked to do of the report (criterion a5): fix the rule of a change whose probe recurred on one
 # runtime and model two weekly reports in a row (a fix proposal, at least tier 1, or a finding saying why not), and
-# replace a probe that was not reproduced on one runtime and model two weekly reports in a row.
+# replace a probe that was not reproduced, or stale, on one runtime and model two weekly reports in a row.
 REPEAT_WEEKS = 2
 FIX_STATUS = "recurring"
 REPLACE_STATUS = "not_reproduced"
+STALE_STATUS = "stale"  # a probe stale two weekly reports in a row is replaced too (plan probes-measure-both-arms)
+REPLACE_STATUSES = (REPLACE_STATUS, STALE_STATUS)
 MAX_ASSIGNED_TASK_BYTES = 2 * 1024  # the task of a probe to replace, in the prompt
 
 

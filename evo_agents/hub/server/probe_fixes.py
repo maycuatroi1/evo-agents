@@ -5,7 +5,10 @@ review run's week (``probes.repeated``: the two ISO weeks before the one of its 
 write a fix proposal of the change's rule (``evo-agents worker propose --fix-of CHANGE``), turning the rule into a hook
 or a check where it can, or a finding that says why not (``evo-agents worker finding --fix-of CHANGE``). A probe that
 was not reproduced on the same runtime and model in both reports gives a replace assignment: write a probe in its place
-(``evo-agents worker probe add --replaces PROBE``); the hub retires the old one.
+(``evo-agents worker probe add --replaces PROBE``); the hub retires the old one. So does a probe stale on the same
+runtime and model in both reports (plan probes-measure-both-arms, criterion a3): its arms could be made neither at the
+tip of the default branch nor at the change's commits, or it places no file a probe arm places; the assignment names
+why it was stale each week, and the probe written in its place takes a base commit or a task that can be made.
 
 The hub, not the agent, decides what was assigned: ``evo_agents.hub.server.proposals`` refuses (422) a fix proposal or
 a finding whose change has no fix assignment and ``probe_routes`` a replacement whose probe has no replace assignment.
@@ -50,6 +53,7 @@ class Assignment:
     probe_id: int | None = None  # replace: the probe to replace
     task: str | None = None  # replace: its task, clipped
     results: list[dict] = field(default_factory=list)  # the probe evidence of both weeks, the older first
+    stale: list[str] = field(default_factory=list)  # replace: why it was stale, each week and model, the older first
 
     def prompt(self) -> dict:
         """The assignment as ``review.build_review_prompt`` reads it."""
@@ -64,6 +68,8 @@ class Assignment:
             "weeks": sorted({item["week"] for item in self.results}),
             "probes": [f"probe #{probe} on {runtime}{f' {model}' if model else ''}" for probe, runtime, model in shown],
             "evidence": [review.evidence_text(item) for item in self.results],
+            "statuses": sorted({item["status"] for item in self.results}),
+            "stale": self.stale,
         }
 
 
@@ -130,6 +136,7 @@ async def assignments(
                 pw.c.sessions,
                 pw.c.k,
                 pw.c.run_id,
+                pw.c.reason,
                 pr.c.label,
                 pr.c.repo,
                 pr.c.task,
@@ -171,7 +178,9 @@ async def assignments(
         task = fixes.setdefault(row.change_id, Assignment("fix", row.change_id, row.title, row.repo))
         task.results += [found[(week, key)] for week in weeks]
     replaces: dict[int, Assignment] = {}
-    for key in probes.repeated(by_week, probes.REPLACE_STATUS):
+    reasons = {(row.week, (row.probe_id, row.runtime, row.model)): row.reason for row in rows}
+    replaced = [(key, status) for status in probes.REPLACE_STATUSES for key in probes.repeated(by_week, status)]
+    for key, status in replaced:
         row = held[key[0]]
         task = replaces.get(row.probe_id)
         if task is None:
@@ -180,6 +189,12 @@ async def assignments(
                 "replace", row.change_id, row.title, row.repo, probe_id=row.probe_id, task=clipped
             )
         task.results += [found[(week, key)] for week in weeks]
+        if status == probes.STALE_STATUS:
+            where = f"{key[1]}{f' {key[2]}' if key[2] else ''}"
+            task.stale += [
+                f"the week of {week.isoformat()} on {where}: {reasons.get((week, key)) or 'no reason'}"
+                for week in weeks
+            ]
     listed = []
     for change_id in sorted(fixes):
         if not pending or not await _answered(conn, change_id, current):

@@ -5564,6 +5564,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/probes/{probe_id}/requeue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Requeue Probe
+         * @description Measure an active probe again this ISO week: its rows of the week that are stale, failed or unmeasured go back to
+         *     queued with no attempt, for the next night; the project's admins alone may.
+         */
+        post: operations["requeue_probe_v1_projects__project__curator_probes__probe_id__requeue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/probes": {
         parameters: {
             query?: never;
@@ -35201,7 +35222,7 @@ export interface components {
         };
         /**
          * ProbeReplacement
-         * @description A probe a review run wrote in place of one not reproduced two weeks in a row (criterion a5).
+         * @description A probe a review run wrote in place of one not reproduced, or stale, two weeks in a row (criterion a5).
          */
         ProbeReplacement: {
             /** Probe Id */
@@ -35223,8 +35244,8 @@ export interface components {
         };
         /**
          * ProbeReport
-         * @description A session's result with the commits the arms run from; or why the change's diff no longer comes off the tip of
-         *     the default branch (``stale``).
+         * @description A session's result with the commits the arms run from and where (``arms_at``); or why the arms cannot be made,
+         *     neither at the tip of the default branch nor at the change's commits (``stale``).
          */
         ProbeReport: {
             /**
@@ -35234,15 +35255,41 @@ export interface components {
             base_sha?: string | null;
             /**
              * Harness Sha
-             * @description the tip of the default branch of the change's repo arm on runs with
+             * @description the commit of the change's repo arm on runs with
              */
             harness_sha?: string | null;
+            /**
+             * Arms At
+             * @description tip: arm on at the tip of the default branch, arm off that tip less the change's diff; change: the diff no longer comes off the tip, so arm on at the change's commit and arm off at the one before it. None from a worker that names none, which ran at the tip
+             */
+            arms_at?: ("tip" | "change") | null;
             session?: components["schemas"]["ProbeSession"] | null;
             /**
              * Stale
-             * @description why arm off cannot be made: the probe is stale for the week
+             * @description why the arms cannot be made: the probe is stale for the week
              */
             stale?: string | null;
+        };
+        /** ProbeRequeue */
+        ProbeRequeue: {
+            /** Probe Id */
+            probe_id: number;
+            /**
+             * Week
+             * Format: date
+             * @description the Monday of the ISO week in progress, in the charter's time zone
+             */
+            week: string;
+            /**
+             * Requeued
+             * @description the rows put back to queued, with no attempt: the next night runs them
+             */
+            requeued: components["schemas"]["ProbeRun"][];
+            /**
+             * Kept
+             * @description the week's other rows of the probe, queued, running or done, as they were
+             */
+            kept: components["schemas"]["ProbeRun"][];
         };
         /** ProbeRetire */
         ProbeRetire: {
@@ -35291,6 +35338,11 @@ export interface components {
             base_sha: string | null;
             /** Harness Sha */
             harness_sha: string | null;
+            /**
+             * Arms At
+             * @description where the arms ran: tip or change; null without a session, and for a plugin's probe
+             */
+            arms_at?: ("tip" | "change") | null;
             /**
              * Sessions
              * @description ProbeSession, in the order they were reported
@@ -35470,7 +35522,8 @@ export interface components {
         };
         /**
          * ProbeUnprobed
-         * @description A merged change born of a correction that has no active probe.
+         * @description A merged change with no active probe that changes a file a probe arm places (``probes.probe_paths``), or that was
+         *     born of a correction (its evidence cites ``corrections`` of the night's figures); the reason says which.
          */
         ProbeUnprobed: {
             /** Change Id */
@@ -35481,7 +35534,10 @@ export interface components {
             title: string;
             /** Merged At */
             merged_at: string | null;
-            /** Reason */
+            /**
+             * Reason
+             * @description why it has no probe; for a change that places a file a probe arm places, whether it was born of a correction
+             */
             reason: string;
         };
         /** ProbeWeek */
@@ -35560,6 +35616,11 @@ export interface components {
              */
             run_id: number | null;
             /**
+             * Arms At
+             * @description where its arms ran: tip (arm on at the tip of the default branch, arm off that tip less the change's diff) or change (the diff no longer came off the tip: arm on at the change's commit, arm off at the one before it); null when the week has no session of it, and for a plugin's rule
+             */
+            arms_at?: ("tip" | "change") | null;
+            /**
              * Plugin
              * @description the core plugin whose rule it probes, when it has no change
              */
@@ -35611,7 +35672,7 @@ export interface components {
             weeks: components["schemas"]["ProbeWeek"][];
             /**
              * Unprobed
-             * @description merged changes born of a correction without an active probe
+             * @description merged changes without an active probe that change a file a probe arm places, or that were born of a correction, the newest first
              */
             unprobed: components["schemas"]["ProbeUnprobed"][];
             /**
@@ -35621,7 +35682,7 @@ export interface components {
             fixes: components["schemas"]["ProbeFix"][];
             /**
              * Replacements
-             * @description the probes written in place of probes not reproduced two weeks in a row
+             * @description the probes written in place of probes not reproduced, or stale, two weeks in a row
              */
             replacements?: components["schemas"]["ProbeReplacement"][];
         };
@@ -70570,6 +70631,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Probe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    requeue_probe_v1_projects__project__curator_probes__probe_id__requeue_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                probe_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProbeRequeue"];
                 };
             };
             /** @description Unauthorized */

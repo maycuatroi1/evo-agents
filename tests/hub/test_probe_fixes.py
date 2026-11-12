@@ -1,7 +1,8 @@
 """What the weekly probe report asks of the next review run (plan correction-recurrence, step 4, criterion a5): a probe
 recurring on one model two weeks in a row asks for a fix proposal of its change's rule (at least tier 1 by the hub's
 code, the two weeks' probe results as its evidence, one open per change) or a finding saying why not; a probe not
-reproduced two weeks in a row asks for a probe in its place. The report names both. Every name here is made up.
+reproduced two weeks in a row asks for a probe in its place, and so does one stale two weeks in a row (plan
+probes-measure-both-arms, a3), naming why. The report names both. Every name here is made up.
 """
 
 from __future__ import annotations
@@ -35,7 +36,9 @@ SESSIONS = {  # (arm, index, passed) of each session of a done probe run of k=2
     "recurring": [("on", 1, False), ("on", 2, True), ("off", 1, False), ("off", 2, False)],
     "not_reproduced": [("on", 1, True), ("on", 2, True), ("off", 1, True), ("off", 2, True)],
     "holds": [("on", 1, True), ("on", 2, True), ("off", 1, False), ("off", 2, True)],
+    "stale": [],
 }
+STALE_WHY = "origin of evo-agents has no merge commit 333333333333 of the change, or its parent"
 
 
 def weekly(world, probe: dict, statuses: tuple[str, str], *, model: str = "opus") -> None:
@@ -48,6 +51,8 @@ def weekly(world, probe: dict, statuses: tuple[str, str], *, model: str = "opus"
         sessions = [{"arm": arm, "index": index, "passed": passed} for arm, index, passed in SESSIONS[status]]
         row = {"project_id": project_id, "probe_id": probe["id"], "change_id": probe["change_id"], "week": week}
         row |= {"runtime": "claude-code", "model": model, "k": 2, "state": "done", "sessions": sessions}
+        if status == "stale":
+            row |= {"state": "stale", "reason": f"{STALE_WHY} ({week.isoformat()})"}
         sql(world.db, insert(pw).values(row))
 
 
@@ -219,3 +224,31 @@ def test_a_probe_that_holds_asks_nothing(world):
     weekly(world, probe, ("holds", "recurring"))
     assert "# Probe assignments" not in next_review(world)["prompt"]
     assert asked(world, weeks=1, week=NEXT.isoformat())["fixes"] == []
+
+
+def test_a_probe_stale_two_weeks_asks_for_a_probe_in_its_place_with_why(world):
+    probe = probing(world, k=2)
+    change_id = probe["change_id"]
+    weekly(world, probe, ("stale", "stale"))
+    spec = next_review(world)
+    prompt, run_id = spec["prompt"], spec["id"]
+    assert f"Replace probe #{probe['id']} of change #{change_id}" in prompt
+    assert "stale in" in prompt and "so its arms could not be made" in prompt
+    for week in (WEEK, WEEK + timedelta(days=7)):
+        assert f"the week of {week.isoformat()} on claude-code opus: {STALE_WHY} ({week.isoformat()})" in prompt
+    assert f"--replaces {probe['id']}" in prompt and PROBE["verify"] not in prompt
+    sent = {**PROBE, "task": "Wait for the fake build at a commit that exists.", "change_id": change_id}
+    made = world.client.post(
+        f"/v1/worker/runs/{run_id}/probes", json={**sent, "replaces": probe["id"]}, headers=world.worker["headers"]
+    )
+    assert made.status_code == 201, made.text
+    pr = tables.curator_probes
+    ((state, note),) = sql(world.db, select(pr.c.state, pr.c.retired_note).where(pr.c.id == probe["id"]))
+    assert state == "retired" and "stale" in note and f"review run #{run_id}" in note
+
+
+def test_a_probe_stale_one_week_or_on_two_models_asks_nothing(world):
+    probe = probing(world, models=(OPUS, SONNET), k=2)
+    weekly(world, probe, ("holds", "stale"))
+    weekly(world, probe, ("stale", "holds"), model="sonnet")
+    assert "# Probe assignments" not in next_review(world)["prompt"]

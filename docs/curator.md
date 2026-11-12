@@ -618,8 +618,9 @@ the rules; `docs/workers.md`, "A probe run on the machine", what the daemon does
   carries one: `evo-agents worker propose --probe-file FILE`, a YAML or JSON mapping of `repo`, `commit`, `task` and
   `verify`. The repo is one the proposal changes. Accepting the proposal attaches the probe to its change.
 - `review`: a review run gives one to a merged change that has none, `evo-agents worker probe add --change N`.
-- `admin`: an admin of the project adds one to a change or a proposal (`evo-agents hub curator probe add`), edits it
-  (the API's PATCH alone) and retires it (`probe retire`).
+- `admin`: an admin of the project adds one to a change or a proposal (`evo-agents hub curator probe add`), edits its
+  repo, commit, task or verify (`probe edit`), measures it again this week (`probe requeue`, below) and retires it
+  (`probe retire`).
 - `plugin`: a core plugin adds one for a rule of its own, which it renders into a repo's harness files, with no
   proposal or change (core plugin API 1.4, `add_probe` and `remove_probe`, `docs/plugins.md`). The probe names the
   plugin and `ref`, the rule's key (1 to 200 characters of letters, digits and `._:/@-`), and carries the files of
@@ -660,7 +661,10 @@ of the change's repo: arm `on` as the tip of its default branch has them now, ar
 change's diff (its merge commit against its first parent, else its head against its merge base), taken off in reverse
 over the files a probe arm places. Those are the files a replay places (AGENTS.md, CLAUDE.md, a skill's directory
 under `.claude/skills/`), and on claude-code the repo's `.claude/settings.json` and `.claude/hooks/` too, in both
-arms. When the change places no such file, or its diff no longer comes off the tip (the rule was edited since), the
+arms. When the change's diff no longer comes off the tip (the rule was edited since), both arms are made at the
+change's own commits instead: arm `on` at its merge commit (else its head), arm `off` at its first parent (else its
+merge base). The row records where its arms ran, `arms_at`: `tip` or `change` (null with no session). When the change
+places no such file, or neither the tip nor the change's commits make the arms (a commit the repo no longer has), the
 probe is `stale` for the week, with why, and no agent runs. The agent has none of the hub's tools and no remote to
 push to; each session gets `1/2k` of the run's cost and agent time. Each session records whether the verify passed,
 its cost, turns and time, and the runtime and model it really ran on.
@@ -690,7 +694,7 @@ n = k it is 1 as soon as one session failed, and 0 otherwise. Each pair gets one
 
 | Status | When | What it says |
 | --- | --- | --- |
-| `stale` | the change's diff no longer comes off the tip, or the change places nothing | nothing this week; the reason says why |
+| `stale` | neither the tip less the change's diff nor the change's commits make the arms, or the change places nothing | nothing this week; the reason says why |
 | `unmeasured` | the week has no result of both arms: the money ran out, the runs ended short, or it has not run yet | nothing this week; the reason says why |
 | `recurring` | arm `on` failed at least once | the mistake comes back with the rule in place |
 | `not_reproduced` | arm `on` did not fail, and arm `off` did not fail either | the task does not draw the mistake out, so it says nothing of the rule |
@@ -703,9 +707,11 @@ out. The web shows no label for `holds`, only a flag for each of the four others
 the night shift's schedule the report of the ISO week that just ended, as the notice `curator_probe_report` on the web
 and on every channel of theirs, Telegram included, once a week. Each week of it has its cost against
 `probes.budget_usd`, the count of each status, and each probe on each model: arm `on` and arm `off` (sessions, failed,
-recurrence), the status, the status of the week before, and the reason of a `stale` or `unmeasured` one. After the
-weeks come the merged changes born of a correction that have no active probe, each with why (it places no file a
-probe arm can place, its probe was retired, or none was written), the fix proposals with their state, and the probes
+recurrence), the status, the status of the week before, where its arms ran (`arms_at`, the column ARMS AT), and the
+reason of a `stale` or `unmeasured` one; each week also counts its results by `arms_at`. After the weeks come the
+merged changes with no active probe whose proposal changes a file a probe arm places, or born of a correction, each
+with why (it places no file a probe arm can place, its probe was retired, or none was written) and whether it was born
+of a correction, the fix proposals with their state, and the probes
 written in place of others. The Curator's page on the web shows the latest week and those before it, and a proposal's
 page the card of its probe; a review run reads the report with the MCP tool `curator_probe_report`.
 
@@ -713,6 +719,8 @@ page the card of its probe; a review run reads the report with the MCP tool `cur
 evo-agents hub curator probe list --project demo               # the probes, newest first
 evo-agents hub curator probe show 3 --project demo             # its task, and its verify to an admin
 evo-agents hub curator probe add --change 12 --repo evo-agents --task-file task.md --verify "python3 -m pytest -q tests/test_x.py" --project demo
+evo-agents hub curator probe edit 3 --commit 4f2c9e1 --project demo   # a new base commit
+evo-agents hub curator probe requeue 3 --project demo         # measure its stale, failed or unmeasured rows again this week
 evo-agents hub curator probe retire 3 --note "the rule moved to a hook" --project demo
 evo-agents hub curator probe report --weeks 4 --project demo   # the week in progress first
 ```
@@ -726,7 +734,14 @@ evo-agents hub curator probe report --weeks 4 --project demo   # the week in pro
   probe results to its evidence (kind `probe`, `probe:ID:WEEK:RUNTIME[:MODEL]`, which no agent can submit).
 - A probe `not_reproduced` on the same runtime and model in both reports gives a replace assignment: a probe in its
   place, `evo-agents worker probe add --change N --replaces PROBE`, after which the hub retires the old one with a
-  note naming the review run.
+  note naming the review run. So does a probe `stale` on the same runtime and model in both reports: the assignment
+  says why it was stale each week, and the probe in its place takes a base commit or a task that can be made.
+
+**Measuring again.** `evo-agents hub curator probe requeue ID` (the project's admins, audited) puts the rows of the
+ISO week in progress of an active probe that are `stale`, `failed` or `unmeasured` back to `queued`, with no attempt,
+so that the next night measures them again; it keeps the rows `queued`, `running` or `done` as they are, deletes no
+recorded session, and prints the rows it requeued and those it kept. After `probe edit` gives a stale probe a commit
+that can be made, it measures the probe this week rather than the next.
 
 An assignment stays in the prompt of every review run of the week until one answers it. A `fix_of` or a `replaces`
 the hub did not assign is refused (422), and a change has at most one open or deferred fix proposal (409 for a

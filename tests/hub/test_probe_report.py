@@ -1,6 +1,8 @@
 """The weekly report of the Curator's probes (plan correction-recurrence, step 3, criterion a4): for each ISO week, probe
 and model, arm on and arm off (sessions and failed), their 1 - pass^k, the status and the week before's; the week's
-cost against probes.budget_usd; the merged changes born of a correction without a probe, with why. On Monday at the
+cost against probes.budget_usd; where the arms of each result ran (arms_at, plan probes-measure-both-arms); the merged
+changes without a probe that a probe could measure, or born of a correction, with why and whether they were born of
+one. On Monday at the
 charter's brief_at the owner of the night shift gets it once as a notice curator_probe_report; the API, `evo-agents hub
 curator probe report --json` and the MCP tool curator_probe_report answer the same. Every name here is made up.
 """
@@ -155,10 +157,54 @@ def test_probe_report_names_a_change_born_of_a_correction_without_a_probe_and_wh
     (item,) = asked(world)["unprobed"]
     assert (item["change_id"], item["proposal_id"]) == (probe["change_id"], proposal_id)
     assert "no file a probe arm can place" in item["reason"]  # tests/test_wait.py: a probe cannot measure it
+    assert item["reason"].endswith("; it was born of a correction")
     agents = [{"repo": "evo-agents", "path": "AGENTS.md"}]
     sql(world.db, update(p).where(p.c.id == proposal_id).values(paths=agents))
     (item,) = asked(world)["unprobed"]
-    assert item["reason"] == f"its probe #{probe['id']} was retired"
+    assert item["reason"] == f"its probe #{probe['id']} was retired; it was born of a correction"
+
+
+def test_probe_report_unprobed_lists_a_change_on_a_probe_path_not_born_of_a_correction(world):
+    """a4: a merged change whose proposal changes AGENTS.md has no probe, though its evidence cites no correction."""
+    probe = measured(world)
+    p, c = tables.proposals, tables.curator_changes
+    ((proposal_id,),) = sql(world.db, select(c.c.proposal_id).where(c.c.id == probe["change_id"]))
+    retired = world.client.post(path("probes", str(probe["id"]), "retire"), json={}, headers=world.headers["owner"])
+    assert retired.status_code == 200, retired.text
+    assert asked(world)["unprobed"] == []  # tests/test_wait.py: neither placed nor born of a correction
+    agents = [{"repo": "evo-agents", "path": "AGENTS.md"}]
+    sql(world.db, update(p).where(p.c.id == proposal_id).values(paths=agents))
+    (item,) = asked(world)["unprobed"]
+    assert (item["change_id"], item["proposal_id"]) == (probe["change_id"], proposal_id)
+    assert item["reason"] == (
+        f"its probe #{probe['id']} was retired; it changes a file a probe arm places, though its evidence cites no "
+        "correction"
+    )
+
+
+def test_probe_report_arms_at_says_where_each_results_arms_ran(world):
+    """A session of a worker that names no arms_at ran at the tip; a row the worker made at the change's commits says
+    change; a result without a session says null. The API, the text of the week and the notice's details say so."""
+    probe = measured(world)
+    pw = tables.curator_probe_runs
+    assert sql(world.db, select(pw.c.arms_at).where(pw.c.week == WEEK)) == [("tip",)]
+    found = asked(world, weeks=2, week=WEEK.isoformat())
+    opus, sonnet = found["weeks"][0]["probes"]
+    assert (opus["arms_at"], sonnet["arms_at"]) == ("tip", None)
+    sql(world.db, update(pw).where(pw.c.week == LAST_WEEK).values(arms_at="change"))
+    (last,) = [
+        item for item in asked(world, weeks=2, week=WEEK.isoformat())["weeks"][1]["probes"] if item["model"] == "opus"
+    ]
+    assert (last["probe_id"], last["arms_at"]) == (probe["id"], "change")
+    from evo_agents.hub.server.probe_report import ProbeWeek, week_lines
+
+    lines = week_lines(ProbeWeek.model_validate(asked(world, weeks=1, week=LAST_WEEK.isoformat())["weeks"][0]))
+    assert "Arms at the tip of the default branch: 0; at the change's commits" in lines[0]
+    assert any("arms at the change's commits, its diff no longer comes off the tip" in line for line in lines[1:])
+    assert briefed(world, MONDAY).get("probe_report") == 1
+    (note,) = notices(world)
+    assert (note["details"]["arms_at_tip"], note["details"]["arms_at_change"]) == (1, 0)
+    assert "Arms at the tip of the default branch: 1; at the change's commits" in note["body"]
 
 
 def briefed(world, now: datetime) -> dict:
@@ -223,8 +269,10 @@ def test_curator_probe_report_on_the_command_line_and_the_mcp_tool(world, tmp_pa
         assert {"change_id", "probe_id", "model", "on", "off", "status"} <= set(week["probes"][0])
         assert {"runs", "failed"} <= set(week["probes"][0]["on"])
         assert found == asked(world, weeks=2, week=WEEK.isoformat())
+        assert [item["arms_at"] for item in week["probes"]] == ["tip", None]
         printed = ok(curator("--week", WEEK.isoformat())).out
         assert f"week of {WEEK.isoformat()}: 1 holds" in printed and "unmeasured" in printed
+        assert "ARMS AT" in printed and "change's diff no longer comes off" not in printed
     text, data = world.client.portal.call(partial(_mcp, world, {"weeks": 1, "week": WEEK.isoformat()}))
     assert f"Week of {WEEK.isoformat()}" in text and "holds" in text and "1 - pass^k" in text
     assert data["weeks"][0]["probes"] == found["weeks"][0]["probes"]

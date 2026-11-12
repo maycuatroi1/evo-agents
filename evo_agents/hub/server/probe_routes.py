@@ -8,12 +8,15 @@ of a run (``probes.verify_shown``).
 The project's admins write them (403 otherwise), each write audited as curator.probe: POST .../curator/probes adds one
 to a change or to a proposal of the project (404 for one it does not have, 409 when it has an active probe already:
 retire that one first); PATCH .../curator/probes/{id} changes its repo, commit, task or verify (409 once retired); POST
-.../curator/probes/{id}/retire retires it, with a note (409 when it is retired already).
+.../curator/probes/{id}/retire retires it, with a note (409 when it is retired already); POST
+.../curator/probes/{id}/requeue puts the rows of the ISO week in progress (the charter's time zone) of an active probe
+that are stale, failed or unmeasured back to queued with no attempt, for the next night, and keeps any other row and
+every recorded session as they are (``probe_runs.requeue``; 409 for a retired probe).
 
 POST /v1/worker/runs/{id}/probes takes a probe from the agent of a review run the worker holds (404 for any other run),
 as the member who dispatched it, who must still hold writer on the project, for a merged change of the project that has
 no active probe (409 otherwise): ``evo-agents worker probe add``. Its answer shows no verify. With ``replaces``, the
-probe takes the place of the change's active probe that the weekly report found not reproduced on one model two weeks
+probe takes the place of the change's active probe that the weekly report found not reproduced, or stale, on one model two weeks
 in a row (``probe_fixes``; 422 for any other probe), which the hub retires with a note.
 """
 
@@ -29,11 +32,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import probes as probe_shape
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, probe_fixes, probes
+from evo_agents.hub.server import audit, probe_fixes, probe_runs, probes
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.curator import charter_row
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.memory_audience import Reader, label_reaches
+from evo_agents.hub.server.probe_report import local_today
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.proposal_models import ItemId
 from evo_agents.hub.server.proposals import held_review_run, project_repos, writer_of
@@ -252,21 +257,46 @@ async def retire_probe(
     return view
 
 
+@router.post("/{project}/curator/probes/{probe_id}/requeue", response_model=probe_runs.ProbeRequeue, responses=REFUSALS)
+async def requeue_probe(
+    request: Request, project: ProjectName, probe_id: ItemId, user: CurrentUser
+) -> probe_runs.ProbeRequeue:
+    """Measure an active probe again this ISO week: its rows of the week that are stale, failed or unmeasured go back to
+    queued with no attempt, for the next night; the project's admins alone may."""
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        _admin(access, "requeueing a probe")
+        row = await _probe_row(conn, access, user, probe_id, None, lock=True)
+        if row.state != "active":
+            raise HTTPException(409, f"probe {probe_id} is {row.state}: only an active probe is measured again")
+        charter = await charter_row(conn, access.project_id)
+        today = await local_today(conn, dict(charter.body) if charter is not None else {})
+        found = await probe_runs.requeue(conn, probe_id, probe_shape.week_of(today))
+        await _audited(
+            conn, access, user, probe_id, f"requeue week:{found.week.isoformat()} rows:{len(found.requeued)}"
+        )
+    log.info("probe requeued", extra={"project": access.name, "probe_id": probe_id, "rows": len(found.requeued)})
+    return found
+
+
 # A review run's probe of a merged change
 
 
-async def _replaceable(conn: AsyncConnection, run, access: ProjectAccess, change_id: int, probe_id: int) -> None:
-    """422 unless the weekly probe report asks review run ``run`` to replace probe ``probe_id`` of change
-    ``change_id`` (``probe_fixes.replace_assignment``)."""
+async def _replaceable(
+    conn: AsyncConnection, run, access: ProjectAccess, change_id: int, probe_id: int
+) -> probe_fixes.Assignment:
+    """The replace assignment of probe ``probe_id`` of change ``change_id`` the weekly probe report gives review run
+    ``run`` (``probe_fixes.replace_assignment``); 422 without one."""
     night = await probe_fixes.run_night(conn, run.id)
     found = await probe_fixes.replace_assignment(conn, access, run.owner, night, probe_id)
     if found is None or found.change_id != change_id:
         raise HTTPException(
             422,
-            f"probe {probe_id} is not an active probe of change {change_id} that was not reproduced on one model in "
+            f"probe {probe_id} is not an active probe of change {change_id} that was not reproduced, or stale, on one model in "
             "the two weekly reports before this run's week: the hub asks for a replacement only then; nothing was "
             "recorded",
         )
+    return found
 
 
 @worker_router.post("/runs/{run_id}/probes", status_code=201, response_model=probes.Probe, responses=REFUSALS)
@@ -281,15 +311,17 @@ async def record_probe(request: Request, run_id: RunId, body: probes.ReviewProbe
                 409, f"change {change.id} is {change.state}: a review run adds a probe to a merged change alone"
             )
         found = await probes.active_on_change(conn, change.id)
+        assigned = None
         if body.replaces is not None:
-            await _replaceable(conn, run, access, change.id, body.replaces)
+            assigned = await _replaceable(conn, run, access, change.id, body.replaces)
         elif found is not None:
             raise HTTPException(409, f"change {change.id} has probe #{found} already")
         if body.repo not in await project_repos(conn, run.project_id):
             raise HTTPException(422, f"project {run.project} has no repo {body.repo}; nothing was recorded")
         pr = tables.curator_probes
-        if body.replaces is not None:
-            note = f"not reproduced two weekly reports in a row: review run #{run_id} replaced it"
+        if assigned is not None:
+            words = "stale" if assigned.stale else "not reproduced"
+            note = f"{words} two weekly reports in a row: review run #{run_id} replaced it"
             await conn.execute(
                 update(pr)
                 .values(state="retired", retired_at=func.now(), retired_note=note)

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 import { useInsightFormat } from "./insight-format";
 import { type FlaggedStatus, isFlagged } from "./probe-model";
-import type { ProbeArmCount, ProbeStatus } from "./probe-queries";
+import type { ProbeArmCount, ProbeStatus, ProbeWeekResult } from "./probe-queries";
 
 /**
  * A probe's status as a pill, only when something is wrong: the mistake came back with the rule in place (`danger`),
@@ -53,13 +53,28 @@ export function ModelName({ runtime, model }: { runtime: string; model: string |
   );
 }
 
-/** What the week before said of a result, when it said something else, and why a stale or unmeasured one is so. */
-export function ResultNotes({ status, previous, reason }: { status: ProbeStatus; previous: ProbeStatus | null; reason: string | null }) {
+/**
+ * What the week before said of a result, when it said something else, whether its arms ran at the change's own commits
+ * (its diff no longer comes off the tip; at the tip, the usual, says nothing), and why a stale or unmeasured one is so.
+ */
+export function ResultNotes({
+  status,
+  previous,
+  reason,
+  armsAt = null,
+}: {
+  status: ProbeStatus;
+  previous: ProbeStatus | null;
+  reason: string | null;
+  armsAt?: ProbeWeekResult["arms_at"];
+}) {
   const t = useTranslations("curator.probes");
-  if ((previous === null || previous === status) && !reason) return null;
+  const atChange = armsAt === "change";
+  if ((previous === null || previous === status) && !reason && !atChange) return null;
   return (
     <span className="flex min-w-0 flex-col gap-0.5 text-xs text-pretty text-fg-subtle">
       {previous !== null && previous !== status ? <span data-testid="probe-previous">{t("previous", { status: t(`word.${previous}`) })}</span> : null}
+      {atChange ? <span data-testid="probe-arms-at" data-arms-at="change">{t("armsAtChange")}</span> : null}
       {reason ? <span className="[overflow-wrap:anywhere]" data-testid="probe-reason">{reason}</span> : null}
     </span>
   );

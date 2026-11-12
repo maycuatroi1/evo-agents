@@ -3,7 +3,8 @@ the one-line verify that exits 0 when an agent given it does not repeat the mist
 
 A proposal whose evidence cites a correction of the night's figures and that changes a file a probe arm can place
 carries one, or the hub answers 422; accepting it attaches the probe to the change; a review run adds one to a merged
-change that has none; admins add, edit and retire them, and they alone read the verify. The charter's ``probes`` key
+change that has none; admins add, edit, requeue (plan probes-measure-both-arms, a4) and retire them, and they alone
+read the verify. The charter's ``probes`` key
 says how many arms, on which models, within which weekly budget. Every name here is made up.
 """
 
@@ -20,10 +21,11 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 
+from evo_agents.hub import curator as curator_shape
 from evo_agents.hub import tables
-from evo_agents.hub.probe_cli import PROBE_KEYS
+from evo_agents.hub.probe_cli import PROBE_KEYS, REQUEUE
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.curator_models import CharterBody
 from evo_agents.hub.server.probes import PROBE as ACTION
@@ -341,3 +343,131 @@ def test_curator_probe_list_show_add_and_retire_on_the_command_line(world, tmp_p
         retired = as_json(curator("owner", "retire", str(added["id"]), "--note", "a fake reason", "--json"))
         assert_json_keys("hub curator probe retire", retired)
         assert retired["state"] == "retired"
+
+
+# An admin's requeue of this week's rows
+
+SESSION = {"arm": "on", "index": 1, "passed": True}
+
+
+def this_week(world):
+    """The Monday of the ISO week in progress in the charter's time zone, as the hub reads it."""
+    c = tables.charters
+    ((body,),) = sql(world.db, select(c.c.body).order_by(c.c.revision.desc()).limit(1))
+    ((now,),) = sql(world.db, select(func.timezone(curator_shape.zone_of(body), func.now())))
+    return probes.week_of(now.date())
+
+
+def week_rows(world, probe: dict) -> dict[str, int]:
+    """Rows of the probe on six models: this week stale, failed, unmeasured, queued, running and done (each with a
+    session but the unmeasured), and last week stale; their ids by model."""
+    pw = tables.curator_probe_runs
+    (project_id,) = sql(
+        world.db, select(tables.curator_probes.c.project_id).where(tables.curator_probes.c.id == probe["id"])
+    )[0]
+    week = this_week(world)
+    found = {}
+    rows = [
+        (week, "stale"),
+        (week, "failed"),
+        (week, "unmeasured"),
+        (week, "queued"),
+        (week, "running"),
+        (week, "done"),
+    ]
+    rows.append((week - timedelta(days=7), "stale"))
+    for i, (day, state) in enumerate(rows):
+        model = f"model-{state}" if day == week else "model-before"
+        row = {"project_id": project_id, "probe_id": probe["id"], "change_id": probe["change_id"], "week": day}
+        row |= {"runtime": "claude-code", "model": model, "k": 1, "state": state, "attempts": 2 if i < 3 else 1}
+        row |= {"sessions": [] if state == "unmeasured" else [SESSION], "reason": f"a fake reason {i}"}
+        found[model] = sql(world.db, insert(pw).values(row).returning(pw.c.id))[0][0]
+    return found
+
+
+def test_admins_requeue_a_probes_stale_failed_and_unmeasured_rows_of_this_week(world):
+    accepted(world)
+    change = one_change(world)
+    owner, other = world.headers["owner"], world.headers["other"]
+    probe = world.client.post(path("probes"), json={**PROBE, "change_id": change["id"]}, headers=owner).json()
+    ids = week_rows(world, probe)
+    url = path("probes", str(probe["id"]), "requeue")
+    assert world.client.post(url, json={}, headers=other).status_code == 403
+    assert world.client.post(path("probes", str(probe["id"] + 100), "requeue"), headers=owner).status_code == 404
+
+    found = world.client.post(url, headers=owner)
+    assert found.status_code == 200, found.text
+    body = found.json()
+    assert (body["probe_id"], body["week"]) == (probe["id"], this_week(world).isoformat())
+    assert {item["model"] for item in body["requeued"]} == {"model-stale", "model-failed", "model-unmeasured"}
+    assert {item["model"] for item in body["kept"]} == {"model-queued", "model-running", "model-done"}
+    assert all((item["state"], item["attempts"], item["reason"]) == ("queued", 0, None) for item in body["requeued"])
+    pw = tables.curator_probe_runs
+    rows = dict(sql(world.db, select(pw.c.model, pw.c.state).where(pw.c.probe_id == probe["id"])))
+    assert rows == {
+        "model-stale": "queued",
+        "model-failed": "queued",
+        "model-unmeasured": "queued",
+        "model-queued": "queued",
+        "model-running": "running",
+        "model-done": "done",
+        "model-before": "stale",
+    }
+    # no recorded session is deleted, and the rows kept keep their attempts and reason
+    sessions = dict(sql(world.db, select(pw.c.id, pw.c.sessions).where(pw.c.probe_id == probe["id"])))
+    assert sessions[ids["model-stale"]] == [SESSION] and sessions[ids["model-done"]] == [SESSION]
+    ((attempts, reason),) = sql(world.db, select(pw.c.attempts, pw.c.reason).where(pw.c.id == ids["model-running"]))
+    assert (attempts, reason) == (1, "a fake reason 4")
+    again = world.client.post(url, headers=owner).json()
+    assert again["requeued"] == [] and len(again["kept"]) == 6
+
+    a = tables.audit
+    targets = [row[0] for row in sql(world.db, select(a.c.target).where(a.c.action == ACTION).order_by(a.c.id))]
+    assert targets[-2:] == [
+        f"{PROJECT} probe:{probe['id']} requeue week:{body['week']} rows:3",
+        f"{PROJECT} probe:{probe['id']} requeue week:{body['week']} rows:0",
+    ]
+    assert world.client.post(f"{path('probes', str(probe['id']))}/retire", json={}, headers=owner).status_code == 200
+    assert world.client.post(url, headers=owner).status_code == 409
+
+
+def test_curator_probe_edit_and_requeue_on_the_command_line(world, tmp_path, monkeypatch, capsys):
+    accepted(world)
+    change = one_change(world)
+    owner = world.headers["owner"]
+    probe = world.client.post(path("probes"), json={**PROBE, "change_id": change["id"]}, headers=owner).json()
+    week_rows(world, probe)
+    with serving(create_app(world.app.state.config)) as url:
+        homes = {
+            who: write_credentials(
+                tmp_path / who, url, who, world.headers[who]["Authorization"].removeprefix("Bearer ")
+            )
+            for who in ("owner", "other")
+        }
+
+        def curator(who: str, *args: str):
+            return cli(monkeypatch, capsys, homes[who], "hub", "curator", "probe", *args, "--project", PROJECT)
+
+        nothing = curator("owner", "edit", str(probe["id"]))
+        assert nothing.code != 0 and "at least one of" in nothing.err
+        task = tmp_path / "task.md"
+        task.write_text("Wait for the fake build at another commit.\n", encoding="utf-8")
+        edited = as_json(
+            curator("owner", "edit", str(probe["id"]), "--commit", "def5678", "--task-file", str(task), "--json")
+        )
+        assert_json_keys("hub curator probe edit", edited)
+        assert (edited["commit"], edited["task"], edited["verify"]) == ("def5678", task.read_text(), PROBE["verify"])
+        printed = ok(curator("owner", "edit", str(probe["id"]), "--verify", "python -m pytest -q tests/test_x.py")).out
+        assert printed.strip() == f"edited probe #{probe['id']}: verify"
+        refused = curator("other", "edit", str(probe["id"]), "--task", "x")
+        assert refused.code != 0 and "admin" in refused.err
+
+        refused = curator("other", "requeue", str(probe["id"]))
+        assert refused.code != 0 and "admin" in refused.err
+        printed = ok(curator("owner", "requeue", str(probe["id"]))).out
+        assert f"probe #{probe['id']}, the week of {this_week(world).isoformat()}: 3 row(s) requeued" in printed
+        assert "claude-code model-stale: queued" in printed and "kept as they are: 3" in printed
+        assert "claude-code model-done: done" in printed
+        again = as_json(curator("owner", "requeue", str(probe["id"]), "--json"))
+        assert_json_keys("hub curator probe requeue", again)
+        assert set(again) == set(REQUEUE.keys) and again["requeued"] == []
