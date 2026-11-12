@@ -61,7 +61,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
-from sqlalchemy import BigInteger, Text, cast, column, delete, func, insert, literal, select, table, update
+from sqlalchemy import BigInteger, Text, cast, column, delete, exists, func, insert, literal, or_, select, table, update
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -97,6 +97,10 @@ ERROR_CHARS = 2000  # kg_builds.error holds at most this much
 QUEUE_ATTEMPTS = 5
 STALLED_AFTER = 120.0  # seconds without a heartbeat from its worker before a running build counts as abandoned
 STOPPED = "the worker running this build stopped before it finished; a new build was queued"
+ORPHANED = "the job of this build ended without recording how it went; the project's next build takes its place"
+REPLACED = (STOPPED, ORPHANED)  # the errors of a build whose place the project's next build takes
+IN_FLIGHT = ("queued", "running")
+JOB_ENDED = ("succeeded", "failed", "cancelled", "aborted")  # a procrastinate job in these will not run again
 CHUNK = 1024 * 1024
 HARNESS_YAML = "name: {name}\nknowledge_file: knowledge.yaml\nrepos: []\n"
 
@@ -841,9 +845,71 @@ async def queue_if_configured(job_queue: JobQueue, conn: AsyncConnection, projec
         log.warning("kg build not queued after a plugin's change: the queue was busy", extra={"project": project})
 
 
+def _orphaned():
+    """The builds still queued or running whose job ended, or is gone (``hub.prune_jobs``), with their project and
+    the status of their job: no worker records them any more, so they would say queued or running for ever."""
+    builds, jobs, projects = tables.kg_builds, procrastinate_jobs, tables.projects
+    return (
+        select(builds.c.id, builds.c.project_id, projects.c.name, builds.c.job_id, jobs.c.status.label("job_status"))
+        .join_from(builds, projects, projects.c.id == builds.c.project_id)
+        .join(jobs, jobs.c.id == builds.c.job_id, isouter=True)
+        .where(builds.c.status.in_(IN_FLIGHT), or_(jobs.c.id.is_(None), jobs.c.status.in_(JOB_ENDED)))
+        .order_by(builds.c.id)
+    )
+
+
+async def _fail_orphaned(context, manager) -> tuple[int, list[str]]:
+    """Fail the builds ``_orphaned`` finds, a project at a time, and queue a build of each project none of whose
+    builds came after them: the runs they would have built then wait for nothing. A project whose queue stays busy
+    keeps its builds as they are until the next pass."""
+    builds = tables.kg_builds
+    async with context.engine.connect() as conn:
+        found = (await conn.execute(_orphaned())).all()
+    by_project: dict[tuple[int, str], list] = {}
+    for row in found:
+        by_project.setdefault((row.project_id, row.name), []).append(row)
+    failed, queued = 0, []
+    for (project_id, project), rows in by_project.items():
+        try:
+            async with context.engine.begin() as conn:
+                result = await conn.execute(
+                    update(builds)
+                    .values(
+                        status="failed",
+                        error=ORPHANED,
+                        started_at=func.coalesce(builds.c.started_at, func.now()),
+                        finished_at=func.now(),
+                    )
+                    .where(builds.c.id.in_([row.id for row in rows]), builds.c.status.in_(IN_FLIGHT))
+                    .returning(builds.c.id)
+                )
+                ended = result.scalars().all()
+                if not ended:
+                    continue
+                later = exists().where(builds.c.project_id == project_id, builds.c.id > max(ended))
+                if not await conn.scalar(select(later)):
+                    build_id, _ = await queue_build(JobQueue(manager), conn, project_id, project, None)
+                    if build_id is not None:
+                        queued.append(project)
+        except QueueBusy:
+            log.warning("orphaned kg builds left for the next pass: the queue was busy", extra={"project": project})
+            continue
+        failed += len(ended)
+        log.warning(
+            "kg builds whose job ended unrecorded failed",
+            extra={
+                "project": project,
+                "builds": ended,
+                "jobs": {row.job_id: row.job_status for row in rows if row.id in ended},
+            },
+        )
+    return failed, queued
+
+
 async def recover_stalled(context, manager) -> dict:
     """Fail the kg builds whose worker stopped sending heartbeats (killed, or its machine lost), which would hold
-    their project's lock for ever, and queue a new build of each such project."""
+    their project's lock for ever, and queue a new build of each such project; then fail the builds whose job ended
+    without recording them (``_fail_orphaned``), which hold no lock but would say queued or running for ever."""
     from procrastinate.jobs import Status
 
     stalled = await manager.get_stalled_jobs(task_name=KG_BUILD, seconds_since_heartbeat=STALLED_AFTER)
@@ -860,7 +926,7 @@ async def recover_stalled(context, manager) -> dict:
                     started_at=func.coalesce(builds.c.started_at, func.now()),
                     finished_at=func.now(),
                 )
-                .where(builds.c.job_id == job.id, builds.c.status.in_(["queued", "running"]))
+                .where(builds.c.job_id == job.id, builds.c.status.in_(IN_FLIGHT))
             )
         projects.add(job.task_kwargs.get("project"))
     queued = []
@@ -872,4 +938,5 @@ async def recover_stalled(context, manager) -> dict:
                 queued.append(project)
     if stalled:
         log.warning("abandoned kg builds failed and queued again", extra={"jobs": len(stalled), "projects": queued})
-    return {"failed": len(stalled), "queued": queued}
+    orphaned, requeued = await _fail_orphaned(context, manager)
+    return {"failed": len(stalled), "orphaned": orphaned, "queued": sorted({*queued, *requeued})}

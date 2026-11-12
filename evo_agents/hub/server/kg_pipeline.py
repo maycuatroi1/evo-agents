@@ -13,9 +13,9 @@ The build is the one the upload queued; the kg_init run is the newest of the pro
 (a run takes the newest build as it starts), so a run asked for again after one failed, or one that followed a later
 build, replaces it and only the newest counts; and the rebuild is the one its decision queued, else the one the
 newest earlier kg_init run on that build or later queued (a kg_init run asked for again while the first one's rebuild
-runs, whose settings need none, does not end the flow before that rebuild). A build whose worker
-stopped queued the next one of the project (``kg_build.STOPPED``), which the flow follows in its place. Logs name the project and
-the upload, never an item.
+runs, whose settings need none, does not end the flow before that rebuild). A build whose worker stopped, or whose job
+ended without recording it, gives its place to the next build of the project (``kg_build.REPLACED``), which the flow
+follows instead. Logs name the project and the upload, never an item.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import kg_pipeline as model
 from evo_agents.hub import tables
-from evo_agents.hub.kg_build import STOPPED
+from evo_agents.hub.kg_build import REPLACED
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
@@ -86,15 +86,16 @@ def _upload_columns():
 
 
 async def _build(conn: AsyncConnection, build_id: int | None, project_id: int) -> dict | None:
-    """Build ``build_id``, or the build that took its place: a build whose worker stopped (``kg_build.STOPPED``)
-    queued another of the project, so the flow goes on with the next build of the project."""
+    """Build ``build_id``, or the build that took its place: a build whose worker stopped, or whose job ended without
+    recording it (``kg_build.REPLACED``), gave its place to another of the project, so the flow goes on with the next
+    build of the project."""
     if build_id is None:
         return None
     b = tables.kg_builds
     columns = (b.c.id, b.c.status, b.c.error, b.c.nodes, b.c.edges, b.c.coverage)
     found = (await conn.execute(select(*columns).where(b.c.id == build_id, b.c.project_id == project_id))).first()
     for _ in range(MAX_REQUEUED):
-        if found is None or found.status != "failed" or found.error != STOPPED:
+        if found is None or found.status != "failed" or found.error not in REPLACED:
             break
         after = (
             await conn.execute(
