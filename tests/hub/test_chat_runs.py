@@ -951,6 +951,8 @@ def test_a_lazy_chat_runs_prompt_lists_every_repo_open_and_named_first_with_the_
         f"branch {branch} under the current directory"
     ) in prompt
     assert f"The harness.yaml of {HARNESS} says what each repo of the project is for." in prompt
+    # its agent's git started before a repo opened: the prompt says how a shell takes the run's credential for it
+    assert f"run `{chat_runs.OPENED_CREDENTIAL}` in that shell" in prompt
     assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES
     # the prompt of another daemon's chat run lists the run's repos as before, and no command that opens one
     laptop = chat_worker(client, hub["other"], "laptop", checkouts=NO_NOTES)
@@ -959,7 +961,7 @@ def test_a_lazy_chat_runs_prompt_lists_every_repo_open_and_named_first_with_the_
     assert listed(other["prompt"]) == [
         f"- {name}: {name}/" for name in (HARNESS, "evo-agents", "lumen-identity", "lumen-kb-docs")
     ]
-    assert OPEN not in other["prompt"]
+    assert OPEN not in other["prompt"] and chat_runs.OPENED_CREDENTIAL not in other["prompt"]
     assert (
         f"You may change code in the repos below, each a worktree on the branch chat/{other['id']}" in other["prompt"]
     )

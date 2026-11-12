@@ -277,6 +277,11 @@ def cmd_repo_open(args) -> int:
     if answer.get("error") or not isinstance(path, str) or not path:
         raise WorkerStateError(str(answer.get("error") or f"the daemon did not say where {args.repo} is"))
     print(path)
+    print(
+        f"note: the worktree was fetched as it opened; before your own git or gh on it, run "
+        f'`eval "$(evo-agents worker env --run {run_id})"` in that shell for the run\'s credential',
+        file=sys.stderr,
+    )
     return 0
 
 
