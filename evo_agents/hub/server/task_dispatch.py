@@ -51,10 +51,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import guard, plugin_calls, plugin_events, profiles, runs, tables, task_runs
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.server import audit, pull_trailers, run_access_rules, run_autonomy
+from evo_agents.hub.server import audit, draft_pulls, pull_trailers, run_access_rules, run_autonomy
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_types import contributed, enabled_type, type_spend
-from evo_agents.hub.server.chat_agents import open_draft
 from evo_agents.hub.server.chat_runs import project_repos
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
@@ -209,6 +208,13 @@ class TaskPushed(BaseModel):
         description="the run's branch, task/<id>, or the branch its task names for the repo",
     )
     head: str = Field(pattern=OBJECT_NAME, description="the commit the branch has now")
+    base: str | None = Field(
+        None,
+        min_length=1,
+        max_length=255,
+        pattern=r"^[^\x00-\x20\x7f~^:?*\[\\]+$",
+        description="the branch of origin the branch was made from; the base the task names goes first",
+    )
 
 
 class TaskPull(BaseModel):
@@ -272,6 +278,9 @@ def _task_select():
     )
 
 
+PULL_FIELDS = ("repo", "url", "number")  # what a task's plugin reads of each of its run's pull requests
+
+
 def _task(row) -> dict:
     return {
         "task_id": task_runs.task_of(row.branch) or row.id,
@@ -281,7 +290,8 @@ def _task(row) -> dict:
         "agent_type": row.agent_type,
         "state": row.state,
         "branch": row.branch,
-        "pulls": list(row.pulls or []),
+        # the plugin's contract: {repo, url, number} each (docs/plugins.md); the rest is the hub's (draft_pulls)
+        "pulls": [{key: item.get(key) for key in PULL_FIELDS} for item in row.pulls or [] if isinstance(item, dict)],
         "failure_cause": row.failure_cause,
         "queued_at": row.queued_at,
         "finished_at": row.finished_at,
@@ -602,8 +612,8 @@ async def task_run_ended(conn: AsyncConnection, run_id: int, new: str) -> int:
 
 
 async def _pushed_run(conn: AsyncConnection, user, run_id: int, body: TaskPushed):
-    """(the run's title, the repo's origin, the base its task names or None) of a push of the task run ``run_id`` the
-    worker reports; 404 or 422 when it is not the run's."""
+    """(the run's title, the repo's origin, the base its task names or None, the repo's default branch) of a push of
+    the task run ``run_id`` the worker reports; 404 or 422 when it is not the run's."""
     worker_id = (await worker_of(conn, user))[0]
     r = tables.runs
     query = select(r.c.worker_id, r.c.state, r.c.kind, r.c.project_id, r.c.branch, r.c.repos, r.c.title)
@@ -623,26 +633,25 @@ async def _pushed_run(conn: AsyncConnection, user, run_id: int, body: TaskPushed
     if not fits:
         raise HTTPException(422, f"run {run_id} pushes {own or row.branch} of {body.repo}, not {body.branch}")
     pr = tables.project_repos
-    query = select(pr.c.origin).where(pr.c.project_id == row.project_id, pr.c.name == body.repo)
+    query = select(pr.c.origin, pr.c.default_branch).where(pr.c.project_id == row.project_id, pr.c.name == body.repo)
     held = [entry for entry in row.repos or [] if isinstance(entry, dict) and entry.get("repo") == body.repo]
     base = held[0].get("base") if held else None
-    return row.title, (await conn.execute(query)).scalar_one_or_none(), base if isinstance(base, str) else None
+    repo = (await conn.execute(query)).one_or_none()
+    origin, default = (repo.origin, repo.default_branch) if repo else (None, None)
+    return row.title, origin, base if isinstance(base, str) else None, default
 
 
-async def _keep(conn: AsyncConnection, run_id: int, pull: TaskPull) -> None:
-    """Keep ``pull`` in runs.pulls of run ``run_id`` (one for each repo) when GitHub opened it, and say what happened
-    in the run's log."""
-    r = tables.runs
-    pulls = (await conn.execute(select(r.c.pulls).where(r.c.id == run_id).with_for_update())).scalar_one() or []
+async def _keep(conn: AsyncConnection, run_id: int, pull: TaskPull, entry: dict | None) -> None:
+    """Keep ``entry``, the pull request GitHub opened or had open (``draft_pulls.kept``), in runs.pulls of run
+    ``run_id`` (one for each repo), and say what happened in the run's log."""
     kept = {"repo": pull.repo, "url": pull.url, "number": pull.number}
     said = f"the hub opened the draft pull request {pull.url} of {pull.branch} of {pull.repo}; it is never merged"
     if pull.number is None:
         said = f"the hub opened no pull request of {pull.branch} of {pull.repo}: {pull.problem or 'no GitHub App'}"
     elif not pull.opened:
         said = f"the draft pull request {pull.url} of {pull.branch} of {pull.repo} was open already"
-    if pull.number is not None:
-        pulls = [item for item in pulls if item.get("repo") != pull.repo] + [kept]
-        await conn.execute(update(r).where(r.c.id == run_id).values(pulls=pulls[-task_runs.MAX_PULLS :]))
+    if entry is not None:
+        await draft_pulls.keep(conn, run_id, entry)
     await write_event(conn, run_id, {"text": said, "pull": kept})
 
 
@@ -650,7 +659,7 @@ async def _keep(conn: AsyncConnection, run_id: int, pull: TaskPull) -> None:
 async def pushed(request: Request, run_id: RunId, body: TaskPushed, user: CurrentUser) -> TaskPull:
     """The worker pushed the task run's branch of a repo: its draft pull request, kept on the run."""
     async with request.app.state.engine.begin() as conn:
-        title, origin, base = await _pushed_run(conn, user, run_id, body)
+        title, origin, base, default = await _pushed_run(conn, user, run_id, body)
         t, pl, r = tables.project_agent_types, tables.plugins, tables.runs
         query = select(t.c.name, pl.c.name).join_from(r, t, t.c.id == r.c.agent_type_id)
         agent_type, plugin = (
@@ -660,14 +669,17 @@ async def pushed(request: Request, run_id: RunId, body: TaskPushed, user: Curren
         policy = await guard.policy(conn)
     target = github_repo(origin) if origin else None
     app = request.app.state.github_app
-    url, number, opened, problem = None, None, False, None
+    url, number, opened, problem, made = None, None, False, None, None
     if target is not None and app is not None:
         text = task_runs.DRAFT_TEXT.format(agent_type=agent_type, plugin=plugin, run=run_id) + signed
         try:
             where = f"github.com/{target[0]}/{target[1]}"
             title, text = guard.scrub(policy, where, (title or body.branch)[:240], text)
-            made, opened = await open_draft(app, target, body.branch, title, text, base=base)
-            url, number = made.get("html_url"), made.get("number")
+            made = await draft_pulls.open_for(
+                app, target, body.branch, body.head, title, text, base=base or body.base, defaults=(default,)
+            )
+            url, number, opened = (made.pull or {}).get("html_url"), (made.pull or {}).get("number"), made.opened
+            problem = made.nothing
         except (GitHubRefused, GitHubUnavailable) as exc:
             problem = str(exc)
             log.warning("task run pull request not opened", extra={"run_id": run_id, "repo": body.repo, "why": problem})
@@ -675,6 +687,6 @@ async def pushed(request: Request, run_id: RunId, body: TaskPushed, user: Curren
         url = f"https://github.com/{target[0]}/{target[1]}/tree/{body.branch}"
     pull = TaskPull(repo=body.repo, branch=body.branch, url=url, number=number, opened=opened, problem=problem)
     async with request.app.state.engine.begin() as conn:
-        await _keep(conn, run_id, pull)
+        await _keep(conn, run_id, pull, draft_pulls.kept(body.repo, body.branch, body.head, made) if made else None)
     log.info("task run branch pushed", extra={"run_id": run_id, "repo": body.repo, "pull": number, "opened": opened})
     return pull

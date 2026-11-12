@@ -31,7 +31,10 @@ head at the push, with the files ``push`` set when it set them); GET .../git/tre
 and modes, which the merge commit of a pull request of that head holds too; GET .../contents/{path}?ref= of the files
 ``put_file`` wrote; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files`` set;
 GET filters on head, state and base) and GET .../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and
-.../status (``ci`` sets them); POST .../check-runs; POST .../issues/{n}/comments (``comments``); and PUT .../pulls/{n}/merge, which refuses a head that moved (409)
+.../status (``ci`` sets them); GET .../commits/{sha}/pulls (the pull requests whose head it is); POST .../check-runs;
+POST .../issues/{n}/comments (``comments``); PATCH .../pulls/{n} (its state closed, or its base); a comparison of a
+branch with a commit it holds (its head, one a merge brought, ``hold``) says behind or identical, with no file; and PUT
+.../pulls/{n}/merge, which refuses a head that moved (409)
 and a base branch whose ruleset the token's App may not bypass (405), and otherwise merges. It answers git's own POST
 /{o}/{r}.git/git-upload-pack with the command ls-refs (protocol version 2), for Basic credentials of x-access-token and
 an installation token that opens the repo with contents read, as GitHub does: the refs ``tag`` and ``set_ref`` set under
@@ -115,6 +118,7 @@ class FakeRepo:
     blobs: dict = field(default_factory=dict)  # blob sha -> its bytes (``snapshot``)
     modes: dict = field(default_factory=dict)  # (commit, path) -> its mode in the tree, 100644 when not named
     refs: dict = field(default_factory=dict)  # full ref -> (the object it names, the commit a tag peels to or None)
+    contained: dict = field(default_factory=dict)  # branch -> commits it holds beside its head (a merge, ``hold``)
 
 
 @dataclass
@@ -294,6 +298,7 @@ class FakeGitHub:
                 repo.messages[sha] = message
             if files is not None:
                 repo.files[branch] = files
+                repo.files[sha] = files  # a comparison with the commit lists them too
             for found in self.pulls.values():
                 if (found.owner, found.name, found.head) == (repo.owner, repo.name, branch) and found.state == "open":
                     found.head_sha = sha
@@ -356,7 +361,13 @@ class FakeGitHub:
             repo = self.repos[(owner.lower(), name.lower())]
             pull.state, pull.merged, pull.merge_sha, pull.merged_at, pull.merged_by = "closed", True, sha, _now(), login
             repo.heads[pull.base] = sha
+            repo.contained.setdefault(pull.base, set()).add(pull.head_sha)
         return pull
+
+    def hold(self, owner: str, name: str, branch: str, sha: str) -> None:
+        """``branch`` of owner/name holds commit ``sha`` now, as after a merge of a branch that had it."""
+        with self._lock:
+            self.repos[(owner.lower(), name.lower())].contained.setdefault(branch, set()).add(sha)
 
     def close_by_hand(self, owner: str, name: str, branch: str) -> FakePull:
         """A member closes the open pull request of ``branch`` without a merge."""
@@ -867,6 +878,9 @@ class FakeGitHub:
             if refused:
                 return refused
             base, _, head = (unquote(part) for part in rest[1].partition("..."))  # a branch's / sent as %2F
+            if base in repo.heads and repo.heads.get(head, head) in {repo.heads[base], *repo.contained.get(base, ())}:
+                status = "identical" if repo.heads.get(head, head) == repo.heads[base] else "behind"
+                return 200, {"status": status, "ahead_by": 0, "behind_by": 1, "commits": [], "files": []}
             shas = [sha for sha, _ in repo.history]
             named = head  # a branch ``push`` set lists the files its pull request changes
             base = repo.heads.get(base, base) if base not in shas and base not in repo.merge_bases else base
@@ -1017,6 +1031,17 @@ class FakeGitHub:
                 page = int(query.get("page", "1"))
                 files = repo.files.get(pull.head, [])
                 return 200, files[(page - 1) * 100 : page * 100]
+            if method == "PATCH" and len(rest) == 2:
+                _, _, refused = need("pull_requests", "write")
+                if refused:
+                    return refused
+                asked = json.loads(body or "{}")
+                with self._lock:
+                    if asked.get("state") == "closed":
+                        pull.state = "closed"
+                    if isinstance(asked.get("base"), str):
+                        pull.base = asked["base"]
+                return 200, self._pull_answer(pull)
             if method == "PUT" and rest[2:] == ["merge"]:
                 _, app, refused = need("contents", "write")
                 if refused:
@@ -1042,6 +1067,7 @@ class FakeGitHub:
                     pull.state, pull.merged, pull.merge_sha = "closed", True, merged
                     pull.merged_at, pull.merged_by = _now(), f"evo-agents-{app}[bot]"
                     repo.heads[pull.base] = merged
+                    repo.contained.setdefault(pull.base, set()).add(pull.head_sha)
                     self.merges.append((repo.owner, repo.name, pull.number, asked.get("sha"), app))
                 return 200, {"sha": merged, "merged": True, "message": "Pull Request successfully merged"}
         if method == "GET" and rest[:1] == ["commits"] and len(rest) == 3 and rest[2] == "check-runs":
@@ -1050,6 +1076,12 @@ class FakeGitHub:
                 return refused
             found = self.check_runs.get(rest[1], [])
             return 200, {"total_count": len(found), "check_runs": found}
+        if method == "GET" and rest[:1] == ["commits"] and len(rest) == 3 and rest[2] == "pulls":
+            _, _, refused = need("pull_requests", "read")
+            if refused:
+                return refused
+            held = [item for item in self.pulls.values() if (item.owner, item.name) == (repo.owner, repo.name)]
+            return 200, [self._pull_answer(item) for item in held if item.head_sha == rest[1]]
         if method == "GET" and rest[:1] == ["commits"] and len(rest) == 3 and rest[2] == "status":
             _, _, refused = need("statuses", "read")
             if refused:
@@ -1182,6 +1214,9 @@ def _handler(fake: FakeGitHub):
 
         def do_PUT(self):
             self._serve("PUT")
+
+        def do_PATCH(self):
+            self._serve("PATCH")
 
         def log_message(self, format, *args):  # keep the test output quiet
             pass

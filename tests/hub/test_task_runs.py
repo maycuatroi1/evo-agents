@@ -22,7 +22,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from evo_agents.hub import autonomy_card, runs, tables, task_runs
-from evo_agents.hub.server import plugin_tokens
+from evo_agents.hub.server import draft_pulls, plugin_tokens
 from evo_agents.hub.server.app import create_app
 from tests.hub import live
 from tests.hub import test_credentials_api as credentials_api
@@ -420,8 +420,16 @@ def test_task_dispatch_push_gets_a_draft_pull_request_and_the_end_reaches_the_pl
         assert in_chats(client, laptop, run_id, "task/pulls", {**body, **wrong}).status_code == status
     stranger = chat_worker(client, hub["owner"], "studio", checkouts=ONE_REPO, pool=None)
     assert in_chats(client, stranger, run_id, "task/pulls", body).status_code == 404
-    kept = [{"repo": "evo-agents", "url": url, "number": 1}]
-    assert of_run(hub_db, run_id, "pulls") == [(kept,)]
+    # the run keeps the draft it pushed to, for the hub to settle later (draft_pulls.settle_pass)
+    kept = [{"repo": "evo-agents", "url": url, "number": 1}]  # what the plugin reads of it
+    held = {"branch": branch, "base": "main", "head": "2" * 40, "state": "open"}
+    assert of_run(hub_db, run_id, "pulls") == [([{**kept[0], **held}],)]
+    # its head went into main through another pull request: the reaper's pass closes the draft (draft_pulls)
+    github.hold(MINE, "evo-agents", "main", "1" * 40)
+    engine, app = client.app.state.engine, client.app.state.github_app
+    assert dict(client.portal.call(draft_pulls.settle_pass, engine, app)) == {"closed": 1}
+    assert github.pull_of(MINE, "evo-agents", branch).state == "closed"
+    assert of_run(hub_db, run_id, "pulls")[0][0][0]["state"] == "closed"
     assert deliveries(hub_db) == []
     moved(client, laptop, run_id, "verifying", "done", summary="Replaced the sleep.")
     payload = {
