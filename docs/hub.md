@@ -1304,6 +1304,11 @@ minute) or `refused`, with a reason and the run it started. The outcome stays em
 that a fire queued carries `runs.cron_job_id`. The hub uses that link to count a job as busy and to sum, in the list,
 what its runs cost in the last 24 hours.
 
+In the web app, a project's Cron jobs page (`/p/{project}/cron-jobs`, in the Delivery fold) lists the jobs with their
+schedule in words, next fire, last fire and its run, and cost over 24 hours. A writer makes a job there; its owner
+edits it; its owner or an admin of the project runs it now, pauses, resumes or deletes it. A job's fires open in a
+sheet (`?job=<name>`).
+
 ### Firing
 
 The job `hub.cron_jobs` of the hub's worker runs every minute, one pass at a time, on queue `default`
