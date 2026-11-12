@@ -86,6 +86,8 @@ MIGRATIONS_RUN = (
     "0210_run_spend.py",  # a partial index written as one SQL string, as it ran
     "0226_srs_use_case_revisions.py",  # the backfill of the use cases' revisions in SQL strings, as it ran
     "0232_chat_opened_from.py",  # a partial index whose WHERE is one SQL string, as it ran
+    "0240_default_system_ops.py",  # the default system's backfill and its partial indexes, as it ran
+    "0241_ops_threads.py",  # the downgrade's DELETE of the ops threads, as it ran
 )
 # Migrations that have run: each is the record of how databases at its revision were built, so the guard leaves
 # them as they are. A new migration is written with Alembic's operations on evo_agents.hub.tables.
