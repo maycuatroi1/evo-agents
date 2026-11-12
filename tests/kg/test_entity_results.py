@@ -112,3 +112,21 @@ def test_an_entity_many_documents_mention_brings_only_those_the_search_ranked(mo
     sources[:] = sources[:4]  # a few: the unranked ones come too, by confidence then id, up to ENTITY_DOCS
     out, why = search.through_entities(Store(), 0, [{"id": "entity:Place:paris"}], lambda _: True)
     assert [n["id"] for n in out] == ["doc:0", "doc:1", "doc:2", "entity:Place:paris"]
+
+
+def test_an_entity_brings_a_commit_or_pull_request_only_when_the_search_ranked_it():
+    kinds = {"commit:1": "Commit", "pr:2": "PullRequest", "doc:3": "Document"}
+
+    class Store:
+        def edges_of(self, node_id, b, direction, limit):
+            return [{"src": s, "rel": "mentions", "dst": node_id, "conf": 0.9} for s in kinds]
+
+        def nodes(self, ids, b):
+            return {i: {"id": i, "kind": kinds[i]} for i in ids}
+
+    out, why = search.through_entities(Store(), 0, [{"id": "entity:Place:paris"}], lambda _: True)
+    assert [n["id"] for n in out] == ["doc:3", "entity:Place:paris"]  # the unranked commit and pull request stay out
+    assert why == {"doc:3": ["entity:Place:paris"]}
+    out, why = search.through_entities(Store(), 0, [{"id": "entity:Place:paris"}, {"id": "commit:1"}], lambda _: True)
+    assert [n["id"] for n in out] == ["commit:1", "doc:3", "entity:Place:paris"]  # a ranked commit is still a source
+    assert why == {"commit:1": ["entity:Place:paris"], "doc:3": ["entity:Place:paris"]}

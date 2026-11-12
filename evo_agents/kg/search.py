@@ -496,6 +496,7 @@ ENTITY_DOCS = 3  # source documents one matched entity brings, at most
 ENTITY_SPREAD = 20  # an entity more nodes mention than this brings only the sources the search ranked itself
 ENTITY_CODE = 3  # code nodes one matched entity brings after its documents, at most, under entity_code
 ENTITY_CODE_RELS = ("implemented_by", "refers_to")  # an entity to its code (kg.entity_map, kg.entity_links)
+ENTITY_RANKED_ONLY = ("Commit", "PullRequest")  # kinds an entity brings as a source only when the search ranked them
 
 
 def through_entities(
@@ -538,7 +539,8 @@ def through_entities(
 
 def _sources(store, b: int, entity: dict, rank: dict[str, int], visible) -> list[dict]:
     """Up to ENTITY_DOCS visible non-entity nodes that mention ``entity`` through visible edges: those the search ranked,
-    best first, then, unless more than ENTITY_SPREAD mention it, the others by the edge's confidence."""
+    best first, then, unless more than ENTITY_SPREAD mention it, the others by the edge's confidence. An unranked node of
+    a kind in ENTITY_RANKED_ONLY never comes: a commit naming the entity would take the slot of a file the query hit."""
     from evo_agents.kg.ppr import is_entity
 
     edges = [e for e in store.edges_of(entity["id"], b, "in", limit=500) if e["rel"] == "mentions" and visible(e)]
@@ -550,7 +552,11 @@ def _sources(store, b: int, entity: dict, rank: dict[str, int], visible) -> list
     if len(conf) <= ENTITY_SPREAD:
         ranked += sorted((i for i in conf if i not in rank), key=lambda i: (-conf[i], i))
     nodes = store.nodes(ranked, b)
-    return [nodes[i] for i in ranked if i in nodes and visible(nodes[i])][:ENTITY_DOCS]
+    return [
+        nodes[i]
+        for i in ranked
+        if i in nodes and visible(nodes[i]) and (i in rank or nodes[i].get("kind") not in ENTITY_RANKED_ONLY)
+    ][:ENTITY_DOCS]
 
 
 def _code_of(store, b: int, entity: dict, rank: dict[str, int], visible) -> list[dict]:
