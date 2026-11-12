@@ -525,7 +525,7 @@ SLOW = 1  # seconds the fake git takes for each ls-remote and fetch
 def ten(machine, tmp_path, monkeypatch):  # noqa: F811
     """A machine with ten checkouts whose origins read as https, so the preflight asks each (git's insteadOf takes
     each to its bare repository on disk), and a git first on PATH that takes SLOW seconds for each ls-remote and
-    fetch, which it writes to slow.log."""
+    fetch, which it writes to slow.log, and to overlap.log as it starts (+) and ends (-) its wait (``most_at_once``)."""
     many = Machine(tmp_path / "ten", TEN)
     for name in TEN:
         url = f"https://git.test/{name}.git"
@@ -534,11 +534,14 @@ def ten(machine, tmp_path, monkeypatch):  # noqa: F811
     bin_dir = tmp_path / "slow-bin"
     bin_dir.mkdir()
     many.slow_log = tmp_path / "slow.log"
+    many.overlap_log = tmp_path / "overlap.log"
     fake = bin_dir / "git"
     fake.write_text(
         "#!/bin/sh\n"
         'for arg in "$@"; do\n'
-        f'  case "$arg" in ls-remote|fetch) echo "$arg" >> {shlex.quote(str(many.slow_log))}; sleep {SLOW}; break;; esac\n'
+        f'  case "$arg" in ls-remote|fetch) echo "$arg" >> {shlex.quote(str(many.slow_log))};'
+        f' echo "+$arg" >> {shlex.quote(str(many.overlap_log))}; sleep {SLOW};'
+        f' echo "-$arg" >> {shlex.quote(str(many.overlap_log))}; break;; esac\n'
         "done\n"
         f'exec {shlex.quote(shutil.which("git"))} "$@"\n',
         encoding="utf-8",
@@ -548,6 +551,19 @@ def ten(machine, tmp_path, monkeypatch):  # noqa: F811
     many.env["PATH"] = path  # the run's git with its leases: ls-remote, fetch, push
     monkeypatch.setenv("PATH", path)  # the daemon's own git
     return many
+
+
+def most_at_once(machine, command: str, since: int = 0) -> int:
+    """The most ``command`` processes (ls-remote or fetch) the slow git had waiting at the same time, from line
+    ``since`` of overlap.log on."""
+    running = most = 0
+    for line in machine.overlap_log.read_text(encoding="utf-8").split()[since:]:
+        if line == f"+{command}":
+            running += 1
+            most = max(most, running)
+        elif line == f"-{command}":
+            running -= 1
+    return most
 
 
 def ten_plan() -> dict:
@@ -603,7 +619,7 @@ async def run_of(kind: str, hub, machine) -> int:  # noqa: F811
 
 
 @pytest.mark.parametrize("kind", sorted(PREPARES))
-def test_ten_repos_pass_the_preflight_and_get_their_worktrees_in_under_three_seconds_each(kind, ten, monkeypatch):
+def test_ten_repos_pass_the_preflight_and_get_their_worktrees_eight_at_a_time(kind, ten, monkeypatch):
     checked: list[float] = []
     prepared: list[float] = []
     timed(monkeypatch, access, "check", checked)
@@ -618,9 +634,11 @@ def test_ten_repos_pass_the_preflight_and_get_their_worktrees_in_under_three_sec
     hub, run_id = found["hub"], found["run"]
     asked = ten.slow_log.read_text(encoding="utf-8").split()
     assert asked[:20] == ["ls-remote"] * 10 + ["fetch"] * 10, "each origin asked, then each repo fetched"
-    # at most parallel.GIT_AT_ONCE (8) at once: two rounds of a second for ten repos
-    assert len(checked) == 1 and 2 * SLOW <= checked[0] < 3, checked
-    assert len(prepared) == 1 and 2 * SLOW <= prepared[0] < 3, prepared
+    # parallel.GIT_AT_ONCE (8) at once, never more: two rounds of a second for ten repos. Counted, not timed: on a
+    # loaded runner the other git commands of the worktrees took a plan run's prepare to 9.9 s (release CI of v0.63.8)
+    assert most_at_once(ten, "ls-remote") == most_at_once(ten, "fetch") == parallel.GIT_AT_ONCE
+    assert len(checked) == 1 and 2 * SLOW <= checked[0], checked
+    assert len(prepared) == 1 and 2 * SLOW <= prepared[0], prepared
 
     texts = hub.texts(run_id)
     assert "Preflight passed: 10 repo(s)." in texts
@@ -674,12 +692,13 @@ def test_the_next_chat_run_of_a_session_asks_no_origin_and_fetches_the_worktrees
         assert await hub.wait_state(first, "done", "failed", timeout=WAIT) == "done", hub.texts(first)
         await wait_for(lambda: not daemon.runs, "the first run to let go of its slot")
         before = len(ten.slow_log.read_text(encoding="utf-8").split())
+        overlap = len(ten.overlap_log.read_text(encoding="utf-8").split())
         session = ten.home.load_run(first)["session_id"]
         later = hub.queue_chat_run(list(TEN), resume_of=first, session_id=session, branch=f"chat/{first}")
         hub.thread_reply(later, "owner wrote in the thread (message #4):\nand skills?")
         assert await hub.wait_state(later, "done", "failed", timeout=WAIT) == "done", hub.texts(later)
         await wait_for(lambda: not daemon.runs, "the run to let go of its slot")
-        found.update(hub=hub, first=first, later=later, before=before)
+        found.update(hub=hub, first=first, later=later, before=before, overlap=overlap)
 
     with_daemon(ten, body)
     hub, first, later = found["hub"], found["first"], found["later"]
@@ -687,8 +706,9 @@ def test_the_next_chat_run_of_a_session_asks_no_origin_and_fetches_the_worktrees
     assert asked[: found["before"]] == ["ls-remote"] * 10 + ["fetch"] * 10, "the first turn ran the preflight"
     assert asked[found["before"] :] == ["fetch"] * 10, "the next turn asks no origin: it fetches each repo once"
     assert len(checked) == 2 and checked[1] < SLOW, checked
-    # the fetch of the ten adopted worktrees, at most parallel.GIT_AT_ONCE (8) at once: two rounds of a second
-    assert len(prepared) == 2 and 2 * SLOW <= prepared[1] < 3, prepared
+    # the fetch of the ten adopted worktrees, parallel.GIT_AT_ONCE (8) at once, never more: two rounds of a second
+    assert most_at_once(ten, "fetch", since=found["overlap"]) == parallel.GIT_AT_ONCE
+    assert len(prepared) == 2 and 2 * SLOW <= prepared[1], prepared
     assert ("ask", later) in hub.credential_calls, "the run takes leases of its own"
 
     texts = hub.texts(later)
