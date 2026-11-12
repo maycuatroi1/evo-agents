@@ -43,8 +43,9 @@ A commit of a run (``commit_run``) holds only the run's own work. It leaves out,
 RUN_COMMIT_EXCLUDES (what hooks of the owner's runtime write in a session's directory, such as the learned skills of
 ``.claude/skills/.learned/`` and the CLI suggestions of ``.claude/cli-suggestions/_pending/``, and the worker's own
 ``.evo-run/``), and every copy of a hub plan as the hub wrote it (``evo_agents.hub.mirror.hub_copy``): an export wrote
-it, not the agent, while a copy the agent edited stays in. Those paths are put back in the index as HEAD has them,
-whoever staged them, and named in the answer.
+it, not the agent, while a copy the agent edited stays in. So is a path of WORKER_MADE that HEAD lacks (a ``.venv``,
+or a link to a virtualenv elsewhere), which ``add_worktree`` also puts in the repository's info/exclude. Those paths
+are put back in the index as HEAD has them, whoever staged them, and named in the answer.
 
 ``changed_paths``, what the watchdog of a run of the Curator compares with the charter's protected paths, leaves out
 the same paths while they are not committed: no commit of the run holds them, so a hook that writes there in the
@@ -65,7 +66,7 @@ from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from evo_agents.hub.runs import MAX_NOTICE_BODY_BYTES, MAX_NOTICE_COMMITS, RESULT_DIR, clip
+from evo_agents.hub.runs import MAX_NOTICE_BODY_BYTES, MAX_NOTICE_COMMITS, RESULT_DIR, WORKER_MADE, clip, worker_made
 from evo_agents.worker.workspace import Workspace, folder_name, plan_branches  # noqa: F401 (callers import them here)
 
 TIMEOUT = 120.0
@@ -95,6 +96,11 @@ RUN_COMMIT_EXCLUDES = (
     ".agents/skills/.learned/",
     f"{RESULT_DIR}/",
 )
+# WORKER_MADE (``hub.runs``): what the worker, or the agent of a run, makes beside the work to run it, at any depth, a
+# virtualenv (``venvs``) or a link to one in a cache of the machine (``ln -s ~/.cache/<repo>-venv .venv``). A commit of a
+# run leaves out such a path that HEAD lacks, and each worktree's repository ignores it (``ignore_worker_files``), so
+# neither the worker's commit nor the agent's own ``git add --all`` takes it; one the repo tracks already stays the repo's.
+EXCLUDE_MARK = "# evo-agents worker: what a run makes beside the work"  # the block ignore_worker_files writes
 PATHS_PER_CALL = 200  # paths in one `git reset`, well within any argv limit
 RECOVERY_REFS = "refs/evo-recovery/"  # the WIP commits of a worktree removed with changes not committed (``save_wip``)
 WIP_IDENTITY = {"name": "evo-agents worker", "email": "worker@evo-agents.invalid"}  # when the machine sets none
@@ -274,8 +280,30 @@ async def check_branch_name(cwd: Path, branch: str) -> bool:
 
 
 async def add_worktree(cwd: Path, path: Path, branch: str, start: str, *, reset: bool) -> None:
-    """A worktree at ``path`` on ``branch`` at ``start``; ``reset`` moves an existing branch there (-B)."""
+    """A worktree at ``path`` on ``branch`` at ``start``; ``reset`` moves an existing branch there (-B). Its
+    repository ignores what a run makes beside the work (``ignore_worker_files``)."""
     await git(cwd, "worktree", "add", "--no-track", "-B" if reset else "-b", branch, str(path), start)
+    await ignore_worker_files(cwd)
+
+
+async def ignore_worker_files(cwd: Path) -> bool:
+    """Add WORKER_MADE to the info/exclude of the repository of ``cwd`` (the common one, which its worktrees read),
+    under EXCLUDE_MARK, once; whether it wrote. A repository whose exclude git cannot name or write is left as it is:
+    the commit of a run leaves those paths out anyway (``commit_run``)."""
+    code, out, _ = await git(cwd, "rev-parse", "--git-common-dir", check=False)
+    if code != 0 or not out.strip():
+        return False
+    exclude = (Path(cwd) / out.strip()).resolve() / "info" / "exclude"
+    try:
+        text = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+        if EXCLUDE_MARK in text:
+            return False
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        block = "\n".join([EXCLUDE_MARK, *WORKER_MADE]) + "\n"
+        exclude.write_text(text + ("" if not text or text.endswith("\n") else "\n") + block, encoding="utf-8")
+    except OSError:
+        return False
+    return True
 
 
 async def add_detached_worktree(cwd: Path, path: Path, start: str, *, env: Mapping[str, str] | None = None) -> None:
@@ -357,15 +385,17 @@ def excluded(path: str) -> bool:
     return any(f"/{prefix}" in where for prefix in RUN_COMMIT_EXCLUDES)
 
 
-def _left_out(cwd: Path, paths: list[str]) -> list[str]:
+def _left_out(cwd: Path, paths: list[str], added: frozenset[str] = frozenset()) -> list[str]:
     from evo_agents.hub.mirror import hub_copy
 
-    return [path for path in paths if excluded(path) or hub_copy(cwd / path)]
+    return [path for path in paths if excluded(path) or (path in added and worker_made(path)) or hub_copy(cwd / path)]
 
 
-async def staged_paths(cwd: Path) -> list[str]:
-    """The paths whose index entry differs from HEAD, each side of a rename on its own."""
-    _, out, _ = await git(cwd, "diff", "--cached", "--name-only", "--no-renames", "-z")
+async def staged_paths(cwd: Path, *, added: bool = False) -> list[str]:
+    """The paths whose index entry differs from HEAD, each side of a rename on its own; with ``added``, only those
+    HEAD lacks."""
+    only = ("--diff-filter=A",) if added else ()
+    _, out, _ = await git(cwd, "diff", "--cached", "--name-only", "--no-renames", *only, "-z")
     return [path for path in out.split("\0") if path]
 
 
@@ -382,7 +412,8 @@ async def commit_run(cwd: Path, message: str, *, author: str | None = None) -> C
     as its author when given; the committer is this machine's git identity either way."""
     await git(cwd, "add", "--all", "--", ".", *await _result_pathspec(cwd))
     staged = await staged_paths(cwd)
-    left = sorted(await asyncio.to_thread(_left_out, cwd, staged))
+    added = frozenset(await staged_paths(cwd, added=True))
+    left = sorted(await asyncio.to_thread(_left_out, cwd, staged, added))
     for start in range(0, len(left), PATHS_PER_CALL):
         chunk = left[start : start + PATHS_PER_CALL]
         await git(cwd, "reset", "--quiet", "--", *(f":(literal){path}" for path in chunk))

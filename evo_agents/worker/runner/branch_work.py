@@ -4,7 +4,8 @@ share: a writable worktree of each repo its worker has a checkout of, in the run
 or the worktrees of the chat run before it in its session, adopted as they are and their checkouts fetched;
 and at the run's end, what the agent left committed in each and the run's branch pushed of each repo whose commits the
 branch lacks on origin, never a default branch and never forced (``gitops.check_push``, by the run's kind), with the
-hub told of each push (POST /v1/worker/runs/{id}/<kind>/pulls), which opens the draft pull request.
+hub told of each push (POST /v1/worker/runs/{id}/<kind>/pulls) and the branch it was made from (``base``,
+``pull_base.pick``), which the hub opens the draft pull request into.
 
 A task run may work in one repo on a branch its task names (``named``, from the run's repos), which is no default
 branch: that branch from origin when origin has it, else from the default branch, pushed back to it, never forced
@@ -24,7 +25,7 @@ from evo_agents.hub import runs
 from evo_agents.worker import gitops
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
-from evo_agents.worker.runner import access, origin, parallel, push
+from evo_agents.worker.runner import access, origin, parallel, pull_base, push
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, RunFailed, push_cause, wait_or
 
 if TYPE_CHECKING:
@@ -238,19 +239,38 @@ class BranchWork:
                 commit_sha=pushed.head,
                 repo=name,
             )
-            await self.tell_hub(name, workspace.branch, pushed.head)
+            await self.tell_hub(name, workspace.branch, pushed.head, await self.pull_base(name, workspace))
         return await gitops.diffstat(path, workspace.base)
 
-    async def tell_hub(self, name: str, branch: str, head: str) -> None:
-        """Tell the hub the run pushed ``branch`` of ``name``, for its draft pull request, trying a few times; what
-        the hub does not take is noted, and the run goes on."""
+    async def pull_base(self, name: str, workspace: gitops.Workspace) -> str | None:
+        """The base of the pull request of the run's branch of ``name`` (``pull_base.pick``): the base the run's task
+        names, else the branch of origin the branch was made from; None when git cannot say, and the hub picks."""
+        run = self.run
+        defaults = (
+            default_branch_of(run.daemon.config, run.project, name),
+            await gitops.remote_default_branch(workspace.checkout),
+        )
+        try:
+            return await pull_base.pick(
+                workspace.worktree,
+                own=workspace.branch,
+                local_branch=workspace.local_branch,
+                defaults=defaults,
+                named=self.bases.get(name),
+            )
+        except gitops.GitError as exc:
+            run.note(f"The base of the pull request of {name} is the hub's to pick: {exc}", repo=name)
+            return None
+
+    async def tell_hub(self, name: str, branch: str, head: str, base: str | None = None) -> None:
+        """Tell the hub the run pushed ``branch`` of ``name`` made from ``base``, for its draft pull request, trying a
+        few times; what the hub does not take is noted, and the run goes on."""
         run, linked = self.run, self.kind.linked
+        body = {"repo": name, "branch": branch, "head": head, **({"base": base} if base else {})}
         backoff = Backoff()
         for _ in range(HARD_STOP_TRIES + 1):
             try:
-                answer = await run.daemon.hub.in_chats(
-                    run.id, self.kind.route, {"repo": name, "branch": branch, "head": head}
-                )
+                answer = await run.daemon.hub.in_chats(run.id, self.kind.route, body)
                 run.note(f"The hub linked {branch} of {name} {linked}: {answer.get('url') or 'no pull request'}.")
                 return
             except Unreachable:
