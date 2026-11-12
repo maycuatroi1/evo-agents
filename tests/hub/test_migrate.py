@@ -181,7 +181,7 @@ TABLES |= {"chat_label_shares"}  # migration 0229
 TABLES |= {"workflow_run_reads"}  # migration 0236
 TABLES |= {"plan_run_choices"}  # migration 0238
 TABLES |= {"ops_cursors", "ops_batches", "ops_items"}  # migration 0240
-TABLES |= {"cron_jobs", "cron_fires"}  # migration 0242
+TABLES |= {"cron_jobs", "cron_fires"}  # migration 0243
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -6064,6 +6064,18 @@ def test_0241_takes_the_ops_rule_the_thread_of_a_batch_and_the_ops_breaker(hub_d
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0241") :]
 
 
+def test_0242_takes_the_draft_rule_of_orchestrator_threads(hub_db):
+    move_to(hub_db, "0241")
+    move_to(hub_db, "0242")
+    rule_check = select(func.pg_get_constraintdef(PG_CONSTRAINT.c.oid, type_=Text)).where(
+        PG_CONSTRAINT.c.conname == "orchestrator_threads_rule_check"
+    )
+    assert "'draft'" in query(hub_db, rule_check)[0][0]
+    move_to(hub_db, "0241", down=True)
+    assert "'draft'" not in query(hub_db, rule_check)[0][0]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0242") :]
+
+
 def _command_run(ids, **extra):
     """The INSERT of a queued command run of the seeded user in demo, in no repo, returning its id."""
     runs = hub_tables.runs
@@ -6072,13 +6084,13 @@ def _command_run(ids, **extra):
     return insert(runs).values(row | extra).returning(runs.c.id)
 
 
-def test_0243_takes_command_runs_of_at_most_240_minutes_and_going_back_deletes_them(hub_db):
-    move_to(hub_db, "0242")
+def test_0244_takes_command_runs_of_at_most_240_minutes_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0243")
     with live.connect(hub_db) as conn:
         ids = seed(conn)
-        with pytest.raises(errors.CheckViolation):  # no command run before 0243
+        with pytest.raises(errors.CheckViolation):  # no command run before 0244
             conn.execute(_command_run(ids))
-    move_to(hub_db, "0243")
+    move_to(hub_db, "0244")
     with live.connect(hub_db) as conn:
         first = one(conn, _command_run(ids, repos=[{"repo": "harness"}]))
         one(conn, _command_run(ids, attempt=2, parent_run_id=first, timeout_s=14400))
@@ -6092,16 +6104,16 @@ def test_0243_takes_command_runs_of_at_most_240_minutes_and_going_back_deletes_t
                 conn.execute(bad)
 
     # Going back deletes the command runs, the retry first; the rest stays.
-    move_to(hub_db, "0242", down=True)
-    assert query(hub_db, select(hub_tables.runs.c.id, hub_tables.runs.c.kind)) == [(author, "author")]
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0243") :]
-
-
-def test_0244_gives_cron_jobs_the_time_they_were_resumed(hub_db):
-    move_to(hub_db, "0243")
-    assert "resumed_at" not in columns(hub_db, "cron_jobs")
-    move_to(hub_db, "0244")
-    assert "resumed_at" in columns(hub_db, "cron_jobs")
     move_to(hub_db, "0243", down=True)
-    assert "resumed_at" not in columns(hub_db, "cron_jobs")
+    assert query(hub_db, select(hub_tables.runs.c.id, hub_tables.runs.c.kind)) == [(author, "author")]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0244") :]
+
+
+def test_0245_gives_cron_jobs_the_time_they_were_resumed(hub_db):
+    move_to(hub_db, "0244")
+    assert "resumed_at" not in columns(hub_db, "cron_jobs")
+    move_to(hub_db, "0245")
+    assert "resumed_at" in columns(hub_db, "cron_jobs")
+    move_to(hub_db, "0244", down=True)
+    assert "resumed_at" not in columns(hub_db, "cron_jobs")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0245") :]

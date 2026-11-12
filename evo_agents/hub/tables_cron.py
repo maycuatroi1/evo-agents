@@ -1,4 +1,4 @@
-"""The tables of a project's cron jobs (0242, plan hub-cron-jobs), which ``evo_agents.hub.tables`` adds to its metadata
+"""The tables of a project's cron jobs (0243, plan hub-cron-jobs), which ``evo_agents.hub.tables`` adds to its metadata
 and exposes as its own attributes (``tables.cron_jobs``, ``tables.cron_fires``): queries name them there.
 ``evo_agents.hub.cron_store`` reads and writes them; ``docs/hub.md``, section Cron jobs, describes the model.
 
@@ -7,7 +7,7 @@ and exposes as its own attributes (``tables.cron_jobs``, ``tables.cron_fires``):
   with the agent, and a prompt; ``plan``: a plan of the project; ``command``: a shell command line, the repo it runs
   in, NULL for an empty directory, and its time limit in minutes), its owner (who made it; runs are dispatched as
   them), its revision, who changed it last and when, its pause: when, by whom (NULL: the hub paused it) and why, and
-  when it was resumed last (0244; NULL: never), from which it fires and its breaker counts.
+  when it was resumed last (0245; NULL: never), from which it fires and its breaker counts.
 - cron_fires: each fire of a job, one per (job, scheduled minute) (``cron_fires_job_id_scheduled_for_key``): when it
   was due, whether someone pressed "run now" (``manual``, its ``actor_id``), its outcome (``started``, ``busy``,
   ``missed`` or ``refused``; NULL while the hub has not handled it yet), why, and the run it started.
@@ -122,7 +122,7 @@ def cron_tables(metadata: MetaData) -> tuple[Table, Table]:
 
 
 def cron_columns(runs: Table) -> None:
-    """Give ``runs`` the job whose fire queued it (0242)."""
+    """Give ``runs`` the job whose fire queued it (0243)."""
     runs.append_column(Column("cron_job_id", BigInteger))
     runs.append_constraint(
         ForeignKeyConstraint(["cron_job_id"], ["cron_jobs.id"], ondelete="SET NULL", name="runs_cron_job_id_fkey")

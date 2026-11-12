@@ -1,7 +1,7 @@
 """The cron jobs of a project and their fires, and the cron job of a run.
 
-Revision ID: 0242
-Revises: 0241
+Revision ID: 0243
+Revises: 0242
 Create Date: 2026-11-12
 
 The names below are copies of ``evo_agents.hub.tables_cron`` as of this revision, never imports, so a later change to
@@ -21,8 +21,8 @@ Going back drops the two tables and the column of runs.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0242"
-down_revision = "0241"
+revision = "0243"
+down_revision = "0242"
 branch_labels = None
 depends_on = None
 

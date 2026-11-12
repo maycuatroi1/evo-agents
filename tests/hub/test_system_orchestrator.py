@@ -52,10 +52,9 @@ def test_the_rules_actions_and_the_table_agree():
     assert set(triage_rules.RULE_TEXT) == set(triage_rules.ORCHESTRATOR_RULES)
     from importlib import import_module
 
-    migration = import_module("evo_agents.hub.migrations.versions.0241_ops_threads")
-    assert (
-        migration.RULES == triage_rules.ORCHESTRATOR_RULES and migration.OUTCOMES == triage_rules.ORCHESTRATOR_ACTIONS
-    )
+    outcomes = import_module("evo_agents.hub.migrations.versions.0241_ops_threads")
+    rules = import_module("evo_agents.hub.migrations.versions.0242_draft_threads")
+    assert rules.RULES == triage_rules.ORCHESTRATOR_RULES and outcomes.OUTCOMES == triage_rules.ORCHESTRATOR_ACTIONS
 
 
 def test_the_loop_rule_matches_the_same_work_three_times_by_text_or_goal():

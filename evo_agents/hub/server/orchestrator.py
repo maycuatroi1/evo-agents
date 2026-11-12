@@ -372,6 +372,22 @@ async def on_turn_failed(conn: AsyncConnection, run_id: int) -> Opened | None:
     return await _safely(conn, triage_rules.FAILED, make)
 
 
+async def on_draft(conn: AsyncConnection, run_id: int, lines: list[str], key: str) -> Opened | None:
+    """The thread of rule draft (``draft_pulls``) about the draft pull request of the branch of run ``run_id``, whose
+    agent an Orchestrator orchestrates, once for ``key``; None for an agent of no Orchestrator, or a key that has a
+    thread."""
+
+    async def make() -> Opened | None:
+        found = await system_traces.of_run(conn, run_id)
+        lead = subject_lead(found)
+        if found is None or lead is None:
+            return None
+        ask = Ask(found, lead, triage_rules.DRAFT, lines, key=key, evidence=await _evidence(conn, run_id))
+        return await open_thread(conn, ask)
+
+    return await _safely(conn, triage_rules.DRAFT, make)
+
+
 async def on_run(conn: AsyncConnection, found: RunStep, lines: list[str], *, stale: bool) -> Opened | None:
     """The thread of run ``found`` of ``triage.KINDS``, failed or ``stale``, of an agent an Orchestrator orchestrates,
     with ``lines`` (what the triage thread says of it) and its ``run_triage`` row, so the frame of ``triage_actions``
