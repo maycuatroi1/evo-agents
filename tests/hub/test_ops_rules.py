@@ -224,3 +224,20 @@ def test_a_runtime_whose_runs_authenticate_with_a_lease_counts_as_logged_in():
     for state in ("unauthorized", "missing", "unknown"):
         assert not healthy({"disk": disk, "logins": {"claude-code": state}}, "claude-code")
         assert not healthy({"disk": disk, "logins": {"claude-code": state}}, None)
+
+
+def test_a_drained_worker_writes_no_health_event_and_a_running_one_does(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "studio")
+    e = tables.hub_events
+
+    def said() -> int:
+        return sql(hub_db, select(func.count()).select_from(e).where(e.c.kind == hub_events.WORKER_HEALTH))[0][0]
+
+    health_beat(client, worker)
+    health_beat(client, worker, login="unauthorized")
+    before = said()
+    assert before >= 1, "a login that went out is said"
+    assert client.post(f"/v1/workers/{worker['id']}/drain", headers=hub["owner"]).status_code == 200
+    health_beat(client, worker, login="unknown")
+    health_beat(client, worker, free_gb=1.0, login="unauthorized")
+    assert said() == before, "its owner paused it: its flapping login is no alert"

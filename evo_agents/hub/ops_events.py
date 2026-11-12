@@ -151,9 +151,16 @@ def health_state(health: dict | None) -> tuple | None:
 async def worker_health(conn: AsyncConnection, worker_id: int, before: dict | None, after: dict | None) -> list[int]:
     """Write ``worker.health`` for each project worker ``worker_id`` serves when its health went from ``before`` to
     ``after`` (each a stored report, workers.health) and the state changed (``health_state``); the event ids. A
-    heartbeat that reports no health writes none."""
+    heartbeat that reports no health writes none, nor a worker drained or revoked: its owner already stopped it, and
+    its alerts would only repeat (the login of a paused machine flaps between states)."""
     state = health_state(after)
     if state is None or state == health_state(before):
+        return []
+    w = tables.workers
+    stopped = await conn.scalar(
+        select((w.c.drained_at.is_not(None)) | (w.c.revoked_at.is_not(None))).where(w.c.id == worker_id)
+    )
+    if stopped:
         return []
     assert after is not None
     disk = after.get("disk") or {}
