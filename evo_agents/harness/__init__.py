@@ -55,14 +55,18 @@ def _normalize(value):
     return value
 
 
+# libyaml's loader when PyYAML was built with it: it reads the same documents faster than the pure-Python one.
+_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
 def load_yaml(path: Path):
     with open(path, encoding="utf-8") as fh:
-        return _normalize(yaml.safe_load(fh))
+        return _normalize(yaml.load(fh, Loader=_LOADER))
 
 
 def parse_yaml(text: str):
     """``load_yaml`` for text already in hand."""
-    return _normalize(yaml.safe_load(text))
+    return _normalize(yaml.load(text, Loader=_LOADER))
 
 
 def find_manifest(start: Path | str | None = None) -> Path | None:
