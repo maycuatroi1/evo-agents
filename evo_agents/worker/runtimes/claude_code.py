@@ -97,8 +97,9 @@ here.
   ``evo_agents.hub.chat_runs``), a task run and a release run have the tools that ask the person at the terminal a
   question turned off
   (``disallowed_tools``, the CLI's ``--disallowedTools``: ``AskUserQuestion``): nobody at the worker's machine answers
-  it, and the agent asks in its last message instead. A plan run has Monitor turned off the same way (below). A chat run's prompt is delivered verbatim
-  (``verbatim_prompts``): an ``@name`` or ``@path`` the chat's people wrote never makes Claude Code read a file.
+  it, and the agent asks in its last message instead. A plan run has Monitor turned off the same way (below). A chat
+  run's prompt is delivered verbatim (``verbatim_prompts``): an ``@name`` or ``@path`` the chat's people wrote never
+  makes Claude Code read a file.
 - The agent compacts its context as it nears its auto-compact window: the run's environment
   (``evo_agents.worker.runner.agent``, so ``options.env`` and the terminal UI's) gets CLAUDE_CODE_AUTO_COMPACT_WINDOW
   from ``compact_window``, which keeps the daemon's own, else takes EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW
@@ -247,7 +248,8 @@ PLAN_WAIT_NOTE = (
     "the hub, a deploy): no Monitor, no loop that sleeps, no long sleep, no watch. Wait with `evo-agents worker wait` "
     "(a GitHub Actions run: --on github.workflow_run --contains repo=OWNER/NAME --contains run_id=ID) and end your "
     "turn: the run parks, holds no worker, and this session goes on when the wait wakes. A command you start in the "
-    "background on this machine needs no watch either: when it ends after your turn, you are told in a new turn."
+    "background on this machine needs no watch either: when it ends within 30 minutes of your turn's end, and "
+    "before you write .evo-run/result.json, you are told in a new turn."
 )
 # The tools a plan run's session is not offered (the CLI's ``--disallowedTools``): Monitor only waits.
 PLAN_DISALLOWED_TOOLS = ("Monitor",)
