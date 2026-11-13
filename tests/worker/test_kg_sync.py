@@ -380,6 +380,32 @@ def test_kg_sync_errors_are_cut_and_masked():
     assert len(shown) <= 500 and "ghp_" not in shown and shown.endswith("...")
 
 
+def test_kg_sync_skips_sibling_subharness_without_knowledge_or_with_broken_remote(stage, tmp_path):
+    """A sibling checkout with its own harness.yaml (sorted before the real harness, lacking knowledge.yaml or failing
+    fetch) must not stop write_view from finding the project's real harness checkout."""
+    sub = Upstream(tmp_path, "aaa-course", {"harness.yaml": "name: aaa-course\nrepos: []\n"})
+    sub_clone = sub.clone(tmp_path / "worker" / "ws" / "aaa-course")
+    stage.checkouts["aaa-course"] = sub_clone
+
+    # 1. Sibling sub-harness fetches cleanly, has harness.yaml, lacks knowledge.yaml
+    state = stage.look()
+    assert state.error is None, state.error
+    assert state.sources["app"].status == "ok"
+
+    # 2. Even when the real harness's local hint is absent and the sibling's remote is unreachable, fallback reaches the real harness
+    (stage.checkouts["harness"] / "harness.yaml").write_text("name: unrelated\n", encoding="utf-8")
+    (stage.checkouts["harness"] / "knowledge.yaml").write_text("project: unrelated\n", encoding="utf-8")
+    git(sub_clone, "remote", "set-url", "origin", str(sub.origin) + "-gone")
+    state = stage.look()
+    assert state.error is None, state.error
+    assert state.sources["app"].status == "ok"
+
+    # 3. When the real harness's own fetch fails and nothing resolves the project, GitProblem still surfaces
+    git(stage.checkouts["harness"], "remote", "set-url", "origin", str(stage.harness.origin) + "-gone")
+    broken = stage.look()
+    assert broken.error is not None and "git fetch failed" in broken.error
+
+
 # The daemon
 
 aiohttp = pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")

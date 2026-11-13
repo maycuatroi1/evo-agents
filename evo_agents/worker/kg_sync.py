@@ -168,16 +168,49 @@ class View:
     harness: Path
 
 
+def shown_if_present(repo: Path, ref: str, path: str) -> str | None:
+    """The text of ``path`` at ``ref``, or None when ``ref`` holds no file at ``path``."""
+    try:
+        git(repo, "cat-file", "-e", f"{ref}:{path}")
+    except GitProblem:
+        return None
+    return shown(repo, ref, path)
+
+
+def _local_matches(checkout: Path, project: str) -> bool:
+    """Whether the working tree's harness.yaml or knowledge file already names ``project`` (an ordering hint only)."""
+    try:
+        manifest = yaml.safe_load((checkout / "harness.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return False
+    if not isinstance(manifest, dict):
+        return False
+    hub = manifest.get("hub")
+    if isinstance(hub, dict) and hub.get("project") == project:
+        return True
+    kfile = checkout / str(manifest.get("knowledge_file") or "knowledge.yaml")
+    try:
+        knowledge = yaml.safe_load(kfile.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return manifest.get("name") == project
+    return isinstance(knowledge, dict) and knowledge.get("project") == project
+
+
 def _harness_text(checkout: Path, project: str) -> tuple[str, str, dict, dict] | None:
     """(knowledge.yaml's text, the ref read, harness.yaml, knowledge.yaml) of ``checkout`` at origin's default branch,
-    fetched first; None when its knowledge.yaml names another project."""
+    fetched first; None when origin's default branch has no harness/knowledge file or names another project."""
     branch = default_branch(checkout)
     fetch(checkout, branch)
     ref = f"origin/{branch}"
-    manifest = yaml.safe_load(shown(checkout, ref, "harness.yaml")) or {}
+    manifest_text = shown_if_present(checkout, ref, "harness.yaml")
+    if manifest_text is None:
+        return None
+    manifest = yaml.safe_load(manifest_text) or {}
     if not isinstance(manifest, dict):
         return None
-    knowledge_text = shown(checkout, ref, str(manifest.get("knowledge_file") or "knowledge.yaml"))
+    knowledge_text = shown_if_present(checkout, ref, str(manifest.get("knowledge_file") or "knowledge.yaml"))
+    if knowledge_text is None:
+        return None
     knowledge = yaml.safe_load(knowledge_text) or {}
     if not isinstance(knowledge, dict) or knowledge.get("project") != project:
         return None
@@ -208,12 +241,18 @@ def _write(view: Path, relative: str, text: str) -> None:
 def write_view(root: Path, project: str, checkouts: dict[str, Path], lock: Callable) -> View:
     """Write the project's harness as origin's default branch has it under ``kg_dir(root)/harness/<project>`` and load
     it (see the module's docstring, step 1). ``checkouts`` maps each repo of the project to the worker's checkout of
-    it. Raises ProjectError naming what is missing, GitProblem when git fails."""
-    for checkout in sorted(set(checkouts.values())):
-        if not (checkout / "harness.yaml").is_file():
+    it. Raises ProjectError naming what is missing, GitProblem when git fails and no checkout resolves the project."""
+    candidates = [c for c in sorted(set(checkouts.values())) if (c / "harness.yaml").is_file()]
+    candidates.sort(key=lambda c: (not _local_matches(c, project), str(c)))
+    first_git_error: GitProblem | None = None
+    for checkout in candidates:
+        try:
+            with lock(checkout):
+                found = _harness_text(checkout, project)
+        except GitProblem as exc:
+            if first_git_error is None:
+                first_git_error = exc
             continue
-        with lock(checkout):
-            found = _harness_text(checkout, project)
         if found is None:
             continue
         knowledge_text, ref, manifest, knowledge = found
@@ -226,6 +265,8 @@ def write_view(root: Path, project: str, checkouts: dict[str, Path], lock: Calla
             relative = str(Path(manifest["knowledge_file"]).parent / ontology)
             _write(view, relative, shown(checkout, ref, relative))
         return View(load_project_at(view, kg_dir(root) / "home"), checkouts, checkout)
+    if first_git_error is not None:
+        raise first_git_error
     raise ProjectError(
         f"no checkout of the harness of project {project} on this worker: a checkout of the project with "
         "harness.yaml at its root, whose knowledge.yaml names the project at origin's default branch"
