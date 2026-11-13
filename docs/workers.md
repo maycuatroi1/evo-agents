@@ -1250,7 +1250,9 @@ sleeps 5 seconds or more, and `gh run watch`, `gh pr checks --watch`, `watch`, `
 `evo-agents hub run watch`,
 in the foreground or the background, with words that name `evo-agents worker wait`; each refusal is a `system` event of
 the run (its `wait` body). Tests and builds on the machine still run in the background. The hook reads commands, so a
-poll kept in a script gets past it; the plan run's prompt and its system note say the same.
+poll kept in a script gets past it; the plan run's prompt and its system note say the same. Since the hook refuses
+every Monitor watch, the session is not offered Monitor at all (`--disallowedTools Monitor`), and the system note says
+that a command started in the background on the machine wakes the session in a new turn when it ends.
 
 The same hook refuses a broad test run (`evo_agents.worker.broad_tests`): a pytest command that names no test file or
 node (the whole suite, or the suite less what `--ignore` leaves out), a directory or a glob, more than 10 files, or a
