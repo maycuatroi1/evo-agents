@@ -12,6 +12,14 @@ over, not used by a run that has not ended), oldest end first and each one's unc
 ref first, until the drive is back over the reserve (``make_room``); the claims take no run while it stays below
 (``daemon_claims``), and the hub gives the worker none either (``Claimer.stops``), so a run waits or goes to another
 worker instead of failing at its checkout.
+
+Daemons of one machine whose homes lie side by side (``~/.evo/worker``, ``~/.evo/worker-<name>``) share a drive. When
+the worktrees of its own ended runs are gone and the drive is still below the reserve, ``make_room`` goes on in the
+sibling homes on the same drive (``_sibling_homes``): with each one's ``cleanup.lock`` taken without waiting, it removes
+the worktrees of their ended runs, oldest end first, by the same rules and keeping each one's uncommitted changes on its
+recovery ref and in that home's recovery.jsonl. A run that has not ended, a parked run, one a run went on from, and one
+that ended within ``SIBLING_GRACE`` (which its own daemon may still hold) stay. A daemon takes its own home's lock while
+it sweeps or makes room, so two never remove in one home at once.
 """
 
 from __future__ import annotations
@@ -19,12 +27,15 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import shutil
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.worker import gitops, health
+from evo_agents.worker.home import WorkerHome
 from evo_agents.worker.hubapi import HubProblem, Refused
 
 if TYPE_CHECKING:
@@ -38,6 +49,9 @@ CLEANUP_EVERY = 3600.0
 RESERVE_VARIABLE = "EVO_WORKER_DISK_RESERVE_GB"
 KEEP_WORKTREES = timedelta(days=7)  # the sweep's: the worktrees of a run whose work merged go at the next cleanup
 KEEP_PARKED = timedelta(days=30)  # the sweep's for a parked run, whose worktrees the run that resumes it takes over
+SIBLING_GRACE = timedelta(minutes=15)  # a sibling's run that ended since may still be held by its own daemon
+LOCK_NAME = "cleanup.lock"  # in a worker's home: held by whatever removes worktrees there
+LOCK_WAIT = 60.0  # seconds a daemon waits for its own home's lock, which a sibling's making of room may hold
 MAX_MERGED_ASKED = 200  # run ids in one POST /v1/worker/merged, as the hub takes them
 # the kinds of run whose record names a directory with a worktree of each repo; a run of one step has one worktree
 DIRECTORY_KINDS = (
@@ -89,6 +103,71 @@ def _goes_on_from(spec: dict) -> set:
     return {int(found) for found in ids if isinstance(found, int | str) and str(found).isdigit()}
 
 
+def _try_lock(root: Path) -> int | None:
+    """An open descriptor of ``root``'s ``cleanup.lock`` locked exclusively without waiting; None when another
+    holds it or it cannot be opened."""
+    import fcntl
+
+    try:
+        fd = os.open(root / LOCK_NAME, os.O_RDWR | os.O_CREAT, 0o600)
+    except OSError:
+        return None
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return None
+    return fd
+
+
+def _unlock(fd: int) -> None:
+    os.close(fd)  # closing drops the lock
+
+
+@contextlib.asynccontextmanager
+async def _home_lock(root: Path, wait: float = LOCK_WAIT) -> AsyncIterator[None]:
+    """``root``'s ``cleanup.lock`` held for the block, waited for up to ``wait`` seconds; the block runs without it
+    when it cannot be had by then (a sibling's making of room held it that long), as it did before the lock was."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + wait
+    fd = _try_lock(root)
+    while fd is None and loop.time() < deadline and (root / LOCK_NAME).exists():
+        await asyncio.sleep(0.2)
+        fd = _try_lock(root)
+    try:
+        yield
+    finally:
+        if fd is not None:
+            _unlock(fd)
+
+
+def _within(path: Path, directory: Path) -> bool:
+    try:
+        return path.resolve().is_relative_to(directory.resolve())
+    except OSError:
+        return False
+
+
+def _sibling_removable(record: dict, records: list[dict], worktrees: Path, now: datetime) -> bool:
+    """Whether the worktrees of ``record``'s run, in a sibling home whose runs are ``records`` and worktrees lie in
+    ``worktrees``, may go to make room: it ended more than ``SIBLING_GRACE`` ago, is not parked, no run went on from
+    it, each path its record names lies in ``worktrees`` and one of them is still there, and no run of that home that
+    has not ended uses one of them."""
+    if not record.get("finished_at") or record.get("resumed_by") or record.get("moved_to") or _parked(record):
+        return False
+    if now - _finished(record, now) < SIBLING_GRACE:
+        return False
+    mine = _paths(record)
+    if not mine or not all(_within(path, worktrees) for path in mine) or not any(p.exists() for p in mine):
+        return False
+    for other in records:
+        if other["id"] == record["id"] or other.get("finished_at"):
+            continue
+        if any(a == b or a in b.parents or b in a.parents for a in mine for b in _paths(other)):
+            return False
+    return True
+
+
 class Cleanup:
     """The worktrees and records of the runs of ``daemon`` that ended, and what removes them."""
 
@@ -129,28 +208,32 @@ class Cleanup:
     async def make_room(self) -> list[int]:
         """While the drive is short of room (``short_of_room``), remove the worktrees and records of the ended runs
         whose worktrees may go (``_removable``), the run that ended first first, each one's uncommitted changes kept on
-        its recovery ref first (``_recover``); the ids removed. A parked run, one a run went on from, and a directory a
-        run not ended uses stay, however short the drive."""
+        its recovery ref first (``_recover``); then, while the drive is still short, those of the sibling homes on the
+        same drive (``_make_room_in_siblings``); the ids removed. A parked run, one a run went on from, and a directory
+        a run not ended uses stay, however short the drive."""
         if not self.short_of_room():
             return []
         home = self.daemon.home
         removed: list[int] = []
         async with self.removing:
-            now = datetime.now(UTC)
-            records = await asyncio.to_thread(home.load_runs)
-            ended = [r for r in records if self._removable(r, records) and any(p.exists() for p in _paths(r))]
-            for record in sorted(ended, key=lambda found: _finished(found, now)):
-                if not self.short_of_room():
-                    break
-                run_id = record["id"]
-                found = self._still_ended(run_id)
-                if found is None or not await self._recover(found) or self._still_ended(run_id) is None:
-                    continue
-                await self.remove_worktree(found)
-                await asyncio.to_thread(home.remove_run, run_id)
-                removed.append(run_id)
-                where = found.get("dir") or found.get("worktree")
-                log.info("worktree removed to keep the disk reserve", extra={"run_id": run_id, "worktree": where})
+            async with _home_lock(home.root):
+                now = datetime.now(UTC)
+                records = await asyncio.to_thread(home.load_runs)
+                ended = [r for r in records if self._removable(r, records) and any(p.exists() for p in _paths(r))]
+                for record in sorted(ended, key=lambda found: _finished(found, now)):
+                    if not self.short_of_room():
+                        break
+                    run_id = record["id"]
+                    found = self._still_ended(run_id)
+                    if found is None or not await self._recover(found) or self._still_ended(run_id) is None:
+                        continue
+                    await self.remove_worktree(found)
+                    await asyncio.to_thread(home.remove_run, run_id)
+                    removed.append(run_id)
+                    where = found.get("dir") or found.get("worktree")
+                    log.info("worktree removed to keep the disk reserve", extra={"run_id": run_id, "worktree": where})
+            if self.short_of_room():
+                removed += await self._make_room_in_siblings()
         if removed or self.short_of_room():
             log.info(
                 "made room on the worktrees' drive",
@@ -158,11 +241,78 @@ class Cleanup:
             )
         return removed
 
+    def _sibling_homes(self) -> list[WorkerHome]:
+        """The other worker homes beside this daemon's (a directory named worker* in its parent with runs/ and
+        worktrees/) whose worktrees lie on the drive of this daemon's worktrees."""
+        own = self.daemon.home
+        try:
+            device = own.worktrees_dir.stat().st_dev
+            parent = own.root.resolve().parent
+            mine = own.root.resolve()
+            entries = sorted(parent.iterdir())
+        except OSError:
+            return []
+        found = []
+        for entry in entries:
+            with contextlib.suppress(OSError):
+                if not entry.name.startswith("worker") or not entry.is_dir() or entry.resolve() == mine:
+                    continue
+                sibling = WorkerHome(entry)
+                if not sibling.runs_dir.is_dir() or not sibling.worktrees_dir.is_dir():
+                    continue
+                if sibling.worktrees_dir.stat().st_dev == device:
+                    found.append(sibling)
+        return found
+
+    async def _make_room_in_siblings(self) -> list[int]:
+        """While the drive is still short of room, remove the worktrees and records of the ended runs of the sibling
+        homes (``_sibling_homes``) whose ``cleanup.lock`` it could take without waiting and whose worktrees may go
+        (``_sibling_removable``), the run that ended first first across them, each one's uncommitted changes kept on
+        its recovery ref and in that home's recovery.jsonl first; the ids removed."""
+        held: list[tuple[WorkerHome, int]] = []
+        removed: list[int] = []
+        try:
+            for sibling in self._sibling_homes():
+                fd = _try_lock(sibling.root)
+                if fd is None:
+                    log.info("a sibling worker home is being cleaned up: left alone", extra={"home": str(sibling.root)})
+                    continue
+                held.append((sibling, fd))
+            now = datetime.now(UTC)
+            candidates: list[tuple[datetime, WorkerHome, dict]] = []
+            for sibling, _fd in held:
+                records = await asyncio.to_thread(sibling.load_runs)
+                for record in records:
+                    if _sibling_removable(record, records, sibling.worktrees_dir, now):
+                        candidates.append((_finished(record, now), sibling, record))
+            for _end, sibling, record in sorted(candidates, key=lambda found: found[0]):
+                if not self.short_of_room():
+                    break
+                run_id = record["id"]
+                found = sibling.load_run(run_id)  # read again: its own daemon may have resumed or adopted it since
+                records = await asyncio.to_thread(sibling.load_runs)
+                if found is None or not _sibling_removable(found, records, sibling.worktrees_dir, now):
+                    continue
+                if not await self._recover(found, sibling):
+                    continue
+                await self.remove_worktree(found, sibling)
+                await asyncio.to_thread(sibling.remove_run, run_id)
+                removed.append(run_id)
+                where = found.get("dir") or found.get("worktree")
+                log.info(
+                    "worktree of a sibling worker removed to keep the disk reserve",
+                    extra={"run_id": run_id, "worktree": where, "home": str(sibling.root)},
+                )
+        finally:
+            for _sibling, fd in held:
+                _unlock(fd)
+        return removed
+
     async def sweep(self, now: datetime | None = None) -> list[int]:
         """Remove the worktrees and records of runs that ended more than 7 days ago (30 for a parked run, ``_old``), and
         those of ended runs whose work the hub says merged (``_merged_work``), each worktree's uncommitted changes
         kept first (``_recover``); their ids."""
-        async with self.removing:
+        async with self.removing, _home_lock(self.daemon.home.root):
             return await self._sweep(now or datetime.now(UTC))
 
     async def _sweep(self, now: datetime) -> list[int]:
@@ -246,11 +396,13 @@ class Cleanup:
                 return False
         return True
 
-    async def _recover(self, record: dict) -> bool:
+    async def _recover(self, record: dict, home: WorkerHome | None = None) -> bool:
         """Commit what each worktree of ``record``'s run has not committed to a ref of its checkout
         (``gitops.save_wip``, ``refs/evo-recovery/run-<id>/<folder>``) and add a line for it to the worker's recovery
         file (``WorkerHome.note_recovery``): the run, the repo, the branch, HEAD and the WIP commit. Whether every
-        worktree was kept or had nothing to keep; the run's worktrees stay when one could not be."""
+        worktree was kept or had nothing to keep; the run's worktrees stay when one could not be. ``home`` is the worker
+        home the run is of, this daemon's when None."""
+        home = home or self.daemon.home
         run_id = record["id"]
         items = record.get("repos") if record.get("kind") in DIRECTORY_KINDS else [record]
         for item in items or []:
@@ -270,7 +422,7 @@ class Cleanup:
                 )
                 return False
             if wip is not None:
-                self.daemon.home.note_recovery(
+                home.note_recovery(
                     {
                         "run": run_id,
                         "repo": item.get("repo"),
@@ -284,18 +436,20 @@ class Cleanup:
                 log.info("uncommitted changes kept", extra={"run_id": run_id, "ref": wip.ref, "wip": wip.wip})
         return True
 
-    async def remove_worktree(self, record: dict) -> None:
+    async def remove_worktree(self, record: dict, home: WorkerHome | None = None) -> None:
         """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
-        plan run whose worktrees a resumed run took over names none of them any more."""
+        plan run whose worktrees a resumed run took over names none of them any more. ``home`` is the worker home the
+        run is of, this daemon's when None."""
+        home = home or self.daemon.home
         if record.get("kind") in DIRECTORY_KINDS:
             for item in record.get("repos") or []:
                 if isinstance(item, dict):
-                    await self._remove_one(item)
-            await self._remove_one({"worktree": record.get("dir")})
+                    await self._remove_one(item, home)
+            await self._remove_one({"worktree": record.get("dir")}, home)
         else:
-            await self._remove_one(record)
+            await self._remove_one(record, home)
 
-    async def _remove_one(self, item: dict) -> None:
+    async def _remove_one(self, item: dict, home: WorkerHome) -> None:
         path = Path(item["worktree"]) if item.get("worktree") else None
         checkout = Path(item["checkout"]) if item.get("checkout") else None
         if checkout is not None and checkout.is_dir():
@@ -307,6 +461,6 @@ class Cleanup:
                 branch = item.get("local_branch")
                 if isinstance(branch, str) and branch.startswith("evo-run/"):
                     await gitops.delete_branch(checkout, branch)
-        worktrees = self.daemon.home.worktrees_dir.resolve()
+        worktrees = home.worktrees_dir.resolve()
         if path is not None and path.exists() and path.resolve().is_relative_to(worktrees):
             await asyncio.to_thread(shutil.rmtree, path, True)

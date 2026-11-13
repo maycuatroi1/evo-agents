@@ -135,3 +135,91 @@ def test_a_reserve_set_by_hand_that_is_not_a_size_falls_back_to_the_default_rese
     assert WorkerConfig.from_json({**data, "disk_reserve_gb": 50}).disk_reserve_gb == 50
     for wrong in (-1, "lots", True, None):
         assert WorkerConfig.from_json({**data, "disk_reserve_gb": wrong}).disk_reserve_gb == DISK_RESERVE_GB
+
+
+class _SharedDrive:
+    """A drive shared by worker homes, whose free gigabytes grow by ``per_worktree`` for each worktree removed."""
+
+    def __init__(self, homes: list[WorkerHome], free_gb: float, per_worktree: float):
+        self.homes, self.free, self.per = homes, free_gb, per_worktree
+        self.start = self._count()
+
+    def _count(self) -> int:
+        return sum(1 for home in self.homes for _ in home.worktrees_dir.iterdir())
+
+    def disk(self, _path) -> dict:
+        return {"free_gb": self.free + self.per * (self.start - self._count()), "free_pct": 5.0}
+
+
+def _sibling(tmp_path: Path, name: str = "worker-other") -> WorkerHome:
+    home = WorkerHome(tmp_path / name)
+    home.ensure()
+    return home
+
+
+def test_with_nothing_of_its_own_left_to_remove_the_daemon_makes_room_in_sibling_homes_oldest_first(
+    tmp_path, monkeypatch
+):
+    checkout, home, daemon = _stack(tmp_path)
+    sibling = _sibling(tmp_path)
+    _run(home, checkout, 1, timedelta(hours=6))
+    oldest = _run(sibling, checkout, 10, timedelta(hours=5))
+    (oldest / "README.md").write_text("never committed in a sibling\n", encoding="utf-8")
+    _run(sibling, checkout, 11, timedelta(hours=3))  # the drive is over its reserve before this one's turn
+    drive = _SharedDrive([home, sibling], 5.0, 10.0)
+    monkeypatch.setattr(daemon_cleanup.health, "disk", drive.disk)
+
+    assert asyncio.run(daemon.cleaner.make_room()) == [1, 10], "its own first, then the sibling's oldest"
+    assert not sibling.worktree_path("demo", 10).exists() and sibling.load_run(10) is None
+    assert sibling.worktree_path("demo", 11).is_dir() and sibling.load_run(11) is not None
+    ref = f"{daemon_cleanup.gitops.RECOVERY_REFS}run-10/{oldest.name}"
+    assert _git(checkout, "show", f"{ref}:README.md") == "never committed in a sibling"
+    assert '"run": 10' in sibling.recovery_path.read_text(encoding="utf-8"), "noted in the sibling's recovery file"
+    assert "evo-run/10" not in _git(checkout, "branch", "--list", "evo-run/*")
+
+
+def test_running_parked_adopted_and_just_ended_runs_of_a_sibling_home_stay_however_short_the_drive(
+    tmp_path, monkeypatch
+):
+    checkout, home, daemon = _stack(tmp_path)
+    sibling = _sibling(tmp_path)
+    _run(sibling, checkout, 10, timedelta(hours=5))
+    _run(sibling, checkout, 12, timedelta(days=2), state="parked")
+    _run(sibling, checkout, 13, None)  # running
+    _run(sibling, checkout, 14, timedelta(days=1), resumed_by=20)  # a run went on from it
+    _run(sibling, checkout, 15, timedelta(days=1), moved_to="/elsewhere")
+    _run(sibling, checkout, 16, timedelta(minutes=1))  # its own daemon may still hold it
+    shared = sibling.worktree_path("demo", 13) / "inner"
+    shared.mkdir()
+    sibling.save_run(
+        {"id": 17, "worktree": str(shared), "finished_at": (datetime.now(UTC) - timedelta(days=1)).isoformat()}
+    )
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    sibling.save_run({"id": 18, "worktree": str(other), "finished_at": "2020-01-01T00:00:00+00:00"})
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _SharedDrive([home, sibling], 5.0, 0.0).disk)
+
+    assert asyncio.run(daemon.cleaner.make_room()) == [10]
+    for run_id in (12, 13, 14, 15, 16):
+        assert sibling.worktree_path("demo", run_id).is_dir() and sibling.load_run(run_id) is not None, run_id
+    assert shared.is_dir() and sibling.load_run(17) is not None, "inside a running run's worktree"
+    assert other.is_dir() and sibling.load_run(18) is not None, "outside the sibling's worktrees"
+
+
+def test_a_sibling_home_whose_cleanup_lock_is_held_or_that_is_not_a_worker_home_is_left_alone(tmp_path, monkeypatch):
+    checkout, home, daemon = _stack(tmp_path)
+    locked = _sibling(tmp_path, "worker-busy")
+    stranger = _sibling(tmp_path, "notes")
+    _run(locked, checkout, 10, timedelta(hours=5))
+    _run(stranger, checkout, 11, timedelta(hours=5))
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _SharedDrive([home, locked, stranger], 5.0, 0.0).disk)
+
+    fd = daemon_cleanup._try_lock(locked.root)
+    assert fd is not None
+    try:
+        assert asyncio.run(daemon.cleaner.make_room()) == []
+    finally:
+        daemon_cleanup._unlock(fd)
+    assert locked.worktree_path("demo", 10).is_dir() and stranger.worktree_path("demo", 11).is_dir()
+    assert asyncio.run(daemon.cleaner.make_room()) == [10], "once the lock is free it goes"
+    assert stranger.worktree_path("demo", 11).is_dir()
