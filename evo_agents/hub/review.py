@@ -258,6 +258,7 @@ RUN_FAILURE_CAUSES: tuple[tuple[str, re.Pattern], ...] = (
     ("lease_lost", re.compile(r"stopped extending the lease", re.I)),
     ("missing_tool", re.compile(r"exited 127\b|command not found|not on (?:this worker's |the run's )?PATH", re.I)),
     ("verify_failed", re.compile(r"verify command", re.I)),
+    ("command_failed", re.compile(r"\bThe command (?:exited -?\d+|was killed by signal)", re.I)),
     ("worker_revoked", re.compile(r"\brevoked\b", re.I)),
     ("worker_stopped", re.compile(r"was stopped while|failed while running|daemon stopped", re.I)),
     ("origin", re.compile(r"lists no origin", re.I)),
