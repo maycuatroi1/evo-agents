@@ -1870,3 +1870,23 @@ def test_step_replay_fails_when_the_steps_verify_fails_on_the_new_head(machine):
     assert "the verify run again there failed" in str(asyncio.run(go()))
     assert git("rev-parse", "HEAD", cwd=path) == mine
     assert machine.origin_rev("alpha", "refs/heads/main") == tip
+
+
+def test_a_plan_runs_claude_session_is_not_offered_monitor_and_other_kinds_keep_their_list(tmp_path):
+    from evo_agents.hub import author
+    from evo_agents.worker.runtimes import claude_code
+    from tests.worker.test_budget import claude, command_of
+    from tests.worker.test_runtimes import _samples
+
+    planned = claude(tmp_path, _samples, kind="plan")
+    planned.options = planned.build_options("/opt/bin/claude")
+    assert planned.options.disallowed_tools == list(claude_code.PLAN_DISALLOWED_TOOLS) == ["Monitor"]
+    command = command_of(planned)
+    assert command[command.index("--disallowedTools") + 1] == "Monitor"
+    assert "background on this machine needs no watch" in claude_code.PLAN_WAIT_NOTE
+
+    for kind, kept in (("step", []), ("review", []), ("chat", list(author.QUESTION_TOOLS))):
+        other = claude(tmp_path, _samples, kind=kind)
+        other.options = other.build_options("/opt/bin/claude")
+        assert other.options.disallowed_tools == kept, kind
+        assert "Monitor" not in command_of(other), kind

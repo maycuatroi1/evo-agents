@@ -168,7 +168,7 @@ def test_claude_code_turns_off_the_question_tools_for_an_author_run_only(tmp_pat
     command = command_of(authored)
     assert command[command.index("--disallowedTools") + 1] == "AskUserQuestion"
 
-    for kind in ("step", "plan", "review"):
+    for kind in ("step", "review"):
         other = claude(tmp_path, _samples, kind=kind)
         other.options = other.build_options("/opt/bin/claude")
         assert other.options.disallowed_tools == [] and "--disallowedTools" not in command_of(other)

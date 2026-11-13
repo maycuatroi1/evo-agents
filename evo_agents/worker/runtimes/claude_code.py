@@ -97,7 +97,7 @@ here.
   ``evo_agents.hub.chat_runs``), a task run and a release run have the tools that ask the person at the terminal a
   question turned off
   (``disallowed_tools``, the CLI's ``--disallowedTools``: ``AskUserQuestion``): nobody at the worker's machine answers
-  it, and the agent asks in its last message instead. A chat run's prompt is delivered verbatim
+  it, and the agent asks in its last message instead. A plan run has Monitor turned off the same way (below). A chat run's prompt is delivered verbatim
   (``verbatim_prompts``): an ``@name`` or ``@path`` the chat's people wrote never makes Claude Code read a file.
 - The agent compacts its context as it nears its auto-compact window: the run's environment
   (``evo_agents.worker.runner.agent``, so ``options.env`` and the terminal UI's) gets CLAUDE_CODE_AUTO_COMPACT_WINDOW
@@ -127,7 +127,9 @@ here.
   and the Bash commands that wait for something elsewhere (a long sleep, a loop that sleeps, ``gh run watch``) and
   names ``evo-agents worker wait``, and PLAN_WAIT_NOTE after SYSTEM_NOTE: a wait in the session parks nothing, since
   the session stays open while a background command runs, up to the run's time cap (run #1537 held a slot that way
-  for hours).
+  for hours). The note also says a background command on this machine wakes the session in a new turn when it ends.
+  Since the hook refuses every Monitor watch, the session is not offered Monitor at all (PLAN_DISALLOWED_TOOLS in
+  ``--disallowedTools``); the hook stays for the Bash waits and for a CLI that ignores the list.
 
 Checked with Claude Code 2.1.289 and claude-agent-sdk 0.2.163 (``evo-agents worker selftest --runtime claude-code``);
 the background commands with Claude Code 2.1.291 and the same SDK (``evo-agents worker selftest --runtime claude-code
@@ -244,8 +246,11 @@ PLAN_WAIT_NOTE = (
     "in this session for something elsewhere (the CI of a commit or a tag, a package on an index, a build or a run on "
     "the hub, a deploy): no Monitor, no loop that sleeps, no long sleep, no watch. Wait with `evo-agents worker wait` "
     "(a GitHub Actions run: --on github.workflow_run --contains repo=OWNER/NAME --contains run_id=ID) and end your "
-    "turn: the run parks, holds no worker, and this session goes on when the wait wakes."
+    "turn: the run parks, holds no worker, and this session goes on when the wait wakes. A command you start in the "
+    "background on this machine needs no watch either: when it ends after your turn, you are told in a new turn."
 )
+# The tools a plan run's session is not offered (the CLI's ``--disallowedTools``): Monitor only waits.
+PLAN_DISALLOWED_TOOLS = ("Monitor",)
 # What the agent is told when its background commands ended and the CLI opened no turn for them.
 FOLLOW_UP = (
     "The command(s) you started in the background have ended:\n{ended}\nRead their output and go on with the task "
@@ -472,6 +477,8 @@ class ClaudeCodeAdapter(QueueAdapter):
         kind = self.context.run.get("kind")
         if kind in ("author", "chat", "task", "release", "question"):  # nobody at this machine answers a question tool
             disallowed = [*author.QUESTION_TOOLS, *disallowed]
+        if kind == "plan":  # the wait guard refuses every Monitor watch, so the session is not offered the tool
+            disallowed = [*disallowed, *PLAN_DISALLOWED_TOOLS]
         if disallowed:
             settings["disallowed_tools"] = disallowed
         # an @handle or @path in the words it is given never makes it read a file
