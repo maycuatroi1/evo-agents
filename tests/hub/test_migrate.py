@@ -358,7 +358,10 @@ def test_two_processes_migrating_at_once_both_exit_zero_and_apply_once(hub_db, w
             assert time.monotonic() < deadline, "the two migrate processes never queued on the lock"
             assert all(p.poll() is None for p in procs), "a migrate process exited before taking the lock"
             time.sleep(0.1)
-    outputs = [p.communicate(timeout=60) for p in procs]
+    # A hang guard, not a speed bound: the process that takes the lock first migrates the whole chain, which took
+    # over 60 s on a loaded release runner (v0.65.1).
+    finish_by = time.monotonic() + 200
+    outputs = [p.communicate(timeout=max(1.0, finish_by - time.monotonic())) for p in procs]
     assert [p.returncode for p in procs] == [0, 0], [err for _, err in outputs]
 
     logs = [pg.log_lines(err) for _, err in outputs]
