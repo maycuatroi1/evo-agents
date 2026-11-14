@@ -20,7 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import tables
 from evo_agents.hub.kg_graph_rows import CHANNEL, MAIN, read_graph
-from evo_agents.kg.snapshot import Snapshot
+from evo_agents.kg import settings as kg_settings
+from evo_agents.kg.snapshot import Snapshot, SnapshotView
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +32,16 @@ class Held:
 
     build_id: int | None
     snapshot: Snapshot
+
+    def view(
+        self,
+        reader: frozenset[str],
+        ceiling: tuple[int, int] | None = None,
+        tuning: kg_settings.Tuning = kg_settings.DEFAULT,
+    ) -> SnapshotView:
+        """The snapshot as ``reader`` reads it: a view of its own, so a caller that sets its reader or clearance
+        changes no other's, over the one snapshot every view shares."""
+        return self.snapshot.view(reader, ceiling, tuning)
 
 
 class SnapshotCoordinator:
@@ -51,6 +62,13 @@ class SnapshotCoordinator:
         if held is not None:
             return held
         return await self._load(project_id)
+
+    async def view(
+        self, project_id: int, reader: frozenset[str], ceiling: tuple[int, int] | None = None
+    ) -> SnapshotView | None:
+        """The project's snapshot as ``reader`` reads it (``Held.view``); None before its first build kept a graph."""
+        held = await self.get(project_id)
+        return None if held is None else held.view(reader, ceiling)
 
     def _load(self, project_id: int, fresh: bool = False) -> asyncio.Task:
         """The task loading the project's snapshot; ``fresh``: one that reads the tables after this call, queued

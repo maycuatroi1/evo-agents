@@ -142,3 +142,26 @@ def test_a_reader_below_the_label_of_the_docs_sees_nothing_of_them(hub, tmp_path
     snap = asyncio.run(held(hub.db, project_id(hub))).snapshot
     assert "guide" in found(snap, "kiwi", INTERNAL)
     assert found(snap, "kiwi", PUBLIC) == set()
+
+
+def test_each_reader_gets_a_view_of_its_own_over_the_one_snapshot(hub, tmp_path, caplog):
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."))
+    assert push(hub, laptop).ok
+    build(hub, caplog)
+
+    async def run():
+        engine = make_engine(hub.db)
+        try:
+            coordinator = kg_snapshots.SnapshotCoordinator(engine)
+            pid = project_id(hub)
+            return await coordinator.view(pid, frozenset()), await coordinator.view(pid, frozenset({"chat:1"}), (0, 0))
+        finally:
+            await engine.dispose()
+
+    first, second = asyncio.run(run())
+    assert first.snap is second.snap and first is not second
+    assert (first.reader, first.ceiling) == (frozenset(), None)
+    assert (second.reader, second.ceiling) == (frozenset({"chat:1"}), (0, 0))
+    first.reader = frozenset({"chat:2"})  # a session sets the reader of its own view
+    assert second.reader == frozenset({"chat:1"})
