@@ -242,24 +242,17 @@ class Snapshot:
     def from_store(cls, store, b: int) -> Snapshot:
         """The snapshot of build ``b`` of a store file: its live rows whatever their label, the rows of its full-text
         tables and its vectors. The full-text tables hold the latest build only, so ``b`` should be that build."""
-        db: sqlite3.Connection = store.db
-        nodes = db.execute(f"SELECT {NODE_COLUMNS} FROM nodes WHERE {LIVE}", {"b": b}).fetchall()
-        edges = db.execute(f"SELECT {EDGE_COLUMNS} FROM edges WHERE {LIVE}", {"b": b}).fetchall()
-        keyed = []
-        for table, aud, extra in (("node_fts", 0, ""), ("node_fts_aud", 1, ", f.aud")):
-            keyed += [
-                (key, tuple(row))
-                for key, *row in db.execute(
-                    f"SELECT r.node_id, f.node_id, f.kind, f.name, f.path, f.body{extra} FROM node_fts_rows r"
-                    f" JOIN {table} f ON f.rowid = r.fts_rowid WHERE r.aud = ?",
-                    (aud,),
-                )
-            ]
-        code = dict(db.execute("SELECT node_id, body FROM code_fts").fetchall())
-        text = snapshot_text.TextIndex.build(sorted(keyed), code, folded=True)
-        row = db.execute("SELECT content_hash FROM builds WHERE build_id = ?", (b,)).fetchone()
-        top = (store.top_label(b) or (0, 0), store.top_audience(b))
-        return cls.from_rows(row[0] if row else "", nodes, edges, text, _vectors_of(store), build=b, top=top)
+        rows = store_rows(store, b)
+        text = snapshot_text.TextIndex.build(list(rows.keyed), rows.code, folded=True)
+        return cls.from_rows(
+            rows.content_hash, list(rows.nodes), list(rows.edges), text, _vectors_of(store), build=b, top=rows.top
+        )
+
+    @classmethod
+    def from_stored(cls, rows: StoreRows, build: int = 0, vectors: snapshot_text.Vectors | None = None) -> Snapshot:
+        """The snapshot of rows a store gave (``store_rows``) and something kept, such as the hub's tables."""
+        text = snapshot_text.TextIndex.build(sorted(rows.keyed), rows.code, folded=True)
+        return cls.from_rows(rows.content_hash, list(rows.nodes), list(rows.edges), text, vectors, build, rows.top)
 
     def view(
         self,
@@ -272,6 +265,43 @@ class Snapshot:
 
     def rels(self) -> list[str]:
         return sorted({rel for rel, _ in self.partitions})
+
+
+@dataclass(frozen=True)
+class StoreRows:
+    """What a snapshot is made of, as a store file holds one build: its content hash, its live node and edge rows
+    (NODE_COLUMNS, EDGE_COLUMNS), its full-text rows keyed as ``node_fts_rows`` keeps them (folded), the folded text
+    of its code by file node id, and its top label and audience."""
+
+    content_hash: str
+    nodes: tuple[tuple, ...]
+    edges: tuple[tuple, ...]
+    keyed: tuple[tuple[str, tuple], ...]
+    code: dict[str, str]
+    top: tuple[tuple[int, int], frozenset[str]]
+
+
+def store_rows(store, b: int) -> StoreRows:
+    """The rows of build ``b`` of a store file (``StoreRows``); the full-text tables hold the latest build only."""
+    db: sqlite3.Connection = store.db
+    nodes = db.execute(f"SELECT {NODE_COLUMNS} FROM nodes WHERE {LIVE}", {"b": b}).fetchall()
+    edges = db.execute(f"SELECT {EDGE_COLUMNS} FROM edges WHERE {LIVE}", {"b": b}).fetchall()
+    keyed = []
+    for table, aud, extra in (("node_fts", 0, ""), ("node_fts_aud", 1, ", f.aud")):
+        keyed += [
+            (key, tuple(row))
+            for key, *row in db.execute(
+                f"SELECT r.node_id, f.node_id, f.kind, f.name, f.path, f.body{extra} FROM node_fts_rows r"
+                f" JOIN {table} f ON f.rowid = r.fts_rowid WHERE r.aud = ?",
+                (aud,),
+            )
+        ]
+    code = dict(db.execute("SELECT node_id, body FROM code_fts").fetchall())
+    row = db.execute("SELECT content_hash FROM builds WHERE build_id = ?", (b,)).fetchone()
+    top = (store.top_label(b) or (0, 0), store.top_audience(b))
+    return StoreRows(
+        row[0] if row else "", tuple(map(tuple, nodes)), tuple(map(tuple, edges)), tuple(sorted(keyed)), code, top
+    )
 
 
 def _vectors_of(store) -> snapshot_text.Vectors | None:
