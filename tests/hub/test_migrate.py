@@ -182,6 +182,8 @@ TABLES |= {"workflow_run_reads"}  # migration 0236
 TABLES |= {"plan_run_choices"}  # migration 0238
 TABLES |= {"ops_cursors", "ops_batches", "ops_items"}  # migration 0240
 TABLES |= {"cron_jobs", "cron_fires"}  # migration 0243
+TABLES |= {"kg_corpus_items", "kg_memo_entries", "kg_nodes", "kg_edges", "kg_text_rows", "kg_embeddings"}  # 0247
+TABLES |= {"kg_graph_heads", "kg_branches", "kg_branch_ops"}  # migration 0247
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -272,8 +274,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_forty_four_tables(hub_db):
-    assert len(TABLES) == 244  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_fifty_three_tables(hub_db):
+    assert len(TABLES) == 253  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -295,6 +297,7 @@ def test_a_fresh_database_gets_the_two_hundred_and_forty_four_tables(hub_db):
         ("credential_leases", "nonce"),
         ("credential_leases", "sealed_value"),
         ("credential_leases", "token_hash"),
+        ("kg_embeddings", "vector"),  # a float32 vector, as the store file holds it
         ("marketing_posts", "screenshot"),
         ("secrets", "nonce"),
         ("secrets", "sealed"),
@@ -6192,4 +6195,16 @@ def test_0247_gives_credential_shares_a_run_for_a_member_alone_and_going_back_re
     assert "run_id" not in columns(hub_db, "credential_shares")
     revoked = select(cs.c.id, cs.c.revoked_at.is_not(None)).order_by(cs.c.id)
     assert query(hub_db, revoked) == [(before, False), (for_run, True)], "one for a run would lend to every run"
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0247") :]
+
+
+def test_0247_adds_the_graph_tables_and_going_back_drops_them(hub_db):
+    graph = {"kg_corpus_items", "kg_memo_entries", "kg_nodes", "kg_edges", "kg_text_rows", "kg_embeddings"}
+    graph |= {"kg_graph_heads", "kg_branches", "kg_branch_ops"}
+    move_to(hub_db, "0246")
+    assert not graph & tables(hub_db)
+    move_to(hub_db, "0247")
+    assert graph <= tables(hub_db)
+    move_to(hub_db, "0246", down=True)
+    assert not graph & tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0247") :]
