@@ -210,6 +210,11 @@ def read_plan(path: Path) -> PlanFile:
         data = load_yaml(path)
     except (OSError, yaml.YAMLError) as exc:
         raise HubError(f"cannot read {path}: {exc}") from None
+    return _plan_file(path, data)
+
+
+def _plan_file(path: Path, data) -> PlanFile:
+    """The PlanFile of ``data``, the YAML read from ``path``; HubError when it is no mapping."""
     if not isinstance(data, dict):
         raise HubError(f"{path} does not hold a plan (a YAML mapping with an id)")
     area = path.parent.name if path.parent.name in AREAS and path.parent.parent.name == "plans" else None
@@ -310,8 +315,43 @@ def _intact_copy(path: Path, project: str) -> bool:
         found = read_plan(path)
     except HubError:
         return False
-    hub = found.hub or {}
+    return _intact(found, project)
+
+
+def _intact(found: PlanFile | None, project: str) -> bool:
+    """``_intact_copy`` for a plan file already read."""
+    hub = (found.hub if found is not None else None) or {}
     return hub.get("project") == project and hub.get("digest") == found.digest
+
+
+def _held(path: Path) -> tuple[bytes | None, PlanFile | None]:
+    """The bytes at ``path`` and the plan they hold, read once: (None, None) when no file can be read there, and a
+    plan of None when the bytes are not a plan file."""
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None, None
+    try:
+        return raw, _plan_file(path, parse_yaml(raw.decode("utf-8")))
+    except (UnicodeDecodeError, yaml.YAMLError, HubError):
+        return raw, None
+
+
+def _at_revision(raw: bytes, found: PlanFile, summary: dict, project: str) -> bool:
+    """Whether a copy, ``raw`` as read and ``found`` as parsed, is the hub's copy of the plan ``summary`` describes:
+    its first line is MIRROR_HEADER for that plan and revision, its hub key is (project, revision, digest) of the
+    summary, and its body's digest is that digest, so nobody edited it since the hub wrote it."""
+    first = raw.split(b"\n", 1)[0].rstrip(b"\r").decode("utf-8", "replace")
+    match = HEADER_LINE.fullmatch(first)
+    hub = found.hub or {}
+    return (
+        match is not None
+        and match["plan_id"] == summary.get("plan_id") == found.plan_id
+        and int(match["revision"]) == summary["revision"]
+        and (hub.get("project"), hub.get("revision"), hub.get("digest"))
+        == (project, summary["revision"], summary["digest"])
+        and found.digest == summary["digest"]
+    )
 
 
 def hub_copy(path: Path) -> bool:
@@ -342,12 +382,14 @@ def hub_copy(path: Path) -> bool:
         return False
 
 
-def _edited_note(relative: str, path: Path, project: str) -> str:
+def _edited_note(relative: str, path: Path, project: str, found: PlanFile | None = None, *, read: bool = True) -> str:
     """Why ``path`` was left as it is, with the two ways out, as ``harness validate`` words them."""
-    try:
-        hub = read_plan(path).hub
-    except HubError:
-        hub = None
+    if found is None and read:
+        try:
+            found = read_plan(path)
+        except HubError:
+            found = None
+    hub = found.hub if found is not None else None
     if hub is None or hub.get("project") != project:
         return (
             f"{relative} is not a copy of a plan of hub project {project}, so the export left it as it is. Push it "
@@ -368,6 +410,13 @@ def current_copy(path: Path, summary: dict, project: str) -> str | None:
         found = read_plan(path)
     except HubError:
         return None
+    return _current_text(found, summary, project)
+
+
+def _current_text(found: PlanFile | None, summary: dict, project: str) -> str | None:
+    """``current_copy`` for a plan file already read."""
+    if found is None:
+        return None
     hub = found.hub or {}
     same = (hub.get("project"), hub.get("revision"), hub.get("digest")) == (
         project,
@@ -384,7 +433,8 @@ def export(
 ) -> ExportResult:
     """Write the copy of every plan of the project that the caller sees into the harness at ``root``. With
     ``keep_edited``, a file at a copy's path that is not that copy as the hub wrote it stays as it is (status
-    ``kept``, and a note)."""
+    ``kept``, and a note), and a copy the hub wrote at the revision and digest it lists now is ``unchanged`` without
+    being written again, so a SessionStart export of plans nobody changed reads each file once and renders none."""
     root = harness_root(root)
     project = harness_project(root, project)
     result = ExportResult(root, project)
@@ -398,22 +448,25 @@ def export(
         check_summary(summary, hub)
         on_hub.add(plan_id)
         relative = path.relative_to(root).as_posix()
-        if keep_edited and os.path.lexists(path) and not _intact_copy(path, project):
-            result.notes.append(_edited_note(relative, path, project))
+        old, found = _held(path)
+        if keep_edited and os.path.lexists(path) and not _intact(found, project):
+            result.notes.append(_edited_note(relative, path, project, found, read=False))
             result.plans.append(
                 {"plan_id": plan_id, "area": area, "revision": summary["revision"], "path": relative, "status": "kept"}
             )
             continue
-        text = current_copy(path, summary, project)
-        if text is None:
-            plan = hub.call("GET", plans_path(project, plan_id))
-            if plan.get("plan_id") != plan_id or plan.get("body", {}).get("id") != plan_id:
-                raise HubError(f"the hub answered for plan {plan_id} with another plan; nothing more was written")
-            check_summary(plan, hub)
-            text = render(plan["body"], project, plan["revision"], plan["digest"])
-            summary = plan
-        old = path.read_bytes() if path.exists() else None
-        status = "unchanged" if old == text.encode("utf-8") else "written"
+        if keep_edited and old is not None and _at_revision(old, found, summary, project):
+            text = None  # the hub's copy as it wrote it: nothing to fetch, render or write
+        else:
+            text = _current_text(found, summary, project)
+            if text is None:
+                plan = hub.call("GET", plans_path(project, plan_id))
+                if plan.get("plan_id") != plan_id or plan.get("body", {}).get("id") != plan_id:
+                    raise HubError(f"the hub answered for plan {plan_id} with another plan; nothing more was written")
+                check_summary(plan, hub)
+                text = render(plan["body"], project, plan["revision"], plan["digest"])
+                summary = plan
+        status = "unchanged" if text is None or old == text.encode("utf-8") else "written"
         if status == "written":
             write_copy(path, text)
         other = mirror_path(root, "completed" if area == "active" else "active", plan_id)
