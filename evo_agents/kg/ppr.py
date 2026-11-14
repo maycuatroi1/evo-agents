@@ -179,6 +179,13 @@ class Reader:
         """(src, rel, dst, weight) of the live edges of ``ids``, either way, the reader sees and the walk follows."""
         from evo_agents.kg.store_filters import LIVE, SEEN, stored_audience
 
+        walk_edges = getattr(self.store, "walk_edges", None)
+        if walk_edges is not None:  # an in-RAM snapshot (evo_agents.kg.snapshot) reads them from its CSR arrays
+            return [
+                (e["src"], e["rel"], e["dst"], w)
+                for e in walk_edges(ids, self.b)
+                if e["src"] != e["dst"] and (w := weight(e, walk)) > 0 and self.seen(e)
+            ]
         columns = "src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"
         out = []
         for start in range(0, len(ids), 400):
