@@ -25,7 +25,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub import tables, wake
 from evo_agents.kg.snapshot import StoreRows
 
 CHANNEL = "kg_graph"
@@ -172,9 +172,10 @@ async def write_graph(
 
 
 async def notify(conn: AsyncConnection, project_id: int, branch_id: int, build_id: int | None) -> None:
-    """Tell the readers listening on ``CHANNEL`` that the graph of a branch has a new build; sent at commit."""
+    """Tell the readers listening on ``CHANNEL`` that the graph of a branch has a new build; sent at commit, on
+    Postgres or on the event bus (``evo_agents.hub.wake``)."""
     payload = json.dumps({"project_id": project_id, "branch_id": branch_id, "build_id": build_id})
-    await conn.execute(select(func.pg_notify(CHANNEL, payload)))
+    await wake.notify(conn, CHANNEL, payload)
 
 
 async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MAIN) -> StoreRows | None:
