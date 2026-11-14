@@ -21869,6 +21869,11 @@ export interface components {
              * @description the gigabytes the daemon keeps free there (disk_reserve_gb of its config): under it the hub gives the worker no run; null from a daemon that says none, for which the hub's own reserve of 20 holds
              */
             reserve_gb?: number | null;
+            /**
+             * Headroom Gb
+             * @description the gigabytes over the reserve its cleanup frees once the drive fell under it (disk_headroom_gb of its config): the hub counts its disk ok again only over the reserve and this; null from a daemon that says none, for which the larger of 5 and a quarter of the reserve holds
+             */
+            headroom_gb?: number | null;
         };
         /** DismissBody */
         DismissBody: {
@@ -49186,7 +49191,7 @@ export interface components {
             free_slots: number | null;
             /**
              * Health
-             * @description what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct, reserve_gb}, logins: {<runtime>: ok, leased, unauthorized, missing or unknown}}; null when it said nothing of it, as an older daemon. Under its reserve (20 GB when it says none) the worker is given no run
+             * @description what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct, reserve_gb, headroom_gb, band}, logins: {<runtime>: ok, leased, unauthorized, missing or unknown}}; null when it said nothing of it, as an older daemon. band is low under its reserve (20 GB when it says none), ok again only over the reserve and its headroom, and the band it had in between; a worker whose band is low is given no run
              */
             health?: {
                 [key: string]: unknown;

@@ -137,6 +137,34 @@ def test_a_reserve_set_by_hand_that_is_not_a_size_falls_back_to_the_default_rese
         assert WorkerConfig.from_json({**data, "disk_reserve_gb": wrong}).disk_reserve_gb == DISK_RESERVE_GB
 
 
+def test_below_its_reserve_the_daemon_makes_room_up_to_the_reserve_and_its_headroom_not_to_the_reserve_alone(
+    tmp_path, monkeypatch
+):
+    checkout, home, daemon = _stack(tmp_path)
+    for run_id, hours in ((1, 5), (2, 4), (3, 3)):
+        _run(home, checkout, run_id, timedelta(hours=hours))
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _Drive(home, 21.0, 5.0).disk)
+    assert daemon.cleaner.headroom_gb == 5.0, "the larger of 5 GB and a quarter of a 20 GB reserve"
+    assert asyncio.run(daemon.cleaner.make_room()) == [], "over the reserve, under its headroom: nothing goes"
+
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _Drive(home, 15.0, 5.0).disk)
+    assert asyncio.run(daemon.cleaner.make_room()) == [1, 2], "15 to 20 is the reserve alone; it goes on to 25"
+    assert home.worktree_path("demo", 3).is_dir()
+
+    daemon.config.disk_reserve_gb = 40.0
+    assert daemon.cleaner.headroom_gb == 10.0, "a quarter of a 40 GB reserve"
+    daemon.config.disk_headroom_gb = 0.0
+    assert daemon.cleaner.headroom_gb == 0.0, "the config's headroom wins"
+
+
+def test_a_headroom_set_by_hand_that_is_not_a_size_falls_back_to_the_default_headroom():
+    data = {"url": "https://hub.example.org", "worker_id": 1, "name": "mac", "projects": ["demo"]}
+    assert WorkerConfig.from_json(data).disk_headroom_gb is None
+    assert WorkerConfig.from_json({**data, "disk_headroom_gb": 8}).disk_headroom_gb == 8
+    for wrong in (-1, "lots", True):
+        assert WorkerConfig.from_json({**data, "disk_headroom_gb": wrong}).disk_headroom_gb is None
+
+
 class _SharedDrive:
     """A drive shared by worker homes, whose free gigabytes grow by ``per_worktree`` for each worktree removed."""
 

@@ -52,7 +52,7 @@ def test_a_heartbeats_health_is_kept_shown_and_written_to_each_served_project_on
     sql(hub_db, insert(tables.worker_projects).values(worker_id=worker["id"], project_id=second))
 
     beat(client, worker, health=HEALTHY)
-    assert shown(client, hub["owner"], worker) == HEALTHY
+    assert shown(client, hub["owner"], worker) == {**HEALTHY, "disk": {**HEALTHY["disk"], "band": "ok"}}
     payload = {"v": 1, "worker_id": worker["id"], "disk": "ok", "disk_free_pct": 41.0, "logins": HEALTHY["logins"]}
     assert sorted(events(hub_db), key=lambda row: row[0]) == sorted([(PROJECT, payload), (SECOND, payload)])
 
@@ -100,4 +100,29 @@ def test_a_worker_under_its_disk_reserve_is_given_no_run_which_waits_or_goes_to_
 
     later = dispatched(client, hub["owner"], [4])[0]
     beat(client, low, health={"disk": {"free_gb": 60.0, "free_pct": 20.0, "reserve_gb": 50}, "logins": {}})
+    assert claim(client, low) is None, "over the reserve, under its headroom of 12.5: still low"
+    beat(client, low, health={"disk": {"free_gb": 63.0, "free_pct": 21.0, "reserve_gb": 50}, "logins": {}})
     assert claim(client, low)["id"] == later["id"], "once its daemon made room it takes runs again"
+
+
+def test_free_disk_that_hovers_at_the_reserve_keeps_its_band_and_writes_no_event(
+    client,  # noqa: F811
+    hub,  # noqa: F811
+    hub_db,
+):
+    worker = add_worker(client, hub["owner"], "mac-mini")
+
+    def disk(free: float, **more) -> list[str]:
+        health = {"disk": {"free_gb": free, "free_pct": 10.0, "reserve_gb": 20, **more}, "logins": {}}
+        beat(client, worker, health=health)
+        return [row["disk"] for _, row in events(hub_db)]
+
+    assert disk(30.0) == ["ok"]
+    assert disk(21.0) == ["ok"], "over the reserve, under its headroom: ok holds"
+    assert disk(19.9) == ["ok", "low"]
+    for free in (20.0, 21.07, 19.5, 20.5, 24.9):
+        assert disk(free) == ["ok", "low"], f"{free} GB hovers at the line: low holds"
+    assert shown(client, hub["owner"], worker)["disk"]["band"] == "low"
+    assert disk(25.0) == ["ok", "low", "ok"], "ok again over the reserve and the headroom of 5"
+    assert disk(19.0) == ["ok", "low", "ok", "low"]
+    assert disk(22.0, headroom_gb=2) == ["ok", "low", "ok", "low", "ok"], "the headroom the daemon says wins"

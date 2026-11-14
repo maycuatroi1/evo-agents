@@ -57,6 +57,10 @@ REVOKED_EXIT_VARIABLE = "EVO_WORKER_REVOKED_EXIT"
 # with this status (EX_TEMPFAIL of sysexits.h): neither 0 nor EXIT_REVOKED, so launchd and systemd start the new one.
 EXIT_UPDATED = 75
 DISK_RESERVE_GB = 20.0  # WorkerConfig.disk_reserve_gb by default, the hub's own reserve (ops_events.DISK_LOW_GB)
+# the headroom over the reserve the cleanup makes room up to when WorkerConfig.disk_headroom_gb says none: the larger
+# of these gigabytes and this share of the reserve (``disk_headroom``), as the hub's band (ops_events.disk_headroom)
+DISK_HEADROOM_GB = 5.0
+DISK_HEADROOM_SHARE = 0.25
 
 
 class WorkerStateError(Exception):
@@ -91,6 +95,9 @@ class WorkerConfig:
     # the gigabytes the drive of worktrees/ keeps free: below it the daemon removes the worktrees of ended runs no
     # parked or running run needs, and claims no run while it stays below (``daemon_cleanup.Cleanup.make_room``)
     disk_reserve_gb: float = DISK_RESERVE_GB
+    # the gigabytes over the reserve the cleanup frees once the drive fell below it, so free disk does not hover at the
+    # reserve; None: ``disk_headroom`` of the reserve
+    disk_headroom_gb: float | None = None
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -108,7 +115,16 @@ class WorkerConfig:
         reserve = config.disk_reserve_gb
         if isinstance(reserve, bool) or not isinstance(reserve, int | float) or reserve < 0:
             config.disk_reserve_gb = DISK_RESERVE_GB  # a value set by hand that is not a size: the default holds
+        headroom = config.disk_headroom_gb
+        if isinstance(headroom, bool) or not isinstance(headroom, int | float | None) or (headroom or 0) < 0:
+            config.disk_headroom_gb = None
         return config
+
+
+def disk_headroom(reserve_gb: float) -> float:
+    """The gigabytes over a reserve of ``reserve_gb`` the cleanup makes room up to by default: the larger of
+    ``DISK_HEADROOM_GB`` and ``DISK_HEADROOM_SHARE`` of the reserve."""
+    return max(DISK_HEADROOM_GB, DISK_HEADROOM_SHARE * reserve_gb)
 
 
 def dir_bytes(path: Path) -> int:

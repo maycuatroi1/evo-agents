@@ -13,7 +13,8 @@ rules a later step passes in) goes no further; an event that tells of nothing to
 parked for an answer, whose ``decision.opened`` is the item, a worker whose health came back ok, and one whose only
 fault is the login of a runtime its runs do not use or that the hub leases them an account of: ``idle_logins``) goes
 nowhere. Any other becomes an item of the open batch of its cause key (``cause_key``: kind, cause, and the worker or
-the plan, as ``inbox.fold_same_cause`` folds failed runs), which the first item opens and which closes
+the plan, as ``inbox.fold_same_cause`` folds failed runs, or the machine for a worker's low disk alone, which the
+workers of one machine share), which the first item opens and which closes
 ``debounce_minutes`` after it opened, or at once when it holds ``max_items`` pending items. An item tier 0 handled
 before its batch closed leaves it (``settle``); a batch that closes with no pending item left is ``empty`` and opens
 no run, one with some is ``ready`` for the step that opens the Orchestrator's run. Nothing here calls a model.
@@ -142,8 +143,19 @@ async def cause_of(conn: AsyncConnection, event: hub_events.HubEvent, project_id
             wrong = [cause for cause in wrong if not (cause.startswith("login:") and cause.split(":")[1] in idle)]
         if not wrong:
             return None
-        return Cause(kind, ",".join(wrong), f"worker:{worker_id}", worker_id=worker_id)
+        subject = await _host(conn, worker_id) if wrong == ["disk_low"] else None
+        return Cause(kind, ",".join(wrong), subject or f"worker:{worker_id}", worker_id=worker_id)
     return None
+
+
+async def _host(conn: AsyncConnection, worker_id) -> str | None:
+    """``host:<hostname>``, the subject of a worker's ``disk_low``: the workers of one machine share its drive, so their
+    low disk is one batch, not one per worker; None for a worker whose machine name the hub does not know."""
+    if not isinstance(worker_id, int):
+        return None
+    w = tables.workers
+    hostname = await conn.scalar(select(w.c.hostname).where(w.c.id == worker_id))
+    return f"host:{hostname}" if hostname else None
 
 
 async def ops_run(conn: AsyncConnection, run_id) -> bool:

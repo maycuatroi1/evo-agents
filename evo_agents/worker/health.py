@@ -133,12 +133,17 @@ def save_leased(root: Path, leased: Mapping[str, bool]) -> None:
     (Path(root) / LEASED_FILE).write_text(json.dumps(dict(sorted(leased.items()))))
 
 
-def report(worktrees: Path, found_logins: dict[str, str], reserve_gb: float | None = None) -> dict:
+def report(
+    worktrees: Path, found_logins: dict[str, str], reserve_gb: float | None = None, headroom_gb: float | None = None
+) -> dict:
     """The heartbeat's ``health``: the free disk of ``worktrees``' drive, with the gigabytes the daemon keeps free
-    there (``reserve_gb``, under which the hub gives it no run), and the logins last found."""
+    there (``reserve_gb``, under which the hub gives it no run) and those over it its cleanup frees (``headroom_gb``,
+    over which the hub counts its disk ok again), and the logins last found."""
     found = disk(worktrees)
     if found is not None and reserve_gb is not None:
         found["reserve_gb"] = round(float(reserve_gb), 2)
+    if found is not None and headroom_gb is not None:
+        found["headroom_gb"] = round(float(headroom_gb), 2)
     return {"disk": found, "logins": dict(found_logins)}
 
 

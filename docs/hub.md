@@ -740,7 +740,8 @@ hub-steward): `enabled` (false), `debounce_minutes` (5, from 0 to 1440) and `max
 with no `ops` reads as ops off and is stored as it is. With ops on, the hub reads the project's operations events
 (`run.ended`, `decision.opened`, `curator.paused`, `worker.health`) after a cursor of its own, and puts each that no
 rule of tier 0 handled in the open batch of its cause key (kind, cause, then the worker for a cause of the
-environment, else the plan); a batch closes `debounce_minutes` after it opened or once it holds `max_items`, and one
+environment, else the plan; a worker's `disk_low` alone keys by its machine, `host:<hostname>`, since the workers of
+one machine share its drive); a batch closes `debounce_minutes` after it opened or once it holds `max_items`, and one
 whose items tier 0 all handled closes empty, with no run. `evo-agents hub system ops show|pause|resume|batches SLUG
 --project P` reads the ops of a system and its batches; pausing (admin) holds closed batches, and the queue still
 gathers.
@@ -1132,8 +1133,10 @@ transaction that made what it tells of: `run.ended` when a run of the project co
 a run asks a person a decision (`decision_id`, `category`, `run_id`, `asked_of`; a run that only waits, and a quiet
 credential request, write none), `curator.paused` when the circuit breaker pauses the night shift (`reason`,
 `cause_class`, `schedule_ids`, `run_ids`, `reverts`), and `worker.health` when the health a worker's heartbeat reports
-changes state (`worker_id`, `disk` low or ok against the reserve its daemon says, 20 GB free when it says none,
-`disk_free_pct`, `logins`), once for each project the worker serves. A login `leased` (the worker's runs of that
+changes state (`worker_id`, `disk` low under the reserve its daemon says, 20 GB free when it says none, and ok again
+only over the reserve and its headroom, the `headroom_gb` it says or else the larger of 5 GB and a quarter of the
+reserve, keeping the band it had in between, so free disk that hovers at the reserve writes nothing (`disk_band`, the
+band kept in the stored report as `disk.band`); `disk_free_pct`, `logins`), once for each project the worker serves. A login `leased` (the worker's runs of that
 runtime authenticate with the hub's lease) is no item of the ops queue, and a worker with it counts as logged in when
 tier 0 hands work again. Nor is any other login of a runtime no run of the project on that worker depends on
 (`ops_queue.idle_logins`): one the worker does not offer (codex taken off a machine with no login of it), and one the

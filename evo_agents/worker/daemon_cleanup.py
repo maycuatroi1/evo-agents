@@ -9,7 +9,8 @@ stay 30 days, for the run that resumes it. Only the evo-run branch of a run is d
 The drive of the worktrees keeps ``WorkerConfig.disk_reserve_gb`` free (plan hub-steward, criterion a4). Below it, the
 cleanup removes at once the worktrees of ended runs the merged ones may go of (``_removable``: not parked, not taken
 over, not used by a run that has not ended), oldest end first and each one's uncommitted changes kept on its recovery
-ref first, until the drive is back over the reserve (``make_room``); the claims take no run while it stays below
+ref first, until the drive is back over the reserve and its headroom (``WorkerConfig.disk_headroom_gb``,
+``home.disk_headroom`` of the reserve by default), so the free disk does not hover at the reserve (``make_room``); the claims take no run while it stays below
 (``daemon_claims``), and the hub gives the worker none either (``Claimer.stops``), so a run waits or goes to another
 worker instead of failing at its checkout.
 
@@ -35,7 +36,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.worker import gitops, health
-from evo_agents.worker.home import WorkerHome
+from evo_agents.worker.home import WorkerHome, disk_headroom
 from evo_agents.worker.hubapi import HubProblem, Refused
 
 if TYPE_CHECKING:
@@ -201,16 +202,30 @@ class Cleanup:
             found = float("nan")
         return found if found >= 0 else float(self.daemon.config.disk_reserve_gb)
 
+    @property
+    def headroom_gb(self) -> float:
+        """The gigabytes over ``reserve_gb`` ``make_room`` frees once the drive fell below the reserve:
+        ``WorkerConfig.disk_headroom_gb``, else ``home.disk_headroom`` of the reserve."""
+        headroom = self.daemon.config.disk_headroom_gb
+        return float(headroom) if headroom is not None else disk_headroom(self.reserve_gb)
+
+    def under_target(self) -> bool:
+        """Whether the drive of the worktrees has less free than ``reserve_gb`` and ``headroom_gb``, the free disk
+        ``make_room`` goes on up to; not when it cannot be read."""
+        free = self.free_gb()
+        return free is not None and free < self.reserve_gb + self.headroom_gb
+
     def short_of_room(self) -> bool:
         """Whether the drive of the worktrees has less free than ``reserve_gb``; not when it cannot be read."""
         free = self.free_gb()
         return free is not None and free < self.reserve_gb
 
     async def make_room(self) -> list[int]:
-        """While the drive is short of room (``short_of_room``), remove the worktrees and records of the ended runs
-        whose worktrees may go (``_removable``), the run that ended first first, each one's uncommitted changes kept on
-        its recovery ref first (``_recover``); then, while the drive is still short, those of the sibling homes on the
-        same drive (``_make_room_in_siblings``); the ids removed. A parked run, one a run went on from, and a directory
+        """Once the drive is short of room (``short_of_room``), and while it has less free than the reserve and its
+        headroom (``under_target``), remove the worktrees and records of the ended runs whose worktrees may go
+        (``_removable``), the run that ended first first, each one's uncommitted changes kept on its recovery ref first
+        (``_recover``); then, while still under, those of the sibling homes on the same drive
+        (``_make_room_in_siblings``); the ids removed. A parked run, one a run went on from, and a directory
         a run not ended uses stay, however short the drive."""
         if not self.short_of_room():
             return []
@@ -223,7 +238,7 @@ class Cleanup:
                     records = await asyncio.to_thread(home.load_runs)
                     ended = [r for r in records if self._removable(r, records) and any(p.exists() for p in _paths(r))]
                     for record in sorted(ended, key=lambda found: _finished(found, now)):
-                        if not self.short_of_room():
+                        if not self.under_target():
                             break
                         run_id = record["id"]
                         found = self._still_ended(run_id)
@@ -242,12 +257,17 @@ class Cleanup:
                         "own worker home cleanup lock is held: skipping own-home eviction",
                         extra={"home": str(home.root)},
                     )
-            if self.short_of_room():
+            if self.under_target():
                 removed += await self._make_room_in_siblings()
         if removed or self.short_of_room():
             log.info(
                 "made room on the worktrees' drive",
-                extra={"removed": removed, "free_gb": self.free_gb(), "reserve_gb": self.reserve_gb},
+                extra={
+                    "removed": removed,
+                    "free_gb": self.free_gb(),
+                    "reserve_gb": self.reserve_gb,
+                    "headroom_gb": self.headroom_gb,
+                },
             )
         return removed
 
@@ -275,10 +295,11 @@ class Cleanup:
         return found
 
     async def _make_room_in_siblings(self) -> list[int]:
-        """While the drive is still short of room, remove the worktrees and records of the ended runs of the sibling
-        homes (``_sibling_homes``) whose ``cleanup.lock`` it could take without waiting and whose worktrees may go
-        (``_sibling_removable``), the run that ended first first across them, each one's uncommitted changes kept on
-        its recovery ref and in that home's recovery.jsonl first; the ids removed."""
+        """While the drive is still under the reserve and its headroom (``under_target``), remove the worktrees and
+        records of the ended runs of the sibling homes (``_sibling_homes``) whose ``cleanup.lock`` it could take
+        without waiting and whose worktrees may go (``_sibling_removable``), the run that ended first first across
+        them, each one's uncommitted changes kept on its recovery ref and in that home's recovery.jsonl first; the ids
+        removed."""
         held: list[tuple[WorkerHome, int]] = []
         removed: list[int] = []
         try:
@@ -296,7 +317,7 @@ class Cleanup:
                     if _sibling_removable(record, records, sibling.worktrees_dir, now):
                         candidates.append((_finished(record, now), sibling, record))
             for _end, sibling, record in sorted(candidates, key=lambda found: found[0]):
-                if not self.short_of_room():
+                if not self.under_target():
                     break
                 run_id = record["id"]
                 found = sibling.load_run(run_id)  # read again: its own daemon may have resumed or adopted it since
