@@ -223,3 +223,20 @@ def test_a_sibling_home_whose_cleanup_lock_is_held_or_that_is_not_a_worker_home_
     assert locked.worktree_path("demo", 10).is_dir() and stranger.worktree_path("demo", 11).is_dir()
     assert asyncio.run(daemon.cleaner.make_room()) == [10], "once the lock is free it goes"
     assert stranger.worktree_path("demo", 11).is_dir()
+
+
+def test_own_home_cleanup_skips_when_cleanup_lock_stays_held_past_wait(tmp_path, monkeypatch):
+    checkout, home, daemon = _stack(tmp_path)
+    _run(home, checkout, 1, timedelta(days=8))
+    monkeypatch.setattr(daemon_cleanup, "LOCK_WAIT", 0.02)
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _SharedDrive([home], 5.0, 10.0).disk)
+
+    fd = daemon_cleanup._try_lock(home.root)
+    assert fd is not None
+    try:
+        assert asyncio.run(daemon.cleaner.sweep()) == []
+        assert asyncio.run(daemon.cleaner.make_room()) == []
+        assert home.worktree_path("demo", 1).is_dir() and home.load_run(1) is not None
+    finally:
+        daemon_cleanup._unlock(fd)
+    assert asyncio.run(daemon.cleaner.make_room()) == [1]

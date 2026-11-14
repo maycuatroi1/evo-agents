@@ -125,17 +125,18 @@ def _unlock(fd: int) -> None:
 
 
 @contextlib.asynccontextmanager
-async def _home_lock(root: Path, wait: float = LOCK_WAIT) -> AsyncIterator[None]:
-    """``root``'s ``cleanup.lock`` held for the block, waited for up to ``wait`` seconds; the block runs without it
-    when it cannot be had by then (a sibling's making of room held it that long), as it did before the lock was."""
+async def _home_lock(root: Path, wait: float | None = None) -> AsyncIterator[bool]:
+    """``root``'s ``cleanup.lock`` held for the block, waited for up to ``wait`` seconds; yields True when acquired and
+    False when another process still holds it past ``wait``."""
+    budget = LOCK_WAIT if wait is None else wait
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + wait
+    deadline = loop.time() + budget
     fd = _try_lock(root)
     while fd is None and loop.time() < deadline and (root / LOCK_NAME).exists():
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(min(0.2, max(0.01, budget / 2)))
         fd = _try_lock(root)
     try:
-        yield
+        yield fd is not None
     finally:
         if fd is not None:
             _unlock(fd)
@@ -216,22 +217,31 @@ class Cleanup:
         home = self.daemon.home
         removed: list[int] = []
         async with self.removing:
-            async with _home_lock(home.root):
-                now = datetime.now(UTC)
-                records = await asyncio.to_thread(home.load_runs)
-                ended = [r for r in records if self._removable(r, records) and any(p.exists() for p in _paths(r))]
-                for record in sorted(ended, key=lambda found: _finished(found, now)):
-                    if not self.short_of_room():
-                        break
-                    run_id = record["id"]
-                    found = self._still_ended(run_id)
-                    if found is None or not await self._recover(found) or self._still_ended(run_id) is None:
-                        continue
-                    await self.remove_worktree(found)
-                    await asyncio.to_thread(home.remove_run, run_id)
-                    removed.append(run_id)
-                    where = found.get("dir") or found.get("worktree")
-                    log.info("worktree removed to keep the disk reserve", extra={"run_id": run_id, "worktree": where})
+            async with _home_lock(home.root) as locked:
+                if locked:
+                    now = datetime.now(UTC)
+                    records = await asyncio.to_thread(home.load_runs)
+                    ended = [r for r in records if self._removable(r, records) and any(p.exists() for p in _paths(r))]
+                    for record in sorted(ended, key=lambda found: _finished(found, now)):
+                        if not self.short_of_room():
+                            break
+                        run_id = record["id"]
+                        found = self._still_ended(run_id)
+                        if found is None or not await self._recover(found) or self._still_ended(run_id) is None:
+                            continue
+                        await self.remove_worktree(found)
+                        await asyncio.to_thread(home.remove_run, run_id)
+                        removed.append(run_id)
+                        where = found.get("dir") or found.get("worktree")
+                        log.info(
+                            "worktree removed to keep the disk reserve",
+                            extra={"run_id": run_id, "worktree": where},
+                        )
+                else:
+                    log.info(
+                        "own worker home cleanup lock is held: skipping own-home eviction",
+                        extra={"home": str(home.root)},
+                    )
             if self.short_of_room():
                 removed += await self._make_room_in_siblings()
         if removed or self.short_of_room():
@@ -312,7 +322,13 @@ class Cleanup:
         """Remove the worktrees and records of runs that ended more than 7 days ago (30 for a parked run, ``_old``), and
         those of ended runs whose work the hub says merged (``_merged_work``), each worktree's uncommitted changes
         kept first (``_recover``); their ids."""
-        async with self.removing, _home_lock(self.daemon.home.root):
+        async with self.removing, _home_lock(self.daemon.home.root) as locked:
+            if not locked:
+                log.info(
+                    "own worker home cleanup lock is held: skipping sweep",
+                    extra={"home": str(self.daemon.home.root)},
+                )
+                return []
             return await self._sweep(now or datetime.now(UTC))
 
     async def _sweep(self, now: datetime) -> list[int]:
