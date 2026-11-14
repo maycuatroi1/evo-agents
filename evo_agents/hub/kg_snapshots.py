@@ -51,6 +51,7 @@ class SnapshotCoordinator:
         self._held: dict[int, Held] = {}
         self._loading: dict[int, asyncio.Task] = {}
         self._tasks: set[asyncio.Task] = set()
+        self._asked: dict[int, int] = {}  # project: the newest build ``current`` loaded again for
         if listener is not None:
             listener.on(CHANNEL, self.notified)
 
@@ -69,6 +70,18 @@ class SnapshotCoordinator:
         """The project's snapshot as ``reader`` reads it (``Held.view``); None before its first build kept a graph."""
         held = await self.get(project_id)
         return None if held is None else held.view(reader, ceiling)
+
+    async def current(self, project_id: int, build_id: int) -> Held | None:
+        """The project's snapshot, None before its first build kept a graph. One older than build ``build_id``, the
+        newest the caller found, is still given, and a load starts, once per build, unless one runs: a caller that
+        missed the notification, or reads without a listener, catches up without waiting for it."""
+        held = await self.get(project_id)
+        if held is not None and held.build_id != build_id and self._asked.get(project_id) != build_id:
+            self._asked[project_id] = build_id
+            task = self._load(project_id)
+            self._tasks.add(task)
+            task.add_done_callback(self._done)
+        return held
 
     def _load(self, project_id: int, fresh: bool = False) -> asyncio.Task:
         """The task loading the project's snapshot; ``fresh``: one that reads the tables after this call, queued

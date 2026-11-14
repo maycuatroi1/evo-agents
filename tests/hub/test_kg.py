@@ -405,8 +405,7 @@ def test_a_pushed_run_is_built_by_the_worker_and_answered_by_kg_tools(hub, tmp_p
     status = tool_ok(hub, "kg_status")["structuredContent"]
     assert status["graph"]["nodes"] == build["nodes"] and status["graph"]["edges"] == build["edges"]
     assert status["hub_build"]["build_id"] == build["id"] and status["hub_build"]["latest"]
-    cached = sorted(p.name for p in (hub.api_dir / "kg" / "graphs" / PROJECT).iterdir())
-    assert cached == [f"{build['artifact_sha256']}.sqlite"]
+    assert not (hub.api_dir / "kg" / "graphs" / PROJECT).exists()  # the tools read the snapshot of the tables
 
 
 def test_pushing_the_same_run_twice_ingests_it_once(hub, tmp_path):
@@ -828,14 +827,21 @@ def test_an_artifact_that_does_not_match_its_sha256_is_never_opened(hub, tmp_pat
     good = hub.s3.get(blob_key(build["artifact_sha256"]))
     hub.s3.put(blob_key(build["artifact_sha256"]), bytes(reversed(good)))  # same size, other bytes
 
-    refused = call_tool(hub, "kg_search", {"query": "guide"})
-    assert refused.status_code == 502
-    assert "does not have the SHA-256 the build recorded" in refused.json()["message"]
     graphs = hub.api_dir / "kg" / "graphs" / PROJECT
-    assert not graphs.exists() or list(graphs.iterdir()) == []  # neither the file nor a part of it stays
+    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]  # the snapshot answers
+    assert not graphs.exists()  # and the artifact is not fetched
 
-    hub.s3.put(blob_key(build["artifact_sha256"]), good)
-    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
+    hub.client.app.state.kg_snapshots, snapshots = None, hub.client.app.state.kg_snapshots  # a read of the file
+    try:
+        refused = call_tool(hub, "kg_search", {"query": "guide"})
+        assert refused.status_code == 502
+        assert "does not have the SHA-256 the build recorded" in refused.json()["message"]
+        assert not graphs.exists() or list(graphs.iterdir()) == []  # neither the file nor a part of it stays
+
+        hub.s3.put(blob_key(build["artifact_sha256"]), good)
+        assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
+    finally:
+        hub.client.app.state.kg_snapshots = snapshots
 
 
 def test_a_graph_of_an_older_store_schema_is_rebuilt_rather_than_served_broken(hub, tmp_path, monkeypatch):
@@ -848,7 +854,9 @@ def test_a_graph_of_an_older_store_schema_is_rebuilt_rather_than_served_broken(h
 
     # The hub is upgraded to a store schema the artifact was not written with.
     monkeypatch.setattr(kg_store, "SCHEMA_VERSION", str(int(kg_store.SCHEMA_VERSION) + 1))
-    refused = call_tool(hub, "kg_search", {"query": "guide"})
+    # the tools read the snapshot of the tables, which no artifact's schema bounds; the web's pages read the file
+    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
+    refused = hub.client.get(f"/v1/kg/{PROJECT}/nodes", params={"q": "guide"}, headers=hub.alice)
     assert refused.status_code == 503, refused.text
     assert f"(build {old['id']}) was written with store schema" in refused.json()["message"]
     page = hub.client.get(f"/v1/kg/{PROJECT}/nodes", params={"q": "guide"}, headers=hub.alice)
@@ -864,7 +872,7 @@ def test_a_graph_of_an_older_store_schema_is_rebuilt_rather_than_served_broken(h
     assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
 
 
-def test_kg_tools_answer_from_the_cached_graph_when_the_blob_store_is_down(hub, tmp_path):
+def test_kg_tools_answer_from_the_loaded_snapshot_when_the_blob_store_is_down(hub, tmp_path):
     laptop = Machine(tmp_path, "laptop")
     laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it."))
     assert push(hub, laptop).ok
@@ -902,10 +910,15 @@ def test_kg_tools_answer_from_the_cached_graph_when_the_blob_store_is_down(hub, 
         "finished_at": status["structuredContent"]["hub_build"]["finished_at"],
         "latest": False,
     }
-    assert "the blob store did not answer" in status["content"][0]["text"]
+    assert "is newer, but its graph is not loaded yet" in status["content"][0]["text"]
 
-    shutil.rmtree(hub.api_dir / "kg" / "graphs")  # nothing cached and the store down: 503, not a guess
-    unavailable = call_tool(hub, "kg_search", {"query": "guide"})
+    assert not (hub.api_dir / "kg" / "graphs").exists()
+    # read from the file: none cached and the store down, 503, not a guess
+    hub.client.app.state.kg_snapshots, snapshots = None, hub.client.app.state.kg_snapshots
+    try:
+        unavailable = call_tool(hub, "kg_search", {"query": "guide"})
+    finally:
+        hub.client.app.state.kg_snapshots = snapshots
     assert unavailable.status_code == 503 and "no graph of project alpha is cached" in unavailable.json()["message"]
 
 
