@@ -660,6 +660,39 @@ class Store(Ranking, ClusterTables):
         ).fetchone()
         return row[0] if row else None
 
+    # -- what locate and plain search read of the file's live rows, whatever the reader --------------------------------
+
+    def file_ids(self) -> list[str]:
+        """The ids of the live File nodes."""
+        return [r[0] for r in self.db.execute("SELECT node_id FROM nodes WHERE kind = 'File' AND tx_to IS NULL")]
+
+    def nodes_between(self, low: str, high: str) -> list[tuple[str, dict]]:
+        """(id, props) of the live nodes whose id is at least ``low`` and below ``high``, by id."""
+        rows = self.db.execute(
+            "SELECT node_id, props FROM nodes WHERE node_id >= ? AND node_id < ? AND tx_to IS NULL ORDER BY node_id",
+            (low, high),
+        )
+        out = []
+        for node_id, props in rows:
+            with contextlib.suppress(ValueError):
+                out.append((node_id, json.loads(props or "{}")))
+        return out
+
+    def changed_by(self, file_id: str, limit: int) -> list[str]:
+        """At most ``limit`` commits with a live ``changes`` edge to ``file_id``."""
+        sql = "SELECT src FROM edges WHERE dst = ? AND rel = 'changes' AND tx_to IS NULL LIMIT ?"
+        return [r[0] for r in self.db.execute(sql, (file_id, limit))]
+
+    def changes_of(self, commits) -> list[tuple[str, str]]:
+        """(commit, file) of the live ``changes`` edges from ``commits``."""
+        commits, out = list(commits), []
+        for start in range(0, len(commits), 400):
+            chunk = commits[start : start + 400]
+            marks = ", ".join("?" for _ in chunk)
+            sql = f"SELECT src, dst FROM edges WHERE src IN ({marks}) AND rel = 'changes' AND tx_to IS NULL"
+            out += self.db.execute(sql, chunk).fetchall()
+        return out
+
     def derivations(self, elem_id: str, b: int) -> list[dict]:
         rows = self.db.execute(
             f"SELECT units, needs FROM derivations WHERE elem_id = :e AND {LIVE} ORDER BY deriv_id",

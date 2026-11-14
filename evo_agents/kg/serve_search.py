@@ -198,11 +198,7 @@ class SearchTools(SessionText):
             from evo_agents.kg import filebm25
 
             clone, commit = self.plain_files
-            files = {
-                i.split(":file:", 1)[1]: i
-                for (i,) in store.db.execute("SELECT node_id FROM nodes WHERE kind = 'File' AND tx_to IS NULL")
-                if ":file:" in i
-            }
+            files = {i.split(":file:", 1)[1]: i for i in store.file_ids() if ":file:" in i}
             ids = [files[p] for p in filebm25.rank_files(clone, commit, set(files), query, limit * 4)]
         else:
             ids = store.plain_search(query, limit * 4, kinds)
