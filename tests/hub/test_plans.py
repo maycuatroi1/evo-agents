@@ -441,8 +441,19 @@ def test_export_for_the_hook_keeps_a_hand_edited_copy(tmp_path, renders):
     edited = root / "plans/active/b.yaml"
     edited.write_text(edited.read_text(encoding="utf-8").replace("do part 1", "do part one"), encoding="utf-8")
     held = edited.read_bytes()
+    reads = []
+    real_read_bytes = Path.read_bytes
+    def tracked_read_bytes(self):
+        reads.append(self.name)
+        return real_read_bytes(self)
     renders.clear()
-    result = export(hub, root, keep_edited=True)
+    monkeypatch_ctx = pytest.MonkeyPatch()
+    monkeypatch_ctx.setattr(Path, "read_bytes", tracked_read_bytes)
+    try:
+        result = export(hub, root, keep_edited=True)
+    finally:
+        monkeypatch_ctx.undo()
+    assert reads.count("b.yaml") == 1, f"kept file read {reads.count('b.yaml')} times"
     assert {p["plan_id"]: p["status"] for p in result.plans} == {"a": "unchanged", "b": "kept"}
     assert renders == [] and edited.read_bytes() == held
     assert [note.split(" was ")[0] for note in result.notes if "(digest mismatch)" in note] == ["plans/active/b.yaml"]

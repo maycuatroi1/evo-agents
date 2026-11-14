@@ -382,12 +382,14 @@ def hub_copy(path: Path) -> bool:
         return False
 
 
-def _edited_note(relative: str, path: Path, project: str) -> str:
+def _edited_note(relative: str, path: Path, project: str, found: PlanFile | None = None, *, read: bool = True) -> str:
     """Why ``path`` was left as it is, with the two ways out, as ``harness validate`` words them."""
-    try:
-        hub = read_plan(path).hub
-    except HubError:
-        hub = None
+    if found is None and read:
+        try:
+            found = read_plan(path)
+        except HubError:
+            found = None
+    hub = found.hub if found is not None else None
     if hub is None or hub.get("project") != project:
         return (
             f"{relative} is not a copy of a plan of hub project {project}, so the export left it as it is. Push it "
@@ -448,7 +450,7 @@ def export(
         relative = path.relative_to(root).as_posix()
         old, found = _held(path)
         if keep_edited and os.path.lexists(path) and not _intact(found, project):
-            result.notes.append(_edited_note(relative, path, project))
+            result.notes.append(_edited_note(relative, path, project, found, read=False))
             result.plans.append(
                 {"plan_id": plan_id, "area": area, "revision": summary["revision"], "path": relative, "status": "kept"}
             )
