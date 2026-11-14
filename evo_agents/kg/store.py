@@ -660,6 +660,29 @@ class Store(Ranking, ClusterTables):
         ).fetchone()
         return row[0] if row else None
 
+    def walk_edges(self, ids: list[str], b: int):
+        """The live edges the walk of ``evo_agents.kg.ppr`` reads for ``ids``, out of or into one of them, the
+        reader's audience within, whatever the ceiling (``ppr.Reader.edges``)."""
+        columns = "src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"
+        for start in range(0, len(ids), 400):
+            chunk = ids[start : start + 400]
+            marks = ", ".join(f":n{i}" for i in range(len(chunk)))
+            params = {"b": b, **{f"n{i}": n for i, n in enumerate(chunk)}}
+            for side in ("src", "dst"):
+                rows = self.db.execute(
+                    f"SELECT {columns} FROM edges WHERE {side} IN ({marks}) AND {LIVE} AND {SEEN}", params
+                )
+                for src, rel, dst, props, status, conf, lvl, loc, integrity, aud in rows:
+                    yield {
+                        "src": src,
+                        "rel": rel,
+                        "dst": dst,
+                        "props": json.loads(props or "{}"),
+                        "status": status,
+                        "conf": conf,
+                        "label": (lvl, loc, integrity, stored_audience(aud)),
+                    }
+
     # -- what locate and plain search read of the file's live rows, whatever the reader --------------------------------
 
     def file_ids(self) -> list[str]:
