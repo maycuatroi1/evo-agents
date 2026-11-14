@@ -62,10 +62,11 @@ from sqlalchemy import case, exists, func, insert, literal, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import kg_coverage, kg_health_eval, kg_labels, kg_review, tables
+from evo_agents.hub import kg_coverage, kg_health_eval, kg_labels, kg_review, kg_snapshots, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.kg_build import kg_root
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, HubSession, open_graph
+from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, HubSession, open_graph, reading
+from evo_agents.hub.kg_snapshots import Held
 from evo_agents.hub.server import hub_settings, kg_eval_sets, pulls
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -225,6 +226,15 @@ def audience_digest(audience: frozenset[str]) -> str:
     return hashlib.sha256("\n".join(sorted(audience)).encode()).hexdigest()
 
 
+def _snapshotted(loaded: Held | None, graphs, ceiling):
+    """A view of ``loaded`` for ``kg_graph.reading`` as ``ceiling``'s audience reads it, with the one of ``graphs`` it
+    was made of; None without it or when it is of none of them (the graph file is read then)."""
+    graph = next((g for g in graphs if loaded is not None and g.build_id == loaded.build_id), None)
+    if loaded is None or graph is None:
+        return None
+    return loaded.view(ceiling.audience if ceiling is not None else frozenset()), graph
+
+
 def _evaluate(
     cache: GraphCache,
     blobs,
@@ -236,57 +246,52 @@ def _evaluate(
     previous,
     found_set=None,
     audience: frozenset[str] = frozenset(),
+    loaded: Held | None = None,
 ):
     """The eval of a measure (see the module), ``found_set`` the project's latest question set and its digest, if any,
-    read with ``audience``, the owner's (``kg_audience.agent_audience``), as the agents' kg_search reads the graph.
+    read with ``audience``, the owner's (``kg_audience.agent_audience``), as the agents' kg_search reads the graph:
+    from ``loaded``, the snapshot of the hub's tables, when it is of one of ``graphs``, else from the graph file.
     Blocking: run it in a thread."""
     ceiling = access.rules.ceiling(access.max_level, sink, audience)
     heard = audience_digest(audience)
-    path, graph = cache.acquire(blobs, project, graphs)
-    try:
-        store = open_graph(path, project, graph)
-        try:
-            b = store.latest_ready()
-            if b is None:
-                return {"why": f"build {graph.build_id} holds no ready graph"}
-            commits = kg_health_eval.GraphCommits(store, b)
-            question_set, set_digest = found_set if found_set else (None, None)
-            holdout = kg_health_eval.holdout_questions(question_set, project)
-            held = {q.id for q in question_set.questions} if question_set else set()
-            steps, skipped, available, sources = kg_health_eval.plan_questions(project, plans, commits, held)
-            questions = holdout + steps
-            digest = kg_health_eval.questions_digest(questions)
-            if (
-                isinstance(previous, dict)
-                and previous.get("content_hash") == graph.content_hash
-                and previous.get("digest") == digest
-                and previous.get("sink") == sink
-                and previous.get("audience") == heard
-                and previous.get("methods") is not None
-                and (previous.get("holdout") is not None or not holdout)
-            ):
-                return {**previous, "build_id": graph.build_id}
-            session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
-            about = None
-            if question_set is not None:
-                about = {"name": question_set.name, "version": question_set.version, "digest": set_digest}
-                about["holdout"] = len(holdout)
-            scored = kg_health_eval.score(
-                questions,
-                skipped,
-                available,
-                session,
-                plan_steps=len(steps),
-                sources=sources,
-                question_set=about,
-                sink=sink,
-                holdout=[q.id for q in holdout],
-            )
-            return {**scored, "audience": heard, "build_id": graph.build_id, "content_hash": graph.content_hash}
-        finally:
-            store.close()
-    finally:
-        cache.release(path)
+    with reading(cache, blobs, project, graphs, _snapshotted(loaded, graphs, ceiling)) as (store, graph):
+        b = store.latest_ready()
+        if b is None:
+            return {"why": f"build {graph.build_id} holds no ready graph"}
+        commits = kg_health_eval.GraphCommits(store, b)
+        question_set, set_digest = found_set if found_set else (None, None)
+        holdout = kg_health_eval.holdout_questions(question_set, project)
+        held = {q.id for q in question_set.questions} if question_set else set()
+        steps, skipped, available, sources = kg_health_eval.plan_questions(project, plans, commits, held)
+        questions = holdout + steps
+        digest = kg_health_eval.questions_digest(questions)
+        if (
+            isinstance(previous, dict)
+            and previous.get("content_hash") == graph.content_hash
+            and previous.get("digest") == digest
+            and previous.get("sink") == sink
+            and previous.get("audience") == heard
+            and previous.get("methods") is not None
+            and (previous.get("holdout") is not None or not holdout)
+        ):
+            return {**previous, "build_id": graph.build_id}
+        session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
+        about = None
+        if question_set is not None:
+            about = {"name": question_set.name, "version": question_set.version, "digest": set_digest}
+            about["holdout"] = len(holdout)
+        scored = kg_health_eval.score(
+            questions,
+            skipped,
+            available,
+            session,
+            plan_steps=len(steps),
+            sources=sources,
+            question_set=about,
+            sink=sink,
+            holdout=[q.id for q in holdout],
+        )
+        return {**scored, "audience": heard, "build_id": graph.build_id, "content_hash": graph.content_hash}
 
 
 async def _plans(conn: AsyncConnection, access: ProjectAccess) -> list[tuple[str, dict]]:
@@ -344,8 +349,20 @@ async def measure_eval(engine: AsyncEngine, row, blobs, data_dir: Path | None, g
         found_set = await kg_eval_sets.latest_set(conn, row.project_id)
     cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
     try:
+        loaded = await kg_snapshots.load(engine, row.project_id)
         return await asyncio.to_thread(
-            _evaluate, cache, blobs, row.project, access, sink, graphs, plans, previous, found_set, audience=audience
+            _evaluate,
+            cache,
+            blobs,
+            row.project,
+            access,
+            sink,
+            graphs,
+            plans,
+            previous,
+            found_set,
+            audience=audience,
+            loaded=loaded,
         )
     except (GraphUnavailable, ArtifactMismatch) as exc:
         return {"why": str(exc)}
