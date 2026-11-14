@@ -171,6 +171,46 @@ def test_a_snapshot_of_the_tables_reads_as_the_store_of_the_build_file(hub, tmp_
         store.close()
 
 
+def test_a_snapshot_of_the_tables_searches_and_counts_as_the_store_of_the_build_file(hub, tmp_path, caplog):
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it, see guide."))
+    assert push(hub, laptop).ok
+    build(hub, caplog)
+    view = Snapshot.from_stored(read_back(hub.db, project_id(hub))).view()
+    store = Store.open_file(hub.worker_dir / "kg" / "home" / "alpha" / "graph.sqlite", immutable=True)
+    try:
+        store.reader = frozenset()
+        b = store.latest_ready()
+        nodes = sorted(store.alive_ids("nodes", b))
+        for query in ("guide", "install app", "works"):
+            assert view.search(query, b) == store.search(query, b)
+            assert view.search_scored(query, b) == store.search_scored(query, b)
+            assert view.plain_search(query, 10) == store.plain_search(query, 10)
+            assert view.plain_search(query, 10, ["Document"]) == store.plain_search(query, 10, ["Document"])
+        assert view.search("guide", b) and view.plain_search("guide", 10)
+        assert view.code_files(["guide"]) == store.code_files(["guide"])
+        assert [view.code_lines(n, ["guide"]) for n in nodes] == [store.code_lines(n, ["guide"]) for n in nodes]
+        assert view.asked_nodes(nodes) == store.asked_nodes(nodes) == set()
+        assert view.asked_clearance is None and store.asked_clearance is None
+        assert [view.alias_of(n, b) for n in nodes] == [store.alias_of(n, b) for n in nodes]
+        assert view.alias_of("docs:doc:nowhere", b) is None
+        assert view.degrees(nodes, b, (9, 9)) == store.degrees(nodes, b, (9, 9))
+        assert view.degrees(nodes, b, (0, 0)) == store.degrees(nodes, b, (0, 0))
+        assert sorted(view.kind_counts(b)) == sorted(store.kind_counts(b))
+        assert sorted(view.shape_counts(b)) == sorted(store.shape_counts(b))
+        assert view.shape_counts(b)
+        assert view.build_row(b)["coverage"] == store.build_row(b)["coverage"]
+        assert sorted(view.file_ids()) == sorted(store.file_ids())
+        low, high = nodes[0], nodes[len(nodes) // 2]
+        assert view.nodes_between(low, high) == store.nodes_between(low, high)
+        for n in nodes:
+            assert view.changed_by(n, 20) == store.changed_by(n, 20)
+        assert sorted(view.changes_of(nodes)) == sorted(store.changes_of(nodes))
+    finally:
+        store.close()
+        view.close()
+
+
 def test_the_vectors_of_a_build_read_back_by_their_node_vec_key(hub_db):
     pid = add_project(hub_db, "vectors")
     vec = struct.pack("<2e", 0.5, -0.25)

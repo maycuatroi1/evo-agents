@@ -167,6 +167,7 @@ class Snapshot:
     derivations: MappingProxyType = MappingProxyType({})  # element id: its (units, needs) rows
     bodies: MappingProxyType = MappingProxyType({})  # node id: the body of its own full-text row and that row's aud
     summary: MappingProxyType = MappingProxyType({})  # ``Store.summary`` of the build
+    aliases: MappingProxyType = MappingProxyType({})  # an alias: the node that holds it (``node_alias``)
 
     @classmethod
     def from_rows(
@@ -219,6 +220,7 @@ class Snapshot:
             dst=dst,
             partitions=_partitions(len(ids), src, dst, groups),
             names=MappingProxyType({k: tuple(sorted(v)) for k, v in names.items()}),
+            aliases=MappingProxyType({alias: ids[i] for alias, i in aliased.items()}),
             text=text,
             vectors=vectors,
             build=build,
@@ -407,8 +409,14 @@ class SnapshotView:
     a view reads its snapshot's one build. A node or edge read is a fresh dict; its props are shared and not to be
     changed."""
 
+    asked_clearance = None  # a snapshot holds no asked rows (``snapshot_text``): their prior is 1
+
     def __init__(self, snap: Snapshot, reader: frozenset[str], ceiling: tuple[int, int] | None, tuning):
         self.snap, self.reader, self.ceiling, self.tuning = snap, reader, ceiling, tuning
+        self._ranker = None
+
+    def close(self) -> None:
+        """Nothing to close: a view reads RAM."""
 
     # -- what the reader sees ---------------------------------------------------------------------------------------
 
@@ -509,6 +517,125 @@ class SnapshotView:
             return 0
         held = {e for p in self.snap.partitions.values() for e in (*p.out_of(i), *p.into(i))}
         return sum(1 for e in held if self.sees(self.snap.edges[e]))
+
+    def degrees(self, ids, b: int, ceiling: tuple[int, int]) -> dict[str, int]:
+        """How many edges at most ``ceiling`` touch each of ``ids``, the reader's audience within, an edge from a node
+        to itself twice; ids without one are left out (``Store.degrees``)."""
+        out: dict[str, int] = {}
+        for nid in dict.fromkeys(ids):
+            i = self.snap.index.get(nid)
+            if i is None:
+                continue
+            count = sum(
+                1
+                for p in self.snap.partitions.values()
+                for e in (*p.out_of(i), *p.into(i))
+                if self.sees(self.snap.edges[e]) and self.under(self.snap.edges[e], ceiling)
+            )
+            if count:
+                out[nid] = count
+        return out
+
+    def alias_of(self, alias: str, b: int = 0) -> str | None:
+        """The node the reader sees that holds ``alias`` (an id merged into it), or None."""
+        nid = self.snap.aliases.get(alias)
+        return nid if nid is not None and self.node(nid) is not None else None
+
+    # -- search (``Store.search``, ``search_scored``, ``plain_search``, ``code_files``, ``code_lines``) ----------------
+
+    @property
+    def ranker(self):
+        if self._ranker is None:
+            self._ranker = snapshot_text.Ranker(self)
+        return self._ranker
+
+    def search(self, query: str, b: int = 0, limit: int = 50, **kw) -> list[str]:
+        return self.ranker.search(query, b, limit, **kw)
+
+    def search_scored(self, query: str, b: int = 0, limit: int = 50, **kw) -> list[tuple[str, float | None]]:
+        return self.ranker.search_scored(query, b, limit, **kw)
+
+    def plain_search(self, query: str, limit: int, kinds: list[str] | None = None) -> list[str]:
+        """Ids of the nodes plain BM25 ranks for ``query``, best first, from the rows without an audience."""
+        from evo_agents.kg import search as text_search
+
+        fts_query = text_search.plain_query(query)
+        if fts_query is None:
+            return []
+        wanted = {k for k in kinds or text_search.PLAIN_KINDS if isinstance(k, str)}
+        text = self.snap.text
+        found = text.public.search(
+            fts_query, text_search.PLAIN_WEIGHTS[2:], lambda n: text.public_rows[n].kind in wanted
+        )
+        ranked = sorted(found, key=lambda x: (x[1], text.public_rows[x[0]].node_id))[: limit * 4]
+        return list(dict.fromkeys(text.public_rows[n].node_id for n, _ in ranked))[:limit]
+
+    def code_files(self, words: list[str], limit: int | None = None) -> list[tuple[str, int]]:
+        return self.ranker.code_files(words) if limit is None else self.ranker.code_files(words, limit)
+
+    def code_lines(self, node_id: str, words: list[str], most: int | None = None) -> list[int]:
+        return self.ranker.code_lines(node_id, words) if most is None else self.ranker.code_lines(node_id, words, most)
+
+    def asked_nodes(self, ids) -> set[str]:
+        """None: a snapshot holds no asked rows."""
+        return set()
+
+    # -- the web's counts (``Store.kind_counts``, ``shape_counts``, ``build_row``) -------------------------------------
+
+    def kind_counts(self, b: int = 0) -> list[tuple[str, int, int, str, int]]:
+        counts: dict[tuple, int] = defaultdict(int)
+        for n in self.snap.nodes:
+            if self.sees(n):
+                counts[(n["kind"], *n["label"][:3])] += 1
+        return [(*key, count) for key, count in counts.items()]
+
+    def shape_counts(self, b: int = 0) -> list[tuple]:
+        counts: dict[tuple, int] = defaultdict(int)
+        nodes, index = self.snap.nodes, self.snap.index
+        for e in self.snap.edges:
+            s, d = nodes[index[e["src"]]], nodes[index[e["dst"]]]
+            if self.sees(e) and self.sees(s) and self.sees(d):
+                counts[(s["kind"], e["rel"], d["kind"], *(tuple(x["label"][:3]) for x in (e, s, d)))] += 1
+        return [(*key, count) for key, count in counts.items()]
+
+    def build_row(self, build_id: int = 0) -> dict:
+        """What the build's summary keeps of ``Store.build_row``: id, status, finish, content hash, coverage, stats."""
+        summary = self.snap.summary
+        return {
+            "build_id": summary.get("build_id"),
+            "status": "ready" if summary.get("ready") else None,
+            "finished_at": summary.get("built_at"),
+            "content_hash": summary.get("content_hash"),
+            "coverage": dict(summary.get("coverage") or {}),
+            "stats": dict(summary.get("stats") or {}),
+        }
+
+    # -- what locate and plain search read whatever the reader (``Store.file_ids`` and the rest) ----------------------
+
+    def file_ids(self) -> list[str]:
+        return [n["id"] for n in self.snap.nodes if n["kind"] == "File"]
+
+    def nodes_between(self, low: str, high: str) -> list[tuple[str, dict]]:
+        from bisect import bisect_left
+
+        ids = self.snap.ids
+        return [(ids[i], self.snap.nodes[i]["props"]) for i in range(bisect_left(ids, low), bisect_left(ids, high))]
+
+    def changed_by(self, file_id: str, limit: int) -> list[str]:
+        i = self.snap.index.get(file_id)
+        if i is None:
+            return []
+        part = [p for (rel, _), p in self.snap.partitions.items() if rel == "changes"]
+        return [self.snap.edges[e]["src"] for p in part for e in p.into(i)][:limit]
+
+    def changes_of(self, commits) -> list[tuple[str, str]]:
+        part = [p for (rel, _), p in self.snap.partitions.items() if rel == "changes"]
+        out = []
+        for c in commits:
+            i = self.snap.index.get(c)
+            if i is not None:
+                out += [(c, self.snap.edges[e]["dst"]) for p in part for e in p.out_of(i)]
+        return out
 
     # -- provenance, text and status (``Store.unit``, ``where``, ``derivations``, ``body``, ``summary``, ``seen``) ----
 
