@@ -338,21 +338,22 @@ def outcome(lines: list[dict]) -> dict:
     return line
 
 
-def test_two_processes_migrating_at_once_both_exit_zero_and_apply_once(hub_db, whole_chain):
+def test_two_processes_migrating_at_once_both_exit_zero_and_apply_once(hub_db, whole_chain, tmp_path):
     env = pg.clean_env(EVO_HUB_DSN=hub_db.dsn)
+    # Each process writes to files, not pipes: the whole chain logs more than a pipe holds (66 KB at v0.65.4), and the
+    # process migrating would block on a pipe nobody reads while the test waits on the other, which waits on its lock.
+    streams = [(tmp_path / f"{i}.out", tmp_path / f"{i}.err") for i in range(2)]
     # Hold the lock until both processes wait on it, so they really race for it when it is released.
     with live.connect(hub_db) as holder:
         holder.execute(select(func.pg_advisory_lock(LOCK_KEY)))
-        procs = [
-            subprocess.Popen(
-                [sys.executable, "-m", "evo_agents", "hub", "migrate"],
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            for _ in range(2)
-        ]
+        procs = []
+        for out, err in streams:
+            with out.open("wb") as stdout, err.open("wb") as stderr:
+                procs.append(
+                    subprocess.Popen(
+                        [sys.executable, "-m", "evo_agents", "hub", "migrate"], env=env, stdout=stdout, stderr=stderr
+                    )
+                )
         deadline = time.monotonic() + 60
         while _waiting_on_lock(hub_db) < 2:
             assert time.monotonic() < deadline, "the two migrate processes never queued on the lock"
@@ -361,7 +362,9 @@ def test_two_processes_migrating_at_once_both_exit_zero_and_apply_once(hub_db, w
     # A hang guard, not a speed bound: the process that takes the lock first migrates the whole chain, which took
     # over 60 s on a loaded release runner (v0.65.1).
     finish_by = time.monotonic() + 200
-    outputs = [p.communicate(timeout=max(1.0, finish_by - time.monotonic())) for p in procs]
+    for p in procs:
+        p.wait(timeout=max(1.0, finish_by - time.monotonic()))
+    outputs = [(out.read_text(encoding="utf-8"), err.read_text(encoding="utf-8")) for out, err in streams]
     assert [p.returncode for p in procs] == [0, 0], [err for _, err in outputs]
 
     logs = [pg.log_lines(err) for _, err in outputs]
