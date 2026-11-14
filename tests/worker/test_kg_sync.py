@@ -404,6 +404,23 @@ def test_kg_sync_clones_a_repo_without_checkout_from_its_https_origin_once(stage
     assert stage.hub.files() == stage.app.files()
 
 
+def test_kg_sync_clone_terminates_git_options_and_refuses_option_shaped_repo_names(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+
+    calls = []
+    monkeypatch.setattr(kg_sync, "git", lambda cwd, *args, **kw: calls.append((cwd, args, kw)) or "")
+    dest = tmp_path / "checkouts" / "demo" / "app"
+    kg_sync.clone("https://github.com/acme/app.git", dest)
+    assert calls and calls[0][1][-3:] == ("--", "https://github.com/acme/app.git", "app")
+
+    calls.clear()
+    manifest = {"repos": [{"name": "-u", "origin": "https://github.com/acme/app.git"}]}
+    knowledge = {"sources": [{"name": "bad", "connector": "git", "repo": "-u", "ref": "origin/main"}]}
+    found, missing = kg_sync.managed_checkouts(tmp_path, "demo", manifest, knowledge, {}, lambda _p: nullcontext())
+    assert "-u" not in found and "not one directory" in missing["-u"]
+    assert calls == []
+
+
 def test_kg_sync_errors_are_cut_and_masked():
     text = "fetch failed: https://x-access-token:ghp_" + "a" * 36 + "@github.com/acme/app.git " + "word " * 200
     shown = kg_sync.cut(text)

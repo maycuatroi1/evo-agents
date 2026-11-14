@@ -143,7 +143,15 @@ def clone(origin: str, dest: Path) -> None:
     """Clone ``origin`` to ``dest`` without a working tree nor blobs, which a sync reads from the ref as it needs them."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     git(
-        dest.parent, "clone", "--quiet", "--no-checkout", "--filter=blob:none", origin, dest.name, timeout=FETCH_TIMEOUT
+        dest.parent,
+        "clone",
+        "--quiet",
+        "--no-checkout",
+        "--filter=blob:none",
+        "--",
+        origin,
+        dest.name,
+        timeout=FETCH_TIMEOUT,
     )
 
 
@@ -261,7 +269,7 @@ def managed_checkouts(
         if not isinstance(origin, str) or not origin.startswith("https://"):
             missing[name] = "harness.yaml gives it no https:// origin to clone"
             continue
-        if any(Path(part).name != part or part in ("", ".", "..") for part in (project, name)):
+        if any(Path(part).name != part or part in ("", ".", "..") or part.startswith("-") for part in (project, name)):
             missing[name] = "its name is not one directory's, to clone it under"
             continue
         dest = kg_dir(root) / "checkouts" / project / name
