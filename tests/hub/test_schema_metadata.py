@@ -72,7 +72,7 @@ def hub_tables() -> set[str]:
     return set(tables.metadata.tables) - PLUGIN_OWNED_TABLES
 
 
-def test_the_metadata_holds_the_two_hundred_and_thirty_five_hub_tables():
+def test_the_metadata_holds_the_two_hundred_and_thirty_six_hub_tables():
     assert hub_tables() == TABLES - pg.QUEUE_TABLES - PLUGIN_OWNED_TABLES
     # the last added: problems, problem_revisions, problem_evidence, intakes, kg_review_dismissals, kg_decisions,
     # kg_decision_events, opportunities (4), retired_project_plugins, worker_pools, worker_pool_projects,
@@ -84,7 +84,7 @@ def test_the_metadata_holds_the_two_hundred_and_thirty_five_hub_tables():
     # srs_use_case_revisions, srs_use_case_releases, chat_label_shares, workflow_run_reads,
     # plan_run_choices, ops_cursors, ops_batches, ops_items, cron_jobs, cron_fires, the 9 graph tables of 0247; 249 with the 14 tables of crm,
     # pm and marketing, whose plugins keep them
-    assert len(hub_tables()) == 235
+    assert len(hub_tables()) == 236
     assert len(PLUGIN_OWNED_TABLES) == 14 and PLUGIN_OWNED_TABLES <= TABLES
 
 

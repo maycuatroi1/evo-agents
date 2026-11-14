@@ -722,9 +722,9 @@ def _label_columns() -> tuple[Column, ...]:
 
 def graph_tables(metadata: MetaData) -> dict[str, Table]:
     """The graph a build writes to Postgres (0247, plan kg-centralized-on-hub, ``evo_agents.hub.kg_store``): the
-    corpus items with their row hash, the memo of what was extracted from a row hash, the nodes, edges, text rows and
-    embeddings of each branch, the head of each branch (``kg_graph_heads``), and the branches with their operations.
-    A node or edge row holds the columns of a store file's row (``evo_agents.kg.store_schema``), props as the store's
+    corpus items with their row hash, the memo of what was extracted from a row hash, the nodes, edges, text rows,
+    provenance and embeddings of each branch, the head of each branch (``kg_graph_heads``), and the branches with their
+    operations. A node or edge row holds the columns of a store file's row (``evo_agents.kg.store_schema``), props as the store's
     JSON text, so a snapshot read from it hashes as one read from the file."""
     corpus = _scoped(
         "kg_corpus_items",
@@ -784,11 +784,20 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         Column("node_id", Text, nullable=False),
         Column("row", JSONB, nullable=False),
     )
+    provenance = _scoped(
+        "kg_provenance",
+        metadata,
+        "row_key",
+        Column("elem_id", Text, nullable=False),
+        Column("row", JSONB, nullable=False),
+    )
     embeddings = _scoped(
         "kg_embeddings",
         metadata,
-        "node_id",
-        Column("model", Text, nullable=False),
+        "row_key",
+        Column("node_id", Text, nullable=False),
+        Column("kind", Text, nullable=False),
+        Column("aud", Text),
         Column("vector", LargeBinary, nullable=False),
     )
     heads = Table(
@@ -800,6 +809,8 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         Column("content_hash", Text, nullable=False),
         Column("top_label", ARRAY(Integer), nullable=False),
         Column("top_audience", ARRAY(Text), nullable=False, server_default="{}"),
+        Column("summary", JSONB, nullable=False, server_default="{}"),
+        Column("vectors", JSONB),
         _stamp("updated_at"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_graph_heads_project_id_fkey"
@@ -842,5 +853,5 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         PrimaryKeyConstraint("id", name="kg_branch_ops_pkey"),
     )
     Index("kg_branch_ops_branch_idx", ops.c.branch_id, ops.c.id)
-    found = (corpus, memo, nodes, edges, text_rows, embeddings, heads, branches, ops)
+    found = (corpus, memo, nodes, edges, text_rows, provenance, embeddings, heads, branches, ops)
     return {t.name: t for t in found}

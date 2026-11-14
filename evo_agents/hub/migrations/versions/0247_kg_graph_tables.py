@@ -1,4 +1,4 @@
-"""The knowledge graph on Postgres: corpus items, memo, nodes, edges, text rows, embeddings, heads and branches.
+"""The knowledge graph on Postgres: corpus items, memo, nodes, edges, text rows, provenance, embeddings, heads, branches.
 
 Revision ID: 0247
 Revises: 0246
@@ -6,9 +6,10 @@ Create Date: 2026-11-15
 
 Plan kg-centralized-on-hub, step 2 (criterion a3, ``evo_agents.hub.tables_kg.graph_tables``). A build writes a
 project's graph to these tables instead of a graph.sqlite blob: kg_corpus_items holds each item of its sources with its
-row hash, kg_memo_entries what an extractor made of a row hash, kg_nodes, kg_edges, kg_text_rows and kg_embeddings the
-graph of each branch (branch_id 0 is main, another a kg_branches id), and kg_graph_heads the build and content hash
-each branch is at. kg_branches and kg_branch_ops hold the draft branches of a graph and their operations. The tables
+row hash, kg_memo_entries what an extractor made of a row hash, kg_nodes, kg_edges, kg_text_rows, kg_provenance (units,
+where-provenance and derivations) and kg_embeddings (the rows of a store's node_vec) the graph of each branch (branch_id
+0 is main, another a kg_branches id), and kg_graph_heads the build, content hash, summary and vector model each branch
+is at. kg_branches and kg_branch_ops hold the draft branches of a graph and their operations. The tables
 start empty: the next build of a project fills them.
 
 Going back drops them.
@@ -106,9 +107,17 @@ def _graph() -> None:
         sa.Column("row", JSONB(), nullable=False),
     )
     _scoped(
+        "kg_provenance",
+        "row_key",
+        sa.Column("elem_id", sa.Text(), nullable=False),
+        sa.Column("row", JSONB(), nullable=False),
+    )
+    _scoped(
         "kg_embeddings",
-        "node_id",
-        sa.Column("model", sa.Text(), nullable=False),
+        "row_key",
+        sa.Column("node_id", sa.Text(), nullable=False),
+        sa.Column("kind", sa.Text(), nullable=False),
+        sa.Column("aud", sa.Text()),
         sa.Column("vector", sa.LargeBinary(), nullable=False),
     )
 
@@ -122,6 +131,8 @@ def _heads_and_branches() -> None:
         sa.Column("content_hash", sa.Text(), nullable=False),
         sa.Column("top_label", ARRAY(sa.Integer()), nullable=False),
         sa.Column("top_audience", ARRAY(sa.Text()), nullable=False, server_default="{}"),
+        sa.Column("summary", JSONB(), nullable=False, server_default="{}"),
+        sa.Column("vectors", JSONB()),
         _now("updated_at"),
         sa.ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_graph_heads_project_id_fkey"
@@ -179,6 +190,7 @@ def downgrade() -> None:
         "kg_branches",
         "kg_graph_heads",
         "kg_embeddings",
+        "kg_provenance",
         "kg_text_rows",
         "kg_edges",
         "kg_nodes",
