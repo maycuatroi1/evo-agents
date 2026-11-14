@@ -168,6 +168,8 @@ class Snapshot:
     bodies: MappingProxyType = MappingProxyType({})  # node id: the body of its own full-text row and that row's aud
     summary: MappingProxyType = MappingProxyType({})  # ``Store.summary`` of the build
     aliases: MappingProxyType = MappingProxyType({})  # an alias: the node that holds it (``node_alias``)
+    asked: tuple[tuple, ...] = ()  # the rows of the build's asked index (``StoreRows.asked``)
+    asked_weight: float | None = None  # the weight of an asked match the build recorded
 
     @classmethod
     def from_rows(
@@ -273,6 +275,8 @@ class Snapshot:
             derivations=MappingProxyType({k: tuple(v) for k, v in derived.items()}),
             bodies=MappingProxyType(bodies),
             summary=MappingProxyType(dict(rows.summary)),
+            asked=tuple(rows.asked),
+            asked_weight=rows.asked_weight,
         )
 
     def view(
@@ -306,9 +310,18 @@ class StoreRows:
     summary: dict = field(default_factory=dict)  # ``Store.summary``
     vectors: tuple[tuple, ...] = ()  # the rows of node_vec: (key, node id, kind, aud, vector bytes), by key
     vector_info: dict | None = None  # ``semantic.Info`` of them as a dict; None without vectors
+    # the rows of the asked index (node id, level, location, audience, prior, words), by ``asked_order``, and the
+    # weight of an asked match the build recorded (``Store.write_asked``); empty and None without them
+    asked: tuple[tuple, ...] = ()
+    asked_weight: float | None = None
 
 
 UNIT_KEYS = ("unit", "item", "anchor", "rev", "hash", "source", "span")
+
+
+def asked_order(rows) -> tuple[tuple, ...]:
+    """Asked rows in one order whatever read them: by node, then by the JSON of the rest (an audience may be None)."""
+    return tuple(sorted((tuple(r) for r in rows), key=lambda r: (r[0], json.dumps(r[1:]))))
 
 
 def store_rows(store, b: int) -> StoreRows:
@@ -340,6 +353,12 @@ def store_rows(store, b: int) -> StoreRows:
         f"SELECT elem_id, units, needs FROM derivations WHERE {LIVE} ORDER BY elem_id, deriv_id", {"b": b}
     ).fetchall()
     vectors, info = _vector_rows(store)
+    asked: list = []
+    if store.has_asked():
+        asked = db.execute(
+            "SELECT r.node_id, r.lvl, r.loc, r.aud, r.prior, a.asked FROM node_asked_rows r"
+            " JOIN node_asked a ON a.rowid = r.id"
+        ).fetchall()
     return StoreRows(
         row[0] if row else "",
         tuple(map(tuple, nodes)),
@@ -353,6 +372,8 @@ def store_rows(store, b: int) -> StoreRows:
         store.summary() if store.latest_ready() == b else {},
         vectors,
         info,
+        asked_order(asked),
+        store.recorded_asked_weight(),
     )
 
 
@@ -409,11 +430,11 @@ class SnapshotView:
     a view reads its snapshot's one build. A node or edge read is a fresh dict; its props are shared and not to be
     changed."""
 
-    asked_clearance = None  # a snapshot holds no asked rows (``snapshot_text``): their prior is 1
-
     def __init__(self, snap: Snapshot, reader: frozenset[str], ceiling: tuple[int, int] | None, tuning):
         self.snap, self.reader, self.ceiling, self.tuning = snap, reader, ceiling, tuning
         self._ranker = None
+        self.asked_clearance: tuple[int, int] | None = None  # search reads the asked rows within it (``Store``)
+        self.asked_weight: float | None = None  # the weight of an asked match in place of the build's (an eval)
 
     def close(self) -> None:
         """Nothing to close: a view reads RAM."""
@@ -581,8 +602,17 @@ class SnapshotView:
         return self.ranker.code_lines(node_id, words) if most is None else self.ranker.code_lines(node_id, words, most)
 
     def asked_nodes(self, ids) -> set[str]:
-        """None: a snapshot holds no asked rows."""
-        return set()
+        """The nodes of ``ids`` with an asked row under any label (``Store.asked_nodes``)."""
+        return set(ids) & {row[0] for row in self.snap.asked}
+
+    def weight_of_asked(self) -> float:
+        """``Store.weight_of_asked``: ``asked_weight`` when set, else the build's, else ``search.ASKED_WEIGHT``."""
+        from evo_agents.kg import search as text_search
+
+        for weight in (self.asked_weight, self.snap.asked_weight):
+            if weight is not None:
+                return weight
+        return text_search.ASKED_WEIGHT
 
     # -- the web's counts (``Store.kind_counts``, ``shape_counts``, ``build_row``) -------------------------------------
 

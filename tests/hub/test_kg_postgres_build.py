@@ -5,6 +5,7 @@ that changed, a deleted item leaves the corpus, and the readers listening on ``k
 from __future__ import annotations
 
 import asyncio
+import shutil
 import struct
 
 import pytest
@@ -19,6 +20,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 from evo_agents.hub import kg_graph_rows, tables
+from evo_agents.kg import asked
 from evo_agents.kg.snapshot import Snapshot, StoreRows, store_rows
 from evo_agents.kg.store import Store
 from tests.hub.live import add_project
@@ -211,6 +213,65 @@ def test_a_snapshot_of_the_tables_searches_and_counts_as_the_store_of_the_build_
     finally:
         store.close()
         view.close()
+
+
+def write_and_read(db, project_id: int, rows: StoreRows) -> StoreRows:
+    async def run():
+        engine = make_engine(db)
+        try:
+            async with engine.begin() as conn:
+                await kg_graph_rows.write_graph(conn, project_id, None, rows)
+            async with engine.connect() as conn:
+                return await kg_graph_rows.read_graph(conn, project_id)
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(run())
+
+
+def test_a_snapshot_of_the_tables_reads_the_asked_rows_as_the_store_of_the_build_file(hub, tmp_path, caplog):
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it, see guide."))
+    assert push(hub, laptop).ok
+    build(hub, caplog)
+    path = tmp_path / "asked.sqlite"
+    shutil.copy(hub.worker_dir / "kg" / "home" / "alpha" / "graph.sqlite", path)
+    store = Store(path)
+    try:
+        b = store.latest_ready()
+        nodes = sorted(store.alive_ids("nodes", b))
+        guide, setup = (next(n for n in nodes if n.endswith(name)) for name in ("guide", "setup"))
+        store.write_asked(
+            [
+                asked.Row(guide, 0, 0, None, 1.15, "install install app"),
+                asked.Row(guide, 9, 9, None, 1.2, "works"),
+                asked.Row(setup, 0, 0, '["chat:1"]', 1.1, "works works"),
+            ],
+            2.0,
+        )
+        stored = store_rows(store, b)
+        back = write_and_read(hub.db, add_project(hub.db, "asked"), stored)
+        assert back.asked == stored.asked and len(back.asked) == 3 and back.asked_weight == 2.0
+        snap = Snapshot.from_stored(back)
+        for reader in (frozenset(), frozenset({"chat:1"})):
+            view, store.reader = snap.view(reader), reader
+            assert view.asked_nodes(nodes) == store.asked_nodes(nodes) == {guide, setup}
+            assert view.weight_of_asked() == store.weight_of_asked() == 2.0
+            moved = 0
+            for clearance in (None, (0, 0), (9, 9)):
+                view.asked_clearance = store.asked_clearance = clearance
+                for query in ("install app", "works", "guide"):
+                    assert view.search_scored(query, b) == store.search_scored(query, b), (reader, clearance, query)
+                    store.asked_clearance = None
+                    moved += clearance is not None and view.search_scored(query, b) != store.search_scored(query, b)
+                    store.asked_clearance = clearance
+            assert moved  # the asked rows changed a ranking
+            view.asked_weight = store.asked_weight = 0.5
+            assert view.weight_of_asked() == 0.5
+            assert view.search_scored("works", b) == store.search_scored("works", b)
+            store.asked_weight = None
+    finally:
+        store.close()
 
 
 def test_the_vectors_of_a_build_read_back_by_their_node_vec_key(hub_db):
