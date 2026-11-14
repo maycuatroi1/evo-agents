@@ -9,9 +9,9 @@ stay 30 days, for the run that resumes it. Only the evo-run branch of a run is d
 The drive of the worktrees keeps ``WorkerConfig.disk_reserve_gb`` free (plan hub-steward, criterion a4). Below it, the
 cleanup removes at once the worktrees of ended runs the merged ones may go of (``_removable``: not parked, not taken
 over, not used by a run that has not ended), oldest end first and each one's uncommitted changes kept on its recovery
-ref first, until the drive is back over the reserve (``make_room``); the claims take no run while it stays below
-(``daemon_claims``), and the hub gives the worker none either (``Claimer.stops``), so a run waits or goes to another
-worker instead of failing at its checkout.
+ref first, until the drive is back over the reserve plus ``HEADROOM_GB`` (``make_room``); the claims take no run while
+it stays below the reserve (``daemon_claims``), and the hub gives the worker none either (``Claimer.stops``), so a
+run waits or goes to another worker instead of failing at its checkout.
 
 Daemons of one machine whose homes lie side by side (``~/.evo/worker``, ``~/.evo/worker-<name>``) share a drive. When
 the worktrees of its own ended runs are gone and the drive is still below the reserve, ``make_room`` goes on in the
@@ -47,6 +47,9 @@ CLEANUP_EVERY = 3600.0
 # gigabytes the worktrees' drive keeps free, over WorkerConfig.disk_reserve_gb: for an operator, and for tests whose
 # machine has less free than the default
 RESERVE_VARIABLE = "EVO_WORKER_DISK_RESERVE_GB"
+# gigabytes over the reserve ``make_room`` frees once the drive fell under it, so the drive does not hover at the
+# reserve line and flap between low and ok (the hub keeps a low disk low until the same headroom, ops_events)
+HEADROOM_GB = 5.0
 KEEP_WORKTREES = timedelta(days=7)  # the sweep's: the worktrees of a run whose work merged go at the next cleanup
 KEEP_PARKED = timedelta(days=30)  # the sweep's for a parked run, whose worktrees the run that resumes it takes over
 SIBLING_GRACE = timedelta(minutes=15)  # a sibling's run that ended since may still be held by its own daemon
@@ -206,6 +209,12 @@ class Cleanup:
         free = self.free_gb()
         return free is not None and free < self.reserve_gb
 
+    def under_target(self) -> bool:
+        """Whether the drive has less free than ``reserve_gb`` + ``HEADROOM_GB``, what ``make_room`` frees to once
+        it started; not when it cannot be read."""
+        free = self.free_gb()
+        return free is not None and free < self.reserve_gb + HEADROOM_GB
+
     async def make_room(self) -> list[int]:
         """While the drive is short of room (``short_of_room``), remove the worktrees and records of the ended runs
         whose worktrees may go (``_removable``), the run that ended first first, each one's uncommitted changes kept on
@@ -223,7 +232,7 @@ class Cleanup:
                     records = await asyncio.to_thread(home.load_runs)
                     ended = [r for r in records if self._removable(r, records) and any(p.exists() for p in _paths(r))]
                     for record in sorted(ended, key=lambda found: _finished(found, now)):
-                        if not self.short_of_room():
+                        if not self.under_target():
                             break
                         run_id = record["id"]
                         found = self._still_ended(run_id)
@@ -242,7 +251,7 @@ class Cleanup:
                         "own worker home cleanup lock is held: skipping own-home eviction",
                         extra={"home": str(home.root)},
                     )
-            if self.short_of_room():
+            if self.under_target():
                 removed += await self._make_room_in_siblings()
         if removed or self.short_of_room():
             log.info(
@@ -296,7 +305,7 @@ class Cleanup:
                     if _sibling_removable(record, records, sibling.worktrees_dir, now):
                         candidates.append((_finished(record, now), sibling, record))
             for _end, sibling, record in sorted(candidates, key=lambda found: found[0]):
-                if not self.short_of_room():
+                if not self.under_target():
                     break
                 run_id = record["id"]
                 found = sibling.load_run(run_id)  # read again: its own daemon may have resumed or adopted it since

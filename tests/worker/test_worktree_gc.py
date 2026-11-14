@@ -99,6 +99,19 @@ def test_under_its_reserve_the_daemon_removes_ended_worktrees_oldest_first_and_k
     assert asyncio.run(daemon.cleaner.make_room()) == [], "over the reserve, nothing more goes"
 
 
+def test_once_under_its_reserve_the_daemon_frees_the_headroom_too_so_the_drive_does_not_hover_at_the_line(
+    tmp_path, monkeypatch
+):
+    checkout, home, daemon = _stack(tmp_path, reserve=20)
+    for run_id in (1, 2, 3, 4):
+        _run(home, checkout, run_id, timedelta(hours=10 - run_id))
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _Drive(home, 18.0, 3.0).disk)
+
+    assert daemon_cleanup.HEADROOM_GB == 5.0
+    assert asyncio.run(daemon.cleaner.make_room()) == [1, 2, 3], "21 and 24 GB are under 20 + 5; 27 is not"
+    assert home.worktree_path("demo", 4).is_dir()
+
+
 def test_a_daemon_short_of_its_reserve_claims_nothing_and_says_its_reserve_to_the_hub(tmp_path, monkeypatch):
     checkout, home, daemon = _stack(tmp_path, reserve=25)
     _run(home, checkout, 1, timedelta(days=1), state="parked")  # nothing it may remove

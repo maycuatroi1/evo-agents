@@ -197,6 +197,7 @@ async def record_heartbeat(
         w = tables.workers
         health = _health(body)
         was = await conn.scalar(select(w.c.health).where(w.c.id == worker_id))
+        health = ops_events.with_band(health, was)
         held = await conn.execute(
             update(w)
             .values(

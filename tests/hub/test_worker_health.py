@@ -52,7 +52,7 @@ def test_a_heartbeats_health_is_kept_shown_and_written_to_each_served_project_on
     sql(hub_db, insert(tables.worker_projects).values(worker_id=worker["id"], project_id=second))
 
     beat(client, worker, health=HEALTHY)
-    assert shown(client, hub["owner"], worker) == HEALTHY
+    assert shown(client, hub["owner"], worker) == {**HEALTHY, "disk": {**HEALTHY["disk"], "band": "ok"}}
     payload = {"v": 1, "worker_id": worker["id"], "disk": "ok", "disk_free_pct": 41.0, "logins": HEALTHY["logins"]}
     assert sorted(events(hub_db), key=lambda row: row[0]) == sorted([(PROJECT, payload), (SECOND, payload)])
 

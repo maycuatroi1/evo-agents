@@ -27,6 +27,9 @@ from evo_agents.hub import hub_events, tables
 
 ENDED_STATES = ("failed", "lost")  # the moves of a run that write run.ended
 DISK_LOW_GB = 20.0  # below this much free disk on its worktrees' drive a worker's disk is low, when it says no reserve
+# a low disk stays low until it has this much over the reserve, so a drive that hovers at the reserve line writes one
+# worker.health, not one each time it crosses it (the worker's cleanup frees to the same line, daemon_cleanup)
+DISK_HEADROOM_GB = 5.0
 LOGIN_STATES = ("ok", "leased", "unauthorized", "missing", "unknown")  # a runtime's login, as its daemon checked it
 # The logins a runtime works with: its own, or none on the machine while its last run there authenticated with a lease
 # of the hub (``evo_agents.worker.health.LEASED``).
@@ -129,14 +132,28 @@ def disk_reserve(health: dict | None) -> float:
     return DISK_LOW_GB if found is None else found
 
 
-def disk_band(health: dict | None) -> str | None:
+def disk_band(health: dict | None, was: dict | None = None) -> str | None:
     """``low`` or ``ok`` for the free disk a stored health report says, against the worker's reserve
-    (``disk_reserve``); None when it says nothing of it. The claim gives a worker whose disk is low no run
-    (``claim_rules.Claimer.stops``)."""
-    free = _size(((health or {}).get("disk") or {}).get("free_gb"))
+    (``disk_reserve``); None when it says nothing of it. A report the hub stored with its band (``with_band``) says
+    it; else a disk the report before ``was`` held low stays low under the reserve plus ``DISK_HEADROOM_GB``. The
+    claim gives a worker whose disk is low no run (``claim_rules.Claimer.stops``)."""
+    disk = (health or {}).get("disk") or {}
+    if disk.get("band") in ("low", "ok"):
+        return disk["band"]
+    free = _size(disk.get("free_gb"))
     if free is None:
         return None
-    return "low" if free < disk_reserve(health) else "ok"
+    line = disk_reserve(health) + (DISK_HEADROOM_GB if disk_band(was) == "low" else 0.0)
+    return "low" if free < line else "ok"
+
+
+def with_band(health: dict | None, was: dict | None) -> dict | None:
+    """Health report ``health`` as the hub stores it: its disk with the band it is in after the report before,
+    ``was`` (``disk_band``), so the headroom holds from one heartbeat to the next."""
+    band = disk_band(health, was)
+    if band is None or not health:
+        return health
+    return {**health, "disk": {**health["disk"], "band": band}}
 
 
 def health_state(health: dict | None) -> tuple | None:
@@ -177,6 +194,7 @@ async def worker_health(conn: AsyncConnection, worker_id: int, before: dict | No
 
 
 __all__ = [
+    "DISK_HEADROOM_GB",
     "DISK_LOW_GB",
     "ENDED_STATES",
     "LOGGED_IN",
@@ -188,5 +206,6 @@ __all__ = [
     "health_state",
     "pause_class",
     "run_moved",
+    "with_band",
     "worker_health",
 ]
