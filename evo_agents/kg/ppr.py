@@ -29,7 +29,6 @@ Nothing here calls a model, reads a question set, or needs a library outside the
 
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass, fields, replace
 
@@ -177,41 +176,11 @@ class Reader:
 
     def edges(self, ids: list[str], walk: Walk) -> list[tuple[str, str, str, float]]:
         """(src, rel, dst, weight) of the live edges of ``ids``, either way, the reader sees and the walk follows."""
-        from evo_agents.kg.store_filters import LIVE, SEEN, stored_audience
-
-        walk_edges = getattr(self.store, "walk_edges", None)
-        if walk_edges is not None:  # an in-RAM snapshot (evo_agents.kg.snapshot) reads them from its CSR arrays
-            return [
-                (e["src"], e["rel"], e["dst"], w)
-                for e in walk_edges(ids, self.b)
-                if e["src"] != e["dst"] and (w := weight(e, walk)) > 0 and self.seen(e)
-            ]
-        columns = "src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"
-        out = []
-        for start in range(0, len(ids), 400):
-            chunk = ids[start : start + 400]
-            marks = ", ".join(f":n{i}" for i in range(len(chunk)))
-            params = {"b": self.b, **{f"n{i}": n for i, n in enumerate(chunk)}}
-            for side in ("src", "dst"):
-                rows = self.store.db.execute(
-                    f"SELECT {columns} FROM edges WHERE {side} IN ({marks}) AND {LIVE} AND {SEEN}", params
-                )
-                for src, rel, dst, props, status, conf, lvl, loc, integrity, aud in rows:
-                    if src == dst:
-                        continue
-                    e = {
-                        "src": src,
-                        "rel": rel,
-                        "dst": dst,
-                        "props": json.loads(props or "{}"),
-                        "status": status,
-                        "conf": conf,
-                        "label": (lvl, loc, integrity, stored_audience(aud)),
-                    }
-                    w = weight(e, walk)
-                    if w > 0 and self.seen(e):
-                        out.append((e["src"], e["rel"], e["dst"], w))
-        return out
+        return [
+            (e["src"], e["rel"], e["dst"], w)
+            for e in self.store.walk_edges(ids, self.b)
+            if e["src"] != e["dst"] and (w := weight(e, walk)) > 0 and self.seen(e)
+        ]
 
 
 def weight(e: dict, walk: Walk) -> float:
