@@ -196,7 +196,7 @@ async def record_heartbeat(
     async with engine.begin() as conn:
         worker_id, _, _, _, _, _, drained_at, *_ = await worker_of(conn, user)
         w = tables.workers
-        was = await conn.scalar(select(w.c.health).where(w.c.id == worker_id))
+        was = await conn.scalar(select(w.c.health).where(w.c.id == worker_id).with_for_update())  # one band at a time
         health = ops_events.with_band(_health(body), was)  # the band it had holds while free disk is near the reserve
         held = await conn.execute(
             update(w)

@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import math
 import os
 import shutil
 from collections.abc import AsyncIterator
@@ -177,6 +178,11 @@ class Cleanup:
         self.daemon = daemon
         self.asks_merged = True  # until a hub before POST /v1/worker/merged answers 404
         self.removing = asyncio.Lock()  # one sweep or making of room at a time
+        # the drive fell under the reserve and ``make_room`` has not brought it back over the reserve and its headroom
+        self.making = False
+        # the headroom the heartbeat says while ``make_room`` found nothing more to remove short of its target: the free
+        # disk over the reserve it reached, so the hub's band turns ok there (``reported_headroom_gb``); None otherwise
+        self.stalled_headroom: float | None = None
 
     async def loop(self) -> None:
         while True:
@@ -209,6 +215,13 @@ class Cleanup:
         headroom = self.daemon.config.disk_headroom_gb
         return float(headroom) if headroom is not None else disk_headroom(self.reserve_gb)
 
+    @property
+    def reported_headroom_gb(self) -> float:
+        """The headroom the heartbeat says (``health.disk.headroom_gb``), over which the hub counts the disk ok again:
+        ``headroom_gb``, or less while ``make_room`` stalled under it with nothing more to remove, so a worker the
+        cleanup brought back over its reserve is not held low by the hub for a headroom it cannot free."""
+        return self.headroom_gb if self.stalled_headroom is None else self.stalled_headroom
+
     def under_target(self) -> bool:
         """Whether the drive of the worktrees has less free than ``reserve_gb`` and ``headroom_gb``, the free disk
         ``make_room`` goes on up to; not when it cannot be read."""
@@ -221,13 +234,18 @@ class Cleanup:
         return free is not None and free < self.reserve_gb
 
     async def make_room(self) -> list[int]:
-        """Once the drive is short of room (``short_of_room``), and while it has less free than the reserve and its
-        headroom (``under_target``), remove the worktrees and records of the ended runs whose worktrees may go
+        """Once the drive was short of room (``short_of_room``; ``making`` remembers it until it is back), and while it
+        has less free than the reserve and its headroom (``under_target``), remove the worktrees and records of the ended runs whose worktrees may go
         (``_removable``), the run that ended first first, each one's uncommitted changes kept on its recovery ref first
         (``_recover``); then, while still under, those of the sibling homes on the same drive
-        (``_make_room_in_siblings``); the ids removed. A parked run, one a run went on from, and a directory
-        a run not ended uses stay, however short the drive."""
-        if not self.short_of_room():
+        (``_make_room_in_siblings``); the ids removed. Stalled short of the target, the heartbeat says the headroom it
+        reached (``_settle``). A parked run, one a run went on from, and a directory a run not ended uses stay,
+        however short the drive."""
+        if self.short_of_room():
+            self.making = True
+        if not self.under_target():
+            self.making, self.stalled_headroom = False, None
+        if not self.making:
             return []
         home = self.daemon.home
         removed: list[int] = []
@@ -259,6 +277,7 @@ class Cleanup:
                     )
             if self.under_target():
                 removed += await self._make_room_in_siblings()
+            self._settle()
         if removed or self.short_of_room():
             log.info(
                 "made room on the worktrees' drive",
@@ -270,6 +289,20 @@ class Cleanup:
                 },
             )
         return removed
+
+    def _settle(self) -> None:
+        """After ``make_room`` removed what it may: done once the drive is over the reserve and its headroom; stalled
+        between the reserve and that, with the free disk over the reserve as the headroom the heartbeat says
+        (``reported_headroom_gb``), rounded down by a hundredth so the hub's band turns ok at that free disk, and said
+        again from the free disk of each hourly cleanup; still short under the reserve, where the band is low whatever
+        the headroom."""
+        free = self.free_gb()
+        if free is None or not self.under_target():
+            self.making, self.stalled_headroom = False, None
+        elif free >= self.reserve_gb:
+            self.stalled_headroom = max(0.0, math.floor((free - self.reserve_gb) * 100) / 100 - 0.01)
+        else:
+            self.stalled_headroom = None
 
     def _sibling_homes(self) -> list[WorkerHome]:
         """The other worker homes beside this daemon's (a directory named worker* in its parent with runs/ and

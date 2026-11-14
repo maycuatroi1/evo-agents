@@ -2131,7 +2131,9 @@ wins over it). Under it, at each claim and each hourly cleanup, the daemon remov
 may remove once merged (not a run it holds, a parked run, one another run went on from, nor one whose directory a run
 not ended uses), the run that ended first first and each one's uncommitted changes kept on its recovery ref as above,
 until the drive is over the reserve and its headroom (`disk_headroom_gb` of `config.json`; by default the larger of
-5 GB and a quarter of the reserve), so free disk does not sit on the reserve's line (`Cleanup.make_room`). While it
+5 GB and a quarter of the reserve), so free disk does not sit on the reserve's line (`Cleanup.make_room`). It remembers the dip and goes on at each
+hourly cleanup until it gets there; when nothing more may go short of it, its heartbeat says the headroom it reached as
+`headroom_gb`, so the hub's band turns ok there and the worker takes runs again. While it
 stays under the reserve, the daemon claims nothing, and
 the hub gives it no run either: its heartbeat's `health.disk` says the reserve, and a worker whose free space is under it
 stops the claim (`disk` of `Claimer.stops`) until its free space is back over the reserve and its headroom, so the

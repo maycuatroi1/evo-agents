@@ -15,6 +15,7 @@ import pytest
 
 pytest.importorskip("aiohttp")
 
+from evo_agents.hub import ops_events  # noqa: E402
 from evo_agents.worker import daemon_cleanup  # noqa: E402
 from evo_agents.worker.daemon import Daemon  # noqa: E402
 from evo_agents.worker.home import DISK_RESERVE_GB, WorkerConfig, WorkerHome  # noqa: E402
@@ -155,6 +156,36 @@ def test_below_its_reserve_the_daemon_makes_room_up_to_the_reserve_and_its_headr
     assert daemon.cleaner.headroom_gb == 10.0, "a quarter of a 40 GB reserve"
     daemon.config.disk_headroom_gb = 0.0
     assert daemon.cleaner.headroom_gb == 0.0, "the config's headroom wins"
+
+
+def test_a_cleanup_that_stalls_between_the_reserve_and_its_headroom_says_the_headroom_it_reached_so_runs_come_again(
+    tmp_path, monkeypatch
+):
+    """The drive dips under the reserve, the hub's band goes low, and the cleanup frees all it may but stops short of
+    the reserve and its headroom: the heartbeat then says the headroom it reached, so the band turns ok and the worker
+    is given runs again, instead of a band held low for room the cleanup cannot free. Each later cleanup goes on while
+    the drive is under its target, and says the headroom of its own free disk."""
+    checkout, home, daemon = _stack(tmp_path)
+    _run(home, checkout, 1, timedelta(hours=5))
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _Drive(home, 19.0, 3.0).disk)
+    cleaner = daemon.cleaner
+
+    def beat(before: dict | None) -> dict:
+        found = daemon_cleanup.health.report(home.worktrees_dir, {}, cleaner.reserve_gb, cleaner.reported_headroom_gb)
+        return ops_events.with_band(found, before)
+
+    dipped = beat(None)
+    assert dipped["disk"]["band"] == "low" and ops_events.disk_band(dipped) == "low"
+    assert asyncio.run(cleaner.make_room()) == [1], "19 to 22: the only ended run goes, short of 25"
+    assert cleaner.making and cleaner.reported_headroom_gb == pytest.approx(1.99)
+    after = beat(dipped)
+    assert after["disk"]["free_gb"] == 22.0 and after["disk"]["band"] == "ok", "the hub gives it runs again"
+    assert beat(after)["disk"]["band"] == "ok"
+
+    _run(home, checkout, 2, timedelta(hours=1))  # a run ended since: the hourly cleanup goes on to the target
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _Drive(home, 22.0, 3.0).disk)
+    assert asyncio.run(cleaner.make_room()) == [2]
+    assert not cleaner.making and cleaner.reported_headroom_gb == 5.0, "at 25 it is done; the full headroom again"
 
 
 def test_a_headroom_set_by_hand_that_is_not_a_size_falls_back_to_the_default_headroom():
