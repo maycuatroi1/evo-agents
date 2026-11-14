@@ -24,13 +24,13 @@ import sqlite3
 import struct
 from array import array
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg import snapshot_text
 from evo_agents.kg.policy import audience_below, audience_join
-from evo_agents.kg.store_filters import LIVE, label_columns, stored_audience
+from evo_agents.kg.store_filters import LIVE, label_columns, stored_audience, within
 from evo_agents.kg.store_schema import EDGE_COLUMNS, NODE_COLUMNS
 
 
@@ -161,6 +161,15 @@ class Snapshot:
     build: int = 0
     top_label: tuple[int, int] = (0, 0)  # the highest level and location of its labels
     top_audience: frozenset[str] = frozenset()  # the join of its audiences
+    # what the reads of provenance and status give (``StoreRows``); empty for a snapshot of an assembled graph
+    units: MappingProxyType = MappingProxyType({})  # unit id: its row (UNIT_KEYS, then its label_aud)
+    where: MappingProxyType = MappingProxyType({})  # element id: its (unit, span) rows
+    derivations: MappingProxyType = MappingProxyType({})  # element id: its (units, needs) rows
+    bodies: MappingProxyType = MappingProxyType({})  # node id: the body of its own full-text row and that row's aud
+    summary: MappingProxyType = MappingProxyType({})  # ``Store.summary`` of the build
+    aliases: MappingProxyType = MappingProxyType({})  # an alias: the node that holds it (``node_alias``)
+    asked: tuple[tuple, ...] = ()  # the rows of the build's asked index (``StoreRows.asked``)
+    asked_weight: float | None = None  # the weight of an asked match the build recorded
 
     @classmethod
     def from_rows(
@@ -213,6 +222,7 @@ class Snapshot:
             dst=dst,
             partitions=_partitions(len(ids), src, dst, groups),
             names=MappingProxyType({k: tuple(sorted(v)) for k, v in names.items()}),
+            aliases=MappingProxyType({alias: ids[i] for alias, i in aliased.items()}),
             text=text,
             vectors=vectors,
             build=build,
@@ -242,24 +252,32 @@ class Snapshot:
     def from_store(cls, store, b: int) -> Snapshot:
         """The snapshot of build ``b`` of a store file: its live rows whatever their label, the rows of its full-text
         tables and its vectors. The full-text tables hold the latest build only, so ``b`` should be that build."""
-        db: sqlite3.Connection = store.db
-        nodes = db.execute(f"SELECT {NODE_COLUMNS} FROM nodes WHERE {LIVE}", {"b": b}).fetchall()
-        edges = db.execute(f"SELECT {EDGE_COLUMNS} FROM edges WHERE {LIVE}", {"b": b}).fetchall()
-        keyed = []
-        for table, aud, extra in (("node_fts", 0, ""), ("node_fts_aud", 1, ", f.aud")):
-            keyed += [
-                (key, tuple(row))
-                for key, *row in db.execute(
-                    f"SELECT r.node_id, f.node_id, f.kind, f.name, f.path, f.body{extra} FROM node_fts_rows r"
-                    f" JOIN {table} f ON f.rowid = r.fts_rowid WHERE r.aud = ?",
-                    (aud,),
-                )
-            ]
-        code = dict(db.execute("SELECT node_id, body FROM code_fts").fetchall())
-        text = snapshot_text.TextIndex.build(sorted(keyed), code, folded=True)
-        row = db.execute("SELECT content_hash FROM builds WHERE build_id = ?", (b,)).fetchone()
-        top = (store.top_label(b) or (0, 0), store.top_audience(b))
-        return cls.from_rows(row[0] if row else "", nodes, edges, text, _vectors_of(store), build=b, top=top)
+        return cls.from_stored(store_rows(store, b), b, _vectors_of(store))
+
+    @classmethod
+    def from_stored(cls, rows: StoreRows, build: int = 0, vectors: snapshot_text.Vectors | None = None) -> Snapshot:
+        """The snapshot of rows a store gave (``store_rows``) and something kept, such as the hub's tables; its
+        vectors are ``vectors``, else those of the rows."""
+        text = snapshot_text.TextIndex.build(sorted(rows.keyed), rows.code, folded=True)
+        vectors = vectors if vectors is not None else rows_vectors(rows)
+        snap = cls.from_rows(rows.content_hash, list(rows.nodes), list(rows.edges), text, vectors, build, rows.top)
+        where: dict[str, list] = defaultdict(list)
+        for elem, unit, span in rows.wheres:
+            where[elem].append((unit, span))
+        derived: dict[str, list] = defaultdict(list)
+        for elem, units, needs in rows.derivations:
+            derived[elem].append((units, needs))
+        bodies = {key: (row[4], row[5] if len(row) > 5 else None) for key, row in rows.keyed}
+        return replace(
+            snap,
+            units=MappingProxyType({r[0]: tuple(r) for r in rows.units}),
+            where=MappingProxyType({k: tuple(v) for k, v in where.items()}),
+            derivations=MappingProxyType({k: tuple(v) for k, v in derived.items()}),
+            bodies=MappingProxyType(bodies),
+            summary=MappingProxyType(dict(rows.summary)),
+            asked=tuple(rows.asked),
+            asked_weight=rows.asked_weight,
+        )
 
     def view(
         self,
@@ -272,6 +290,121 @@ class Snapshot:
 
     def rels(self) -> list[str]:
         return sorted({rel for rel, _ in self.partitions})
+
+
+@dataclass(frozen=True)
+class StoreRows:
+    """What a snapshot is made of, as a store file holds one build: its content hash, its live node and edge rows
+    (NODE_COLUMNS, EDGE_COLUMNS), its full-text rows keyed as ``node_fts_rows`` keeps them (folded), the folded text
+    of its code by file node id, and its top label and audience."""
+
+    content_hash: str
+    nodes: tuple[tuple, ...]
+    edges: tuple[tuple, ...]
+    keyed: tuple[tuple[str, tuple], ...]
+    code: dict[str, str]
+    top: tuple[tuple[int, int], frozenset[str]]
+    units: tuple[tuple, ...] = ()  # live units: UNIT_KEYS, then label_aud
+    wheres: tuple[tuple, ...] = ()  # live where-provenance: (element, unit, span), by element, unit, span
+    derivations: tuple[tuple, ...] = ()  # live derivations: (element, units JSON, needs JSON), by element, deriv id
+    summary: dict = field(default_factory=dict)  # ``Store.summary``
+    vectors: tuple[tuple, ...] = ()  # the rows of node_vec: (key, node id, kind, aud, vector bytes), by key
+    vector_info: dict | None = None  # ``semantic.Info`` of them as a dict; None without vectors
+    # the rows of the asked index (node id, level, location, audience, prior, words), by ``asked_order``, and the
+    # weight of an asked match the build recorded (``Store.write_asked``); empty and None without them
+    asked: tuple[tuple, ...] = ()
+    asked_weight: float | None = None
+
+
+UNIT_KEYS = ("unit", "item", "anchor", "rev", "hash", "source", "span")
+
+
+def asked_order(rows) -> tuple[tuple, ...]:
+    """Asked rows in one order whatever read them: by node, then by the JSON of the rest (an audience may be None)."""
+    return tuple(sorted((tuple(r) for r in rows), key=lambda r: (r[0], json.dumps(r[1:]))))
+
+
+def store_rows(store, b: int) -> StoreRows:
+    """The rows of build ``b`` of a store file (``StoreRows``); the full-text tables hold the latest build only."""
+    db: sqlite3.Connection = store.db
+    nodes = db.execute(f"SELECT {NODE_COLUMNS} FROM nodes WHERE {LIVE}", {"b": b}).fetchall()
+    edges = db.execute(f"SELECT {EDGE_COLUMNS} FROM edges WHERE {LIVE}", {"b": b}).fetchall()
+    keyed = []
+    for table, aud, extra in (("node_fts", 0, ""), ("node_fts_aud", 1, ", f.aud")):
+        keyed += [
+            (key, tuple(row))
+            for key, *row in db.execute(
+                f"SELECT r.node_id, f.node_id, f.kind, f.name, f.path, f.body{extra} FROM node_fts_rows r"
+                f" JOIN {table} f ON f.rowid = r.fts_rowid WHERE r.aud = ?",
+                (aud,),
+            )
+        ]
+    code = dict(db.execute("SELECT node_id, body FROM code_fts").fetchall())
+    row = db.execute("SELECT content_hash FROM builds WHERE build_id = ?", (b,)).fetchone()
+    top = (store.top_label(b) or (0, 0), store.top_audience(b))
+    units = db.execute(
+        f"SELECT unit_id, item_id, anchor, rev, hash, source, span, label_aud FROM units WHERE {LIVE} ORDER BY unit_id",
+        {"b": b},
+    ).fetchall()
+    wheres = db.execute(
+        f"SELECT elem_id, unit_id, span FROM where_prov WHERE {LIVE} ORDER BY elem_id, unit_id, span", {"b": b}
+    ).fetchall()
+    derivations = db.execute(
+        f"SELECT elem_id, units, needs FROM derivations WHERE {LIVE} ORDER BY elem_id, deriv_id", {"b": b}
+    ).fetchall()
+    vectors, info = _vector_rows(store)
+    asked: list = []
+    if store.has_asked():
+        asked = db.execute(
+            "SELECT r.node_id, r.lvl, r.loc, r.aud, r.prior, a.asked FROM node_asked_rows r"
+            " JOIN node_asked a ON a.rowid = r.id"
+        ).fetchall()
+    return StoreRows(
+        row[0] if row else "",
+        tuple(map(tuple, nodes)),
+        tuple(map(tuple, edges)),
+        tuple(sorted(keyed)),
+        code,
+        top,
+        tuple(map(tuple, units)),
+        tuple(map(tuple, wheres)),
+        tuple(map(tuple, derivations)),
+        store.summary() if store.latest_ready() == b else {},
+        vectors,
+        info,
+        asked_order(asked),
+        store.recorded_asked_weight(),
+    )
+
+
+def _vector_rows(store) -> tuple[tuple[tuple, ...], dict | None]:
+    """The rows of a store file's node_vec by key and what they are (``semantic.Info``), or nothing."""
+    from dataclasses import asdict
+
+    from evo_agents.kg import semantic
+
+    found = semantic.info(store.db)
+    if found is None:
+        return (), None
+    rows = store.db.execute("SELECT key, node_id, kind, aud, vec FROM node_vec ORDER BY key").fetchall()
+    return tuple(map(tuple, rows)), asdict(found)
+
+
+def rows_vectors(rows: StoreRows) -> snapshot_text.Vectors | None:
+    """The vectors of ``rows`` (``StoreRows.vectors``), as ``_vectors_of`` reads them from a file."""
+    from evo_agents.kg import semantic
+
+    if not rows.vectors or not rows.vector_info:
+        return None
+    found = semantic.Info(**rows.vector_info)
+    unpack = struct.Struct(f"<{found.dim}e").unpack
+    return snapshot_text.Vectors(
+        found,
+        tuple(r[1] for r in rows.vectors),
+        tuple(r[2] for r in rows.vectors),
+        tuple(r[3] for r in rows.vectors),
+        tuple(array("f", unpack(bytes(r[4]))) for r in rows.vectors),
+    )
 
 
 def _vectors_of(store) -> snapshot_text.Vectors | None:
@@ -299,6 +432,12 @@ class SnapshotView:
 
     def __init__(self, snap: Snapshot, reader: frozenset[str], ceiling: tuple[int, int] | None, tuning):
         self.snap, self.reader, self.ceiling, self.tuning = snap, reader, ceiling, tuning
+        self._ranker = None
+        self.asked_clearance: tuple[int, int] | None = None  # search reads the asked rows within it (``Store``)
+        self.asked_weight: float | None = None  # the weight of an asked match in place of the build's (an eval)
+
+    def close(self) -> None:
+        """Nothing to close: a view reads RAM."""
 
     # -- what the reader sees ---------------------------------------------------------------------------------------
 
@@ -391,12 +530,211 @@ class SnapshotView:
         """How many live edges lead into a node with one of ``rels`` and ``statuses``, under ``ceiling``."""
         return len(self._into(node_id, rels, statuses, ceiling))
 
-    def degree(self, node_id: str) -> int:
-        """Every edge of a node, whatever its relation, status or label: what a hub is told by."""
+    def degree(self, node_id: str, b: int = 0) -> int:
+        """How many edges touch a node, whatever their relation, status or level, the reader's audience within, an
+        edge from the node to itself once (``Store.degree``): what a hub is told by."""
         i = self.snap.index.get(node_id)
         if i is None:
             return 0
-        return sum(len(p.out_of(i)) + len(p.into(i)) for p in self.snap.partitions.values())
+        held = {e for p in self.snap.partitions.values() for e in (*p.out_of(i), *p.into(i))}
+        return sum(1 for e in held if self.sees(self.snap.edges[e]))
+
+    def degrees(self, ids, b: int, ceiling: tuple[int, int]) -> dict[str, int]:
+        """How many edges at most ``ceiling`` touch each of ``ids``, the reader's audience within, an edge from a node
+        to itself twice; ids without one are left out (``Store.degrees``)."""
+        out: dict[str, int] = {}
+        for nid in dict.fromkeys(ids):
+            i = self.snap.index.get(nid)
+            if i is None:
+                continue
+            count = sum(
+                1
+                for p in self.snap.partitions.values()
+                for e in (*p.out_of(i), *p.into(i))
+                if self.sees(self.snap.edges[e]) and self.under(self.snap.edges[e], ceiling)
+            )
+            if count:
+                out[nid] = count
+        return out
+
+    def alias_of(self, alias: str, b: int = 0) -> str | None:
+        """The node the reader sees that holds ``alias`` (an id merged into it), or None."""
+        nid = self.snap.aliases.get(alias)
+        return nid if nid is not None and self.node(nid) is not None else None
+
+    # -- search (``Store.search``, ``search_scored``, ``plain_search``, ``code_files``, ``code_lines``) ----------------
+
+    @property
+    def ranker(self):
+        if self._ranker is None:
+            self._ranker = snapshot_text.Ranker(self)
+        return self._ranker
+
+    def search(self, query: str, b: int = 0, limit: int = 50, **kw) -> list[str]:
+        return self.ranker.search(query, b, limit, **kw)
+
+    def search_scored(self, query: str, b: int = 0, limit: int = 50, **kw) -> list[tuple[str, float | None]]:
+        return self.ranker.search_scored(query, b, limit, **kw)
+
+    def matched(self, ids: list[str], query: str, snippets=frozenset()) -> dict[str, dict]:
+        """``Store.matched``'s word counts, without its snippet and passage lines (not made from a snapshot yet)."""
+        return self.ranker.matched(ids, query)
+
+    def plain_search(self, query: str, limit: int, kinds: list[str] | None = None) -> list[str]:
+        """Ids of the nodes plain BM25 ranks for ``query``, best first, from the rows without an audience."""
+        from evo_agents.kg import search as text_search
+
+        fts_query = text_search.plain_query(query)
+        if fts_query is None:
+            return []
+        wanted = {k for k in kinds or text_search.PLAIN_KINDS if isinstance(k, str)}
+        text = self.snap.text
+        found = text.public.search(
+            fts_query, text_search.PLAIN_WEIGHTS[2:], lambda n: text.public_rows[n].kind in wanted
+        )
+        ranked = sorted(found, key=lambda x: (x[1], text.public_rows[x[0]].node_id))[: limit * 4]
+        return list(dict.fromkeys(text.public_rows[n].node_id for n, _ in ranked))[:limit]
+
+    def code_files(self, words: list[str], limit: int | None = None) -> list[tuple[str, int]]:
+        return self.ranker.code_files(words) if limit is None else self.ranker.code_files(words, limit)
+
+    def code_lines(self, node_id: str, words: list[str], most: int | None = None) -> list[int]:
+        return self.ranker.code_lines(node_id, words) if most is None else self.ranker.code_lines(node_id, words, most)
+
+    def asked_nodes(self, ids) -> set[str]:
+        """The nodes of ``ids`` with an asked row under any label (``Store.asked_nodes``)."""
+        return set(ids) & {row[0] for row in self.snap.asked}
+
+    def weight_of_asked(self) -> float:
+        """``Store.weight_of_asked``: ``asked_weight`` when set, else the build's, else ``search.ASKED_WEIGHT``."""
+        from evo_agents.kg import search as text_search
+
+        for weight in (self.asked_weight, self.snap.asked_weight):
+            if weight is not None:
+                return weight
+        return text_search.ASKED_WEIGHT
+
+    # -- the web's counts (``Store.kind_counts``, ``shape_counts``, ``build_row``) -------------------------------------
+
+    def kind_counts(self, b: int = 0) -> list[tuple[str, int, int, str, int]]:
+        counts: dict[tuple, int] = defaultdict(int)
+        for n in self.snap.nodes:
+            if self.sees(n):
+                counts[(n["kind"], *n["label"][:3])] += 1
+        return [(*key, count) for key, count in counts.items()]
+
+    def shape_counts(self, b: int = 0) -> list[tuple]:
+        counts: dict[tuple, int] = defaultdict(int)
+        nodes, index = self.snap.nodes, self.snap.index
+        for e in self.snap.edges:
+            s, d = nodes[index[e["src"]]], nodes[index[e["dst"]]]
+            if self.sees(e) and self.sees(s) and self.sees(d):
+                counts[(s["kind"], e["rel"], d["kind"], *(tuple(x["label"][:3]) for x in (e, s, d)))] += 1
+        return [(*key, count) for key, count in counts.items()]
+
+    def build_row(self, build_id: int = 0) -> dict:
+        """What the build's summary keeps of ``Store.build_row``: id, status, finish, content hash, coverage, stats."""
+        summary = self.snap.summary
+        return {
+            "build_id": summary.get("build_id"),
+            "status": "ready" if summary.get("ready") else None,
+            "finished_at": summary.get("built_at"),
+            "content_hash": summary.get("content_hash"),
+            "coverage": dict(summary.get("coverage") or {}),
+            "stats": dict(summary.get("stats") or {}),
+        }
+
+    # -- what locate and plain search read whatever the reader (``Store.file_ids`` and the rest) ----------------------
+
+    def file_ids(self) -> list[str]:
+        return [n["id"] for n in self.snap.nodes if n["kind"] == "File"]
+
+    def nodes_between(self, low: str, high: str) -> list[tuple[str, dict]]:
+        from bisect import bisect_left
+
+        ids = self.snap.ids
+        return [(ids[i], self.snap.nodes[i]["props"]) for i in range(bisect_left(ids, low), bisect_left(ids, high))]
+
+    def changed_by(self, file_id: str, limit: int) -> list[str]:
+        i = self.snap.index.get(file_id)
+        if i is None:
+            return []
+        part = [p for (rel, _), p in self.snap.partitions.items() if rel == "changes"]
+        return [self.snap.edges[e]["src"] for p in part for e in p.into(i)][:limit]
+
+    def changes_of(self, commits) -> list[tuple[str, str]]:
+        part = [p for (rel, _), p in self.snap.partitions.items() if rel == "changes"]
+        out = []
+        for c in commits:
+            i = self.snap.index.get(c)
+            if i is not None:
+                out += [(c, self.snap.edges[e]["dst"]) for p in part for e in p.out_of(i)]
+        return out
+
+    # -- provenance, text and status (``Store.unit``, ``where``, ``derivations``, ``body``, ``summary``, ``seen``) ----
+
+    def unit(self, unit_id: str, b: int = 0) -> dict | None:
+        row = self.snap.units.get(unit_id)
+        if row is None or not within(self.reader, row[7]):
+            return None
+        return dict(zip(UNIT_KEYS, row[:7], strict=True))
+
+    def where(self, elem_id: str, b: int = 0) -> list[dict]:
+        return [{"unit": unit, "span": span} for unit, span in self.snap.where.get(elem_id, ())]
+
+    def derivations(self, elem_id: str, b: int = 0) -> list[dict]:
+        return [{"units": json.loads(u), "needs": json.loads(n)} for u, n in self.snap.derivations.get(elem_id, ())]
+
+    def body(self, node_id: str) -> str | None:
+        """The text of node ``node_id``'s own full-text row; a row with an audience only for a reader within it."""
+        from evo_agents.kg.search import stored_text
+
+        held = self.snap.bodies.get(node_id)
+        if held is None or (held[1] is not None and (not self.reader or not within(self.reader, held[1]))):
+            return None
+        return stored_text(held[0]) if held[0] else None
+
+    def path_nodes(self, b: int = 0) -> list[dict]:
+        """Live File and Document nodes that carry a path, by id."""
+        return [
+            dict(n)
+            for n in self.snap.nodes
+            if n["kind"] in ("File", "Document") and self.sees(n) and n["props"].get("path")
+        ]
+
+    def file_symbols(self, file_ids, b: int = 0) -> dict[str, list[dict]]:
+        """Live Symbol nodes grouped by the file item that defines them (``props.file``), by id."""
+        wanted, out = set(file_ids), defaultdict(list)
+        for n in self.snap.nodes:
+            if n["kind"] == "Symbol" and n["props"].get("file") in wanted and self.sees(n):
+                out[n["props"]["file"]].append(dict(n))
+        return dict(out)
+
+    def latest_ready(self, before: int | None = None) -> int | None:
+        return self.snap.summary.get("build_id", self.snap.build) if before is None else None
+
+    def top_label(self, b: int = 0) -> tuple[int, int]:
+        return self.snap.top_label
+
+    def top_audience(self, b: int = 0) -> frozenset[str]:
+        return self.snap.top_audience
+
+    def summary(self) -> dict:
+        return dict(self.snap.summary) if self.snap.summary else {"ready": False}
+
+    def seen(self, b: int = 0) -> dict:
+        """What the snapshot holds within the reader's audience, whatever the level (``Store.seen``)."""
+        units = [r for r in self.snap.units.values() if within(self.reader, r[7])]
+        items: dict[str, set] = defaultdict(set)
+        for r in units:
+            items[r[5]].add(r[1])
+        return {
+            "nodes": sum(1 for n in self.snap.nodes if self.sees(n)),
+            "edges": sum(1 for e in self.snap.edges if self.sees(e)),
+            "units": len(units),
+            "items": {source: len(ids) for source, ids in items.items()},
+            "audience": {r[5] for r in self.snap.units.values() if r[7] is not None},
+        }
 
     def walk_edges(self, ids: list[str], b: int = 0):
         """The edges the walk of ``evo_agents.kg.ppr`` reads for ``ids``: those out of one of them, then those into

@@ -43,6 +43,8 @@ import threading
 import time
 import uuid
 from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -57,6 +59,7 @@ from evo_agents.kg.policy import Label, Policy, audience_below
 from evo_agents.kg.serve import HANDLE_TTL, TOOLS, Session
 from evo_agents.kg.serve_impact import IMPACT_STATUSES
 from evo_agents.kg.serve_view import ToolError
+from evo_agents.kg.snapshot import SnapshotView
 from evo_agents.kg.store import StaleSchema, Store
 
 TOOL_NAMES = tuple(tool["name"] for tool in TOOLS)
@@ -308,10 +311,12 @@ class HubSession(Session):
             f"{summary.get('units', 0)} units, content {self.graph.content_hash}",
         ]
         if not hub_build["latest"]:
-            lines.append(
-                f"note: build {self.latest.build_id} is newer, but the blob store did not answer; this is the newest "
-                "graph cached here"
+            behind = (
+                "its graph is not loaded yet; this is the newest graph loaded"
+                if isinstance(self.graph_store, SnapshotView)
+                else "the blob store did not answer; this is the newest graph cached here"
             )
+            lines.append(f"note: build {self.latest.build_id} is newer, but {behind}")
         for src in coverage.get("sources", []):
             if "mentions" not in src:  # items with an audience (``within``)
                 lines.append(f"  {src['id']:<22} {src['items']:>6} items you can read")
@@ -489,6 +494,30 @@ class WholeSession(HubSession):
         return {"structuredContent": data}
 
 
+Snapshotted = tuple[SnapshotView, BuiltGraph]  # a reader's view of a snapshot, and the build it was made of
+
+
+@contextmanager
+def reading(
+    cache: GraphCache, store: BlobStore | None, project: str, graphs: list[BuiltGraph], snapshot: Snapshotted | None
+) -> Iterator[tuple[Store | SnapshotView, BuiltGraph]]:
+    """(the graph to read, the build it is): ``snapshot``, a view of the snapshot of one of ``graphs`` made of the
+    hub's tables (``evo_agents.hub.kg_snapshots``), when given; else the newest graph file that can be read, opened
+    for the call."""
+    if snapshot is not None:
+        yield snapshot
+        return
+    path, graph = cache.acquire(store, project, graphs)
+    try:
+        opened = open_graph(path, project, graph)
+        try:
+            yield opened, graph
+        finally:
+            opened.close()
+    finally:
+        cache.release(path)
+
+
 def answer(
     cache: GraphCache,
     store: BlobStore | None,
@@ -505,26 +534,20 @@ def answer(
     tuning: kg_settings.Tuning | None = None,
     whole: bool = False,
     named_graphs: dict[str, frozenset[str]] | None = None,
+    snapshot: Snapshotted | None = None,
 ) -> dict:
     """One kg_* call on the newest graph of ``project`` that can be read; ``explore``: a kg_search of an agent's, which
     may explore the ranking (``evo_agents.kg.explore``). Blocking: run it in a thread, which also keeps the SQLite
     connection in the thread that made it. ``tuning`` is what the project's search is tuned by (its kg_settings);
     ``whole``: the data alone, uncut (``WholeSession``); ``named_graphs``: the named graph the call's ``graph`` names,
-    to its sources, as the database holds it (``evo_agents.kg.graph_scope``)."""
-    path, graph = cache.acquire(store, project, graphs)
-    try:
-        opened = open_graph(path, project, graph)
+    to its sources, as the database holds it (``evo_agents.kg.graph_scope``); ``snapshot``: as ``reading``."""
+    with reading(cache, store, project, graphs, snapshot) as (opened, graph):
         if tuning is not None:
             opened.tuning = tuning
-        try:
-            session = (WholeSession if whole else HubSession)(project, policy, ceiling, sink, opened, graph, graphs[0])
-            session.explorer = Explorer() if explore else None
-            session.named_graphs = dict(named_graphs or {})
-            return handles.call(session, owner, tool, arguments)
-        finally:
-            opened.close()
-    finally:
-        cache.release(path)
+        session = (WholeSession if whole else HubSession)(project, policy, ceiling, sink, opened, graph, graphs[0])
+        session.explorer = Explorer() if explore else None
+        session.named_graphs = dict(named_graphs or {})
+        return handles.call(session, owner, tool, arguments)
 
 
 def mentioning(
@@ -536,19 +559,13 @@ def mentioning(
     sink: str,
     graphs: list[BuiltGraph],
     codes: list[str],
+    snapshot: Snapshotted | None = None,
 ) -> dict[str, list[Evidence]]:
     """What the newest graph of ``project`` that can be read shows of the delivery of each use case code of ``codes``
     (``HubSession.mentions``), read through ``sink`` under ``ceiling``. Blocking, as ``answer``. Raises
     GraphUnavailable, ArtifactMismatch; ToolError when nothing of the project is visible."""
-    path, graph = cache.acquire(store, project, graphs)
-    try:
-        opened = open_graph(path, project, graph)
-        try:
-            return HubSession(project, policy, ceiling, sink, opened, graph, graphs[0]).mentions(codes)
-        finally:
-            opened.close()
-    finally:
-        cache.release(path)
+    with reading(cache, store, project, graphs, snapshot) as (opened, graph):
+        return HubSession(project, policy, ceiling, sink, opened, graph, graphs[0]).mentions(codes)
 
 
 @dataclass(frozen=True)
@@ -572,19 +589,13 @@ def node_kinds(
     sink: str,
     graphs: list[BuiltGraph],
     ids: list[str],
+    snapshot: Snapshotted | None = None,
 ) -> dict[str, tuple[str, str]]:
     """``HubSession.node_kinds`` of ``ids`` in the newest graph of ``project`` that can be read, through ``sink`` under
     ``ceiling``: what an entity map may cite (``evo_agents.kg.entity_map.check``). Blocking. Raises ToolError,
     GraphUnavailable, ArtifactMismatch."""
-    path, graph = cache.acquire(store, project, graphs)
-    try:
-        opened = open_graph(path, project, graph)
-        try:
-            return HubSession(project, policy, ceiling, sink, opened, graph, graphs[0]).node_kinds(ids)
-        finally:
-            opened.close()
-    finally:
-        cache.release(path)
+    with reading(cache, store, project, graphs, snapshot) as (opened, graph):
+        return HubSession(project, policy, ceiling, sink, opened, graph, graphs[0]).node_kinds(ids)
 
 
 def read_labelled(
@@ -621,20 +632,15 @@ def unknown(
     graphs: list[BuiltGraph],
     ids: list[str],
     paths: list[str],
+    snapshot: Snapshotted | None = None,
 ) -> UnknownRefs:
     """Which of ``ids`` and ``paths`` the newest graph of ``project`` that can be read lacks, read through ``sink``
     under ``ceiling``, with the authors of the newest commits of the files they name. Blocking, as ``answer``. Raises
     GraphUnavailable, ArtifactMismatch."""
-    path, graph = cache.acquire(store, project, graphs)
-    try:
-        opened = open_graph(path, project, graph)
+    with reading(cache, store, project, graphs, snapshot) as (opened, graph):
         try:
             session = HubSession(project, policy, ceiling, sink, opened, graph, graphs[0])
             lacking, missing, authors = session.unknown(ids, paths)
         except ToolError as exc:
             return UnknownRefs(tuple(ids), tuple(paths), str(exc))
-        finally:
-            opened.close()
-    finally:
-        cache.release(path)
     return UnknownRefs(tuple(lacking), tuple(missing), None, tuple(authors))

@@ -36,6 +36,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     PrimaryKeyConstraint,
     Table,
@@ -693,3 +694,172 @@ def kg_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table, Ta
     ingests, configs, pending = _ingest_tables(metadata)
     builds = _builds(metadata)
     return (ingests, configs, pending, builds, *_health_tables(metadata))
+
+
+def _scoped(name: str, metadata: MetaData, key: str, *columns: Column) -> Table:
+    """A table of a project's graph rows on one branch (0, main, or a ``kg_branches`` id), keyed by ``key``."""
+    table = Table(
+        name,
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("branch_id", BigInteger, nullable=False, server_default="0"),
+        Column(key, Text, nullable=False),
+        *columns,
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        PrimaryKeyConstraint("project_id", "branch_id", key, name=f"{name}_pkey"),
+    )
+    return table
+
+
+def _label_columns() -> tuple[Column, ...]:
+    return (
+        Column("label_lvl", Integer),
+        Column("label_loc", Integer),
+        Column("label_int", Text),
+        Column("label_aud", Text),
+    )
+
+
+def graph_tables(metadata: MetaData) -> dict[str, Table]:
+    """The graph a build writes to Postgres (0247, plan kg-centralized-on-hub, ``evo_agents.hub.kg_store``): the
+    corpus items with their row hash, the memo of what was extracted from a row hash, the nodes, edges, text rows,
+    provenance, asked rows and embeddings of each branch, the head of each branch (``kg_graph_heads``), and the branches with their
+    operations. A node or edge row holds the columns of a store file's row (``evo_agents.kg.store_schema``), props as the store's
+    JSON text, so a snapshot read from it hashes as one read from the file."""
+    corpus = _scoped(
+        "kg_corpus_items",
+        metadata,
+        "item_key",
+        Column("source_id", Text, nullable=False),
+        Column("row_hash", Text, nullable=False),
+        Column("content_sha256", Text, nullable=False),
+        Column("label", JSONB, nullable=False),
+        Column("audience", ARRAY(Text), nullable=False, server_default="{}"),
+        Column("body", JSONB, nullable=False),
+        _stamp("updated_at"),
+    )
+    memo = Table(
+        "kg_memo_entries",
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("extractor", Text, nullable=False),
+        Column("row_hash", Text, nullable=False),
+        Column("result", JSONB, nullable=False),
+        _stamp("created_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_memo_entries_project_id_fkey"
+        ),
+        PrimaryKeyConstraint("project_id", "extractor", "row_hash", name="kg_memo_entries_pkey"),
+    )
+    nodes = _scoped(
+        "kg_nodes",
+        metadata,
+        "node_id",
+        Column("kind", Text, nullable=False),
+        Column("name", Text),
+        Column("props", Text, nullable=False),
+        Column("status", Text),
+        Column("conf", Double),
+        *_label_columns(),
+        Column("aliases", Text, nullable=False, server_default="[]"),
+    )
+    edges = _scoped(
+        "kg_edges",
+        metadata,
+        "edge_id",
+        Column("src", Text, nullable=False),
+        Column("rel", Text, nullable=False),
+        Column("dst", Text, nullable=False),
+        Column("props", Text, nullable=False),
+        Column("status", Text),
+        Column("conf", Double),
+        *_label_columns(),
+    )
+    Index("kg_edges_src_idx", edges.c.project_id, edges.c.branch_id, edges.c.src)
+    Index("kg_edges_dst_idx", edges.c.project_id, edges.c.branch_id, edges.c.dst)
+    text_rows = _scoped(
+        "kg_text_rows",
+        metadata,
+        "row_key",
+        Column("node_id", Text, nullable=False),
+        Column("row", JSONB, nullable=False),
+    )
+    provenance = _scoped(
+        "kg_provenance",
+        metadata,
+        "row_key",
+        Column("elem_id", Text, nullable=False),
+        Column("row", JSONB, nullable=False),
+    )
+    asked = _scoped(
+        "kg_asked",
+        metadata,
+        "row_key",
+        Column("node_id", Text, nullable=False),
+        Column("row", JSONB, nullable=False),
+    )
+    embeddings = _scoped(
+        "kg_embeddings",
+        metadata,
+        "row_key",
+        Column("node_id", Text, nullable=False),
+        Column("kind", Text, nullable=False),
+        Column("aud", Text),
+        Column("vector", LargeBinary, nullable=False),
+    )
+    heads = Table(
+        "kg_graph_heads",
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("branch_id", BigInteger, nullable=False, server_default="0"),
+        Column("build_id", BigInteger),
+        Column("content_hash", Text, nullable=False),
+        Column("top_label", ARRAY(Integer), nullable=False),
+        Column("top_audience", ARRAY(Text), nullable=False, server_default="{}"),
+        Column("summary", JSONB, nullable=False, server_default="{}"),
+        Column("vectors", JSONB),
+        Column("asked_weight", Double),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_graph_heads_project_id_fkey"
+        ),
+        ForeignKeyConstraint(["build_id"], ["kg_builds.id"], ondelete="SET NULL", name="kg_graph_heads_build_id_fkey"),
+        PrimaryKeyConstraint("project_id", "branch_id", name="kg_graph_heads_pkey"),
+    )
+    branches = Table(
+        "kg_branches",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("name", Text, nullable=False),
+        Column("base_build_id", BigInteger),
+        Column("status", Text, nullable=False, server_default="open"),
+        Column("created_by", BigInteger),
+        _stamp("created_at"),
+        CheckConstraint(column("status").in_(("open", "merged", "closed")), name="kg_branches_status_check"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_branches_project_id_fkey"),
+        ForeignKeyConstraint(
+            ["base_build_id"], ["kg_builds.id"], ondelete="SET NULL", name="kg_branches_base_build_id_fkey"
+        ),
+        ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="SET NULL", name="kg_branches_created_by_fkey"),
+        PrimaryKeyConstraint("id", name="kg_branches_pkey"),
+        UniqueConstraint("project_id", "name", name="kg_branches_project_id_name_key"),
+    )
+    ops = Table(
+        "kg_branch_ops",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("branch_id", BigInteger, nullable=False),
+        Column("op", Text, nullable=False),
+        Column("payload", JSONB, nullable=False),
+        Column("by_user", BigInteger),
+        _stamp("at"),
+        ForeignKeyConstraint(
+            ["branch_id"], ["kg_branches.id"], ondelete="CASCADE", name="kg_branch_ops_branch_id_fkey"
+        ),
+        ForeignKeyConstraint(["by_user"], ["users.id"], ondelete="SET NULL", name="kg_branch_ops_by_user_fkey"),
+        PrimaryKeyConstraint("id", name="kg_branch_ops_pkey"),
+    )
+    Index("kg_branch_ops_branch_idx", ops.c.branch_id, ops.c.id)
+    found = (corpus, memo, nodes, edges, text_rows, provenance, asked, embeddings, heads, branches, ops)
+    return {t.name: t for t in found}

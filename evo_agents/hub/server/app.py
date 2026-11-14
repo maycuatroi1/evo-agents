@@ -36,7 +36,7 @@ from fastapi import Depends, FastAPI
 from starlette.datastructures import MutableHeaders
 
 from evo_agents import __version__
-from evo_agents.hub import cache, wake
+from evo_agents.hub import cache, kg_snapshots, wake
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import make_engine, open_pool
@@ -218,6 +218,7 @@ async def _open(app: FastAPI, config: HubConfig):
     app.state.jobs = await JobQueue.open(pool)
     app.state.kg_graphs = GraphCache(config.data_dir / "kg" / "graphs")  # built graphs, fetched by sha256
     app.state.kg_handles = Handles()  # kg_more continuations, per user and project
+    app.state.kg_snapshots.engine = app.state.engine
     if app.state.blobs is None:
         log.warning(
             "blob store not configured: the blob routes answer 503",
@@ -252,6 +253,7 @@ async def _close(app: FastAPI, pool) -> None:
     await app.state.terminals.close_all()
     await app.state.browser_views.close_all()
     await app.state.listener.close()
+    await app.state.kg_snapshots.close()
     await app.state.cache.close()
     await wake.close()
     await app.state.github.aclose()
@@ -409,6 +411,8 @@ def _include_run_routes(app: FastAPI, config: HubConfig) -> None:
         chat_events.ChatStreams(app.state.listener),
     )
     app.state.trace_streams = system_trace_views.TraceStreams(app.state.listener)  # the live traces of systems
+    # the in-RAM graphs of the projects, swapped on each build's notice on kg_graph
+    app.state.kg_snapshots = kg_snapshots.SnapshotCoordinator(listener=app.state.listener)
     # the cache, on Redis with EVO_HUB_REDIS_URL, else this process's; dropped by the listener's wake-ups
     app.state.cache = cache.Cache(config.redis_url, listener=app.state.listener)
     app.state.join_refusals = workers.RefusalLimit()  # refused pairing codes per client address, this process only

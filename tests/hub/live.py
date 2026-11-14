@@ -284,14 +284,14 @@ def web_session(db: pg.Database, login: str) -> tuple[str, int]:
     return token, found[0][0]
 
 
-def table_dump(db: pg.Database) -> str:
-    """Every row of every hub table as JSON text, to search for a value that must not be stored."""
+def table_dump(db: pg.Database, leave_out: frozenset[str] = frozenset()) -> str:
+    """Every row of every hub table but ``leave_out`` as JSON text, to search for a value that must not be stored."""
     from sqlalchemy import Text, cast, column, func, select, table
 
     catalog = table("pg_tables", column("schemaname", Text), column("tablename", Text))
     names = [row[0] for row in sql(db, select(catalog.c.tablename).where(catalog.c.schemaname == "public"))]
     rows = []
-    for name in names:
+    for name in (n for n in names if n not in leave_out):
         each = table(name).alias("t")
         rows += [row[0] for row in sql(db, select(cast(func.row_to_json(each.table_valued()), Text)))]
     return json.dumps(rows)

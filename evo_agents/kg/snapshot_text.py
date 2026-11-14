@@ -15,7 +15,9 @@ the way the store does, in the same order of ways:
    query's long words as substrings;
 5. ``search.weight`` and closed plans, then reciprocal rank fusion (``semantic.fuse``).
 
-What agents asked before they read a node (the hub's ``node_asked``) is not in a snapshot: its prior is 1."""
+What agents asked before they read a node (``Snapshot.asked``) counts as in the store (``store_asked``): for a reader
+whose ``asked_clearance`` is set, an asked match adds to a node's score and its prior multiplies it. A row matches
+when it holds a word of the query, as FTS5 matches any of them."""
 
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
+from evo_agents.kg import asked as asked_words
 from evo_agents.kg import search as text_search
 from evo_agents.kg import semantic
 from evo_agents.kg.policy import audience_below
@@ -153,6 +156,7 @@ class Ranker:
         scores, rows = self._by_words(words_of, hits, want, kinds, any_word)
         named = text_search.named_words(query)
         self._by_names(query, named, (want, kinds), hits, (scores, rows))
+        self._by_asked(query, kinds, hits, (scores, rows))
         near = self._semantic_ranked(vector, kinds, set(hits)) if vector is not None else {}
         tri = self._trigram_ranked(words_of, want, kinds, set(hits))
         for node_id in (near.keys() | tri.keys()) - rows.keys():
@@ -189,12 +193,78 @@ class Ranker:
                 if node_id not in hits:
                     scores[node_id], rows[node_id] = min(top, scores.get(node_id, top)), row
 
+    def _asked_rows(self):
+        """The asked rows the reader may read within its ``asked_clearance``; none without one."""
+        clearance = self.view.asked_clearance
+        if clearance is None:
+            return []
+        lvl, loc = clearance
+        return [r for r in self.view.snap.asked if r[1] <= lvl and r[2] <= loc and self._readable(r[3])]
+
+    def _asked_scores(self, query: str) -> dict[str, float]:
+        """``Store._asked_scores``: per node, how well the best of its readable asked rows matches ``query``."""
+        if not self.view.snap.asked or not self.view.weight_of_asked():
+            return {}
+        words_of = asked_words.terms(query)
+        wanted = set(words_of)
+        out: dict[str, float] = {}
+        for node_id, *_, text in self._asked_rows():
+            if wanted.intersection(text.split()):
+                out[node_id] = max(out.get(node_id, 0.0), asked_words.match(words_of, text))
+        return out
+
+    def _asked_priors(self, ids) -> dict[str, float]:
+        """``Store._asked_priors``: per node of ``ids``, the highest prior of its readable asked rows."""
+        ids = set(ids)
+        out: dict[str, float] = {}
+        for node_id, _, _, _, prior, _ in self._asked_rows() if ids else ():
+            if node_id in ids:
+                out[node_id] = max(out.get(node_id, prior), prior)
+        return {k: min(max(v, 1.0), asked_words.PRIOR_MAX) for k, v in out.items()}
+
+    def _by_asked(self, query, kinds, hits, found) -> None:
+        """``Store._by_asked``: an asked match adds to a node's score, weighed against the best text score."""
+        scores, rows = found
+        asked = self._asked_scores(query)
+        best = min(scores.values(), default=-1.0)
+        for node_id, match in asked.items():
+            score = self.view.weight_of_asked() * match * best
+            if node_id in scores:
+                scores[node_id] += score
+            elif node_id not in hits:
+                row = self.text.index_row(node_id)
+                if row[0] and (not kinds or row[0] in kinds):
+                    scores[node_id], rows[node_id] = score, row
+
     def files_named(self, word: str, kinds: list[str]) -> list[tuple[str, IndexRow]]:
         """(node id, (kind, name, path)) of the files whose file name or stem is ``word`` (``Store._files_named``)."""
         if kinds and "File" not in kinds:
             return []
         found = self.text.files.get(word, [])[: text_search.RERANK_POOL]
         return [(r.node_id, (r.kind, r.name, r.path)) for r in found if text_search.file_named(r.path, word)]
+
+    def matched(self, ids: list[str], query: str) -> dict[str, dict]:
+        """``Store.matched`` without its passages: per node of ``ids`` with an own row the reader reads, how many of
+        the query's words its name, path or body holds whole (``words``), of ``of``."""
+        from evo_agents.kg.snapshot_fts import QueryError, matching, parse
+
+        query_words = text_search.query_words(query)
+        if not ids or not query_words:
+            return {}
+        wanted, out = set(ids), {}
+        for table, rows in ((self.text.public, self.text.public_rows), (self.text.audience, self.text.audience_rows)):
+            held = {n: 0 for n, r in enumerate(rows) if r.own and r.node_id in wanted and self._readable(r.aud)}
+            if not held:
+                continue
+            for word in query_words:
+                try:
+                    phrases, tree = parse(next(text_search.fts_queries([word])))
+                except QueryError:
+                    continue
+                for n in matching(tree, [table.hits(p) for p in phrases]) & held.keys():
+                    held[n] += 1
+            out.update({rows[n].node_id: {"words": count, "of": len(query_words)} for n, count in held.items()})
+        return out
 
     def _readable(self, aud: str | None) -> bool:
         return aud is None or (bool(self.view.reader) and audience_below(stored_audience(aud), self.view.reader))
@@ -289,10 +359,12 @@ class Ranker:
         scores, near, tri = ways
         closed = self._closed_plans([i for i, row in rows.items() if row[0] in ("Plan", "PlanStep")])
         wanted = text_search.asked(query)
+        priors = self._asked_priors(rows)
         for node_id, (kind, name, path) in rows.items():
             factor = text_search.weight(node_id, kind, name, path, named, wanted, node_id in closed)
             if node_id in tri and factor < 1:
                 del tri[node_id]
+            factor *= priors.get(node_id, 1.0)
             for way in (scores, near, tri):
                 if node_id in way:
                     way[node_id] *= factor

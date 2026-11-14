@@ -231,9 +231,8 @@ def _file_index(store) -> dict[str, str]:
     """path -> id of each live File node, read once per store and build."""
     key = getattr(store, "_locate_files", None)
     if key is None:
-        rows = store.db.execute("SELECT node_id FROM nodes WHERE kind = 'File' AND tx_to IS NULL")
         key = {}
-        for (node_id,) in rows:
+        for node_id in store.file_ids():
             m = _FILE_ID.match(node_id)
             if m:
                 key[m["path"]] = node_id
@@ -263,17 +262,8 @@ def _symbols_at(store, b: int, file_id: str, line: int) -> list[str]:
     if not m:
         return []
     low = f"symbol:{m['src']}:{m['path']}::"
-    rows = store.db.execute(
-        "SELECT node_id, props FROM nodes WHERE node_id >= ? AND node_id < ? AND tx_to IS NULL", (low, low[:-2] + ":;")
-    ).fetchall()
-    import json
-
     best, size = [], math.inf
-    for node_id, props in rows:
-        try:
-            p = json.loads(props)
-        except ValueError:
-            continue
+    for node_id, p in store.nodes_between(low, low[:-2] + ":;"):
         first, last = p.get("line"), p.get("end_line")
         if type(first) is int and type(last) is int and first <= line <= last:
             if last - first < size:
@@ -403,23 +393,12 @@ def _structural(store, b: int, pool: Pool, lenders: list[Cand]) -> None:
         for name in _test_names(c.path):
             for other in stems.get(name, [])[:3]:
                 links.append((other, "tests", 1.0))
-        commits = [
-            r[0]
-            for r in store.db.execute(
-                "SELECT src FROM edges WHERE dst = ? AND rel = 'changes' AND tx_to IS NULL LIMIT ?",
-                (file_id, COCHANGE_COMMITS),
-            )
-        ]
+        commits = store.changed_by(file_id, COCHANGE_COMMITS)
         if len(commits) < 2:
             continue
         size = {}
-        for start in range(0, len(commits), 400):
-            chunk = commits[start : start + 400]
-            marks = ", ".join("?" for _ in chunk)
-            for src, dst in store.db.execute(
-                f"SELECT src, dst FROM edges WHERE src IN ({marks}) AND rel = 'changes' AND tx_to IS NULL", chunk
-            ):
-                size.setdefault(src, []).append(dst)
+        for src, dst in store.changes_of(commits):
+            size.setdefault(src, []).append(dst)
         together: dict[str, float] = {}
         for members in size.values():
             if 1 < len(members) <= COCHANGE_MAX_FILES:
