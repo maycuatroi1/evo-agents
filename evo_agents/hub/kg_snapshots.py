@@ -44,6 +44,20 @@ class Held:
         return self.snapshot.view(reader, ceiling, tuning)
 
 
+async def load(engine: AsyncEngine, project_id: int) -> Held | None:
+    """The snapshot of the project's main branch read from the tables now, not kept: for a job that reads the graph
+    once (``evo_agents.hub.server.kg_health``); None before its first build kept a graph."""
+    heads = tables.kg_graph_heads
+    async with engine.connect() as conn:
+        build_id = await conn.scalar(
+            select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
+        )
+        rows = await read_graph(conn, project_id)
+    if rows is None:
+        return None
+    return Held(build_id, await asyncio.to_thread(Snapshot.from_stored, rows))
+
+
 class SnapshotCoordinator:
     def __init__(self, engine: AsyncEngine | None = None, listener=None):
         self.engine = engine  # the api's, set once it opened
@@ -96,18 +110,12 @@ class SnapshotCoordinator:
     async def _build(self, project_id: int, after: asyncio.Task | None = None) -> Held | None:
         if after is not None:
             await asyncio.gather(after, return_exceptions=True)
-        heads = tables.kg_graph_heads
         assert self.engine is not None
-        async with self.engine.connect() as conn:
-            build_id = await conn.scalar(
-                select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
-            )
-            rows = await read_graph(conn, project_id)
-        if rows is None:
+        held = await load(self.engine, project_id)
+        if held is None:
             return None
-        held = Held(build_id, await asyncio.to_thread(Snapshot.from_stored, rows))
         self._held[project_id] = held  # one assignment: a reader sees the old snapshot or the new one
-        log.info("kg snapshot loaded", extra={"project_id": project_id, "build_id": build_id})
+        log.info("kg snapshot loaded", extra={"project_id": project_id, "build_id": held.build_id})
         return held
 
     def notified(self, payload: str | None) -> None:
