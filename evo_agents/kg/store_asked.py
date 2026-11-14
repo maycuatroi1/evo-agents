@@ -36,14 +36,18 @@ class AskedIndex:
         meta (the KG optimize loop tunes it a project), else ``search.ASKED_WEIGHT``."""
         if self.asked_weight is not None:
             return self.asked_weight
+        recorded = self.recorded_asked_weight()
+        return text_search.ASKED_WEIGHT if recorded is None else recorded
+
+    def recorded_asked_weight(self) -> float | None:
+        """The weight of an asked match the build recorded in the file's meta, or None."""
         if self._asked_weight is None:
             row = self.db.execute("SELECT value FROM meta WHERE key = 'asked_weight'").fetchone()
             try:
                 self._asked_weight = (float(row[0]),) if row is not None else (None,)
             except (TypeError, ValueError):
                 self._asked_weight = (None,)
-        recorded = self._asked_weight[0]
-        return text_search.ASKED_WEIGHT if recorded is None else recorded
+        return self._asked_weight[0]
 
     def write_asked(self, rows, weight: float | None = None) -> str | None:
         """Put ``rows`` (``evo_agents.kg.asked.Row``) in place of the asked index the file had: the index is derived
