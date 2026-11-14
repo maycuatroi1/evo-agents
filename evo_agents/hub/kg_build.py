@@ -51,6 +51,7 @@ The cache can be deleted at any time: the next build fetches everything again an
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import hashlib
 import json
 import logging
@@ -74,6 +75,7 @@ from evo_agents.hub import (
     kg_entity_maps,
     kg_entity_relay,
     kg_eval_starter,
+    kg_graph_rows,
     kg_init_db,
     kg_semantic,
     kg_settings,
@@ -151,6 +153,7 @@ class Built:
     coverage: dict | None = None  # what kg_builds.coverage keeps (``kg_coverage.build_coverage``)
     files: dict | None = None  # the files of each git source (``kg_coverage.source_files``)
     requests: tuple | None = None  # the deferred entity requests: path, sha256, size, count (``kg_entity_relay``)
+    items: tuple = ()  # the live items of its corpus, as kg_corpus_items keeps them (``kg_graph_rows``)
 
 
 @dataclass(frozen=True)
@@ -444,7 +447,29 @@ def build_in_cache(
         coverage,
         kg_coverage.source_files(project),
         requests,
+        tuple(_corpus_items(project)),
     )
+
+
+def _corpus_items(project: Project) -> list:
+    corpus = project.corpus()
+    try:
+        return kg_graph_rows.corpus_items(corpus.items())
+    finally:
+        corpus.close()
+
+
+def graph_rows_of(path: Path):
+    """The rows of the latest build of the store file ``path`` (``evo_agents.kg.snapshot.store_rows``). Blocking."""
+    from evo_agents.kg.snapshot import store_rows
+    from evo_agents.kg.store import Store
+
+    store = Store.open_file(path, immutable=True)
+    try:
+        b = store.latest_ready()
+        return store_rows(store, b) if b is not None else None
+    finally:
+        store.close()
 
 
 def describe_failure(exc: BaseException) -> str:
@@ -533,6 +558,7 @@ async def record(
     """Mark build ``build_id`` succeeded with ``built``, pointing at the artifact of the project's latest build that
     has the same content, or at ``built``'s file, uploaded now (see the module). The artifact it points at."""
     latest = await _reusable(engine, store, project_id, built)
+    rows = await asyncio.to_thread(graph_rows_of, built.path)
     if latest is None:
         await asyncio.to_thread(store.put_file, built.sha256, built.path)
     if built.requests is not None:
@@ -578,6 +604,7 @@ async def record(
             path, sha, size, _ = built.requests
             await kg_entity_relay.hold(conn, store, project_id, sha, path, size, kg_entity_relay.REQUESTS_KIND, None)
         await keep_source_files(conn, project_id, build_id, built.files)
+        await keep_graph(conn, project_id, build_id, built, rows)
         try:  # the Curator configures a new graph from its profile (kg_init); a failure never fails the build
             async with conn.begin_nested():
                 await kg_init_db.on_build(conn, project_id, build_id, built.coverage)
@@ -589,6 +616,19 @@ async def record(
         except Exception:
             log.exception("a kg entity map run was not queued", extra={"project_id": project_id, "build_id": build_id})
     return artifact
+
+
+async def keep_graph(conn: AsyncConnection, project_id: int, build_id: int, built: Built, rows) -> None:
+    """Keep the corpus items and the graph of a build in the hub's tables, only what changed, and notify the readers
+    (``kg_graph_rows``). The head's content hash is the build's, which folds in the asked index and the vectors."""
+    corpus = await kg_graph_rows.merge_corpus(conn, project_id, list(built.items))
+    if rows is None:
+        return
+    rows = dataclasses.replace(rows, content_hash=built.content_hash)
+    changed = await kg_graph_rows.write_graph(conn, project_id, build_id, rows)
+    log.info(
+        "kg graph kept", extra={"project_id": project_id, "build_id": build_id, "corpus": corpus.counts(), **changed}
+    )
 
 
 async def start_eval_set(engine, project_id: int, project: str, built: Built) -> None:

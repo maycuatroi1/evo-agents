@@ -85,7 +85,6 @@ def _graph() -> None:
         sa.Column("conf", sa.Double()),
         *_labels(),
         sa.Column("aliases", sa.Text(), nullable=False, server_default="[]"),
-        sa.Column("code", sa.Text()),
     )
     _scoped(
         "kg_edges",

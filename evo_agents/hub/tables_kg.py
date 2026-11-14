@@ -762,7 +762,6 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         Column("conf", Double),
         *_label_columns(),
         Column("aliases", Text, nullable=False, server_default="[]"),
-        Column("code", Text),
     )
     edges = _scoped(
         "kg_edges",
