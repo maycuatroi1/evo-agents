@@ -101,6 +101,8 @@ ALLOWED_SQL: dict[str, re.Pattern] = {
     "evo_agents/hub/deliverer.py": re.compile(r"^LISTEN\b"),
     # The test of wake-ups listens on a channel as the listener does, to see what a transaction notifies.
     "tests/hub/test_wake.py": re.compile(r"^LISTEN\b"),
+    # The test of a build's notice listens on kg_graph_rows.CHANNEL the same way.
+    "tests/hub/test_kg_postgres_build.py": re.compile(r"^LISTEN\b"),
     # A test's database and its owner role, made, copied, handed over and dropped by a superuser outside any hub
     # database; REASSIGN OWNED, which gives a copy's objects to its own role, has no SQLAlchemy construct either.
     "tests/hub/pg.py": re.compile(r"^(?:CREATE|ALTER|DROP)\s+(?:DATABASE|ROLE)\b"),
