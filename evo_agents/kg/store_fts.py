@@ -20,6 +20,36 @@ if TYPE_CHECKING:
     from evo_agents.kg.store import Graph
 
 
+def search_rows(graph: Graph) -> tuple[list[tuple], list[tuple[str, tuple]]]:
+    """The full-text rows of ``graph``: every row as the digest reads it, and each keyed as ``node_fts_rows`` keeps it.
+    A row of a node with an audience ends with it. A passage's row is its node's (id, kind, name, path) with the
+    passage's text as body, keyed ``search.passage_key``."""
+    rows: list[tuple] = []
+    keyed: list[tuple[str, tuple]] = []
+    for nid, n in sorted(graph.nodes.items()):
+        aud = (label_columns(n["label"])["label_aud"],) if n["label"].audience else ()
+        name, path = text_search.index_text(n["name"] or ""), text_search.fold(graph.paths.get(nid, ""))
+        row = (nid, n["kind"], name, path, text_search.index_text(graph.texts.get(nid, ""))) + aud
+        rows.append(row)
+        keyed.append((nid, row))
+        for p in graph.passages.get(nid, ()):
+            key = text_search.passage_key(nid, p["start"], p["end"])
+            passage = (nid, n["kind"], name, path, text_search.index_text(p["text"])) + aud
+            rows.append((key, *passage))
+            keyed.append((key, passage))
+    return rows, keyed
+
+
+def code_digest(code: dict[str, str]) -> str | None:
+    """The digest of what ``code_fts`` holds for ``code``; None when it holds nothing."""
+    return sha256(canonical_json(sorted((nid, sha256(text)) for nid, text in code.items()))) if code else None
+
+
+def searched_digest(rows: list[tuple], code: str | None) -> str:
+    """The digest of what the full-text index holds: its rows and the digest of its code."""
+    return sha256(canonical_json(rows if code is None else {"nodes": rows, "code": code}))
+
+
 class FullText:
     """The methods of ``Store`` that write and read the full-text tables."""
 
@@ -33,19 +63,7 @@ class FullText:
         changed, and replace the aliases; the digest of what the index holds. A row of a node with an audience ends
         with it. A passage's row is its node's (id, kind, name, path) with the passage's text as body, keyed
         ``search.passage_key``; a graph without passages digests as before they came."""
-        rows: list[tuple] = []
-        keyed: list[tuple[str, tuple]] = []
-        for nid, n in sorted(graph.nodes.items()):
-            aud = (label_columns(n["label"])["label_aud"],) if n["label"].audience else ()
-            name, path = text_search.index_text(n["name"] or ""), text_search.fold(graph.paths.get(nid, ""))
-            row = (nid, n["kind"], name, path, text_search.index_text(graph.texts.get(nid, ""))) + aud
-            rows.append(row)
-            keyed.append((nid, row))
-            for p in graph.passages.get(nid, ()):
-                key = text_search.passage_key(nid, p["start"], p["end"])
-                passage = (nid, n["kind"], name, path, text_search.index_text(p["text"])) + aud
-                rows.append((key, *passage))
-                keyed.append((key, passage))
+        rows, keyed = search_rows(graph)
         self._update_fts(keyed)
         code = self._update_code(graph.code)
         self.db.execute("DELETE FROM node_alias")
@@ -53,7 +71,7 @@ class FullText:
             "INSERT OR IGNORE INTO node_alias (alias, node_id) VALUES (?, ?)",
             sorted((alias, nid) for nid, n in graph.nodes.items() for alias in n.get("aliases", [])),
         )
-        return sha256(canonical_json(rows if code is None else {"nodes": rows, "code": code}))
+        return searched_digest(rows, code)
 
     def _update_code(self, code: dict[str, str]) -> str | None:
         """Make ``code_fts`` hold the text of ``code`` (file node id: text) and nothing else, writing only the files

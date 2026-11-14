@@ -96,10 +96,44 @@ def node_kind_for_item(item_kind: str) -> str:
     return ITEM_KIND_TO_NODE.get(item_kind, "File")
 
 
-def _entry_name(entry) -> str | None:
+def entry_name(entry) -> str | None:
     """An ontology entry is a bare name or a mapping with ``name``."""
     name = entry.get("name") if isinstance(entry, dict) else entry
     return name if isinstance(name, str) and name else None
+
+
+CARDINALITIES = ("one_to_one", "many_to_one", "one_to_many", "many_to_many")
+# the rule keys an entry may carry (``evo_agents.kg.ontology_rules`` checks a graph against them); a hub kind or
+# relation may be named in a mapping that carries only its own refinements, never a new domain or range
+RELATION_RULES = ("cardinality", "acyclic")
+KIND_RULES = ("keys", "required_props")
+
+
+def _names(value) -> bool:
+    return isinstance(value, list) and all(isinstance(v, str) and v for v in value)
+
+
+def _rule_issues(where: str, entry: dict) -> list[Issue]:
+    """What is wrong with the rule keys of one mapping entry: ``domain`` and ``range`` lists of kinds, ``cardinality``
+    one of CARDINALITIES, ``acyclic`` a boolean, ``keys`` a list of property names or of lists of them (a composite
+    key), ``required_props`` a list of property names."""
+    issues = []
+    for key in ("domain", "range", "required_props"):
+        if key in entry and not _names(entry[key]):
+            issues.append(Issue(f"{where}.{key}", "must be a list of names"))
+    if "cardinality" in entry and entry["cardinality"] not in CARDINALITIES:
+        issues.append(Issue(f"{where}.cardinality", f"must be one of {', '.join(CARDINALITIES)}"))
+    if "acyclic" in entry and not isinstance(entry["acyclic"], bool):
+        issues.append(Issue(f"{where}.acyclic", "must be true or false"))
+    keys = entry.get("keys")
+    if "keys" in entry and not (isinstance(keys, list) and all(isinstance(k, str) and k or _names(k) for k in keys)):
+        issues.append(Issue(f"{where}.keys", "must be a list of property names or of lists of them"))
+    return issues
+
+
+def _refines_hub(entry, rules: tuple[str, ...]) -> bool:
+    """Whether ``entry`` names a hub kind or relation only to add rules to it: a mapping of ``name`` and rule keys."""
+    return isinstance(entry, dict) and len(entry) > 1 and set(entry) <= {"name", *rules}
 
 
 def validate_ontology(data: dict) -> list[Issue]:
@@ -109,20 +143,22 @@ def validate_ontology(data: dict) -> list[Issue]:
     for key in data:
         if key in FORBIDDEN_ONTOLOGY_KEYS:
             issues.append(Issue(key, "an extension may not declare two existing things equal"))
-    for key, hub, clash in (
-        ("node_kinds", HUB_KINDS, "is a hub kind; extend it with properties instead"),
-        ("relations", HUB_RELATIONS, "is a hub relation"),
+    for key, hub, clash, rules in (
+        ("node_kinds", HUB_KINDS, "is a hub kind; extend it with properties instead", KIND_RULES),
+        ("relations", HUB_RELATIONS, "is a hub relation", RELATION_RULES),
     ):
         entries = data.get(key) or []
         if not isinstance(entries, list):
             issues.append(Issue(key, "must be a list of names or of mappings with a name"))
             continue
         for i, entry in enumerate(entries):
-            name = _entry_name(entry)
+            name = entry_name(entry)
             if name is None:
                 issues.append(Issue(f"{key}[{i}]", "needs a name"))
-            elif name in hub:
+            elif name in hub and not _refines_hub(entry, rules):
                 issues.append(Issue(f"{key}[{i}]", f"{name!r} {clash}"))
+            if isinstance(entry, dict):
+                issues += _rule_issues(f"{key}[{i}]", entry)
     return issues
 
 
@@ -130,7 +166,7 @@ def known_kinds(ontology: dict | None) -> set[str]:
     kinds = set(HUB_KINDS)
     entries = (ontology or {}).get("node_kinds") or []
     if isinstance(entries, list):
-        kinds.update(name for name in map(_entry_name, entries) if name)
+        kinds.update(name for name in map(entry_name, entries) if name)
     return kinds
 
 
@@ -139,5 +175,5 @@ def known_relations(ontology: dict | None) -> set[str]:
     rels = set(HUB_RELATIONS)
     entries = (ontology or {}).get("relations") or []
     if isinstance(entries, list):
-        rels.update(name for name in map(_entry_name, entries) if name)
+        rels.update(name for name in map(entry_name, entries) if name)
     return rels
