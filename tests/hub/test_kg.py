@@ -854,13 +854,19 @@ def test_a_graph_of_an_older_store_schema_is_rebuilt_rather_than_served_broken(h
 
     # The hub is upgraded to a store schema the artifact was not written with.
     monkeypatch.setattr(kg_store, "SCHEMA_VERSION", str(int(kg_store.SCHEMA_VERSION) + 1))
-    # the tools read the snapshot of the tables, which no artifact's schema bounds; the web's pages read the file
+    # the tools and the web's pages read the snapshot of the tables, which no artifact's schema bounds
     assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
-    refused = hub.client.get(f"/v1/kg/{PROJECT}/nodes", params={"q": "guide"}, headers=hub.alice)
-    assert refused.status_code == 503, refused.text
-    assert f"(build {old['id']}) was written with store schema" in refused.json()["message"]
-    page = hub.client.get(f"/v1/kg/{PROJECT}/nodes", params={"q": "guide"}, headers=hub.alice)
-    assert page.status_code == 503 and "a new build of it is queued" in page.json()["message"]
+    served = hub.client.get(f"/v1/kg/{PROJECT}/nodes", params={"q": "guide"}, headers=hub.alice)
+    assert served.status_code == 200 and served.json()["results"], served.text
+    hub.client.app.state.kg_snapshots, snapshots = None, hub.client.app.state.kg_snapshots  # a read of the file
+    try:
+        refused = hub.client.get(f"/v1/kg/{PROJECT}/nodes", params={"q": "guide"}, headers=hub.alice)
+        assert refused.status_code == 503, refused.text
+        assert f"(build {old['id']}) was written with store schema" in refused.json()["message"]
+        page = hub.client.get(f"/v1/kg/{PROJECT}/nodes", params={"q": "guide"}, headers=hub.alice)
+        assert page.status_code == 503 and "a new build of it is queued" in page.json()["message"]
+    finally:
+        hub.client.app.state.kg_snapshots = snapshots
     queued = latest(hub)
     assert queued["status"] == "queued" and queued["requested_by"] is None
     assert len([b for b in build_rows(hub) if b["status"] == "queued"]) == 1  # the second refusal found it waiting
