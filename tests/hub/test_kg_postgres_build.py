@@ -187,6 +187,8 @@ def test_a_snapshot_of_the_tables_searches_and_counts_as_the_store_of_the_build_
             assert view.search_scored(query, b) == store.search_scored(query, b)
             assert view.plain_search(query, 10) == store.plain_search(query, 10)
             assert view.plain_search(query, 10, ["Document"]) == store.plain_search(query, 10, ["Document"])
+            counted = {n: {"words": m["words"], "of": m["of"]} for n, m in store.matched(nodes, query).items()}
+            assert view.matched(nodes, query) == counted
         assert view.search("guide", b) and view.plain_search("guide", 10)
         assert view.code_files(["guide"]) == store.code_files(["guide"])
         assert [view.code_lines(n, ["guide"]) for n in nodes] == [store.code_lines(n, ["guide"]) for n in nodes]
