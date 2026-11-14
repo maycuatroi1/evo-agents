@@ -34,6 +34,8 @@ BATCH = 1000
 NODE_KEYS = ("node_id", "kind", "name", "props", "status", "conf", "label_lvl", "label_loc", "label_int", "aliases")
 EDGE_KEYS = ("edge_id", "src", "rel", "dst", "props", "status", "conf", "label_lvl", "label_loc", "label_int")
 TEXT, CODE = "t", "c"  # the kinds of a kg_text_rows row: a keyed full-text row, or the text of a file's code
+UNIT, WHERE, DERIVED = "u", "w", "d"  # the kinds of a kg_provenance row: a unit, a where-provenance, a derivation
+ROW_TABLES = {"kg_text_rows": "node_id", "kg_provenance": "elem_id"}  # tables of (key, id, JSON row), by id column
 
 
 @dataclass(frozen=True)
@@ -99,7 +101,20 @@ def graph_rows(rows: StoreRows) -> dict[str, dict[str, tuple]]:
         text[text_row_key(TEXT, key, list(row))] = (key, json.dumps([TEXT, key, list(row)], ensure_ascii=False))
     for nid, body in rows.code.items():
         text[text_row_key(CODE, nid, body)] = (nid, json.dumps([CODE, nid, body], ensure_ascii=False))
-    return {"kg_nodes": nodes, "kg_edges": edges, "kg_text_rows": text}
+    prov: dict[str, tuple] = {}
+    for unit in rows.units:
+        prov[f"{UNIT}\x1f{unit[0]}"] = (unit[0], json.dumps([UNIT, *unit], ensure_ascii=False))
+    for elem, unit, span in rows.wheres:
+        prov[f"{WHERE}\x1f{elem}\x1f{unit}\x1f{span}"] = (
+            elem,
+            json.dumps([WHERE, elem, unit, span], ensure_ascii=False),
+        )
+    order: dict[str, int] = {}
+    for elem, units, needs in rows.derivations:
+        order[elem] = i = order.get(elem, -1) + 1
+        prov[f"{DERIVED}\x1f{elem}\x1f{i:06d}"] = (elem, json.dumps([DERIVED, elem, units, needs], ensure_ascii=False))
+    vectors = {r[0]: (r[1], r[2], r[3], bytes(r[4])) for r in rows.vectors}
+    return {"kg_nodes": nodes, "kg_edges": edges, "kg_text_rows": text, "kg_provenance": prov, "kg_embeddings": vectors}
 
 
 def _row_values(name: str, key: str, row: tuple) -> dict:
@@ -107,7 +122,9 @@ def _row_values(name: str, key: str, row: tuple) -> dict:
         return {**dict(zip(NODE_KEYS, row[:10], strict=True)), "label_aud": row[10]}
     if name == "kg_edges":
         return {**dict(zip(EDGE_KEYS, row[:10], strict=True)), "label_aud": row[10]}
-    return {"row_key": key, "node_id": row[0], "row": json.loads(row[1])}
+    if name == "kg_embeddings":
+        return {"row_key": key, **dict(zip(("node_id", "kind", "aud", "vector"), row, strict=True))}
+    return {"row_key": key, ROW_TABLES[name]: row[0], "row": json.loads(row[1])}
 
 
 def _stored(name: str, values) -> tuple:
@@ -116,7 +133,9 @@ def _stored(name: str, values) -> tuple:
         return tuple(values[k] for k in (*NODE_KEYS, "label_aud"))
     if name == "kg_edges":
         return tuple(values[k] for k in (*EDGE_KEYS, "label_aud"))
-    return (values["node_id"], json.dumps(values["row"], ensure_ascii=False))
+    if name == "kg_embeddings":
+        return (values["node_id"], values["kind"], values["aud"], bytes(values["vector"]))
+    return (values[ROW_TABLES[name]], json.dumps(values["row"], ensure_ascii=False))
 
 
 async def _read(conn: AsyncConnection, name: str, project_id: int, branch_id: int) -> dict[str, tuple]:
@@ -163,6 +182,8 @@ async def write_graph(
         "content_hash": rows.content_hash,
         "top_label": [level, location],
         "top_audience": sorted(audience),
+        "summary": rows.summary,
+        "vectors": rows.vector_info,
         "updated_at": func.now(),
     }
     stmt = pg_insert(heads).values(project_id=project_id, branch_id=branch_id, **head)
@@ -183,9 +204,9 @@ async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MA
     heads = tables.kg_graph_heads
     head = (
         await conn.execute(
-            select(heads.c.content_hash, heads.c.top_label, heads.c.top_audience).where(
-                heads.c.project_id == project_id, heads.c.branch_id == branch_id
-            )
+            select(
+                heads.c.content_hash, heads.c.top_label, heads.c.top_audience, heads.c.summary, heads.c.vectors
+            ).where(heads.c.project_id == project_id, heads.c.branch_id == branch_id)
         )
     ).one_or_none()
     if head is None:
@@ -200,7 +221,25 @@ async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MA
         else:
             code[key] = value
     top = ((head.top_label[0], head.top_label[1]), frozenset(head.top_audience))
-    return StoreRows(head.content_hash, tuple(nodes.values()), tuple(edges.values()), tuple(sorted(keyed)), code, top)
+    units, wheres, derived = [], [], []
+    for _, row in sorted((await _read(conn, "kg_provenance", project_id, branch_id)).items()):
+        kind, *values = json.loads(row[1])
+        {UNIT: units, WHERE: wheres, DERIVED: derived}[kind].append(tuple(values))
+    vectors = await _read(conn, "kg_embeddings", project_id, branch_id)
+    return StoreRows(
+        head.content_hash,
+        tuple(nodes.values()),
+        tuple(edges.values()),
+        tuple(sorted(keyed)),
+        code,
+        top,
+        tuple(units),
+        tuple(sorted(wheres, key=lambda w: (w[0], w[1], w[2] is not None, w[2] or ""))),  # as SQLite orders them
+        tuple(derived),
+        head.summary,
+        tuple((key, *row) for key, row in sorted(vectors.items())),
+        head.vectors,
+    )
 
 
 async def merge_corpus(

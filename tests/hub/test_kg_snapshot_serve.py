@@ -101,12 +101,21 @@ def test_a_private_chat_item_is_invisible_to_a_member_outside_its_audience(hub_d
     graph = aud.build(tmp_path, monkeypatch, 1, 2)  # chat items, each with the audience of its chat
     path = tmp_path / "graph.sqlite"
     path.write_bytes(graph.data)
+    pid = add_project(hub_db, "aud")
     store = Store.open_file(path, immutable=True)
     try:
-        rows = store_rows(store, store.latest_ready())
+        b = store.latest_ready()
+        rows = store_rows(store, b)
+        nodes, units = sorted(store.alive_ids("nodes", b)), sorted(store.alive_ids("units", b))
+        for reader in (frozenset(), frozenset({"chat:1"}), frozenset({"chat:1", aud.GB})):
+            store.reader = reader  # a reader within some chats reads the snapshot as it reads the file
+            view = Snapshot.from_stored(rows).view(reader)
+            assert view.seen(b) == store.seen(b)
+            assert [view.unit(u) for u in units] == [store.unit(u, b) for u in units]
+            assert [view.body(n) for n in nodes] == [store.body(n) for n in nodes]
+            assert [view.degree(n) for n in nodes] == [store.degree(n, b) for n in nodes]
     finally:
         store.close()
-    pid = add_project(hub_db, "aud")
 
     async def keep():
         engine = make_engine(hub_db)

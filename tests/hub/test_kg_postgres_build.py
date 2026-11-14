@@ -5,6 +5,7 @@ that changed, a deleted item leaves the corpus, and the readers listening on ``k
 from __future__ import annotations
 
 import asyncio
+import struct
 
 import pytest
 
@@ -18,7 +19,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 from evo_agents.hub import kg_graph_rows, tables
-from evo_agents.kg.snapshot import Snapshot, store_rows
+from evo_agents.kg.snapshot import Snapshot, StoreRows, store_rows
 from evo_agents.kg.store import Store
 from tests.hub.live import add_project
 from tests.hub.test_kg import (  # noqa: F401 (hub is a fixture)
@@ -138,3 +139,64 @@ def test_the_memo_keeps_the_first_result_of_a_row_hash(hub_db):
             await engine.dispose()
 
     assert asyncio.run(run()) == {"h1": {"n": 1}, "h2": {"n": 3}}
+
+
+def test_a_snapshot_of_the_tables_reads_as_the_store_of_the_build_file(hub, tmp_path, caplog):
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it, see guide."))
+    assert push(hub, laptop).ok
+    build(hub, caplog)
+    view = Snapshot.from_stored(read_back(hub.db, project_id(hub))).view()
+    store = Store.open_file(hub.worker_dir / "kg" / "home" / "alpha" / "graph.sqlite", immutable=True)
+    try:
+        store.reader = frozenset()
+        b = store.latest_ready()
+        nodes = sorted(store.alive_ids("nodes", b))
+        elements = [*nodes, *sorted(store.alive_ids("edges", b))]
+        units = sorted(store.alive_ids("units", b))
+        assert units and nodes
+        assert view.summary() == store.summary() and view.latest_ready() == b
+        assert view.seen(b) == store.seen(b)
+        assert view.top_audience(b) == store.top_audience(b)
+        assert [view.unit(u) for u in units] == [store.unit(u, b) for u in units]
+        assert [view.where(e) for e in elements] == [store.where(e, b) for e in elements]
+        assert [view.derivations(e) for e in elements] == [store.derivations(e, b) for e in elements]
+        assert any(view.where(e) for e in elements) and any(view.derivations(e) for e in elements)
+        assert [view.body(n) for n in nodes] == [store.body(n) for n in nodes]
+        assert any(view.body(n) for n in nodes)
+        assert [view.degree(n) for n in nodes] == [store.degree(n, b) for n in nodes]
+        assert view.path_nodes() == store.path_nodes(b)
+        assert view.file_symbols(nodes) == store.file_symbols(nodes, b)
+    finally:
+        store.close()
+
+
+def test_the_vectors_of_a_build_read_back_by_their_node_vec_key(hub_db):
+    pid = add_project(hub_db, "vectors")
+    vec = struct.pack("<2e", 0.5, -0.25)
+    rows = StoreRows(
+        "sha256:v",
+        (),
+        (),
+        (),
+        {},
+        ((0, 0), frozenset()),
+        vectors=(("k1", "docs:doc:a", "Document", None, vec), ("k2", "docs:doc:a", "Section", '["chat:1"]', vec)),
+        vector_info={"model": "m", "dim": 2, "mode": "dense", "digest": "d"},
+    )
+
+    async def run():
+        engine = make_engine(hub_db)
+        try:
+            async with engine.begin() as conn:
+                await kg_graph_rows.write_graph(conn, pid, None, rows)
+            async with engine.connect() as conn:
+                return await kg_graph_rows.read_graph(conn, pid)
+        finally:
+            await engine.dispose()
+
+    back = asyncio.run(run())
+    assert back.vectors == rows.vectors and back.vector_info == rows.vector_info
+    vectors = Snapshot.from_stored(back).vectors
+    assert vectors.node_ids == ("docs:doc:a", "docs:doc:a") and vectors.auds == (None, '["chat:1"]')
+    assert list(vectors.rows[0]) == [0.5, -0.25]
