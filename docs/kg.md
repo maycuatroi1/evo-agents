@@ -728,6 +728,41 @@ The page groups items by rule, then by cluster, most connected nodes first.
 owner through the hub's sink, with dismissed fingerprints left out. The Curator's `kg_health` lens reads them
 (`docs/hub.md`, The graph's health).
 
+## Ontology rules
+
+A harness's `ontology.yaml` (seam knowledge-manifest-v1, checked by `evo_agents.kg.schema.validate_ontology`) lists
+`node_kinds` and `relations` as names. An entry may instead be a mapping with a `name` and rule keys; a plain list of
+names stays valid and states no rule.
+
+```yaml
+node_kinds:
+  - Concept
+  - name: Service
+    keys: [slug, [team, port]]  # no two services share a slug, nor a team and a port
+    required_props: [owner]
+relations:
+  - calls_api
+  - name: run_by_team
+    domain: [Service]
+    range: [Team]
+    cardinality: many_to_one  # one_to_one, many_to_one, one_to_many or many_to_many (the default)
+  - name: refines
+    acyclic: true
+  - name: contains  # a hub relation, named only to add rules to it
+    acyclic: true
+```
+
+A relation takes `domain` and `range` (the kinds of its source and its target), `cardinality` and `acyclic`; a node
+kind takes `keys` (properties, or lists of them, whose values no two nodes of the kind share) and `required_props`.
+A hub kind may be named to add `keys` or `required_props`, a hub relation to add `cardinality` or `acyclic`; any
+other key on a hub name is refused as before. Harness CIs pinned to an older evo-agents release refuse such a mapping
+on a hub name until they move to one that reads it.
+
+`evo_agents.kg.ontology_rules.check` reads a graph snapshot against these rules and finds `wrong_endpoint`,
+`cardinality`, `cycle`, `duplicate_key` and `missing_prop` violations; `review_items` turns them into items of the
+review queue's shape, with action slugs `fix_endpoint`, `keep_one`, `break_cycle`, `merge` and `set_prop`. A build
+does not write them to the queue yet.
+
 ## Decisions
 
 A writer of a project corrects its graph on the hub with decisions, and the next build applies them. A decision never

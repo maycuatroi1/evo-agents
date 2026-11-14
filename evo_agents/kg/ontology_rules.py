@@ -16,7 +16,9 @@ plain list of names states no rule, and a hub kind or relation may be named only
 
 A violation says its rule, a stable key, the nodes and edges it is about and what it found; ``review_items`` turns
 the violations into items of the review queue (``evo_agents.kg.review``), fingerprinted by rule and key so a
-dismissal holds across builds, and a check of a draft graph reads the same list."""
+dismissal holds across builds, and a check of a draft graph reads the same list. The five rules are not yet among
+``evo_agents.kg.review.RULES``: a build writes them to the queue only once the hub's Rule list, its dismissal check
+(a migration, as 0199 did for conflicting_claim) and the web's REVIEW_RULES name them."""
 
 from __future__ import annotations
 
@@ -30,12 +32,12 @@ from evo_agents.kg.schema import entry_name
 ONE_SOURCE = ("one_to_one", "one_to_many")  # a target has at most one source
 ONE_TARGET = ("one_to_one", "many_to_one")  # a source has at most one target
 SAMPLES = 5
-ACTIONS = {
-    "wrong_endpoint": "fix the edge's source or target, or widen the relation's domain or range",
-    "cardinality": "keep one of the edges, or loosen the relation's cardinality",
-    "cycle": "break the cycle, or drop acyclic from the relation",
-    "duplicate_key": "merge the nodes, or change the value of one",
-    "missing_prop": "set the property on the node, or drop it from required_props",
+ACTIONS = {  # slugs, as evo_agents.kg.review.ACTIONS gives its rules'
+    "wrong_endpoint": "fix_endpoint",
+    "cardinality": "keep_one",
+    "cycle": "break_cycle",
+    "duplicate_key": "merge",
+    "missing_prop": "set_prop",
 }
 
 

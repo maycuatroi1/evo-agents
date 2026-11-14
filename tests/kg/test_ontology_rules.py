@@ -2,6 +2,10 @@
 of a snapshot that finds wrong endpoints, too many targets or sources, cycles, duplicate keys and missing props."""
 
 import json
+import re
+from pathlib import Path
+
+import yaml
 
 from evo_agents.kg import review
 from evo_agents.kg.ontology_rules import RelationRule, check, review_items, rules_of
@@ -143,8 +147,18 @@ def test_violations_are_review_items_with_stable_fingerprints():
     assert {i["rule"] for i in items} == {"duplicate_key", "missing_prop"}
     for item in items:
         assert set(item) == {"fingerprint", "rule", "cluster", "evidence", "clusters", "action", "detail"}
+        assert re.fullmatch(r"[a-z_]+", item["action"]), "an action is a slug, as the review queue reads it"
         assert item["fingerprint"] == review.fingerprint(
             item["rule"], next(v.key for v in found if v.rule == item["rule"])
         )
         assert item["detail"]["required"] == 1 and item["cluster"] == "c1"
     assert review_items(check(snapshot(list(reversed(nodes)), []), rules_of(ONTOLOGY))) == review_items(found)
+
+
+def test_the_example_of_docs_kg_md_is_a_valid_ontology_with_rules():
+    text = (Path(__file__).parents[2] / "docs" / "kg.md").read_text()
+    example = yaml.safe_load(re.search(r"## Ontology rules.*?```yaml\n(.*?)```", text, re.S).group(1))
+    assert validate_ontology(example) == []
+    rules = rules_of(example)
+    assert rules.relations["run_by_team"].cardinality == "many_to_one" and rules.relations["contains"].acyclic
+    assert rules.kinds["Service"].keys == (("slug",), ("team", "port"))
