@@ -555,6 +555,10 @@ class SnapshotView:
     def search_scored(self, query: str, b: int = 0, limit: int = 50, **kw) -> list[tuple[str, float | None]]:
         return self.ranker.search_scored(query, b, limit, **kw)
 
+    def matched(self, ids: list[str], query: str, snippets=frozenset()) -> dict[str, dict]:
+        """``Store.matched``'s word counts, without its snippet and passage lines (not made from a snapshot yet)."""
+        return self.ranker.matched(ids, query)
+
     def plain_search(self, query: str, limit: int, kinds: list[str] | None = None) -> list[str]:
         """Ids of the nodes plain BM25 ranks for ``query``, best first, from the rows without an audience."""
         from evo_agents.kg import search as text_search

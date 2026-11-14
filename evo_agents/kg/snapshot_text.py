@@ -196,6 +196,29 @@ class Ranker:
         found = self.text.files.get(word, [])[: text_search.RERANK_POOL]
         return [(r.node_id, (r.kind, r.name, r.path)) for r in found if text_search.file_named(r.path, word)]
 
+    def matched(self, ids: list[str], query: str) -> dict[str, dict]:
+        """``Store.matched`` without its passages: per node of ``ids`` with an own row the reader reads, how many of
+        the query's words its name, path or body holds whole (``words``), of ``of``."""
+        from evo_agents.kg.snapshot_fts import QueryError, matching, parse
+
+        query_words = text_search.query_words(query)
+        if not ids or not query_words:
+            return {}
+        wanted, out = set(ids), {}
+        for table, rows in ((self.text.public, self.text.public_rows), (self.text.audience, self.text.audience_rows)):
+            held = {n: 0 for n, r in enumerate(rows) if r.own and r.node_id in wanted and self._readable(r.aud)}
+            if not held:
+                continue
+            for word in query_words:
+                try:
+                    phrases, tree = parse(next(text_search.fts_queries([word])))
+                except QueryError:
+                    continue
+                for n in matching(tree, [table.hits(p) for p in phrases]) & held.keys():
+                    held[n] += 1
+            out.update({rows[n].node_id: {"words": count, "of": len(query_words)} for n, count in held.items()})
+        return out
+
     def _readable(self, aud: str | None) -> bool:
         return aud is None or (bool(self.view.reader) and audience_below(stored_audience(aud), self.view.reader))
 
