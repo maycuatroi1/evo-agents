@@ -34,7 +34,7 @@ from typing import TypeVar
 
 from evo_agents.hub import kg_decisions, kg_entity_graph, kg_map, kg_review
 from evo_agents.hub.blobs import BlobStore
-from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession, open_graph
+from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession, Snapshotted, reading
 from evo_agents.kg import freshness
 from evo_agents.kg.graph_scope import GraphScope
 from evo_agents.kg.policy import Label, Policy
@@ -508,17 +508,11 @@ def read(
     ceiling: Label | None,
     graphs: list[BuiltGraph],
     reader: Callable[[WebSession], T],
+    snapshot: Snapshotted | None = None,
 ) -> tuple[T, BuiltGraph]:
     """``reader`` over the newest graph of ``project`` that can be read, and that graph, counting the nodes and edges
-    the ceiling's audience holds. Raises GraphUnavailable, ArtifactMismatch (``evo_agents.hub.kg_graph``), NotVisible,
-    GraphProblem."""
-    path, graph = cache.acquire(store, project, graphs)
-    try:
-        opened = open_graph(path, project, graph)
-        try:
-            session = WebSession(project, policy, ceiling, WEB_SINK, opened, graph, graphs[0])
-            return reader(session), session.counted(graph)
-        finally:
-            opened.close()
-    finally:
-        cache.release(path)
+    the ceiling's audience holds: the snapshot of the hub's tables when given (``kg_graph.reading``), else the graph
+    file. Raises GraphUnavailable, ArtifactMismatch (``evo_agents.hub.kg_graph``), NotVisible, GraphProblem."""
+    with reading(cache, store, project, graphs, snapshot) as (opened, graph):
+        session = WebSession(project, policy, ceiling, WEB_SINK, opened, graph, graphs[0])
+        return reader(session), session.counted(graph)
