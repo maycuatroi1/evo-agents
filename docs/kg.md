@@ -748,7 +748,7 @@ relations:
     cardinality: many_to_one  # one_to_one, many_to_one, one_to_many or many_to_many (the default)
   - name: refines
     acyclic: true
-  - name: contains  # a hub relation, named only to add rules to it
+  - name: part_of  # a hub relation, named only to add rules to it
     acyclic: true
 ```
 

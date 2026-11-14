@@ -160,5 +160,8 @@ def test_the_example_of_docs_kg_md_is_a_valid_ontology_with_rules():
     example = yaml.safe_load(re.search(r"## Ontology rules.*?```yaml\n(.*?)```", text, re.S).group(1))
     assert validate_ontology(example) == []
     rules = rules_of(example)
-    assert rules.relations["run_by_team"].cardinality == "many_to_one" and rules.relations["contains"].acyclic
+    assert rules.relations["run_by_team"].cardinality == "many_to_one" and rules.relations["part_of"].acyclic
+    assert validate_ontology({"relations": [{"name": "part_of", "domain": ["Concept"]}]}), (
+        "a hub relation takes no domain"
+    )
     assert rules.kinds["Service"].keys == (("slug",), ("team", "port"))
