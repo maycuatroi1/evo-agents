@@ -80,22 +80,34 @@ def diff_rows(
 
 def diff_graph(db: sqlite3.Connection, b: int, graph: Graph) -> None:
     """Bring the units, nodes, edges, derivations and where-provenance of build b to ``graph``'s."""
+    tables = graph_tables(graph)
+    diff_rows(db, "units", "unit_id", b, tables["units"], UNIT_FIELDS)
+    diff_rows(db, "nodes", "node_id", b, tables["nodes"], NODE_FIELDS)
+    diff_rows(db, "edges", "edge_id", b, tables["edges"], EDGE_FIELDS)
+    diff_rows(db, "derivations", None, b, tables["derivations"], ["elem_id", "deriv_id", "units", "needs"])
+    diff_rows(db, "where_prov", None, b, tables["where_prov"], ["elem_id", "unit_id", "span"])
+
+
+def graph_tables(graph: Graph) -> dict[str, dict[str, dict]]:
+    """The rows ``graph`` puts in each graph table, by key: what ``diff_graph`` writes and ``kg.content`` hashes."""
     units = {uid: {"unit_id": uid, **u} for uid, u in graph.units.items()}
-    diff_rows(db, "units", "unit_id", b, units, UNIT_FIELDS)
-    diff_rows(db, "nodes", "node_id", b, {nid: node_columns(nid, n) for nid, n in graph.nodes.items()}, NODE_FIELDS)
-    diff_rows(db, "edges", "edge_id", b, {eid: edge_columns(eid, e) for eid, e in graph.edges.items()}, EDGE_FIELDS)
     derivs = {}
     for elem, ds in graph.derivations.items():
         for d in ds:
-            units, needs = json.dumps(sorted(d["units"])), json.dumps(sorted(d["needs"]))
-            did = sha256(f"{elem}\x1f{units}\x1f{needs}")[7:23]
-            derivs[f"{elem}\x1f{did}"] = {"elem_id": elem, "deriv_id": did, "units": units, "needs": needs}
-    diff_rows(db, "derivations", None, b, derivs, ["elem_id", "deriv_id", "units", "needs"])
+            unit_ids, needs = json.dumps(sorted(d["units"])), json.dumps(sorted(d["needs"]))
+            did = sha256(f"{elem}\x1f{unit_ids}\x1f{needs}")[7:23]
+            derivs[f"{elem}\x1f{did}"] = {"elem_id": elem, "deriv_id": did, "units": unit_ids, "needs": needs}
     wheres = {}
     for elem, entries in graph.where.items():
         for unit, span in entries:
             wheres[f"{elem}\x1f{unit}\x1f{span}"] = {"elem_id": elem, "unit_id": unit, "span": span}
-    diff_rows(db, "where_prov", None, b, wheres, ["elem_id", "unit_id", "span"])
+    return {
+        "units": units,
+        "nodes": {nid: node_columns(nid, n) for nid, n in graph.nodes.items()},
+        "edges": {eid: edge_columns(eid, e) for eid, e in graph.edges.items()},
+        "derivations": derivs,
+        "where_prov": wheres,
+    }
 
 
 def node_columns(nid: str, n: dict) -> dict:

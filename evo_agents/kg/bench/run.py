@@ -50,7 +50,9 @@ LIMITS = {datasets.SWE_EXPLORE: 5}
 DEFAULT_LIMIT = 10
 DEFAULT_BUDGET_TOKENS = 3000
 MAX_HOURS = 6.0
-SEARCHES = ("graph", "bm25", "plain", "files", "hybrid")  # plain: plain BM25 (Store.plain_search), the sets' baseline
+# plain: plain BM25 (Store.plain_search), the sets' baseline; snapshot: the graph's ranking on an in-RAM snapshot of the
+# build (evo_agents.kg.snapshot), kg_search only
+SEARCHES = ("graph", "bm25", "plain", "files", "hybrid", "snapshot")
 
 
 @dataclass
@@ -257,12 +259,32 @@ def session_of(project, search: str, files: tuple | None = None):
     from evo_agents.kg.serve import Session
 
     session = Session(project, "cli")
+    if search == "snapshot":
+        return snapshot_session(session)
     if search != "graph":
         session.semantic = search == "hybrid"
     session.plain = search in ("plain", "files")
     if search == "files":
         session.plain_files = files
     return session
+
+
+def snapshot_session(session):
+    """A session that answers kg_search on an in-RAM snapshot of the latest build ``session`` reads, as its clearance
+    and audience read it (``evo_agents.kg.snapshot_search``)."""
+    from evo_agents.kg.snapshot import Snapshot
+    from evo_agents.kg.snapshot_search import SnapshotSearch, SnapshotSession
+    from evo_agents.kg.store import Store
+
+    store = Store.open_readonly(session.project)
+    b = store.latest_ready() if store else None
+    if store is None or b is None:
+        raise ValueError(f"project {session.project.name!r} has no graph yet")
+    try:
+        snap = Snapshot.from_store(store, b)
+    finally:
+        store.close()
+    return SnapshotSession(SnapshotSearch(snap, session.clearance, session.audience, semantic_on=session.semantic))
 
 
 def ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> Asked:

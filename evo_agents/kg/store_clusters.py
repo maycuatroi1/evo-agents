@@ -24,6 +24,51 @@ class Clusters:
     links: dict[tuple[int, str, str], float] = field(default_factory=dict)
 
 
+CLUSTER_FIELDS = ["cluster_id", "level", "parent", "label", "size", "kinds"]
+REVIEW_FIELDS = ["fingerprint", "rule", "cluster_id", "evidence", "clusters", "action", "detail"]
+
+
+def cluster_tables(found: Clusters) -> dict[str, dict[str, dict]]:
+    """The rows ``found`` puts in each cluster table, by key: what a build writes and ``kg.content`` hashes."""
+    links = {}
+    for (level, a, c), w in found.links.items():
+        link_id = f"{level}\x1f{a}\x1f{c}"
+        links[link_id] = {"link_id": link_id, "level": level, "a": a, "b": c, "weight": w}
+    return {
+        "clusters": {
+            cid: {
+                "cluster_id": cid,
+                "level": c["level"],
+                "parent": c["parent"],
+                "label": c["label"],
+                "size": c["size"],
+                "kinds": json.dumps(c["kinds"], sort_keys=True),
+            }
+            for cid, c in found.clusters.items()
+        },
+        "cluster_members": {
+            nid: {"node_id": nid, "cluster_id": top, "sub_id": sub} for nid, (top, sub) in found.members.items()
+        },
+        "cluster_links": links,
+    }
+
+
+def review_table(items: list[dict]) -> dict[str, dict]:
+    """The rows of ``review_items`` for ``items``, by fingerprint."""
+    return {
+        item["fingerprint"]: {
+            "fingerprint": item["fingerprint"],
+            "rule": item["rule"],
+            "cluster_id": item["cluster"],
+            "evidence": json.dumps(item["evidence"], ensure_ascii=False),
+            "clusters": json.dumps(item["clusters"]),
+            "action": item["action"],
+            "detail": json.dumps(item["detail"], ensure_ascii=False, sort_keys=True),
+        }
+        for item in items
+    }
+
+
 def owner(t: str) -> str:
     """The node clusters count the node of table alias ``t`` as (``evo_agents.kg.clusters.project``): a Symbol's
     ``props.file``, a Section's ``props.item``, any other node itself."""
@@ -61,71 +106,18 @@ class ClusterTables:
 
     def _write_clusters(self, b: int, found: Clusters) -> None:
         """Bring the cluster tables to ``found``; a graph without clusters closes the previous build's."""
+        tables = cluster_tables(found)
+        diff_rows(self.db, "clusters", "cluster_id", b, tables["clusters"], CLUSTER_FIELDS)
         diff_rows(
-            self.db,
-            "clusters",
-            "cluster_id",
-            b,
-            {
-                cid: {
-                    "cluster_id": cid,
-                    "level": c["level"],
-                    "parent": c["parent"],
-                    "label": c["label"],
-                    "size": c["size"],
-                    "kinds": json.dumps(c["kinds"], sort_keys=True),
-                }
-                for cid, c in found.clusters.items()
-            },
-            ["cluster_id", "level", "parent", "label", "size", "kinds"],
+            self.db, "cluster_members", "node_id", b, tables["cluster_members"], ["node_id", "cluster_id", "sub_id"]
         )
         diff_rows(
-            self.db,
-            "cluster_members",
-            "node_id",
-            b,
-            {nid: {"node_id": nid, "cluster_id": top, "sub_id": sub} for nid, (top, sub) in found.members.items()},
-            ["node_id", "cluster_id", "sub_id"],
-        )
-        diff_rows(
-            self.db,
-            "cluster_links",
-            "link_id",
-            b,
-            {
-                f"{level}\x1f{a}\x1f{c}": {
-                    "link_id": f"{level}\x1f{a}\x1f{c}",
-                    "level": level,
-                    "a": a,
-                    "b": c,
-                    "weight": w,
-                }
-                for (level, a, c), w in found.links.items()
-            },
-            ["link_id", "level", "a", "b", "weight"],
+            self.db, "cluster_links", "link_id", b, tables["cluster_links"], ["link_id", "level", "a", "b", "weight"]
         )
 
     def _write_review(self, b: int, items: list[dict]) -> None:
         """Bring the review items to ``items``; a graph without them closes the previous build's."""
-        diff_rows(
-            self.db,
-            "review_items",
-            "fingerprint",
-            b,
-            {
-                item["fingerprint"]: {
-                    "fingerprint": item["fingerprint"],
-                    "rule": item["rule"],
-                    "cluster_id": item["cluster"],
-                    "evidence": json.dumps(item["evidence"], ensure_ascii=False),
-                    "clusters": json.dumps(item["clusters"]),
-                    "action": item["action"],
-                    "detail": json.dumps(item["detail"], ensure_ascii=False, sort_keys=True),
-                }
-                for item in items
-            },
-            ["fingerprint", "rule", "cluster_id", "evidence", "clusters", "action", "detail"],
-        )
+        diff_rows(self.db, "review_items", "fingerprint", b, review_table(items), REVIEW_FIELDS)
 
     def has_review(self) -> bool:
         """Whether the file has the review table: one written before the review queue came lacks it."""
