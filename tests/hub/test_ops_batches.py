@@ -182,6 +182,27 @@ def test_a_login_the_worker_holds_by_lease_is_no_item_and_a_failing_one_is(clien
     assert ops_queue.health_causes({"logins": {"claude-code": "leased", "codex": "unknown"}}) == ["login:codex:unknown"]
 
 
+def test_a_low_disk_of_workers_on_one_machine_is_one_batch_keyed_by_the_machine(client, hub, hub_db):
+    """The workers of one machine share its drive: their low disk alone gathers by the machine's name, one batch for
+    them all. A worker the hub knows no machine of, and a low disk with a failing login, stay by worker."""
+    system(hub_db, {"enabled": True})
+    run_pass(client)
+    one, two = (add_worker(client, hub["owner"], name, pool=None) for name in ("ea-one", "ea-two"))  # mac-mini.local
+    low = {"disk": "low", "disk_free_pct": 5, "logins": {"claude-code": "ok"}}
+    for worker in (one, two):
+        record(client, hub_db, hub_events.WORKER_HEALTH, worker_id=worker["id"], **low)
+    record(client, hub_db, hub_events.WORKER_HEALTH, worker_id=9999, **low)
+    record(
+        client, hub_db, hub_events.WORKER_HEALTH, worker_id=one["id"], **{**low, "logins": {"claude-code": "missing"}}
+    )
+    assert run_pass(client)["queued"] == 4
+    assert batches(hub_db) == [
+        ("worker.health|disk_low|host:mac-mini.local", "open", 2, None),
+        ("worker.health|disk_low|worker:9999", "open", 1, None),
+        (f"worker.health|disk_low,login:claude-code:missing|worker:{one['id']}", "open", 1, None),
+    ]
+
+
 def bound_secret(db, name: str, env_var: str) -> int:
     """An env secret of owner, ``name`` for ``env_var``, bound to the project on any worker of theirs."""
     u, s = tables.users, tables.secrets

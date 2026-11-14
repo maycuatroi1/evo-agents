@@ -9,9 +9,10 @@ plugin takes these kinds (they are not in ``evo_agents.plugins.protocol.EVENT_KI
 Loop.
 
 A worker belongs to no project, so its health is written once for each project it serves (worker_projects), and only
-when its state changes: the band of its free disk (under the reserve its daemon says, ``DISK_LOW_GB`` when it says
-none) or the login of one of its runtimes. The
-percentage of free disk rides along but changes nothing by itself.
+when its state changes: the band of its free disk (``disk_band``: low under the reserve its daemon says, ``DISK_LOW_GB``
+when it says none, and ok again only over the reserve and its headroom, ``disk_headroom``, so free disk that hovers at
+the reserve changes nothing) or the login of one of its runtimes. The percentage of free disk rides along but changes
+nothing by itself.
 
 SQLAlchemy Core on ``evo_agents.hub.tables``; nothing here imports ``evo_agents.hub.server``.
 """
@@ -27,6 +28,11 @@ from evo_agents.hub import hub_events, tables
 
 ENDED_STATES = ("failed", "lost")  # the moves of a run that write run.ended
 DISK_LOW_GB = 20.0  # below this much free disk on its worktrees' drive a worker's disk is low, when it says no reserve
+# the headroom over its reserve a worker's disk is ok again past, when it says none: the larger of these gigabytes and
+# this share of the reserve (``disk_headroom``), what its cleanup frees by default (evo_agents.worker.home.disk_headroom)
+DISK_HEADROOM_GB = 5.0
+DISK_HEADROOM_SHARE = 0.25
+DISK_BANDS = ("low", "ok")
 LOGIN_STATES = ("ok", "leased", "unauthorized", "missing", "unknown")  # a runtime's login, as its daemon checked it
 # The logins a runtime works with: its own, or none on the machine while its last run there authenticated with a lease
 # of the hub (``evo_agents.worker.health.LEASED``).
@@ -129,14 +135,43 @@ def disk_reserve(health: dict | None) -> float:
     return DISK_LOW_GB if found is None else found
 
 
-def disk_band(health: dict | None) -> str | None:
-    """``low`` or ``ok`` for the free disk a stored health report says, against the worker's reserve
-    (``disk_reserve``); None when it says nothing of it. The claim gives a worker whose disk is low no run
-    (``claim_rules.Claimer.stops``)."""
-    free = _size(((health or {}).get("disk") or {}).get("free_gb"))
+def disk_headroom(health: dict | None) -> float:
+    """The gigabytes over its reserve a worker's free disk passes for its band to be ok again, as its stored health
+    report says (``headroom_gb``, its config's ``disk_headroom_gb``); when it says none, the larger of
+    ``DISK_HEADROOM_GB`` and ``DISK_HEADROOM_SHARE`` of the reserve (``disk_reserve``)."""
+    found = _size(((health or {}).get("disk") or {}).get("headroom_gb"))
+    return max(DISK_HEADROOM_GB, DISK_HEADROOM_SHARE * disk_reserve(health)) if found is None else found
+
+
+def disk_band(health: dict | None, previous: str | None = None) -> str | None:
+    """``low`` or ``ok`` for the free disk a health report says; None when it says nothing of it. Low under the
+    worker's reserve (``disk_reserve``), ok over the reserve and its headroom (``disk_headroom``); in between, the band
+    it had: ``previous``, else the band the stored report keeps (``with_band``), else ok. The claim gives a worker
+    whose disk is low no run (``claim_rules.Claimer.stops``)."""
+    disk = (health or {}).get("disk") or {}
+    free = _size(disk.get("free_gb"))
     if free is None:
         return None
-    return "low" if free < disk_reserve(health) else "ok"
+    reserve = disk_reserve(health)
+    if free < reserve:
+        return "low"
+    if free >= reserve + disk_headroom(health):
+        return "ok"
+    kept = previous or disk.get("band")
+    return kept if kept in DISK_BANDS else "ok"
+
+
+def with_band(health: dict | None, before: dict | None) -> dict | None:
+    """``health``, a report a heartbeat stores, with the band of its disk kept in it (``disk.band``): ``disk_band``
+    of it, given the band of the stored report ``before`` it replaces, so free disk between the reserve and its
+    headroom keeps the band it had."""
+    disk = (health or {}).get("disk")
+    if isinstance(disk, dict):
+        disk.pop("band", None)
+        band = disk_band(health, disk_band(before))
+        if band is not None:
+            disk["band"] = band
+    return health
 
 
 def health_state(health: dict | None) -> tuple | None:
@@ -177,6 +212,9 @@ async def worker_health(conn: AsyncConnection, worker_id: int, before: dict | No
 
 
 __all__ = [
+    "DISK_BANDS",
+    "DISK_HEADROOM_GB",
+    "DISK_HEADROOM_SHARE",
     "DISK_LOW_GB",
     "ENDED_STATES",
     "LOGGED_IN",
@@ -184,9 +222,11 @@ __all__ = [
     "curator_paused",
     "decision_opened",
     "disk_band",
+    "disk_headroom",
     "disk_reserve",
     "health_state",
     "pause_class",
     "run_moved",
+    "with_band",
     "worker_health",
 ]

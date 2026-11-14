@@ -15,6 +15,7 @@ import pytest
 
 pytest.importorskip("aiohttp")
 
+from evo_agents.hub import ops_events  # noqa: E402
 from evo_agents.worker import daemon_cleanup  # noqa: E402
 from evo_agents.worker.daemon import Daemon  # noqa: E402
 from evo_agents.worker.home import DISK_RESERVE_GB, WorkerConfig, WorkerHome  # noqa: E402
@@ -135,6 +136,107 @@ def test_a_reserve_set_by_hand_that_is_not_a_size_falls_back_to_the_default_rese
     assert WorkerConfig.from_json({**data, "disk_reserve_gb": 50}).disk_reserve_gb == 50
     for wrong in (-1, "lots", True, None):
         assert WorkerConfig.from_json({**data, "disk_reserve_gb": wrong}).disk_reserve_gb == DISK_RESERVE_GB
+
+
+def test_below_its_reserve_the_daemon_makes_room_up_to_the_reserve_and_its_headroom_not_to_the_reserve_alone(
+    tmp_path, monkeypatch
+):
+    checkout, home, daemon = _stack(tmp_path)
+    for run_id, hours in ((1, 5), (2, 4), (3, 3)):
+        _run(home, checkout, run_id, timedelta(hours=hours))
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _Drive(home, 26.0, 5.0).disk)
+    assert daemon.cleaner.headroom_gb == 5.0, "the larger of 5 GB and a quarter of a 20 GB reserve"
+    assert asyncio.run(daemon.cleaner.make_room()) == [], "over the reserve and its headroom: nothing goes"
+
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _Drive(home, 15.0, 5.0).disk)
+    assert asyncio.run(daemon.cleaner.make_room()) == [1, 2], "15 to 20 is the reserve alone; it goes on to 25"
+    assert home.worktree_path("demo", 3).is_dir()
+
+    daemon.config.disk_reserve_gb = 40.0
+    assert daemon.cleaner.headroom_gb == 10.0, "a quarter of a 40 GB reserve"
+    daemon.config.disk_headroom_gb = 0.0
+    assert daemon.cleaner.headroom_gb == 0.0, "the config's headroom wins"
+
+
+def _beat(daemon: Daemon, before: dict | None) -> dict:
+    """The health of ``daemon``'s heartbeat as the hub stores it, with its band (``ops_events.with_band``)."""
+    cleaner = daemon.cleaner
+    found = daemon_cleanup.health.report(
+        daemon.home.worktrees_dir, {}, cleaner.reserve_gb, cleaner.reported_headroom_gb
+    )
+    return ops_events.with_band(found, before)
+
+
+def test_a_cleanup_that_stalls_between_the_reserve_and_its_headroom_says_a_headroom_of_0_so_runs_come_again(
+    tmp_path, monkeypatch
+):
+    """The drive dips under the reserve, the hub's band goes low, and the cleanup frees all it may but stops short of
+    the reserve and its headroom: the heartbeat then says a headroom of 0, so the band turns ok and the worker is given
+    runs again, also when the drive slips a little while it stays over the reserve. A later cleanup goes on to the
+    target, and the full headroom is said again there."""
+    checkout, home, daemon = _stack(tmp_path)
+    _run(home, checkout, 1, timedelta(hours=5))
+    drive = _Drive(home, 19.0, 3.0)
+    monkeypatch.setattr(daemon_cleanup.health, "disk", drive.disk)
+    cleaner = daemon.cleaner
+
+    dipped = _beat(daemon, None)
+    assert dipped["disk"]["band"] == "low" and ops_events.disk_band(dipped) == "low"
+    assert asyncio.run(cleaner.make_room()) == [1], "19 to 22: the only ended run goes, short of 25"
+    assert cleaner.stalled and cleaner.reported_headroom_gb == 0.0
+    after = _beat(daemon, dipped)
+    assert after["disk"]["free_gb"] == 22.0 and after["disk"]["band"] == "ok", "the hub gives it runs again"
+    drive.free = 18.97  # running runs wrote 30 MB since
+    assert _beat(daemon, after)["disk"]["band"] == "ok"
+
+    _run(home, checkout, 2, timedelta(hours=1))  # a run ended since: the next cleanup goes on to the target
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _Drive(home, 22.0, 3.0).disk)
+    assert asyncio.run(daemon.claims._short_of_room()) is False and home.worktree_path("demo", 2).is_dir()
+    assert asyncio.run(cleaner.make_room()) == [2]
+    assert not cleaner.stalled and cleaner.reported_headroom_gb == 5.0, "at 25 it is done; the full headroom again"
+
+
+def test_a_dip_only_a_heartbeat_saw_ends_with_the_band_ok_once_the_claims_make_room(tmp_path, monkeypatch):
+    """A running run's file takes the drive under the reserve for one heartbeat and goes before any cleanup ran: the
+    band is low, and back over the reserve the claims make room up to the target, or say a headroom of 0 when nothing
+    more may go, so the band turns ok."""
+    checkout, home, daemon = _stack(tmp_path)
+    _run(home, checkout, 1, timedelta(days=1), state="parked")  # nothing it may remove
+    drive = _Drive(home, 18.0, 0.0)
+    monkeypatch.setattr(daemon_cleanup.health, "disk", drive.disk)
+    dipped = _beat(daemon, None)
+    assert dipped["disk"]["band"] == "low"
+    drive.free = 21.0
+    assert _beat(daemon, dipped)["disk"]["band"] == "low", "between the reserve and its headroom the band holds"
+
+    assert asyncio.run(daemon.claims._short_of_room()) is False
+    assert daemon.cleaner.stalled and home.worktree_path("demo", 1).is_dir()
+    assert _beat(daemon, dipped)["disk"]["band"] == "ok"
+
+
+def test_a_daemon_restarted_between_the_reserve_and_its_headroom_makes_room_and_ends_with_the_band_ok(
+    tmp_path, monkeypatch
+):
+    """After a dip, the drive is back at 22 GB and the daemon restarts: the new daemon has no memory of the dip, makes
+    room from the free disk it reads, and the band the hub held low turns ok."""
+    checkout, home, daemon = _stack(tmp_path)
+    _run(home, checkout, 1, timedelta(hours=5))
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _Drive(home, 19.0, 0.0).disk)
+    dipped = _beat(daemon, None)
+    assert dipped["disk"]["band"] == "low"
+
+    restarted = Daemon(home, daemon.config, "evw_x", adapters={}, env=daemon.env)
+    monkeypatch.setattr(daemon_cleanup.health, "disk", _Drive(home, 22.0, 3.0).disk)
+    assert asyncio.run(restarted.cleaner.make_room()) == [1], "22 to 25: the ended run goes"
+    assert _beat(restarted, dipped)["disk"]["band"] == "ok"
+
+
+def test_a_headroom_set_by_hand_that_is_not_a_size_falls_back_to_the_default_headroom():
+    data = {"url": "https://hub.example.org", "worker_id": 1, "name": "mac", "projects": ["demo"]}
+    assert WorkerConfig.from_json(data).disk_headroom_gb is None
+    assert WorkerConfig.from_json({**data, "disk_headroom_gb": 8}).disk_headroom_gb == 8
+    for wrong in (-1, "lots", True):
+        assert WorkerConfig.from_json({**data, "disk_headroom_gb": wrong}).disk_headroom_gb is None
 
 
 class _SharedDrive:

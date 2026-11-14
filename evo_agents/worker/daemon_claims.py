@@ -89,10 +89,11 @@ class Claims:
 
     async def _short_of_room(self) -> bool:
         """Whether the drive of the worktrees stays under ``disk_reserve_gb`` once the cleanup removed the worktrees
-        of the ended runs it may (``Cleanup.make_room``): no run is claimed then, so none fails at its checkout. Said in
-        the log once each time it starts and ends."""
+        of the ended runs it may (``Cleanup.make_room``, run under the reserve, and over it short of its headroom
+        unless it stalled there): no run is claimed then, so none fails at its checkout. Said in the log once each
+        time it starts and ends."""
         cleaner = self.daemon.cleaner
-        if not cleaner.short_of_room():
+        if not cleaner.short_of_room() and (cleaner.stalled or not cleaner.under_target()):
             short = False
         else:
             try:

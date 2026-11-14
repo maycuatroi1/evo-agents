@@ -258,6 +258,7 @@ class Daemon:
             self.home.worktrees_dir,
             health.with_leases(self.logins, self.leased),
             self.cleaner.reserve_gb,
+            self.cleaner.reported_headroom_gb,
         )
         if force or now - self._checkouts_at > CHECKOUTS_EVERY:
             found = await asyncio.to_thread(checkouts.discover, self.config)

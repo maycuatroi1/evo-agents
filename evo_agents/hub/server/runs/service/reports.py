@@ -73,12 +73,13 @@ def _kg_sync(body: HeartbeatRequest):
 
 def _health(body: HeartbeatRequest) -> dict | None:
     """What a heartbeat sets workers.health to: the report it carries, or None (SQL NULL) when it carries none. A disk
-    without a reserve is kept without the key, as an older daemon sent it."""
+    without a reserve or a headroom is kept without the key, as an older daemon sent it."""
     if body.health is None:
         return None
     found = body.health.model_dump(mode="json")
-    if found.get("disk") and found["disk"].get("reserve_gb") is None:
-        del found["disk"]["reserve_gb"]
+    for key in ("reserve_gb", "headroom_gb"):
+        if found.get("disk") and found["disk"].get(key) is None:
+            del found["disk"][key]
     return found
 
 
@@ -195,8 +196,8 @@ async def record_heartbeat(
     async with engine.begin() as conn:
         worker_id, _, _, _, _, _, drained_at, *_ = await worker_of(conn, user)
         w = tables.workers
-        health = _health(body)
-        was = await conn.scalar(select(w.c.health).where(w.c.id == worker_id))
+        was = await conn.scalar(select(w.c.health).where(w.c.id == worker_id).with_for_update())  # one band at a time
+        health = ops_events.with_band(_health(body), was)  # the band it had holds while free disk is near the reserve
         held = await conn.execute(
             update(w)
             .values(

@@ -104,6 +104,13 @@ class DiskReport(BaseModel):
         description="the gigabytes the daemon keeps free there (disk_reserve_gb of its config): under it the hub gives "
         "the worker no run; null from a daemon that says none, for which the hub's own reserve of 20 holds",
     )
+    headroom_gb: float | None = Field(
+        None,
+        ge=0,
+        description="the gigabytes over the reserve its cleanup frees once the drive fell under it (disk_headroom_gb of "
+        "its config): the hub counts its disk ok again only over the reserve and this; null from a daemon that says "
+        "none, for which the larger of 5 and a quarter of the reserve holds",
+    )
 
 
 class HealthReport(BaseModel):

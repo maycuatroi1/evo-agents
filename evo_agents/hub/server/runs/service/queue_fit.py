@@ -152,9 +152,11 @@ def _stop_reasons(key: str, row, run, claimer: claim_rules.Claimer) -> tuple[str
     if key == "disk":
         free = ((row.health or {}).get("disk") or {}).get("free_gb")
         reserve = ops_events.disk_reserve(row.health)
+        again = reserve + ops_events.disk_headroom(row.health)
         return (
-            f"has {free} GB free on its worktrees' drive, under its reserve of {reserve:g} GB: it takes "
-            "runs again once its daemon removed the worktrees of ended runs or its owner freed room",
+            f"has {free} GB free on its worktrees' drive, under its reserve of {reserve:g} GB or not yet back over "
+            f"{again:g} GB since: it takes runs again once its daemon removed the worktrees of ended runs or its "
+            "owner freed room",
             True,
         )
     return (
