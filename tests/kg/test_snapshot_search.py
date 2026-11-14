@@ -16,6 +16,7 @@ from evo_agents.kg.snapshot_text import Ranker
 from evo_agents.kg.store import Store
 from evo_agents.kg.store_clusters import Clusters
 from tests.kg.test_store import make_searchable, sync_build
+from tests.kg.test_walk import entity_project, walk_on
 
 QUERIES = [
     "GraphBuilder",
@@ -102,6 +103,20 @@ def test_kg_search_answers_as_a_session_does_for_each_clearance(tmp_path, kg_env
         SnapshotSession(SnapshotSearch(snap, agent.clearance, agent.audience)).call("kg_search", {"query": "search"})
     )
     assert shown and not any(nid.startswith(("app:", "symbol:app:")) for nid in shown)
+
+
+def test_a_bench_snapshot_walks_with_the_projects_settings(tmp_path, kg_env):
+    """The walk and entity_code are project settings: a snapshot read without them ranks as an unwalked graph."""
+    from evo_agents.kg.bench.run import snapshot_session
+
+    project = entity_project(tmp_path, kg_env)
+    walk_on(project)
+    kg_settings.write(project.root, kg_settings.of({"entity_code": True}, kg_settings.read(project.root)))
+    session = Session(project, "agent")
+    mine = snapshot_session(session)
+    for query in ("zephyr launcher", "Quasar", "comet tail", "engine"):
+        args = {"query": query, "limit": 10}
+        assert results(mine.call("kg_search", args)) == results(session.call("kg_search", args)), query
 
 
 def test_kg_search_reads_the_documents_an_entity_stands_for_and_the_code(tmp_path, kg_env):

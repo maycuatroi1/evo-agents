@@ -282,9 +282,11 @@ def snapshot_session(session):
         raise ValueError(f"project {session.project.name!r} has no graph yet")
     try:
         snap = Snapshot.from_store(store, b)
+        tuning = store.tuning
     finally:
         store.close()
-    return SnapshotSession(SnapshotSearch(snap, session.clearance, session.audience, semantic_on=session.semantic))
+    search = SnapshotSearch(snap, session.clearance, session.audience, tuning=tuning, semantic_on=session.semantic)
+    return SnapshotSession(search)
 
 
 def ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> Asked:
