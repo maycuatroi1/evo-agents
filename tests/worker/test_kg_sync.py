@@ -374,6 +374,53 @@ def test_kg_sync_report_names_a_failed_fetch_a_refused_hub_and_a_missing_harness
     assert lines[0].startswith(f"graph of {PROJECT}: looked at ") and any("source app: failed" in x for x in lines)
 
 
+def test_kg_sync_clones_a_repo_without_checkout_from_its_https_origin_once(stage, monkeypatch):
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")  # the https origin of harness.yaml, served by the bare repo
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", f"url.{stage.app.origin.as_uri()}.insteadOf")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", ORIGIN)
+    clones = []
+    real_clone = kg_sync.clone
+    monkeypatch.setattr(
+        kg_sync, "clone", lambda origin, dest: (clones.append((origin, dest)), real_clone(origin, dest))
+    )
+    del stage.checkouts["app"]
+
+    state = stage.look()
+    managed = kg_sync.kg_dir(stage.root) / "checkouts" / PROJECT / "app"
+    assert clones == [(ORIGIN, managed)]
+    assert state.error is None, state.error
+    assert state.sources["app"].status == "ok", state.sources["app"].error
+    assert state.sources["app"].commit == git(stage.app.seed, "rev-parse", "HEAD").strip()
+    assert stage.hub.files() == stage.app.files()
+    view = kg_sync.kg_dir(stage.root) / "harness" / PROJECT
+    assert "path: " + str(managed) in (view / "harness.yaml").read_text(encoding="utf-8")
+    other = state.sources["other"]
+    assert other.status == "failed" and "no https:// origin" in other.error, "no origin: no clone, a clean failure"
+
+    stage.app.commit({"a.md": "# A\n\ntwo\n"}, T[1])
+    again = stage.look()
+    assert clones == [(ORIGIN, managed)], "the managed checkout is reused, not cloned again"
+    assert again.sources["app"].status == "ok" and again.sources["app"].pushed == 1
+    assert stage.hub.files() == stage.app.files()
+
+
+def test_kg_sync_clone_terminates_git_options_and_refuses_option_shaped_repo_names(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+
+    calls = []
+    monkeypatch.setattr(kg_sync, "git", lambda cwd, *args, **kw: calls.append((cwd, args, kw)) or "")
+    dest = tmp_path / "checkouts" / "demo" / "app"
+    kg_sync.clone("https://github.com/acme/app.git", dest)
+    assert calls and calls[0][1][-3:] == ("--", "https://github.com/acme/app.git", "app")
+
+    calls.clear()
+    manifest = {"repos": [{"name": "-u", "origin": "https://github.com/acme/app.git"}]}
+    knowledge = {"sources": [{"name": "bad", "connector": "git", "repo": "-u", "ref": "origin/main"}]}
+    found, missing = kg_sync.managed_checkouts(tmp_path, "demo", manifest, knowledge, {}, lambda _p: nullcontext())
+    assert "-u" not in found and "not one directory" in missing["-u"]
+    assert calls == []
+
+
 def test_kg_sync_errors_are_cut_and_masked():
     text = "fetch failed: https://x-access-token:ghp_" + "a" * 36 + "@github.com/acme/app.git " + "word " * 200
     shown = kg_sync.cut(text)

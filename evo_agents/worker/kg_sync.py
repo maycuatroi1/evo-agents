@@ -13,7 +13,9 @@ the hub took a run of the project since it last looked. A look (``KgSync.look``)
    the checkout's working tree, which may lag or hold another branch. It writes them, with each repo's path pointing at
    the worker's checkout of that repo, to ``<worker home>/kg/harness/<project>``, and loads the project from there with
    its corpus under ``<worker home>/kg/home``. knowledge.yaml is written byte for byte, so each source's lineage is the
-   one a member's machine computes (``evo_agents.kg.sync.source_lineage``).
+   one a member's machine computes (``evo_agents.kg.sync.source_lineage``). A repo a source of step 2 names that has no
+   checkout on the worker, but an https:// origin in harness.yaml, is cloned once (``--no-checkout --filter=blob:none``)
+   to ``<worker home>/kg/checkouts/<project>/<repo>``, which later looks reuse.
 2. takes the git sources whose ref is origin/<branch> and that name a repo of harness.yaml. A source of another
    connector (the harness's working tree, an exec command) is read on members' machines alone, and a git source with
    another ref, with ``path:`` or with no ref is skipped and named so in the report.
@@ -137,6 +139,22 @@ def default_branch(repo: Path) -> str:
     return "main"
 
 
+def clone(origin: str, dest: Path) -> None:
+    """Clone ``origin`` to ``dest`` without a working tree nor blobs, which a sync reads from the ref as it needs them."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    git(
+        dest.parent,
+        "clone",
+        "--quiet",
+        "--no-checkout",
+        "--filter=blob:none",
+        "--",
+        origin,
+        dest.name,
+        timeout=FETCH_TIMEOUT,
+    )
+
+
 def fetch(repo: Path, branch: str) -> None:
     """Update origin/<branch> of the clone at ``repo`` from origin."""
     refspec = f"+refs/heads/{branch}:refs/remotes/origin/{branch}"
@@ -166,6 +184,7 @@ class View:
     project: Project
     checkouts: dict[str, Path]
     harness: Path
+    missing: dict[str, str] = field(default_factory=dict)  # why a repo a source names has no checkout, by name
 
 
 def shown_if_present(repo: Path, ref: str, path: str) -> str | None:
@@ -232,6 +251,39 @@ def view_manifest(manifest: dict, checkouts: dict[str, Path]) -> dict:
     return {**shown, "repos": repos, "knowledge_file": str(manifest.get("knowledge_file") or "knowledge.yaml")}
 
 
+def managed_checkouts(
+    root: Path, project: str, manifest: dict, knowledge: dict, checkouts: dict[str, Path], lock: Callable
+) -> tuple[dict[str, Path], dict[str, str]]:
+    """``checkouts`` with the worker's own clone of each repo a synced git source names that has none, cloned under
+    ``kg_dir(root)/checkouts/<project>`` from its https:// origin in harness.yaml when not cloned yet; and why a repo
+    still has none, by name."""
+    repos = {repo["name"]: repo for repo in manifest.get("repos") or [] if isinstance(repo, dict) and repo.get("name")}
+    found, missing = dict(checkouts), {}
+    for source in knowledge.get("sources") or []:
+        if not isinstance(source, dict) or source.get("connector") != "git" or skipped_reason(source, set(repos)):
+            continue
+        name = source["repo"]
+        if name in found or name in missing:
+            continue
+        origin = repos[name].get("origin")
+        if not isinstance(origin, str) or not origin.startswith("https://"):
+            missing[name] = "harness.yaml gives it no https:// origin to clone"
+            continue
+        if any(Path(part).name != part or part in ("", ".", "..") or part.startswith("-") for part in (project, name)):
+            missing[name] = "its name is not one directory's, to clone it under"
+            continue
+        dest = kg_dir(root) / "checkouts" / project / name
+        try:
+            with lock(dest):
+                if not (dest / ".git").exists():
+                    clone(origin, dest)
+        except GitProblem as exc:
+            missing[name] = f"cloning its origin: {exc}"
+            continue
+        found[name] = dest
+    return found, missing
+
+
 def _write(view: Path, relative: str, text: str) -> None:
     path = view / relative
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -257,6 +309,7 @@ def write_view(root: Path, project: str, checkouts: dict[str, Path], lock: Calla
             continue
         knowledge_text, ref, manifest, knowledge = found
         view = kg_dir(root) / "harness" / project
+        checkouts, missing = managed_checkouts(root, project, manifest, knowledge, checkouts, lock)
         manifest = view_manifest(manifest, checkouts)
         _write(view, "harness.yaml", yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True))
         _write(view, manifest["knowledge_file"], knowledge_text)
@@ -264,7 +317,7 @@ def write_view(root: Path, project: str, checkouts: dict[str, Path], lock: Calla
         if isinstance(ontology, str) and ontology:
             relative = str(Path(manifest["knowledge_file"]).parent / ontology)
             _write(view, relative, shown(checkout, ref, relative))
-        return View(load_project_at(view, kg_dir(root) / "home"), checkouts, checkout)
+        return View(load_project_at(view, kg_dir(root) / "home"), checkouts, checkout, missing)
     if first_git_error is not None:
         raise first_git_error
     raise ProjectError(
@@ -466,9 +519,12 @@ class KgSync:
             checkout = view.checkouts.get(source["repo"])
             if checkout is None:
                 found.status = "failed"
-                found.error = (
-                    f"no checkout of repo {source['repo']} of project {view.project.name} on this worker: add it to "
-                    "the harness registry or to checkouts in config.json"
+                why = view.missing.get(source["repo"])
+                found.error = cut(
+                    f"no checkout of repo {source['repo']} of project {view.project.name} on this worker"
+                    + (f" ({why})" if why else "")
+                    + ": add it to the harness registry or to checkouts in config.json",
+                    self.secrets,
                 )
                 continue
             source["fetch"] = True  # as fetch: true reads it; fetch is not part of the lineage nor of what is read
