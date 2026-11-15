@@ -174,7 +174,7 @@ async def spent_today(conn, system_id: int) -> float:
 
 
 def daily_limit(spec: dict) -> float:
-    """``limits.daily_usd`` of a system's spec, the default of ``system_spec.LIMITS`` when it sets none."""
+    """``limits.daily_usd`` of a system's spec, the default of ``system_spec.LIMITS`` (no limit) when it sets none."""
     return float((spec.get("limits") or {}).get("daily_usd", system_spec.LIMITS["daily_usd"][0]))
 
 
@@ -185,7 +185,7 @@ async def daily_problem(conn, run_id: int) -> str | None:
     if found is None or found.system.id is None:
         return None
     limit, spent = daily_limit(found.spec), await spent_today(conn, found.system.id)
-    if spent < limit:
+    if not system_spec.over_usd(spent, limit):
         return None
     why = (
         f"the hub agents of system {found.system.slug} spent {spent:.2f} USD today, its limits.daily_usd of "

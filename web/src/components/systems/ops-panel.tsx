@@ -10,7 +10,7 @@ import { EmptyState, TableSkeleton } from "@/components/states/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import { opsAlert, opsBatchesQuery, type SystemOps, systemOpsQuery } from "@/lib/system-ops-queries";
-import type { SystemOut } from "@/lib/systems";
+import { type SystemOut, UNLIMITED_USD } from "@/lib/systems";
 
 import { SetDefaultButton, useSetDefault } from "./default-system";
 import { OpsBatches } from "./ops-batches";
@@ -90,7 +90,7 @@ function OpsSummary({ ops }: { ops: SystemOps }) {
   const waiting = (ops.batches.open ?? 0) + (ops.batches.ready ?? 0);
   const facts = [
     { id: "state", label: t("state"), value: ops.ops.enabled ? (ops.paused ? t("paused") : t("on")) : t("off") },
-    { id: "spent", label: t("spent"), value: t("spentOf", { spent: usd(ops.spent_usd), cap: usd(ops.ops_daily_usd) }) },
+    { id: "spent", label: t("spent"), value: ops.ops_daily_usd === UNLIMITED_USD ? usd(ops.spent_usd) : t("spentOf", { spent: usd(ops.spent_usd), cap: usd(ops.ops_daily_usd) }) },
     { id: "waiting", label: t("waiting"), value: format.number(waiting) },
     { id: "running", label: t("running"), value: format.number(ops.batches.running ?? 0) },
   ];

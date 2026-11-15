@@ -279,7 +279,7 @@ def test_task_dispatch_queues_a_task_run_under_run_as_with_what_is_left_of_the_c
         [],
     )
     assert (task["project"], task["agent_type"], task["daily_usd"], task["spent_usd"]) == (PROJECT, "triager", 5, 0)
-    assert task["budget"] == {"max_usd": 5, "max_seconds": task_runs.TIME_CAP_SECONDS}
+    assert task["budget"] == {"max_usd": 5, "max_seconds": None}
     ap = tables.agent_profiles
     profile_id = sql(hub_db, select(ap.c.id).where(ap.c.handle == "triager"))[0][0]
     names = ("kind", "dispatched_by", "dispatched_via", "profile_id", "request", "title", "plan_id", "mode", "budget")
@@ -316,7 +316,7 @@ def test_task_dispatch_goes_only_to_a_node_of_the_agents_pool_with_its_prompt(cl
         assert claim(client, worker) is None, worker["name"]
     spec = claim(client, laptop)
     assert (spec["id"], spec["kind"], spec["branch"], spec["mode"]) == (run_id, "task", f"task/{run_id}", "headless")
-    assert spec["budget"]["max_usd"] == 5 and spec["budget"]["max_seconds"] == task_runs.TIME_CAP_SECONDS
+    assert spec["budget"]["max_usd"] == 5 and spec["budget"].get("max_seconds") is None
     prompt = autonomy_card.without_card(spec["prompt"])  # the card opens it (autonomy-levels)
     assert prompt.startswith(f"You are @triager (Triager), agent type triager of plugin {PLUGIN} in project {PROJECT}")
     assert f"Plugin {PLUGIN} hands you the task below for {OTHER}" in prompt
@@ -547,5 +547,5 @@ def test_task_branch_problem_takes_a_branch_of_its_own_and_no_default_branch():
     assert "default branch" in task_runs.branch_problem("trunk", default_branch="trunk")
     for name in ("", "-x", "a b", "a..b", "a/", "a.lock", "x@{1}", "a//b", "a/.b", "release/1.0", "evo-run/3/x"):
         assert task_runs.branch_problem(name) is not None, name
-    assert task_runs.run_budget(2.5) == {"max_usd": 2.5, "max_seconds": task_runs.TIME_CAP_SECONDS}
-    assert task_runs.run_timeout() == task_runs.TIMEOUT_MIN * 60 and task_runs.run_timeout(10) == 3600
+    assert task_runs.run_budget(2.5) == {"max_usd": 2.5} and task_runs.run_budget(2.5, 10) == {"max_usd": 2.5, "max_seconds": 600}
+    assert task_runs.run_timeout() == task_runs.run_timeout(task_runs.MAX_MINUTES) == runs.LONGEST_TIMEOUT_MIN * 60

@@ -5,7 +5,7 @@ import { csrfHeaders } from "@/lib/api/csrf";
 import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
 
-import type { Ops, Spec } from "./systems";
+import { type Ops, type Spec, UNLIMITED_USD } from "./systems";
 import { systemKeys } from "./systems-queries";
 
 /**
@@ -20,11 +20,12 @@ export type OpsBatch = Schemas["OpsBatch"];
 export type DefaultSystem = Schemas["DefaultSystem"];
 export type OpsHolding = Schemas["OpsHolding"];
 
-/** `system_spec.OPS` and `LIMITS["ops_daily_usd"]`: default, lowest and highest of each value an admin sets. */
+/** `system_spec.OPS` and `LIMITS["ops_daily_usd"]`: default, lowest and highest of each value an admin sets; an
+ * `ops_daily_usd` of 0 (`UNLIMITED_USD`) sets no cap. */
 export const OPS_BOUNDS = {
   debounce_minutes: { fallback: 5, min: 0, max: 1440 },
   max_items: { fallback: 20, min: 1, max: 1000 },
-  ops_daily_usd: { fallback: 200, min: 0.01, max: 1000 },
+  ops_daily_usd: { fallback: 0, min: 0, max: 1_000_000 },
 } as const;
 export type OpsField = keyof typeof OPS_BOUNDS;
 
@@ -116,5 +117,5 @@ export function withOps(spec: Spec, form: OpsForm): Spec {
 export function opsAlert(ops: SystemOps): "paused" | "capped" | null {
   if (!ops.default || !ops.ops.enabled) return null;
   if (ops.paused) return "paused";
-  return ops.spent_usd >= ops.ops_daily_usd ? "capped" : null;
+  return ops.ops_daily_usd !== UNLIMITED_USD && ops.spent_usd >= ops.ops_daily_usd ? "capped" : null;
 }

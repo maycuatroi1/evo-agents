@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_runs, runs, system_context, tables
+from evo_agents.hub import runs, system_context, tables
 from evo_agents.hub.server import system_store, system_trace_stats, system_traces
 
 WorkStatus = Literal["running", "needs_person", "failed", "done"]
@@ -130,7 +130,7 @@ class WorkCard(WorkBrief):
     runs: int
     usd: float
     hop: int | None = Field(description="the deepest hop of its runs")
-    max_hops: int
+    max_hops: int | None = Field(None, description="the most hops of a trace; null: hops have no limit")
     trace_runs: int = Field(description="the runs a trace of its revision may make; 0 for no limit")
     trace_usd: float = Field(description="the USD a trace of its revision may spend")
     started_at: datetime
@@ -449,7 +449,6 @@ def _card(read: _Read, trace_id: int, asks: list[WorkAsk], used: tuple, limits: 
         runs=count,
         usd=round(usd, 6),
         hop=hop,
-        max_hops=chat_runs.MAX_HOPS,
         trace_runs=limits[1],
         trace_usd=limits[0],
         started_at=row["started_at"],

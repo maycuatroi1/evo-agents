@@ -53,7 +53,7 @@ def test_the_system_section_names_purpose_edges_in_and_out_graphs_and_the_orches
     assert "read them when you name no graph):\n- docs: product docs" in triage
     assert "`--goal`" in triage and "`--output`" in triage and "`--done-when`" in triage
     assert "`--reason WHY`" in triage and "evo-agents worker agent forward --run RUN" in triage
-    assert "any number of runs and spend at most 200 USD" in triage
+    assert "A trace of this system" not in triage, "a spec that sets no limit says none"
     billing = "\n".join(system_context.system_lines(system_context.place_of("support", spec, "lumen-billing")))
     assert "Who hands you work:\n- @lumen-triage: invoices" in billing
     assert "The Orchestrator you escalate to (with `evo-agents worker escalate --question TEXT`" in billing
@@ -123,9 +123,10 @@ def test_the_refusal_off_the_edges_lists_the_targets_and_how_to_give_a_reason():
 
 def test_the_budget_of_a_trace_is_its_runs_and_its_cost():
     spec = checked(SPEC)
-    assert system_context.limits_of(spec) == (200.0, system_spec.UNLIMITED_RUNS)
-    assert system_context.budget_problem(spec, 10_000, 199.99) is None, "no limit on the runs by default"
-    assert "budget of 200 USD (limits.trace_usd" in system_context.budget_problem(spec, 1, 200.0)
+    assert system_context.limits_of(spec) == (system_spec.UNLIMITED_USD, system_spec.UNLIMITED_RUNS)
+    assert system_context.limits_of({}) == (system_spec.UNLIMITED_USD, system_spec.UNLIMITED_RUNS), "an old spec"
+    assert system_context.budget_problem(spec, 10_000, 1e6) is None, "no limit on the runs or the cost by default"
+    assert system_context.trace_row(spec, usd=1e6, runs=3, max_hop=2, budget_refusals=0, threads={}, crossings=[])["over_usd"] is None
     capped = checked({**SPEC, "limits": {"trace_runs": 12, "trace_usd": 2}})
     assert system_context.budget_problem(capped, 11, 1.99) is None
     assert "budget of 12 runs (limits.trace_runs" in system_context.budget_problem(capped, 12, 0)
@@ -186,7 +187,7 @@ def test_the_largest_prompt_keeps_rules_brief_and_system_whole_under_the_prompt_
         chat={"id": 10**12, "title": "t" * 200, "people": ["u" * 39] * 20, "agents": ["a" * 63] * 20},
         trigger={"id": 1, "author": "owner", "at": "2026-11-07 08:00 UTC", "body": body},
         login="u" * 39,
-        hop=chat_runs.MAX_HOPS,
+        hop=40,
         branch="chat/" + "b" * 60,
         blocks=["[#2] owner:\n" + "s" * 4000] * 10,
         listing=listing,
@@ -203,7 +204,7 @@ def test_the_largest_prompt_keeps_rules_brief_and_system_whole_under_the_prompt_
     for line in (*brief, *system):
         assert line in head, f"left out of the prompt: {line[:60]!r}"
     rules = chat_runs._rules(
-        "h" * 63, "u" * 39, "chat/" + "b" * 60, chat_runs.MAX_HOPS, True, "northwind-harness", ships=True, cdn=True
+        "h" * 63, "u" * 39, "chat/" + "b" * 60, 40, True, "northwind-harness", ships=True, cdn=True
     )
     for line in rules:
         assert line in head, f"a rule left out: {line[:60]!r}"

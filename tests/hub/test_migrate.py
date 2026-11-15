@@ -6277,3 +6277,24 @@ def test_0249_lets_a_dismissal_name_the_ontology_rules_and_going_back_deletes_th
     move_to(hub_db, "0248", down=True)
     assert query(hub_db, select(d.c.rule)) == [("conflicting_claim",)], "the other dismissals stay"
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0249") :]
+
+
+def test_0250_takes_any_hop_from_1_and_going_back_sets_a_deeper_hop_to_3(hub_db):
+    move_to(hub_db, "0249")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        chat_id = one(conn, insert(t.chats).values(title="Hops", created_by=ids["user"]).returning(t.chats.c.id))
+        message = insert(t.chat_messages).values(chat_id=chat_id, seq=1, body="@reviewer look", label=[])
+        message_id = one(conn, message.returning(t.chat_messages.c.id))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(_chat_run(ids, chat_id, message_id, hop=4))
+    move_to(hub_db, "0250")
+    with live.connect(hub_db) as conn:
+        deep = one(conn, _chat_run(ids, chat_id, message_id, hop=40))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(_chat_run(ids, chat_id, message_id, hop=0))
+    move_to(hub_db, "0249", down=True)
+    runs = t.runs
+    assert query(hub_db, select(runs.c.hop).where(runs.c.id == deep)) == [(3,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0250") :]

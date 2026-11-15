@@ -32,7 +32,7 @@ reach (``acting``), and no run is queued whatever route the request took unless 
 session of a chat run and a parked run's resumption), and ``new_run_refusal`` the reason a place that refuses with
 words (a mention in a chat, a core plugin's task) says. A run a token of such an owner starts never runs as the owner
 (``run_access.refuse_onward``, which no reach lifts), so its own agent has no run's token and the owner's account goes
-no further than the run they let run as them; a mention it makes is a person's, hop 1 of ``chat_runs.MAX_HOPS``. The
+no further than the run they let run as them; a mention it makes is a person's, hop 1 of its chain. The
 other exception is the release check now, which the middleware let through only when the owner opened ``releases``: it
 queues its cut inside ``release_dispatch``, as the schedule's owner, as the daily check would.
 
