@@ -138,6 +138,9 @@ def test_kg_api_worker_routes_take_only_the_worker_on_duty(hub):
     ), "a worker never sends the knowledge config"
     missing = client.get(f"{runs_path()}/01a15407-64e6-7c30-a9e3-4f2bef7f8f09/log", headers=hub.duty["headers"])
     assert missing.status_code == 404
+    held = ok(client.get(f"/v1/worker/kg/{PROJECT}/sources/app/state", headers=hub.duty["headers"]))
+    assert (held["source"], held["runs"], held["items"]) == ("app", 0, [])
+    assert client.get(f"/v1/worker/kg/{PROJECT}/sources/app/state", headers=hub.spare["headers"]).status_code == 403
 
 
 REPORT = {

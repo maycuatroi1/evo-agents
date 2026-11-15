@@ -15,7 +15,8 @@ config the members sent (PUT /v1/kg/{project}/config), and a project with none a
 - GET /v1/worker/kg/{p}/runs/{run_id}/log: an ingested run's source, its log's SHA-256 and size, and a presigned GET
   URL of the log, valid for an hour. The worker merges the runs other machines pushed of a source before it reads the
   source, so the deletions its own run derives cover every item the hub holds (``evo_agents.kg.sync.merge_pulled``).
-- POST /v1/worker/kg/{p}/runs, POST .../runs/{run_id}/commit, POST .../blobs/check: as under /v1/kg/{p}.
+- GET /v1/worker/kg/{p}/sources/{source}/state, POST /v1/worker/kg/{p}/runs, POST .../runs/{run_id}/commit, POST
+  .../blobs/check: as under /v1/kg/{p}.
 - POST /v1/worker/kg/{p}/blobs/uploads and POST .../blobs/commit: as POST /v1/blobs/uploads and /v1/blobs/commit for
   project p, of blobs of kind kg-blob and kg-log alone; a body that names another project is 422.
 """
@@ -31,6 +32,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Text, cast, select
 
 from evo_agents.hub import tables
+from evo_agents.hub.kg_source_state import SourceState
 from evo_agents.hub.server import blobs, kg
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody, error_response
@@ -108,6 +110,15 @@ async def run_log(request: Request, project: ProjectName, run_id: kg.RunId, user
         raise HTTPException(404, f"project {project} has no ingested run {run_id}")
     url = await asyncio.to_thread(store.presign_get, row.log_sha256)
     return RunLog(run_id=str(run_id), source=row.source, log_sha256=row.log_sha256, log_size=row.log_size, url=url)
+
+
+@worker_router.get("/{project}/sources/{source}/state", response_model=SourceState, responses=REFUSALS)
+async def read_source_state(
+    request: Request, project: ProjectName, source: kg.SourceId, user: CurrentUser, scope: kg.Scope = None
+) -> SourceState:
+    """What the hub holds of one source, as GET /v1/kg/{project}/sources/{source}/state answers it."""
+    await on_duty(request, user, project)
+    return await kg.read_source_state(request, project, source, user, scope)
 
 
 @worker_router.post("/{project}/runs", response_model=kg.RunState, responses=REFUSALS)

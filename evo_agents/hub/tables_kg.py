@@ -3,7 +3,7 @@ as its own attributes (``tables.kg_ingests``, ``tables.kg_configs``, ``tables.kg
 ``tables.kg_source_files``, ``tables.kg_health``, ``tables.kg_review_dismissals``, ``tables.kg_decisions``,
 ``tables.kg_decision_events``): queries name them there.
 
-kg_ingests (0001) holds the connector runs machines pushed, kg_configs (0006) the knowledge config the build reads,
+kg_ingests (0001) holds the connector runs machines pushed, with what each log says of its source (0252), kg_configs (0006) the knowledge config the build reads,
 kg_pending_runs (0006) the runs waiting for their blobs, and kg_builds (0006, 0008) each build with its artifact
 (``evo_agents.hub.server.kg``, ``evo_agents.hub.kg_build``). kg_builds.coverage, kg_source_files and kg_health (0055)
 say how healthy the graph is over time: what each build covers, the files each git source holds in the latest
@@ -72,10 +72,12 @@ def _ingest_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("log_size", BigInteger, nullable=False),
         Column("pushed_by", BigInteger, nullable=False),
         _stamp("received_at"),
+        *_run_facts(),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="kg_ingests_project_id_fkey"),
         ForeignKeyConstraint(["pushed_by"], ["users.id"], ondelete="RESTRICT", name="kg_ingests_pushed_by_fkey"),
         PrimaryKeyConstraint("project_id", "run_id", name="kg_ingests_pkey"),
     )
+    Index("kg_ingests_source_idx", ingests.c.project_id, ingests.c.source)
     configs = Table(
         "kg_configs",
         metadata,
@@ -100,6 +102,7 @@ def _ingest_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         Column("blobs", ARRAY(Text), nullable=False),
         Column("pushed_by", BigInteger, nullable=False),
         _stamp("created_at"),
+        *_run_facts(),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_pending_runs_project_id_fkey"
         ),
@@ -107,6 +110,19 @@ def _ingest_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         PrimaryKeyConstraint("project_id", "run_id", name="kg_pending_runs_pkey"),
     )
     return ingests, configs, pending
+
+
+def _run_facts() -> tuple[Column, ...]:
+    """What a run's log says of its source (``evo_agents.hub.kg_ingest.RunFacts``, 0252): read when the run is pushed,
+    or by the next build for a run pushed before 0252, whose ``status`` is null until then."""
+    return (
+        Column("status", Text),
+        Column("lineage", Text),
+        Column("epoch", Text),
+        Column("run_started_at", Text),
+        Column("run_finished_at", Text),
+        Column("cursor", JSONB(none_as_null=True)),  # a Python None is SQL NULL, not JSON null
+    )
 
 
 def _builds(metadata: MetaData) -> Table:

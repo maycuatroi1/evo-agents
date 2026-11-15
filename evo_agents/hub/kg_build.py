@@ -82,6 +82,7 @@ from evo_agents.hub import (
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
+from evo_agents.hub.kg_source_state import fill_run_facts
 from evo_agents.kg import settings
 from evo_agents.kg import strategy as kg_strategy
 from evo_agents.kg.corpus import Corpus
@@ -721,6 +722,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
         if key_from is not None and isinstance(entities_coverage, dict):
             entities_coverage["key_from"] = key_from
         await record(engine, context.blobs, project_id, build_id, digest, built)
+        await fill_run_facts(engine, kg_home_dir(context.data_dir) / project / "log", project_id)
         await start_eval_set(engine, project_id, project, built)
         await _go_on(engine, manager, project_id, project, built.coverage)
     except asyncio.CancelledError:  # the worker is stopping and gave up waiting: say so, then let it stop

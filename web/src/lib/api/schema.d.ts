@@ -1138,6 +1138,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/sources/{source}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Source State
+         * @description What the hub holds of one source, which ``kg sync`` reads instead of a corpus (``kg_source_state``): the
+         *     writer role, as for a push.
+         */
+        get: operations["read_source_state_v1_kg__project__sources__source__state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/blobs/check": {
         parameters: {
             query?: never;
@@ -3541,6 +3562,26 @@ export interface paths {
          * @description Where to fetch the log of an ingested run of the project.
          */
         get: operations["run_log_v1_worker_kg__project__runs__run_id__log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/kg/{project}/sources/{source}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Source State
+         * @description What the hub holds of one source, as GET /v1/kg/{project}/sources/{source}/state answers it.
+         */
+        get: operations["read_source_state_v1_worker_kg__project__sources__source__state_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -21586,6 +21627,13 @@ export interface components {
             /** @description the project's last morning brief; null before the first */
             last_brief?: components["schemas"]["BriefSummary"] | null;
         };
+        /** Cursor */
+        Cursor: {
+            /** Run Id */
+            run_id: string;
+            /** Cursor */
+            cursor?: unknown;
+        };
         /** DayCount */
         DayCount: {
             /**
@@ -26239,6 +26287,15 @@ export interface components {
              */
             token: string;
         };
+        /** Item */
+        Item: {
+            /** Id */
+            id: string;
+            /** Rev */
+            rev: string | null;
+            /** Rev Time */
+            rev_time: string | null;
+        };
         /** JevAct */
         JevAct: {
             /** Id */
@@ -27545,6 +27602,15 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** Lineage */
+        Lineage: {
+            /** Run Id */
+            run_id: string;
+            /** Lineage */
+            lineage: string;
+            /** Epoch */
+            epoch: string;
         };
         /** LinkedAttachment */
         LinkedAttachment: {
@@ -41101,6 +41167,17 @@ export interface components {
              */
             runs_with_usage: number;
         };
+        /** RunInfo */
+        RunInfo: {
+            /** Run Id */
+            run_id: string;
+            /** Status */
+            status: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Finished At */
+            finished_at: string | null;
+        };
         /**
          * RunLease
          * @description A lease a run got, as its owner sees it: everything but the value.
@@ -43762,6 +43839,26 @@ export interface components {
              * @description the commit on its forge, when the repo's origin is on one
              */
             url: string | null;
+        };
+        /** SourceState */
+        SourceState: {
+            /** Source */
+            source: string;
+            /** Runs */
+            runs: number;
+            /** Unread */
+            unread: number;
+            last_run: components["schemas"]["RunInfo"] | null;
+            last_ok: components["schemas"]["RunInfo"] | null;
+            cursor: components["schemas"]["Cursor"] | null;
+            lineage: components["schemas"]["Lineage"] | null;
+            /** Items */
+            items: components["schemas"]["Item"][];
+            /**
+             * Items Cut
+             * @default false
+             */
+            items_cut: boolean;
         };
         /** SpanOut */
         SpanOut: {
@@ -53999,6 +54096,87 @@ export interface operations {
             };
         };
     };
+    read_source_state_v1_kg__project__sources__source__state_get: {
+        parameters: {
+            query?: {
+                /** @description only the items whose id starts so */
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                /** @description a source's id */
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceState"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     check_blobs_v1_kg__project__blobs_check_post: {
         parameters: {
             query?: never;
@@ -63545,6 +63723,87 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunLog"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_source_state_v1_worker_kg__project__sources__source__state_get: {
+        parameters: {
+            query?: {
+                /** @description only the items whose id starts so */
+                scope?: string | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+                /** @description a source's id */
+                source: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceState"];
                 };
             };
             /** @description Unauthorized */

@@ -134,7 +134,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home; `waiting_on_you` counts the decisions asked of you, and each decision names whom it is asked of (`asked_of`) |
 | today | `GET /v1/me/today`: what waits for you and what changed since you last looked, worked out at each call over the projects you hold a grant on, with the checks of the overview; `POST /v1/me/today/seen` moves your seen mark forward (`docs/notifications.md`, Today and its summary push) |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,playbook,judge,verdict,replay}`, `/v1/worker/runs/{id}/history/{next,report}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}`, and the graph pushes of the worker on duty, `/v1/worker/kg/{project}/runs` (`GET`, `POST`), `.../runs/{run_id}/log`, `.../runs/{run_id}/commit`, `.../blobs/{check,uploads,commit}` (section Memories, skills and knowledge graphs) |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,playbook,judge,verdict,replay}`, `/v1/worker/runs/{id}/history/{next,report}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}`, and the graph pushes of the worker on duty, `/v1/worker/kg/{project}/runs` (`GET`, `POST`), `.../runs/{run_id}/log`, `.../runs/{run_id}/commit`, `.../sources/{source}/state`, `.../blobs/{check,uploads,commit}` (section Memories, skills and knowledge graphs) |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
@@ -3870,6 +3870,19 @@ audience (Projects and who sees what, Audience). A reader who does not hold ever
 of `kg_status` and of the graph pages within their own audience, and for a project whose graph holds chats every
 answer that names a build gives its nodes and edges as null (`GET /v1/kg/{project}/builds`, `.../builds/{id}`), since
 those totals count messages most members may not read.
+
+**The state of a source.** At ingest the hub reads from each run's log what a sync needs of it and keeps it in
+`kg_ingests` (schema 0252): the run's status (`ok` or `failed`, from its `run_end`), lineage and epoch, start and end
+times, and the cursor of its last state message. A run whose `run_end` does not say when it ended (`finished_at`, which
+`kg sync` writes from this release on) ends when the hub received it. `GET /v1/kg/{project}/sources/{source}/state` (the writer role, and
+`/v1/worker/kg/{project}/sources/{source}/state` for the worker on duty) answers from them: how many runs the hub
+holds of the source, the newest run and the newest that ended ok, the cursor the next run resumes from, the lineage and
+epoch of the run whose (epoch, run id) is highest, and the source's live items with their rev and rev_time from the
+latest build's corpus, optionally only the ids that start with `?scope=` (at most 200000, `items_cut` past that). Runs
+pushed since that build are not in the items yet. A run pushed before 0252 counts in `unread` until the next build
+reads its log and fills its facts in (`fill_run_facts` of `evo_agents/hub/kg_source_state.py`), or marks it `failed`
+when its log cannot be fetched or read, so `unread` is 0 after the first build that succeeds. While it is not 0, a
+caller that needs those runs asks for a build and reads again.
 
 **Clusters, review and decisions.** A build with the `clusters` extra groups the graph into named clusters, computes
 a review queue by seven rules, and applies the decisions writers took on the hub (`docs/kg.md`, Clusters, Review,
