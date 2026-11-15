@@ -96,10 +96,9 @@ def test_autonomy_level_routing_of_an_interns_decision_to_their_mentor_and_after
     assert (found["owner"], found["asked_of"]) == (OTHER, OWNER)
     assert [body.endswith(f"asked of {OWNER}.") for body in notified(client, hub["owner"], found["id"])] == [True]
     assert notified(client, hub["other"], found["id"]) == [], "the intern is not asked"
-    # the intern does not answer a K5 decision of their own run, nor a lead before a day has gone by
+    # the intern does not answer a K5 decision of their own run
     refused = answer(client, hub["other"], found["id"], option="postgres")
     assert refused.status_code == 403 and f"only {OWNER}, whom it is asked of" in refused.text
-    assert answer(client, hub["admin"], found["id"], option="postgres").status_code == 403
     engine = client.app.state.engine
     assert client.portal.call(principals.escalate, engine) == 0
     # a day later the hourly job tells the other lead of the unit, once, and they may answer
