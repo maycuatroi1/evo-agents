@@ -83,6 +83,7 @@ procrastinate_jobs = table(
     column("lock"),
     column("queueing_lock"),
     column("args"),
+    column("worker_id"),
 )
 procrastinate_events = table("procrastinate_events", column("job_id"), column("type"), column("at"))
 procrastinate_workers = table("procrastinate_workers", column("id"))
@@ -365,8 +366,12 @@ def test_hub_turns_run_beside_a_long_job_and_beside_each_other(hub_db, tmp_path,
 
 def test_a_job_left_running_by_a_dead_worker_is_failed_and_frees_its_lock(hub_db):
     """A worker killed out of memory left its jobs doing, held by no worker, for ever: a hub.release_schedules among
-    them would hold its lock, and so every later pass of the release cycles. The recovery fails them, kg builds aside,
-    which their own recovery fails and builds again."""
+    them would hold its lock, and so every later pass of the release cycles. hub.recover_kg_builds fails them, kg
+    builds aside, which their own recovery fails and builds again, and the jobs of a worker still alive."""
+    from types import SimpleNamespace
+
+    from evo_agents.hub.worker import recover_kg_builds
+
     migrate(hub_db.dsn)
     j = procrastinate_jobs.c
 
@@ -375,17 +380,32 @@ def test_a_job_left_running_by_a_dead_worker_is_failed_and_frees_its_lock(hub_db
             jobs.RELEASE_SCHEDULES, lock=jobs.RELEASE_SCHEDULES, queueing_lock=jobs.RELEASE_SCHEDULES, timestamp=1
         )
         build = await job_queue.defer(jobs.KG_BUILD, lock="kg:lumen-docs", project="lumen-docs")
-        return release, build
+        live = await job_queue.defer(jobs.CRON_JOBS, lock=jobs.CRON_JOBS, timestamp=1)
+        return release, build, live, await job_queue._manager.register_worker()
 
-    release, build = asyncio.run(with_queue(hub_db, defer_all))
-    query(hub_db, update(procrastinate_jobs).values(status="doing").where(j.id.in_([release, build])))
+    release, build, live, worker_id = asyncio.run(with_queue(hub_db, defer_all))
+    query(hub_db, update(procrastinate_jobs).values(status="doing").where(j.id.in_([release, build, live])))
+    query(hub_db, update(procrastinate_jobs).values(worker_id=worker_id).where(j.id == live))
 
     async def recover(job_queue, pool):
         return await jobs.fail_stalled(job_queue._manager, but=frozenset({jobs.KG_BUILD}))
 
     assert asyncio.run(with_queue(hub_db, recover)) == {jobs.RELEASE_SCHEDULES: 1}
-    assert (job(hub_db, release)["status"], job(hub_db, build)["status"]) == ("failed", "doing")
+    statuses = (job(hub_db, release)["status"], job(hub_db, build)["status"], job(hub_db, live)["status"])
+    assert statuses == ("failed", "doing", "doing")
     assert asyncio.run(with_queue(hub_db, recover)) == {}
+
+    query(hub_db, update(procrastinate_jobs).values(status="doing").where(j.id == release))
+
+    async def one_pass(job_queue, pool):
+        context = SimpleNamespace(
+            app=SimpleNamespace(job_manager=job_queue._manager),
+            additional_context={"hub": SimpleNamespace(engine=make_engine(pool))},
+        )
+        return await recover_kg_builds(context)
+
+    assert asyncio.run(with_queue(hub_db, one_pass))["stalled"] == {jobs.RELEASE_SCHEDULES: 1}
+    assert (job(hub_db, release)["status"], job(hub_db, live)["status"]) == ("failed", "doing")
 
 
 def test_lease_recovery_not_starved_its_jobs_alone_go_to_the_lease_queue():

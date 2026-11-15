@@ -341,9 +341,13 @@ async def _owner_reads(conn: AsyncConnection, row, graphs, agent: bool = False) 
 
 async def load_snapshot(engine: AsyncEngine, row, graphs) -> tuple[Held | None, dict | None]:
     """(the snapshot of ``row``'s project the eval and the review of its measure read, None), or (None, why the
-    reads stand without it): none is loaded for a project without a graph on the hub."""
+    reads stand without it): none is loaded for a project without a graph on the hub, nor when its owner may read
+    the graph through no sink (the agents' sink reads at least what the hub sink does, so neither read needs it)."""
     if not graphs:
         return None, None
+    async with engine.connect() as conn:
+        if (await _owner_reads(conn, row, graphs, agent=True))[2] is not None:
+            return None, None
     try:
         return await kg_snapshots.load(engine, row.project_id), None
     except Exception as exc:  # the measure of the sources stands without a score and a queue

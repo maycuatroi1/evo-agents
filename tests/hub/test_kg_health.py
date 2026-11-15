@@ -692,3 +692,25 @@ def test_a_measure_loads_the_snapshot_of_the_graph_once_and_gives_its_memory_bac
     assert loads == [project_id(world.db)] and given == [1]
     ((_, _, body, _),) = health_rows(world.db)
     assert body["eval"] and body["review"]
+
+
+def test_no_snapshot_is_loaded_for_an_owner_who_may_not_read_the_graph(world, tmp_path, monkeypatch):  # noqa: F811
+    """Neither the eval nor the review reads the graph when its owner holds no grant on the project: loading it
+    anyway would cost the memory of a snapshot for nothing."""
+    from evo_agents.hub import kg_snapshots
+
+    graph_of(world)
+    loads = []
+
+    async def counted(engine, project_id):
+        loads.append(project_id)
+
+    async def no_grant(conn, owner_id, login, project):
+        return None
+
+    monkeypatch.setattr(kg_snapshots, "load", counted)
+    monkeypatch.setattr(kg_health, "owner_access", no_grant)
+    assert measured(world, tmp_path=tmp_path) == {"measured": 1}
+    assert loads == []
+    ((_, _, body, _),) = health_rows(world.db)
+    assert "holds no grant" in body["eval"]["why"] and "holds no grant" in body["review"]["why"]
