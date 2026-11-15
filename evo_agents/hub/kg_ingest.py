@@ -190,6 +190,7 @@ def _ontology_problems(knowledge: dict, ontology) -> list[str]:
 EPOCH = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 MAX_FACT_CHARS = 200  # a lineage, an epoch or a time longer than this is not one a client writes
 MAX_CURSOR_BYTES = 64 * 1024
+MAX_HELD_IDS = 100_000  # item ids a run_end may say the deletion guard held back, in all its scopes
 
 
 @dataclass
@@ -197,7 +198,9 @@ class RunFacts:
     """What a run log says of its source, as kg_ingests keeps it: ``status`` ok or failed (failed when no ``run_end``
     says ok), the ``lineage`` and ``epoch`` of its header, its ``started_at`` and the ``finished_at`` of its run_end,
     and ``cursor``, ``{"cursor": ...}`` of its last state message, None when it has none or one over
-    MAX_CURSOR_BYTES."""
+    MAX_CURSOR_BYTES. ``held``: the removals the deletion guard of the run held back, which its run_end lists
+    (``evo_agents.kg.sync``), each ``{"scope", "reason", "ids"}``; None when it lists none or more than MAX_HELD_IDS
+    ids, or one that is not of that shape."""
 
     status: str = "failed"
     lineage: str | None = None
@@ -205,6 +208,7 @@ class RunFacts:
     started_at: str | None = None
     finished_at: str | None = None
     cursor: dict | None = None
+    held: list[dict] | None = None
 
     def feed(self, record: dict) -> None:
         kind = record.get("type")
@@ -216,6 +220,7 @@ class RunFacts:
         elif kind == "run_end":
             self.status = "ok" if record.get("status") == "ok" else "failed"
             self.finished_at = _fact(record.get("finished_at"))
+            self.held = _held(record.get("held"))
         elif kind == "state":
             held = {"cursor": record.get("cursor")}
             self.cursor = held if len(canonical_json(held)) <= MAX_CURSOR_BYTES else None
@@ -229,11 +234,32 @@ class RunFacts:
             "run_started_at": self.started_at,
             "run_finished_at": self.finished_at,
             "cursor": self.cursor,
+            "held": self.held,
         }
 
 
 def _fact(value) -> str | None:
     return value if isinstance(value, str) and 0 < len(value) <= MAX_FACT_CHARS else None
+
+
+def _held(value) -> list[dict] | None:
+    """The held removals of a run_end, each ``{"scope", "reason", "ids"}`` with strings only; None for anything else."""
+    if not isinstance(value, list) or not value:
+        return None
+    held, count = [], 0
+    for entry in value:
+        if not isinstance(entry, dict):
+            return None
+        scope, reason, ids = entry.get("scope"), entry.get("reason"), entry.get("ids")
+        if not isinstance(scope, str) or not isinstance(reason, str) or not isinstance(ids, list):
+            return None
+        if not all(isinstance(item_id, str) for item_id in ids):
+            return None
+        count += len(ids)
+        if count > MAX_HELD_IDS:
+            return None
+        held.append({"scope": scope, "reason": reason[:MAX_FACT_CHARS], "ids": ids})
+    return held
 
 
 def run_facts(path: Path) -> RunFacts:

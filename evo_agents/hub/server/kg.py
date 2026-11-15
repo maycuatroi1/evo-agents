@@ -379,6 +379,7 @@ def _facts(columns) -> tuple:
         columns.run_started_at,
         columns.run_finished_at,
         columns.cursor,
+        columns.held,
     )
 
 

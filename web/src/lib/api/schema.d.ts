@@ -25117,6 +25117,13 @@ export interface components {
             /** @description the free disk of its worktrees' drive and each runtime's login, as the daemon last looked; each heartbeat sets what the hub shows, and none clears it, as from an older daemon */
             health?: components["schemas"]["HealthReport"] | null;
         };
+        /** Held */
+        Held: {
+            /** Run Id */
+            run_id: string;
+            /** Removals */
+            removals: components["schemas"]["Removal"][];
+        };
         /** HeldAnswer */
         HeldAnswer: {
             /**
@@ -39531,6 +39538,15 @@ export interface components {
             /** Checked At */
             checked_at: string | null;
         };
+        /** Removal */
+        Removal: {
+            /** Scope */
+            scope: string;
+            /** Reason */
+            reason: string;
+            /** Ids */
+            ids: string[];
+        };
         /** Replay */
         Replay: {
             /** Id */
@@ -43859,6 +43875,12 @@ export interface components {
              * @default false
              */
             items_cut: boolean;
+            /**
+             * Unbuilt
+             * @default 0
+             */
+            unbuilt: number;
+            held?: components["schemas"]["Held"] | null;
         };
         /** SpanOut */
         SpanOut: {

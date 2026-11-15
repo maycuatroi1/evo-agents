@@ -136832,6 +136832,27 @@
           ],
           "title": "HeartbeatRequest"
         },
+        "Held": {
+          "properties": {
+            "run_id": {
+              "type": "string",
+              "title": "Run Id"
+            },
+            "removals": {
+              "items": {
+                "$ref": "#/components/schemas/Removal"
+              },
+              "type": "array",
+              "title": "Removals"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "removals"
+          ],
+          "title": "Held"
+        },
         "HeldAnswer": {
           "properties": {
             "transcripts": {
@@ -169942,6 +169963,32 @@
           ],
           "title": "ReleaseTag"
         },
+        "Removal": {
+          "properties": {
+            "scope": {
+              "type": "string",
+              "title": "Scope"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            },
+            "ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Ids"
+            }
+          },
+          "type": "object",
+          "required": [
+            "scope",
+            "reason",
+            "ids"
+          ],
+          "title": "Removal"
+        },
         "Replay": {
           "properties": {
             "id": {
@@ -179642,6 +179689,21 @@
               "type": "boolean",
               "title": "Items Cut",
               "default": false
+            },
+            "unbuilt": {
+              "type": "integer",
+              "title": "Unbuilt",
+              "default": 0
+            },
+            "held": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Held"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "type": "object",

@@ -321,6 +321,8 @@ def sync_source(
                 "tombstones": result.tombstones,
                 "removals": result.removals,
                 "finished_at": utc_now(),  # the hub keeps it (kg_ingests.run_finished_at), which due_sources reads
+                # the hub keeps them too (kg_ingests.held), which kg sync --accept-removals reads from it
+                **({"held": [{"scope": r[2], "reason": r[3], "ids": r[4]} for r in held_rows]} if held_rows else {}),
             }
         )
         result.log = str(writer.close())

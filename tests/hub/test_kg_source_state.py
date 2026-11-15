@@ -125,3 +125,27 @@ def test_a_run_whose_log_says_no_end_ends_when_received_and_one_whose_log_is_gon
     held = state(hub)
     assert (held["unread"], held["last_run"]["status"], held["last_ok"]) == (0, "failed", None)
     assert asyncio.run(fill()) == 0
+
+
+def test_the_removals_a_guard_held_back_and_the_runs_no_build_read_yet_are_in_the_state(hub, tmp_path):
+    laptop = Machine(tmp_path, "laptop")
+    sync(laptop, doc("guide", "How the app works."), doc("setup", "Install it."))
+    assert push(hub, laptop).ok
+    assert (state(hub)["unbuilt"], state(hub)["held"]) == (1, None)  # no build yet: every run is unbuilt
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert latest(hub)["status"] == "succeeded" and state(hub)["unbuilt"] == 0
+
+    emptied = sync(laptop)  # an empty listing would remove both: the deletion guard holds them back
+    assert push(hub, laptop).ok
+    held = state(hub)
+    assert held["unbuilt"] == 1 and held["last_ok"]["run_id"] == emptied
+    assert held["held"]["run_id"] == emptied
+    ((removal),) = held["held"]["removals"]
+    assert removal["scope"] == "docs:" and removal["reason"].startswith("empty listing")
+    assert sorted(removal["ids"]) == ["docs:doc:guide", "docs:doc:setup"]
+    (facts,) = query(hub.db, select(tables.kg_ingests.c.held).where(tables.kg_ingests.c.held.is_not(None)))
+    assert facts[0] == held["held"]["removals"]
+
+    sync(laptop, doc("guide", "How the app works."), doc("setup", "Install it."))  # holds none: clears them
+    assert push(hub, laptop).ok
+    assert (state(hub)["held"], state(hub)["unbuilt"]) == (None, 2)

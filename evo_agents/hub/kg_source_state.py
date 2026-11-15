@@ -18,7 +18,11 @@ From the runs of the source in kg_ingests and what each log says of it (``evo_ag
   first build that succeeds (``fill_run_facts``).
 - ``items``: the live items of the source in the latest build's corpus (kg_corpus_items of main), each id with its
   rev and rev_time, which a sync derives the deletions of a complete listing from. Runs pushed since that build are
-  not in it yet; ``scope`` keeps the ids that start with it.
+  not in it yet; ``scope`` keeps the ids that start with it. ``unbuilt``: how many runs of the source the hub received
+  after the latest build of main started, which its items do not show yet (all of them when there is no build).
+- ``held``: the removals the deletion guard held back in the newest run that ended ok (migration 0253), which
+  ``kg sync --accept-removals`` applies. Every sync of a complete listing works them out again, so a later run that
+  holds none clears them, as the run of ``--accept-removals`` does.
 """
 
 from __future__ import annotations
@@ -63,6 +67,17 @@ class Item(BaseModel):
     rev_time: str | None
 
 
+class Removal(BaseModel):
+    scope: str
+    reason: str
+    ids: list[str]
+
+
+class Held(BaseModel):
+    run_id: str
+    removals: list[Removal]
+
+
 class SourceState(BaseModel):
     source: str
     runs: int
@@ -73,6 +88,8 @@ class SourceState(BaseModel):
     lineage: Lineage | None
     items: list[Item]
     items_cut: bool = False  # more than MAX_ITEMS items: only the first are listed
+    unbuilt: int = 0
+    held: Held | None = None
 
 
 def _stamp(at: dt.datetime) -> str:
@@ -115,6 +132,25 @@ async def source_state(conn: AsyncConnection, project_id: int, source: str, scop
         )
     ).one_or_none()
     lineage = Lineage(run_id=found[0], lineage=found[1], epoch=found[2]) if found else None
+    newest_ok = await newest(ingests.c.status == "ok", columns=(run_id, ingests.c.held))
+    held_back = None
+    if newest_ok is not None and newest_ok[1]:
+        held_back = Held(run_id=newest_ok[0], removals=[Removal(**r) for r in newest_ok[1]])
+
+    heads, builds = tables.kg_graph_heads, tables.kg_builds
+    built = (
+        select(builds.c.started_at)
+        .join(heads, heads.c.build_id == builds.c.id)
+        .where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
+        .scalar_subquery()
+    )
+    unbuilt = (
+        await conn.execute(
+            select(func.count())
+            .select_from(ingests)
+            .where(*of_source, (built.is_(None)) | (ingests.c.received_at >= built))
+        )
+    ).scalar_one()
 
     corpus = tables.kg_corpus_items
     item_id = corpus.c.body["id"].astext
@@ -135,6 +171,8 @@ async def source_state(conn: AsyncConnection, project_id: int, source: str, scop
         lineage=lineage,
         items=items,
         items_cut=len(rows) > MAX_ITEMS,
+        unbuilt=unbuilt,
+        held=held_back,
     )
 
 
