@@ -181,6 +181,7 @@ def test_the_nearest_vectors_of_a_snapshot_rank_as_their_dot_products_do():
     best row, of the kinds asked and the audiences readable: on one matrix product, where a product of Python floats
     per row took seconds a question on a graph of tens of thousands of vectors."""
     import random
+    from concurrent.futures import ThreadPoolExecutor
 
     from evo_agents.kg.snapshot_text import Vectors
 
@@ -214,4 +215,9 @@ def test_the_nearest_vectors_of_a_snapshot_rank_as_their_dot_products_do():
         want = expected(limit, wanted, readable)
         assert [n for n, _ in found] == list(want)
         assert all(abs(score - want[n]) < 1e-5 for n, score in found)
+    assert vectors.rows == ()  # the matrix took their place
+    fresh = Vectors(None, node_ids, kinds, auds, rows)  # type: ignore[arg-type]
+    with ThreadPoolExecutor(8) as pool:  # first searches at once: each reads the one matrix made
+        firsts = list(pool.map(lambda _: fresh.nearest(q, 10, (), lambda a: True), range(8)))
+    assert all([n for n, _ in found] == list(expected(10, (), lambda a: True)) for found in firsts)
     assert Vectors(None, (), (), (), ()).nearest(q, 5, (), lambda a: True) == []  # type: ignore[arg-type]
