@@ -165,3 +165,23 @@ def test_each_reader_gets_a_view_of_its_own_over_the_one_snapshot(hub, tmp_path,
     assert (second.reader, second.ceiling) == (frozenset({"chat:1"}), (0, 0))
     first.reader = frozenset({"chat:2"})  # a session sets the reader of its own view
     assert second.reader == frozenset({"chat:1"})
+
+
+def test_the_labelled_nodes_of_a_view_are_those_of_the_file(tmp_path, monkeypatch):
+    from evo_agents.kg.labelled import labelled_nodes
+    from tests.hub import test_kg_audience as aud
+
+    graph = aud.build(tmp_path, monkeypatch, 1, 2)
+    path = tmp_path / "graph.sqlite"
+    path.write_bytes(graph.data)
+    store = Store.open_file(path, immutable=True)
+    try:
+        rows = store_rows(store, store.latest_ready())
+        for reader in (frozenset(), frozenset({"chat:1"})):
+            store.reader = reader
+            view = Snapshot.from_stored(rows).view(reader)
+            assert sorted(labelled_nodes(view), key=repr) == sorted(labelled_nodes(store), key=repr)
+            some = next(iter(labelled_nodes(store))).node_id
+            assert list(labelled_nodes(view, node_id=some)) == list(labelled_nodes(store, node_id=some))
+    finally:
+        store.close()

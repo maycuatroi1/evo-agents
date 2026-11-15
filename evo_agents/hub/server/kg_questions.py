@@ -30,11 +30,11 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import kg_questions as model
-from evo_agents.hub import runs, tables
+from evo_agents.hub import kg_snapshots, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import kg_root
 from evo_agents.hub.kg_eval_starter import set_digest
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, open_graph
+from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, reading
 from evo_agents.hub.server import audit, kg_eval_sets, kg_health
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -72,20 +72,15 @@ async def _read_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, re
     ceiling = (label.level, label.location) if label else None
     cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
 
-    def blocking() -> dict:
-        path, graph = cache.acquire(blobs, row.project, graphs)
-        try:
-            store = open_graph(path, row.project, graph)
-            try:
-                store.reader = audience
-                return {"sink": sink, **read(store, ceiling)}
-            finally:
-                store.close()
-        finally:
-            cache.release(path)
+    def blocking(loaded) -> dict:
+        snapshot = kg_health._snapshotted(loaded, graphs, None)
+        with reading(cache, blobs, row.project, graphs, snapshot) as (store, _):
+            store.reader = audience
+            return {"sink": sink, **read(store, ceiling)}
 
     try:
-        return await asyncio.to_thread(blocking)
+        loaded = await kg_snapshots.load(engine, row.project_id)
+        return await asyncio.to_thread(blocking, loaded)
     except (GraphUnavailable, ArtifactMismatch) as exc:
         return {"why": str(exc)}
     except Exception as exc:
