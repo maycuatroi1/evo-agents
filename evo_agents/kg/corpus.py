@@ -34,6 +34,7 @@ import sqlite3
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from evo_agents import filelock
 from evo_agents.kg.ids import normalize_time, rev_key, utc_now
@@ -97,6 +98,15 @@ def run_epoch(header: dict) -> str:
     """The epoch a run's header names; ``""`` for a log written before epochs, or when it is not a UUID."""
     epoch = header.get("epoch")
     return epoch if isinstance(epoch, str) and EPOCH.fullmatch(epoch) else ""
+
+
+def next_epoch(recorded: tuple[str, str] | None, lineage: str, run_id: str) -> str:
+    """The epoch of run ``run_id`` of a source, which reads from ``lineage``, when ``recorded`` is the lineage and the
+    epoch recorded for the source: BASE_EPOCH when none is recorded yet, the recorded epoch when the lineage is the
+    recorded one, else ``run_id`` itself, which starts a new epoch."""
+    if recorded is None:
+        return BASE_EPOCH
+    return recorded[1] if recorded[0] == lineage else run_id
 
 
 def kg_home() -> Path:
@@ -388,13 +398,8 @@ class Corpus:
         return (row[0], row[1]) if row else None
 
     def epoch_for(self, source: str, lineage: str, run_id: str) -> str:
-        """The epoch of run ``run_id`` of ``source``, which reads from ``lineage``: BASE_EPOCH when the corpus
-        records no lineage for the source yet, the recorded epoch when the lineage is the recorded one, else
-        ``run_id`` itself, which starts a new epoch."""
-        recorded = self._lineage(source)
-        if recorded is None:
-            return BASE_EPOCH
-        return recorded[1] if recorded[0] == lineage else run_id
+        """The epoch of run ``run_id`` of ``source``, which reads from ``lineage`` (``next_epoch``)."""
+        return next_epoch(self._lineage(source), lineage, run_id)
 
     def current_epoch(self, source: str) -> str:
         """The epoch of the last run of ``source`` that recorded its lineage, ``""`` when none did."""
@@ -542,11 +547,17 @@ class Corpus:
                 filelock.unlock(fh.fileno())
 
 
+class LogHome(Protocol):
+    """Where a run's log goes: a corpus, or the spool of a sync against the hub (``evo_agents.hub.kg_hub_sync``)."""
+
+    log_dir: Path
+
+
 class LogWriter:
     """Writes one run's log. Lines go to ``<run_id>.jsonl`` as they arrive and are flushed, so a crash
     keeps every message written before it; ``close`` compresses the file to ``.jsonl.gz``."""
 
-    def __init__(self, corpus: Corpus, run_id: str, header: dict):
+    def __init__(self, corpus: LogHome, run_id: str, header: dict):
         self.corpus = corpus
         self.run_id = run_id
         self.path = corpus.log_dir / f"{run_id}.jsonl"

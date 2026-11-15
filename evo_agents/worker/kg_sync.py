@@ -1,7 +1,7 @@
 """The worker on duty for a project's night shift keeps the project's knowledge graph fresh on the hub (feature kg_sync of
 the daemon): it syncs the git sources of the project's knowledge.yaml whose ref is ``origin/<branch>`` and pushes their
-runs with its own token, the way a member's ``kg sync --push`` does, with no model involved, so the graph follows the
-default branch while every member's laptop is off.
+runs with its own token, the way a member's ``kg sync`` does, with no model involved and no corpus on the worker, so
+the graph follows the default branch while every member's laptop is off.
 
 The heartbeat answer names the projects (``kg_sync``, ``evo_agents.hub.server.runs.service.kg_duties``): those the
 worker serves whose night shift names it and whose graph is on. The daemon looks at each one every KG_SYNC_EVERY
@@ -12,23 +12,19 @@ the hub took a run of the project since it last looked. A look (``KgSync.look``)
    first, from the worker's checkout of the harness (a checkout of the project with harness.yaml at its root): never
    the checkout's working tree, which may lag or hold another branch. It writes them, with each repo's path pointing at
    the worker's checkout of that repo, to ``<worker home>/kg/harness/<project>``, and loads the project from there with
-   its corpus under ``<worker home>/kg/home``. knowledge.yaml is written byte for byte, so each source's lineage is the
+   its directory (the lock of each source, the audit log) under ``<worker home>/kg/home``. knowledge.yaml is written byte for byte, so each source's lineage is the
    one a member's machine computes (``evo_agents.kg.sync.source_lineage``). A repo a source of step 2 names that has no
    checkout on the worker, but an https:// origin in harness.yaml, is cloned once (``--no-checkout --filter=blob:none``)
    to ``<worker home>/kg/checkouts/<project>/<repo>``, which later looks reuse.
 2. takes the git sources whose ref is origin/<branch> and that name a repo of harness.yaml. A source of another
    connector (the harness's working tree, an exec command) is read on members' machines alone, and a git source with
    another ref, with ``path:`` or with no ref is skipped and named so in the report.
-3. for each source, merges first the runs of it the hub holds that the corpus here lacks, which other machines pushed
-   (GET /v1/worker/kg/{p}/runs?source=, then each log, ``evo_agents.kg.sync.merge_pulled``), so the deletions its own
-   run derives from its complete listing cover every item the hub holds, and its runs take the epoch the hub's newest
-   runs of the source carry. Then it syncs the source as ``fetch: true`` says, under the daemon's lock of the
-   checkout: a source still at the commit it read last is not read again, unless the runs merged changed what the
-   source holds alive since this worker last read it, in which case it reads the commit again so the hub's state is
-   that of the commit, whatever an older or partial run of another machine left.
-4. pushes the runs here the hub lacks (``evo_agents.hub.kg_push`` on ``worker_routes``, the knowledge config left as
-   the members sent it). Nothing is pushed when nothing was read and every run is on the hub, besides a check of what
-   the hub holds at least every PUSH_CHECK_EVERY. The hub builds the graph from the runs as from any push.
+3. syncs each source as ``fetch: true`` says, under the daemon's lock of the checkout, against the state the hub
+   holds of it (GET /v1/worker/kg/{p}/sources/{s}/state, ``evo_agents.hub.kg_hub_sync``): its cursor, the epoch its
+   runs take, and the items its complete listing derives deletions from are those of every machine's runs, so a
+   source whose newest run, of any machine, read the commit its ref names now is not read again. A run goes to the hub
+   as it ends (``worker_routes``, the knowledge config left as the members sent it); the hub builds the graph from it
+   as from any push.
 
 What the look found goes in ``<worker home>/kg/state.json`` and in every heartbeat (``kg_sync``): for each project the
 time of the look and what stopped it, and for each source its status (``runs.KG_SYNC_STATES``), the commit it holds,
@@ -48,29 +44,25 @@ import subprocess
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import quote
 
 import yaml
 
 from evo_agents.hub import runs
-from evo_agents.hub.client import Hub, HubError, get_presigned
-from evo_agents.hub.kg_ingest import log_header, run_id_of
-from evo_agents.hub.kg_push import Pusher, worker_routes
+from evo_agents.hub.client import Hub, HubError
+from evo_agents.hub.kg_hub_sync import HubSync
+from evo_agents.hub.kg_push import worker_routes
 from evo_agents.hub.redact import redact
-from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import Project, ProjectError, load_project_at
-from evo_agents.kg.sync import SyncResult, merge_pulled, sync_source
+from evo_agents.kg.sync import SyncResult
 
 ENABLED_VARIABLE = "EVO_WORKER_KG_SYNC"  # "off" turns the sync off
 EVERY_VARIABLE = "EVO_WORKER_KG_SYNC_SECONDS"
 KG_SYNC_EVERY = 900.0  # seconds between two looks at a project
-PUSH_CHECK_EVERY = timedelta(hours=24)  # the push asks what the hub holds at least this often, with nothing new here
 FETCH_TIMEOUT = 120.0
 GIT_TIMEOUT = 60.0
 ORIGIN_REF = re.compile(r"^origin/(?P<branch>[^\s~^:?*\[\\]+)$")
-PULL_SUFFIX = ".pull.jsonl.gz"  # a log being fetched: no run id names it, so neither a push nor a pull counts it
 
 
 def enabled(env: Mapping[str, str]) -> bool:
@@ -342,13 +334,10 @@ class SourceState:
     checked_at: str | None = None
     read_at: str | None = None
     pushed_at: str | None = None
-    pulled: int = 0
     pushed: int = 0
-    digest: str | None = None  # what the source held alive after this worker's last look (Corpus.alive_digest)
 
     def report(self) -> dict:
-        shown = {key: value for key, value in self.__dict__.items() if key != "digest" and value is not None}
-        return shown
+        return {key: value for key, value in self.__dict__.items() if value is not None}
 
     @classmethod
     def from_json(cls, data) -> SourceState | None:
@@ -362,7 +351,6 @@ class ProjectState:
     project: str
     checked_at: str | None = None
     error: str | None = None
-    push_checked_at: str | None = None
     sources: dict[str, SourceState] = field(default_factory=dict)
 
     def report(self) -> dict:
@@ -377,14 +365,13 @@ class ProjectState:
             "project": self.project,
             "checked_at": self.checked_at,
             "error": self.error,
-            "push_checked_at": self.push_checked_at,
             "sources": {sid: state.__dict__ for sid, state in sorted(self.sources.items())},
         }
 
     @classmethod
     def from_json(cls, project: str, data) -> ProjectState:
         data = data if isinstance(data, dict) else {}
-        found = cls(project, data.get("checked_at"), data.get("error"), data.get("push_checked_at"))
+        found = cls(project, data.get("checked_at"), data.get("error"))
         for sid, raw in (data.get("sources") or {}).items() if isinstance(data.get("sources"), dict) else ():
             state = SourceState.from_json(raw)
             if state is not None and state.source == sid:
@@ -485,33 +472,30 @@ class KgSync:
             self.save()
             self.reports[project] = state.report()
             return state
-        corpus = view.project.corpus()
+        syncer = HubSync(self.hub, view.project, routes=worker_routes(project), send_config=False)
         try:
-            read = self._sources(view, corpus, state)
-            self._push(view, corpus, state, read)
+            self._sources(view, syncer, state)
         except HubError as exc:
             state.error = cut(f"the hub: {exc}", self.secrets)
         except Exception as exc:  # whatever else, the report says it and the next look tries again
             state.error = cut(f"{type(exc).__name__}: {exc}", self.secrets)
         finally:
-            corpus.close()
             self.save()
             self.reports[project] = state.report()
         return state
 
-    def _sources(self, view: View, corpus: Corpus, state: ProjectState) -> bool:
-        """Pull and sync each git source of the project; whether one of them read something."""
+    def _sources(self, view: View, syncer: HubSync, state: ProjectState) -> None:
+        """Sync each git source of the project."""
         repos = {repo["name"] for repo in view.project.harness.repos() if isinstance(repo.get("name"), str)}
         sources = git_sources(view.project)
         for name in set(state.sources) - {src.get("id") for src in sources}:
             del state.sources[name]  # gone from knowledge.yaml
-        read = False
         for source in sources[: runs.MAX_KG_SYNC_SOURCES]:
             if self.stop.is_set():
                 break
             sid = source["id"]
             found = state.sources.setdefault(sid, SourceState(sid))
-            found.checked_at, found.ref, found.pulled, found.pushed = _now(), source.get("ref"), 0, 0
+            found.checked_at, found.ref, found.pushed = _now(), source.get("ref"), 0
             reason = skipped_reason(source, repos)
             if reason is not None:
                 found.status, found.error = "skipped", reason
@@ -528,87 +512,28 @@ class KgSync:
                 )
                 continue
             source["fetch"] = True  # as fetch: true reads it; fetch is not part of the lineage nor of what is read
-            read |= self._one(view, corpus, found, checkout)
-        return read
+            self._one(syncer, found, checkout)
 
-    def _one(self, view: View, corpus: Corpus, found: SourceState, checkout: Path) -> bool:
-        """Pull and sync one source; whether it read something."""
+    def _one(self, syncer: HubSync, found: SourceState, checkout: Path) -> None:
+        """Sync one source and push its run."""
         sid = found.source
         try:
-            found.pulled = self.pull(view.project.name, corpus, sid)
-        except HubError as exc:
-            found.status, found.error = "failed", cut(f"merging the hub's runs: {exc}", self.secrets)
-            return False
-        force = found.digest is not None and corpus.alive_digest(sid) != found.digest
-        try:
             with self.lock(checkout):
-                result = sync_source(view.project, sid, corpus=corpus, force=force)
-        except Exception as exc:  # a sync of the source running already, a corpus that cannot be written
+                result = syncer.sync_source(sid)
+        except HubError as exc:
+            if exc.status == 401:
+                raise  # the worker's token: no source can go
+            found.status, found.error = "failed", cut(f"the hub: {exc}", self.secrets)
+            return
+        except Exception as exc:  # a sync of the source running already, a directory that cannot be written
             found.status, found.error = "failed", cut(f"{type(exc).__name__}: {exc}", self.secrets)
-            return False
-        found.digest = corpus.alive_digest(sid)
-        cursor = corpus.cursor(sid)
+            return
+        cursor = syncer.cursors.get(sid)
         cursor = cursor if isinstance(cursor, dict) else {}
         found.commit, found.behind = cursor.get("commit"), cursor.get("behind")
         problem = sync_failure(result)
         found.status = "ok" if problem is None else "failed"
         found.error = None if problem is None else cut(problem, self.secrets)
         if result.ok and not result.unchanged:
-            found.read_at = _now()
-        return not result.unchanged
-
-    def pull(self, project: str, corpus: Corpus, source: str) -> int:
-        """Merge the runs of ``source`` the hub holds and the corpus lacks, each log checked against the SHA-256 and the
-        size the hub recorded and named after its run; how many."""
-        base = worker_routes(project)[0]
-        for stale in corpus.log_dir.glob(f"*{PULL_SUFFIX}"):
-            stale.unlink(missing_ok=True)
-        listed = self.hub.call("GET", f"{base}/runs?source={quote(source, safe='')}")["ingested"]
-        here = {run_id_of(path) for path in corpus.log_dir.iterdir()}
-        pulled = 0
-        for run_id in sorted(set(listed) - here):
-            if self.stop.is_set():
-                raise HubError("the daemon is stopping")
-            log = self.hub.call("GET", f"{base}/runs/{run_id}/log")
-            if log.get("source") != source:
-                continue
-            part = corpus.log_dir / f"{run_id}{PULL_SUFFIX}"
-            if get_presigned(log["url"], part, int(log["log_size"])) != log["log_sha256"]:
-                part.unlink(missing_ok=True)
-                raise HubError(f"the log of run {run_id} the blob store sent does not have its recorded SHA-256")
-            header = log_header(part) or {}
-            if header.get("run_id") != run_id or header.get("source") != source:
-                part.unlink(missing_ok=True)
-                raise HubError(f"the log of run {run_id} on the hub is not the log of that run of source {source}")
-            merge_pulled(corpus, part)  # merged before it is named after its run: a log named so is merged already
-            os.replace(part, corpus.log_dir / f"{run_id}.jsonl.gz")
-            pulled += 1
-        corpus.record_on_hub(sorted(set(listed)), self.hub.url)
-        return pulled
-
-    def _push(self, view: View, corpus: Corpus, state: ProjectState, read: bool) -> None:
-        """Push the runs the hub lacks, when there is one here or the last check of the hub is PUSH_CHECK_EVERY old."""
-        logs = {run_id for path in corpus.log_dir.iterdir() if (run_id := run_id_of(path))}
-        waiting = logs - corpus.runs_on_hub()
-        checked = state.push_checked_at
-        due = checked is None or datetime.fromisoformat(checked) <= datetime.now(UTC) - PUSH_CHECK_EVERY
-        if not waiting and not read and not due:
-            return
-        pushed = Pusher(self.hub, view.project, routes=worker_routes(view.project.name), send_config=False).push()
-        state.push_checked_at = _now()
-
-        def source_of(run_id: str) -> SourceState | None:
-            header = log_header(corpus.log_dir / f"{run_id}.jsonl.gz") or {}
-            return state.sources.get(header.get("source")) if isinstance(header.get("source"), str) else None
-
-        for run_id in pushed.pushed:
-            found = source_of(run_id)
-            if found is not None:
-                found.pushed += 1
-                found.pushed_at = state.push_checked_at
-        if pushed.errors:
-            state.error = cut(f"pushing to the hub: {pushed.errors[0]}", self.secrets)
-            for run_id in sorted(logs - corpus.runs_on_hub()):
-                found = source_of(run_id)
-                if found is not None and found.status == "ok":
-                    found.status, found.error = "failed", state.error
+            found.read_at = found.pushed_at = _now()
+            found.pushed = 1

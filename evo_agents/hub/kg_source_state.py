@@ -18,7 +18,8 @@ From the runs of the source in kg_ingests and what each log says of it (``evo_ag
   first build that succeeds (``fill_run_facts``).
 - ``items``: the live items of the source in the latest build's corpus (kg_corpus_items of main), each id with its
   rev and rev_time, which a sync derives the deletions of a complete listing from. Runs pushed since that build are
-  not in it yet; ``scope`` keeps the ids that start with it. ``unbuilt``: how many runs of the source the hub received
+  not in it yet; ``scope`` keeps the ids that start with it, and ``items=false`` leaves them out (``kg sync --due``
+  reads only ``last_ok``). ``unbuilt``: how many runs of the source the hub received
   after the latest build of main started, which its items do not show yet (all of them when there is no build).
 - ``held``: the removals the deletion guard held back (migration 0253), which ``kg sync --accept-removals`` applies:
   for each scope, those of the newest ok run that listed it completely (``kg_ingests.listed``). A run that lists a
@@ -95,8 +96,10 @@ def _stamp(at: dt.datetime) -> str:
     return at.astimezone(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-async def source_state(conn: AsyncConnection, project_id: int, source: str, scope: str | None = None) -> SourceState:
-    """The state of ``source`` of project ``project_id`` (see the module)."""
+async def source_state(
+    conn: AsyncConnection, project_id: int, source: str, scope: str | None = None, *, items: bool = True
+) -> SourceState:
+    """The state of ``source`` of project ``project_id`` (see the module); without ``items``, its items left out."""
     ingests = tables.kg_ingests
     run_id = cast(ingests.c.run_id, Text).label("run_id")
     of_source = (ingests.c.project_id == project_id, ingests.c.source == source)
@@ -147,15 +150,7 @@ async def source_state(conn: AsyncConnection, project_id: int, source: str, scop
         )
     ).scalar_one()
 
-    corpus = tables.kg_corpus_items
-    item_id = corpus.c.body["id"].astext
-    query = select(item_id, corpus.c.body["rev"].astext, corpus.c.body["rev_time"].astext).where(
-        corpus.c.project_id == project_id, corpus.c.branch_id == MAIN, corpus.c.source_id == source
-    )
-    if scope:
-        query = query.where(func.starts_with(item_id, scope))
-    rows = (await conn.execute(query.order_by(item_id).limit(MAX_ITEMS + 1))).all()
-    items = [Item(id=row[0], rev=row[1], rev_time=row[2]) for row in rows[:MAX_ITEMS]]
+    rows = await _items(conn, project_id, source, scope) if items else []
     return SourceState(
         source=source,
         runs=runs,
@@ -164,11 +159,24 @@ async def source_state(conn: AsyncConnection, project_id: int, source: str, scop
         last_ok=last_ok,
         cursor=cursor,
         lineage=lineage,
-        items=items,
+        items=[Item(id=row[0], rev=row[1], rev_time=row[2]) for row in rows[:MAX_ITEMS]],
         items_cut=len(rows) > MAX_ITEMS,
         unbuilt=unbuilt,
         held=held_back,
     )
+
+
+async def _items(conn: AsyncConnection, project_id: int, source: str, scope: str | None) -> list:
+    """The id, rev and rev_time of the live items of ``source`` in the latest build of main, those that start with
+    ``scope`` when given, in id order: MAX_ITEMS of them and one more, which says the list is cut."""
+    corpus = tables.kg_corpus_items
+    item_id = corpus.c.body["id"].astext
+    query = select(item_id, corpus.c.body["rev"].astext, corpus.c.body["rev_time"].astext).where(
+        corpus.c.project_id == project_id, corpus.c.branch_id == MAIN, corpus.c.source_id == source
+    )
+    if scope:
+        query = query.where(func.starts_with(item_id, scope))
+    return list((await conn.execute(query.order_by(item_id).limit(MAX_ITEMS + 1))).all())
 
 
 async def _held(conn: AsyncConnection, of_source: tuple) -> list[Removal]:

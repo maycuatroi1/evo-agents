@@ -114,11 +114,16 @@ async def run_log(request: Request, project: ProjectName, run_id: kg.RunId, user
 
 @worker_router.get("/{project}/sources/{source}/state", response_model=SourceState, responses=REFUSALS)
 async def read_source_state(
-    request: Request, project: ProjectName, source: kg.SourceId, user: CurrentUser, scope: kg.Scope = None
+    request: Request,
+    project: ProjectName,
+    source: kg.SourceId,
+    user: CurrentUser,
+    scope: kg.Scope = None,
+    items: kg.WithItems = True,
 ) -> SourceState:
     """What the hub holds of one source, as GET /v1/kg/{project}/sources/{source}/state answers it."""
     await on_duty(request, user, project)
-    return await kg.read_source_state(request, project, source, user, scope)
+    return await kg.read_source_state(request, project, source, user, scope, items)
 
 
 @worker_router.post("/{project}/runs", response_model=kg.RunState, responses=REFUSALS)
