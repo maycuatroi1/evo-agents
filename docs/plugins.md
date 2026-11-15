@@ -1296,7 +1296,7 @@ refuses the dispatch with:
 - 429 once the type's task runs cost its cap in the last 24 hours, as their usage says.
 
 Otherwise it answers 201 with the task: `task_id`, the id of the run it queued, and `budget`, what is left of the cap
-as the run's cost cap with 30 minutes of agent time, as a chat run has, or the `minutes` the body asks for, at most
+as the run's cost cap with 30 minutes of agent time (`task_runs.TIME_CAP_SECONDS`), or the `minutes` the body asks for, at most
 120. A runtime that reports no cost stops at the
 time. The run goes under the type's profile, dispatched by `run_as` with the credential kind `machine`, and waits for
 a worker of `run_as` that:

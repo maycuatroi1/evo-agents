@@ -85,7 +85,7 @@ from evo_agents.hub.runs import (
 MAX_RUNS_PER_MESSAGE = 3  # agents one message hands work to; the ones after are refused in the thread
 MAX_HOPS = 3  # a person's mention is hop 1, each agent's mention one more
 TIMEOUT_MIN = 60  # the agent time of one turn
-TIME_CAP_SECONDS = 30 * 60  # and its time cap, where the worker stops it
+TIME_CAP_SECONDS = 50 * 60  # and its time cap, where the worker stops it, under TIMEOUT_MIN
 SNAPSHOT_BYTES = 12 * 1024  # the chat as the prompt shows it, the message that mentioned the agent left out
 THREAD_MESSAGES = 30  # the latest messages of the thread it shows
 BEFORE_MESSAGES = 10  # and of the chat before the thread's first message
