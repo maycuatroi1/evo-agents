@@ -47,7 +47,7 @@ from evo_agents.hub import curator, kg_health_eval, kg_init, kg_init_db, kg_sett
 from evo_agents.hub.access import has_role
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import QueueBusy, queue_build
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphUnavailable, HubSession, reading
+from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.server import audit, kg_eval_sets, kg_health, kg_questions
 from evo_agents.hub.server.admin import ProjectName, admin
 from evo_agents.hub.server.errors import ErrorBody
@@ -120,7 +120,7 @@ async def measure_starter(engine: AsyncEngine, row, blobs, data_dir: Path | None
     try:
         loaded = await kg_snapshots.load(engine, row.project_id)
         return await asyncio.to_thread(_starter, row.project, access, sink, graphs, found_set, audience, loaded=loaded)
-    except (GraphUnavailable, ArtifactMismatch) as exc:
+    except GraphUnavailable as exc:
         return {"why": str(exc)}
     except Exception as exc:  # a run goes on without figures
         log.exception("the starter measure of a kg init run failed", extra={"project": row.project})

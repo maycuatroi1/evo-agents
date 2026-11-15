@@ -44,14 +44,13 @@ from datetime import datetime
 from evo_agents.hub.srs_baseline import CODE_COMMENT, COMMIT, PLAN_COMPLETED, PULL_REQUEST, STEP_DONE, Evidence
 from evo_agents.kg import freshness
 from evo_agents.kg import settings as kg_settings
-from evo_agents.kg import store as kg_store
 from evo_agents.kg.explore import Explorer
 from evo_agents.kg.policy import Label, Policy, audience_below
 from evo_agents.kg.serve import HANDLE_TTL, TOOLS, Session
 from evo_agents.kg.serve_impact import IMPACT_STATUSES
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.snapshot import SnapshotView
-from evo_agents.kg.store import StaleSchema, Store
+from evo_agents.kg.store import Store
 
 TOOL_NAMES = tuple(tool["name"] for tool in TOOLS)
 MAX_HANDLES = 100  # kg_more handles kept per user and project
@@ -63,20 +62,6 @@ MAX_MENTIONS_READ = 500  # edges into the node of one use case read at most
 
 class GraphUnavailable(Exception):
     """No graph of the project can be read: none of its builds is held as a snapshot of the hub's tables yet."""
-
-
-class GraphOutdated(GraphUnavailable):
-    """The newest graph was written with an older store schema than this hub reads: a new build will replace it."""
-
-    def __init__(self, project: str, graph: BuiltGraph, exc: StaleSchema):
-        super().__init__(
-            f"the graph of project {project} (build {graph.build_id}) was written with store schema {exc.found}, and "
-            f"this hub reads {kg_store.SCHEMA_VERSION}: a new build of it is queued; try again once it has run"
-        )
-
-
-class ArtifactMismatch(Exception):
-    """The artifact the blob store returned is not the one the build recorded; it was deleted unread."""
 
 
 @dataclass(frozen=True)
@@ -425,7 +410,7 @@ def mentioning(
 ) -> dict[str, list[Evidence]]:
     """What the newest graph of ``project`` that can be read shows of the delivery of each use case code of ``codes``
     (``HubSession.mentions``), read through ``sink`` under ``ceiling``. Blocking, as ``answer``. Raises
-    GraphUnavailable, ArtifactMismatch; ToolError when nothing of the project is visible."""
+    GraphUnavailable; ToolError when nothing of the project is visible."""
     with reading(project, snapshot) as (opened, graph):
         return HubSession(project, policy, ceiling, sink, opened, graph, graphs[0]).mentions(codes)
 
@@ -453,7 +438,7 @@ def node_kinds(
 ) -> dict[str, tuple[str, str]]:
     """``HubSession.node_kinds`` of ``ids`` in the newest graph of ``project`` that can be read, through ``sink`` under
     ``ceiling``: what an entity map may cite (``evo_agents.kg.entity_map.check``). Blocking. Raises ToolError,
-    GraphUnavailable, ArtifactMismatch."""
+    GraphUnavailable."""
     with reading(project, snapshot) as (opened, graph):
         return HubSession(project, policy, ceiling, sink, opened, graph, graphs[0]).node_kinds(ids)
 
@@ -467,8 +452,7 @@ def read_labelled(
 ):
     """``read(graph_store, clearance)`` on the newest graph of ``project`` that can be read, its reader the audience of
     ``ceiling`` and ``clearance`` its (level, location), None when ``ceiling`` is: for a caller that filters the rows
-    itself (``evo_agents.hub.kg_entity_map_run``); ``snapshot``: as ``reading``. Blocking. Raises GraphUnavailable,
-    ArtifactMismatch."""
+    itself (``evo_agents.hub.kg_entity_map_run``); ``snapshot``: as ``reading``. Blocking. Raises GraphUnavailable."""
     with reading(project, snapshot) as (opened, _):
         if ceiling is not None:
             opened.reader = ceiling.audience
@@ -487,7 +471,7 @@ def unknown(
 ) -> UnknownRefs:
     """Which of ``ids`` and ``paths`` the newest graph of ``project`` that can be read lacks, read through ``sink``
     under ``ceiling``, with the authors of the newest commits of the files they name. Blocking, as ``answer``. Raises
-    GraphUnavailable, ArtifactMismatch."""
+    GraphUnavailable."""
     with reading(project, snapshot) as (opened, graph):
         try:
             session = HubSession(project, policy, ceiling, sink, opened, graph, graphs[0])

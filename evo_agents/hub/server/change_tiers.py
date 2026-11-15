@@ -43,7 +43,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import knowledge_diff, replay, tables, tiers
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphUnavailable, Handles, answer
+from evo_agents.hub.kg_graph import GraphUnavailable, Handles, answer
 from evo_agents.hub.server.github import GitHubRefused
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
@@ -161,7 +161,7 @@ async def impact_as_owner(
             answer, Handles(), owner, row.project, access.rules.policy, ceiling, sink,
             graphs, "kg_impact", arguments, snapshot=snapshot,
         )  # fmt: skip
-    except (GraphUnavailable, ArtifactMismatch) as exc:
+    except GraphUnavailable as exc:
         log.info("the knowledge graph cannot be read for a tier", extra={"project": row.project, "why": str(exc)})
         return None
     return _view(result)

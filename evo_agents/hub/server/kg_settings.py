@@ -28,7 +28,7 @@ from evo_agents.hub import kg_health_eval, tables
 from evo_agents.hub import kg_optimize as model
 from evo_agents.hub import kg_settings as store
 from evo_agents.hub.access import has_role
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphUnavailable, HubSession, reading
+from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.server import audit, kg_eval_sets
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -278,7 +278,7 @@ async def measure(request: Request, project: ProjectName, body: MeasureBody, use
             body.max_questions,
             snapshot,
         )
-    except (GraphUnavailable, ArtifactMismatch) as e:
+    except GraphUnavailable as e:
         return MeasureOut(**out, why=str(e))
     if "why" in found:
         return MeasureOut(**out, why=found["why"])

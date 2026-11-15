@@ -64,7 +64,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import kg_coverage, kg_health_eval, kg_labels, kg_review, kg_snapshots, tables
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphUnavailable, HubSession, reading
+from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.kg_snapshots import Held
 from evo_agents.hub.server import hub_settings, kg_eval_sets, pulls
 from evo_agents.hub.server import plans as plan_routes
@@ -320,8 +320,6 @@ async def _owner_reads(conn: AsyncConnection, row, blobs, data_dir: Path | None,
     it, as the agents that search the graph read it."""
     if not graphs:
         return None, None, "the project has no graph on the hub yet"
-    if blobs is None or data_dir is None:
-        return None, None, "this process has no blob store and cache to read the graph from"
     access = await owner_access(conn, row.owner_id, row.owner, row.project)
     if access is None:
         return None, None, f"{row.owner}, who owns the night shift, holds no grant on the project"
@@ -357,7 +355,7 @@ async def measure_eval(engine: AsyncEngine, row, blobs, data_dir: Path | None, g
             audience=audience,
             loaded=loaded,
         )
-    except (GraphUnavailable, ArtifactMismatch) as exc:
+    except GraphUnavailable as exc:
         return {"why": str(exc)}
     except Exception as exc:  # the measure of the sources stands without a score
         log.exception("the retrieval evaluation of a graph failed", extra={"project": row.project})
@@ -401,7 +399,7 @@ async def measure_review(engine: AsyncEngine, row, blobs, data_dir: Path | None,
     try:
         loaded = await kg_snapshots.load(engine, row.project_id)
         return await asyncio.to_thread(_review, row.project, access, sink, graphs, dismissed, loaded=loaded)
-    except (GraphUnavailable, ArtifactMismatch) as exc:
+    except GraphUnavailable as exc:
         return {"why": str(exc)}
     except Exception as exc:  # the measure stands without the queue's counts
         log.exception("counting the review queue of a graph failed", extra={"project": row.project})

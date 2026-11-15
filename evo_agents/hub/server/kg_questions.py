@@ -33,7 +33,7 @@ from evo_agents.hub import kg_questions as model
 from evo_agents.hub import kg_snapshots, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_eval_starter import set_digest
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphUnavailable, reading
+from evo_agents.hub.kg_graph import GraphUnavailable, reading
 from evo_agents.hub.server import audit, kg_eval_sets, kg_health
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -78,7 +78,7 @@ async def _read_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, re
     try:
         loaded = await kg_snapshots.load(engine, row.project_id)
         return await asyncio.to_thread(blocking, loaded)
-    except (GraphUnavailable, ArtifactMismatch) as exc:
+    except GraphUnavailable as exc:
         return {"why": str(exc)}
     except Exception as exc:
         log.exception("reading the graph for starter questions failed", extra={"project": row.project})

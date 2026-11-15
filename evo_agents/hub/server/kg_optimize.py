@@ -49,7 +49,7 @@ from evo_agents.hub import kg_optimize as model
 from evo_agents.hub.access import has_role
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import QueueBusy, queue_build
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphUnavailable, HubSession, reading
+from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.server import audit, kg_eval_sets, kg_health
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -164,7 +164,7 @@ async def measure_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, 
             audience=audience,
             loaded=loaded,
         )
-    except (GraphUnavailable, ArtifactMismatch) as exc:
+    except GraphUnavailable as exc:
         return {"why": str(exc)}
     review = await kg_health.measure_review(engine, row, blobs, data_dir, graphs)
     return {**found, "review": review}

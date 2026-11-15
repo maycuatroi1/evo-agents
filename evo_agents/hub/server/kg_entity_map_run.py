@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, kg_entity_map_db, runs, tables
 from evo_agents.hub import kg_entity_map_run as model
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphOutdated, GraphUnavailable, read_labelled
+from evo_agents.hub.kg_graph import GraphUnavailable, read_labelled
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.server import audit, kg_init, kg_questions, kg_run_access
 from evo_agents.hub.server.admin import ProjectName
@@ -44,7 +44,6 @@ from evo_agents.hub.server.kg import (
     member,
     read_sink,
     reader_audience,
-    rebuild_outdated,
     snapshot_view,
     writer,
 )
@@ -344,13 +343,8 @@ async def _read(request: Request, user: Principal, project: str, read):
             lambda s, c: read(s, c, before),
             snapshot,
         )
-    except GraphOutdated as exc:
-        await rebuild_outdated(state, access.project_id, project)
-        raise HTTPException(409, str(exc)) from None
     except GraphUnavailable as exc:
         raise HTTPException(409, str(exc)) from None
-    except ArtifactMismatch as exc:
-        raise HTTPException(502, str(exc)) from None
     return {"project": project, "sink": sink, **found}
 
 

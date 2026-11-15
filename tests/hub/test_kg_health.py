@@ -243,8 +243,8 @@ def test_the_hub_measures_each_git_source_of_a_charter_against_its_default_branc
     assert kb["why"] == kg_health.OFF_GITHUB and kb["behind"] is None and kb["missing"] is None
     assert unbuilt["why"] == "no successful build of the graph holds this source yet"
     assert local["why"] == kg_health.NO_REPO and local["repo"] is None and local["graph_files"] == 0
-    assert body["eval"] == {"why": "this process has no blob store and cache to read the graph from"}
-    assert body["review"] == {"why": "this process has no blob store and cache to read the graph from"}
+    unheld = f"no graph of project {PROJECT} is held on this hub yet; try again shortly"  # no snapshot of its tables
+    assert body["eval"]["why"].endswith(unheld) and body["review"] == {"why": unheld}
     asked = [json.loads(call.body) for call in world.github.requests if call.path.endswith("/access_tokens")]
     assert asked[-1]["permissions"] == {"contents": "read", "metadata": "read"}  # it reads; it never writes
 
@@ -349,7 +349,7 @@ def test_the_nights_figures_hold_the_health_of_the_graph_and_the_lens_kg_health_
     assert health["sources"][0]["behind"] == 2 and health["sources"][0]["lag_hours"] == 6.0
     assert all("off" not in item for item in health["sources"])  # the tier rules read those paths, not the Reviewer
     assert health["coverage"]["build_id"] == build_id and health["coverage"]["python"]["uncalled_methods"] == 2
-    assert health["review"] == {"why": "this process has no blob store and cache to read the graph from"}
+    assert health["review"] == {"why": f"no graph of project {PROJECT} is held on this hub yet; try again shortly"}
     builds = health["builds"]
     assert {key: builds[key] for key in ("builds", "succeeded", "failed", "unchanged", "unchanged_rate")} == {
         "builds": 3,

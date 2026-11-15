@@ -508,7 +508,7 @@ def read(
     snapshot: Snapshotted | None = None,
 ) -> tuple[T, BuiltGraph]:
     """``reader`` over the newest graph of ``project`` that can be read, and that graph, counting the nodes and edges
-    the ceiling's audience holds: the snapshot of the hub's tables (``kg_graph.reading``). Raises GraphUnavailable, ArtifactMismatch (``evo_agents.hub.kg_graph``), NotVisible, GraphProblem."""
+    the ceiling's audience holds: the snapshot of the hub's tables (``kg_graph.reading``). Raises GraphUnavailable (``evo_agents.hub.kg_graph``), NotVisible, GraphProblem."""
     with reading(project, snapshot) as (opened, graph):
         session = WebSession(project, policy, ceiling, WEB_SINK, opened, graph, graphs[0])
         return reader(session), session.counted(graph)

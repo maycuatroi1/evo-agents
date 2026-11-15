@@ -36,7 +36,7 @@ from evo_agents.hub.access import ProjectRules
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import queue_if_configured
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphOutdated, GraphUnavailable
+from evo_agents.hub.kg_graph import GraphUnavailable
 from evo_agents.hub.kg_web import GraphProblem, WebSession, read
 from evo_agents.hub.redact import redact
 from evo_agents.hub.server import audit as audit_log
@@ -493,10 +493,8 @@ async def _graph(
     snapshot = _snapshotted(await kg_snapshots.load_on(conn, project_id), graphs, ceiling)
     try:
         data, graph = await asyncio.to_thread(read, project, rules.policy, ceiling, graphs, reader, snapshot)
-    except (GraphOutdated, GraphUnavailable) as exc:
+    except GraphUnavailable as exc:
         raise Refused(503, str(exc)) from None
-    except ArtifactMismatch as exc:
-        raise Refused(502, str(exc)) from None
     except GraphProblem as exc:
         raise Refused(503, f"the graph of project {project} cannot be read: {exc}") from None
     return data, graph.build_id
