@@ -6298,3 +6298,45 @@ def test_0250_takes_any_hop_from_1_and_going_back_sets_a_deeper_hop_to_3(hub_db)
     runs = t.runs
     assert query(hub_db, select(runs.c.hop).where(runs.c.id == deep)) == [(3,)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0250") :]
+
+
+def test_0251_takes_a_stored_200_usd_limit_for_the_old_default_and_sets_none(hub_db):
+    move_to(hub_db, "0250")
+    systems = table(
+        "agent_systems",
+        column("id"),
+        column("project_id"),
+        column("slug", Text),
+        column("name", Text),
+        column("spec", JSONB),
+    )
+    revisions = table("agent_system_revisions", column("system_id"), column("revision"), column("spec", JSONB))
+    filled = {
+        "schema": "evo-agent-system/1",
+        "limits": {"trace_usd": 200.0, "daily_usd": 200.0, "ops_daily_usd": 200.0},
+    }
+    own = {"schema": "evo-agent-system/1", "limits": {"trace_usd": 50.0, "daily_usd": 200.0}}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        made = {}
+        for slug, spec in (("filled", filled), ("own", own), ("bare", {"schema": "evo-agent-system/1"})):
+            made[slug] = one(
+                conn,
+                insert(systems)
+                .values(project_id=ids["project"], slug=slug, name=slug, spec=spec)
+                .returning(systems.c.id),
+            )
+        conn.execute(insert(revisions).values(system_id=made["filled"], revision=1, spec=filled))
+    move_to(hub_db, "0251")
+    found = dict(query(hub_db, select(systems.c.slug, systems.c.spec)))
+    assert found["filled"]["limits"] == {"trace_usd": 0, "daily_usd": 0, "ops_daily_usd": 200.0}
+    assert found["own"]["limits"] == {"trace_usd": 50.0, "daily_usd": 0}
+    assert found["bare"] == {"schema": "evo-agent-system/1"}
+    assert query(hub_db, select(revisions.c.spec["limits"]))[0][0] == {
+        "trace_usd": 0,
+        "daily_usd": 0,
+        "ops_daily_usd": 200.0,
+    }
+    move_to(hub_db, "0250", down=True)
+    assert dict(query(hub_db, select(systems.c.slug, systems.c.spec)))["own"]["limits"]["daily_usd"] == 0
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0251") :]
