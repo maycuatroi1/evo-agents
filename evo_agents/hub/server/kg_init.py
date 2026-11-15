@@ -112,7 +112,7 @@ async def measure_starter(engine: AsyncEngine, row, blobs, data_dir: Path | None
     graph; {"why": ...} when it cannot."""
     async with engine.begin() as conn:
         graphs = await built_graphs(conn, row.project_id, kg_health.GRAPHS_TRIED)
-        access, sink, why = await kg_health._owner_reads(conn, row, blobs, data_dir, graphs, agent=True)
+        access, sink, why = await kg_health._owner_reads(conn, row, graphs, agent=True)
         if why is not None:
             return {"why": why}
         found_set = await kg_eval_sets.latest_set(conn, row.project_id)

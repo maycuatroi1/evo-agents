@@ -62,7 +62,7 @@ async def _read_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, re
     as its owner's agents read it, in a thread; {"why": ...} when it cannot."""
     async with engine.begin() as conn:
         graphs = await built_graphs(conn, row.project_id, kg_health.GRAPHS_TRIED)
-        access, sink, why = await kg_health._owner_reads(conn, row, blobs, data_dir, graphs, agent=True)
+        access, sink, why = await kg_health._owner_reads(conn, row, graphs, agent=True)
         if why is not None:
             return {"why": why}
         audience = await agent_audience(conn, row.owner_id, None, None)

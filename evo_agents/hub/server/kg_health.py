@@ -314,7 +314,7 @@ async def _previous_eval(conn: AsyncConnection, project_id: int):
     return (await conn.execute(query)).scalar_one_or_none()
 
 
-async def _owner_reads(conn: AsyncConnection, row, blobs, data_dir: Path | None, graphs, agent: bool = False) -> tuple:
+async def _owner_reads(conn: AsyncConnection, row, graphs, agent: bool = False) -> tuple:
     """(the access of ``row``'s owner, the project's hub sink, None), or (None, None, why the graph cannot be read
     as the owner reads it). With ``agent``, the sink is kg_health_eval.AGENT_SINK when the project's policy declares
     it, as the agents that search the graph read it."""
@@ -334,7 +334,7 @@ async def _owner_reads(conn: AsyncConnection, row, blobs, data_dir: Path | None,
 async def measure_eval(engine: AsyncEngine, row, blobs, data_dir: Path | None, graphs) -> dict:
     """The eval of the measure of ``row``'s project (a row of ``_due``)."""
     async with engine.begin() as conn:
-        access, sink, why = await _owner_reads(conn, row, blobs, data_dir, graphs, agent=True)
+        access, sink, why = await _owner_reads(conn, row, graphs, agent=True)
         if why is not None:
             return {"why": why}
         audience = await agent_audience(conn, row.owner_id, None, None)
@@ -392,7 +392,7 @@ async def measure_review(engine: AsyncEngine, row, blobs, data_dir: Path | None,
     sink, the dismissed ones aside (``evo_agents.hub.kg_review``)."""
     d = tables.kg_review_dismissals
     async with engine.begin() as conn:
-        access, sink, why = await _owner_reads(conn, row, blobs, data_dir, graphs)
+        access, sink, why = await _owner_reads(conn, row, graphs)
         if why is not None:
             return {"why": why}
         dismissed = set((await conn.execute(select(d.c.fingerprint).where(d.c.project_id == row.project_id))).scalars())
