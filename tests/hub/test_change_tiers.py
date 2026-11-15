@@ -366,10 +366,12 @@ def test_tier_the_job_reads_kg_impact_as_the_night_shifts_owner_from_the_snapsho
     ((build_id,),) = sql(
         world.db, insert(b).values(project_id=project_id(world), **built, **artifact).returning(b.c.id)
     )
+    head = {"project_id": project_id(world), "build_id": build_id, "content_hash": built["content_hash"]}
+    sql(world.db, insert(tables.kg_graph_heads).values(**head, top_label=[0, 0]))  # the graph the tables hold
     asked = []
 
     def answer(handles, owner, project, policy, ceiling, sink, graphs, tool, arguments, snapshot=None):
-        assert snapshot is None  # no build wrote the tables here: ``reading`` says the graph is unavailable
+        assert snapshot is not None and snapshot[1].build_id == build_id  # the snapshot of the head's tables
         asked.append((owner, project, sink, tool, arguments, [graph.build_id for graph in graphs]))
         if arguments["paths"] == ["evo-agents:down.py"]:
             raise GraphUnavailable("the blob store did not answer")
