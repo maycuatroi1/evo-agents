@@ -193,15 +193,24 @@ def cmd_sync(args) -> int:
 
 
 def cmd_status(args) -> int:
-    from evo_agents.kg.status import project_status, render_status
+    """``kg status``: the project's sources and graph as the hub holds them (its kg_status)."""
+    from evo_agents.hub.client import HubError
+    from evo_agents.kg.cli_graph import hub_status
+    from evo_agents.kg.status import render_brief
 
-    project = project_of(args)
-    status = project_status(project)
+    try:
+        text, status = hub_status(args.project, args.sink)
+    except ProjectError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except HubError as exc:
+        print(f"error: the hub: {exc}", file=sys.stderr)
+        return 1
     if args.json:
         print_json(status)
     else:
-        print(render_status(status, brief=args.brief))
-    return 0 if status["ok"] else 1
+        print(render_brief(status) if args.brief else text)
+    return 0 if status.get("ok") else 1
 
 
 def cmd_bind(args) -> int:
@@ -282,14 +291,17 @@ def cmd_hook_session_start(args) -> int:
     session already read from the graph (a resumed session). Only names and counts the pipeline derived;
     never source text, which would reach the model with system-reminder authority. When to call the graph is
     said once, in the instructions of the server that serves the kg_* tools, not here again."""
+    from evo_agents.hub.client import HubError
+    from evo_agents.hub.kg_cli import PROBE_TIMEOUT
+    from evo_agents.kg.cli_graph import hub_status
     from evo_agents.kg.sessions import current_session_id, describe, read_session
-    from evo_agents.kg.status import project_status, render_status
+    from evo_agents.kg.status import render_brief
 
     try:
-        project = resolve_project(None)
-    except ProjectError:
-        return 0  # not inside a project with a graph: say nothing
-    note = render_status(project_status(project), brief=True)
+        _, status = hub_status(None, timeout=PROBE_TIMEOUT)
+    except (ProjectError, HubError):
+        return 0  # not inside a project, not signed in, or the hub does not answer in time: say nothing
+    note = render_brief(status)
     session = read_session(current_session_id(_hook_payload()))
     if session is not None:
         note += "\n" + describe(session)
@@ -421,8 +433,11 @@ def register(sub) -> None:
     )
     schedule.set_defaults(func=cmd_schedule)
 
-    status = with_project(ksub.add_parser("status", help="coverage, freshness and held deletions per source"))
+    status = with_project(
+        ksub.add_parser("status", help="coverage, freshness and held deletions per source, as the hub holds them")
+    )
     status.add_argument("--brief", action="store_true", help="a few lines, for session hooks")
+    status.add_argument("--sink", help="sink whose clearance applies (default: the agent session's)")
     status.set_defaults(func=cmd_status)
 
     binding = ksub.add_parser("bind", help="bind a directory and everything below it to one project")

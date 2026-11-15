@@ -1,4 +1,5 @@
-"""``evo-agents kg serve``: an MCP server over stdio, bound to one project for its whole life.
+"""The kg_* tools over one project's graph (``Session``), the engine the hub answers them with, and the MCP loop over
+stdio (``serve_stdio``) of ``evo-agents kg serve``, which sends every call to the hub (``evo_agents.hub.kg_cli``).
 
 Every tool reads the latest ready build and only the visible set V_o: elements whose label flows to the
 session's sink and whose audience is within the session's (``Session.audience``: none for kg serve, so an element with
@@ -44,7 +45,6 @@ from collections import deque
 from evo_agents import __version__
 from evo_agents.kg.freshness import Links
 from evo_agents.kg.policy import audience_below, audience_of
-from evo_agents.kg.project import ProjectError, resolve_project
 from evo_agents.kg.refs import UnknownArgument, arguments, named_by, readable
 from evo_agents.kg.serve_impact import ImpactTools
 from evo_agents.kg.serve_search import SearchTools
@@ -335,14 +335,6 @@ def for_model(result: dict) -> dict:
     return {key: value for key, value in result.items() if key != "structuredContent"}
 
 
-def make_session(project: str | None, sink: str) -> Session:
-    try:
-        bound = resolve_project(project)
-    except ProjectError as exc:
-        return Session(None, sink, error=f"{exc}. Start the server with --project or set EVO_KG_PROJECT.")
-    return Session(bound, sink)
-
-
 def _rpc_error(mid, code: int, message: str) -> dict:
     return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
 
@@ -382,10 +374,9 @@ def handle(session: Session, message) -> dict | None:
     return {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
-def serve_stdio(project: str | None = None, sink: str = "claude-code@anthropic", session=None) -> int:
-    """Answer MCP over stdin and stdout. ``session`` is anything with ``Session.call``, such as the hub backend of
-    ``evo_agents.hub.kg_cli``; without one, the local store of ``project`` answers."""
-    session = session or make_session(project, sink)
+def serve_stdio(session) -> int:
+    """Answer MCP over stdin and stdout. ``session`` is anything with ``Session.call``: for ``kg serve`` the hub backend
+    of ``evo_agents.hub.kg_cli``, never a graph store left on this machine."""
     for line in sys.stdin:
         line = line.strip()
         if not line:

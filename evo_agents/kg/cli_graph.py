@@ -1,11 +1,11 @@
-"""Graph subcommands: build, query, serve, eval and eval-questions. ``build`` asks the hub for a build: graphs are built
-on the hub only. ``query``, ``serve`` and ``eval`` read the hub (``--backend``)."""
+"""Graph subcommands: build, query, serve, profile, semantic, settings, eval and eval-questions. Graphs are built and read
+on the hub only: ``build`` asks the hub for a build, the others read the hub's graph and settings, and no command reads
+a graph store left on this machine."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -31,134 +31,92 @@ def cmd_build(args) -> int:
     return 0 if build.ok else 1
 
 
-def cmd_profile(args) -> int:
-    """Print the data profile of the project's newest graph (``evo_agents.kg.profile``)."""
-    from evo_agents.kg import profile as kg_profile
-    from evo_agents.kg.cli import print_json, project_of
-    from evo_agents.kg.store import StaleSchema, Store
+def hub_name(project: str | None) -> str:
+    """The hub's name of ``project`` (a name, a harness path, or None for the project of the cwd); a bare name no harness
+    here knows is taken as the hub's. Raises ProjectError."""
+    from evo_agents.kg.project import ProjectError, resolve_project
 
-    project = project_of(args)
     try:
-        store = Store.open_readonly(project)
-    except StaleSchema as exc:
+        return resolve_project(project).name
+    except ProjectError:
+        if project and "/" not in project and project not in (".", ".."):
+            return project
+        raise
+
+
+def hub_status(project: str | None, sink: str | None = None, timeout: float | None = None) -> tuple[str, dict]:
+    """(text, status) of kg_status of ``project``'s graph as the hub answers it to ``sink`` (the agent session's by
+    default). Raises ProjectError, and HubError when the hub refuses or does not answer within ``timeout``."""
+    from urllib.parse import quote
+
+    from evo_agents.hub.client import Hub, HubError, load_credentials
+
+    name = hub_name(project)
+    credentials = load_credentials()
+    hub = Hub(credentials.url, credentials.token)
+    body = {"arguments": {}, **({"sink": sink} if sink else {})}
+    found = hub.call("POST", f"/v1/kg/{quote(name, safe='')}/tools/kg_status", body, timeout=timeout) or {}
+    if found.get("isError"):
+        text = " ".join(block.get("text", "") for block in found.get("content", []))
+        raise HubError(text.removeprefix("error: ") or "the hub refused kg_status")
+    text = "\n".join(block.get("text", "") for block in found.get("content", []) if block.get("type") == "text")
+    return text, found.get("structuredContent") or {"project": name}
+
+
+def _on_hub(args, command, **extra) -> int:
+    """Run the ``evo-agents hub kg`` command ``command`` for the hub's name of ``args.project``."""
+    from evo_agents.kg.project import ProjectError
+
+    try:
+        name = hub_name(args.project)
+    except ProjectError as exc:
         print(f"error: {exc}", file=sys.stderr)
-        return 1
-    if store is None:
-        print(
-            f"error: project {project.name} has no graph on this machine; graphs are built on the hub:"
-            f" evo-agents hub kg profile --project {project.name}",
-            file=sys.stderr,
-        )
-        return 1
-    try:
-        summary = store.summary()
-    finally:
-        store.close()
-    found = kg_profile.of_coverage(summary.get("coverage")) if summary.get("ready") else None
-    if found is None:
-        print(
-            "error: the newest build on this machine holds no profile; graphs are built on the hub:"
-            f" evo-agents hub kg profile --project {project.name}",
-            file=sys.stderr,
-        )
-        return 1
-    if args.json:
-        print_json({"project": project.name, "build_id": summary["build_id"], "profile": found})
-    else:
-        print(f"project {project.name}, build {summary['build_id']}")
-        print(kg_profile.render(found))
-    return 0
+        return 2
+    return command(argparse.Namespace(project=name, json=args.json, **extra))
+
+
+def cmd_profile(args) -> int:
+    """``kg profile``: the data profile of the project's newest graph on the hub (``evo-agents hub kg profile``)."""
+    from evo_agents.hub.kg_profile_cli import cmd_profile as on_hub
+
+    return _on_hub(args, on_hub, sink=args.sink)
 
 
 def cmd_semantic(args) -> int:
-    """Show or set whether the project's graph is searched by meaning too, and with ``--index`` write its vectors."""
-    from evo_agents.kg import semantic
-    from evo_agents.kg.cli import print_json, project_of
+    """``kg semantic``: whether the project's graph on the hub holds vectors (``evo-agents hub kg semantic``); with
+    ``--mode`` or ``--model``, set them in the project's settings on the hub first. The hub embeds at its next build."""
+    from evo_agents.hub.kg_semantic_cli import cmd_semantic as show
+    from evo_agents.hub.kg_settings_cli import cmd_settings
 
-    project = project_of(args)
-    try:
-        settings = semantic.read_settings(project.root)
-        if args.mode or args.model:
-            settings = semantic.Settings(args.mode or settings.mode, args.model or settings.model)
-            semantic.write_settings(project.root, settings)
-    except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    path = project.root / "graph.sqlite"
-    indexed = None
-    if args.index and path.exists():
+    if args.mode or args.model:
+        values = [f"semantic_mode={args.mode}"] * bool(args.mode) + [f"semantic_model={args.model}"] * bool(args.model)
+        quiet = argparse.Namespace(project=args.project, json=True)  # the settings it printed would come twice
+        code = _on_hub(
+            quiet, _quietly(cmd_settings), set=values, undo=False, strategy=None, reason=args.reason, figures=None
+        )
+        if code:
+            return code
+    return _on_hub(args, show, sink=args.sink)
 
-        def progress(done: int, total: int) -> None:
-            if not args.json:
-                print(f"  embedded {done}/{total}", file=sys.stderr)
 
-        indexed = semantic.index_file(path, settings, progress=progress)
-    held = None
-    if path.exists():
-        db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
-        try:
-            held = semantic.info(db)
-        finally:
-            db.close()
-    out = {
-        **settings.to_json(),
-        "graph": None if held is None else {"model": held.model, "mode": held.mode, "digest": held.digest},
-        "indexed": None
-        if indexed is None
-        else {"rows": indexed.rows, "embedded": indexed.embedded, "error": indexed.error},
-    }
-    if args.json:
-        print_json(out)
-    else:
-        print(f"semantic {settings.mode}, model {settings.model}")
-        if indexed is not None:
-            print(indexed.line())
-        print(f"graph: {'no vectors' if held is None else f'vectors of {held.model}, mode {held.mode}'}")
-    return 1 if indexed is not None and indexed.error else 0
+def _quietly(command):
+    """``command`` with its stdout dropped, and its errors still on stderr."""
+    import contextlib
+    import io
+
+    def run(args) -> int:
+        with contextlib.redirect_stdout(io.StringIO()):
+            return command(args)
+
+    return run
 
 
 def cmd_settings(args) -> int:
-    """Show the project's KG settings, set some (``--set KEY=VALUE``, a reason with ``--reason``) or put back the last
-    change (``--undo``). A key that needs a build says so."""
-    from evo_agents.kg import settings as kg_settings
-    from evo_agents.kg.cli import print_json, project_of
+    """``kg settings``: show the project's KG settings on the hub, set some (``--set KEY=VALUE``, a reason with
+    ``--reason``) or put back the last change (``--undo``), as ``evo-agents hub kg settings`` does."""
+    from evo_agents.hub.kg_settings_cli import cmd_settings as on_hub
 
-    project = project_of(args)
-    try:
-        before = kg_settings.read(project.root)
-        after = before
-        if args.undo:
-            after = kg_settings.undo(project.root)
-            if after is None:
-                raise kg_settings.SettingsError("nothing to undo: the settings were never changed")
-        elif args.set:
-            changes = {}
-            for item in args.set:
-                key, sep, text = item.partition("=")
-                if not sep:
-                    raise kg_settings.SettingsError(f"--set {item!r}: write KEY=VALUE")
-                changes[key.strip()] = kg_settings.parse_value(key.strip(), text)
-            after = kg_settings.write(
-                project.root, kg_settings.of(changes, before), reason=args.reason, figures=_figures(args.figures)
-            )
-    except (kg_settings.SettingsError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    out = {
-        "project": project.name,
-        "settings": after.to_json(),
-        "changed": kg_settings.diff(before, after),
-        "needs_rebuild": kg_settings.rebuild_keys(before, after),
-    }
-    if args.json:
-        print_json(out)
-    else:
-        for key, value in after.to_json().items():
-            mark = "" if value == getattr(kg_settings.DEFAULT, key) else "  (set)"
-            print(f"{key} = {value}{mark}")
-        if out["needs_rebuild"]:
-            print(f"takes effect with the next build: {', '.join(out['needs_rebuild'])}")
-    return 0
+    return _on_hub(args, on_hub, set=args.set, undo=args.undo, strategy=None, reason=args.reason, figures=args.figures)
 
 
 def cmd_init(args) -> int:
@@ -242,18 +200,6 @@ def yaml_dump(data) -> str:
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True).rstrip()
 
 
-def _figures(text: str | None) -> dict | None:
-    if not text:
-        return None
-    try:
-        found = json.loads(text)
-    except ValueError:
-        raise ValueError("--figures must be a json object") from None
-    if not isinstance(found, dict):
-        raise ValueError("--figures must be a json object")
-    return found
-
-
 def cmd_query(args) -> int:
     from evo_agents.hub.kg_cli import open_session
 
@@ -316,19 +262,9 @@ def cmd_eval(args) -> int:
             print(f"error: no question of type {', '.join(args.type)}", file=sys.stderr)
             return 2
 
-    def session_for(project):
-        session = open_session(args.backend, project or args.project, args.sink)
-        if args.search != "graph":
-            if not hasattr(session, "semantic"):
-                raise ValueError(
-                    "--search bm25 or hybrid ranks a graph on this machine; the hub ranks as its graph says"
-                )
-            session.semantic = args.search == "hybrid"
-        return session
-
     report = evaluate(
         questions,
-        session_for=session_for,
+        session_for=lambda project: open_session(args.backend, project or args.project, args.sink),
         checkouts_for=lambda project: project_checkouts(project or args.project, overrides),
         methods=[m for m in METHODS if m in args.method] if args.method else METHODS,
         limit=args.limit,
@@ -340,7 +276,7 @@ def cmd_eval(args) -> int:
         acc=args.acc,
         scope=args.scope,
     )
-    report.settings.update(backend=args.backend, sink=args.sink, search=args.search, scope=args.scope)
+    report.settings.update(backend=args.backend, sink=args.sink, scope=args.scope)
     if args.json:
         print(json.dumps(report.to_json(), ensure_ascii=False, indent=2))
     else:
@@ -378,50 +314,9 @@ def cmd_session_questions(args) -> int:
     return 0
 
 
-def cmd_commit_questions(args) -> int:
-    """``kg eval-questions --from-commits``: the starter set out of the commits the local graph holds."""
-    from evo_agents.kg import commit_labels, eval_commits
-    from evo_agents.kg.cli import project_of
-    from evo_agents.kg.store import StaleSchema, Store
-
-    project = project_of(args)
-    try:
-        store = Store.open_readonly(project)
-    except StaleSchema as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-    if store is None or store.latest_ready() is None:
-        print(
-            f"error: project {project.name} has no graph on this machine; graphs are built on the hub:"
-            f" evo-agents hub kg builds --project {project.name}",
-            file=sys.stderr,
-        )
-        return 1
-    try:
-        found = eval_commits.commit_questions(
-            store,
-            min_words=args.min_words,
-            max_files=args.max_files or commit_labels.MAX_FILES,
-            limit=args.limit,
-        )
-    finally:
-        store.close()
-    for question in found.questions:
-        sys.stdout.write(json.dumps(question, ensure_ascii=False) + "\n")
-    print(
-        f"{len(found.questions)} question(s) from {found.commits} commit(s) of {project.name}",
-        file=sys.stderr,
-    )
-    for why, count in sorted(found.left_out.items()):
-        print(f"  left out {count}: {why}", file=sys.stderr)
-    return 0 if found.questions else 1
-
-
 def cmd_eval_questions(args) -> int:
     if args.from_sessions:
         return cmd_session_questions(args)
-    if args.from_commits:
-        return cmd_commit_questions(args)
     from evo_agents.hub.client import Hub, HubError, load_credentials
     from evo_agents.hub.kg_eval import plan_questions
     from evo_agents.kg.evaluate import DEFAULT_MAX_FILES, project_checkouts
@@ -519,14 +414,7 @@ def _register_eval(ksub, with_project) -> None:
         "--backend",
         choices=["auto", "hub"],
         default="hub",
-        help="where the graph is read: the hub (default), or auto, as kg serve does",
-    )
-    run.add_argument(
-        "--search",
-        choices=["graph", "bm25", "hybrid"],
-        default="graph",
-        help="how kg_search ranks: as the graph's semantic mode says (default), by words only, or by words and meaning"
-        " fused (needs the graph's vectors; docs/kg-semantic.md)",
+        help="where the graph is read: the hub; auto is the same, kept for old scripts",
     )
     run.add_argument(
         "--scope",
@@ -547,8 +435,7 @@ def _register_eval(ksub, with_project) -> None:
     build.add_argument(
         "--max-files",
         type=_bounded(1, 1000),
-        help=f"leave out a step (default {ev.DEFAULT_MAX_FILES}) or, with --from-commits, a commit (default 8) that"
-        " changes more files",
+        help=f"leave out a step that changes more files (default {ev.DEFAULT_MAX_FILES})",
     )
     build.add_argument(
         "--repo", action="append", metavar="NAME=PATH", help="checkout of repo NAME (default: the harness's)"
@@ -557,24 +444,6 @@ def _register_eval(ksub, with_project) -> None:
         "--from-sessions",
         action="store_true",
         help="questions from the code searches in the Claude Code transcripts of the harness, not from the plans",
-    )
-    build.add_argument(
-        "--from-commits",
-        action="store_true",
-        help="questions from the commits of the graph's git history: a commit's message asks, the files it changed"
-        " that the graph holds answer; needs no session and no plan",
-    )
-    build.add_argument(
-        "--min-words",
-        type=_bounded(1, 100),
-        default=4,
-        help="with --from-commits: leave out a commit whose message has fewer words (default 4)",
-    )
-    build.add_argument(
-        "--limit",
-        type=_bounded(1, 5000),
-        default=300,
-        help="with --from-commits: most questions (default 300, the same ones every time)",
     )
     build.add_argument(
         "--days",
@@ -603,6 +472,7 @@ def register(ksub, with_project) -> None:
     profile = with_project(
         ksub.add_parser("profile", help="the data profile of the graph: what the corpus is made of, counts and shapes")
     )
+    profile.add_argument("--sink", help="sink whose clearance applies (default: the agent session's)")
     profile.set_defaults(func=cmd_profile)
 
     query = with_project(ksub.add_parser("query", help="call a kg tool from the shell"))
@@ -622,7 +492,7 @@ def register(ksub, with_project) -> None:
         "--backend",
         choices=["auto", "hub"],
         default="hub",
-        help="where the graph is read: the hub (default), or auto, as kg serve does",
+        help="where the graph is read: the hub; auto is the same, kept for old scripts",
     )
     query.set_defaults(func=cmd_query)
 
@@ -633,24 +503,30 @@ def register(ksub, with_project) -> None:
         "--backend",
         choices=["auto", "hub"],
         default="auto",
-        help="auto (default): the hub when signed in and it has a graph of the project; hub: the hub only",
+        help="where the graph is read: the hub; auto (default) is the same, kept for the .mcp.json files that name it",
     )
     serve.set_defaults(func=cmd_serve)
 
     _register_eval(ksub, with_project)
 
     sem = with_project(
-        ksub.add_parser("semantic", help="show or set whether kg_search ranks by meaning too (docs/kg-semantic.md)")
+        ksub.add_parser(
+            "semantic",
+            help="show or set whether kg_search on the hub ranks by meaning too (docs/kg-semantic.md)",
+        )
     )
     sem.add_argument(
-        "--mode", choices=["off", "index", "on"], help="off: words only; index: write vectors; on: use them"
+        "--mode",
+        choices=["off", "index", "on"],
+        help="off: words only; index: the hub's builds write vectors; on: and kg_search uses them",
     )
-    sem.add_argument("--model", help="embedding model (default BAAI/bge-m3)")
-    sem.add_argument("--index", action="store_true", help="write the vectors into the graph now (downloads the model)")
+    sem.add_argument("--model", help="embedding model the hub's builds use (default BAAI/bge-m3)")
+    sem.add_argument("--reason", help="why, kept with the change of the settings")
+    sem.add_argument("--sink", help="sink whose clearance applies (default: the agent session's)")
     sem.set_defaults(func=cmd_semantic)
 
     st = with_project(
-        ksub.add_parser("settings", help="show, set (--set KEY=VALUE) or undo the project's KG settings (kg.settings)")
+        ksub.add_parser("settings", help="show, set (--set KEY=VALUE) or undo the project's KG settings on the hub")
     )
     st.add_argument("--set", action="append", metavar="KEY=VALUE", help="set a key (repeatable)")
     st.add_argument("--reason", help="why, kept with the change")

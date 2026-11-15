@@ -375,20 +375,22 @@ def sign_in(home: Path, url: str) -> None:
     (directory / "config.json").write_text(json.dumps({"url": url, "login": "alice"}))
 
 
-def test_auto_answers_locally_unless_signed_in_to_a_hub_with_the_graph(machine):
-    project, _, home = machine
-    local = open_session("auto", str(project.harness.root), "hub")
-    assert isinstance(local, Session) and local.project.name == "alpha"
-    refused = open_session("hub", str(project.harness.root), "hub")
-    assert (
-        isinstance(refused, Session) and "not signed in to a hub" in refused.call("kg_status", {})["content"][0]["text"]
-    )
+def test_auto_and_hub_both_ask_the_hub_and_never_a_graph_left_on_this_machine(machine):
+    from evo_agents.kg.build import build_project
+
+    project, sync, home = machine
+    sync("docs", item("left"))
+    assert build_project(project).ok  # a graph store left on this machine, from before graphs were built on the hub
+    for backend in ("auto", "hub"):
+        refused = open_session(backend, str(project.harness.root), "hub")
+        text = refused.call("kg_status", {})["content"][0]["text"]
+        assert isinstance(refused, Session) and refused.project is None and "not signed in to a hub" in text
 
     dead = f"http://127.0.0.1:{pg.free_port()}"
     sign_in(home, dead)
-    assert isinstance(open_session("auto", str(project.harness.root), "hub"), Session)  # the hub does not answer
-    remote = open_session("hub", str(project.harness.root), "hub")
-    assert isinstance(remote, RemoteSession) and remote.project == "alpha"
+    for backend in ("auto", "hub"):  # the hub does not answer: the session says so, nothing answers in its place
+        remote = open_session(backend, str(project.harness.root), "hub")
+        assert isinstance(remote, RemoteSession) and remote.project == "alpha"
     answer = remote.call("kg_search", {"query": "x"})
     assert answer["isError"] and dead in answer["content"][0]["text"]
     assert remote.call("kg_reveal", {})["content"][0]["text"] == "error: unknown tool 'kg_reveal'"

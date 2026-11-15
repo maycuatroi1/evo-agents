@@ -1,4 +1,6 @@
-"""``evo-agents kg status``: per-source freshness, coverage and held deletions, plus the graph snapshot.
+"""kg_status of a graph engine (``evo_agents.kg.serve.Session``): per-source freshness, coverage and held deletions,
+plus the graph snapshot. ``evo-agents kg status`` prints the hub's kg_status, and ``render_brief`` of it with
+``--brief`` and in the SessionStart note.
 
 For each git source the graph read, it names the commit and how many commits that is behind the remote's default
 branch, counted again from this machine's checkout without fetching (``evo_agents.kg.freshness``); the SessionStart
@@ -129,10 +131,13 @@ def project_status(project: Project) -> dict:
 
 def render_brief(status: dict) -> str:
     """The SessionStart note: the snapshot's age and size, the commit each git source read, what failed. Names and
-    counts only."""
+    counts only. The hub's kg_status names no source run, so its note says none failed or held."""
     graph = status.get("graph")
-    stale = [s["id"] for s in status["sources"] if not s["last_run"] or s["last_run"]["status"] != "ok"]
-    held = [s["id"] for s in status["sources"] if s["held_removals"]]
+    sources = status.get("sources") or []
+    stale = [
+        s["id"] for s in sources if not s.get("withheld") and (not s["last_run"] or s["last_run"]["status"] != "ok")
+    ]
+    held = [s["id"] for s in sources if s.get("held_removals")]
     head = f"evo-kg: project {status['project']}"
     if graph and graph.get("ready"):
         head += (

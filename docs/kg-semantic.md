@@ -26,20 +26,18 @@ finds sections and steps that talk about the subject more often than the code, s
 | Mode | Builds | `kg_search` |
 | --- | --- | --- |
 | `off` (default) | write no vector, and drop the ones a graph had | by words |
-| `index` | write the vectors | by words, unless the caller asks for both (`kg eval --search hybrid`) |
+| `index` | write the vectors | by words, unless the caller asks for both (`kg bench --search hybrid`, the optimize loop) |
 | `on` | write the vectors | by words and by meaning, fused |
 
-`index` exists to measure: one build answers `kg eval --search bm25` and `--search hybrid`, so the two runs differ in
-the ranking alone.
+`index` exists to measure: one build answers by words and by both, so the two runs differ in the ranking alone.
 
-On this machine the mode is in `<kg home>/<project>/semantic.json`:
+`evo-agents kg semantic` reads and sets the mode on the hub (`kg serve`, `kg status` and the other reads of `kg` ask the
+hub too); nothing is kept or embedded on this machine:
 
 ```sh
-evo-agents kg semantic --project demo                         # the mode, the model, what the graph holds
-evo-agents kg semantic --project demo --mode index --index    # write the vectors now (downloads the model)
-evo-agents kg eval questions.jsonl --split tune --method kg_search --search bm25
-evo-agents kg eval questions.jsonl --split tune --method kg_search --search hybrid
-evo-agents kg semantic --project demo --mode on               # the next build keeps them, kg_search uses them
+evo-agents kg semantic --project demo                                   # the mode, the model, what the graph holds
+evo-agents kg semantic --project demo --mode index --reason "measure"   # the hub's next build writes the vectors
+evo-agents kg semantic --project demo --mode on                         # kg_search ranks by both
 ```
 
 On the hub the mode is the project's row of `kg_semantic` (migration 0181), off without one; the build reads it
@@ -88,13 +86,8 @@ in about 30 ms on 8 cores, no GPU needed. Models are read from `EVO_KG_MODEL_DIR
 `~/.cache/evo-agents/models`. A build downloads the model when it is missing; a search never does: it loads the model
 from that directory only, and searches by words when it is not there.
 
-On a member's machine or a worker:
-
-```sh
-uv tool install 'evo-ak[worker,semantic]'      # or: pip install 'evo-ak[semantic]'
-export EVO_KG_MODEL_DIR=~/.cache/evo-agents/models
-evo-agents kg semantic --project demo --mode index --index    # downloads the model once, then embeds
-```
+A member's machine needs neither the extra nor the model: the hub's builds embed, and
+`evo-agents kg semantic --project demo --mode index` sets the mode its next build reads.
 
 On the hub, install the extra next to `hub-server` in the image or the virtualenv the hub and its kg worker run
 (`pip install 'evo-ak[hub-server,semantic]'`), give both processes the same `EVO_KG_MODEL_DIR` on a volume that

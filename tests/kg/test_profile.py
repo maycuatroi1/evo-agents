@@ -64,13 +64,19 @@ def test_the_profile_leaves_the_hash_and_the_answers_unchanged(tmp_path, kg_env,
     assert Session(project, "wide").call("kg_search", ask) == with_profile
 
 
-def test_kg_profile_prints_it_and_says_when_there_is_none(tmp_path, kg_env, capsys):
+def test_kg_profile_reads_the_hub_and_says_when_there_is_none(tmp_path, kg_env, capsys, monkeypatch):
+    from tests.kg.hub_graph import sign_in
+
     project, _ = built(tmp_path, kg_env)
+    hub = sign_in(monkeypatch, project)
     assert main(["kg", "profile", "--project", project.name, "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["project"] == project.name and out["profile"]["items"] > 0
     assert main(["kg", "profile", "--project", project.name]) == 0
     assert "classes:" in capsys.readouterr().out
+    assert hub.asked == [("POST", f"/v1/kg/{project.name}/tools/kg_status")] * 2
+    assert main(["kg", "profile", "--project", "lumen-other"]) == 1  # a project the hub does not have
+    assert "no project lumen-other" in capsys.readouterr().err
 
 
 def test_kg_bench_profile_says_so_on_an_empty_cache(tmp_path, capsys):

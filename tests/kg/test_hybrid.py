@@ -225,36 +225,25 @@ def test_settings_are_read_and_checked(tmp_path):
         semantic.read_settings(tmp_path)
 
 
-def test_eval_runs_both_ways_on_one_build(tmp_path, kg_env, words, capsys):
+def test_kg_semantic_sets_the_mode_on_the_hub_whose_next_build_embeds(tmp_path, kg_env, words, capsys, monkeypatch):
+    from evo_agents.kg import settings as kg_settings
+    from tests.kg.hub_graph import sign_in
+
     project = with_garage(tmp_path, kg_env)
+    hub = sign_in(monkeypatch, project)
     root = str(project.harness.root)
-    assert main(["kg", "semantic", "--project", root, "--mode", "index", "--model", FAKE, "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["mode"] == "index"
-    sync_build(project)
-    assert main(["kg", "semantic", "--project", root]) == 0
-    assert f"vectors of {FAKE}, mode index" in capsys.readouterr().out
-    runs = {}
-    for search in ("bm25", "hybrid", "graph"):
-        args = [
-            "kg",
-            "eval",
-            "--backend",
-            "auto",
-            str(FIXTURE),
-            "--project",
-            root,
-            "--method",
-            "kg_search",
-            "--search",
-            search,
-            "--json",
-        ]
-        assert main(args) == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["search"] == search
-        runs[search] = {r["id"]: r["ranks"] for r in data["results"]}
-    assert runs["graph"] == runs["bm25"]  # mode index: the graph ranks by words
-    assert runs["hybrid"]["rank"] == [1, 1]  # an identifier stays first by its exact hit
+    assert main(["kg", "semantic", "--project", root, "--mode", "index", "--model", FAKE, "--json"]) == 1
+    assert "no ready graph" in capsys.readouterr().out  # set, but nothing built yet
+    assert ("PUT", "/v1/kg/demo/settings") in hub.asked
+    tuning = kg_settings.read(project.root)  # where the hub of the test keeps the project's settings
+    assert (tuning.semantic_mode, tuning.semantic_model) == ("index", FAKE)
+    sync_build(project)  # the hub's build, which embeds by those settings
+    assert main(["kg", "semantic", "--project", root, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["project"] == "demo"
+    args = ["kg", "eval", str(FIXTURE), "--project", root, "--method", "kg_search", "--json"]
+    assert main(args) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert {r["id"]: r["ranks"] for r in data["results"]}["rank"] == [1, 1]  # an identifier stays first
 
 
 # -- the opt-in API backend ----------------------------------------------------------------------------------------
