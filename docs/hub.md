@@ -1796,8 +1796,10 @@ and the reaper parks it, so it holds no worker. When the run asked ends, the hub
 (`agent_asks.answer_asker`, from `chat_runs.chat_run_moved`) and the asking run resumes in its session with a message
 that names the decision. A run that ends `done` sends the last message of its agent in its thread, its outputs, its
 branch and repos; the question asks the agent to name in that message the knowledge graph nodes its answer rests on. A
-run that fails, is cancelled or is lost sends why. A run asked that goes on in a new run (a parked run resumed, an
-inbox untaken) carries both columns, so the run that really ends answers. A wait already answered, by its time (7
+run that fails or is cancelled sends why. A run asked that goes on in a new run (a parked run resumed, an inbox
+untaken, the next attempt of a run lost) carries both columns, so the run that really ends answers. A run lost answers
+nothing: its worker may come back for it within 10 minutes ([Re-attach](workers.md#re-attach)), which cancels the next
+attempt and has the run go on with the wait still open, and else the next attempt answers when it ends. A wait already answered, by its time (7
 days) or by a person's Go on now or Stop waiting, is left as it is.
 
 The asking run's thread, or the work chat of its trace, shows each part as a message of the hub: "@reviewer asked @kb-bot of project lumen-kb (run

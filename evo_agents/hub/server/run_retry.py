@@ -7,6 +7,7 @@ from sqlalchemy import insert, select
 from evo_agents.hub import tables
 
 CHAT_COLUMNS = ("chat_id", "chat_message_id", "hop")  # a chat run's retry keeps them; NULL for any other kind
+CHAT_COLUMNS += ("spawned_by_run_id", "spawned_wait_id")  # a run another agent asked: the attempt that ends answers it
 
 
 def next_attempt(run_id: int):
