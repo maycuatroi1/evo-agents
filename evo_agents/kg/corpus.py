@@ -318,6 +318,15 @@ class Corpus:
         ).fetchall()
         return sha256(canonical_json([[r[0], json.loads(r[1])] for r in rows]))
 
+    def replayed_digest(self, runs: Iterable[tuple[str, Iterable[dict]]]) -> str:
+        """``state_digest`` of a state that starts empty and merges ``runs`` (run id, records) in their order; the
+        corpus's own state stays as it is."""
+        with contextlib.closing(sqlite3.connect(":memory:")) as db:
+            db.executescript(SCHEMA)
+            for run_id, records in runs:
+                self.merge(records, run_id, db)
+            return self.state_digest(db)
+
     def rebuild_state(self, files: list[Path] | None = None) -> sqlite3.Connection:
         """Recompute sigma_p from the log alone, into an in-memory database."""
         db = sqlite3.connect(":memory:")
@@ -384,6 +393,11 @@ class Corpus:
             " run_id = excluded.run_id WHERE excluded.run_id > cursors.run_id",
             (source, json.dumps(cursor, ensure_ascii=False), run_id),
         )
+
+    def forget_cursor(self, source: str) -> None:
+        """Drop the cursor of ``source``: its next run reads everything again."""
+        with self.db:
+            self.db.execute("DELETE FROM cursors WHERE source = ?", (source,))
 
     def set_cursor(self, source: str, cursor, run_id: str) -> None:
         """Make ``cursor`` the cursor of ``source``, whatever run kept the one before: for a source read in the

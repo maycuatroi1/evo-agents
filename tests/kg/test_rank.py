@@ -12,6 +12,7 @@ from evo_agents.kg.bench.rank_train import Group, Label
 from evo_agents.kg.build import build_project
 from evo_agents.kg.locate import Cand, Pool
 from evo_agents.kg.serve import Session
+from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, make_project, write
 
@@ -181,6 +182,21 @@ def test_kg_search_orders_results_by_the_model_only_when_the_setting_is_on(tmp_p
     assert model.seen and all(len(r) == len(rank.FEATURES) for r in model.seen[0])
     assert model.seen[0][0][rank.FEATURES.index("limit")] == 10.0
     assert sorted(plain) == sorted(learned) and plain != learned
+
+
+def test_the_files_a_task_holds_are_the_live_file_nodes_of_its_graph(tmp_path, kg_env):
+    project = _code_project(tmp_path, kg_env)
+    store = Store.open_existing(project)
+    assert store is not None
+    graph = store.path
+    store.close()
+
+    class Lay:
+        def project_dir(self, task):
+            return graph.parent
+
+    assert graph.name == "graph.sqlite"
+    assert {"app/parser.py", "app/loader.py"} <= rank_train._held(Lay(), None)
 
 
 # -- training ----------------------------------------------------------------------------------------------------------

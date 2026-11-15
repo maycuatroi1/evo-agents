@@ -242,16 +242,15 @@ def git_labels(
 
 def _held(lay, task: Task) -> set[str]:
     """The paths of the File nodes of a task's graph."""
-    import sqlite3
+    from evo_agents.kg.store import Store
 
-    path = lay.project_dir(task) / "graph.sqlite"
-    db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    store = Store.open_file(lay.project_dir(task) / "graph.sqlite")
     try:
-        rows = db.execute("SELECT node_id FROM nodes WHERE kind = 'File' AND tx_to IS NULL").fetchall()
+        file_ids = store.file_ids()
     finally:
-        db.close()
+        store.close()
     out = set()
-    for (node_id,) in rows:
+    for node_id in file_ids:
         m = locate._FILE_ID.match(node_id)
         if m:
             out.add(m["path"])
