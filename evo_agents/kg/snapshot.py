@@ -24,7 +24,7 @@ import json
 import sqlite3
 import struct
 from array import array
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
@@ -776,6 +776,75 @@ class SnapshotView:
         if found is None:
             return None
         return Clusters({k: dict(v) for k, v in found.clusters.items()}, dict(found.members), dict(found.links))
+
+    def _owner(self, n: dict) -> str | None:
+        """The node clusters count ``n`` as (``store_clusters.owner``)."""
+        if n["kind"] == "Symbol":
+            return n["props"].get("file")
+        if n["kind"] == "Section":
+            return n["props"].get("item")
+        return n["id"]
+
+    def cluster_nodes(self, b: int = 0) -> list[dict]:
+        """The members of the build's clusters the reader sees, by id (``Store.cluster_nodes``)."""
+        found = self.snap.found
+        if found is None:
+            return []
+        out = []
+        for nid, (top, sub) in sorted(found.members.items()):
+            i = self.snap.index.get(nid)
+            if i is None or not self.sees(self.snap.nodes[i]):
+                continue
+            n = self.snap.nodes[i]
+            path = n["props"].get("path")
+            out.append(
+                {
+                    "id": nid,
+                    "kind": n["kind"],
+                    "name": n["name"],
+                    "path": path,
+                    "cluster": top,
+                    "sub": sub,
+                    "label": n["label"],
+                }
+            )
+        return out
+
+    def member_links(self, b: int, skip_rels) -> list[tuple]:
+        """The edges between two members of the build's clusters the reader sees, as clusters project them, grouped
+        by member pair and labels (``Store.member_links``)."""
+        found = self.snap.found
+        if found is None:
+            return []
+        rows: Counter = Counter()
+        for e in self.snap.edges:
+            if e["rel"] in skip_rels or not self.sees(e):
+                continue
+            i, j = self.snap.index.get(e["src"]), self.snap.index.get(e["dst"])
+            if i is None or j is None:
+                continue
+            s, d = self.snap.nodes[i], self.snap.nodes[j]
+            if not (self.sees(s) and self.sees(d)):
+                continue
+            a, z = self._owner(s), self._owner(d)
+            if a == z or a not in found.members or z not in found.members:
+                continue
+            rows[(a, z, e["label"], s["label"], d["label"])] += 1
+        return [(*key, count) for key, count in rows.items()]
+
+    def live_graph(self, b: int = 0) -> tuple[list[dict], list[tuple]]:
+        """The nodes the reader sees, by id, with their owner, and the edges the reader sees as (source, type, target,
+        label), by source, type and target (``Store.live_graph``)."""
+        nodes = sorted(
+            (
+                {"id": n["id"], "kind": n["kind"], "name": n["name"], "owner": self._owner(n), "label": n["label"]}
+                for n in self.snap.nodes
+                if self.sees(n)
+            ),
+            key=lambda n: n["id"],
+        )
+        edges = sorted((e["src"], e["rel"], e["dst"], e["label"]) for e in self.snap.edges if self.sees(e))
+        return nodes, edges
 
     def review_items(self, b: int = 0) -> list[dict]:
         """The build's review items whatever the reader, by fingerprint (``Store.review_items``)."""
