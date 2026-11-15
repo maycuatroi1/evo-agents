@@ -15,6 +15,7 @@ from tests.hub import live, pg
 
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
+pytest.importorskip("sqlalchemy", reason="the admin's acts need the hub-server extra, evo-ak[hub-server]")
 
 from sqlalchemy import func, select, update
 
