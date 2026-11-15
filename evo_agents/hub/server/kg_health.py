@@ -32,6 +32,11 @@ It also holds ``review``: per rule, the items of the latest build's review queue
 to that owner through the hub sink, those a writer dismissed aside, with the build they were counted in; or why there
 are none (a build without clusters has no queue).
 
+The eval and the review read one snapshot of the project's graph (``kg_snapshots.load``), loaded once per measure: on
+the largest graphs a snapshot takes more than 3 GiB while it is made, and loading it for each made the worker's job
+reach the 4 GiB of its container. Once the project is measured, the memory the snapshot took goes back to the system
+(``give_back``): CPython's allocator keeps more than 1 GiB of it otherwise, which the next load adds to.
+
 ``figures`` counts the night's ``kg_health`` over [since, until): the latest measure before ``until`` (its time, its
 build, its sources, eval and review); ``coverage``, what the latest successful build before ``until`` covers
 (``kg_coverage.build_coverage``); ``builds``, the builds that finished in the span, how many succeeded, failed or
@@ -49,6 +54,9 @@ latest measures, newest first, and the successful builds with what each covered 
 from __future__ import annotations
 
 import asyncio
+import ctypes
+import ctypes.util
+import gc
 import hashlib
 import logging
 from collections import Counter
@@ -331,8 +339,35 @@ async def _owner_reads(conn: AsyncConnection, row, graphs, agent: bool = False) 
     return access, sink, None
 
 
-async def measure_eval(engine: AsyncEngine, row, blobs, data_dir: Path | None, graphs) -> dict:
-    """The eval of the measure of ``row``'s project (a row of ``_due``)."""
+async def load_snapshot(engine: AsyncEngine, row, graphs) -> tuple[Held | None, dict | None]:
+    """(the snapshot of ``row``'s project the eval and the review of its measure read, None), or (None, why the
+    reads stand without it): none is loaded for a project without a graph on the hub."""
+    if not graphs:
+        return None, None
+    try:
+        return await kg_snapshots.load(engine, row.project_id), None
+    except Exception as exc:  # the measure of the sources stands without a score and a queue
+        log.exception("loading the snapshot of a graph failed", extra={"project": row.project})
+        return None, {"why": f"loading the graph failed: {type(exc).__name__}"}
+
+
+def give_back() -> None:
+    """Give the memory freed since back to the system: collect the cycles, then have glibc's malloc return its free
+    pages (malloc_trim), which it keeps otherwise. Nothing more where the C library is not glibc."""
+    gc.collect()
+    found = ctypes.util.find_library("c")
+    if found is None:
+        return
+    trim = getattr(ctypes.CDLL(found), "malloc_trim", None)
+    if trim is not None:
+        trim(0)
+
+
+async def measure_eval(
+    engine: AsyncEngine, row, blobs, data_dir: Path | None, graphs, loaded: Held | None, failed: dict | None = None
+) -> dict:
+    """The eval of the measure of ``row``'s project (a row of ``_due``) on ``loaded`` (``load_snapshot``), or
+    ``failed``, why it could not be loaded."""
     async with engine.begin() as conn:
         access, sink, why = await _owner_reads(conn, row, graphs, agent=True)
         if why is not None:
@@ -341,8 +376,9 @@ async def measure_eval(engine: AsyncEngine, row, blobs, data_dir: Path | None, g
         plans = await _plans(conn, access)
         previous = await _previous_eval(conn, row.project_id)
         found_set = await kg_eval_sets.latest_set(conn, row.project_id)
+    if failed is not None:
+        return failed
     try:
-        loaded = await kg_snapshots.load(engine, row.project_id)
         return await asyncio.to_thread(
             _evaluate,
             row.project,
@@ -387,17 +423,20 @@ def _review(
         return {"build_id": graph.build_id, "open": counts}
 
 
-async def measure_review(engine: AsyncEngine, row, blobs, data_dir: Path | None, graphs) -> dict:
+async def measure_review(
+    engine: AsyncEngine, row, blobs, data_dir: Path | None, graphs, loaded: Held | None, failed: dict | None = None
+) -> dict:
     """The open items per rule of the review queue of ``row``'s project, as its owner reads them through the hub
-    sink, the dismissed ones aside (``evo_agents.hub.kg_review``)."""
+    sink, the dismissed ones aside (``evo_agents.hub.kg_review``), on ``loaded``, or ``failed``."""
     d = tables.kg_review_dismissals
     async with engine.begin() as conn:
         access, sink, why = await _owner_reads(conn, row, graphs)
         if why is not None:
             return {"why": why}
         dismissed = set((await conn.execute(select(d.c.fingerprint).where(d.c.project_id == row.project_id))).scalars())
+    if failed is not None:
+        return failed
     try:
-        loaded = await kg_snapshots.load(engine, row.project_id)
         return await asyncio.to_thread(_review, row.project, access, sink, graphs, dismissed, loaded=loaded)
     except GraphUnavailable as exc:
         return {"why": str(exc)}
@@ -468,11 +507,12 @@ async def measure_project(engine: AsyncEngine, row, *, github_app, blobs, data_d
         if latest
         else None
     )
+    loaded, failed = await load_snapshot(engine, row, graphs)
     body = {
         "build": build,
         "sources": sources,
-        "eval": await measure_eval(engine, row, blobs, data_dir, graphs),
-        "review": await measure_review(engine, row, blobs, data_dir, graphs),
+        "eval": await measure_eval(engine, row, blobs, data_dir, graphs, loaded, failed),
+        "review": await measure_review(engine, row, blobs, data_dir, graphs, loaded, failed),
     }
     return body, latest.build_id if latest else None
 
@@ -493,6 +533,7 @@ async def measure(engine: AsyncEngine, *, github_app=None, blobs=None, data_dir=
         except Exception as exc:  # one project failing leaves the others their measure
             log.exception("measuring a knowledge graph failed", extra={"project": row.project})
             body, build_id, error = {}, None, (f"{type(exc).__name__}: {exc}")[:ERROR_CHARS]
+        give_back()  # the project's snapshot is gone: what it took goes back before the next one is made
         values = {"project_id": row.project_id, "build_id": build_id, "body": body, "error": error}
         async with engine.begin() as conn:
             stamp = {"measured_at": now} if now is not None else {}

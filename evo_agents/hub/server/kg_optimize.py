@@ -166,7 +166,7 @@ async def measure_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, 
         )
     except GraphUnavailable as exc:
         return {"why": str(exc)}
-    review = await kg_health.measure_review(engine, row, blobs, data_dir, graphs)
+    review = await kg_health.measure_review(engine, row, blobs, data_dir, graphs, loaded)  # the same snapshot
     return {**found, "review": review}
 
 
