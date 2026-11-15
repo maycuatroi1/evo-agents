@@ -837,7 +837,7 @@ caller's role and highest level).
 | `create_invite(conn, plugin, config, project, created_by=, for_login=, role=, days=)` | a join link of the project at the lowest level of its ladder, valid 1 to 30 days, audited as `invite.create` of member `created_by`, whom the plugin checked may (an admin of the project). An `Invite` whose token is shown once |
 | `queue_kg_build(conn, plugin, project)` | a build of the project's knowledge graph, in the caller's transaction, when the project has a knowledge config |
 | `notify(conn, plugin, project, notice_kind, users=, title=, body=, link=)` | a notice of a kind the manifest contributes (`notice_kinds`) to each of `users` (500 at most) who holds a grant on the project, on each channel of theirs that is on; `link` a path of the hub's web. The ids of the notices |
-| `enabled_agent_type(conn, plugin, project, name)`, `hand_task(conn, plugin, project, agent_type, task, title=, for_user=, repo=, branch=, minutes=)` | the plugin's agent type as the project enabled it (`AgentTypeRef`), or None; a task run of it queued in the caller's transaction, for a member when given, or why none was (`TaskHanded`). (1.4) `repo` and `branch` together name a branch of one repo that is no default branch (`post/<slug>`), which the run checks out and pushes back to, never forced; `minutes`, its agent time, 1 to `MAX_TASK_MINUTES` (120), within the type's `daily_usd` (section Agent types) |
+| `enabled_agent_type(conn, plugin, project, name)`, `hand_task(conn, plugin, project, agent_type, task, title=, for_user=, repo=, branch=, minutes=)` | the plugin's agent type as the project enabled it (`AgentTypeRef`), or None; a task run of it queued in the caller's transaction, for a member when given, or why none was (`TaskHanded`). (1.4) `repo` and `branch` together name a branch of one repo that is no default branch (`post/<slug>`), which the run checks out and pushes back to, never forced; `minutes`, its time cap of agent time, 1 to `MAX_TASK_MINUTES` (120; none: no time cap), within the type's `daily_usd` (section Agent types) |
 | `add_probe(conn, plugin, project, ref, repo=, task=, verify=, on=, off=, commit=)`, `remove_probe(conn, plugin, project, ref, note=)` | (1.4) the probe of a rule the plugin renders into a repo's harness files, keyed by `ref`, in place of the active one of the same `ref`: its id; `on` and `off` map a path to the text each arm places, with and without the rule. Retiring it: False when there is none. Source `plugin`, no proposal or change (`docs/curator.md`, Probes) |
 | `chat_run_of(conn, plugin, run_id)`, `run_session(conn, plugin, run_id)`, `reply_in_chat(conn, plugin, run, text)` | the chat run a tool of the plugin was called in (`Context.run_id`); the member it acts for as a `Session` (`machine`, no token) that `project_access` checks; a message of the hub in the thread it answers in |
 | `project_configs(conn, plugin, config)` | the plugin's effective config in each project that enables it (`ProjectConfig`: project, values with secrets unsealed, version of the project's layer) |
@@ -1257,8 +1257,8 @@ The body may also name `repo` and `branch` together (API 1.4): a branch of one r
 `post/lumen-launch`, that the run checks out (made from the default branch when it does not exist yet) and pushes back
 to, never forced. A default branch, or a branch of another kind of run (`task/`, `curator/`, ...), is refused (422), as
 is a repo the project lacks; a branch another task run of the project works on while it is not over is refused (409).
-`minutes` asks for 1 to 120 minutes of agent time in place of 30; the run's cost cap stays what is left of the type's
-`daily_usd`, and the worker stops the run 30 minutes after its agent time.
+`minutes` asks for a time cap of 1 to 120 minutes of agent time, where a task that names none has no time cap; the
+run's cost cap stays what is left of the type's `daily_usd`.
 
 `repos` names the repos of the project the run gets a worktree of, each once (default: every repo); a repo the project
 lacks is a 422, and the repo whose `branch` the task names is one of them. `base` names a branch of origin each
@@ -1296,7 +1296,7 @@ refuses the dispatch with:
 - 429 once the type's task runs cost its cap in the last 24 hours, as their usage says.
 
 Otherwise it answers 201 with the task: `task_id`, the id of the run it queued, and `budget`, what is left of the cap
-as the run's cost cap with 30 minutes of agent time, as a chat run has, or the `minutes` the body asks for, at most
+as the run's cost cap with no time cap, as a chat run has none, or the `minutes` the body asks for, at most
 120. A runtime that reports no cost stops at the
 time. The run goes under the type's profile, dispatched by `run_as` with the credential kind `machine`, and waits for
 a worker of `run_as` that:

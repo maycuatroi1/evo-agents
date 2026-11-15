@@ -31,12 +31,13 @@ describe("the ops of a system", () => {
   it("refuses values out of the hub's bounds, and fractions where it wants whole numbers", () => {
     const form = opsFormOf(ops());
     expect(opsProblems(form)).toEqual([]);
-    expect(opsProblems({ ...form, debounce_minutes: "1441", max_items: "2.5", ops_daily_usd: "0" })).toEqual([
+    expect(opsProblems({ ...form, debounce_minutes: "1441", max_items: "2.5", ops_daily_usd: "-1" })).toEqual([
       "debounce_minutes",
       "max_items",
       "ops_daily_usd",
     ]);
     expect(opsProblems({ ...form, debounce_minutes: "0", max_items: "1000", ops_daily_usd: "0.01" })).toEqual([]);
+    expect(opsProblems({ ...form, ops_daily_usd: "0" })).toEqual([]); // 0: no limit
     expect(opsProblems({ ...form, max_items: " " })).toEqual(["max_items"]);
   });
 

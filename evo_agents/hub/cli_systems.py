@@ -117,6 +117,11 @@ def _runs_limit(count) -> str:
     return "any number of runs" if count == system_spec.UNLIMITED_RUNS else f"{count} runs"
 
 
+def _usd_limit(usd) -> str:
+    """A limit in USD as ``show`` prints it: "N USD", or "no limit" for UNLIMITED_USD and a spec that sets none."""
+    return "no limit" if usd in (None, system_spec.UNLIMITED_USD) else f"{usd} USD"
+
+
 def _show(system: dict) -> None:
     latest = "" if system["revision"] == system["latest_revision"] else f" (latest {system['latest_revision']})"
     print(
@@ -129,8 +134,8 @@ def _show(system: dict) -> None:
     print(f"  entry agent: {'@' + system['entry_agent'] if system['entry_agent'] else 'none'}")
     limits = spec.get("limits") or {}
     print(
-        f"  limits: {limits.get('trace_usd')} USD and {_runs_limit(limits.get('trace_runs'))} a trace, "
-        f"{limits.get('daily_usd')} USD a day"
+        f"  limits: {_usd_limit(limits.get('trace_usd'))} and {_runs_limit(limits.get('trace_runs'))} a trace, "
+        f"{_usd_limit(limits.get('daily_usd'))} a day"
     )
     for node in spec.get("nodes") or ():
         ref = f" @{node['profile']} v{node.get('version')}" if node.get("profile") else ""
@@ -359,14 +364,14 @@ def cmd_default(args) -> int:
         return 0
     print(f"default system of project {project}: {found['slug']} ({found['name']})")
     print(f"  ops: {_ops_settings(found.get('ops'))}")
-    print(f"  ops budget: {(found.get('limits') or {}).get('ops_daily_usd')} USD in 24 hours")
+    print(f"  ops budget: {_usd_limit((found.get('limits') or {}).get('ops_daily_usd'))} in 24 hours")
     return 0
 
 
 def _print_ops(found: dict) -> None:
     role = "the default system" if found["default"] else "not the default system: its ops take no event"
     print(f"system {found['slug']} of project {found['project']}: {role}")
-    print(f"  ops: {_ops_settings(found['ops'])}; budget {found['ops_daily_usd']} USD in 24 hours")
+    print(f"  ops: {_ops_settings(found['ops'])}; budget {_usd_limit(found['ops_daily_usd'])} in 24 hours")
     if found["paused"]:
         print(f"  paused since {when(found['paused_at'])} UTC: {found['paused_reason'] or '-'}")
     if found["batches"]:

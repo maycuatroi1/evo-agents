@@ -12,8 +12,8 @@ them, and the cap of what its runs may cost in BUDGET_HOURS (``daily_usd``, at m
 A plugin granted DISPATCH_PERMISSION in the project hands a task to an agent type of its own that the project enabled,
 with its plugin token, through the API of the hub (POST /v1/plugin-api/projects/{p}/agent-types/{name}/tasks). The hub
 refuses the task once what the type's task runs cost in the last BUDGET_HOURS, as their usage says, reached its cap
-(``spent_problem``); otherwise the run gets what is left as its cost cap, and TIME_CAP_SECONDS of agent time
-(``run_budget``), as a chat run does. The run is dispatched by ``run_as``: one headless turn of the agent, which asks
+(``spent_problem``); otherwise the run gets what is left as its cost cap and no time cap (``run_budget``), as a chat
+run has none. The run is dispatched by ``run_as``: one headless turn of the agent, which asks
 nobody anything, in a writable worktree of each repo of the project its worker has a checkout of, all on the branch
 ``task/<run>`` (``branch_of``, the id of the run the plugin's dispatch made). The worker commits what the agent left,
 pushes that branch of each repo it changed, never a default branch and never forced, and the hub opens a draft pull
@@ -24,8 +24,8 @@ run, its state, its branch and its pull requests.
 A task may name one repo of the project and a branch of it that is no default branch (``branch_problem``), such as a
 branch of a draft another run or a person opened: the worker checks that branch out of origin for that repo (or starts
 it from the default branch when origin lacks it), the agent works on it, and the worker pushes it back to that same
-branch, never forced; the other repos stay on ``task/<run>``. A task may also ask for up to MAX_MINUTES of agent time
-(``run_budget``, ``run_timeout``); its cost cap stays what is left of the type's cap.
+branch, never forced; the other repos stay on ``task/<run>``. A task may also ask for a time cap of up to MAX_MINUTES of agent
+time (``run_budget``); its cost cap stays what is left of the type's cap.
 
 A task may name the repos of the project it needs (``repos``, default: every repo), and a branch of origin each of
 their worktrees starts from instead of the default branch (``base``, ``base_problem``), such as a branch the project
@@ -38,19 +38,18 @@ from __future__ import annotations
 
 import re
 
-from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, RESULT_FILE, clip
+from evo_agents.hub.runs import LONGEST_TIMEOUT_MIN, MAX_PROMPT_BYTES, RESULT_DIR, RESULT_FILE, clip
 
 DISPATCH_PERMISSION = "runs:dispatch"  # what a plugin is granted in a project to hand tasks to its agent types
 RESULT_EVENT = "task.result"  # the event a plugin gets when a task run of its agent type ends
 RESULT_STATES = ("done", "failed", "cancelled")  # the ends a task has; a lost run's next attempt goes on with it
 MAX_DAILY_USD = 1000.0  # the highest cap of cost per day an admin sets for an agent type
 BUDGET_HOURS = 24  # a rolling window, so no time zone is chosen
-TIMEOUT_MIN = 60  # the agent time of one task run
-TIME_CAP_SECONDS = 30 * 60  # and its time cap, what a runtime that reports no cost (Codex) stops at
+TIMEOUT_MIN = LONGEST_TIMEOUT_MIN  # the agent time of one task run, where a hung agent fails
 MAX_TASK_BYTES = 16 * 1024  # the task's text (runs.request, as schema 0020 bounds it)
 MAX_TITLE_CHARS = 200
 MAX_PULLS = 50  # the draft pull requests a task run keeps (runs.pulls), one for each repo of its project at most
-MAX_MINUTES = 120  # the most agent time a task asks for; none asked: TIME_CAP_SECONDS
+MAX_MINUTES = 120  # the most agent time a task asks for as its time cap; none asked: no time cap
 MAX_BRANCH_CHARS = 200
 MAX_REPOS = 50  # the repos a task names, of its project
 # branches of other kinds of runs, which a task never names
@@ -78,17 +77,15 @@ def task_of(branch: str | None) -> int | None:
 
 def run_budget(left_usd: float, minutes: int | None = None) -> dict:
     """The caps of a task run when ``left_usd`` of its agent type's cap is left: that cost, and the ``minutes`` of
-    agent time the task asked for, else TIME_CAP_SECONDS."""
-    seconds = TIME_CAP_SECONDS if minutes is None else int(minutes) * 60
-    return {"max_usd": round(max(left_usd, 0.0), 4), "max_seconds": seconds}
+    agent time the task asked for, else no time cap."""
+    found = {"max_usd": round(max(left_usd, 0.0), 4)}
+    return found if minutes is None else found | {"max_seconds": int(minutes) * 60}
 
 
 def run_timeout(minutes: int | None = None) -> int:
-    """The timeout of a task run, in seconds: TIMEOUT_MIN, or half an hour past the ``minutes`` of agent time the
-    task asked for when that is longer, so the time cap stops the agent before the timeout fails the run."""
-    if minutes is None:
-        return TIMEOUT_MIN * 60
-    return max(TIMEOUT_MIN * 60, (int(minutes) + 30) * 60)
+    """The timeout of a task run, in seconds: TIMEOUT_MIN, whatever ``minutes`` of agent time the task asked for (at
+    most MAX_MINUTES, so its time cap stops the agent before the timeout fails the run)."""
+    return TIMEOUT_MIN * 60
 
 
 def _name_problem(branch: str) -> str | None:

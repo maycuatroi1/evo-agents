@@ -298,7 +298,7 @@ def test_a_chat_run_claim_has_the_bounded_snapshot_and_its_moves_react_by_rule(c
     assert "## The thread" in prompt and "It hits tests/test_wait.py the most." in prompt
     assert prompt.index("The wait helper sleeps") < prompt.index("# The message to answer")
     assert prompt.rstrip().endswith("@reviewer replace the sleep with a poll, please")
-    assert "at hop 2 of at most 3" in prompt and "budget" not in prompt
+    assert "at hop 2," in prompt and "at most 3" not in prompt and "budget" not in prompt
     assert (spec["branch"], spec["budget"]["max_usd"], spec["profile"]["handle"]) == (
         f"chat/{spec['id']}",
         None,
@@ -656,7 +656,7 @@ def test_a_chat_has_no_budget_and_its_runs_go_on_whatever_they_cost_under_a_time
     again = sent(client, hub["owner"], chat["id"], "@fixer now you")
     assert again["mentions"][0]["refusal"] is None
     run = run_of(client, hub["owner"], again["mentions"][0]["run_id"])
-    assert run["budget"] == {"max_usd": None, "max_turns": None, "max_seconds": chat_runs.TIME_CAP_SECONDS}
+    assert run["budget"] == {"max_usd": None, "max_turns": None, "max_seconds": None}  # no cap of any kind
     assert client.patch(f"/v1/chats/{chat['id']}", json={"budget_usd": 20}, headers=hub["owner"]).status_code == 405
 
 

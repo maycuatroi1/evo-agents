@@ -15,7 +15,7 @@ thread the Orchestrator acts by the ops actions (``ops_actions``) and the frame 
 most one decision of the owner a batch.
 
 Cap and breaker. The runs of the ops threads of a default system spend at most ``limits.ops_daily_usd`` in 24 hours
-(``system_spec.limit_of``): at the cap the hub opens no thread, keeps the batch ``ready``, and sends the project's owner
+(``system_spec.limit_of``; 0, the default, sets no cap): at the cap the hub opens no thread, keeps the batch ``ready``, and sends the project's owner
 one ``ops_cap`` notice a day. A system whose ops are paused (``agent_systems.ops_paused_at``) keeps its batches
 ``ready`` too. A running batch is ``done`` once the runs of its thread ended; when the last of them failed of its
 agent (a cause other than the machine's, ``ops_queue.WORKER_CAUSES``), the system counts it (``ops_failures``), and
@@ -262,7 +262,7 @@ async def open_batch(conn: AsyncConnection, system: OpsSystem, batch) -> str:
         return "no_lead"
     cap = float(system_spec.limit_of(system.ref.spec, "ops_daily_usd"))
     used = await spent(conn, system.ref.id)
-    if used >= cap:
+    if system_spec.over_usd(used, cap):
         await _tell_cap(conn, system, used, cap)
         return "capped"
     times = await recurring_times(conn, system.ref.project_id, batch.key)

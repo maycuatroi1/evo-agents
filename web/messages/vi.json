@@ -5805,6 +5805,8 @@
         "entry": "Entry agent <name>@{handle}</name>",
         "limits": "Mỗi trace tối đa {runs} run và {usd}",
         "limitsUsd": "Một trace chạy bao nhiêu run cũng được, tối đa {usd}",
+        "limitsRuns": "Mỗi trace tối đa {runs} run, không giới hạn chi phí",
+        "limitsNone": "Một trace chạy bao nhiêu run cũng được, không giới hạn chi phí",
         "over": "{steps} bước đang chờ có thể cần khoảng {runs} run, vượt mức {limit} run của một trace: quá mức đó, hub từ chối lần giao việc tiếp theo của trace."
       },
       "trace": {

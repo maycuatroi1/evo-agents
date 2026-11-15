@@ -166,7 +166,7 @@ function Observer({ project, system }: { project: string; system: SystemOut }) {
         selectHref={selectHref}
         onSelect={onSelect}
         names={names}
-        budget={spec.limits?.trace_usd ?? null}
+        budget={spec.limits?.trace_usd || null}
       />
       {selected !== null ? (
         <WorkDetail
