@@ -33,6 +33,7 @@ function build(overrides: Partial<KgBuild> = {}): KgBuild {
     requested_by: null,
     config_digest: null,
     runs: 1,
+    graph_kept: true,
     artifact_sha256: null,
     artifact_size: null,
     artifact_reused_from: null,

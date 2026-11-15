@@ -17,22 +17,17 @@ unless a later run's is, so a git source's coverage names the commit its newest 
 A merge cannot be undone, so a corpus holding a run merged from the hub that kg_ingests no longer lists (its source
 was taken off the hub) is started again first, its blobs kept (``drop_forgotten``).
 Then every blob a live item refers to and the cache lacks is fetched, checked, and moved into place. The graph is
-built by ``evo_agents.kg.build`` into a fresh store, which leaves WAL mode and replaces graph.sqlite in one rename: a
-single file, the artifact. Anything that fails marks the build failed with a message naming no content, and the worker
+built by ``evo_agents.kg.build`` into a fresh store, which leaves WAL mode and replaces graph.sqlite in one rename: the
+worker's working copy, which the next build compares with and which no reader fetches. Anything that fails marks the build failed with a message naming no content, and the worker
 goes on with the next job.
 
 A build whose corpus state and inputs (the knowledge config, the code, the cursors) are those of the graph.sqlite
-in the cache builds nothing (``skipped``): it takes that file, whose content hash is the latest build's, so it
-uploads nothing either. Most pushes carry runs that changed nothing, and such a build takes seconds, not minutes.
+in the cache builds nothing (``skipped``): it takes that file, whose content hash is the latest build's. Most pushes carry runs that changed nothing, and such a build takes seconds, not minutes.
 
-The artifact's bytes are not reproducible (SQLite pages carry more than the content), so two builds of one corpus
-give two files with one content hash. A build whose content hash equals that of the project's latest build still
-holding an artifact therefore uploads nothing: it points at that artifact (its SHA-256 and size) and names in
-``artifact_reused_from`` the build that uploaded it, once the object is found in the bucket with that size. Otherwise
-the file is uploaded, its SHA-256 names it in the bucket and in ``blobs`` (kind kg-graph, no creator: the hub made
-it), and the build row gets it with the content hash and the counts. Either way the row is written holding the blob
-lock shared (``evo_agents.hub.blob_gc``), so the retention of old artifacts (``evo_agents.hub.kg_prune``) never runs
-in between, and an uploaded artifact whose hash waits for deletion is written again before the row names it.
+A build uploads no graph file: the graph's rows go to the hub's tables (``keep_graph``, ``evo_agents.hub.kg_graph_rows``),
+which the api's snapshots read, and the build row gets the content hash and the counts, its ``artifact_*`` columns
+null. The kg-graph blobs older builds uploaded stay until the retention (``evo_agents.hub.kg_prune``) deletes them. The
+row is written holding the blob lock shared (``evo_agents.hub.blob_gc``), as the entity requests it holds are blobs.
 
 A build that succeeds also keeps what it covers (``kg_builds.coverage``, ``evo_agents.hub.kg_coverage.build_coverage``:
 mentions resolved, ambiguous and dangling per source, the commit each git source read, the Python functions and
@@ -94,7 +89,7 @@ from evo_agents.kg.protocol import sha256 as sha256_of
 
 log = logging.getLogger(__name__)
 
-ARTIFACT_KIND = "kg-graph"  # a built graph in ``blobs``: made by the hub, never uploaded
+ARTIFACT_KIND = "kg-graph"  # a graph file an older build put in ``blobs``: made by the hub, never uploaded
 ERROR_CHARS = 2000  # kg_builds.error holds at most this much
 QUEUE_ATTEMPTS = 5
 STALLED_AFTER = 120.0  # seconds without a heartbeat from its worker before a running build counts as abandoned
@@ -154,15 +149,6 @@ class Built:
     files: dict | None = None  # the files of each git source (``kg_coverage.source_files``)
     requests: tuple | None = None  # the deferred entity requests: path, sha256, size, count (``kg_entity_relay``)
     items: tuple = ()  # the live items of its corpus, as kg_corpus_items keeps them (``kg_graph_rows``)
-
-
-@dataclass(frozen=True)
-class Artifact:
-    """The artifact a build points at: its own upload, or the one of an earlier build with the same content."""
-
-    sha256: str
-    size: int
-    reused_from: int | None  # the build whose upload it is, when this build uploaded nothing
 
 
 def kg_root(data_dir: Path) -> Path:
@@ -507,24 +493,6 @@ def _start_unqueued(project_id: int, job_id: int | None):
     )
 
 
-def _latest_artifact(project_id: int):
-    """The project's latest build still holding an artifact: id, artifact_sha256, artifact_size, content_hash and
-    artifact_reused_from."""
-    builds = tables.kg_builds
-    return (
-        select(
-            builds.c.id,
-            builds.c.artifact_sha256,
-            builds.c.artifact_size,
-            builds.c.content_hash,
-            builds.c.artifact_reused_from,
-        )
-        .where(builds.c.project_id == project_id, builds.c.artifact_sha256.is_not(None))
-        .order_by(builds.c.id.desc())
-        .limit(1)
-    )
-
-
 def _failed_build(build_id: int, digest: str | None, runs: int, error: str):
     builds = tables.kg_builds
     return (
@@ -539,58 +507,20 @@ def _project_id(name: str):
     return select(projects.c.id).where(projects.c.name == name)
 
 
-async def _reusable(engine, store: BlobStore, project_id: int, built: Built) -> tuple | None:
-    """The latest build of the project still holding an artifact, when it has ``built``'s content and its object is
-    in the bucket with its size; None otherwise."""
-    async with engine.begin() as conn:
-        latest = (await conn.execute(_latest_artifact(project_id))).one_or_none()
-    if latest is None or latest[3] != built.content_hash:
-        return None
-    if await asyncio.to_thread(store.size, blob_key(latest[1])) != latest[2]:
-        log.warning("the artifact of the latest build is not in the blob store as recorded; uploading a new one")
-        return None
-    return latest
-
-
-async def record(
-    engine, store: BlobStore, project_id: int, build_id: int, digest: str | None, built: Built
-) -> Artifact:
-    """Mark build ``build_id`` succeeded with ``built``, pointing at the artifact of the project's latest build that
-    has the same content, or at ``built``'s file, uploaded now (see the module). The artifact it points at."""
-    latest = await _reusable(engine, store, project_id, built)
+async def record(engine, store: BlobStore, project_id: int, build_id: int, digest: str | None, built: Built) -> None:
+    """Mark build ``build_id`` succeeded with ``built`` and keep its graph in the hub's tables (see the module)."""
     rows = await asyncio.to_thread(graph_rows_of, built.path)
-    if latest is None:
-        await asyncio.to_thread(store.put_file, built.sha256, built.path)
     if built.requests is not None:
         await asyncio.to_thread(store.put_file, built.requests[1], built.requests[0])
     async with engine.begin() as conn:
         await blob_gc.lock_shared(conn)
-        if latest is not None and (await conn.execute(_latest_artifact(project_id))).one_or_none() == latest:
-            artifact = Artifact(latest[1], latest[2], latest[4] or latest[0])
-        else:
-            # Uploaded above, unless another build of the project finished meanwhile, which the queue's lock rules
-            # out. A key on its way out of the bucket gets the bytes again, while the lock keeps the deletion out.
-            revived = await blob_gc.revive(conn, [built.sha256])
-            if latest is not None or revived:
-                await asyncio.to_thread(store.put_file, built.sha256, built.path, replace=bool(revived))
-            artifact = Artifact(built.sha256, built.size, None)
-        blobs, builds = tables.blobs, tables.kg_builds
-        await conn.execute(
-            pg_insert(blobs)
-            .values(
-                project_id=project_id, sha256=artifact.sha256, size=artifact.size, kind=ARTIFACT_KIND, created_by=None
-            )
-            .on_conflict_do_nothing(index_elements=[blobs.c.project_id, blobs.c.sha256])
-        )
+        builds = tables.kg_builds
         await conn.execute(
             update(builds)
             .values(
                 status="succeeded",
                 config_digest=digest,
                 runs=built.runs,
-                artifact_sha256=artifact.sha256,
-                artifact_size=artifact.size,
-                artifact_reused_from=artifact.reused_from,
                 content_hash=built.content_hash,
                 nodes=built.nodes,
                 edges=built.edges,
@@ -615,7 +545,6 @@ async def record(
                 await kg_entity_map_db.on_build(conn, project_id, build_id, built.coverage)
         except Exception:
             log.exception("a kg entity map run was not queued", extra={"project_id": project_id, "build_id": build_id})
-    return artifact
 
 
 async def keep_graph(conn: AsyncConnection, project_id: int, build_id: int, built: Built, rows) -> None:
@@ -788,7 +717,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
         entities_coverage = (built.coverage or {}).get("entities")
         if key_from is not None and isinstance(entities_coverage, dict):
             entities_coverage["key_from"] = key_from
-        artifact = await record(engine, context.blobs, project_id, build_id, digest, built)
+        await record(engine, context.blobs, project_id, build_id, digest, built)
         await start_eval_set(engine, project_id, project, built)
         await _go_on(engine, manager, project_id, project, built.coverage)
     except asyncio.CancelledError:  # the worker is stopping and gave up waiting: say so, then let it stop
@@ -815,15 +744,12 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             "nodes": built.nodes,
             "edges": built.edges,
             "content_hash": built.content_hash,
-            "artifact_bytes": artifact.size,
-            "artifact_reused_from": artifact.reused_from,
         },
     )
     return {
         "status": "succeeded",
         "build_id": build_id,
         "content_hash": built.content_hash,
-        "artifact_reused_from": artifact.reused_from,
         "skipped": built.skipped,
     }
 

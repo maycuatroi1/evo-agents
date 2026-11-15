@@ -16965,8 +16965,13 @@ export interface components {
             /** Runs */
             runs: number | null;
             /**
+             * Graph Kept
+             * @description its graph is in the hub's tables, or was until a newer build replaced it: the newest such build is the graph the reads answer from
+             */
+            graph_kept: boolean;
+            /**
              * Artifact Sha256
-             * @description the graph file in the blob store; null until the build succeeded, and once it was pruned
+             * @description the graph file an older build put in the blob store; null for a build since the hub keeps the graph in its tables, and once it was pruned
              */
             artifact_sha256: string | null;
             /** Artifact Size */

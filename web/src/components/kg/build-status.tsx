@@ -18,14 +18,14 @@ import { BuildStatusBadge, Duration, When } from "./badges";
  * just failed, graph-in-use.tsx the graph the pages read). Read-only:
  * builds are queued by pushes (`evo-agents hub kg push`), never from the web.
  *
- * A build's artifact is its graph file in the blob store. A build whose content did not change points at the artifact
- * of an earlier one (`artifact_reused_from`), and the hub's retention deletes the artifacts of older graphs
- * (`artifact_pruned_at`): such a build keeps its content hash and counts, but no page reads it any more.
+ * A build keeps its graph in the hub's tables (`graph_kept`) and uploads no file. An older build's artifact is the
+ * graph file it put in the blob store, or the one of an earlier build it pointed at (`artifact_reused_from`), until
+ * the hub's retention deletes it (`artifact_pruned_at`).
  */
 
-/** The graph the pages read: the newest successful build that still holds an artifact. */
+/** The graph the pages read: the newest successful build whose graph the hub's tables hold. */
 export function latestSucceeded(builds: readonly KgBuild[]): KgBuild | undefined {
-  return builds.find((build) => build.status === "succeeded" && build.artifact_sha256 !== null);
+  return builds.find((build) => build.status === "succeeded" && build.graph_kept);
 }
 
 export type ArtifactState = "own" | "reused" | "pruned" | "none";
@@ -34,7 +34,8 @@ export type ArtifactState = "own" | "reused" | "pruned" | "none";
 export function artifactState(build: KgBuild): ArtifactState {
   if (build.status !== "succeeded") return "none";
   if (build.artifact_pruned_at) return "pruned";
-  return build.artifact_reused_from !== null ? "reused" : "own";
+  if (build.artifact_reused_from !== null) return "reused";
+  return build.artifact_sha256 !== null ? "own" : "none";
 }
 
 /** The artifact of a build in a few words: pruned and when, reused from which build, or its own. */

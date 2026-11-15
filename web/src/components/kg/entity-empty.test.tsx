@@ -38,6 +38,7 @@ const build = (id: number, status: "queued" | "running") => ({
   requested_by: "wendy",
   config_digest: null,
   runs: null,
+  graph_kept: true,
   artifact_sha256: null,
   artifact_size: null,
   artifact_reused_from: null,

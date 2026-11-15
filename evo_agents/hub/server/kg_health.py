@@ -35,7 +35,7 @@ are none (a build without clusters has no queue).
 ``figures`` counts the night's ``kg_health`` over [since, until): the latest measure before ``until`` (its time, its
 build, its sources, eval and review); ``coverage``, what the latest successful build before ``until`` covers
 (``kg_coverage.build_coverage``); ``builds``, the builds that finished in the span, how many succeeded, failed or
-changed nothing (a build whose content an earlier build had, ``artifact_reused_from``), with their coverage over time,
+changed nothing (a build with the content hash of the succeeded build before it), with their coverage over time,
 the latest first; and ``retrieval``, what agents got from the graph (``kg_coverage.retrieval``) in the sessions of the
 figures and the runs that ended in the span, of a plan the owner may read or review runs. None for a project the hub
 holds neither a graph nor a measure of.
@@ -86,7 +86,7 @@ NIGHT_SHIFT = "night_shift"
 HEALTH_EVERY = timedelta(hours=6)  # a project's graph is measured again this long after its last measure
 RETRY_AFTER = timedelta(hours=1)  # and this long after a measure that failed
 ERROR_CHARS = 2000
-GRAPHS_TRIED = 3  # successful builds the evaluation may fall back on when the blob store does not answer
+GRAPHS_TRIED = 3  # kept graphs the evaluation may find its snapshot among
 MAX_SERIES = 10  # builds of the span the figures list
 HISTORY = (1, 200, 30)  # the fewest, most and default measures and builds the route lists
 NO_APP = "the hub has no GitHub App to read default branches with (EVO_HUB_GITHUB_APP_*)"
@@ -506,10 +506,24 @@ async def measure(engine: AsyncEngine, *, github_app=None, blobs=None, data_dir=
 # The night's figures
 
 
+def _unchanged(b):
+    """Whether a build of ``b`` (kg_builds) has the content hash of the project's succeeded build before it: it
+    changed nothing."""
+    before = b.alias("before")
+    previous = (
+        select(before.c.content_hash)
+        .where(before.c.project_id == b.c.project_id, before.c.status == "succeeded", before.c.id < b.c.id)
+        .order_by(before.c.id.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    return func.coalesce(b.c.content_hash == previous, False).label("unchanged")
+
+
 def _span_builds(project_id: int, since: datetime, until: datetime):
     b = tables.kg_builds
     return (
-        select(b.c.id, b.c.status, b.c.finished_at, b.c.artifact_reused_from, b.c.coverage)
+        select(b.c.id, b.c.status, b.c.finished_at, _unchanged(b), b.c.coverage)
         .where(b.c.project_id == project_id, b.c.finished_at >= since, b.c.finished_at < until)
         .order_by(b.c.id.desc())
     )
@@ -518,7 +532,7 @@ def _span_builds(project_id: int, since: datetime, until: datetime):
 def _builds(rows) -> dict:
     states = Counter(row.status for row in rows)
     succeeded = [row for row in rows if row.status == "succeeded"]
-    unchanged = sum(1 for row in succeeded if row.artifact_reused_from is not None)
+    unchanged = sum(1 for row in succeeded if row.unchanged)
     series = []
     for row in succeeded[:MAX_SERIES]:
         coverage = row.coverage if isinstance(row.coverage, dict) else {}
@@ -527,7 +541,7 @@ def _builds(rows) -> dict:
             {
                 "id": row.id,
                 "finished_at": row.finished_at.isoformat(),
-                "changed": row.artifact_reused_from is None,
+                "changed": not row.unchanged,
                 **{key: coverage.get(key) for key in ("resolved_ratio", "ambiguous_ratio", "dangling_ratio")},
                 "uncalled_method_ratio": python.get("uncalled_method_ratio"),
             }
@@ -660,7 +674,7 @@ async def show_kg_health(
             .limit(limit)
         )
         builds = await conn.execute(
-            select(b.c.id, b.c.finished_at, b.c.artifact_reused_from, b.c.coverage)
+            select(b.c.id, b.c.finished_at, _unchanged(b), b.c.coverage)
             .where(b.c.project_id == access.project_id, b.c.status == "succeeded")
             .order_by(b.c.id.desc())
             .limit(limit)
@@ -680,7 +694,7 @@ async def show_kg_health(
             KgBuildCoverage(
                 id=row.id,
                 finished_at=row.finished_at,
-                changed=row.artifact_reused_from is None,
+                changed=not row.unchanged,
                 coverage=row.coverage,
             )
             for row in builds

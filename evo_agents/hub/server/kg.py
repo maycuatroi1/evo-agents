@@ -29,9 +29,10 @@ Pushing (the writer role, and a hub sink in the project's knowledge.yaml; ``evo-
   their archives and items.
 
 Building: POST /v1/kg/{project}/builds (writer) queues a build; GET /v1/kg/{project}/builds lists the builds, newest
-first, and the jobs of the project still in the queue; GET /v1/kg/{project}/builds/{id} is one build. A build whose
-content did not change names the build whose artifact it reuses (``artifact_reused_from``), and a build whose artifact
-the retention deleted has ``artifact_pruned_at`` and no ``artifact_sha256`` (``evo_agents.hub.kg_prune``). A build job
+first, and the jobs of the project still in the queue; GET /v1/kg/{project}/builds/{id} is one build. A build keeps
+its graph in the hub's tables (``graph_kept``) and uploads no file. An older build may still name the graph file it
+uploaded (``artifact_sha256``), or the build whose file it reused (``artifact_reused_from``), until the retention
+deletes it (``artifact_pruned_at``, ``evo_agents.hub.kg_prune``). A build job
 holds the lock and the queueing lock ``kg:<project>``, so one runs at a time and at most one waits; queueing while one
 waits returns the waiting build. The waiting job's row is locked until the queueing transaction commits, and the
 worker takes jobs with SKIP LOCKED, so a build that is already queued always sees the run that asked for it. A build
@@ -39,7 +40,7 @@ of a project whose graph holds its group chats (``kg_sources.reads_chats``) show
 totals count messages most members may not read, and kg_status and the web's graph pages count what each reader sees.
 
 Reading: POST /v1/kg/{project}/tools/{tool} {arguments, sink} answers one of the seven kg_* tools of ``kg serve`` for a
-member, from the latest successful build holding an artifact (``evo_agents.hub.kg_graph``), with the hub's read rule:
+member, from the latest successful build whose graph the hub's tables hold (``evo_agents.hub.kg_graph``), with the hub's read rule:
 the meet of the member's grant and the sink's clearance, holding the audience the database gives the member at this
 call (``evo_agents.hub.server.kg_audience``). The sink defaults to Claude Code's; ``cli``, when the project
 declares no such sink, reads through the hub sink, as the local ``cli`` sink reads everything on the machine. The answer
@@ -67,7 +68,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi import Path as PathParam
 from fastapi.responses import JSONResponse
 from pydantic import UUID4, BaseModel, Field, model_validator
-from sqlalchemy import Text, cast, delete, exists, func, literal, select
+from sqlalchemy import Text, and_, cast, delete, exists, func, literal, select
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -87,6 +88,7 @@ from evo_agents.hub.kg_graph import (
     node_kinds,
     unknown,
 )
+from evo_agents.hub.kg_graph_rows import MAIN
 from evo_agents.hub.kg_ingest import (
     LogProblem,
     RunLog,
@@ -111,7 +113,7 @@ log = logging.getLogger(__name__)
 MAX_CHECK = 10_000  # hashes in one blobs/check
 MISSING_SHOWN = 100  # missing blobs named in a refused commit
 BUILDS_LIMIT = 100
-GRAPHS_TRIED = 10  # builds holding an artifact a tool call may fall back on when the newest cannot be fetched
+GRAPHS_TRIED = 10  # kept graphs a tool call may find its snapshot among: the newest, or one it still holds
 CLI_SINK = "cli"
 LOG_KIND = "kg-log"
 REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
@@ -166,8 +168,13 @@ class Build(BaseModel):
     requested_by: str | None = Field(description="the member who queued it; null when a pushed run did")
     config_digest: str | None
     runs: int | None
+    graph_kept: bool = Field(
+        description="its graph is in the hub's tables, or was until a newer build replaced it: the newest such build "
+        "is the graph the reads answer from"
+    )
     artifact_sha256: str | None = Field(
-        description="the graph file in the blob store; null until the build succeeded, and once it was pruned"
+        description="the graph file an older build put in the blob store; null for a build since the hub keeps the "
+        "graph in its tables, and once it was pruned"
     )
     artifact_size: int | None
     artifact_reused_from: int | None = Field(
@@ -496,6 +503,7 @@ async def find_builds(
             users.c.login.label("requested_by"),
             b.c.config_digest,
             b.c.runs,
+            graph_kept(b).label("graph_kept"),
             b.c.artifact_sha256,
             b.c.artifact_size,
             b.c.artifact_reused_from,
@@ -648,12 +656,23 @@ async def request_build(request: Request, project: ProjectName, user: CurrentUse
 # The tools
 
 
+def graph_kept(builds):
+    """Whether a row of ``builds`` (kg_builds) is a succeeded build whose graph the hub's tables hold, or held until a
+    newer build replaced it: the build of the project's main head (``kg_graph_rows.write_graph``) or an older one. A
+    reader's snapshot may still be of an older one while the newest is loaded."""
+    heads = tables.kg_graph_heads
+    head = (
+        select(heads.c.build_id)
+        .where(heads.c.project_id == builds.c.project_id, heads.c.branch_id == MAIN)
+        .scalar_subquery()
+    )
+    return func.coalesce(and_(builds.c.status == "succeeded", builds.c.id <= head), False)
+
+
 async def built_graphs(conn: AsyncConnection, project_id: int, limit: int) -> list[BuiltGraph]:
-    """The successful builds of a project that still hold an artifact, newest first, at most ``limit``: what the
-    tools here and the web's graph pages (``evo_agents.hub.server.kg_web``) read from. Several builds may share one
-    artifact (a build with unchanged content reuses it), and the retention takes away the artifact of older ones
-    (``evo_agents.hub.kg_prune``). It lives here rather than in ``evo_agents.hub.kg_graph``, which imports no database
-    library."""
+    """The successful builds of a project whose graph the hub's tables hold or held (``graph_kept``), newest first, at
+    most ``limit``: what the tools here and the web's graph pages (``evo_agents.hub.server.kg_web``) read from. It
+    lives here rather than in ``evo_agents.hub.kg_graph``, which imports no database library."""
     builds = tables.kg_builds
     query = (
         select(
@@ -666,11 +685,7 @@ async def built_graphs(conn: AsyncConnection, project_id: int, limit: int) -> li
             builds.c.finished_at,
             builds.c.coverage["vectors"].label("vectors"),
         )
-        .where(
-            builds.c.project_id == project_id,
-            builds.c.status == "succeeded",
-            builds.c.artifact_sha256.is_not(None),
-        )
+        .where(builds.c.project_id == project_id, graph_kept(builds))
         .order_by(builds.c.id.desc())
         .limit(limit)
     )

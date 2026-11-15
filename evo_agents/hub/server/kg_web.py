@@ -64,7 +64,7 @@ from evo_agents.kg.graph_scope import DEFAULT_GRAPH, GraphScope
 
 log = logging.getLogger(__name__)
 
-GRAPHS_TRIED = 10  # successful builds holding an artifact tried, newest first, when the newest cannot be fetched
+GRAPHS_TRIED = 10  # kept graphs a page may find its snapshot among: the newest, or one it still holds
 
 router = APIRouter(
     prefix="/v1/kg",

@@ -13,7 +13,12 @@ kg_embeddings (the rows of a store's node_vec), kg_review_rows (its clusters and
 and kg_graph_heads the build, content hash, summary, vector model and weight of an asked match each branch is at. kg_branches and kg_branch_ops hold the draft branches of a graph and their operations. The tables
 start empty: the next build of a project fills them.
 
-Going back drops them.
+A build keeps its graph in these tables and uploads no graph file, so a succeeded build may hold no artifact:
+kg_builds_artifact_check now only keeps an artifact off a build that did not succeed, and kg_builds_check1 no longer
+asks a succeeded build for an artifact size.
+
+Going back drops them, and fails a succeeded build that holds no artifact and none was pruned from (it has no graph
+the earlier revision can read), as 0008's going back does to a pruned one.
 """
 
 import sqlalchemy as sa
@@ -193,12 +198,51 @@ def _heads_and_branches() -> None:
     op.create_index("kg_branch_ops_branch_idx", "kg_branch_ops", ["branch_id", "id"])
 
 
+_SUCCEEDED = col("status") == "succeeded"
+_COUNTED = sa.and_(col("content_hash").is_not(None), col("nodes").is_not(None), col("edges").is_not(None))
+_CHECKS = {  # name: (since this revision, before it)
+    "kg_builds_artifact_check": (
+        sa.or_(_SUCCEEDED, sa.and_(col("artifact_sha256").is_(None), col("artifact_pruned_at").is_(None))),
+        _SUCCEEDED == sa.or_(col("artifact_sha256").is_not(None), col("artifact_pruned_at").is_not(None)),
+    ),
+    "kg_builds_check1": (
+        sa.or_(col("status") != "succeeded", _COUNTED),
+        sa.or_(col("status") != "succeeded", sa.and_(col("artifact_size").is_not(None), _COUNTED)),
+    ),
+}
+NO_ARTIFACT = "this build kept its graph in tables an earlier revision of the hub does not have"
+
+
 def upgrade() -> None:
     _graph()
     _heads_and_branches()
+    for name, check in _CHECKS.items():
+        op.drop_constraint(name, "kg_builds", type_="check")
+        op.create_check_constraint(name, "kg_builds", check[0])
 
 
 def downgrade() -> None:
+    for name in _CHECKS:
+        op.drop_constraint(name, "kg_builds", type_="check")
+    builds = sa.table(
+        "kg_builds",
+        col("status"),
+        col("error"),
+        col("artifact_sha256"),
+        col("artifact_pruned_at"),
+        col("artifact_reused_from"),
+    )
+    op.execute(
+        sa.update(builds)
+        .where(
+            builds.c.status == "succeeded",
+            builds.c.artifact_sha256.is_(None),
+            builds.c.artifact_pruned_at.is_(None),
+        )
+        .values(status="failed", error=NO_ARTIFACT, artifact_reused_from=None)
+    )
+    for name, check in _CHECKS.items():
+        op.create_check_constraint(name, "kg_builds", check[1])
     for name in (
         "kg_branch_ops",
         "kg_branches",

@@ -69,8 +69,8 @@ class BuiltGraph:
     """A successful build, as kg_builds records it."""
 
     build_id: int
-    sha256: str
-    size: int
+    sha256: str | None  # the graph file an older build uploaded; None since the hub keeps the graph in its tables
+    size: int | None
     content_hash: str
     nodes: int
     edges: int
