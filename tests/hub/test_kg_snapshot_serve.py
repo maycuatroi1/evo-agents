@@ -330,6 +330,47 @@ def test_reading_a_graph_gives_the_event_loop_back_between_its_rows(hub, tmp_pat
     assert "guide" in found(Snapshot.from_stored(rows), "kiwi")
 
 
+def test_a_load_runs_no_garbage_collection_and_leaves_the_snapshot_out_of_later_ones(
+    hub, tmp_path, caplog, monkeypatch
+):
+    """No collection of the cyclic garbage collector runs while a snapshot is made, and the snapshot is frozen out of
+    the later ones: a large graph is millions of tracked objects, each full collection walked them all holding the
+    GIL, the api's event loop stalled for seconds, and the workers' heartbeats and claims timed out on the pool."""
+    import gc
+
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the kiwi app works."))
+    assert push(hub, laptop).ok
+    build(hub, caplog)
+    pid = project_id(hub)
+    collecting = []
+    from_stored = Snapshot.from_stored
+
+    def made(*args, **kwargs):
+        collecting.append(gc.isenabled())
+        return from_stored(*args, **kwargs)
+
+    monkeypatch.setattr(kg_snapshots.Snapshot, "from_stored", made)
+    gc.unfreeze()
+    try:
+        held = asyncio.run(held_on_engine(hub.db, pid))
+        collected = [o for o in gc.get_objects() if o is held.snapshot or o is held.snapshot.text]
+        assert gc.isenabled()
+    finally:
+        gc.unfreeze()
+    assert collecting == [False]  # none ran while the snapshot was made
+    assert collected == []  # and the later ones skip it
+    assert "guide" in found(held.snapshot, "kiwi")
+
+
+async def held_on_engine(db, pid: int):
+    engine = make_engine(db)
+    try:
+        return await kg_snapshots.load(engine, pid)
+    finally:
+        await engine.dispose()
+
+
 def test_a_plugin_read_of_a_project_not_in_memory_waits_for_no_load(hub, tmp_path, caplog, monkeypatch):
     """A core plugin reads the graph holding its own transaction (``kg_snapshots.held_for``): a project the api holds
     no snapshot of yet answers None at once and loads in the background, so plugin reads made meanwhile do not each

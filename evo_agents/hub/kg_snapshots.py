@@ -11,7 +11,9 @@ reader sees it through its own clearance and audience (``evo_agents.kg.snapshot_
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
+import gc
 import json
 import logging
 import weakref
@@ -52,16 +54,47 @@ async def load(engine: AsyncEngine, project_id: int) -> Held | None:
     connection of their own, in one of the process's ``READS`` slots, and it goes back to the pool before the snapshot
     is made of them: making it takes minutes on a large graph, and a connection held meanwhile, idle in its
     transaction, is one the workers' heartbeats and claims wait for."""
-    async with read_slot(), engine.connect() as conn:
-        found = await _rows(conn, project_id)
-    return None if found is None else await _made(*found)
+    with uncollected():
+        async with read_slot(), engine.connect() as conn:
+            found = await _rows(conn, project_id)
+        return None if found is None else await _made(*found)
 
 
 async def load_on(conn: AsyncConnection, project_id: int) -> Held | None:
     """``load`` on the caller's connection, which it holds while the snapshot is made: a caller that can give its
     connection back first uses ``load``."""
-    found = await _rows(conn, project_id)
-    return None if found is None else await _made(*found)
+    with uncollected():
+        found = await _rows(conn, project_id)
+        return None if found is None else await _made(*found)
+
+
+_loads = 0  # loads of the process running now, in ``uncollected``
+
+
+@contextlib.contextmanager
+def uncollected():
+    """No collection of Python's cyclic garbage collector while a snapshot is read and made, and what it made frozen
+    out of the later ones (``gc.freeze``). A snapshot is millions of objects the collector tracks: each full
+    collection walked them all, holding the GIL, the loop of the api with it, for seconds, dozens of times while a
+    large graph loaded and again now and then once it was held, and the heartbeats and claims waiting meanwhile timed
+    out on the pool. A snapshot has no reference cycle, so one dropped is freed though frozen. Loads share the
+    process's collector: the last one to end turns it back on, as it was before the first."""
+    global _loads, _collecting
+    if _loads == 0:
+        _collecting = gc.isenabled()
+        gc.disable()
+    _loads += 1
+    try:
+        yield
+    finally:
+        _loads -= 1
+        if _loads == 0:
+            gc.freeze()
+            if _collecting:
+                gc.enable()
+
+
+_collecting = True  # whether the collector ran before the first of the loads running now
 
 
 async def _rows(conn: AsyncConnection, project_id: int) -> tuple[int | None, StoreRows] | None:
@@ -193,12 +226,13 @@ class SnapshotCoordinator:
         found = self._branches.pop((project_id, name), None)
         if found is None or found[0] != key:
             heads = tables.kg_graph_heads
-            async with read_slot(), self.engine.connect() as conn:
-                build_id = await conn.scalar(
-                    select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
-                )
-                _, _, rows = await kg_branches.graph(conn, project_id, name)
-            found = key, await _made(build_id, rows)
+            with uncollected():
+                async with read_slot(), self.engine.connect() as conn:
+                    build_id = await conn.scalar(
+                        select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
+                    )
+                    _, _, rows = await kg_branches.graph(conn, project_id, name)
+                found = key, await _made(build_id, rows)
         self._branches[(project_id, name)] = found
         while len(self._branches) > HELD_BRANCHES:
             del self._branches[next(iter(self._branches))]
