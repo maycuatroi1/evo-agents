@@ -255,7 +255,7 @@ FAULTS = [
     "   - a test module that imports SQLAlchemy or psycopg at its top without `pytest.importorskip` before it;",
     '   - a file written with `write_text`, or `open` in text mode, without `newline="\\n"` whose bytes a test then '
     "compares: on Windows its lines end in CRLF;",
-    "   - a `sqlite3` connection that is never closed (`with sqlite3.connect(...)` commits but does not close it): "
+    "   - a SQLite connection that is never closed (a `with` block on a connection commits but does not close it): "
     "Windows keeps its file locked.",
 ]
 

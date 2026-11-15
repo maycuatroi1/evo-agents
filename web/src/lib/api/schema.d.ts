@@ -1701,6 +1701,135 @@ export interface paths {
         patch: operations["update_graph_v1_kg__project__graphs__name__patch"];
         trace?: never;
     };
+    "/v1/kg/{project}/branches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Branches
+         * @description The draft branches of the project's graph, newest first.
+         */
+        get: operations["list_branches_v1_kg__project__branches_get"];
+        put?: never;
+        /**
+         * Create Branch
+         * @description Open a draft branch of the project's graph from main.
+         */
+        post: operations["create_branch_v1_kg__project__branches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/branches/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Branch
+         * @description One draft branch of the project's graph.
+         */
+        get: operations["show_branch_v1_kg__project__branches__name__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Drop Branch
+         * @description Drop an open branch and its operations; main does not change.
+         */
+        delete: operations["drop_branch_v1_kg__project__branches__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/branches/{name}/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Ops
+         * @description Apply node, edge, entity map and decision operations to an open branch, all or none; main does not change.
+         */
+        post: operations["apply_ops_v1_kg__project__branches__name__ops_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/branches/{name}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Diff Branch
+         * @description The nodes and edges a branch adds, changes and removes from main.
+         */
+        get: operations["diff_branch_v1_kg__project__branches__name__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/branches/{name}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Branch
+         * @description The ontology rules a branch breaks, those main does not, its conflicts with main, and whether it would merge.
+         */
+        get: operations["check_branch_v1_kg__project__branches__name__check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kg/{project}/branches/{name}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Branch
+         * @description Merge an open branch into main in one transaction: 409 when main changed what it changes, or it adds a
+         *     violation of a hard ontology rule.
+         */
+        post: operations["merge_branch_v1_kg__project__branches__name__merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/entities/setup": {
         parameters: {
             query?: never;
@@ -16488,6 +16617,62 @@ export interface components {
             /** Trusted Publisher */
             trusted_publisher: boolean;
         };
+        /** BranchCreate */
+        BranchCreate: {
+            /**
+             * Name
+             * @description a-z, 0-9, '.', '_', '-'; not 'main'
+             */
+            name: string;
+        };
+        /** BranchOps */
+        BranchOps: {
+            /**
+             * Ops
+             * @description operations, each with op: node.put, node.delete, edge.put, edge.delete, entity_map, decision
+             */
+            ops: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** BranchOut */
+        BranchOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @description open, merged or closed
+             */
+            status: string;
+            /**
+             * Base Build Id
+             * @description the build of main it was opened at
+             */
+            base_build_id: number | null;
+            /** Created By */
+            created_by: number | null;
+            /** Created At */
+            created_at: string;
+            /**
+             * Ops
+             * @description operations applied to it
+             */
+            ops: number;
+        };
+        /**
+         * BranchResult
+         * @description What a write, the diff or the check returned (``evo_agents.hub.kg_branches``).
+         */
+        BranchResult: {
+            [key: string]: unknown;
+        };
+        /** BranchesOut */
+        BranchesOut: {
+            /** Branches */
+            branches: components["schemas"]["BranchOut"][];
+        };
         /**
          * Branding
          * @description The branding as the web applies it; what is unset is null or empty, and the web keeps its own there.
@@ -26943,6 +27128,11 @@ export interface components {
             dry_run: boolean;
             /** Keep */
             keep: number;
+            /**
+             * Graph Files
+             * @description every graph file of a project whose graph the tables hold was pruned
+             */
+            graph_files: boolean;
             /** Projects */
             projects: components["schemas"]["ProjectPruned"][];
             /**
@@ -38069,6 +38259,12 @@ export interface components {
              * @default false
              */
             dry_run: boolean;
+            /**
+             * Graph Files
+             * @description also delete every graph file of a project whose graph the hub's tables hold, the newest included
+             * @default false
+             */
+            graph_files: boolean;
         };
         /** PublishRequest */
         PublishRequest: {
@@ -41875,10 +42071,10 @@ export interface components {
             size: number;
             /**
              * State
-             * @description newest: the graph the kg tools read; live: a source blob a run in use refers to; old: neither
+             * @description live: a source blob a run in use refers to; old: a graph file, or a source blob no run in use refers to
              * @enum {string}
              */
-            state: "old" | "live" | "newest";
+            state: "old" | "live";
             /**
              * Secrets
              * @description the secrets it holds, by kind; never a value
@@ -41892,6 +42088,26 @@ export interface components {
              */
             builds: number[];
         };
+        /** ScrubGraph */
+        ScrubGraph: {
+            /**
+             * Rows
+             * @description rows of the graph in the hub's tables read: nodes, edges and full-text rows
+             */
+            rows: number;
+            /**
+             * Holding
+             * @description those holding a secret; in use, never purged
+             */
+            holding: number;
+            /**
+             * Secrets
+             * @description the secrets they hold, by kind; never a value
+             */
+            secrets: {
+                [key: string]: number;
+            };
+        };
         /** ScrubKept */
         ScrubKept: {
             /** Sha256 */
@@ -41901,12 +42117,14 @@ export interface components {
              * @description why it stays: in use, holds no secret now, not in the bucket, or not the project's
              * @enum {string}
              */
-            reason: "newest" | "live" | "clean" | "missing" | "not held";
+            reason: "live" | "clean" | "missing" | "not held";
         };
         /** ScrubPage */
         ScrubPage: {
             /** Project */
             project: string;
+            /** @description on the first page only: the graph the kg tools read, from the hub's tables */
+            graph?: components["schemas"]["ScrubGraph"] | null;
             /**
              * Scanned
              * @description objects read on this page
@@ -56114,6 +56332,558 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NamedGraphOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_branches_v1_kg__project__branches_get: {
+        parameters: {
+            query?: {
+                status?: ("open" | "merged" | "closed") | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchesOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_branch_v1_kg__project__branches_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BranchCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_branch_v1_kg__project__branches__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    drop_branch_v1_kg__project__branches__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    apply_ops_v1_kg__project__branches__name__ops_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BranchOps"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    diff_branch_v1_kg__project__branches__name__diff_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    check_branch_v1_kg__project__branches__name__check_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    merge_branch_v1_kg__project__branches__name__merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchResult"];
                 };
             };
             /** @description Unauthorized */

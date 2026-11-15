@@ -83,6 +83,8 @@ class Session(SearchTools, WalkTools, ImpactTools):
             args = args or {}
             if name in SIGNATURES:
                 args = arguments(name, args, *SIGNATURES[name])
+            if args.pop("branch", None) not in (None, "", "main"):
+                raise ToolError("draft graph branches are read on the hub, which resolves them before a session")
             self.deprecated = bool(args.pop("deprecated", False))
             self.scope = self.named_scope(args.pop("graph", None))  # a named graph narrows, never widens
             text, data = handler(**args)

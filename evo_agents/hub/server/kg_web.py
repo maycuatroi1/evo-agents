@@ -43,7 +43,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from evo_agents.hub import kg_named_graphs
+from evo_agents.hub import kg_branches, kg_named_graphs
 from evo_agents.hub.kg_entity_graph import (
     CITATIONS,
     CODE_LINKS,
@@ -231,17 +231,28 @@ def _ref(graph: BuiltGraph, latest: BuiltGraph) -> GraphRef:
 
 async def read_graph(request: Request, user, project: str, reader):
     """``reader(session)`` over the project's latest successful build for ``user``, and that build; (None, None)
-    when no build succeeded yet."""
+    when no build succeeded yet. A ``branch`` query parameter reads that draft branch of the graph instead of main
+    (``evo_agents.hub.kg_branches``); 404 for one the project lacks."""
     state = request.app.state
+    branch = (request.query_params.get("branch") or "").strip()
+    held = None
     async with state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         require_reader(access)
         graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
         audience = await reader_audience(conn, user) if graphs else frozenset()
+        if graphs and branch not in ("", "main"):
+            try:
+                held = await state.kg_snapshots.branch(conn, access.project_id, branch)
+            except kg_branches.BranchError as exc:
+                raise HTTPException(exc.status, str(exc)) from None
     if not graphs:
         return None, None
     ceiling = access.rules.grant_label(access.max_level, audience)
-    snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
+    if held is not None:
+        snapshot = held.view(ceiling.audience if ceiling is not None else frozenset()), graphs[0]
+    else:
+        snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     try:
         data, graph = await asyncio.to_thread(read, project, access.rules.policy, ceiling, graphs, reader, snapshot)
     except GraphUnavailable as exc:

@@ -4138,7 +4138,12 @@ gone. The retention never deletes run logs, source blobs or skill bundles. A hub
 ```sh
 evo-agents hub kg prune --dry-run              # what would go, for every project; changes nothing
 evo-agents hub kg prune --project demo --keep 5
+evo-agents hub kg prune --project demo --graph-files --dry-run   # every graph file of it, the newest too
 ```
+
+`--graph-files` (`graph_files` of `POST /v1/admin/kg/prune`) deletes every graph file of a project whose main graph the
+hub's tables hold, the newest included: the tools read the tables, so those files are history alone. The worker's
+hourly run never passes it.
 
 **Secrets in old copies.** The git connector redacts secrets before a file enters a corpus (see the README), but
 runs pushed before it did keep them on the hub, in their source blobs and in the graphs built from them. A hub admin

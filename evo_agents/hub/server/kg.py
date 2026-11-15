@@ -73,7 +73,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import kg_named_graphs, kg_settings, tables
+from evo_agents.hub import kg_branches, kg_named_graphs, kg_settings, tables
 from evo_agents.hub.access import Refused, has_role
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, Upload, blob_key, sealed_key
 from evo_agents.hub.jobs import kg_lock
@@ -95,6 +95,7 @@ from evo_agents.hub.kg_ingest import (
     read_run_log,
     refusal,
 )
+from evo_agents.hub.kg_snapshots import Held
 from evo_agents.hub.kg_sources import reads_chats
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.server import audit, kg_run_access, project_archive, rankers, run_audience, system_traces
@@ -107,6 +108,7 @@ from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.kg.graph_scope import DEFAULT_GRAPH
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve_view import ToolError
+from evo_agents.kg.tools import SIGNATURES
 
 log = logging.getLogger(__name__)
 
@@ -708,6 +710,12 @@ async def _named_graph(conn: AsyncConnection, project_id: int, arguments) -> dic
     return None if sources is None else {graph.strip(): sources}
 
 
+def _takes_graph(tool: str) -> bool:
+    """Whether kg tool ``tool`` takes a ``graph`` argument: kg_status and kg_more take none, so the default graph of a
+    run's system is not put in their arguments."""
+    return "graph" in SIGNATURES.get(tool, (set(), set()))[0]
+
+
 def _names_graph(arguments) -> bool:
     graph = arguments.get("graph") if isinstance(arguments, dict) else None
     return isinstance(graph, str) and bool(graph.strip())
@@ -722,6 +730,24 @@ async def snapshot_view(state, project_id: int, graphs: list[BuiltGraph], ceilin
     if held is None or graph is None:
         return None
     return held.view(ceiling.audience if ceiling is not None else frozenset()), graph
+
+
+async def _on_branch(state, conn: AsyncConnection, project_id: int, arguments) -> tuple[dict, Held | str | None]:
+    """(``arguments`` without ``branch``, the snapshot of the draft branch it names or an error to answer with):
+    None for no branch or ``main`` (``evo_agents.hub.kg_branches``)."""
+    if not isinstance(arguments, dict) or "branch" not in arguments:
+        return arguments, None
+    arguments = dict(arguments)
+    name = arguments.pop("branch")
+    if name is None or (isinstance(name, str) and name.strip() in ("", "main")):
+        return arguments, None
+    snapshots = getattr(state, "kg_snapshots", None)
+    if not isinstance(name, str) or snapshots is None:
+        return arguments, "error: branch takes the name of a draft branch of the graph"
+    try:
+        return arguments, await snapshots.branch(conn, project_id, name.strip())
+    except kg_branches.BranchError as exc:
+        return arguments, f"error: {exc}: `evo-agents hub kg branch list` lists them"
 
 
 async def tool_result(
@@ -751,6 +777,9 @@ async def tool_result(
             audience = await reader_audience(conn, user)
         tuning = await kg_settings.read(conn, access.project_id) if graphs else None
         named = await _named_graph(conn, access.project_id, arguments) if graphs else {}
+        arguments, on_branch = (
+            await _on_branch(state, conn, access.project_id, arguments) if graphs else (arguments, None)
+        )
         run_id = user.acts_for_run
         if (
             graphs
@@ -759,6 +788,7 @@ async def tool_result(
             and run_id is not None
             and isinstance(arguments, dict)
             and not _names_graph(arguments)
+            and _takes_graph(tool)
         ):
             default = await system_traces.default_graph(conn, run_id, access.project_id)
             if default is not None:  # the graphs its agent uses in its system (uses_kg)
@@ -775,12 +805,17 @@ async def tool_result(
             f"`evo-agents hub kg graph list --project {project}` lists them; {DEFAULT_GRAPH!r} reads every source"
         )
         return {"content": [{"type": "text", "text": message}], "isError": True}
+    if isinstance(on_branch, str):
+        return {"content": [{"type": "text", "text": on_branch}], "isError": True}
     rules = access.rules
     assert audience is not None  # read above, as there are graphs
     ceiling = rules.ceiling(access.max_level, read_sink(access, sink), audience)
     if narrow is not None:
         ceiling = narrow(ceiling)
-    snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
+    if on_branch is not None:
+        snapshot = on_branch.view(ceiling.audience if ceiling is not None else frozenset()), graphs[0]
+    else:
+        snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     try:
         result = await asyncio.to_thread(
             answer,

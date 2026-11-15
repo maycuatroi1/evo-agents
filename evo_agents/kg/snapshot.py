@@ -64,6 +64,16 @@ def _edge_dict(row) -> dict:
     }
 
 
+def node_dict(row) -> dict:
+    """A node as ``Store.nodes`` reads it, from a row of NODE_COLUMNS: for a reader of rows outside the snapshot."""
+    return _node_dict(row)
+
+
+def edge_dict(row) -> dict:
+    """An edge as ``Store.edges_of`` reads it, from a row of EDGE_COLUMNS."""
+    return _edge_dict(row)
+
+
 def label_pair(label) -> tuple[int, int]:
     """The level and location of a label."""
     return int(label[0]), int(label[1])
