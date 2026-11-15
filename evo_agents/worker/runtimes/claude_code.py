@@ -55,7 +55,10 @@ here.
   tests on a busy worker ran 46 and 57 minutes in release runs #1072 and #1069 of evo-agents, the input ended at 30,
   and Claude Code 2.1.310 then kept the command running but refused the agent's next tool call ("The user doesn't
   want to take this action right now"), so neither run wrote its result. Once the agent has written
-  ``.evo-run/result.json`` it has finished, and its ``result`` ends the input whatever still runs.
+  ``.evo-run/result.json`` it has finished, and its ``result`` ends the input whatever still runs. Only a file written
+  since this session opened counts: a run that goes on in a chat's worktree finds the one its previous run wrote,
+  which ended the input at the first ``result`` of runs #8221 and #8229 of evo-agents while a test command ran in the
+  background, and the turn Claude Code opened when it ended had every tool call refused the same way.
   A decision of a plan run left open is the daemon's, not the adapter's: the turn ends, and the daemon waits for the
   answer and hands it to a new adapter in the same session (``evo_agents.worker.adapter``).
 - ``stop_at_turn_boundary`` ends the input stream at once, so the turn in progress finishes and the CLI exits, a
@@ -151,6 +154,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -434,6 +438,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._ended_in_turn = False  # a background command ended during the turn that runs
         self._unseen: list[str] = []  # background tasks that ended while no turn ran
         self._timer: asyncio.Task | None = None
+        self._opened: float | None = None  # when the session opened (time.time), which a result file must follow
 
     @property
     def session_id(self) -> str | None:
@@ -521,6 +526,7 @@ class ClaudeCodeAdapter(QueueAdapter):
     async def _open(self) -> None:
         environment = self.context.environment
         program = environment.program(self.binary, self.context.env)
+        self._opened = time.time()
         self._dir = Path(tempfile.mkdtemp(prefix="evo-claude-"))
         self.pid_file = self._dir / "pid"
         unset = [key for key in dropped_env(self.context) if key not in DROPPED_ENV]  # the SDK passes the daemon's
@@ -646,8 +652,12 @@ class ClaudeCodeAdapter(QueueAdapter):
             await self._close_input()  # the CLI ends once it has done what it was given
 
     def _result_written(self) -> bool:
+        """The agent wrote its result file in this session: one a previous run left in the worktree does not count."""
         path = Path(self.context.worktree) / runs.RESULT_FILE
-        return path.is_file() and not path.is_symlink()
+        if not path.is_file() or path.is_symlink():
+            return False
+        # a second's slack: the kernel stamps a file's mtime from a coarser clock than time.time()
+        return self._opened is None or path.stat().st_mtime >= self._opened - 1.0
 
     def _background_ended(self, tasks: list[str]) -> None:
         if self._turn_open:

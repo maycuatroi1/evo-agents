@@ -984,6 +984,44 @@ def test_claude_ends_at_a_result_once_result_json_is_written_whatever_runs_in_th
     assert outcome.completed and outcome.summary == "DONE"
 
 
+def test_claude_keeps_the_input_open_for_a_background_command_when_a_previous_run_left_its_result_json(tmp_path):
+    """A run that goes on in a chat's worktree finds the result file of the run before it: that one says nothing of
+    this session, whose turn the CLI opens when its background command ends must still have its input (runs #8221
+    and #8229 of evo-agents had every tool call refused there)."""
+    result_file = tmp_path / "worktree" / runs.RESULT_FILE
+    result_file.parent.mkdir(parents=True, exist_ok=True)
+    result_file.write_text('{"summary": "the previous run"}', encoding="utf-8")
+    an_hour_ago = time.time() - 3600
+    os.utime(result_file, (an_hour_ago, an_hour_ago))
+
+    async def behaviour(cli: FakeCLI) -> None:
+        await _started_in_background(cli)
+        await cli.go.wait()
+        _print(cli, background_end())
+        cli.print(INIT)  # Claude Code opens a turn by itself, for the notification
+        cli.print(_text("DONE"))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    async def during(adapter, events) -> None:
+        await _turn_ended(adapter, events)
+        await asyncio.sleep(0.2)
+        assert ("end_input",) not in adapter.cli.log, "the input stays open while the command runs"
+        adapter.cli.go.set()
+
+    adapter = _claude(tmp_path, behaviour, timers=SLOW)
+    events, outcome = asyncio.run(_collect(adapter, during))
+    assert adapter.cli.log == [
+        ("control", "initialize"),
+        ("user", PROMPT),
+        ("result", "STARTED"),
+        ("result", "DONE"),
+        ("end_input",),
+    ]
+    assert outcome.completed and outcome.summary == "DONE"
+
+
 def test_claude_leaves_a_background_command_that_runs_past_the_wait_and_ends_its_input(tmp_path):
     async def behaviour(cli: FakeCLI) -> None:
         await _started_in_background(cli)
