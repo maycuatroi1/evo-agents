@@ -395,3 +395,49 @@ def test_a_log_a_purge_rewrote_pushes_and_builds_without_its_old_blobs(hub, tmp_
     assert results and not leaked(json.dumps(results))
     found, _ = scan_all(hub, limit=1000)
     assert found == []  # nothing on the hub holds the password
+
+
+def test_the_scan_of_the_graph_tables_reads_its_rows_in_batches_off_the_event_loop(hub_db, monkeypatch):
+    """The patterns take seconds on the rows of a large graph: each batch is read in a thread, so the api's other
+    requests do not wait, and the answer is the one a single pass gives."""
+    import asyncio
+    import threading
+
+    from evo_agents.hub import kg_graph_rows
+    from evo_agents.hub.server import kg_scrub
+    from evo_agents.kg.snapshot import StoreRows
+    from tests.hub.live import add_project
+    from tests.hub.test_kg_postgres_build import make_engine
+
+    pid = add_project(hub_db, "batches")
+    lines = (DEPLOY_LINE, "Install it.", DEPLOY_LINE, "How the app works.", "Nothing here.")
+    nodes = tuple(  # NODE_KEYS, then label_aud
+        (f"docs:doc:{i}", "Document", f"doc {i}", json.dumps({"text": line}), None, None, 0, 0, None, "[]", None)
+        for i, line in enumerate(lines)
+    )
+    rows = StoreRows("sha256:batches", nodes, (), (), {}, ((0, 0), frozenset()))
+    loop_thread, batches = threading.get_ident(), []
+    batch_secrets = kg_scrub._batch_secrets
+
+    def recorded(batch):
+        batches.append((len(batch), threading.get_ident() != loop_thread))
+        return batch_secrets(batch)
+
+    async def run(size: int):
+        monkeypatch.setattr(kg_scrub, "GRAPH_BATCH", size)
+        engine = make_engine(hub_db)
+        try:
+            if size == 2:
+                async with engine.begin() as conn:
+                    await kg_graph_rows.write_graph(conn, pid, None, rows)
+            async with engine.connect() as conn:
+                return await kg_scrub.graph_secrets_in_tables(conn, pid)
+        finally:
+            await engine.dispose()
+
+    monkeypatch.setattr(kg_scrub, "_batch_secrets", recorded)
+    small = asyncio.run(run(2))
+    assert batches == [(2, True), (2, True), (1, True)]  # the nodes; no edge or text row
+    assert small.rows == 5 and small.holding == 2 and small.secrets == {"github_token": 2}
+    batches.clear()
+    assert asyncio.run(run(1000)) == small and batches == [(5, True)]

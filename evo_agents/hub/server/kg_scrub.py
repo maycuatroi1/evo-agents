@@ -76,6 +76,7 @@ DEFAULT_LIMIT = 200
 MAX_LIMIT = 1000
 PAGE_BYTES = 256 * 1024 * 1024  # bytes of objects one page reads at most, beyond its first object
 MAX_PURGE = 1000
+GRAPH_BATCH = 5000  # rows of the graph tables a scan reads, then checks in a thread, at a time
 LIVE_CACHE = 8  # projects whose live blobs and blob paths the api remembers, until their runs change
 
 
@@ -214,16 +215,29 @@ def _graph_rows(project_id: int):
     )
 
 
+def _batch_secrets(batch: list) -> tuple[int, Counter]:
+    """The rows of ``batch`` holding a secret and their secrets by kind. Blocking: the patterns take seconds on the
+    rows of a large graph."""
+    holding, kinds = 0, Counter()
+    for first, second in batch:
+        counts = row_secrets(first, second)
+        if counts:
+            holding += 1
+            kinds.update(counts)
+    return holding, kinds
+
+
 async def graph_secrets_in_tables(conn: AsyncConnection, project_id: int) -> ScrubGraph:
-    """The secrets of the graph the hub's tables hold for the project: what the kg tools read."""
+    """The secrets of the graph the hub's tables hold for the project: what the kg tools read. The rows come
+    GRAPH_BATCH at a time and each batch is read in a thread, so the api's other requests do not wait on the
+    patterns."""
     rows, holding, kinds = 0, 0, Counter()
     for query in _graph_rows(project_id):
-        async for first, second in await conn.stream(query.execution_options(yield_per=1000)):
-            rows += 1
-            counts = row_secrets(first, second)
-            if counts:
-                holding += 1
-                kinds.update(counts)
+        result = await conn.stream(query.execution_options(yield_per=GRAPH_BATCH))
+        async for batch in result.partitions(GRAPH_BATCH):
+            found, by_kind = await asyncio.to_thread(_batch_secrets, list(batch))
+            rows, holding = rows + len(batch), holding + found
+            kinds.update(by_kind)
     return ScrubGraph(rows=rows, holding=holding, secrets=dict(sorted(kinds.items())))
 
 
@@ -418,7 +432,10 @@ async def scan(state, project: str, after: str | None, limit: int) -> ScrubPage:
     read = await _read_rows(state, project, project_id, rows)
     async with state.engine.begin() as conn:
         found = await _found(conn, state, project_id, rows, read)
-        graph = await graph_secrets_in_tables(conn, project_id) if after is None else None
+    graph = None
+    if after is None:
+        async with state.engine.connect() as conn:
+            graph = await graph_secrets_in_tables(conn, project_id)
     more = cut or len(rows) == limit
     return ScrubPage(
         project=project,
