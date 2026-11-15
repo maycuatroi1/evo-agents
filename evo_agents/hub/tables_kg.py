@@ -3,8 +3,9 @@ as its own attributes (``tables.kg_ingests``, ``tables.kg_configs``, ``tables.kg
 ``tables.kg_source_files``, ``tables.kg_health``, ``tables.kg_review_dismissals``, ``tables.kg_decisions``,
 ``tables.kg_decision_events``): queries name them there.
 
-kg_ingests (0001) holds the connector runs machines pushed, with what each log says of its source (0252), kg_configs (0006) the knowledge config the build reads,
-kg_pending_runs (0006) the runs waiting for their blobs, and kg_builds (0006, 0008) each build with its artifact
+kg_ingests (0001) holds the connector runs machines pushed, with what each log says of its source (0252, 0253),
+kg_configs (0006) the knowledge config the build reads, kg_pending_runs (0006) the runs waiting for their blobs, and
+kg_builds (0006, 0008) each build with its artifact
 (``evo_agents.hub.server.kg``, ``evo_agents.hub.kg_build``). kg_builds.coverage, kg_source_files and kg_health (0055)
 say how healthy the graph is over time: what each build covers, the files each git source holds in the latest
 build, and each measure of the graph against the default branches on the forge (``evo_agents.hub.server.kg_health``).
@@ -122,6 +123,8 @@ def _run_facts() -> tuple[Column, ...]:
         Column("run_started_at", Text),
         Column("run_finished_at", Text),
         Column("cursor", JSONB(none_as_null=True)),  # a Python None is SQL NULL, not JSON null
+        Column("held", JSONB(none_as_null=True)),  # 0253: the removals the run's deletion guard held back
+        Column("listed", JSONB(none_as_null=True)),  # 0253: the scopes the run listed completely
     )
 
 

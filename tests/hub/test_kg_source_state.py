@@ -19,7 +19,7 @@ if not pg.DSN:
 from sqlalchemy import Text, cast, select, update
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from evo_agents.hub import tables
+from evo_agents.hub import kg_ingest, tables
 from evo_agents.hub.kg_source_state import fill_run_facts
 from evo_agents.kg.sync import sync_project
 from tests.hub.test_kg import PROJECT, Machine, doc, hub, latest, push, query, run_jobs  # noqa: F401
@@ -33,8 +33,9 @@ def state(hub, source: str = "docs", member: str = "alice", **params) -> dict:
     return response.json()
 
 
-def sync(machine: Machine, *items: dict, cursor=None) -> str:
-    machine.files["docs"].write_text(json.dumps({"items": list(items), "cursor": cursor}), encoding="utf-8")
+def sync(machine: Machine, *items: dict, cursor=None, **spec) -> str:
+    spec = {"items": list(items), "cursor": cursor, **spec}
+    machine.files["docs"].write_text(json.dumps(spec), encoding="utf-8")
     (result,) = sync_project(machine.project(), ["docs"])
     assert result.ok, result.issues
     return result.run_id
@@ -125,3 +126,67 @@ def test_a_run_whose_log_says_no_end_ends_when_received_and_one_whose_log_is_gon
     held = state(hub)
     assert (held["unread"], held["last_run"]["status"], held["last_ok"]) == (0, "failed", None)
     assert asyncio.run(fill()) == 0
+
+
+def test_the_removals_a_guard_held_back_and_the_runs_no_build_read_yet_are_in_the_state(hub, tmp_path):
+    laptop = Machine(tmp_path, "laptop")
+    sync(laptop, doc("guide", "How the app works."), doc("setup", "Install it."))
+    assert push(hub, laptop).ok
+    assert (state(hub)["unbuilt"], state(hub)["held"]) == (1, [])  # no build yet: every run is unbuilt
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert latest(hub)["status"] == "succeeded" and state(hub)["unbuilt"] == 0
+
+    emptied = sync(laptop)  # an empty listing would remove both: the deletion guard holds them back
+    assert push(hub, laptop).ok
+    held = state(hub)
+    assert held["unbuilt"] == 1 and held["last_ok"]["run_id"] == emptied
+    (removal,) = held["held"]
+    assert (removal["run_id"], removal["scope"]) == (emptied, "docs:")
+    assert removal["reason"].startswith("empty listing")
+    assert sorted(removal["ids"]) == ["docs:doc:guide", "docs:doc:setup"]
+    ingests = tables.kg_ingests
+    (facts,) = query(hub.db, select(ingests.c.held, ingests.c.listed).where(ingests.c.held.is_not(None)))
+    assert facts == ([{key: removal[key] for key in ("scope", "reason", "ids")}], ["docs:"])
+
+    sync(laptop, doc("note", "A new one."), listing=False)  # lists nothing completely: the hold stays
+    assert push(hub, laptop).ok
+    assert state(hub)["held"] == [removal]
+
+    sync(laptop, doc("guide", "How the app works."), doc("setup", "Install it."))  # lists docs: and holds none
+    assert push(hub, laptop).ok
+    assert (state(hub)["held"], state(hub)["unbuilt"]) == ([], 3)
+
+
+def test_the_hold_of_each_scope_is_that_of_the_newest_run_that_listed_it(hub, tmp_path):
+    laptop = Machine(tmp_path, "laptop")
+    kinds = ["doc", "memo"]
+    sync(laptop, doc("guide", "How the app works."), doc("minutes", "We met.", kind="memo"), kinds=kinds)
+    assert push(hub, laptop).ok
+    emptied = sync(laptop, kinds=kinds)  # both scopes would lose every item: both held back
+    assert push(hub, laptop).ok
+    assert [(r["run_id"], r["scope"], r["ids"]) for r in state(hub)["held"]] == [
+        (emptied, "docs:doc:", ["docs:doc:guide"]),
+        (emptied, "docs:memo:", ["docs:memo:minutes"]),
+    ]
+
+    sync(laptop, doc("guide", "How the app works."), kinds=["doc"])  # lists docs:doc: only, which holds none now
+    assert push(hub, laptop).ok
+    assert [(r["run_id"], r["scope"]) for r in state(hub)["held"]] == [(emptied, "docs:memo:")]
+
+
+def test_a_hold_the_hub_cannot_keep_leaves_the_older_hold_of_its_scope(hub, tmp_path, monkeypatch):
+    laptop = Machine(tmp_path, "laptop")
+    sync(laptop, doc("guide", "How the app works."), doc("setup", "Install it."))
+    assert push(hub, laptop).ok
+    emptied = sync(laptop)
+    assert push(hub, laptop).ok
+    (removal,) = state(hub)["held"]
+    assert removal["run_id"] == emptied
+
+    monkeypatch.setattr(kg_ingest, "MAX_HELD_IDS", 1)  # the next run holds back 2 ids: more than the hub keeps
+    sync(laptop)
+    assert push(hub, laptop).ok
+    ingests = tables.kg_ingests
+    newest = query(hub.db, select(ingests.c.held, ingests.c.listed).order_by(ingests.c.run_id.desc()).limit(1))
+    assert newest == [(None, None)]  # it names no scope it listed, so it clears none
+    assert state(hub)["held"] == [removal]

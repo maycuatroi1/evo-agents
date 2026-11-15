@@ -6351,3 +6351,14 @@ def test_0252_records_the_facts_of_a_run_at_ingest_and_going_back_drops_them(hub
     move_to(hub_db, "0251", down=True)
     assert not facts & columns(hub_db, "kg_ingests") and not facts & columns(hub_db, "kg_pending_runs")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0252") :]
+
+
+def test_0253_keeps_the_removals_a_run_held_back_and_the_scopes_it_listed_and_going_back_drops_them(hub_db):
+    added = {"held", "listed"}
+    move_to(hub_db, "0252")
+    assert not added & columns(hub_db, "kg_ingests")
+    move_to(hub_db, "0253")
+    assert added <= columns(hub_db, "kg_ingests") and added <= columns(hub_db, "kg_pending_runs")
+    move_to(hub_db, "0252", down=True)
+    assert not added & columns(hub_db, "kg_ingests") and not added & columns(hub_db, "kg_pending_runs")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0253") :]

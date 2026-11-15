@@ -39531,6 +39531,17 @@ export interface components {
             /** Checked At */
             checked_at: string | null;
         };
+        /** Removal */
+        Removal: {
+            /** Run Id */
+            run_id: string;
+            /** Scope */
+            scope: string;
+            /** Reason */
+            reason: string;
+            /** Ids */
+            ids: string[];
+        };
         /** Replay */
         Replay: {
             /** Id */
@@ -43859,6 +43870,16 @@ export interface components {
              * @default false
              */
             items_cut: boolean;
+            /**
+             * Unbuilt
+             * @default 0
+             */
+            unbuilt: number;
+            /**
+             * Held
+             * @default []
+             */
+            held: components["schemas"]["Removal"][];
         };
         /** SpanOut */
         SpanOut: {

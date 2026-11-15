@@ -169942,6 +169942,37 @@
           ],
           "title": "ReleaseTag"
         },
+        "Removal": {
+          "properties": {
+            "run_id": {
+              "type": "string",
+              "title": "Run Id"
+            },
+            "scope": {
+              "type": "string",
+              "title": "Scope"
+            },
+            "reason": {
+              "type": "string",
+              "title": "Reason"
+            },
+            "ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Ids"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "scope",
+            "reason",
+            "ids"
+          ],
+          "title": "Removal"
+        },
         "Replay": {
           "properties": {
             "id": {
@@ -179642,6 +179673,19 @@
               "type": "boolean",
               "title": "Items Cut",
               "default": false
+            },
+            "unbuilt": {
+              "type": "integer",
+              "title": "Unbuilt",
+              "default": 0
+            },
+            "held": {
+              "items": {
+                "$ref": "#/components/schemas/Removal"
+              },
+              "type": "array",
+              "title": "Held",
+              "default": []
             }
           },
           "type": "object",

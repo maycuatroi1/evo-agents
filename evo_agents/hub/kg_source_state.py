@@ -18,7 +18,12 @@ From the runs of the source in kg_ingests and what each log says of it (``evo_ag
   first build that succeeds (``fill_run_facts``).
 - ``items``: the live items of the source in the latest build's corpus (kg_corpus_items of main), each id with its
   rev and rev_time, which a sync derives the deletions of a complete listing from. Runs pushed since that build are
-  not in it yet; ``scope`` keeps the ids that start with it.
+  not in it yet; ``scope`` keeps the ids that start with it. ``unbuilt``: how many runs of the source the hub received
+  after the latest build of main started, which its items do not show yet (all of them when there is no build).
+- ``held``: the removals the deletion guard held back (migration 0253), which ``kg sync --accept-removals`` applies:
+  for each scope, those of the newest ok run that listed it completely (``kg_ingests.listed``). A run that lists a
+  scope completely works its removals out again, so one that holds none of it clears that scope's hold, as the run of
+  ``--accept-removals`` does for the scopes it applies; a run that does not list a scope leaves its hold as it is.
 """
 
 from __future__ import annotations
@@ -29,7 +34,8 @@ import uuid
 from pathlib import Path
 
 from pydantic import BaseModel
-from sqlalchemy import Text, cast, func, select, update
+from sqlalchemy import Text, cast, func, select, true, update
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import tables
@@ -63,6 +69,13 @@ class Item(BaseModel):
     rev_time: str | None
 
 
+class Removal(BaseModel):
+    run_id: str  # the run that held them back
+    scope: str
+    reason: str
+    ids: list[str]
+
+
 class SourceState(BaseModel):
     source: str
     runs: int
@@ -73,6 +86,8 @@ class SourceState(BaseModel):
     lineage: Lineage | None
     items: list[Item]
     items_cut: bool = False  # more than MAX_ITEMS items: only the first are listed
+    unbuilt: int = 0
+    held: list[Removal] = []
 
 
 def _stamp(at: dt.datetime) -> str:
@@ -115,6 +130,22 @@ async def source_state(conn: AsyncConnection, project_id: int, source: str, scop
         )
     ).one_or_none()
     lineage = Lineage(run_id=found[0], lineage=found[1], epoch=found[2]) if found else None
+    held_back = await _held(conn, of_source)
+
+    heads, builds = tables.kg_graph_heads, tables.kg_builds
+    built = (
+        select(builds.c.started_at)
+        .join(heads, heads.c.build_id == builds.c.id)
+        .where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
+        .scalar_subquery()
+    )
+    unbuilt = (
+        await conn.execute(
+            select(func.count())
+            .select_from(ingests)
+            .where(*of_source, (built.is_(None)) | (ingests.c.received_at >= built))
+        )
+    ).scalar_one()
 
     corpus = tables.kg_corpus_items
     item_id = corpus.c.body["id"].astext
@@ -135,7 +166,25 @@ async def source_state(conn: AsyncConnection, project_id: int, source: str, scop
         lineage=lineage,
         items=items,
         items_cut=len(rows) > MAX_ITEMS,
+        unbuilt=unbuilt,
+        held=held_back,
     )
+
+
+async def _held(conn: AsyncConnection, of_source: tuple) -> list[Removal]:
+    """The removals held back in each scope by the newest ok run that listed it completely."""
+    ingests = tables.kg_ingests
+    scope = func.jsonb_array_elements_text(ingests.c.listed).table_valued("value").lateral("scope")
+    rows = await conn.execute(
+        select(scope.c.value, cast(ingests.c.run_id, Text), ingests.c.held)
+        .select_from(ingests.join(scope, true()))
+        .where(*of_source, ingests.c.status == "ok", ingests.c.listed.is_not(None))
+        .ext(distinct_on(scope.c.value))
+        .order_by(scope.c.value, ingests.c.run_id.desc())
+    )
+    return [
+        Removal(run_id=run, **removal) for name, run, held in rows for removal in held or () if removal["scope"] == name
+    ]
 
 
 def _facts_of(logs: Path, run_ids: list[str]) -> dict[str, dict]:

@@ -36,7 +36,8 @@ def run(ctx):
         yield hello("fake", "1", list_complete=True, tombstones=True, rev_exact=True)
     emitted = 0
     for raw in spec.get("items", []):
-        item = make_item(sid, raw["key"], raw["text"], raw["rev"], raw.get("rev_time", "2026-10-01T00:00:00Z"))
+        rev_time = raw.get("rev_time", "2026-10-01T00:00:00Z")
+        item = make_item(sid, raw["key"], raw["text"], raw["rev"], rev_time, raw.get("kind", "doc"))
         if raw.get("label"):  # the item's own label, which raises the source's
             item["label"] = raw["label"]
         if raw.get("path"):  # the file the item is, as a file connector gives it
@@ -54,6 +55,10 @@ def run(ctx):
         yield {"type": "tombstone", "id": f"{sid}:doc:{key}"}
     if spec.get("cursor") is not None:
         yield {"type": "state", "cursor": spec["cursor"]}
-    if spec.get("listing", True):
+    if spec.get("kinds"):  # a complete listing of each of these kinds of item, instead of one of the whole source
+        for kind in spec["kinds"]:
+            count = sum(1 for raw in spec.get("items", []) if raw.get("kind", "doc") == kind)
+            yield {"type": "listing", "scope": f"{sid}:{kind}:", "complete": True, "count": count}
+    elif spec.get("listing", True):
         yield {"type": "listing", "scope": f"{sid}:", "complete": True, "count": emitted}
     yield {"type": "closed", "status": "ok"}
