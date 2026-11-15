@@ -46,6 +46,7 @@ from evo_agents.hub.server.runs.service.profiles import Asked, Chosen, choose
 from evo_agents.hub.server.runs.service.views import (
     Activity,
     busy,
+    cancel_first,
     lock_plan,
     plan_activity,
     plan_busy,
@@ -433,7 +434,8 @@ def no_plan_run(activity: Activity, plan_id: str) -> None:
     if activity.plan_run is not None:
         raise HTTPException(
             409,
-            f"{plan_busy(plan_id, activity.plan_run)}: its steps are that run's until it ends; nothing was dispatched",
+            f"{plan_busy(plan_id, activity.plan_run)}: its steps are that run's until it ends; nothing was dispatched: "
+            f"{cancel_first(activity.plan_run)}",
         )
     if activity.trace is not None:
         raise HTTPException(
@@ -595,7 +597,8 @@ async def queue_plan_run(conn: AsyncConnection, user: Principal, project: str, b
     await lock_plan(conn, access.project_id, body.plan_id)
     activity = await plan_activity(conn, access.project_id, body.plan_id)
     if activity.plan_run is not None:
-        raise HTTPException(409, f"{plan_busy(body.plan_id, activity.plan_run)}; nothing was dispatched")
+        busy_now = plan_busy(body.plan_id, activity.plan_run)
+        raise HTTPException(409, f"{busy_now}; nothing was dispatched: {cancel_first(activity.plan_run)}")
     no_plan_run(activity, body.plan_id)  # a system's trace that runs the plan
     if activity.steps:
         key, active = min(activity.steps.items(), key=lambda item: item[1].id)

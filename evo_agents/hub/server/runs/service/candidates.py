@@ -34,7 +34,7 @@ from evo_agents.hub.accounts import account_state
 from evo_agents.hub.chats import chat_link
 from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select
 from evo_agents.hub.server.runs.models import RunId
-from evo_agents.hub.server.runs.service.controls import owned_run
+from evo_agents.hub.server.runs.service.controls import controlled_run
 from evo_agents.hub.server.runs.service.worker_fit import usable_runtimes, worker_problems, workers_of
 from evo_agents.hub.server.security import Principal
 
@@ -380,6 +380,8 @@ async def candidates_of(
     whatever state the run is in on it (the hub reads them in the transaction that fails the run); ``role`` is the
     owner's role in the project, which decides whether an agent is fit."""
     run = await _run(conn, run_id)
+    if run.dispatched_by != owner_id:  # an admin's rerun of another member's run: a worker of theirs is their own
+        run = SimpleNamespace(**run._asdict() | {"dispatched_by": owner_id})
     repos = _repos(run)
     rows = (await conn.execute(workers_of(owner_id, project_id))).all()
     accounts = await _accounts(conn, owner_id, project_id, run_id, {r.id: r.name for r in rows})
@@ -421,11 +423,13 @@ async def candidates_of(
 
 async def rerun_candidates(engine, user: Principal, project: str, run_id: RunId) -> RerunCandidates:
     """The candidates to run the failed run ``run_id`` of ``project`` again, or to take the queued run ``run_id`` now
-    (``queue_fit``), for its owner alone (``owned_run``); 409 for a run in another state."""
+    (``queue_fit``), for its owner or an admin of the project (``controlled_run``); 409 for a run in another state. An
+    admin's rerun of another member's failed run is the admin's own run, so its candidates are the admin's workers,
+    accounts and projects, never the dispatcher's."""
     from evo_agents.hub.server.runs.service.queue_fit import queued_candidates  # it reads this module's models
 
     async with engine.begin() as conn:
-        access, owned = await owned_run(conn, user, project, run_id, "list candidates for")
+        access, owned, behalf = await controlled_run(conn, user, project, run_id, "list candidates for")
         if owned.state == "queued":
             return await queued_candidates(conn, run_id, access.name, owned.kind)
         if owned.state != "failed":
@@ -439,7 +443,7 @@ async def rerun_candidates(engine, user: Principal, project: str, run_id: RunId)
             project=access.name,
             project_id=access.project_id,
             role=access.role,
-            owner_id=owned.dispatched_by,
+            owner_id=owned.dispatched_by if behalf is None else user.user_id,
             kind=owned.kind,
             state=owned.state,
             run_id=run_id,

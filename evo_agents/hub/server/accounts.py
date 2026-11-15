@@ -330,7 +330,12 @@ async def _shared_account(
     refusal = HTTPException(404, f"{owner} shared no account named {name} with you")
     if row is None:
         raise refusal
-    covering = select(cs.c.id).where(cs.c.secret_id == row.id, live_share(), await grantee_clause(conn, user.user_id))
+    covering = select(cs.c.id).where(
+        cs.c.secret_id == row.id,
+        live_share(),
+        cs.c.run_id.is_(None),  # one for a single run lends the account to no run of theirs but that one
+        await grantee_clause(conn, user.user_id),
+    )
     ids = set((await conn.execute(covering)).scalars())
     took = select(cl.c.id).where(cl.c.secret_id == row.id, cl.c.principal_id == user.user_id).limit(1)
     if not ids and (await conn.execute(took)).first() is None:

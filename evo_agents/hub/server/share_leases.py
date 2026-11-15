@@ -8,11 +8,14 @@ for a run without one (a local run, one queued before schema 0113). Each lease r
 (``account_views``). A share's level is source 6 of the run's autonomy from the lease that lends it on
 (``run_autonomy.share_levels``).
 
-A share covers a run when it is not revoked, its end has not passed, it is for the run's project, and its grantee is
-the principal (``user``), a live unit holding the principal's live primary seat or a unit above that seat
-(``unit``), or anyone (``all``). Its secret is live, of a kind the hub leases, neither the principal's own nor the run
-owner's, and still bound to the project on any worker of its owner; it counts as on this worker when it is bound to
-this one. A run of the Curator and a release run never take a shared secret: their charter and their runtime's login
+A share covers a run when it is not revoked, its end has not passed, it is for the run's project, it is for every run
+or for this one (or a run this one resumes: ``for_run``), and its grantee is the principal (``user``), a live unit
+holding the principal's live primary seat or a unit above that seat (``unit``), or anyone (``all``). Its secret is
+live, of a kind the hub leases, neither the principal's own nor the run owner's, and still bound to the project on any
+worker of its owner, unless the share is for one run: that is the value an admin of the project gave for another
+member's run, which they keep as their secret for it alone (``credential_answers``), bound nowhere; it counts as on
+this worker when it is bound to this one. ``account_choice`` takes the secret of a share for one run for its variable
+before any other, since it was given for that run. A run of the Curator and a release run never take a shared secret: their charter and their runtime's login
 are their own.
 
 A run that holds a lease under a share keeps being lent it. Otherwise the share lends only when each of these holds,
@@ -199,6 +202,20 @@ async def grantee_clause(conn: AsyncConnection, principal_id: int):
     )
 
 
+def for_run(run_id: int):
+    """A share that lends to run ``run_id``: one for every run (run_id null), or one for that run or a run it resumes,
+    the chain ``runs.resume_of_run_id`` follows back (0247)."""
+    r, cs = tables.runs, tables.credential_shares
+    chain = select(r.c.id, r.c.resume_of_run_id).where(r.c.id == run_id).cte("resumed_from", recursive=True)
+    earlier = r.alias("earlier")
+    chain = chain.union_all(
+        select(earlier.c.id, earlier.c.resume_of_run_id).join_from(
+            earlier, chain, earlier.c.id == chain.c.resume_of_run_id
+        )
+    )
+    return or_(cs.c.run_id.is_(None), cs.c.run_id.in_(select(chain.c.id)))
+
+
 def live_share():
     """A share neither revoked nor past its end."""
     cs = tables.credential_shares
@@ -224,6 +241,7 @@ async def shared_secrets(
             *_secret_columns(),
             _on_worker(run.project_id, worker_id).label("on_worker"),
             cs.c.id.label("share_id"),
+            cs.c.run_id.is_not(None).label("for_run"),
             cs.c.usage_ceiling_pct,
             cs.c.max_running,
             cs.c.budget_usd,
@@ -235,15 +253,17 @@ async def shared_secrets(
         .outerjoin(a, a.c.secret_id == s.c.id)
         .where(
             live_share(),
+            for_run(run.id),
             exists().where(csp.c.share_id == cs.c.id, csp.c.project_id == run.project_id),
             await grantee_clause(conn, run.principal),
             s.c.owner_id.not_in({run.owner_id, run.principal}),
             s.c.kind.in_(kinds),
             s.c.deleted_at.is_(None),
             _live(refreshable),
-            exists().where(b.c.secret_id == s.c.id, b.c.project_id == run.project_id),
+            # a share for one run lends a secret its owner keeps for that run alone, bound nowhere
+            or_(cs.c.run_id.is_not(None), exists().where(b.c.secret_id == s.c.id, b.c.project_id == run.project_id)),
         )
-        .order_by(s.c.name, s.c.id, cs.c.id)
+        .order_by(s.c.name, s.c.id, cs.c.run_id.is_(None), cs.c.id)
     )
     rows = (await conn.execute(statement.with_for_update(read=True, of=(s, cs)) if lock else statement)).all()
     if not rows:

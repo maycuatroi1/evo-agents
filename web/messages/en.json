@@ -7591,7 +7591,8 @@
       "ops_cap": "The ops threads of a system reached their daily cap",
       "ops_paused": "The ops of a system paused after failed runs",
       "ops_digest": "The daily digest of a system's ops",
-      "cron_paused": "A cron job paused: its owner lost a role or seat, or its runs failed"
+      "cron_paused": "A cron job paused: its owner lost a role or seat, or its runs failed",
+      "run_admin_action": "An admin of the project acted on a run you dispatched"
     },
     "item": {
       "unread": "Unread",

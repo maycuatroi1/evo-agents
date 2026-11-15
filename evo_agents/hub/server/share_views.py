@@ -44,6 +44,11 @@ class CredentialShare(BaseModel):
     created_at: datetime
     revoked_at: datetime | None
     revoked_by: str | None
+    run_id: int | None = Field(
+        None,
+        description="the one run it lends to, and the runs that resume it: a value an admin of the project gave for "
+        "another member's run; null for every run of its grantee in its projects",
+    )
 
 
 def share_query():
@@ -77,6 +82,7 @@ def share_query():
             cs.c.created_at,
             cs.c.revoked_at,
             revoker.c.login.label("revoked_by"),
+            cs.c.run_id,
         )
         .join_from(cs, s, s.c.id == cs.c.secret_id)
         .outerjoin(grantee, grantee.c.id == cs.c.grantee_user_id)

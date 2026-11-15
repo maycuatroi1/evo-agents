@@ -791,13 +791,15 @@ it, the share keeps `terms_ack_at`, and the audit gets a row `share.terms_ack` h
 
 A run's principal is the person it acts for (`runs.principal_id`, `docs/autonomy.md`), the member who dispatched it
 for a run queued before schema 0113; each lease records it (`credential_leases.principal_id`, migration 0106). A share
-covers a run when it is not revoked, has not ended, lists the run's project, and its grantee is the
-principal, a live unit holding the principal's live primary seat or a unit above it, or everyone. The shared secret
-must still be bound to the project; a run of the Curator and a release run never take one
-(`evo_agents/hub/server/share_leases.py`).
+covers a run when it is not revoked, has not ended, lists the run's project, is for every run or for this one (a share
+with a `run_id` covers that run and the runs that resume it), and its grantee is the principal, a live unit holding the
+principal's live primary seat or a unit above it, or everyone. The shared secret must still be bound to the project,
+unless the share is for one run: the value an admin gave for that run, bound nowhere. A run of the Curator and a
+release run never take one (`evo_agents/hub/server/share_leases.py`).
 
 The principal's own secrets come first: a shared account is taken only when none of their own for the variable is
-ready (`run_accounts.how` is `shared`), and a shared git secret only for an origin none of their own covers. A share
+ready (`run_accounts.how` is `shared`), except under a share for this run alone, whose secret comes first for its
+variable since it was given for the run, and a shared git secret only for an origin none of their own covers. A share
 lends nothing when its owner paused the account or it cools down (the owner's runs go first and may still take it
 cooling), when the highest usage among the windows of its last report whose reset has not passed reaches
 `usage_ceiling_pct` (unknown usage lends; the CLI reports a window's usage as a fraction of its limit, which the
@@ -1172,6 +1174,17 @@ something else is 409 and changes nothing. `as_me` and `both` let the run run as
 does (a run of the Curator or a release run never does; 409), with the audit row `run_access.grant` ending
 `by=decision:<id>`. Only the member who dispatched the run gives either (403 for a lead the decision escalated to, who
 may still refuse); a run's token answers no decision at all.
+
+An admin of the run's project (the admin role on it, or a hub admin holding a grant on it) may answer another member's
+request too, with the value alone: `as_me`, `both` and `found` lend the dispatcher's own account or secret, which are
+theirs to give (403). The value becomes the admin's own secret of kind `env` of the proposed name (its value replaced
+when the admin holds that name for the variable already, 409 when they hold it for something else), bound to no
+project, and a share of it to the run's principal for the run's project and for that run alone
+(`credential_shares.run_id`, migration 0247, an audit row `share.create` ending `run=<id>`) lends it to the run and to
+the runs that resume it, before any other secret for the variable. Nothing is written under the dispatcher's name, no
+other run of theirs is lent it, a personal subscription's login is refused (its share needs the terms warning), and the
+admin ends it by revoking the share (`hub secret` lists it with its `run_id`). The run's log and a `run_admin_action`
+notice to the dispatcher say who answered.
 
 On the web the decision says what the run asks for among its grounds, to anyone who reads it. The owner's form opens on
 `value` when the request names a variable (nothing is picked for the account alone) with a password field for it: no

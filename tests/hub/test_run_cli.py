@@ -1057,7 +1057,10 @@ def test_the_owner_steers_and_ends_a_run_and_others_are_refused(hub, monkeypatch
     assert early.code == 1 and "only a run in review is approved" in early.err
     moved(hub.client, worker, run_id, "running", "verifying", "review", commit_sha=SHA, verify=PASSED)
     other = runs_of(hub, monkeypatch, capsys, "other", "approve", run)
-    assert other.code == 1 and f"only {OWNER}, who dispatched run {run_id}, may approve it" in other.err
+    assert (
+        other.code == 1
+        and f"only {OWNER}, who dispatched run {run_id}, or an admin of project {PROJECT}, may approve it" in other.err
+    )
     approved = ok(runs_of(hub, monkeypatch, capsys, "owner", "approve", run))
     assert approved.out == f"Approved run #{run_id}: it is done, and so is step 2 (Queue) of plan {PLAN}.\n"
     assert step(hub.client, hub.headers["owner"], 2)["status"] == "done"
@@ -1174,7 +1177,9 @@ def test_a_plan_run_is_dispatched_listed_and_shown(hub, monkeypatch, capsys):
     assert (run["pinned_worker_id"], run["dispatched_by"], run["repos"]) == (None, OWNER, REPOS)
     busy = runs_of(hub, monkeypatch, capsys, "owner", "plan", FLEET)
     assert busy.code == 1 and busy.err == (
-        f"error: plan {FLEET} has plan run #{run['id']}, queued, dispatched by {OWNER}; nothing was dispatched\n"
+        f"error: plan {FLEET} has plan run #{run['id']}, queued, dispatched by {OWNER}; nothing was dispatched: cancel "
+        f"it first with `evo-agents hub run cancel {run['id']}` (its dispatcher or an admin of the project may), then "
+        "dispatch again once it is cancelled\n"
     )
     reader = runs_of(hub, monkeypatch, capsys, "reader", "plan", FLEET)
     assert reader.code == 1 and "needs the writer role" in reader.err
@@ -1339,7 +1344,11 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
 
     # answering: another member, an option the decision does not have, then the owner
     other = decisions_of(hub, monkeypatch, capsys, "other", "answer", number, "--option", "postgres")
-    assert other.code == 1 and f"only {OWNER}, who dispatched its run, may answer decision {number}" in other.err
+    assert (
+        other.code == 1
+        and f"only {OWNER}, who dispatched its run, or an admin of project {PROJECT}, may answer decision {number}"
+        in other.err
+    )
     wrong = decisions_of(hub, monkeypatch, capsys, "owner", "answer", number, "--option", "mysql")
     assert wrong.code == 1 and "has no option 'mysql'" in wrong.err
     answered = ok(

@@ -6161,3 +6161,35 @@ def test_0246_gives_probe_runs_where_their_arms_ran_tip_for_those_with_sessions(
     assert "arms_at" not in columns(hub_db, "curator_probe_runs")
     assert query(hub_db, select(func.count()).select_from(pw)) == [(2,)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0246") :]
+
+
+def test_0247_gives_credential_shares_a_run_for_a_member_alone_and_going_back_revokes_those(hub_db):
+    move_to(hub_db, "0246")
+    assert "run_id" not in columns(hub_db, "credential_shares")
+    t = hub_tables
+    sealed = {"sealed": b"s" * 17, "nonce": b"n" * 12, "key_id": "0123abcd"}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        secret = {"owner_id": ids["user"], "name": "deploy-key", "kind": "env", "env_var": "DEPLOY_KEY", **sealed}
+        secret_id = one(conn, insert(t.secrets).values(secret).returning(t.secrets.c.id))
+        share = {
+            "secret_id": secret_id,
+            "grantee_kind": "user",
+            "grantee_user_id": ids["user"],
+            "created_by": ids["user"],
+        }
+        before = one(conn, insert(t.credential_shares).values(share).returning(t.credential_shares.c.id))
+    move_to(hub_db, "0247")
+    cs = t.credential_shares
+    assert query(hub_db, select(cs.c.id, cs.c.run_id)) == [(before, None)], "every share before lends to every run"
+    with live.connect(hub_db) as conn:
+        made = insert(cs).values({**share, "run_id": run_id}).returning(cs.c.id)
+        for_run = one(conn, made)
+        with pytest.raises(errors.CheckViolation):  # a share for one run names one member
+            conn.execute(insert(cs).values({**share, "grantee_kind": "all", "grantee_user_id": None, "run_id": run_id}))
+    move_to(hub_db, "0246", down=True)
+    assert "run_id" not in columns(hub_db, "credential_shares")
+    revoked = select(cs.c.id, cs.c.revoked_at.is_not(None)).order_by(cs.c.id)
+    assert query(hub_db, revoked) == [(before, False), (for_run, True)], "one for a run would lend to every run"
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0247") :]

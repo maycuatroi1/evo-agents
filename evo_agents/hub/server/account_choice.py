@@ -6,6 +6,8 @@ project on any of their workers or on this one, live and not past their end, and
 owner that their shares lend now; for a run of the Curator only those its charter lists) and gives back one for each
 variable:
 
+0. the secret a share for this run alone lends (``share_leases.for_run``): the value an admin of the project gave for
+   it in answer to its credential request, which comes before any other for its variable;
 1. the account the run took already (run_accounts), the one its owner picked when dispatching it among them, or the
    one the run it resumes took, while it is still one of those secrets: a run keeps its account on every ask for its
    leases, whatever happened to the account since; else the secret of a lease the run holds for that variable;
@@ -63,6 +65,7 @@ class Secret(Protocol):
     env_var: str | None
     on_worker: bool
     share_id: int | None  # the share another member lent it under; None for the owner's own
+    for_run: bool  # that share is for this run alone (``share_leases.for_run``): it comes first for its variable
     agent: str | None  # the handle of the agent profile that owns it; None for a member's
 
 
@@ -180,11 +183,20 @@ def _fallback(env_var: str, secrets: list[Secret], states: dict[int, _State], st
     return _Choice(secret, "cooling", note=note)
 
 
+def _given_for_run(secrets: list[Secret]) -> Secret | None:
+    """The secret a share for this run alone lends (the first by id), given for it in answer to its request."""
+    given = [secret for secret in secrets if getattr(secret, "for_run", False)]
+    return min(given, key=lambda secret: secret.id) if given else None
+
+
 def _decide(
     env_var: str, secrets: list[Secret], states: dict[int, _State], kept: int | None, held: set[int], context: tuple
 ) -> _Choice:
     strategy, curator = context
     by_id = {secret.id: secret for secret in secrets}
+    given = _given_for_run(secrets)
+    if given is not None:
+        return _Choice(given, None if kept == given.id else "shared")
     if kept in by_id:
         return _Choice(by_id[kept], None)
     tiers = _tiers(secrets, curator)

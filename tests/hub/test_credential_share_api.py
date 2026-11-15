@@ -55,6 +55,7 @@ SHARE_FIELDS = {
     "created_at",
     "revoked_at",
     "revoked_by",
+    "run_id",
 }
 
 
