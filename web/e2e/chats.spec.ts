@@ -586,12 +586,18 @@ test("a direct chat reads as a chat app: the member's messages on the right, the
   const askedId = Number(await asked.getAttribute("data-message-id"));
   const answerId = Number(await answer.getAttribute("data-message-id"));
   expect(await line.evaluateAll((items) => items.map((item) => Number(item.getAttribute("data-message-id"))))).toEqual([askedId, answerId]);
-  const log = (await main(page).getByTestId("chat-log").boundingBox())!;
+  const log = (await main(page).getByTestId("chat-messages").boundingBox())!;
   const mine = (await asked.getByTestId("message-bubble").boundingBox())!;
   const theirs = (await answer.getByTestId("message-bubble").boundingBox())!;
-  expect(log.x + log.width - (mine.x + mine.width), "the member's bubble ends at the right").toBeLessThan(32);
-  expect(theirs.x - log.x, "the agent's bubble starts after its face, at the left").toBeLessThan(80);
+  expect(log.x + log.width - (mine.x + mine.width), "the member's bubble ends at the right of the reading column").toBeLessThan(32);
+  expect(theirs.x - log.x, "the agent's bubble starts after its face, at the left of the reading column").toBeLessThan(80);
   expect(theirs.y).toBeGreaterThan(mine.y);
+  // On a wide window the line is a reading column of 56 rem in the middle of the log, not pinned to its left.
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await expect.poll(async () => Math.round((await main(page).getByTestId("chat-messages").boundingBox())!.width)).toBe(896);
+  const wideLog = (await main(page).getByTestId("chat-log").boundingBox())!;
+  const column = (await main(page).getByTestId("chat-messages").boundingBox())!;
+  expect(Math.abs(column.x + column.width / 2 - (wideLog.x + wideLog.width / 2)), "the reading column is centred").toBeLessThan(12);
 
   // Reply on the answer: the composer says what it answers and takes the focus; the reply goes on in the session.
   await answer.hover();

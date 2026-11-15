@@ -150,8 +150,8 @@ function FrameLoading() {
           </div>
         ))}
       </div>
-      <div className="border-t p-3">
-        <Skeleton className="h-24 w-full rounded-md" />
+      <div className="px-3 pt-1 pb-3">
+        <Skeleton className="mx-auto h-12 w-full max-w-4xl rounded-lg" />
       </div>
     </div>
   );

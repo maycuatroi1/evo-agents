@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { ChatComposer } from "./composer";
 import { type Feed, replyCount, threadMessages } from "./feed-model";
 import { runsOn } from "./line-model";
-import { type MessageActions, MessageItem } from "./message-item";
+import { type MessageActions, MessageItem, READING_COLUMN } from "./message-item";
 import { useFollow } from "./use-follow";
 
 type Props = Omit<MessageActions, "onThread"> & {
@@ -135,7 +135,7 @@ export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSen
                 <Skeleton className="h-10 w-3/4" />
               </div>
             ) : (
-              <ol className={cn("flex flex-col", expanded && "mx-auto w-full max-w-4xl")}>
+              <ol className={cn("flex flex-col", expanded && READING_COLUMN)}>
                 {first ? (
                   <ThreadItem message={first} chat={chat} me={me} highlight={highlight} onReact={onReact} reacting={reacting} under={under} />
                 ) : null}
@@ -172,8 +172,9 @@ export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSen
           ) : null}
         </div>
         {readOnly ? null : (
-          <div className={cn("border-t p-3", expanded && "px-[max(0.75rem,calc((100%-56rem)/2))]")}>
+          <div className="px-3 pt-1 pb-3">
             <ChatComposer
+              className={cn(expanded && READING_COLUMN)}
               chat={chat}
               me={me}
               replyTo={root}
