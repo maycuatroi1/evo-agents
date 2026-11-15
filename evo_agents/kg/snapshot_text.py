@@ -24,6 +24,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import PurePosixPath
 
 from evo_agents.kg import asked as asked_words
@@ -50,9 +51,11 @@ class Vectors:
     def nearest(self, vector, limit: int, kinds: Sequence[str], readable) -> list[tuple[str, float]]:
         """(node id, dot product) of the ``limit`` nodes nearest ``vector``, a node at its best row, of ``kinds``
         when given, a row with an audience only when ``readable`` says so (``semantic.nearest``)."""
-        q = [float(x) for x in vector]
-        scores = [sum(a * b for a, b in zip(row, q, strict=False)) for row in self.rows]
-        order = sorted(range(len(scores)), key=lambda i: -scores[i])
+        if not self.rows:
+            return []
+        np = semantic._numpy()
+        scores = self._matrix @ np.asarray(vector, dtype=np.float32)
+        order = np.argsort(-scores, kind="stable")
         wanted = set(kinds or ())
         out: dict[str, float] = {}
         for i in order:
@@ -63,8 +66,15 @@ class Vectors:
                 continue
             if self.auds[i] is not None and not readable(self.auds[i]):
                 continue
-            out[nid] = scores[i]
+            out[nid] = float(scores[i])
         return list(out.items())
+
+    @cached_property
+    def _matrix(self):
+        """The rows as one float32 matrix, made at the first search by meaning: a product of Python floats per row
+        took seconds a question on a graph of tens of thousands of vectors (``semantic.nearest`` does the same)."""
+        np = semantic._numpy()
+        return np.asarray(self.rows, dtype=np.float32)
 
 
 @dataclass(frozen=True)

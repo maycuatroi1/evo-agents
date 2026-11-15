@@ -174,3 +174,44 @@ def test_bm25_is_fts5s_and_a_query_it_cannot_read_finds_nothing():
     assert table.search('"alpha" AND', (1.0, 1.0)) == []
     with pytest.raises(QueryError):
         parse('("alpha"')
+
+
+def test_the_nearest_vectors_of_a_snapshot_rank_as_their_dot_products_do():
+    """A search by meaning on a snapshot ranks its rows by their dot product with the question's vector, a node at its
+    best row, of the kinds asked and the audiences readable: on one matrix product, where a product of Python floats
+    per row took seconds a question on a graph of tens of thousands of vectors."""
+    import random
+
+    from evo_agents.kg.snapshot_text import Vectors
+
+    rng = random.Random(7)
+    rows = tuple(tuple(rng.uniform(-1, 1) for _ in range(8)) for _ in range(60))
+    node_ids = tuple(f"lumen-docs:n{i % 40}" for i in range(60))
+    kinds = tuple("file" if i % 3 else "symbol" for i in range(60))
+    auds = tuple("staff" if i % 7 == 0 else None for i in range(60))
+    vectors = Vectors(None, node_ids, kinds, auds, rows)  # type: ignore[arg-type]
+    q = [rng.uniform(-1, 1) for _ in range(8)]
+
+    def expected(limit, wanted, readable):
+        scores = [sum(a * b for a, b in zip(row, q, strict=True)) for row in rows]
+        out = {}
+        for i in sorted(range(len(rows)), key=lambda i: -scores[i]):
+            if len(out) >= limit:
+                break
+            if node_ids[i] in out or (wanted and kinds[i] not in wanted):
+                continue
+            if auds[i] is not None and not readable(auds[i]):
+                continue
+            out[node_ids[i]] = scores[i]
+        return out
+
+    for limit, wanted, readable in (
+        (10, (), lambda a: True),
+        (5, ("file",), lambda a: False),
+        (100, (), lambda a: False),
+    ):
+        found = vectors.nearest(q, limit, wanted, readable)
+        want = expected(limit, wanted, readable)
+        assert [n for n, _ in found] == list(want)
+        assert all(abs(score - want[n]) < 1e-5 for n, score in found)
+    assert Vectors(None, (), (), (), ()).nearest(q, 5, (), lambda a: True) == []  # type: ignore[arg-type]
