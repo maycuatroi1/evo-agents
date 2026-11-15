@@ -3868,14 +3868,16 @@ those totals count messages most members may not read.
 
 **The state of a source.** At ingest the hub reads from each run's log what a sync needs of it and keeps it in
 `kg_ingests` (schema 0252): the run's status (`ok` or `failed`, from its `run_end`), lineage and epoch, start and end
-times, and the cursor of its last state message. `GET /v1/kg/{project}/sources/{source}/state` (the writer role, and
+times, and the cursor of its last state message. A run whose `run_end` does not say when it ended (`finished_at`, which
+`kg sync` writes from this release on) ends when the hub received it. `GET /v1/kg/{project}/sources/{source}/state` (the writer role, and
 `/v1/worker/kg/{project}/sources/{source}/state` for the worker on duty) answers from them: how many runs the hub
 holds of the source, the newest run and the newest that ended ok, the cursor the next run resumes from, the lineage and
 epoch of the run whose (epoch, run id) is highest, and the source's live items with their rev and rev_time from the
 latest build's corpus, optionally only the ids that start with `?scope=` (at most 200000, `items_cut` past that). Runs
 pushed since that build are not in the items yet. A run pushed before 0252 counts in `unread` until the next build
-reads its log and fills its facts in (`fill_run_facts` of `evo_agents/hub/kg_source_state.py`); while `unread` is
-not 0, a caller that needs those runs asks for a build and reads again.
+reads its log and fills its facts in (`fill_run_facts` of `evo_agents/hub/kg_source_state.py`), or marks it `failed`
+when its log cannot be fetched or read, so `unread` is 0 after the first build that succeeds. While it is not 0, a
+caller that needs those runs asks for a build and reads again.
 
 **Clusters, review and decisions.** A build with the `clusters` extra groups the graph into named clusters, computes
 a review queue by seven rules, and applies the decisions writers took on the hub (`docs/kg.md`, Clusters, Review,

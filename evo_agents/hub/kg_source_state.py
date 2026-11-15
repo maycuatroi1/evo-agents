@@ -5,14 +5,17 @@ worker on duty (``evo_agents.hub.server.kg``, ``kg_worker``).
 From the runs of the source in kg_ingests and what each log says of it (``evo_agents.hub.kg_ingest.RunFacts``):
 
 - ``last_run`` and ``last_ok``: the newest run, and the newest that ended ok, by run id (run ids are UUIDv7, so in the
-  order the runs started), with when they started and ended. A sync asks ``last_ok`` whether a source is due and
+  order the runs started), with when they started and ended; a run whose log does not say when it ended (its run_end
+  has no ``finished_at``, as clients before this field write it) gives the time the hub received it. A sync asks ``last_ok`` whether a source is due and
   whether a git source's last run read the commit it would read now.
 - ``cursor``: the cursor of the newest run that sent a state message, the one the next run of the source resumes from,
   as the build's merge keeps the newest (``Corpus.record_cursor``).
 - ``lineage``: the lineage and epoch of the run whose (epoch, run id) is highest, as ``Corpus.adopt_lineage`` keeps
   it: the next run that reads from the same place takes that epoch, one that reads from elsewhere starts a new one.
 - ``unread``: runs pushed before migration 0252 whose facts the next build has not filled in yet. While it is not 0,
-  the three above may miss what those runs say; a caller that needs them asks for a build and reads again.
+  the three above may miss what those runs say; a caller that needs them asks for a build and reads again. A build
+  reads every one of them: a run whose log it could not fetch or read is marked failed, so ``unread`` is 0 after the
+  first build that succeeds (``fill_run_facts``).
 - ``items``: the live items of the source in the latest build's corpus (kg_corpus_items of main), each id with its
   rev and rev_time, which a sync derives the deletions of a complete listing from. Runs pushed since that build are
   not in it yet; ``scope`` keeps the ids that start with it.
@@ -21,6 +24,7 @@ From the runs of the source in kg_ingests and what each log says of it (``evo_ag
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import uuid
 from pathlib import Path
 
@@ -30,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import tables
 from evo_agents.hub.kg_graph_rows import MAIN
-from evo_agents.hub.kg_ingest import LogProblem, run_facts
+from evo_agents.hub.kg_ingest import LogProblem, RunFacts, run_facts
 
 MAX_ITEMS = 200_000
 
@@ -71,6 +75,11 @@ class SourceState(BaseModel):
     items_cut: bool = False  # more than MAX_ITEMS items: only the first are listed
 
 
+def _stamp(at: dt.datetime) -> str:
+    """``at`` as ``evo_agents.kg.ids.utc_now`` writes a time."""
+    return at.astimezone(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
 async def source_state(conn: AsyncConnection, project_id: int, source: str, scope: str | None = None) -> SourceState:
     """The state of ``source`` of project ``project_id`` (see the module)."""
     ingests = tables.kg_ingests
@@ -81,14 +90,17 @@ async def source_state(conn: AsyncConnection, project_id: int, source: str, scop
             select(func.count(), func.count().filter(ingests.c.status.is_(None))).select_from(ingests).where(*of_source)
         )
     ).one()
-    info = (run_id, ingests.c.status, ingests.c.run_started_at, ingests.c.run_finished_at)
+    info = (run_id, ingests.c.status, ingests.c.run_started_at, ingests.c.run_finished_at, ingests.c.received_at)
 
     async def newest(*where, columns=info):
         query = select(*columns).where(*of_source, *where).order_by(ingests.c.run_id.desc()).limit(1)
         return (await conn.execute(query)).one_or_none()
 
     def run_info(row) -> RunInfo | None:
-        return RunInfo(run_id=row[0], status=row[1], started_at=row[2], finished_at=row[3]) if row else None
+        if row is None:
+            return None
+        finished = row[3] or (_stamp(row[4]) if row[1] is not None else None)  # a log written before finished_at
+        return RunInfo(run_id=row[0], status=row[1], started_at=row[2], finished_at=finished)
 
     last_run = run_info(await newest())
     last_ok = run_info(await newest(ingests.c.status == "ok"))
@@ -140,10 +152,13 @@ def _facts_of(logs: Path, run_ids: list[str]) -> dict[str, dict]:
     return found
 
 
+UNREAD_LOG = RunFacts().columns()  # status failed and nothing else: what a run whose log no build can read gets
+
+
 async def fill_run_facts(engine: AsyncEngine, logs: Path, project_id: int) -> int:
     """Fill in the facts of the runs of project ``project_id`` pushed before migration 0252 (``kg_ingests.status``
-    null) from their logs under ``logs``, the build's cache, which has just fetched them; how many runs were filled
-    in (``evo_agents.hub.kg_build.run_build``)."""
+    null) from their logs under ``logs``, the build's cache, which has just fetched them, and mark failed those whose
+    log is not there or does not read; how many runs it read (``evo_agents.hub.kg_build.run_build``)."""
     ingests = tables.kg_ingests
     async with engine.connect() as conn:
         rows = await conn.execute(
@@ -154,7 +169,8 @@ async def fill_run_facts(engine: AsyncEngine, logs: Path, project_id: int) -> in
         return 0
     found = await asyncio.to_thread(_facts_of, logs, run_ids)
     async with engine.begin() as conn:
-        for run_id, columns in found.items():
+        for run_id in run_ids:
+            columns = found.get(run_id, UNREAD_LOG)
             await conn.execute(
                 update(ingests)
                 .where(
@@ -164,4 +180,4 @@ async def fill_run_facts(engine: AsyncEngine, logs: Path, project_id: int) -> in
                 )
                 .values(**columns)
             )
-    return len(found)
+    return len(run_ids)

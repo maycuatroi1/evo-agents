@@ -320,6 +320,7 @@ def sync_source(
                 "items": result.items,
                 "tombstones": result.tombstones,
                 "removals": result.removals,
+                "finished_at": utc_now(),  # the hub keeps it (kg_ingests.run_finished_at), which due_sources reads
             }
         )
         result.log = str(writer.close())
@@ -391,7 +392,7 @@ def accept_removals(project: Project, source_id: str, corpus: Corpus | None = No
                     }
                 )
                 removed += 1
-        writer.write({"type": "run_end", "status": "ok", "removals": removed})
+        writer.write({"type": "run_end", "status": "ok", "removals": removed, "finished_at": utc_now()})
         writer.close()
         with corpus.db:
             corpus.merge(writer.records, run_id)

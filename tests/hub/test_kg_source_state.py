@@ -4,7 +4,10 @@ GET /v1/kg/{project}/sources/{source}/state, which ``kg sync`` reads instead of 
 
 from __future__ import annotations
 
+import asyncio
+import datetime as dt
 import json
+from unittest.mock import ANY
 
 import pytest
 
@@ -14,8 +17,10 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from sqlalchemy import Text, cast, select, update
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from evo_agents.hub import tables
+from evo_agents.hub.kg_source_state import fill_run_facts
 from evo_agents.kg.sync import sync_project
 from tests.hub.test_kg import PROJECT, Machine, doc, hub, latest, push, query, run_jobs  # noqa: F401
 
@@ -48,12 +53,14 @@ def test_a_pushed_run_gives_the_source_its_cursor_lineage_and_last_run(hub, tmp_
     first = sync(laptop, doc("guide", "How the app works."), doc("setup", "Install it."), cursor={"page": 1})
     assert push(hub, laptop).ok
     (facts,) = ingest_facts(hub).values()
-    status, lineage, epoch, started, _, cursor = facts
-    assert status == "ok" and lineage and epoch and started and cursor == {"cursor": {"page": 1}}
+    status, lineage, epoch, started, finished, cursor = facts
+    assert status == "ok" and lineage and epoch and cursor == {"cursor": {"page": 1}}
+    assert started and finished and started <= finished  # from the run_end of the log, which due_sources reads
 
     held = state(hub)
     assert (held["runs"], held["unread"]) == (1, 0)
     assert held["last_run"]["run_id"] == first and held["last_ok"]["run_id"] == first
+    assert (held["last_ok"]["started_at"], held["last_ok"]["finished_at"]) == (started, finished)
     assert held["cursor"] == {"run_id": first, "cursor": {"page": 1}}
     assert held["lineage"] == {"run_id": first, "lineage": lineage, "epoch": epoch}
     assert held["items"] == []  # no build yet: the items are those of the latest build
@@ -89,6 +96,32 @@ def test_runs_pushed_before_0252_are_unread_until_the_next_build_fills_their_fac
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert latest(hub)["status"] == "succeeded"
     held = state(hub)
-    assert held["unread"] == 0 and held["last_ok"]["run_id"] == first
+    assert held["unread"] == 0 and held["last_ok"]["run_id"] == first and held["last_ok"]["finished_at"]
     assert held["cursor"] == {"run_id": first, "cursor": {"page": 1}}
     assert held["lineage"]["run_id"] == first
+
+
+def test_a_run_whose_log_says_no_end_ends_when_received_and_one_whose_log_is_gone_is_read_as_failed(hub, tmp_path):
+    laptop = Machine(tmp_path, "laptop")
+    first = sync(laptop, doc("guide", "How the app works."))
+    assert push(hub, laptop).ok
+    ingests = tables.kg_ingests
+    query(hub.db, update(ingests).values(run_finished_at=None))  # a run_end without finished_at, as older clients
+    (received,) = query(hub.db, select(ingests.c.received_at))[0]
+    stamp = received.astimezone(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    assert state(hub)["last_ok"] == {"run_id": first, "status": "ok", "started_at": ANY, "finished_at": stamp}
+
+    query(hub.db, update(ingests).values({name: None for name in FACTS}))
+    (project_id,) = query(hub.db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0]
+
+    async def fill() -> int:
+        engine = create_async_engine(hub.db.dsn.replace("postgresql://", "postgresql+psycopg://", 1))
+        try:
+            return await fill_run_facts(engine, tmp_path / "no-cache", project_id)
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(fill()) == 1  # its log is not in the cache: read, as failed, so unread reaches 0
+    held = state(hub)
+    assert (held["unread"], held["last_run"]["status"], held["last_ok"]) == (0, "failed", None)
+    assert asyncio.run(fill()) == 0
