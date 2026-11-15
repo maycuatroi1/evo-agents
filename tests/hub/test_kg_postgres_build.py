@@ -303,3 +303,37 @@ def test_the_vectors_of_a_build_read_back_by_their_node_vec_key(hub_db):
     vectors = Snapshot.from_stored(back).vectors
     assert vectors.node_ids == ("docs:doc:a", "docs:doc:a") and vectors.auds == (None, '["chat:1"]')
     assert list(vectors.rows[0]) == [0.5, -0.25]
+
+
+def test_writing_the_same_graph_again_changes_no_row(hub_db):
+    """Postgres keeps a jsonb object's keys in its own order: a row with an object (a review item, a cluster's value,
+    a file's code body) still compares equal once read back, so a build of an unchanged graph rewrites nothing."""
+    pid = add_project(hub_db, "again")
+    item = {"fingerprint": "f1", "title": "Two guides", "nodes": ["docs:doc:a", "docs:doc:b"], "kind": "duplicate"}
+    rows = StoreRows(
+        "sha256:again",
+        (),
+        (),
+        (("docs:doc:a", ("guide", "how the app works")),),
+        {"code:file:a": "def main(): pass"},
+        ((0, 0), frozenset()),
+        derivations=(("docs:doc:a", '{"zeta": 1, "alpha": 2}', "[]"),),
+        asked=(("docs:doc:a", 0, 0, None, 1.1, "works"),),
+        clusters=(("cluster", 1, {"zeta": ["docs:doc:a"], "alpha": "Guides"}),),
+        review=(item,),
+    )
+
+    async def run():
+        engine = make_engine(hub_db)
+        try:
+            counts = []
+            for _ in range(2):
+                async with engine.begin() as conn:
+                    counts.append(await kg_graph_rows.write_graph(conn, pid, None, rows))
+            return counts
+        finally:
+            await engine.dispose()
+
+    first, second = asyncio.run(run())
+    assert first["kg_review_rows"]["new"] == 2 and first["kg_text_rows"]["new"] == 2
+    assert all(c == {"new": 0, "changed": 0, "deleted": 0} for c in second.values()), second

@@ -101,36 +101,42 @@ def text_row_key(kind: str, key: str, row) -> str:
     return f"{kind}\x1f{key}\x1f{digest}"
 
 
+def _json(row) -> str:
+    """A row as the JSON both sides of ``diff`` compare: Postgres keeps a jsonb object's keys in its own order, so a
+    row read back from the tables equals the build's only once both sort their keys."""
+    return json.dumps(row, ensure_ascii=False, sort_keys=True)
+
+
 def graph_rows(rows: StoreRows) -> dict[str, dict[str, tuple]]:
     """The rows of each table of a build, by their key: what ``write_graph`` compares with the tables."""
     nodes = {r[0]: tuple(r) for r in rows.nodes}
     edges = {r[0]: tuple(r) for r in rows.edges}
     text: dict[str, tuple] = {}
     for key, row in rows.keyed:
-        text[text_row_key(TEXT, key, list(row))] = (key, json.dumps([TEXT, key, list(row)], ensure_ascii=False))
+        text[text_row_key(TEXT, key, list(row))] = (key, _json([TEXT, key, list(row)]))
     for nid, body in rows.code.items():
-        text[text_row_key(CODE, nid, body)] = (nid, json.dumps([CODE, nid, body], ensure_ascii=False))
+        text[text_row_key(CODE, nid, body)] = (nid, _json([CODE, nid, body]))
     prov: dict[str, tuple] = {}
     for unit in rows.units:
-        prov[f"{UNIT}\x1f{unit[0]}"] = (unit[0], json.dumps([UNIT, *unit], ensure_ascii=False))
+        prov[f"{UNIT}\x1f{unit[0]}"] = (unit[0], _json([UNIT, *unit]))
     for elem, unit, span in rows.wheres:
         prov[f"{WHERE}\x1f{elem}\x1f{unit}\x1f{span}"] = (
             elem,
-            json.dumps([WHERE, elem, unit, span], ensure_ascii=False),
+            _json([WHERE, elem, unit, span]),
         )
     order: dict[str, int] = {}
     for elem, units, needs in rows.derivations:
         order[elem] = i = order.get(elem, -1) + 1
-        prov[f"{DERIVED}\x1f{elem}\x1f{i:06d}"] = (elem, json.dumps([DERIVED, elem, units, needs], ensure_ascii=False))
+        prov[f"{DERIVED}\x1f{elem}\x1f{i:06d}"] = (elem, _json([DERIVED, elem, units, needs]))
     asked: dict[str, tuple] = {}
     for row in rows.asked:
-        asked[text_row_key(ASKED, row[0], list(row))] = (row[0], json.dumps(list(row), ensure_ascii=False))
+        asked[text_row_key(ASKED, row[0], list(row))] = (row[0], _json(list(row)))
     review: dict[str, tuple] = {}
     for kind, key, value in rows.clusters:
-        review[f"{kind}\x1f{json.dumps(key)}"] = (str(key), json.dumps([kind, key, value], ensure_ascii=False))
+        review[f"{kind}\x1f{json.dumps(key)}"] = (str(key), _json([kind, key, value]))
     for item in rows.review:
         fp = item["fingerprint"]
-        review[f"{REVIEW}\x1f{fp}"] = (fp, json.dumps([REVIEW, fp, item], ensure_ascii=False))
+        review[f"{REVIEW}\x1f{fp}"] = (fp, _json([REVIEW, fp, item]))
     vectors = {r[0]: (r[1], r[2], r[3], bytes(r[4])) for r in rows.vectors}
     return {
         "kg_nodes": nodes,
@@ -161,7 +167,7 @@ def _stored(name: str, values) -> tuple:
         return tuple(values[k] for k in (*EDGE_KEYS, "label_aud"))
     if name == "kg_embeddings":
         return (values["node_id"], values["kind"], values["aud"], bytes(values["vector"]))
-    return (values[ROW_TABLES[name]], json.dumps(values["row"], ensure_ascii=False))
+    return (values[ROW_TABLES[name]], _json(values["row"]))
 
 
 async def _read(conn: AsyncConnection, name: str, project_id: int, branch_id: int) -> dict[str, tuple]:
