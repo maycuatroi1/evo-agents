@@ -3,7 +3,6 @@ files it changed that the graph holds answer, and the commit's own node never do
 
 import json
 
-from evo_agents.cli import main
 from evo_agents.kg import eval_commits
 from evo_agents.kg.build import build_project
 from evo_agents.kg.evaluate import HOLDOUT, TUNE, parse_questions, split_of
@@ -88,10 +87,3 @@ def test_a_commit_above_the_ceiling_asks_nothing(tmp_path, kg_env):
     project = history(tmp_path, kg_env)
     found = questions_of(project, ceiling=(-1, -1))
     assert not found.questions and found.left_out["above the label of the set"] >= 1
-
-
-def test_kg_eval_questions_from_commits_prints_a_set_kg_eval_reads(tmp_path, kg_env, capsys):
-    project = history(tmp_path, kg_env)
-    assert main(["kg", "eval-questions", "--from-commits", "--project", project.name]) == 0
-    lines = capsys.readouterr().out.splitlines()
-    assert lines and len(parse_questions(lines)) == len(lines)

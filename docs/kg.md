@@ -222,8 +222,8 @@ national id or a medical code, how many mentions resolved, the share of noise (b
 history, and each source with its label. The Curator reads it to configure a new graph.
 
 The profile sits outside the content hash, so kg_search, kg_context and the other tools answer the same with or without
-it. `evo-agents kg profile [--project P] [--json]` prints the newest build's; a build made before profiles says to build
-again. On the hub, `evo-agents hub kg profile --project P [--json]` reads it from kg_status; a caller whose audience is
+it. `evo-agents kg profile [--project P] [--json]`, like `evo-agents hub kg profile --project P [--json]`, reads the
+newest build's from the hub's kg_status; a build made before profiles says to build again; a caller whose audience is
 not whole gets a coverage without it, and the command says so. `evo-agents kg bench profile` sums the profiles of the
 cached bench graphs by repo.
 
@@ -301,8 +301,7 @@ adds `kg_named_graphs`.
 - Labels, audience and `deprecated` filter first, as before: `graph` is one more condition and never shows what the
   reader's clearance hides.
 - A call without `graph`, or with `graph: "default"`, answers exactly as before.
-- A name the project has no graph of is an error result that names `evo-agents hub kg graph list`. A store left on this
-  machine (`--backend auto`, signed out) has no named graph, so any name but `default` is that error there.
+- A name the project has no graph of is an error result that names `evo-agents hub kg graph list`.
 
 A read across projects of a chat run's agent takes it too: `evo-agents worker agent read PROJECT kg-search TEXT
 --graph NAME` (`graph` of `/v1/worker/runs/{id}/agent/reads`) names a graph of the project read, and the check of what

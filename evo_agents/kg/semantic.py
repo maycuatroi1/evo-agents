@@ -2,10 +2,11 @@
 below is opt-in and sends texts to OpenRouter), a vector for each row of the full-text index that has a body, and the two rankings fused.
 
 A project chooses, ``off`` by default (``Settings``): ``off`` writes no vector and searches by words alone; ``index``
-writes the vectors with each build, but ``kg_search`` still ranks by words unless the caller asks for both (``kg eval
+writes the vectors with each build, but ``kg_search`` still ranks by words unless the caller asks for both (``kg bench
 --search hybrid``, the KG optimize loop), so the two are compared on one build; ``on`` writes them and ``kg_search``
-ranks by both. On this machine the choice is ``<kg home>/<project>/semantic.json`` (``evo-agents kg semantic``); on the
-hub it is the project's row of kg_semantic, which the build reads (``evo_agents.hub.kg_build``).
+ranks by both. The choice is the hub project's row of kg_semantic, which the build reads
+(``evo_agents.hub.kg_build``) and ``evo-agents kg semantic`` sets; a ``<kg home>/<project>/semantic.json`` is what
+the engine's own builds read.
 
 What is embedded is what the full-text index holds for a row (``evo_agents.kg.search``): its name, its path and its
 body, cut at EMBED_CHARS, for every row with a body: a node's own row, and each passage of a long section or file,

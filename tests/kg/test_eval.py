@@ -349,10 +349,14 @@ def test_eval_p95_is_the_nearest_rank():
 
 
 @pytest.fixture
-def demo(tmp_path, kg_env):
+def demo(tmp_path, kg_env, monkeypatch):
+    """The demo project's graph, on a hub this machine is signed in to: kg eval reads it there."""
+    from tests.kg.hub_graph import sign_in
+
     project = make_project(tmp_path, kg_env)
     sync_project(project)
     assert build_project(project).ok
+    sign_in(monkeypatch, project)
     return project
 
 

@@ -127,8 +127,11 @@ def test_a_walk_value_out_of_range_is_refused_with_the_key_named(value):
         kg_settings.of({"walk": value})
 
 
-def test_kg_settings_sets_the_walk_and_undoes_it(tmp_path, kg_env, capsys):
+def test_kg_settings_sets_the_walk_and_undoes_it(tmp_path, kg_env, capsys, monkeypatch):
+    from tests.kg.hub_graph import sign_in
+
     project = make_project(tmp_path, kg_env)
+    sign_in(monkeypatch, project)
     argv = ["kg", "settings", "--project", str(project.harness.root), "--json"]
     assert main([*argv, "--set", 'walk={"damping": 0.6}', "--reason", "trial"]) == 0
     out = json.loads(capsys.readouterr().out)

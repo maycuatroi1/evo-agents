@@ -2,7 +2,7 @@
 answers kg_* from the latest build.
 
 Checked here: pushing a run twice ingests it once; two machines pushing in either order give one content hash,
-which ``kg build --verify`` on the worker's store and a local build of both corpora find too; a run labelled above the
+which a verifying build (``build_project(verify=True)``) on the worker's store and a build of both corpora find too; a run labelled above the
 hub sink is 422 with no kg_ingests row, no job and no staged object left; committing a run while blobs are missing is
 422; a run of hundreds of blobs goes in commits small enough to be answered within their timeouts on a store as
 slow as R2, a commit whose answer is lost is found on the hub and not sent again, and a run that fails on the way is

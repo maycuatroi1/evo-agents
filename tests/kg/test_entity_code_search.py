@@ -63,10 +63,12 @@ def test_entity_code_is_off_by_default_and_a_query_key_every_surface_takes(tmp_p
     assert cli_bench._tuning_file(str(path)) == {"entity_code": True}  # kg bench run --settings
 
 
-def test_kg_settings_sets_entity_code(tmp_path, kg_env, capsys):
+def test_kg_settings_sets_entity_code(tmp_path, kg_env, capsys, monkeypatch):
+    from tests.kg.hub_graph import sign_in
     from tests.kg.projects import make_project
 
     project = make_project(tmp_path, kg_env)
+    sign_in(monkeypatch, project)
     argv = ["kg", "settings", "--project", str(project.harness.root), "--json"]
     assert main([*argv, "--set", "entity_code=true", "--reason", "trial"]) == 0
     out = json.loads(capsys.readouterr().out)

@@ -1,4 +1,5 @@
-"""Starter questions for ``kg eval`` from the commit history a graph holds (``kg eval-questions --from-commits``).
+"""Starter questions for ``kg eval`` from the commit history a graph holds (the hub's starter set,
+``evo_agents.hub.kg_eval_starter``).
 
 A project with git history is measurable without a session or a plan: the subject and body of a commit asks, and the
 files it changed that the graph holds answer. The commits are the Commit nodes of the graph's git sources (the files

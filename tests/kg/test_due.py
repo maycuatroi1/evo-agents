@@ -6,10 +6,9 @@ import pytest
 import yaml
 
 from evo_agents.cli import main
-from evo_agents.kg import build
 from evo_agents.kg.ids import uuid7
 from evo_agents.kg.project import ProjectError, load_project_at, read_index, remember
-from evo_agents.kg.sync import due_sources, parse_refresh, sync_all_due, sync_due, sync_project
+from evo_agents.kg.sync import due_sources, parse_refresh, sync_project
 from tests.kg.conftest import FakeSource, doc
 from tests.kg.projects import commit, make_project, write
 
@@ -57,32 +56,6 @@ def add_run(corpus, sid: str, status: str, ago: dt.timedelta) -> None:
         (uuid7(), sid, "fake", "1", status, stamp(ago), stamp(ago), "{}"),
     )
     corpus.db.commit()
-
-
-class FakeBuild:
-    ok = True
-    warnings = ()
-
-    def __init__(self, project):
-        self.project = project.name
-
-    def summary_line(self):
-        return f"build for {self.project}"
-
-    def to_json(self):
-        return {"project": self.project, "ok": self.ok}
-
-
-@pytest.fixture
-def builds(monkeypatch):
-    built = []
-
-    def fake_build_project(project, **kwargs):
-        built.append(project.name)
-        return FakeBuild(project)
-
-    monkeypatch.setattr(build, "build_project", fake_build_project)
-    return built
 
 
 @pytest.mark.parametrize(
@@ -150,22 +123,6 @@ def test_malformed_refresh_is_a_project_error_when_due_is_checked(tmp_path, kg_e
         due_sources(project, now=NOW)
 
 
-def test_sync_due_runs_only_due_sources_and_builds_only_when_one_ran(tmp_path, kg_env, builds):
-    sources = [source(tmp_path, "hourly", "1h"), source(tmp_path, "manual")]
-    project = load_project_at(harness(tmp_path, "solo", sources), kg_env)
-
-    first = sync_due(project, build=True)
-    assert first.ok and first.due == ["hourly"]
-    assert [r.source for r in first.runs] == ["hourly"]
-    assert builds == ["solo"]
-    assert project.corpus().runs("manual") == []
-
-    second = sync_due(project, build=True)
-    assert second.ok and second.due == [] and second.runs == [] and second.build is None
-    assert builds == ["solo"]
-    assert len(project.corpus().runs("hourly")) == 1
-
-
 def test_sync_due_all_one_failing_project_does_not_stop_the_others(tmp_path, kg_env, hub_for, capsys):
     hub = hub_for("alpha", "broken", "idle", "zeta")
     for name, sources in [
@@ -199,10 +156,8 @@ def test_sync_due_all_one_failing_project_does_not_stop_the_others(tmp_path, kg_
     assert {name: project.builds for name, project in hub.hubs.items()} == built
 
 
-def test_sync_due_all_succeeds_without_failing_projects(tmp_path, kg_env, builds, hub_for, capsys):
+def test_sync_due_all_succeeds_without_failing_projects(tmp_path, kg_env, hub_for, capsys):
     remember(load_project_at(harness(tmp_path, "alpha", [source(tmp_path, "docs", "1h")]), kg_env))
-    outcomes = sync_all_due(kg_env, build=True)
-    assert [o.project for o in outcomes] == ["alpha"] and all(o.ok for o in outcomes)
     assert main(["kg", "sync", "--due", "--all"]) == 1  # not signed in to a hub: nothing can sync
     assert "FAIL sync: the hub: not signed in" in capsys.readouterr().out
     hub_for("alpha")
@@ -225,29 +180,24 @@ def with_refresh(project):
     return load_project_at(project.harness.root, project.home)
 
 
-def test_a_git_source_still_at_the_commit_it_read_writes_no_log_and_builds_nothing(tmp_path, kg_env):
+def test_a_git_source_still_at_the_commit_it_read_writes_no_log(tmp_path, kg_env):
     project = with_refresh(make_project(tmp_path, kg_env))
     app, now = tmp_path / "demo-app", dt.datetime.now(dt.UTC)
-    first = sync_due(project, build=True)
-    (read,) = first.runs
-    assert first.ok and read.source == "app" and not read.unchanged and read.items > 0 and first.build.ok
+    (read,) = sync_project(project, ["app"])
+    assert read.ok and not read.unchanged and read.items > 0
     corpus = project.corpus()
     logs, cursor = sorted(corpus.log_dir.iterdir()), corpus.cursor("app")
 
-    again = sync_due(project, build=True, now=now + dt.timedelta(hours=2))
-    (same,) = again.runs
-    assert again.ok and same.ok and same.unchanged and same.items == 0 and same.log is None
-    assert again.build is None  # nothing was read, so nothing is built
+    (same,) = sync_project(project, ["app"])
+    assert same.ok and same.unchanged and same.items == 0 and same.log is None  # kg sync --build builds none
     assert sorted(corpus.log_dir.iterdir()) == logs and corpus.cursor("app") == cursor
     assert corpus.runs("app", limit=1)[0]["detail"]["unchanged"] is True  # on record: the clock of refresh restarts
     assert due_sources(project, corpus, now + dt.timedelta(minutes=30)) == []
 
     write(app / "app/search.py", "def search(query):\n    return [query]\n")
     commit(app, "simpler search")
-    later = sync_due(project, build=True, now=now + dt.timedelta(hours=4))
-    (changed,) = later.runs
+    (changed,) = sync_project(project, ["app"])
     assert not changed.unchanged and changed.items > 0 and changed.log is not None
-    assert later.build.ok and not later.build.skipped and later.build.build_id == first.build.build_id + 1
 
 
 def test_a_git_source_is_read_again_when_its_config_changed_or_its_last_run_failed(tmp_path, kg_env):

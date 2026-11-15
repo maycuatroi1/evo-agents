@@ -13,6 +13,7 @@ from evo_agents.kg.project import load_project_at
 from evo_agents.kg.status import project_status, render_status
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg.hub_graph import sign_in
 from tests.kg.projects import commit, git, write
 
 INSTALL = "pip install 'evo-ak[graphify]' or uv tool install 'evo-ak[graphify]'"
@@ -84,8 +85,9 @@ def symbol_paths(project, build_id):
     return {r[0].split("::")[0].removeprefix("symbol:billing:") for r in rows}
 
 
-def test_auto_without_graphify_warns_in_build_and_status(tmp_path, kg_env, no_graphify, capsys):
+def test_auto_without_graphify_warns_in_build_and_status(tmp_path, kg_env, no_graphify, capsys, monkeypatch):
     project = make_billing(tmp_path, kg_env)
+    sign_in(monkeypatch, project)  # kg status reads the hub's kg_status
     root = str(project.harness.root)
 
     report = build_project(project).to_json()  # the hub's build engine; kg build asks the hub
@@ -134,8 +136,9 @@ def test_a_declared_backend_without_graphify_has_no_warning(tmp_path, kg_env, no
 
 
 @pytest.mark.skipif(not gfy.available(), reason="graphify extra not installed")
-def test_auto_with_graphify_has_no_warning(tmp_path, kg_env, capsys):
+def test_auto_with_graphify_has_no_warning(tmp_path, kg_env, capsys, monkeypatch):
     project = make_billing(tmp_path, kg_env)
+    sign_in(monkeypatch, project)
     root = str(project.harness.root)
 
     report = build_project(project).to_json()

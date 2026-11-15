@@ -20,6 +20,7 @@ from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg.hub_graph import sign_in
 from tests.kg.projects import commit, git, make_project, write
 
 SAMPLE = Path(__file__).parent / "fixtures" / "hooks" / "post_tool_kg_search.json"
@@ -298,6 +299,7 @@ def test_post_tool_label_shows_in_status_and_session_start(tmp_path, kg_env, mon
 
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
+    sign_in(monkeypatch, project)  # the note reads the hub's kg_status
     stdin = json.dumps({"session_id": sid, "hook_event_name": "SessionStart", "source": "resume"})
     code, out, _ = run_hook(monkeypatch, capsys, "session-start", stdin)
     note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
@@ -322,6 +324,7 @@ def test_session_start_and_kg_status_name_the_commit_each_git_source_read(
     monkeypatch.setattr(gitcli, "fetch", lambda *a, **kw: pytest.fail("fetched outside a sync"))
 
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
+    sign_in(monkeypatch, project)
     stdin = json.dumps({"session_id": "44444444-5555-4666-8777-888888888888", "source": "startup"})
     code, out, _ = run_hook(monkeypatch, capsys, "session-start", stdin)
     note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
@@ -357,12 +360,37 @@ def test_a_git_source_without_a_remote_branch_names_only_its_commit(tmp_path, kg
     sync_project(project)
     assert build_project(project).ok
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
+    sign_in(monkeypatch, project)
     code, out, _ = run_hook(monkeypatch, capsys, "session-start", json.dumps({"source": "startup"}))
     note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert code == 0 and f"commits read: 1 source, 0 current; behind unknown: app {read[:7]}" in note.splitlines()
     status = Session(project, "wide").call("kg_status", {})
     (found,) = status["structuredContent"]["reads"]
     assert f"read    app {read[:7]} of HEAD at {found['at']}" in status["content"][0]["text"].splitlines()
+
+
+def test_session_start_says_nothing_when_the_hub_cannot_be_asked_in_time(
+    tmp_path, kg_env, monkeypatch, capsys, unbound
+):
+    from evo_agents.hub import client
+    from evo_agents.hub.kg_cli import PROBE_TIMEOUT
+
+    project = make_project(tmp_path, kg_env)
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
+    monkeypatch.setattr(client, "load_credentials", lambda: (_ for _ in ()).throw(client.HubError("not signed in")))
+    assert run_hook(monkeypatch, capsys, "session-start", "{}") == (0, "", "")
+
+    hub = sign_in(monkeypatch, project)
+    timeouts = []
+
+    class Slow:
+        def call(self, method, path, body=None, *, timeout=None):
+            timeouts.append(timeout)
+            raise client.HubError("timed out")
+
+    monkeypatch.setattr(client, "Hub", lambda url, token, **kwargs: Slow())
+    assert run_hook(monkeypatch, capsys, "session-start", "{}") == (0, "", "")
+    assert timeouts == [PROBE_TIMEOUT] and hub.asked == []  # no graph of this machine answers instead
 
 
 SINK = """  sinks:

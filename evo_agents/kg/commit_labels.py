@@ -1,5 +1,5 @@
 """Which commits of a repo's history are questions, and which files answer them (the filter of ``kg rank train``'s git
-labels and of ``kg eval-questions --from-commits``).
+labels and of the hub's starter question set, ``evo_agents.hub.kg_eval_starter``).
 
 A commit's subject and body is the question; the files it changed that the graph holds are the answer. A commit of a
 bot, with fewer than ``min_words`` words once pull request numbers and ``Signed-off-by`` style trailers are taken out,

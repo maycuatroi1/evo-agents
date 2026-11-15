@@ -11,6 +11,7 @@ from evo_agents.kg import semantic
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.build import build_inputs
 from evo_agents.kg.store import Store
+from tests.kg.hub_graph import sign_in
 from tests.kg.projects import commit, make_project, write
 from tests.kg.test_store import make_searchable, sync_build
 
@@ -136,16 +137,18 @@ def test_a_query_key_acts_on_the_next_search_without_a_build(tmp_path, kg_env):
     assert kg_settings.override_of() is None
 
 
-def test_the_settings_command_shows_sets_with_a_reason_and_undoes(tmp_path, kg_env, capsys):
+def test_the_settings_command_shows_sets_with_a_reason_and_undoes_on_the_hub(tmp_path, kg_env, capsys, monkeypatch):
     project = make_project(tmp_path, kg_env)
+    hub = sign_in(monkeypatch, project)
     argv = ["kg", "settings", "--project", str(project.harness.root), "--json"]
     assert main(argv) == 0
-    assert json.loads(capsys.readouterr().out)["changed"] == {}
+    assert json.loads(capsys.readouterr().out)["overrides"] == {}
     assert main([*argv, "--set", "semantic_weight=1.5", "--set", "passage_from=6000", "--reason", "trial"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["settings"]["semantic_weight"] == 1.5 and out["needs_rebuild"] == ["passage_from"]
-    assert out["changed"]["semantic_weight"] == {"from": semantic.SEMANTIC_WEIGHT, "to": 1.5}
+    assert out["project"] == "demo" and out["settings"]["semantic_weight"] == 1.5
+    assert out["needs_rebuild"] == ["passage_from"] and out["changes"][0]["reason"] == "trial"
     assert main([*argv, "--set", "semantic_weight=-3"]) == 2
     assert "semantic_weight" in capsys.readouterr().err
     assert main([*argv, "--undo"]) == 0
     assert json.loads(capsys.readouterr().out)["settings"]["semantic_weight"] == semantic.SEMANTIC_WEIGHT
+    assert {path for _, path in hub.asked} == {"/v1/kg/demo/settings", "/v1/kg/demo/settings/undo"}
