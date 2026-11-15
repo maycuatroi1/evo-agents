@@ -7,6 +7,7 @@ from evo_agents.cli import main
 from evo_agents.kg import retention
 from evo_agents.kg.audit import audit_path
 from evo_agents.kg.build import build_project, verify_build
+from evo_agents.kg.corpus import replayed_digest
 from evo_agents.kg.ids import uuid7
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.scrub import blob_refs
@@ -55,6 +56,8 @@ def test_replay_shuffled_and_duplicated_gives_same_state(fake_project):
         order = files * 2
         rng.shuffle(order)
         assert corpus.state_digest(corpus.rebuild_state(order)) == expected
+        # merged in memory, with no SQLite, as the connector conformance check replays a run
+        assert replayed_digest(corpus.run_records(path) for path in order) == expected
 
 
 def test_truncated_run_removes_nothing(fake_project):
