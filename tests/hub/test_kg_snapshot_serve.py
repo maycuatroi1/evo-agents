@@ -282,6 +282,54 @@ def test_loads_making_snapshots_leave_the_pool_to_the_workers_heartbeats(hub, tm
     assert len({held.snapshot.content_hash for held in done}) == 1 and "guide" in found(done[0].snapshot, "kiwi")
 
 
+def test_reading_a_graph_gives_the_event_loop_back_between_its_rows(hub, tmp_path, caplog, monkeypatch):
+    """The rows of a graph are fetched a batch at a time, the loop running other requests between two batches, and
+    their JSON is decoded in a thread: the api read and decoded a large graph's hundreds of thousands of rows in one
+    go on its event loop after each build, every request stalled for seconds, and the workers' heartbeats and
+    claims timed out waiting for a connection of the pool."""
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", *(doc(name, f"How the {name} of the kiwi app works.") for name in ("guide", "notes", "intro")))
+    assert push(hub, laptop).ok
+    build(hub, caplog)
+    pid = project_id(hub)
+    monkeypatch.setattr(kg_graph_rows, "READ_BATCH", 2, raising=False)
+    ticks, seen, loads = [0], [], set()
+    stored = kg_graph_rows._stored
+
+    def counted(name, values):
+        if name == "kg_nodes":
+            seen.append(ticks[0])
+        return stored(name, values)
+
+    def decoded(text):
+        loads.add(threading.current_thread() is threading.main_thread())
+        return json.loads(text)
+
+    monkeypatch.setattr(kg_graph_rows, "_stored", counted)
+    monkeypatch.setattr(kg_graph_rows, "json", type("Json", (), {"loads": staticmethod(decoded), "dumps": json.dumps}))
+
+    async def run():
+        async def tick():
+            while True:
+                ticks[0] += 1
+                await asyncio.sleep(0)
+
+        ticker = asyncio.create_task(tick())
+        engine = make_engine(hub.db)
+        try:
+            async with engine.connect() as conn:
+                return await kg_graph_rows.read_graph(conn, pid)
+        finally:
+            ticker.cancel()
+            await engine.dispose()
+
+    rows = asyncio.run(run())
+    assert len(rows.nodes) == len(seen) > 2
+    assert seen[0] < seen[-1]  # the loop ran between the first batch of nodes and the last
+    assert loads == {False}  # every row's JSON was decoded off the loop
+    assert "guide" in found(Snapshot.from_stored(rows), "kiwi")
+
+
 def test_a_plugin_read_of_a_project_not_in_memory_waits_for_no_load(hub, tmp_path, caplog, monkeypatch):
     """A core plugin reads the graph holding its own transaction (``kg_snapshots.held_for``): a project the api holds
     no snapshot of yet answers None at once and loads in the background, so plugin reads made meanwhile do not each
