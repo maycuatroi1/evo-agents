@@ -34,6 +34,7 @@ from sqlalchemy import select
 from evo_agents.hub import tables
 from evo_agents.hub.blobs import blob_key
 from evo_agents.hub.client import Hub
+from evo_agents.hub.kg_build import worker_project
 from evo_agents.hub.kg_ingest import read_run_log
 from evo_agents.hub.kg_push import Pusher
 from evo_agents.kg.corpus import Corpus
@@ -52,7 +53,7 @@ from tests.hub.test_kg import (
     sign_in,
     tool_ok,
 )
-from tests.hub.test_kg_retention import kg_graphs, objects, rebuild, run_worker
+from tests.hub.test_kg_retention import kg_graphs, objects, rebuild, run_worker, seed_artifact
 from tests.kg.test_redact import GITHUB, LITERAL
 
 PASSWORD_LINE = f"Connect with DB_PASSWORD: {LITERAL}"
@@ -83,8 +84,11 @@ def built(hub, laptop: Machine, guide_line: str, rev: str) -> dict:
     run_worker(hub)
     build = build_rows(hub)[0]
     assert build["status"] == "succeeded", build
+    # the graph file an older build uploaded: the one the worker built into its cache
+    graph = (worker_project(hub.worker_dir, PROJECT).root / "graph.sqlite").read_bytes()
+    seed_artifact(hub, build, data=graph)
     tool_ok(hub, "kg_search", {"query": "guide"})  # the api caches the graph it reads
-    return build
+    return build_rows(hub)[0]
 
 
 @pytest.fixture
@@ -213,7 +217,7 @@ def test_scrub_purge_deletes_old_copies_keeps_what_is_in_use_and_audits(hub, lea
     trail = query(hub.db, select(audit.c.action, audit.c.target).where(audit.c.action == "kg.scrub"))
     assert trail == [("kg.scrub", f"{PROJECT} artifacts=1 blobs=2")]
 
-    again = rebuild(hub)  # the worker finds every blob the merged runs use
+    again = rebuild(hub, second)  # the worker finds every blob the merged runs use
     assert again["content_hash"] == second["content_hash"]
     assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
     found_again, _ = scan_all(hub, limit=1000)

@@ -375,10 +375,10 @@ def build_in_cache(
     maps: list[str] | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
-    from the blob store, the graph, which ``record`` uploads unless an earlier build has its content, and what the
+    from the blob store, the graph, whose rows ``record`` keeps in the hub's tables, and what the
     build covers with the files of each git source, which ``record`` keeps. With ``learned``, the graph gets the
     asked index of the project's searches (``kg_asked``), and its content hash folds in the index's digest, so a
-    build whose graph is the same but whose index is not uploads its file. With ``semantic`` settings that ask for
+    build whose graph is the same but whose index is not is a new graph. With ``semantic`` settings that ask for
     them, the graph gets the vectors of its rows (``kg_semantic``), embedded only when the project's vectors.sqlite
     lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
     overrides are put in its settings.json first, so the build reads them as a local one does. ``answers``, the hashes
