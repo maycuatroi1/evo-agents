@@ -145,6 +145,7 @@ if pg.DSN:
         claim,
         client,
         created,
+        ended,
         hub,
         in_chats,
         moved,
@@ -327,3 +328,27 @@ if pg.DSN:
         (thread,) = threads_of(hub_db)
         assert (thread["rule"], thread["subject_run_id"]) == ("idle", parent)
         assert client.portal.call(orchestrator.open_idle, client.app.state.engine) == 0, "once a trace"
+
+    def test_a_later_done_run_of_the_agent_closes_its_failed_thread(client, hub, hub_db):
+        studio, _, lead, parent = led_desk(client, hub)
+        moved(client, studio, parent, "failed", error="claude-code stopped at the run's time cap of 30 minutes")
+        (thread,) = threads_of(hub_db)
+        engine = client.app.state.engine
+        assert client.portal.call(orchestrator.close_recovered, engine) == 0, "no later run of @reviewer yet"
+        lead_run(client, lead, thread["orchestrator_run_id"])
+        body = {"handle": "reviewer", "body": "go on from the branch of the failed run"}
+        handed = in_chats(client, lead, thread["orchestrator_run_id"], "chat/mentions", body)
+        assert handed.status_code == 201 and handed.json()["refusal"] is None, handed.text
+        later = handed.json()["run_id"]
+        assert claim(client, studio)["id"] == later
+        moved(client, studio, later, "running", session_id="sess-2")
+        ended(client, studio, later)
+        assert {s["trace_id"] for s in spans_of(hub_db)} == {thread["trace_id"]}, "the later run is in the trace"
+        assert client.portal.call(orchestrator.close_recovered, engine) == 0, "the Orchestrator is still at it"
+        ended(client, lead, thread["orchestrator_run_id"])
+        assert client.portal.call(orchestrator.close_recovered, engine) == 1
+        (thread,) = threads_of(hub_db)
+        assert thread["closed_at"] is not None and thread["outcome"] is None
+        lines = in_thread(hub_db, thread["root_message_id"])
+        assert any(line.startswith(f"Closed: run #{later} of @reviewer") for line in lines), lines
+        assert client.portal.call(orchestrator.close_recovered, engine) == 0, "once"

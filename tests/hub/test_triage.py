@@ -201,7 +201,7 @@ def test_what_the_chat_runs_cost_holds_no_triage_run_back(client, hub, hub_db):
     run_id = failed_step(client, hub, worker, 4)
     ((chat_id, root_id, _, _, agent_run),) = row_of(hub_db, run_id)
     assert agent_run is not None
-    assert sql(hub_db, select(r.c.budget).where(r.c.id == agent_run)) == [({"max_seconds": 1800},)]
+    assert sql(hub_db, select(r.c.budget).where(r.c.id == agent_run)) == [({},)], "a chat run has no cap"
     said = thread(client, hub["owner"], chat_id, root_id)
     assert [item["author"]["kind"] for item in said] == ["hub"]  # the facts, and no refusal after them
 

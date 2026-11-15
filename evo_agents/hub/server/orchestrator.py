@@ -14,6 +14,10 @@ escalates (``escalate``), and when a rule of progress matches its trace (``triag
 - rounds: a turn of the hub runtime used its tool rounds without a final answer (``on_rounds``);
 - budget: the trace refused an ask or a mention for its budget (``on_budget``, when that refusal is written).
 
+A failed or stale thread with no outcome closes, with none, once a later run of its agent in the same trace ended done
+and the Orchestrator's run on it, if any, ended (``close_recovered``, each pass of the reaper): the work went on, so the
+trace no longer shows failed for it.
+
 The thread is in the work chat of the run's trace (``work_chats.placed``, which opens it), the Orchestrator and the
 person at the origin of the work put in it; for a run of no trace, or an Orchestrator the work chat cannot take, it is
 in the system's ops chat ("Ops: <slug>", ``agent_systems.ops_chat_id``), made the first time with the system's creator
@@ -561,6 +565,80 @@ async def open_idle(engine: AsyncEngine, batch: int = IDLE_BATCH) -> int:
             thread = await _safely(conn, triage_rules.IDLE, make)
             opened += thread is not None
     return opened
+
+
+# Threads the work went past
+
+RECOVERABLE = (triage_rules.FAILED, triage_rules.STALE)  # the rules whose thread a later done run of its agent closes
+RECOVER_BATCH = 50  # threads one pass of the reaper closes at most
+
+
+def _recovered_threads():
+    """The open threads of RECOVERABLE with no outcome whose agent has a run in the same trace, after the one the
+    thread is about, that ended done, and whose Orchestrator is not at work on them; with the latest such run."""
+    o, s, r = tables.orchestrator_threads, tables.system_spans, tables.runs
+    later = (
+        select(func.max(s.c.run_id))
+        .join(r, r.c.id == s.c.run_id)
+        .where(
+            s.c.trace_id == o.c.trace_id,
+            s.c.name == system_context.INVOKE,
+            s.c.agent == o.c.subject,
+            s.c.run_id > o.c.subject_run_id,
+            r.c.state == "done",
+        )
+        .scalar_subquery()
+    )
+    lead = r.alias("lead_run")
+    busy = exists().where(lead.c.id == o.c.orchestrator_run_id, lead.c.state.in_(runs.ACTIVE_STATES))
+    return (
+        select(o.c.id, o.c.trace_id, o.c.chat_id, o.c.root_message_id, o.c.subject, o.c.subject_run_id)
+        .add_columns(later.label("run_id"))
+        .where(
+            o.c.rule.in_(RECOVERABLE),
+            o.c.outcome.is_(None),
+            o.c.closed_at.is_(None),
+            o.c.trace_id.is_not(None),
+            o.c.subject_run_id.is_not(None),
+            ~busy,
+            later.is_not(None),
+        )
+        .order_by(o.c.id)
+    )
+
+
+async def close_recovered(engine: AsyncEngine, batch: int = RECOVER_BATCH) -> int:
+    """One pass, of the reaper (``run_reaper.recover_runs``): each failed or stale thread whose agent's later run in
+    the trace ended done closes, with no outcome (the Orchestrator decided nothing), a line of the hub in it, and the
+    work card read again, so the trace stops showing failed once its work went on; each in a transaction of its own.
+    A thread the hub could hand no Orchestrator run, or whose Orchestrator ended without an answer, stayed open
+    forever before (trace 178). How many closed."""
+    from evo_agents.hub.server import work_cards  # it reads threads through work_status, as this module writes them
+
+    async with engine.connect() as conn:
+        found = (await conn.execute(_recovered_threads().limit(batch))).all()
+    t = tables.orchestrator_threads
+    closed = 0
+    for row in found:
+        try:
+            async with engine.begin() as conn:
+                still = t.c.closed_at.is_(None), t.c.outcome.is_(None)
+                statement = update(t).where(t.c.id == row.id, *still).values(closed_at=func.now()).returning(t.c.id)
+                if (await conn.execute(statement)).scalar_one_or_none() is None:
+                    continue
+                if row.chat_id is not None and row.root_message_id is not None:
+                    line = (
+                        f"Closed: run #{row.run_id} of @{row.subject} in this trace ended done after run "
+                        f"#{row.subject_run_id}, so the work went on."
+                    )
+                    await hub_reply(conn, row.chat_id, row.root_message_id, line)
+                await work_cards.refresh(conn, row.trace_id)
+                closed += 1
+        except Exception as exc:  # one thread never stops the pass
+            log.warning(
+                "orchestrator thread not closed", extra={"thread": row.id, "error": f"{type(exc).__name__}: {exc}"}
+            )
+    return closed
 
 
 # Escalation
