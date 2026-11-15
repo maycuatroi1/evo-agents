@@ -6215,3 +6215,31 @@ def test_0247_adds_the_graph_tables_and_going_back_drops_them(hub_db):
     move_to(hub_db, "0246", down=True)
     assert not graph & tables(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0247") :]
+
+
+def test_0248_lets_a_dismissal_name_the_ontology_rules_and_going_back_deletes_those(hub_db):
+    move_to(hub_db, "0247")
+    d = hub_tables.kg_review_dismissals
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        row = {
+            "project_id": ids["project"],
+            "fingerprint": "r:0123456789abcdef",
+            "rule": "conflicting_claim",
+            "reason": "both hold",
+            "dismissed_by": ids["user"],
+        }
+        conn.execute(insert(d).values(row))
+    cycle = {**row, "fingerprint": "r:fedcba9876543210", "rule": "cycle", "reason": "the loop is on purpose"}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(d).values(cycle))
+    move_to(hub_db, "0248")
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(d).values(cycle))
+        conn.execute(insert(d).values({**cycle, "fingerprint": "r:1", "rule": "missing_prop"}))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(d).values({**cycle, "fingerprint": "r:2", "rule": "whatever"}))
+    assert query(hub_db, select(d.c.rule).order_by(d.c.rule)) == [("conflicting_claim",), ("cycle",), ("missing_prop",)]
+    move_to(hub_db, "0247", down=True)
+    assert query(hub_db, select(d.c.rule)) == [("conflicting_claim",)], "the other dismissals stay"
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0248") :]

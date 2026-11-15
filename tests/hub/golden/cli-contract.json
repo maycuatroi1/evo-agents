@@ -12664,7 +12664,12 @@
             "possible_duplicate",
             "ambiguous_match",
             "bulk_noise",
-            "conflicting_claim"
+            "conflicting_claim",
+            "wrong_endpoint",
+            "cardinality",
+            "cycle",
+            "duplicate_key",
+            "missing_prop"
           ]
         },
         {
@@ -37670,7 +37675,12 @@
                       "possible_duplicate",
                       "ambiguous_match",
                       "bulk_noise",
-                      "conflicting_claim"
+                      "conflicting_claim",
+                      "wrong_endpoint",
+                      "cardinality",
+                      "cycle",
+                      "duplicate_key",
+                      "missing_prop"
                     ],
                     "type": "string"
                   },
@@ -114337,7 +114347,12 @@
                 "possible_duplicate",
                 "ambiguous_match",
                 "bulk_noise",
-                "conflicting_claim"
+                "conflicting_claim",
+                "wrong_endpoint",
+                "cardinality",
+                "cycle",
+                "duplicate_key",
+                "missing_prop"
               ],
               "title": "Rule"
             },
@@ -114405,7 +114420,12 @@
                       "possible_duplicate",
                       "ambiguous_match",
                       "bulk_noise",
-                      "conflicting_claim"
+                      "conflicting_claim",
+                      "wrong_endpoint",
+                      "cardinality",
+                      "cycle",
+                      "duplicate_key",
+                      "missing_prop"
                     ]
                   },
                   "type": "array"
@@ -168911,7 +168931,12 @@
                 "possible_duplicate",
                 "ambiguous_match",
                 "bulk_noise",
-                "conflicting_claim"
+                "conflicting_claim",
+                "wrong_endpoint",
+                "cardinality",
+                "cycle",
+                "duplicate_key",
+                "missing_prop"
               ],
               "title": "Rule"
             },
@@ -169229,7 +169254,12 @@
                 "possible_duplicate",
                 "ambiguous_match",
                 "bulk_noise",
-                "conflicting_claim"
+                "conflicting_claim",
+                "wrong_endpoint",
+                "cardinality",
+                "cycle",
+                "duplicate_key",
+                "missing_prop"
               ],
               "title": "Rule"
             },
@@ -169976,7 +170006,12 @@
                 "possible_duplicate",
                 "ambiguous_match",
                 "bulk_noise",
-                "conflicting_claim"
+                "conflicting_claim",
+                "wrong_endpoint",
+                "cardinality",
+                "cycle",
+                "duplicate_key",
+                "missing_prop"
               ],
               "title": "Rule"
             },

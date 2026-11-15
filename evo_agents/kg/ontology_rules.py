@@ -26,15 +26,13 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from evo_agents.kg.review import ACTIONS as REVIEW_ACTIONS
-from evo_agents.kg.review import EVIDENCE, fingerprint
+from evo_agents.kg.review import EVIDENCE, ONTOLOGY_RULES, fingerprint
 from evo_agents.kg.schema import entry_name
 
 ONE_SOURCE = ("one_to_one", "one_to_many")  # a target has at most one source
 ONE_TARGET = ("one_to_one", "many_to_one")  # a source has at most one target
 SAMPLES = 5
-ACTIONS = {
-    rule: REVIEW_ACTIONS[rule] for rule in ("wrong_endpoint", "cardinality", "cycle", "duplicate_key", "missing_prop")
-}
+ACTIONS = {rule: REVIEW_ACTIONS[rule] for rule in ONTOLOGY_RULES}
 
 
 @dataclass(frozen=True)

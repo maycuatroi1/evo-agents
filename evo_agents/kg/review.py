@@ -69,6 +69,8 @@ from evo_agents.kg.protocol import sha256
 from evo_agents.kg.store import Graph
 from evo_agents.kg.store_clusters import Clusters
 
+# the rules an ontology states (``evo_agents.kg.ontology_rules``); a graph whose ontology states none has no item of them
+ONTOLOGY_RULES = ("wrong_endpoint", "cardinality", "cycle", "duplicate_key", "missing_prop")
 RULES = (
     "dangling_mention",
     "unmentioned_document",
@@ -77,12 +79,7 @@ RULES = (
     "ambiguous_match",
     "bulk_noise",
     "conflicting_claim",
-    # the rules an ontology states (``evo_agents.kg.ontology_rules``); a graph whose ontology states none has no item
-    "wrong_endpoint",
-    "cardinality",
-    "cycle",
-    "duplicate_key",
-    "missing_prop",
+    *ONTOLOGY_RULES,
 )
 ACTIONS = {
     "dangling_mention": "fix_mention",

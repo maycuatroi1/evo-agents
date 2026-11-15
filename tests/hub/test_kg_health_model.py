@@ -25,13 +25,15 @@ from evo_agents.hub.server import kg_health
 from evo_agents.kg.build import build_project
 from evo_agents.kg.health import is_test_path
 from evo_agents.kg.policy import Label
-from evo_agents.kg.review import RULES
+from evo_agents.kg.review import ONTOLOGY_RULES, RULES
 from evo_agents.kg.serve import Session
 from evo_agents.kg.snapshot import Snapshot, store_rows
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, git, make_project, write
 from tests.kg.test_clusters import needs_engine
+
+LENS_RULES = (*(rule for rule in RULES if rule not in ONTOLOGY_RULES), "ontology")  # the ontology's count as one
 
 SHA = "4f1c2e7a9b3d5f60718293a4b5c6d7e8f9012345"
 NOW = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
@@ -327,7 +329,7 @@ def test_the_lens_kg_health_has_its_figure_and_metrics_in_the_ledger():
         list(review.LENSES)[-4:] == ["kg_health", "kg_init", "kg_questions", "kg_entity_map"]
         and "kg_health" in review.FIGURE_KEYS
     )
-    queue = tuple(f"kg_review_{rule}" for rule in RULES)
+    queue = tuple(f"kg_review_{rule}" for rule in LENS_RULES)
     assert ledger.LENS_METRICS["kg_health"] == (
         "kg_behind",
         "kg_files_off",
@@ -343,7 +345,7 @@ def test_the_lens_kg_health_has_its_figure_and_metrics_in_the_ledger():
     )
     before = night(4, behind=3, missing=2, empty=4, fallbacks=2, edited=4, in_top=1)
     values = [ledger.read_metric(before, key) for key in ledger.LENS_METRICS["kg_health"]]
-    assert values == [3.0, 3.0, 4.0, 2.0, 3.0, 400.0, 2000.0, 1200.0, 25.0, 50.0, *[0.0] * len(RULES)]  # no queue yet
+    assert values == [3.0, 3.0, 4.0, 2.0, 3.0, 400.0, 2000.0, 1200.0, 25.0, 50.0, *[0.0] * len(LENS_RULES)]  # no queue yet
     assert len(ledger.LENS_METRICS["kg_health"]) <= ledger.MAX_METRICS, "a trigger holds every metric of the lens"
     before["kg_health"]["review"] = {"build_id": 7, "open": {"dangling_mention": 2, "bulk_noise": 1}}
     assert ledger.read_metric(before, "kg_review_dangling_mention") == 2.0
@@ -379,7 +381,7 @@ def test_a_level_of_the_graph_compares_as_it_is_and_a_count_per_session_or_run()
         "kg_answer_tokens": "same",
         "kg_grep_after": "same",
         "kg_unclicked": "same",
-        **{f"kg_review_{rule}": "same" for rule in RULES},
+        **{f"kg_review_{rule}": "same" for rule in LENS_RULES},
     }
     assert outcome["result"] == "keep"
     grepping = night(4, behind=3, missing=2, empty=4, fallbacks=2, edited=4, in_top=1, grep_after_rate=0.75)

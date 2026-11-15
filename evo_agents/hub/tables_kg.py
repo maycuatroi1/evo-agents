@@ -9,7 +9,7 @@ kg_pending_runs (0006) the runs waiting for their blobs, and kg_builds (0006, 00
 say how healthy the graph is over time: what each build covers, the files each git source holds in the latest
 build, and each measure of the graph against the default branches on the forge (``evo_agents.hub.server.kg_health``).
 kg_review_dismissals (0141) holds the items of the review queue writers dismissed (``evo_agents.kg.review``); 0199 lets
-a dismissal name the seventh rule, conflicting_claim.
+a dismissal name the seventh rule, conflicting_claim, and 0248 the five rules of the ontology.
 kg_decisions and kg_decision_events (0142) hold the decisions writers took on the graph and the proposals agents made,
 with each step of their history (``evo_agents.hub.kg_decisions``). kg_query_labels (0178) holds each kg_search of a
 session or a run with what the agent opened after it, under the label of the session or the run
