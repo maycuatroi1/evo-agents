@@ -22,6 +22,7 @@ if not pg.DSN:
 from sqlalchemy import delete, func, insert, select, update
 
 from evo_agents.hub import chat_runs, runs, tables
+from evo_agents.hub.server import wait_cycles
 from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (  # noqa: F401
@@ -211,6 +212,20 @@ def wait_of(db, wait_id: int) -> tuple:
     return sql(db, select(d.c.state, d.c.answer_text).where(d.c.id == wait_id))[0]
 
 
+def edges(client) -> list[wait_cycles.Edge]:
+    async def read(engine):
+        async with engine.connect() as conn:
+            return (await wait_cycles.graph(conn))[0]
+
+    return client.portal.call(read, client.app.state.engine)
+
+
+def awaited(client, wait_id: int) -> int:
+    """The run wait ``wait_id`` waits on in the wait-cycle graph: the last run of the chain that goes on from the run
+    asked, whose end answers it."""
+    return next(edge.awaited for edge in edges(client) if edge.wait_id == wait_id)
+
+
 def test_a_run_asked_that_is_lost_and_comes_back_answers_its_asker(client, hub, hub_db):
     """The incident of 2026-11-15: the reaper lost the run asked (its worker missed a lease extension), the same pass
     woke the asker's wait with 'ended lost ... It gave no answer', the worker came back for the run a minute later, and
@@ -230,6 +245,7 @@ def test_a_run_asked_that_is_lost_and_comes_back_answers_its_asker(client, hub, 
     assert (control["held"], control["state"], control["cancel"]) == (True, "running", False)
     assert sql(hub_db, select(r.c.state).where(r.c.id == retry)) == [("cancelled",)]
     assert wait_of(hub_db, wait_id) == ("open", None)
+    assert awaited(client, wait_id) == child, "the cancelled next attempt is no run the asker waits on"
 
     # it goes on in its session, as a resumed run, with a message its worker did not take, and that run answers
     (owner,) = sql(hub_db, select(tables.users.c.id).where(tables.users.c.login == OWNER))[0]
@@ -238,6 +254,7 @@ def test_a_run_asked_that_is_lost_and_comes_back_answers_its_asker(client, hub, 
     ended(client, node, child)
     assert wait_of(hub_db, wait_id) == ("open", None)
     ((resumed,),) = sql(hub_db, select(r.c.id).where(r.c.resume_of_run_id == child))
+    assert awaited(client, wait_id) == resumed
     assert claim(client, node)["id"] == resumed
     moved(client, node, resumed, "running", session_id="sess-kb")
     sql(hub_db, update(i).values(delivered_at=func.now()).where(i.c.run_id == resumed))  # its worker took the message
@@ -258,6 +275,9 @@ def test_a_run_asked_that_is_lost_for_good_answers_by_its_next_attempt(client, h
     assert recover(client)["lost"] == 1
     ((retry,),) = sql(hub_db, select(r.c.id).where(r.c.parent_run_id == child))
     assert wait_of(hub_db, wait_id) == ("open", None)
+    assert awaited(client, wait_id) == retry, "the wait's edge reaches the next attempt, whose end answers it"
+    back = wait_cycles.Edge(0, retry, parent)  # the next attempt asks the asker back and parks
+    assert wait_cycles.cycles([*edges(client), back]), "a wait on a lost run whose next attempt waits back is a cycle"
 
     set_run(hub_db, child, finished_at=func.now() - timedelta(seconds=runs.REATTACH_SECONDS + 1))
     assert beat(client, node, held=[child])["runs"][0]["cancel"] is True  # back too late: its agent is stopped

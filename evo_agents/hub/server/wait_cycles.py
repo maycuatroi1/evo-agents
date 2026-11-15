@@ -3,7 +3,8 @@ reaper's pass that breaks a cycle (``docs/hub.md``, Agents across projects).
 
 An open wait of an ask (``decisions.awaits_run_id``) is an edge of the graph: from the run that holds it (a run's open
 decisions move to the run that resumes it, so this is the last run of its session) to the last run of the chain of
-resumed runs (``runs.resume_of_run_id``) of the run it awaits, which is the run whose end answers it
+runs that go on from the run it awaits (``runs.resume_of_run_id``, and ``runs.parent_run_id`` for the next attempt of a
+run lost), which is the run whose end answers it
 (``agent_asks._waits``). When the edges close a cycle, no run of it ends, and each waits until its wait's time, days
 later (``run_waits.MAX_WAIT``). On 2026-11-11 runs #4982 of @ea-lead and #4984 of @ea-dev did: #4984 went on from
 #4574, whose escalation wait #1119 the Orchestrator (#4980, going on from #4575) gave with the work to @ea-lead, whose
@@ -23,7 +24,7 @@ import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import runs, tables
@@ -119,20 +120,27 @@ def upstream(edges: list[Edge], start: int) -> set[int]:
 
 
 async def _resumed(conn: AsyncConnection, ids: set[int]) -> dict[int, int]:
-    """The run that goes on from each run of the chains of resumed runs that start at ``ids``."""
+    """The run that goes on from each run of the chains that start at ``ids``: the run that resumes it, or the next
+    attempt of a run lost (``parent_run_id``), as ``agent_asks._waits`` follows them. A next attempt that re-attach
+    cancelled goes on from nothing: the run it would have replaced came back and goes on itself."""
     r = tables.runs
     resumed: dict[int, int] = {}
     todo = set(ids)
     for _ in range(MAX_CHAIN):
         if not todo:
             break
-        query = select(r.c.resume_of_run_id, r.c.id).where(r.c.resume_of_run_id.in_(todo)).order_by(r.c.id)
-        rows = (await conn.execute(query)).all()
-        todo = set()
-        for earlier, later in rows:
-            if earlier not in resumed:
-                resumed[earlier] = later
-                todo.add(later)
+        retry = and_(r.c.parent_run_id.in_(todo), r.c.state != "cancelled")
+        query = select(r.c.resume_of_run_id, r.c.parent_run_id, r.c.id).where(
+            or_(r.c.resume_of_run_id.in_(todo), retry)
+        )
+        rows = (await conn.execute(query.order_by(r.c.id))).all()
+        found = set()
+        for resume_of, parent, later in rows:
+            for earlier in (resume_of, parent):
+                if earlier in todo and earlier not in resumed:
+                    resumed[earlier] = later
+                    found.add(later)
+        todo = found
     return resumed
 
 
