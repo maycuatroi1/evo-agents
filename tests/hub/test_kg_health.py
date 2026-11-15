@@ -670,3 +670,47 @@ def test_the_review_queue_is_counted_on_the_snapshot_of_the_hubs_tables(world, t
     assert world.client.portal.call(found) == {"measured": 1}
     ((_, _, body, _),) = health_rows(world.db)
     assert body["review"]["build_id"] == second and set(body["review"]["open"]) == set(RULES), body["review"]
+
+
+def test_a_measure_loads_the_snapshot_of_the_graph_once_and_gives_its_memory_back(world, tmp_path, monkeypatch):  # noqa: F811
+    """The eval and the review each loaded the snapshot of the graph: on the largest graph a load takes more than
+    3 GiB while it is made, and the job curator.collect reached the 4 GiB of the worker's container, which killed it.
+    They read one snapshot now, and its memory goes back to the system once the project is measured."""
+    from evo_agents.hub import kg_snapshots
+
+    graph_of(world)
+    loads, given = [], []
+    load = kg_snapshots.load
+
+    async def counted(engine, project_id):
+        loads.append(project_id)
+        return await load(engine, project_id)
+
+    monkeypatch.setattr(kg_snapshots, "load", counted)
+    monkeypatch.setattr(kg_health, "give_back", lambda: given.append(len(loads)))
+    assert measured(world, tmp_path=tmp_path) == {"measured": 1}
+    assert loads == [project_id(world.db)] and given == [1]
+    ((_, _, body, _),) = health_rows(world.db)
+    assert body["eval"] and body["review"]
+
+
+def test_no_snapshot_is_loaded_for_an_owner_who_may_not_read_the_graph(world, tmp_path, monkeypatch):  # noqa: F811
+    """Neither the eval nor the review reads the graph when its owner holds no grant on the project: loading it
+    anyway would cost the memory of a snapshot for nothing."""
+    from evo_agents.hub import kg_snapshots
+
+    graph_of(world)
+    loads = []
+
+    async def counted(engine, project_id):
+        loads.append(project_id)
+
+    async def no_grant(conn, owner_id, login, project):
+        return None
+
+    monkeypatch.setattr(kg_snapshots, "load", counted)
+    monkeypatch.setattr(kg_health, "owner_access", no_grant)
+    assert measured(world, tmp_path=tmp_path) == {"measured": 1}
+    assert loads == []
+    ((_, _, body, _),) = health_rows(world.db)
+    assert "holds no grant" in body["eval"]["why"] and "holds no grant" in body["review"]["why"]

@@ -112,6 +112,24 @@ def queue_of(task: str) -> str:
     return KG_QUEUE if task == KG_BUILD else DEFAULT_QUEUE
 
 
+STALLED_AFTER = 120.0  # seconds without a heartbeat from its worker before a running job counts as abandoned
+
+
+async def fail_stalled(manager: JobManager, *, but: frozenset[str] = frozenset()) -> dict[str, int]:
+    """Fail the running jobs whose worker stopped sending heartbeats (killed, out of memory, or its machine lost), the
+    jobs of the tasks in ``but`` aside, which their own recovery fails: procrastinate leaves them doing for ever, and
+    one with a lock holds back every later job of that lock. How many of each task failed."""
+    from procrastinate.jobs import Status
+
+    failed: dict[str, int] = {}
+    for job in await manager.get_stalled_jobs(seconds_since_heartbeat=STALLED_AFTER):
+        if job.task_name in but:
+            continue
+        await manager.finish_job(job, Status.FAILED, delete_job=False)
+        failed[job.task_name] = failed.get(job.task_name, 0) + 1
+    return dict(sorted(failed.items()))
+
+
 def at_lock(task: str, when: datetime) -> str:
     """The queueing lock of a job of ``task`` scheduled for ``when``: one per second, apart from the task's own."""
     return f"{task}@{int(when.timestamp())}"
