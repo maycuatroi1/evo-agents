@@ -605,21 +605,16 @@ def read_labelled(
     ceiling: Label | None,
     graphs: list[BuiltGraph],
     read,
+    snapshot: Snapshotted | None = None,
 ):
     """``read(graph_store, clearance)`` on the newest graph of ``project`` that can be read, its reader the audience of
     ``ceiling`` and ``clearance`` its (level, location), None when ``ceiling`` is: for a caller that filters the rows
-    itself (``evo_agents.hub.kg_entity_map_run``). Blocking. Raises GraphUnavailable, ArtifactMismatch."""
-    path, graph = cache.acquire(store, project, graphs)
-    try:
-        opened = open_graph(path, project, graph)
-        try:
-            if ceiling is not None:
-                opened.reader = ceiling.audience
-            return read(opened, None if ceiling is None else (ceiling.level, ceiling.location))
-        finally:
-            opened.close()
-    finally:
-        cache.release(path)
+    itself (``evo_agents.hub.kg_entity_map_run``); ``snapshot``: as ``reading``. Blocking. Raises GraphUnavailable,
+    ArtifactMismatch."""
+    with reading(cache, store, project, graphs, snapshot) as (opened, _):
+        if ceiling is not None:
+            opened.reader = ceiling.audience
+        return read(opened, None if ceiling is None else (ceiling.level, ceiling.location))
 
 
 def unknown(

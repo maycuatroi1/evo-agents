@@ -164,7 +164,7 @@ class Snapshot:
     top_label: tuple[int, int] = (0, 0)  # the highest level and location of its labels
     top_audience: frozenset[str] = frozenset()  # the join of its audiences
     # what the reads of provenance and status give (``StoreRows``); empty for a snapshot of an assembled graph
-    units: MappingProxyType = MappingProxyType({})  # unit id: its row (UNIT_KEYS, then its label_aud)
+    units: MappingProxyType = MappingProxyType({})  # unit id: its row (UNIT_KEYS, then label_aud, label_lvl, label_loc)
     where: MappingProxyType = MappingProxyType({})  # element id: its (unit, span) rows
     derivations: MappingProxyType = MappingProxyType({})  # element id: its (units, needs) rows
     bodies: MappingProxyType = MappingProxyType({})  # node id: the body of its own full-text row and that row's aud
@@ -310,7 +310,7 @@ class StoreRows:
     keyed: tuple[tuple[str, tuple], ...]
     code: dict[str, str]
     top: tuple[tuple[int, int], frozenset[str]]
-    units: tuple[tuple, ...] = ()  # live units: UNIT_KEYS, then label_aud
+    units: tuple[tuple, ...] = ()  # live units: UNIT_KEYS, then label_aud, label_lvl, label_loc
     wheres: tuple[tuple, ...] = ()  # live where-provenance: (element, unit, span), by element, unit, span
     derivations: tuple[tuple, ...] = ()  # live derivations: (element, units JSON, needs JSON), by element, deriv id
     summary: dict = field(default_factory=dict)  # ``Store.summary``
@@ -384,7 +384,8 @@ def store_rows(store, b: int) -> StoreRows:
     row = db.execute("SELECT content_hash FROM builds WHERE build_id = ?", (b,)).fetchone()
     top = (store.top_label(b) or (0, 0), store.top_audience(b))
     units = db.execute(
-        f"SELECT unit_id, item_id, anchor, rev, hash, source, span, label_aud FROM units WHERE {LIVE} ORDER BY unit_id",
+        f"SELECT unit_id, item_id, anchor, rev, hash, source, span, label_aud, label_lvl, label_loc FROM units"
+        f" WHERE {LIVE} ORDER BY unit_id",
         {"b": b},
     ).fetchall()
     wheres = db.execute(

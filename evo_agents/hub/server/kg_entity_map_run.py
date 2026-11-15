@@ -45,6 +45,7 @@ from evo_agents.hub.server.kg import (
     read_sink,
     reader_audience,
     rebuild_outdated,
+    snapshot_view,
     writer,
 )
 from evo_agents.hub.server.projects import project_access
@@ -333,9 +334,17 @@ async def _read(request: Request, user: Principal, project: str, read):
     ceiling = access.rules.ceiling(access.max_level, read_sink(access, sink), audience)
     if ceiling is None:
         raise HTTPException(409, f"nothing of project {project} is visible through sink {sink!r} with your grant")
+    snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     try:
         found = await asyncio.to_thread(
-            read_labelled, state.kg_graphs, state.blobs, project, ceiling, graphs, lambda s, c: read(s, c, before)
+            read_labelled,
+            state.kg_graphs,
+            state.blobs,
+            project,
+            ceiling,
+            graphs,
+            lambda s, c: read(s, c, before),
+            snapshot,
         )
     except GraphOutdated as exc:
         await rebuild_outdated(state, access.project_id, project)

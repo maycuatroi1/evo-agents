@@ -185,3 +185,30 @@ def test_the_labelled_nodes_of_a_view_are_those_of_the_file(tmp_path, monkeypatc
             assert list(labelled_nodes(view, node_id=some)) == list(labelled_nodes(store, node_id=some))
     finally:
         store.close()
+
+
+def test_the_entity_map_reads_of_a_view_are_those_of_the_file(tmp_path, monkeypatch):
+    from evo_agents.kg import entity_map_reads as reads
+    from tests.hub import test_kg_audience as aud
+
+    graph = aud.build(tmp_path, monkeypatch, 1, 2)
+    path = tmp_path / "graph.sqlite"
+    path.write_bytes(graph.data)
+    store = Store.open_file(path, immutable=True)
+    try:
+        b = store.latest_ready()
+        rows = store_rows(store, b)
+        rels = sorted({e["rel"] for e in Snapshot.from_stored(rows).edges})
+        for reader in (frozenset(), frozenset({"chat:1"}), frozenset({"chat:1", aud.GB})):
+            store.reader = reader
+            view = Snapshot.from_stored(rows).view(reader)
+            for ceiling in (None, PUBLIC, INTERNAL, (9, 9)):
+                assert sorted(reads.node_rows(view, b, ceiling)) == sorted(reads.node_rows(store, b, ceiling))
+                assert list(reads.item_rows(view, b, ceiling)) == list(reads.item_rows(store, b, ceiling))
+                for rel in rels:
+                    assert sorted(reads.edge_rows(view, b, ceiling, rel)) == sorted(
+                        reads.edge_rows(store, b, ceiling, rel)
+                    )
+            assert reads.cluster_rows(view, b) == [tuple(r) for r in reads.cluster_rows(store, b)]
+    finally:
+        store.close()
