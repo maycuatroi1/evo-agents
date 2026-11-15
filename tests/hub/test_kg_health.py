@@ -28,6 +28,7 @@ if not pg.DSN:
 from sqlalchemy import delete, func, insert, select
 
 from evo_agents.hub import tables
+from evo_agents.hub.kg_coverage import REVIEW_WORDS
 from evo_agents.hub.kg_ingest import knowledge_config
 from evo_agents.hub.kg_push import Pusher
 from evo_agents.hub.migrate import migrate
@@ -378,7 +379,7 @@ def test_the_nights_figures_hold_the_health_of_the_graph_and_the_lens_kg_health_
         ],
     )
     assert made.status_code == 201, made.text
-    assert [item["resolved"] for item in made.json()["evidence"]] == ["repo", "facet"]
+    assert [item["resolved"] for item in made.json()["evidence"]] == ["unmatched", "facet"]  # the head lacks it
     proposal = proposed(
         world.client,
         world.worker,
@@ -400,7 +401,7 @@ def test_the_nights_figures_hold_the_health_of_the_graph_and_the_lens_kg_health_
         "kg_empty": 2.0,
         "kg_fallbacks": 1.0,
         "kg_misses": 1.0,
-        **{f"kg_review_{rule}": 0.0 for rule in RULES},  # no blob store here: the queue is not counted
+        **{f"kg_review_{rule}": 0.0 for rule in REVIEW_WORDS},  # the head holds no review queue: nothing open
         # what agents got from their lookups: no session read any here, so each level is 0
         "kg_lookup_tokens_p50": 0.0,
         "kg_lookup_tokens_p90": 0.0,
