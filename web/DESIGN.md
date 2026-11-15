@@ -389,7 +389,10 @@ product name beside them; without one the shell shows the mark, the favicon and 
   beside a fluid one (a run, Home, a memory), more fields to a row from 2xl in a form (four in the Curator's charter),
   two facts to a row from 2xl in a list of facts that has the card to itself (a plan's step), a row of figures in one
   container that shares out the width. Long text (a plan's markdown, a memory) keeps the width of its card; a line
-  length for it is still open.
+  length for it is still open. A chat is the exception that reads as ChatGPT and Claude.ai do: its card takes the
+  whole width, and inside it the messages and the composer sit in a reading column of at most 56 rem
+  (`READING_COLUMN` in `chats/message-item.tsx`), centred, so a wide window gives its width to the text up to a
+  readable line instead of a band left empty beside a column pinned to the left.
 - The shell is the kit's AppShell: the sidebar is 240 px wide (`15rem`), folds to 56 px of icons on desktop (Ctrl or
   Cmd + B, or the top bar's toggle) and becomes a sheet below 768 px; the top bar is 52 px on `surface` and sticks to
   the top.
@@ -433,8 +436,8 @@ changed where the defaults fell short:
   `muted-foreground` until it hovers `accent`, for toolbars, rows and icon-only buttons; `quiet-danger` is `danger`
   text on no fill, for a reversible stop (Cancel run); `destructive` is `danger-solid` with `on-danger`, darker on
   hover (`brightness-94`), only inside the confirm step of something permanent; `link` is `brand`. Sizes: `sm` 28 px
-  (dense toolbars, table rows), `default` 32 px (page and card actions), `lg` 40 px (dialog footers, the composer's
-  Send), `icon`, `icon-sm` and `icon-lg` square at 32, 28 and 40 px; every size has the control radius. Under 768 px
+  (dense toolbars, table rows), `default` 32 px (page and card actions, the composer's Send), `lg` 40 px (dialog
+  footers), `icon`, `icon-sm` and `icon-lg` square at 32, 28 and 40 px; every size has the control radius. Under 768 px
   every button but `link` is at least 44 px tall, and icon buttons 44 px wide too. `busy` sets `aria-busy` and
   `aria-disabled`, hides the button's own icon behind a turning `LoaderCircle` (still under reduced motion) and
   ignores clicks, so a busy submit button does not submit; the caller passes the -ing label ("Dispatching"). The
@@ -1127,16 +1130,18 @@ Shared pieces built on them:
   picked show under it as chips with their faces; the hub's refusal stays in the dialog with its words, and the chat
   opens once made. Members adds a person with the same picker, each row a button that adds them at once, who is in
   the chat left out. A chat (`chat-view.tsx`)
-  is a card: its head, its messages, and the composer. A group chat's head (`chat-header.tsx`) puts its face first, 40
+  is a card: its head, its messages, and the composer, the messages and the composer in the reading column (Spacing
+  and layout), the head over the card's whole width with 8 px above and below it. A group chat's head (`chat-header.tsx`) puts its face first, 40
   px, as a button with a `Camera` badge (`chat-image-control.tsx`) whose menu says what an image takes (PNG, JPEG or
   WebP, at most 512 KiB) and offers Upload image, or Change image and Remove image once there is one; Remove asks
   first (`ConfirmAction`, loaded when first chosen). A file of another type or over the size is refused before it is
   sent, and that, or the hub's refusal, shows under the head as an inline error until the next try; a change is a
   toast, and the chat's image_changed event shows it to the other members at once. Then the title as the h1, the
   visibility its agents' projects give it, its agents' faces, who else is in it (Only you so far, alone), and Members.
-  A direct chat's head is its agent's, laid out as a messenger's: its avatar, its name as the h1 on one line (cut with
-  an ellipsis, the whole name in its tooltip) with a Direct tag (`Bot`) and Deleted when it is, under the name its
-  `@handle` linking to the agent's page, its project and the visibility, and Details at the end of the name's row,
+  A direct chat's head is its agent's, laid out as a messenger's: its avatar (32 px), its name as the h1 (`lg`) on one
+  line (cut with an ellipsis, the whole name in its tooltip) with a Direct tag (`Bot`) and Deleted when it is, under
+  the name, and from 1024 px after it on the same row so the head is one slim row of 36 px, its `@handle` linking to
+  the agent's page, its project and the visibility, and Details at the end of the name's row,
   which opens the members sheet as its Details: its agent and its person with nobody to add, take out or leave (a
   `Lock` note says to start a group chat for that), and the budget. Below 768 px Details is its `Info` icon (a 44 px
   target, its word kept as its name) and Direct its `Bot`, so the way back, the face, the name and Details share one
@@ -1167,16 +1172,16 @@ Shared pieces built on them:
   (`brand`) at 5.8:1 and 6.1:1, 6.2:1 and 7.1:1, and `fg-muted` (list marks, quotes) at 6.1:1 at the least. Messages
   of one author on the same day within five minutes run on: the face, the name and the time show once, over the first,
   whose bubble turns a small corner toward them; each other one keeps a head for a screen reader alone (the message's
-  name: who, then when) and gives its full time as the bubble's tooltip. A bubble is `radius-lg`, at most 42 rem wide
-  and on phones the line less the face (the visitor's 85 %), its text through SafeMarkdown
+  name: who, then when) and gives its full time as the bubble's tooltip. A bubble is `radius-lg`, as wide as its text up to its
+  column: anyone else's column is the reading column less the face, its cards and decisions as wide as it allows (46
+  rem at most); the visitor's own is 85 % of the line, less from 768 px the room its actions take beside it; its text through SafeMarkdown
   (`components/data/markdown.tsx`: Markdown, never HTML) with inline code and code blocks on `card`, a code block or a
   table scrolling inside it. A member of the chat the text names is marked (`lib/mention-marks.ts`): an agent's
   `@handle` shows as its name, a person's `@login` or bare login as the login, never with the `@`, `medium` in `brand`
   on a tint of it, `radius-xs`; text in code, a link or a path keeps the name as written. A one-line preview of a
   message (the list of chats, a reply's quote, the composer's Replying to) drops the `@` of the members it mentions too. Right under the bubble, an interactive answer (an HTML output its
   agent marked; docs/hub.md, Interactive answers) shows as the page itself (`interactive-answer.tsx`): a frame
-  `sandbox="allow-scripts"`, never `allow-same-origin`, the column's full width (the message then takes all of its
-  42 rem), in a `card` box with a border and `radius-lg`, 320 px tall at first and then as tall as the page asks
+  `sandbox="allow-scripts"`, never `allow-same-origin`, the column's full width (the message then takes all of it), in a `card` box with a border and `radius-lg`, 320 px tall at first and then as tall as the page asks
   through the bridge `evo-answer/1` (`answer-bridge.ts`), from 120 to 1600 px; under it a caption in `xs`
   `muted-foreground` with `Sparkles`, "Interactive answer: name". It loads only once its message comes within 600 px
   of the viewport, a skeleton in its place until the page loaded, and a read the hub refused shows an alert line with
@@ -1192,10 +1197,10 @@ Shared pieces built on them:
   neutral dot, then each step of its setup and working with the running dot, each in place of the one before; gone
   once the agent answers or the run ends, so a message nobody works on shows nothing), what the page puts under it (a
   decision), its reactions, and in a group chat, for a message that starts a thread, the faces of who replied, "3
-  replies" in `brand` and when the last came, which opens the thread. React, the message's runs and Reply sit beside the bubble at its
-  top, on the side away from the face, from 768 px (a `popover` box shown while the pointer is
-  over the message, a key is in it or its picker is open; the line leaves it room), and in a row of their own under it
-  on phones, 44 px each. The runs (`MessageRuns`: an agent's message's own run, the run each mention handed work to)
+  replies" in `brand` and when the last came, which opens the thread. React, the message's runs and Reply, from 768 px, are a `popover` box shown while
+  the pointer is over the message, a key is in it or its picker is open: beside the visitor's own bubble at its top, on
+  its open side (the line leaves it room), and over the top right corner of anyone else's row, as Slack draws them,
+  since that message may fill the column; on phones they are a row of their own under it, 44 px each. The runs (`MessageRuns`: an agent's message's own run, the run each mention handed work to)
   are `Activity` icon links named "Run #N of @handle" or "@handle: run #N", so a run shows only when asked for. A group chat's line holds the messages that are no reply: Reply in thread
   (`MessageSquareReply`) opens the thread, where the replies live. A direct chat's line holds every message: the agent's
   answers, which the hub posts in the thread of the message they answer, sit right under it, and no thread needs
@@ -1215,7 +1220,7 @@ Shared pieces built on them:
   The bar between the chat and the column (`thread-width.tsx`, a window splitter: drag, or the arrows with Home and
   End, double click for the default) sets its share between 30 and 70 %, kept in the browser for the next thread.
   Expand (`Maximize2`) in the thread's head gives it the whole chat view (the whole width as a sheet), its messages and
-  composer kept to 56 rem, and Collapse puts it back; closing the thread leaves the mode. `?thread=ID`
+  composer kept to the reading column, and Collapse puts it back; closing the thread leaves the mode. `?thread=ID`
   opens one, and `?message=ID`, where a notice links, shows that message marked (a `brand` ring on its bubble) and
   focused: in its thread when it is a reply of a group chat or older than the page read, otherwise where it sits in the
   line. A chat run (the triage agent of a failed run) that asks ends its turn with a decision open: the kit's
@@ -1225,15 +1230,17 @@ Shared pieces built on them:
   not ended. In the Inbox and on Home a
   decision of category `triage` reads "Triage run #N" and "project, triage of a failed run" where an author run's reads
   "Author run #N", and a `run_failed` notice that links to the thread opens it (Open triage thread). The composer
-  (`composer.tsx`) is the kit's Composer with Send and its `kbd` (↵). In every chat and thread Enter sends and Shift
+  (`composer.tsx`) is the kit's Composer on one row, as ChatGPT's and Claude's: Attach, the text area (one line at
+  first, growing with the text up to 12 rem, then scrolling) and Send with its `kbd` (↵), Send only its icon below 768
+  px (a 44 px target, its word kept as its name); the line under the box shows only while it has something to say. In every chat and thread Enter sends and Shift
   with Enter adds a line, as in messenger apps; Cmd or Ctrl with Enter sends too, and the Enter that ends an input
   method's word (Telex, `isComposing` or Safari's key code 229) sends nothing (`isChatSend` in `lib/keyboard.ts`). On
   a touch screen (`TOUCH_QUERY`: no hover, a coarse pointer) Enter adds a line and Send sends, the `kbd` hidden; with a
   keyboard the text area names Enter in `aria-keyshortcuts` and its description says it. Typing `@` opens the
   suggestions above the box (`mention-menu.tsx`: a listbox the text area drives through `aria-activedescendant`,
   grouped Agents, Projects, People, each with its face; the arrows move, Enter or Tab puts the name in with a space,
-  Escape closes it, a polite region says how many there are); the bar under the box says what the message will do ("Hands work to
-  @reviewer.", with the agents past the hub's three named in `attention`) and otherwise how mentions work; a blank
+  Escape closes it, a polite region says how many there are); the line under the text says what the message will do ("Hands work to
+  @reviewer.", with the agents past the hub's three named in `attention`) and the byte count past 12 KiB; a blank
   message or one over 16 KiB is refused in place, a refusal of the hub shows there with its words. A text file of a
   message (Markdown, plain text, JSON, CSV, YAML or code, attached by a person or sent by a run; not an image, a PDF
   or an archive, which open in the outputs' viewer only) has "Open NAME beside the chat" (`BookOpen`) under it: the

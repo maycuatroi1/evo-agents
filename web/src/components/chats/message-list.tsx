@@ -9,7 +9,7 @@ import type { Chat, GroupMessage } from "@/lib/chats";
 
 import { type Feed, replyCount, threadTail } from "./feed-model";
 import { lineMessages, quotes, runsOn } from "./line-model";
-import { type MessageActions, MessageItem } from "./message-item";
+import { type MessageActions, MessageItem, READING_COLUMN } from "./message-item";
 import { useFollow } from "./use-follow";
 
 type Props = MessageActions & {
@@ -27,7 +27,8 @@ type Props = MessageActions & {
  * answer, a reply quoting what it answers when another message came between. Messages of one author a moment apart
  * run on under one face and name. A `role="log"` region (polite) that scrolls on its own and opens at the newest
  * message; it follows new ones while the visitor reads at the end, and offers Jump to the latest when they scrolled
- * up. Earlier messages load on demand, a page at a time.
+ * up. Earlier messages load on demand, a page at a time. The messages sit in the reading column (`READING_COLUMN`),
+ * centred in the log however wide the window is.
  */
 export function MessageList({ chat, me, feed, highlight, loadOlder, onReact, onThread, onReply, onQuote, reacting, under }: Props) {
   const t = useTranslations("chats.messages");
@@ -89,7 +90,7 @@ export function MessageList({ chat, me, feed, highlight, loadOlder, onReact, onT
             {direct ? <p className="max-w-md text-[13px] leading-[18px] text-pretty text-muted-foreground">{t("directEmptyBody", { name: agent })}</p> : null}
           </div>
         ) : (
-          <ol className="flex flex-col" data-testid="chat-messages">
+          <ol className={`flex flex-col ${READING_COLUMN}`} data-testid="chat-messages">
             {messages.map((message, index) => {
               const before = messages[index - 1];
               const day = dayOf(message);

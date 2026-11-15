@@ -51,7 +51,8 @@ function BackLink() {
  * project of its agents the level of its label, which they set (`ChatLabelControl`). A direct chat's head is its
  * agent's, laid out as a messenger's: its avatar, its name on one line with Direct, under the name its @handle linking
  * to the agent's page, its project and the visibility, and Details at the end of the name's row, which opens the same
- * sheet without adding or taking out anyone; its face and its name open the agent's menu (`AgentMenu`), as a group
+ * sheet without adding or taking out anyone; from 1024 px the name and that line share one row, so the head is one
+ * slim row over the messages; its face and its name open the agent's menu (`AgentMenu`), as a group
  * chat's agents' faces do; below 768 px Details and Direct are their icons, so the name, Direct and
  * Details share one row on a phone. Under 1024 px a back link to the list stands before the face, in the row of the face and the
  * title, so it stays beside them when the head wraps at 375 px. A page that frames the chat with its own controls
@@ -63,7 +64,7 @@ export function ChatHeader({ chat, me, onMembers, slots }: { chat: Chat; me: str
   const [problem, setProblem] = useState<WriteFailure | null>(null);
   const agent = chat.kind === "direct" ? (chat.agents[0] ?? null) : null;
   return (
-    <div className="flex flex-col gap-3 border-b px-3 py-3 sm:px-4" data-testid="chat-head" data-kind={chat.kind}>
+    <div className="flex flex-col gap-2 border-b px-3 py-2 sm:px-4" data-testid="chat-head" data-kind={chat.kind}>
       {agent ? (
         <DirectHead chat={chat} agent={agent} onDetails={onMembers} slots={slots} />
       ) : (
@@ -144,15 +145,15 @@ function DirectHead({ chat, agent, onDetails, slots }: { chat: Chat; agent: Chat
   );
   return (
     <header className="flex min-w-0 items-start gap-2 md:gap-3" data-testid="chat-header">
-      <div className="flex shrink-0 items-center gap-2 md:gap-3">
+      <div className="flex min-h-11 shrink-0 items-center gap-2 md:min-h-10 md:gap-3 lg:min-h-9">
         <BackLink />
         <AgentMenu agent={agent}>
-          <ChatAvatar face={{ kind: "agent", agent: agentAuthor(agent) }} size="lg" />
+          <ChatAvatar face={{ kind: "agent", agent: agentAuthor(agent) }} />
         </AgentMenu>
       </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex min-h-11 min-w-0 items-center gap-2 md:min-h-10">
-          <h1 className="min-w-0 truncate text-xl font-semibold tracking-tight" title={agent.name}>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 lg:flex-row lg:items-center lg:gap-3">
+        <div className="flex min-h-11 min-w-0 items-center gap-2 md:min-h-10 lg:min-h-9 lg:max-w-[60%]">
+          <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight" title={agent.name}>
             {slots?.title ? (
               slots.title(name)
             ) : (
@@ -167,8 +168,8 @@ function DirectHead({ chat, agent, onDetails, slots }: { chat: Chat; agent: Chat
           </Tag>
           {agent.deleted ? <Tag className="text-danger">{t("deleted")}</Tag> : null}
         </div>
-        <p className="text-[13px] leading-[18px] text-muted-foreground [overflow-wrap:anywhere]" data-slot="page-sub">
-          <span className="inline-flex max-w-full flex-wrap items-center gap-x-3 gap-y-1" data-testid="chat-who">
+        <p className="text-[13px] leading-[18px] text-muted-foreground [overflow-wrap:anywhere] lg:min-w-0 lg:flex-1 lg:overflow-hidden" data-slot="page-sub">
+          <span className="inline-flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 lg:flex-nowrap" data-testid="chat-who">
             <Link href={agentHref(agent.project, agent.handle)} className={`${NAME_LINK} max-w-full truncate font-mono text-[13px] font-normal`} title={t("agentPage", { name: agent.name })} data-testid="chat-agent-link">
               {agent.handle}
             </Link>
@@ -183,7 +184,7 @@ function DirectHead({ chat, agent, onDetails, slots }: { chat: Chat; agent: Chat
           </span>
         </p>
       </div>
-      <div className="flex h-11 shrink-0 items-center gap-2 md:h-10">
+      <div className="flex h-11 shrink-0 items-center gap-2 md:h-10 lg:h-9">
         {slots?.actions ? <div className="flex items-center gap-2 max-md:hidden">{slots.actions}</div> : null}
         <Button type="button" variant="outline" size="sm" onClick={onDetails} className="max-md:min-w-11" data-testid="chat-details-open">
           <Info aria-hidden="true" />

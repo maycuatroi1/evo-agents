@@ -72,18 +72,30 @@ const InteractiveAnswer = dynamic(() => import("./interactive-answer").then((mod
 const WorkRootCard = dynamic(() => import("./work-root-card").then((module) => module.WorkRootCard), { ssr: false });
 
 /**
- * A message column leaves room on its open side for ACTIONS (three small buttons, 98 px with their gap) inside the
- * row: 5.5rem beside one's own message, 8rem beside another's, whose face and gap take 40 px more. Less, and the actions
- * of the widest message stick out of the chat log, which then scrolls sideways.
+ * The reading column of a chat's line and its composer (and of an expanded thread): centred in the view and at most
+ * 56 rem wide, as ChatGPT and Claude.ai read, so a wide window gives its width to the text up to a readable line
+ * instead of leaving a band empty beside it.
+ */
+export const READING_COLUMN = "mx-auto w-full max-w-4xl";
+
+/**
+ * A message's column in its row. Anyone else's fills the row after the face (its bubble as wide as its text needs,
+ * its cards and decisions the column's width); the visitor's own leaves room on its open side for ACTIONS (three
+ * small buttons, 98 px with their gap) from 768 px: less, and the actions of the widest message stick out of the log,
+ * which then scrolls sideways.
  */
 const COLUMN = {
-  mine: "items-end max-w-[85%] md:max-w-[min(42rem,calc(100%-5.5rem))]",
-  theirs: "items-start max-w-[calc(100%-2.5rem)] md:max-w-[min(42rem,calc(100%-8rem))]",
+  mine: "relative items-end max-w-[85%] md:max-w-[min(85%,calc(100%-5.5rem))]",
+  theirs: "w-full items-start max-w-[calc(100%-2.5rem)]",
 };
-/** React, the message's runs and Reply from 768 px: beside the message at its top, on the side away from its face, while it has the pointer or a key. */
+/**
+ * React, the message's runs and Reply from 768 px, while it has the pointer or a key: beside the visitor's own bubble
+ * at its top, on the side away from it; over the top right corner of anyone else's row, as Slack draws them, since
+ * that message may fill the column.
+ */
 const ACTIONS = {
-  mine: "md:right-full md:mr-1",
-  theirs: "md:left-full md:ml-1",
+  mine: "md:top-0 md:right-full md:mr-1",
+  theirs: "md:-top-3 md:right-1",
 };
 
 /**
@@ -133,13 +145,13 @@ export function MessageItem(props: Props) {
       data-run-on={runOn}
       data-highlighted={highlighted || undefined}
       className={cn(
-        "group/message flex gap-2 rounded-md px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-3",
+        "group/message relative flex gap-2 rounded-md px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-3",
         mine && "justify-end",
         runOn ? "pt-0.5" : "pt-3",
       )}
     >
       {mine ? null : runOn ? <span className="w-8 shrink-0" aria-hidden="true" /> : <Face author={message.author} />}
-      <div className={cn("relative flex min-w-0 flex-col gap-1", COLUMN[side], answers.length > 0 && "w-full")}>
+      <div className={cn("flex min-w-0 flex-col gap-1", COLUMN[side], answers.length > 0 && "w-full")}>
         <MessageHead id={`${id}-head`} message={message} me={me} mine={mine} runOn={runOn} />
         {quote && onQuote ? <ReplyQuote quote={quote} me={me} marks={marks} onShow={onQuote} /> : null}
         {message.body || !attached.length ? (
@@ -179,7 +191,7 @@ export function MessageItem(props: Props) {
           <div
             className={cn(
               "flex items-center gap-0.5",
-              "md:pointer-events-none md:absolute md:top-0 md:rounded-sm md:border md:bg-popover md:p-0.5 md:opacity-0 md:shadow-popover md:transition-opacity",
+              "md:pointer-events-none md:absolute md:z-10 md:rounded-sm md:border md:bg-popover md:p-0.5 md:opacity-0 md:shadow-popover md:transition-opacity",
               "md:group-focus-within/message:pointer-events-auto md:group-focus-within/message:opacity-100 md:group-hover/message:pointer-events-auto md:group-hover/message:opacity-100",
               "md:has-[[aria-expanded=true]]:pointer-events-auto md:has-[[aria-expanded=true]]:opacity-100",
               ACTIONS[side],

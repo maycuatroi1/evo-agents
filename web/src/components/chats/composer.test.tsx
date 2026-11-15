@@ -108,6 +108,25 @@ describe("ChatComposer", () => {
     expect(box).toHaveValue("Nhờ @reviewer và @demo @m");
   });
 
+  it("is one line tall at first and grows with the text up to 12 rem", async () => {
+    const tall = vi.spyOn(HTMLTextAreaElement.prototype, "scrollHeight", "get");
+    try {
+      tall.mockReturnValue(32);
+      const { box } = setup();
+      expect(box).toHaveAttribute("rows", "1");
+      expect(box.style.height).toBe("32px");
+      expect(screen.queryByTestId("chat-composer-hint")).toBeNull();
+      tall.mockReturnValue(80);
+      fireEvent.change(box, { target: { value: "một\nhai\nba" } });
+      expect(box.style.height).toBe("80px");
+      tall.mockReturnValue(900);
+      fireEvent.change(box, { target: { value: "dài\n".repeat(40) } });
+      expect(box.style.height).toBe("192px");
+    } finally {
+      tall.mockRestore();
+    }
+  });
+
   it("says when a message names more agents than one message hands work to", async () => {
     const chat = { ...CHAT, agents: [...CHAT.agents, agent("docs")] };
     const client = new QueryClient();

@@ -33,7 +33,7 @@ import { ChatDocPanel } from "./doc-panel";
 import type { Feed } from "./feed-model";
 import { useChatFailure, useMe } from "./hooks";
 import { preview, type Quote } from "./line-model";
-import { type MessageSlot } from "./message-item";
+import { type MessageSlot, READING_COLUMN } from "./message-item";
 import { MessageList } from "./message-list";
 import { OpenThreadContext } from "./open-thread";
 import { useAuthorLabel } from "./message-parts";
@@ -297,8 +297,9 @@ function Conversation({ page, useUnder, agentPanels, headSlots, slots }: { page:
               </Button>
             </div>
           ) : (
-            <div className="border-t p-3">
+            <div className="px-3 pt-1 pb-3">
               <ChatComposer
+                className={READING_COLUMN}
                 chat={chat}
                 me={me}
                 replyTo={replying?.id ?? null}
@@ -373,9 +374,9 @@ function Conversation({ page, useUnder, agentPanels, headSlots, slots }: { page:
 function ChatLoading() {
   return (
     <div className={`${CARD} h-full w-full`} data-testid="chat-loading">
-      <div className="flex flex-col gap-2 border-b px-4 py-3">
-        <Skeleton className="h-6 w-48 rounded-xs" />
-        <Skeleton className="h-3 w-64 rounded-xs" />
+      <div className="flex items-center gap-3 border-b px-4 py-2">
+        <Skeleton className="size-8 shrink-0 rounded-full" />
+        <Skeleton className="h-5 w-48 rounded-xs" />
       </div>
       <div className="flex flex-1 flex-col gap-5 p-4">
         {[0, 1, 2].map((row) => (
@@ -388,8 +389,8 @@ function ChatLoading() {
           </div>
         ))}
       </div>
-      <div className="border-t p-3">
-        <Skeleton className="h-24 w-full rounded-md" />
+      <div className="px-3 pt-1 pb-3">
+        <Skeleton className={`h-12 rounded-lg ${READING_COLUMN}`} />
       </div>
     </div>
   );

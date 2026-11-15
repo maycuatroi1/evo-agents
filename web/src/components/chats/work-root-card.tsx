@@ -26,7 +26,7 @@ export function WorkRootCard({ work }: { work: WorkCard }) {
   return (
     <section
       aria-labelledby={`${id}-title`}
-      className="flex w-full max-w-[32rem] min-w-0 flex-col gap-2 rounded-md border bg-card px-3 py-2.5 shadow-raised"
+      className="flex w-full max-w-[46rem] min-w-0 flex-col gap-2 rounded-md border bg-card px-3 py-2.5 shadow-raised"
       data-testid="work-root-card"
       data-status={work.status}
     >

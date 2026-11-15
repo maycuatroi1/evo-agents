@@ -13,7 +13,7 @@ import type { WorkAsk, WorkDecision } from "@/lib/work";
 import { preview } from "./line-model";
 import { useOpenThread } from "./open-thread";
 
-const CARD = "flex w-full max-w-[36rem] min-w-0 flex-col gap-2 rounded-md border bg-card px-3 py-2.5 shadow-raised";
+const CARD = "flex w-full max-w-[46rem] min-w-0 flex-col gap-2 rounded-md border bg-card px-3 py-2.5 shadow-raised";
 
 /** A sub-task's state: its run's as a run's pill, refused or failed before a run in `danger`, anything else as written. */
 export function AskStatus({ status }: { status: string }) {

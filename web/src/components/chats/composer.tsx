@@ -35,6 +35,14 @@ import { cn } from "@/lib/utils";
 import { useChatFailure } from "./hooks";
 import { MentionMenu, optionId } from "./mention-menu";
 
+/** The tallest the text area grows to as the message gets longer (12 rem, `max-h-48`); past it the text scrolls. */
+const MAX_TEXT_HEIGHT = 192;
+
+function fitText(box: HTMLTextAreaElement) {
+  box.style.height = "auto";
+  box.style.height = `${Math.min(box.scrollHeight, MAX_TEXT_HEIGHT)}px`;
+}
+
 /** The byte count shows once a message passes this share of the limit. */
 const COUNT_FROM = 0.75;
 
@@ -52,21 +60,24 @@ type Props = {
   focusKey?: string | null;
   /** The message a reply answers (`replyTo` names it): who wrote it and one line of it, above the box, and a way out. */
   replying?: Replying | null;
+  className?: string;
 };
 
 export type Replying = { name: string; text: string; onCancel: () => void };
 
 /**
  * The kit's Composer for a chat (web/DESIGN.md, Chats): one bordered box with the focus ring on the box, the text
- * area without an edge of its own, and a bar under it that says what the message will do (the agents it hands work
- * to, by the hub's rule: the first three agents it mentions) beside Send and its key. Enter sends and Shift with Enter
+ * area without an edge of its own on one row between Attach and Send (with its key), one line tall at first and growing
+ * with the text up to 12 rem, as ChatGPT's and Claude's; under it, only while there is something to say, a line that
+ * says what the message will do (the agents it hands work to, by the hub's rule: the first three agents it mentions)
+ * and the byte count near the limit. Enter sends and Shift with Enter
  * adds a line, as in messenger apps, Cmd or Ctrl with Enter sends too, and Enter that ends an input method's word sends
  * nothing (`isChatSend`); on a touch screen Enter adds a line and Send sends. Typing `@` opens the suggestions of whom
  * it can name (`MentionMenu`), and Enter then puts the name in. A blank message or one over 16 KiB of UTF-8 is
  * refused here with the reason; a refusal of the hub shows here too, with its words. Answering one message (`replying`,
  * a direct chat's Reply), the box says which above the text, with Cancel the reply (Escape too).
  */
-export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, testId, focusKey = null, replying = null }: Props) {
+export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, testId, focusKey = null, replying = null, className }: Props) {
   const t = useTranslations("chats.composer");
   const tFiles = useTranslations("attachments");
   const format = useFormatter();
@@ -99,6 +110,25 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, te
   useEffect(() => {
     if (focusKey !== null) area.current?.focus();
   }, [focusKey]);
+
+  // The text area grows with its text, one line at first, up to MAX_TEXT_HEIGHT, and fits again when its width changes
+  // (the window, the thread panel's divider, an expanded thread), since the same text wraps to more or fewer lines.
+  useLayoutEffect(() => {
+    if (area.current) fitText(area.current);
+  }, [text]);
+
+  useEffect(() => {
+    const box = area.current;
+    if (!box || typeof ResizeObserver === "undefined") return;
+    let width = box.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (box.clientWidth === width) return;
+      width = box.clientWidth;
+      fitText(box);
+    });
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
 
   useLayoutEffect(() => {
     if (caretAfter.current === null || !area.current) return;
@@ -175,12 +205,13 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, te
     [replying ? `${ids}-replying` : null, handed.length ? `${ids}-hint` : null, touch ? null : `${ids}-keys`, problem ? `${ids}-problem` : null].filter(Boolean).join(" ") ||
     undefined;
   const keyShortcuts = touch ? "Meta+Enter Control+Enter" : "Enter Meta+Enter Control+Enter";
+  const counting = bytes >= MAX_MESSAGE_BYTES * COUNT_FROM;
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-2" aria-busy={send.isPending || undefined} data-testid={testId}>
+    <form onSubmit={submit} noValidate className={cn("flex flex-col gap-2", className)} aria-busy={send.isPending || undefined} data-testid={testId}>
       <div
         className={cn(
-          "relative rounded-md border border-input bg-card transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
+          "relative rounded-lg border border-input bg-card transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
           problem && "border-danger-solid",
         )}
       >
@@ -209,75 +240,79 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, te
           </div>
         ) : null}
         <AttachmentTray files={files} testId={testId} />
-        <label htmlFor={`${ids}-text`} className="sr-only">
-          {label}
-        </label>
-        <textarea
-          ref={area}
-          id={`${ids}-text`}
-          value={text}
-          rows={2}
-          placeholder={placeholder}
-          onChange={(event) => {
-            setText(event.target.value);
-            setProblem(null);
-            follow(event.target.value, event.target.selectionStart);
-          }}
-          onSelect={(event) => follow(event.currentTarget.value, event.currentTarget.selectionStart)}
-          onBlur={() => setAt(null)}
-          onPaste={(event) => {
-            const pasted = pastedFiles(event);
-            if (!pasted.length) return;
-            event.preventDefault();
-            files.add(pasted);
-          }}
-          onKeyDown={onKeyDown}
-          aria-autocomplete="list"
-          aria-controls={open ? menuId : undefined}
-          aria-activedescendant={open ? optionId(menuId, current) : undefined}
-          aria-invalid={problem ? true : undefined}
-          aria-describedby={describedBy}
-          aria-keyshortcuts={keyShortcuts}
-          className="block max-h-48 min-h-[60px] w-full resize-y border-0 bg-transparent p-3 text-sm leading-5 text-foreground outline-none placeholder:text-fg-subtle focus-visible:outline-none max-md:text-base"
-          data-testid={`${testId}-text`}
-        />
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t p-2">
+        <div className="flex items-end gap-1 p-1.5">
           <AttachButton onFiles={files.add} testId={testId} />
-          {handed.length ? (
-            <p id={`${ids}-hint`} className="flex min-w-0 flex-1 basis-40 items-start gap-1.5 text-xs text-pretty text-fg-subtle" data-testid={`${testId}-hint`}>
-              <Bot className="mt-px size-3.5 shrink-0 text-running" aria-hidden="true" />
-              <span>
-                {t("hands", { handles: format.list(handed.slice(0, MAX_RUNS_PER_MESSAGE).map((agent) => `@${agent.handle}`), { type: "conjunction" }) })}
-                {over.length ? (
-                  <span className="text-attention"> {t("over", { max: MAX_RUNS_PER_MESSAGE, handles: format.list(over.map((agent) => `@${agent.handle}`), { type: "conjunction" }) })}</span>
-                ) : null}
-              </span>
-            </p>
-          ) : null}
-          {touch ? null : (
-            <span id={`${ids}-keys`} className="sr-only">
-              {t("keys")}
-            </span>
-          )}
-          {/* Announces how many names the suggestions offer as they change. */}
-          <span aria-live="polite" className="sr-only">
-            {open ? t("mention.count", { count: options.length }) : ""}
-          </span>
-          {bytes >= MAX_MESSAGE_BYTES * COUNT_FROM ? (
-            <span className={cn("text-xs text-muted-foreground tabular-nums", bytes > MAX_MESSAGE_BYTES && "font-medium text-danger")}>
-              {t("bytes", { count: format.number(bytes), max: format.number(MAX_MESSAGE_BYTES) })}
-            </span>
-          ) : null}
-          <Button type="submit" size="sm" className="ml-auto shrink-0" busy={send.isPending} aria-keyshortcuts={keyShortcuts} data-testid={`${testId}-send`}>
+          <label htmlFor={`${ids}-text`} className="sr-only">
+            {label}
+          </label>
+          <textarea
+            ref={area}
+            id={`${ids}-text`}
+            value={text}
+            rows={1}
+            placeholder={placeholder}
+            onChange={(event) => {
+              setText(event.target.value);
+              setProblem(null);
+              follow(event.target.value, event.target.selectionStart);
+            }}
+            onSelect={(event) => follow(event.currentTarget.value, event.currentTarget.selectionStart)}
+            onBlur={() => setAt(null)}
+            onPaste={(event) => {
+              const pasted = pastedFiles(event);
+              if (!pasted.length) return;
+              event.preventDefault();
+              files.add(pasted);
+            }}
+            onKeyDown={onKeyDown}
+            aria-autocomplete="list"
+            aria-controls={open ? menuId : undefined}
+            aria-activedescendant={open ? optionId(menuId, current) : undefined}
+            aria-invalid={problem ? true : undefined}
+            aria-describedby={describedBy}
+            aria-keyshortcuts={keyShortcuts}
+            className="block max-h-48 min-h-8 min-w-0 flex-1 resize-none border-0 bg-transparent px-1.5 py-1.5 text-sm leading-5 text-foreground outline-none placeholder:text-fg-subtle focus-visible:outline-none max-md:min-h-11 max-md:py-3 max-md:text-base"
+            data-testid={`${testId}-text`}
+          />
+          <Button type="submit" className="shrink-0 max-md:min-w-11 max-md:px-0" busy={send.isPending} aria-keyshortcuts={keyShortcuts} data-testid={`${testId}-send`}>
             <ArrowUp aria-hidden="true" />
-            {send.isPending ? t("sending") : t("send")}
+            <span className="max-md:sr-only">{send.isPending ? t("sending") : t("send")}</span>
             {modifier && !touch && !send.isPending ? (
-              <Kbd className="ml-0.5 border-current bg-transparent text-current opacity-70" aria-hidden="true">
+              <Kbd className="ml-0.5 border-current bg-transparent text-current opacity-70 max-md:hidden" aria-hidden="true">
                 {shortcutText("chatSend", modifier)}
               </Kbd>
             ) : null}
           </Button>
         </div>
+        {handed.length || counting ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t px-3 py-1.5">
+            {handed.length ? (
+              <p id={`${ids}-hint`} className="flex min-w-0 flex-1 basis-40 items-start gap-1.5 text-xs text-pretty text-fg-subtle" data-testid={`${testId}-hint`}>
+                <Bot className="mt-px size-3.5 shrink-0 text-running" aria-hidden="true" />
+                <span>
+                  {t("hands", { handles: format.list(handed.slice(0, MAX_RUNS_PER_MESSAGE).map((agent) => `@${agent.handle}`), { type: "conjunction" }) })}
+                  {over.length ? (
+                    <span className="text-attention"> {t("over", { max: MAX_RUNS_PER_MESSAGE, handles: format.list(over.map((agent) => `@${agent.handle}`), { type: "conjunction" }) })}</span>
+                  ) : null}
+                </span>
+              </p>
+            ) : null}
+            {counting ? (
+              <span className={cn("ml-auto text-xs text-muted-foreground tabular-nums", bytes > MAX_MESSAGE_BYTES && "font-medium text-danger")}>
+                {t("bytes", { count: format.number(bytes), max: format.number(MAX_MESSAGE_BYTES) })}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        {touch ? null : (
+          <span id={`${ids}-keys`} className="sr-only">
+            {t("keys")}
+          </span>
+        )}
+        {/* Announces how many names the suggestions offer as they change. */}
+        <span aria-live="polite" className="sr-only">
+          {open ? t("mention.count", { count: options.length }) : ""}
+        </span>
       </div>
       {problem ? (
         <p id={`${ids}-problem`} className="flex items-center gap-1.5 text-xs font-medium text-danger" data-testid={`${testId}-problem`}>
