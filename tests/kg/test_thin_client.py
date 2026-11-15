@@ -1,6 +1,8 @@
-"""The thin client of the knowledge graph, its sync half: ``kg sync`` and its --build, --accept-removals and --due work
+"""The thin client of the knowledge graph. Its sync half: ``kg sync`` and its --build, --accept-removals and --due work
 from what the hub holds of each source (GET .../sources/{s}/state) and keep no corpus on the machine
-(``evo_agents.hub.kg_hub_sync``); ``kg build`` and ``kg init`` ask the hub, which alone builds."""
+(``evo_agents.hub.kg_hub_sync``); ``kg build`` and ``kg init`` ask the hub, which alone builds. Its read half:
+``kg query``, ``kg serve``, ``kg status``, ``kg profile``, ``kg settings`` and ``kg semantic`` ask the hub, and a graph
+store left on the machine answers none of them."""
 
 import datetime as dt
 import json
@@ -205,3 +207,84 @@ def test_runs_no_build_read_yet_get_a_build_first_from_a_member_and_none_from_th
     result = HubSync(hub, project).sync_source("docs")
     assert result.ok and hub.builds == 1 and hub.unread == 0 and alive(hub) == ["docs:doc:a"]
     assert worker.sync_source("docs").ok  # once a build read them
+
+
+# -- the read half: every read of the kg CLI asks the hub --------------------------------------------------------------
+
+
+def hub_graph(tmp_path, kg_env, monkeypatch):
+    """The demo project with its graph on the hub (built under a home of the hub's own), and this machine's home empty."""
+    from evo_agents.kg.build import build_project
+    from evo_agents.kg.sync import sync_project
+    from tests.kg.hub_graph import sign_in
+    from tests.kg.projects import make_project
+
+    on_hub = make_project(tmp_path, tmp_path / "hub-home")
+    sync_project(on_hub)
+    assert build_project(on_hub).ok
+    return str(on_hub.harness.root), sign_in(monkeypatch, on_hub)
+
+
+def machine_files(kg_env: Path) -> list[str]:
+    return sorted(p.name for p in kg_env.rglob("*.sqlite")) if kg_env.exists() else []
+
+
+def test_the_reads_of_the_kg_cli_ask_the_hub_and_open_nothing_here(tmp_path, kg_env, monkeypatch, capsys):
+    root, hub = hub_graph(tmp_path, kg_env, monkeypatch)
+
+    assert main(["kg", "query", "kg_search", "rank_results", "--project", root, "--sink", "agent"]) == 0
+    assert "app:app/search.py::rank_results" in capsys.readouterr().out
+    assert main(["kg", "status", "--project", root, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["graph"]["ready"] is True
+    assert main(["kg", "status", "--project", root, "--brief"]) == 0
+    assert capsys.readouterr().out.startswith("evo-kg: project demo, snapshot")
+    assert main(["kg", "profile", "--project", root, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["profile"]["items"] > 0
+    assert main(["kg", "settings", "--project", root, "--set", "semantic_weight=1.5", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["overrides"] == {"semantic_weight": 1.5}
+    assert main(["kg", "semantic", "--project", root, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["project"] == "demo"
+
+    hello = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "kg_status", "arguments": {}}}
+    monkeypatch.setattr("sys.stdin", __import__("io").StringIO(json.dumps(hello) + "\n"))
+    assert main(["kg", "serve", "--project", root, "--sink", "agent"]) == 0
+    answer = json.loads(capsys.readouterr().out)["result"]
+    assert not answer.get("isError") and "structuredContent" not in answer  # the model reads the text alone
+
+    assert hub.asked == [
+        ("MCP", "kg_search"),
+        ("POST", "/v1/kg/demo/tools/kg_status"),
+        ("POST", "/v1/kg/demo/tools/kg_status"),
+        ("POST", "/v1/kg/demo/tools/kg_status"),
+        ("PUT", "/v1/kg/demo/settings"),
+        ("POST", "/v1/kg/demo/tools/kg_status"),
+        ("MCP", "kg_status"),
+    ]
+    assert machine_files(kg_env) == []  # no corpus, no graph, no vectors on this machine
+
+
+def test_a_graph_store_left_on_this_machine_answers_no_read(tmp_path, kg_env, monkeypatch, capsys):
+    from evo_agents.kg.build import build_project
+    from evo_agents.kg.sync import sync_project
+    from tests.kg.projects import make_project
+
+    left = make_project(tmp_path, kg_env)  # a store from before graphs were built on the hub only
+    sync_project(left)
+    assert build_project(left).ok and "graph.sqlite" in machine_files(kg_env)
+    root = str(left.harness.root)
+    monkeypatch.setattr("evo_agents.hub.mcp_proxy.session_credentials", lambda: (_ for _ in ()).throw(not_signed_in()))
+    monkeypatch.setattr("evo_agents.hub.client.load_credentials", lambda: (_ for _ in ()).throw(not_signed_in()))
+    monkeypatch.setattr("evo_agents.hub.cli_client.load_credentials", lambda: (_ for _ in ()).throw(not_signed_in()))
+    for backend in ("auto", "hub"):
+        assert main(["kg", "query", "kg_search", "rank_results", "--project", root, "--backend", backend]) == 1
+        assert capsys.readouterr().out == "error: the hub: not signed in\n"
+    for command in (["status"], ["profile"], ["settings"], ["semantic"]):
+        assert main(["kg", *command, "--project", root]) != 0
+        out, err = capsys.readouterr()
+        assert out == "" and "not signed in" in err
+
+
+def not_signed_in():
+    from evo_agents.hub.client import HubError
+
+    return HubError("not signed in")

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from evo_agents.hub.kg_cli import open_session
 from evo_agents.kg import explore, serve, serve_impact, serve_walk
 from evo_agents.kg.build import build_project
 from evo_agents.kg.explore import Explorer
@@ -252,7 +253,7 @@ def test_unbound_server_explains_how_to_bind(tmp_path, kg_env, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
     monkeypatch.delenv("EVO_KG_PROJECT", raising=False)
-    session = serve.make_session(None, "agent")
+    session = open_session("hub", None, "agent")
     result = session.call("kg_search", {"query": "x"})
     assert result["isError"] and "--project" in result["content"][0]["text"]
 

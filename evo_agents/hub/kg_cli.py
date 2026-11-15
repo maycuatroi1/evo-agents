@@ -21,14 +21,13 @@ dismisses one item of it (``evo_agents.hub.kg_review_cli``). ``entities``, insid
 the entity requests of its latest build (``evo_agents.hub.kg_entities_cli``). ``decisions`` lists the decisions on the graph the caller
 can see, and a writer takes or steps one (``evo_agents.hub.kg_decisions_cli``).
 
-``open_session`` picks where kg_* are answered; graphs are built on the hub only, so there is no ``local`` backend.
-``hub`` sends every call to the hub's /mcp as a tools/call (``RemoteSession``), the seven tools with the same names and
-results, so an MCP client sees no difference. ``auto`` takes the hub when this machine is signed in and the hub has
-a successful build of the project it can show the caller, and a store left on this machine otherwise, including when the hub does
-not answer within PROBE_TIMEOUT. Inside a run of this machine's worker (``mcp_proxy.run_credentials``), ``auto`` and
-``hub`` ask the hub as the agent of that run, with the worker's token and X-Evo-Run, as ``evo-agents hub mcp`` does
-there: the hub binds the session to the run's project, so a run whose worktree names no project of this machine, or
-whose machine is not signed in, still reads its graph. Standard library only.
+``open_session`` picks where kg_* are answered: the hub, always, since graphs are built and read on the hub only. It
+sends every call to the hub's /mcp as a tools/call (``RemoteSession``), the seven tools with the same names and
+results, so an MCP client sees no difference. ``auto`` is the same as ``hub``, kept for the .mcp.json files that name
+it; a graph store left on this machine is never read. Not signed in, or a project it cannot name, gives a session
+whose every tool answers the error. Inside a run of this machine's worker (``mcp_proxy.run_credentials``), it asks the
+hub as the agent of that run, with the worker's token and X-Evo-Run, as ``evo-agents hub mcp`` does there: the hub
+binds the session to the run's project, so a run whose worktree names no project of this machine, or whose machine is not signed in, still reads its graph. Standard library only.
 """
 
 from __future__ import annotations
@@ -47,7 +46,7 @@ if TYPE_CHECKING:
     from evo_agents.kg.project import Project
 
 BACKENDS = ("auto", "hub")
-PROBE_TIMEOUT = 5.0  # seconds auto waits for the hub before answering locally
+PROBE_TIMEOUT = 5.0  # seconds the SessionStart hook waits for the hub before it says nothing
 DEFAULT_WAIT = 1800.0
 PRUNE_TIMEOUT = 600.0  # seconds a prune may take: it deletes objects in the blob store
 SCRUB_TIMEOUT = 600.0  # seconds one page of a scrub, or one purge, may take: it reads objects in the blob store
@@ -626,11 +625,12 @@ class RemoteSession:
     (``evo_agents.hub.mcp_proxy.McpClient``) that asks for the structured result too, as a local Session gives it. A
     hub that cannot be reached or refuses the call gives a tool error naming the hub."""
 
-    def __init__(self, hub: Hub, project: str | None, sink: str, run: int | None = None):
+    def __init__(self, hub: Hub, project: str | None, sink: str, run: int | None = None, timeout: float | None = None):
         self.hub = hub
         self.project = project
         self.sink = sink
         self.run = run  # the run whose agent asks, with a worker's token: the hub binds the session to its project
+        self.timeout = timeout  # seconds one call may take; None: McpClient's own
 
     def call(self, name: str, args: dict) -> dict:
         from evo_agents.hub.mcp_proxy import McpClient
@@ -640,37 +640,31 @@ class RemoteSession:
             return error_result(f"unknown tool {name!r}")
         try:
             client = McpClient(self.hub.url, self.hub.token, self.project, self.sink, run=self.run)
+            if self.timeout is not None:
+                client.timeout = self.timeout
             return client.call_tool(name, args or {}, {DATA_META: True})
         except HubError as exc:
             return error_result(f"{exc} (hub {self.hub.url})")
 
 
-def hub_has_graph(hub: Hub, project: str) -> bool:
-    """Whether the hub has a successful build of ``project`` it shows the caller."""
-    found = hub.call("GET", f"{_base(project)}/builds?status=succeeded&limit=1")
-    return bool(found.get("builds"))
-
-
-def open_session(backend: str, project: str | None, sink: str):
-    """What answers kg_* for ``kg serve`` and ``kg query``: a local Session or a RemoteSession (see the module)."""
+def open_session(backend: str, project: str | None, sink: str, timeout: float | None = None):
+    """What answers kg_* for ``kg serve``, ``kg query`` and ``kg status``: a RemoteSession, or a Session that answers
+    every tool with why the hub cannot be asked (see the module). ``backend`` is ``hub`` or ``auto``, the same."""
     from evo_agents.hub.mcp_proxy import run_credentials, session_credentials
     from evo_agents.kg.project import ProjectError, resolve_project
-    from evo_agents.kg.serve import Session, make_session
+    from evo_agents.kg.serve import Session
 
     run = run_credentials()
-    if run is not None:  # the hub knows the run's project; a worker token reads no build list to probe
-        return RemoteSession(Hub(run.url, run.token), project, sink, run=run.run)
+    if run is not None:  # the hub knows the run's project
+        return RemoteSession(Hub(run.url, run.token), project, sink, run=run.run, timeout=timeout)
     try:
         name = resolve_project(project).name
     except ProjectError as exc:
         name = project if project and "/" not in project and project not in (".", "..") else None
         if name is None:
-            return make_session(project, sink) if backend == "auto" else Session(None, sink, error=str(exc))
+            return Session(None, sink, error=f"{exc}. Start the server with --project or set EVO_KG_PROJECT.")
     try:
         credentials = session_credentials()  # never a run's token of the hub, which /mcp does not take
-        hub = Hub(credentials.url, credentials.token)
-        if backend == "auto" and not hub_has_graph(Hub(hub.url, hub.token, timeout=PROBE_TIMEOUT), name):
-            return make_session(project, sink)
     except HubError as exc:
-        return make_session(project, sink) if backend == "auto" else Session(None, sink, error=str(exc))
-    return RemoteSession(hub, name, sink)
+        return Session(None, sink, error=f"the hub: {exc}")
+    return RemoteSession(Hub(credentials.url, credentials.token), name, sink, timeout=timeout)

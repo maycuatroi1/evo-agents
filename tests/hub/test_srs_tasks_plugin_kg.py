@@ -6,7 +6,7 @@ Checked here, end to end on the hub: approving a version and creating a task eac
 that waits; the build holds the use cases of the approved version and the task, and kg_path goes from a use case code
 to the task, the plan step it links and the commit the step's evidence names; the plugins' data carries the project's
 label and a member whose grant is below it sees none of it; a build of unchanged data points at the artifact of the
-build before, and ``kg build --verify`` on the worker's store gives its hash; a changed task is built again, and a
+build before, and a verifying build (``build_project(verify=True)``) on the worker's store gives its hash; a changed task is built again, and a
 plugin the project turns off leaves the graph. Archiving a document and unarchiving it each queue a build, and an
 archived document is out of the graph (criterion a1 of plan srs-document-lifecycle). The sources of a finding are
 looked up in that graph as the member reads it: node ids, and paths a file or document node carries (criterion a4 of

@@ -9,18 +9,15 @@ import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 from evo_agents import __version__
 from evo_agents.kg import audit
-from evo_agents.kg.corpus import Corpus, ItemRecord, LogWriter, kg_home, run_epoch
+from evo_agents.kg.corpus import Corpus, ItemRecord, LogWriter, run_epoch
 from evo_agents.kg.ids import parse_utc, utc_now, uuid7
-from evo_agents.kg.project import Project, ProjectError, load_project_at, read_index, remember
+from evo_agents.kg.project import Project, ProjectError, read_index, remember
 from evo_agents.kg.protocol import StreamChecker, sha256
 from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorError, ConnectorRun, credential_env
-
-if TYPE_CHECKING:
-    from evo_agents.kg.build import BuildReport
 
 DEFAULT_MAX_REMOVAL_RATIO = 0.3
 DEFAULT_MIN_SCOPE = 10  # the ratio guard only applies once a scope holds this many items
@@ -508,13 +505,13 @@ def due_sources(
 
 @dataclass
 class ProjectSync:
-    """What ``kg sync --due`` did for one project."""
+    """What ``kg sync --due`` did for one project (``evo_agents.hub.kg_hub_sync.sync_due``)."""
 
     project: str
     harness: str
     due: list[str] = field(default_factory=list)
     runs: list[SyncResult] = field(default_factory=list)
-    build: BuildReport | HubBuild | None = None
+    build: HubBuild | None = None
     error: str | None = None
     skipped: str | None = None  # why the project was not synced: the hub takes no run of it from the caller
 
@@ -561,24 +558,6 @@ class HubBuild:
         return f"FAIL {line}: {failed}" if not self.ok and failed else line
 
 
-def sync_due(project: Project, *, build: bool = False, now: dt.datetime | None = None, **kwargs) -> ProjectSync:
-    """Sync the sources of one project that are due. With ``build``, build its graph only if one of them read
-    something: a git source still at the commit it read last (``SyncResult.unchanged``) does not count."""
-    corpus = project.corpus()
-    try:
-        due = due_sources(project, corpus, now)
-    finally:
-        corpus.close()
-    outcome = ProjectSync(project.name, str(project.harness.root), due)
-    if due:
-        outcome.runs = sync_project(project, due, **kwargs)
-        if build and not all(r.unchanged for r in outcome.runs):
-            from evo_agents.kg.build import build_project
-
-            outcome.build = build_project(project)
-    return outcome
-
-
 def indexed_projects(home: Path | None = None) -> list[tuple[str, Path]]:
     """Projects in projects.json whose harness root still exists, by name."""
     found = []
@@ -587,20 +566,3 @@ def indexed_projects(home: Path | None = None) -> list[tuple[str, Path]]:
         if root and Path(root).expanduser().is_dir():
             found.append((name, Path(root).expanduser()))
     return found
-
-
-def sync_all_due(
-    home: Path | None = None, *, build: bool = False, now: dt.datetime | None = None, **kwargs
-) -> list[ProjectSync]:
-    """``kg sync --due --all``: each indexed project in turn. A project that fails, from loading its harness
-    to building its graph, gets the error on its outcome and does not stop the others."""
-    home = home or kg_home()
-    outcomes = []
-    for name, root in indexed_projects(home):
-        try:
-            outcome = sync_due(load_project_at(root, home), build=build, now=now, **kwargs)
-        except Exception as exc:  # isolate projects from each other; the caller reports and exits non-zero
-            detail = str(exc) if isinstance(exc, ProjectError) else f"{type(exc).__name__}: {exc}"
-            outcome = ProjectSync(name, str(root), error=detail)
-        outcomes.append(outcome)
-    return outcomes

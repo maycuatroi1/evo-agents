@@ -96,8 +96,8 @@ graphs and tasks.
 
 | Search | Ranks by |
 |---|---|
-| `graph` | the shipped ranking, as `kg eval --search graph`: weighted FTS5 BM25, kind priors, `asked`, the weak cut to 5 |
-| `bm25` | `kg eval --search bm25`; on a bench graph, which holds no vectors, the same as `graph` |
+| `graph` | the shipped ranking, as `kg_search` answers: weighted FTS5 BM25, kind priors, `asked`, the weak cut to 5 |
+| `bm25` | words alone, even where the graph holds vectors; on a bench graph, which holds no vectors, the same as `graph` |
 | `plain` | plain BM25: every word of the issue but stop words, ORed, over names, text and paths of files, symbols, documents and sections; no priors, no mentions, no weak cut |
 | `hybrid` | BM25 fused with bge-m3 by RRF; the vectors of each graph are indexed first (the `semantic` extra) |
 

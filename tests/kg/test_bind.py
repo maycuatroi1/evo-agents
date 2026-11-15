@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents.cli import main
+from evo_agents.hub.kg_cli import RemoteSession, open_session
 from evo_agents.kg import project as project_module
 from evo_agents.kg import serve
 from evo_agents.kg.project import (
@@ -20,6 +21,7 @@ from evo_agents.kg.project import (
     resolve_project,
     unbind,
 )
+from tests.kg.hub_graph import sign_in
 from tests.kg.projects import write
 
 
@@ -164,8 +166,10 @@ def test_bind_cli_binds_lists_and_removes(tmp_path, kg_env, monkeypatch, capsys)
     elsewhere.mkdir()
     assert main(["kg", "bind", "--project", "beta", "--json", str(elsewhere)]) == 0
     assert json.loads(capsys.readouterr().out)["project"] == "beta"
-    assert main(["kg", "status", "--json"]) in (0, 1)  # other commands now resolve from the cwd
-    assert json.loads(capsys.readouterr().out)["project"] == "alpha"
+    hub = sign_in(monkeypatch, alpha, beta)
+    main(["kg", "status", "--json"])  # other commands now resolve from the cwd
+    assert hub.asked == [("POST", "/v1/kg/alpha/tools/kg_status")]
+    capsys.readouterr()
 
     assert main(["kg", "bind", "--list", "--json"]) == 0
     listed = json.loads(capsys.readouterr().out)
@@ -186,13 +190,14 @@ def test_bind_cli_binds_lists_and_removes(tmp_path, kg_env, monkeypatch, capsys)
 def test_bind_reaches_the_mcp_server_and_no_tool_takes_a_project(tmp_path, kg_env, monkeypatch):
     alpha, beta, shared = shared_pair(tmp_path, kg_env)
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(shared))
-    unbound = serve.make_session(None, "agent")
+    unbound = open_session("hub", None, "agent")
     text = unbound.call("kg_status", {})["content"][0]["text"]
     assert "evo-agents kg bind" in text
 
     bind(shared, "alpha")
-    session = serve.make_session(None, "agent")
-    assert session.project is not None and session.project.name == "alpha"
+    sign_in(monkeypatch, alpha, beta)
+    session = open_session("hub", None, "agent")
+    assert isinstance(session, RemoteSession) and session.project == "alpha"
     for tool in serve.TOOLS:
         assert "project" not in tool["inputSchema"].get("properties", {}), tool["name"]
 

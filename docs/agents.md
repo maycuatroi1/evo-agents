@@ -26,9 +26,9 @@ The plugin registers the MCP server `evo-kg`, a `using-project-graph` skill, and
 server binds to the project of the session directory; pass `--project` in `.mcp.json` to pin one, or
 run `evo-agents kg bind --project NAME DIR` once to tie a directory and everything below it to a project
 (`kg bind --list` and `kg bind --remove DIR` manage those bindings). When the machine is signed in to a
-hub that has a graph of the project, the server answers from the hub with the same tools
-(`kg serve --backend auto`, the default; `hub` asks the hub only). Graphs are built on the hub; `auto` reads a
-store left on this machine only when the hub has no graph of the project or the machine is signed out. Inside a run of
+hub, the server answers from the hub's graph of the project with the same tools (`kg serve`; `--backend auto`, the
+default, is `hub`, kept for older `.mcp.json` files). Graphs are built and read on the hub only: a graph store left on
+this machine is never read, and a machine signed out gets an error result that says so. Inside a run of
 a worker, `auto` and `hub` ask the hub with the run's worker token, signed in or not
 ([docs/credentials.md](credentials.md)).
 
