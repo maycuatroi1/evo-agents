@@ -238,7 +238,7 @@ def test_a_chat_mention_makes_one_run_on_the_senders_worker_with_the_most_repos(
     )
     assert [entry["repo"] for entry in run["repos"]] == ["evo-agents", "lumen-identity", "lumen-kb-docs", "notes"]
     assert {entry["branch"] for entry in run["repos"]} == {f"chat/{made}"}
-    assert run["budget"] == {"max_usd": None, "max_turns": None, "max_seconds": 1800}
+    assert run["budget"] == {"max_usd": None, "max_turns": None, "max_seconds": None}
     assert run["title"] == "@reviewer in Release talk: @reviewer please fix the flaky wait test"
     listed = client.get(f"/v1/projects/{PROJECT}/runs", headers=hub["other"]).json()["runs"]
     assert [(item["id"], item["kind"], item["hop"]) for item in listed] == [(made, "chat", 1)]
@@ -615,18 +615,18 @@ def test_an_agent_mention_hands_work_one_hop_further_for_the_origin(client, hub,
         2,
         fixer["id"],
     )
-    # never itself, and never past the third hop
+    # never itself; past the third hop it still hands work on, hops have no limit
     itself = in_chats(client, worker, spec["id"], "chat/mentions", {"handle": "reviewer", "body": "me again"}).json()
     assert itself["run_id"] is None and itself["refusal"] == chat_runs.hop_problem(2, True)
-    set_run(hub_db, spec["id"], hop=3)
-    past = in_chats(client, worker, spec["id"], "chat/mentions", {"handle": "fixer", "body": "once more"}).json()
-    assert past["run_id"] is None and "hop 4 from the person's message" in past["refusal"]
     said = [
         item["body"]
         for item in thread(client, hub["owner"], chat["id"], mention["id"])
         if item["author"]["kind"] == "hub"
     ]
-    assert said[-1] == f"@fixer: {past['refusal']}"
+    assert said[-1] == f"@reviewer: {itself['refusal']}"
+    set_run(hub_db, spec["id"], hop=3)
+    past = in_chats(client, worker, spec["id"], "chat/mentions", {"handle": "fixer", "body": "once more"}).json()
+    assert past["refusal"] is None and past["run_id"] is not None
     unknown = in_chats(client, worker, spec["id"], "chat/mentions", {"handle": "nobody", "body": "hello"}).json()
     assert unknown["refusal"] == "no agent @nobody in this chat"
 
