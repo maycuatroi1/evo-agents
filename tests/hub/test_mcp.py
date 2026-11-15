@@ -2034,7 +2034,7 @@ def test_inside_a_run_the_proxy_sends_the_worker_token_and_x_evo_run_instead_of_
 def test_inside_a_run_kg_serve_asks_the_hub_as_the_agent_of_the_run(tmp_path, monkeypatch):
     """evo-kg serves the kg_* tools of a run whose session has it: on a machine that is not signed in and knows no
     project for the worktree, it still reads the run's graph on the hub, as evo-hub did."""
-    from evo_agents.hub.kg_cli import RemoteSession, open_session
+    from evo_agents.hub.kg_cli import BACKENDS, RemoteSession, open_session
     from evo_agents.worker.home import WorkerConfig, WorkerHome
 
     fake = FakeHub(mcp_reply)
@@ -2050,7 +2050,8 @@ def test_inside_a_run_kg_serve_asks_the_hub_as_the_agent_of_the_run(tmp_path, mo
         )
         monkeypatch.setenv("EVO_WORKER_HOME", str(state.root))
         monkeypatch.setenv("EVO_RUN_ID", "42")
-        for backend in ("auto", "hub"):
+        assert BACKENDS == ("auto", "hub")  # graphs are built on the hub only: no backend reads this machine's store
+        for backend in BACKENDS:
             session = open_session(backend, None, AGENT)
             assert isinstance(session, RemoteSession) and session.run == 42, backend
             assert session.call("kg_search", {"query": "x"})["content"][0]["text"] == "called kg_search"
