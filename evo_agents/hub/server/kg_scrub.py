@@ -1,10 +1,14 @@
-"""Old copies of secrets on the hub, for a hub admin: the built graphs and the source blobs a project holds in the
-blob store, read with the patterns of the git connector (``evo_agents.kg.scrub``), and deleted on request.
+"""Copies of secrets on the hub, for a hub admin: the graph a project's builds keep in the hub's tables, and the graph
+files older builds uploaded and the source blobs the project holds in the blob store, read with the patterns of the
+git connector (``evo_agents.kg.scrub``); the objects are deleted on request.
 
 POST /v1/admin/kg/scrub reads one page of a project's objects of kind kg-graph and kg-blob, by SHA-256 after
 ``after``, at most ``limit`` of them and PAGE_BYTES of their bytes, and answers those holding a secret: hash, kind,
 size, the secrets by kind (never a value), and their state. Pass ``next`` as ``after`` for the next page; it is null
-after the last. A graph is read from the api's cache when it holds it, from the bucket otherwise. A source blob is read
+after the last. The first page (no ``after``) also reads the graph of the project's main branch in the hub's tables
+(``kg_graph_rows``: the names and properties of its nodes, the properties of its edges and its full-text rows) and
+answers, as ``graph``, how many of those rows hold a secret and the secrets by kind. A graph file is read from the
+bucket. A source blob is read
 as the file the items of the project's run logs say it is (``props.path``), as ``evo-agents kg scrub`` reads it on a
 machine: the path decides whether a bare value after ``=`` is an expression (code) or a literal (config files,
 documents). A blob no item names with a path is read as a document. The paths come from every run log of the project,
@@ -14,8 +18,9 @@ references, and are not themselves scanned.
 
 The state says what a deletion would break, and nothing that is in use is deleted:
 
-- a graph is ``newest`` when the project's latest build holding an artifact points at it: the kg_* tools read it.
-  A build from a clean corpus replaces it, and the next scrub finds it old.
+- the graph in the hub's tables is in use: the kg_* tools read it, and a purge never deletes it. A build from a clean
+  corpus rewrites its rows, and the next scrub finds none holding a secret.
+- a graph file is ``old``: the tools no longer read one, so none is in use.
 - a source blob is ``live`` when a run still in use refers to it: a run pending its commit, or, for each source of the
   project, its newest full run (a complete listing and an ok end) or a run after that. The build merges every run, and
   for a source whose connector lists everything each time, the items of its newest full run are its live items. Push
@@ -26,11 +31,11 @@ A run log the bucket does not hold as the hub recorded it stops a page that foun
 without it no blob can be called old, nor read as its file.
 
 POST /v1/admin/kg/scrub/purge takes the hashes a scan found. It reads each one again and keeps those that hold no
-secret, are newest or live, or are not the project's, then, in one transaction holding the blob lock exclusively
+secret, are live, or are not the project's, then, in one transaction holding the blob lock exclusively
 (``evo_agents.hub.blob_gc``): the builds pointing at a graph it deletes lose ``artifact_sha256`` and get
 ``artifact_pruned_at``, as the retention does; the project's ``blobs`` rows of the deleted objects go; ``forget``
 records the objects no other row refers to; and an audit row ``kg.scrub`` counts what went. Then the objects are
-deleted from the bucket, and the deleted graphs from the api's cache. Another project holding the same bytes keeps
+deleted from the bucket. Another project holding the same bytes keeps
 its row and the object.
 
 Liveness comes from the runs, not from the merged state, which only the worker computes: when the merge kept an
@@ -52,15 +57,16 @@ from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import Text, cast, delete, func, literal, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import blob_gc, tables
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.kg_build import ARTIFACT_KIND
+from evo_agents.hub.kg_graph_rows import MAIN
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.security import Principal
-from evo_agents.kg.scrub import blob_secrets, graph_secrets, might_hold_secret, run_summary
+from evo_agents.kg.scrub import blob_secrets, graph_secrets, might_hold_secret, row_secrets, run_summary
 
 log = logging.getLogger(__name__)
 
@@ -77,15 +83,25 @@ class ScrubFound(BaseModel):
     sha256: str
     kind: Literal["kg-graph", "kg-blob"]
     size: int
-    state: Literal["old", "live", "newest"] = Field(
-        description="newest: the graph the kg tools read; live: a source blob a run in use refers to; old: neither"
+    state: Literal["old", "live"] = Field(
+        description="live: a source blob a run in use refers to; old: a graph file, or a source blob no run in use "
+        "refers to"
     )
     secrets: dict[str, int] = Field(description="the secrets it holds, by kind; never a value")
     builds: list[int] = Field(description="for a graph, the builds pointing at it")
 
 
+class ScrubGraph(BaseModel):
+    rows: int = Field(description="rows of the graph in the hub's tables read: nodes, edges and full-text rows")
+    holding: int = Field(description="those holding a secret; in use, never purged")
+    secrets: dict[str, int] = Field(description="the secrets they hold, by kind; never a value")
+
+
 class ScrubPage(BaseModel):
     project: str
+    graph: ScrubGraph | None = Field(
+        None, description="on the first page only: the graph the kg tools read, from the hub's tables"
+    )
     scanned: int = Field(description="objects read on this page")
     scanned_bytes: int
     missing: int = Field(description="objects the bucket lacks or holds with other bytes, not read")
@@ -95,7 +111,7 @@ class ScrubPage(BaseModel):
 
 class ScrubKept(BaseModel):
     sha256: str
-    reason: Literal["newest", "live", "clean", "missing", "not held"] = Field(
+    reason: Literal["live", "clean", "missing", "not held"] = Field(
         description="why it stays: in use, holds no secret now, not in the bucket, or not the project's"
     )
 
@@ -172,8 +188,8 @@ async def _project_id(conn: AsyncConnection, name: str) -> int:
     return found
 
 
-async def _graphs(conn: AsyncConnection, project_id: int) -> tuple[str | None, dict[str, list[int]]]:
-    """The artifact of the project's latest build holding one, and the builds pointing at each artifact."""
+async def _graphs(conn: AsyncConnection, project_id: int) -> dict[str, list[int]]:
+    """The builds pointing at each artifact of the project."""
     builds = tables.kg_builds
     rows = await conn.execute(
         select(builds.c.id, builds.c.artifact_sha256)
@@ -181,11 +197,34 @@ async def _graphs(conn: AsyncConnection, project_id: int) -> tuple[str | None, d
         .order_by(builds.c.id.desc())
     )
     pointing: dict[str, list[int]] = {}
-    newest = None
     for build_id, sha256 in rows:
-        newest = newest or sha256
         pointing.setdefault(sha256, []).append(build_id)
-    return newest, {sha: sorted(ids) for sha, ids in pointing.items()}
+    return {sha: sorted(ids) for sha, ids in pointing.items()}
+
+
+def _graph_rows(project_id: int):
+    """The rows of the project's main graph in the hub's tables that hold text, as pairs (text, JSON text), as
+    ``evo_agents.kg.scrub.GRAPH_QUERIES`` reads them from a graph file."""
+    nodes, edges, text = tables.kg_nodes, tables.kg_edges, tables.kg_text_rows
+    scope = lambda t: (t.c.project_id == project_id, t.c.branch_id == MAIN)  # noqa: E731
+    return (
+        select(nodes.c.name, nodes.c.props).where(*scope(nodes)),
+        select(edges.c.props, literal(None)).where(*scope(edges)),
+        select(literal(None), cast(text.c.row, Text)).where(*scope(text)),
+    )
+
+
+async def graph_secrets_in_tables(conn: AsyncConnection, project_id: int) -> ScrubGraph:
+    """The secrets of the graph the hub's tables hold for the project: what the kg tools read."""
+    rows, holding, kinds = 0, 0, Counter()
+    for query in _graph_rows(project_id):
+        async for first, second in await conn.stream(query.execution_options(yield_per=1000)):
+            rows += 1
+            counts = row_secrets(first, second)
+            if counts:
+                holding += 1
+                kinds.update(counts)
+    return ScrubGraph(rows=rows, holding=holding, secrets=dict(sorted(kinds.items())))
 
 
 _live_cache: dict[int, tuple[tuple, frozenset[str]]] = {}
@@ -313,16 +352,16 @@ async def blob_paths(state, project_id: int) -> dict[str, frozenset[str]]:
     return paths
 
 
-def _state(row, newest: str | None, live: frozenset[str]) -> str:
+def _state(row, live: frozenset[str]) -> str:
     if row.kind == ARTIFACT_KIND:
-        return "newest" if row.sha256 == newest else "old"
+        return "old"
     return "live" if row.sha256 in live else "old"
 
 
 async def _found(conn: AsyncConnection, state, project_id: int, rows: list, read: list) -> list[ScrubFound]:
     """The rows whose object holds a secret, with their state."""
     holding = [(row, secrets) for row, secrets in zip(rows, read, strict=True) if secrets]
-    newest, pointing = await _graphs(conn, project_id)
+    pointing = await _graphs(conn, project_id)
     live: frozenset[str] = frozenset()
     if any(row.kind == SOURCE_KIND for row, _ in holding):
         live = await live_blobs(conn, state.blobs, project_id, _scratch(state))
@@ -331,7 +370,7 @@ async def _found(conn: AsyncConnection, state, project_id: int, rows: list, read
             sha256=row.sha256,
             kind=row.kind,
             size=row.size,
-            state=_state(row, newest, live),
+            state=_state(row, live),
             secrets=dict(sorted(secrets.items())),
             builds=pointing.get(row.sha256, []),
         )
@@ -379,9 +418,11 @@ async def scan(state, project: str, after: str | None, limit: int) -> ScrubPage:
     read = await _read_rows(state, project, project_id, rows)
     async with state.engine.begin() as conn:
         found = await _found(conn, state, project_id, rows, read)
+        graph = await graph_secrets_in_tables(conn, project_id) if after is None else None
     more = cut or len(rows) == limit
     return ScrubPage(
         project=project,
+        graph=graph,
         scanned=sum(1 for secrets in read if secrets is not None),
         scanned_bytes=sum(row.size for row, secrets in zip(rows, read, strict=True) if secrets is not None),
         missing=sum(1 for secrets in read if secrets is None),

@@ -12,9 +12,9 @@ the builds that changed nothing. ``forget-source`` (the writer role) takes every
 hub and queues a build without them (``evo_agents.hub.server.kg``), which a source must go through before
 knowledge.yaml drops it; at a terminal it asks first unless ``--yes``. ``prune`` (a hub admin) runs the retention of built graphs now (``evo_agents.hub.kg_prune``): the
 artifacts of graphs older than each project's ``--keep`` newest leave the bucket, and ``--dry-run`` only says which.
-``scrub`` (a hub admin) reads every built graph and source blob of a project, or of every project, page by page
-(``evo_agents.hub.server.kg_scrub``) and lists those holding a secret by hash, kind and the kinds of secret, never a
-value; ``--purge`` says what it is about to delete, asks (or takes ``--yes``), and has the hub delete the old ones.
+``scrub`` (a hub admin) reads the graph in the hub's tables and every graph file and source blob of a project, or of
+every project, page by page (``evo_agents.hub.server.kg_scrub``) and lists those holding a secret by hash, kind and the
+kinds of secret, never a value; ``--purge`` says what it is about to delete, asks (or takes ``--yes``), and has the hub delete the old ones.
 ``clusters`` lists the clusters of a project's graph the caller can see, and ``clusters show ID`` one of them
 (``evo_agents.hub.kg_clusters_cli``). ``review`` lists the review queue the caller can see, and ``review dismiss FP``
 dismisses one item of it (``evo_agents.hub.kg_review_cli``). ``entities``, inside a run of the project's agent pool, answers with Claude Code
@@ -357,7 +357,15 @@ def cmd_prune(args) -> int:
 
 def scrub_scan(hub: Hub, project: str, progress=None) -> dict:
     """Every page of POST /v1/admin/kg/scrub for ``project``, added up; ``purged`` is None until a purge."""
-    report = {"project": project, "scanned": 0, "scanned_bytes": 0, "missing": 0, "found": [], "purged": None}
+    report = {
+        "project": project,
+        "graph": None,
+        "scanned": 0,
+        "scanned_bytes": 0,
+        "missing": 0,
+        "found": [],
+        "purged": None,
+    }
     after = None
     while True:
         body = {"project": project, **({"after": after} if after else {})}
@@ -365,6 +373,7 @@ def scrub_scan(hub: Hub, project: str, progress=None) -> dict:
         for key in ("scanned", "scanned_bytes", "missing"):
             report[key] += page[key]
         report["found"] += page["found"]
+        report["graph"] = report["graph"] or page.get("graph")
         if progress:
             progress(f"{project}: {report['scanned']} object(s) read, {len(report['found'])} hold a secret")
         after = page["next"]
@@ -399,12 +408,19 @@ def _old(reports: list[dict]) -> list[dict]:
 
 def _print_scrub(report: dict) -> None:
     found = report["found"]
-    states = {state: sum(1 for f in found if f["state"] == state) for state in ("old", "live", "newest")}
+    states = {state: sum(1 for f in found if f["state"] == state) for state in ("old", "live")}
     print(
         f"{report['project']}: {len(found)} of {report['scanned']} object(s) hold a secret: {states['old']} old, "
-        f"{states['live']} live source blob(s), {states['newest']} newest graph(s)"
+        f"{states['live']} live source blob(s)"
         + (f"; {report['missing']} missing from the bucket" if report["missing"] else "")
     )
+    graph = report.get("graph")
+    if graph and graph["holding"]:
+        kinds = ", ".join(f"{kind} {count}" for kind, count in graph["secrets"].items())
+        print(
+            f"  in use  graph     {graph['holding']} of {graph['rows']} row(s) in the hub's tables  {kinds}: "
+            "push runs with them redacted and build again; a purge never deletes them"
+        )
     for item in found[:SCRUB_SHOWN]:
         kinds = ", ".join(f"{kind} {count}" for kind, count in item["secrets"].items())
         print(f"  {item['state']:<6}  {item['kind']:<8}  {item['sha256'][:16]}  {_bytes(item['size'])}  {kinds}")
@@ -538,7 +554,9 @@ def _register_cleanup_commands(ksub) -> None:
         "scrub", help="find old graphs and source blobs holding a secret, and with --purge delete them (a hub admin)"
     )
     scrub.add_argument("--project", help="project name on the hub (default: every project)")
-    scrub.add_argument("--purge", action="store_true", help="delete the old ones; newest graphs and live blobs stay")
+    scrub.add_argument(
+        "--purge", action="store_true", help="delete the old ones; the graph in the tables and live blobs stay"
+    )
     scrub.add_argument("--yes", action="store_true", help="with --purge: delete without asking")
     json_option(scrub, returns_object("purge", "projects"))
     scrub.set_defaults(func=cmd_scrub)

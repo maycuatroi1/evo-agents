@@ -3,11 +3,11 @@
 
 A machine pushed a run whose document held a password (its connector did not redact it) and the worker built a graph
 from it; then a run with the value replaced, and a second build. Checked here: a scan, page by page, finds the first
-run's blobs and the first graph old, a document every run still holds live, and the graph the tools read newest, and
-never answers a value; it changes nothing and is refused to anyone but a hub admin. A purge deletes the old objects
-from the bucket and the ``blobs`` rows, marks the builds of a deleted graph pruned, drops it from the api's cache,
-writes one audit row counting what went, keeps what is in use, and leaves a project the worker still builds and the
-tools still read. A run log missing from the bucket stops a scan and a purge rather than let a blob in use count as
+run's blobs and both graph files old, a document every run still holds live, and in the graph the hub's tables hold,
+which the tools read, the deploy key and not the redacted password, and never answers a value; it changes nothing and
+is refused to anyone but a hub admin. A purge deletes the old objects from the bucket and the ``blobs`` rows, marks the
+builds of a deleted graph pruned, writes one audit row counting what went, keeps what is in use, and leaves a project
+the worker still builds and the tools still read. A run log missing from the bucket stops a scan and a purge rather than let a blob in use count as
 old. A source blob is read as the file the items of the run logs name, as on a machine: code is not taken for a
 secret, and a config value only a config file makes a password is found. Runs whose logs a local purge rewrote are
 not pushed again, and a rewritten log of a run the hub lacks pushes and builds. The CLI's ``hub kg scrub`` runs
@@ -53,7 +53,7 @@ from tests.hub.test_kg import (
     sign_in,
     tool_ok,
 )
-from tests.hub.test_kg_retention import kg_graphs, objects, rebuild, run_worker, seed_artifact
+from tests.hub.test_kg_retention import kg_graphs, objects, run_worker, seed_artifact
 from tests.kg.test_redact import GITHUB, LITERAL
 
 PASSWORD_LINE = f"Connect with DB_PASSWORD: {LITERAL}"
@@ -87,7 +87,6 @@ def built(hub, laptop: Machine, guide_line: str, rev: str) -> dict:
     # the graph file an older build uploaded: the one the worker built into its cache
     graph = (worker_project(hub.worker_dir, PROJECT).root / "graph.sqlite").read_bytes()
     seed_artifact(hub, build, data=graph)
-    tool_ok(hub, "kg_search", {"query": "guide"})  # the api caches the graph it reads
     return build_rows(hub)[0]
 
 
@@ -107,7 +106,7 @@ def scan(hub, who: str = "admin", **body):
 
 
 def scan_all(hub, limit: int) -> tuple[list[dict], int]:
-    """Every page of a scan; the objects found and the pages read."""
+    """Every page of a scan; the objects found and the pages read. Only the first page reads the graph tables."""
     found, after, pages = [], None, 0
     while True:
         response = scan(hub, limit=limit, **({"after": after} if after else {}))
@@ -115,6 +114,7 @@ def scan_all(hub, limit: int) -> tuple[list[dict], int]:
         page = response.json()
         assert not leaked(response.text)
         found += page["found"]
+        assert (page["graph"] is not None) == (pages == 0)
         pages += 1
         after = page["next"]
         if after is None:
@@ -133,15 +133,18 @@ def held(hub, kinds=("kg-blob", "kg-graph")) -> set[str]:
     return {row[0] for row in query(hub.db, select(blobs.c.sha256).where(blobs.c.kind.in_(kinds)))}
 
 
-def test_scrub_scan_finds_old_live_and_newest_copies_and_changes_nothing(hub, leaky):
+def test_scrub_scan_finds_old_and_live_copies_and_the_graph_in_use_and_changes_nothing(hub, leaky):
     first, second = leaky
     before = (objects(hub), held(hub), build_rows(hub))
 
     found, pages = scan_all(hub, limit=2)
     assert pages > 2
     states = by_state(found)
-    assert states["old"] >= {("kg-graph", first["artifact_sha256"])}
-    assert states["newest"] == {("kg-graph", second["artifact_sha256"])}  # the notes' key is in it
+    assert states["old"] >= {("kg-graph", first["artifact_sha256"]), ("kg-graph", second["artifact_sha256"])}
+    assert set(states) == {"old", "live"}
+    page = scan(hub, limit=2).json()  # the graph the tools read: the second build's, the notes' key in it
+    assert page["graph"]["holding"] >= 1 and page["graph"]["rows"] > page["graph"]["holding"]
+    assert page["graph"]["secrets"].get("github_token", 0) >= 1 and "password" not in page["graph"]["secrets"]
     old_blobs = {sha for kind, sha in states["old"] if kind == "kg-blob"}
     live_blobs = {sha for kind, sha in states["live"] if kind == "kg-blob"}
     assert len(old_blobs) == 2 and len(live_blobs) == 2  # body and fragment of the guide, then of the notes
@@ -188,7 +191,7 @@ def test_scrub_purge_deletes_old_copies_keeps_what_is_in_use_and_audits(hub, lea
     found, _ = scan_all(hub, limit=1000)
     states = by_state(found)
     old = {sha for _, sha in states["old"]}
-    in_use = {sha for state in ("live", "newest") for _, sha in states[state]}
+    in_use = {sha for _, sha in states["live"]}
     stranger = "f" * 64
     present = objects(hub)
 
@@ -202,23 +205,27 @@ def test_scrub_purge_deletes_old_copies_keeps_what_is_in_use_and_audits(hub, lea
     answer = response.json()
     assert {item["sha256"] for item in answer["purged"]} == old
     reasons = {item["sha256"]: item["reason"] for item in answer["kept"]}
-    assert reasons == {**{sha: state for state in ("live", "newest") for _, sha in states[state]}, stranger: "not held"}
-    assert answer["builds"] == 1 and answer["deleted"] == len(old) and answer["pending"] == 0
+    assert reasons == {**{sha: "live" for sha in in_use}, stranger: "not held"}
+    assert answer["builds"] == 2 and answer["deleted"] == len(old) and answer["pending"] == 0
     assert answer["deleted_bytes"] == sum(present[sha] for sha in old)
 
     after = objects(hub)
     assert not old & set(after) and in_use <= set(after)
     assert not old & held(hub) and in_use <= held(hub)
-    assert kg_graphs(hub) == {second["artifact_sha256"]}
+    assert kg_graphs(hub) == set()  # no graph file is in use: the tools read the graph in the tables
     rows = {build["id"]: build for build in build_rows(hub)}
-    assert rows[first["id"]]["artifact_sha256"] is None and rows[first["id"]]["artifact_pruned_at"]
-    assert rows[second["id"]]["artifact_sha256"] == second["artifact_sha256"]
+    for build in (first, second):
+        assert rows[build["id"]]["artifact_sha256"] is None and rows[build["id"]]["artifact_pruned_at"]
     audit = tables.audit
     trail = query(hub.db, select(audit.c.action, audit.c.target).where(audit.c.action == "kg.scrub"))
-    assert trail == [("kg.scrub", f"{PROJECT} artifacts=1 blobs=2")]
+    assert trail == [("kg.scrub", f"{PROJECT} artifacts=2 blobs=2")]
+    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]  # the tables still answer
 
-    again = rebuild(hub, second)  # the worker finds every blob the merged runs use
-    assert again["content_hash"] == second["content_hash"]
+    response = hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice)
+    assert response.status_code == 202 and response.json()["queued"], response.text
+    run_worker(hub)  # the worker finds every blob the merged runs use
+    again = build_rows(hub)[0]
+    assert again["status"] == "succeeded" and again["content_hash"] == second["content_hash"], again
     assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
     found_again, _ = scan_all(hub, limit=1000)
     assert "old" not in by_state(found_again)
@@ -254,7 +261,7 @@ def test_the_cli_scrubs_as_a_hub_admin_and_purges_with_yes_only(hub_db, tmp_path
 
         text = ok(pg.cli(["hub", "kg", "scrub", "--project", PROJECT], env=env))
         assert not leaked(text.stdout + text.stderr)
-        assert f"{PROJECT}: 2 of " in text.stdout and "2 old, 0 live source blob(s), 0 newest graph(s)" in text.stdout
+        assert f"{PROJECT}: 2 of " in text.stdout and "2 old, 0 live source blob(s)\n" in text.stdout
         assert "Count only, nothing was deleted. --purge deletes the 2 old object(s)." in text.stdout
         assert f"{PROJECT}: " in text.stderr  # progress
 

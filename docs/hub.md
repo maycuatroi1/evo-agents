@@ -4142,17 +4142,18 @@ evo-agents hub kg prune --project demo --keep 5
 
 **Secrets in old copies.** The git connector redacts secrets before a file enters a corpus (see the README), but
 runs pushed before it did keep them on the hub, in their source blobs and in the graphs built from them. A hub admin
-finds them with `evo-agents hub kg scrub` (every project, or `--project demo`). It reads each graph file older builds
-uploaded and each source blob a project holds in the bucket, page by page (`POST /v1/admin/kg/scrub`, at most 1000
+finds them with `evo-agents hub kg scrub` (every project, or `--project demo`). It reads the graph the hub's tables
+hold for the project's main branch, which the `kg_*` tools read (node names and properties, edge properties and the
+full-text rows), and counts the rows holding a secret by kind; that graph is in use and a purge never deletes it. It
+also reads each graph file older builds uploaded and each source blob a project holds in the bucket, page by page (`POST /v1/admin/kg/scrub`, at most 1000
 objects and 256 MiB a page), with the connector's patterns, and lists those holding a secret by hash, kind, size and the kinds of secret,
-never a value. A graph is read from the api's cache when it is there. A source blob is read as the file the items of
+never a value. A source blob is read as the file the items of
 the project's run logs say it is (their `props.path`), as `evo-agents kg scrub` reads it on a machine: in code a bare
 value after `=` is an expression, in a config file or a document a literal. A blob no item names with a path is read
 as a document. The first page that meets a source blob that may hold a secret reads every run log of the project for
 those paths, so it takes longer; the api keeps them, and reads only the logs of new runs after that. Run logs hold
-references only and are not themselves scanned. Each object found has a state. `newest` is the graph the `kg_*`
-tools read, and `live` a source blob that a run still in use refers to: a run waiting for its commit, the newest full
-run of its source (a complete listing and an ok end), or a run after that. Anything else is `old`. Counting changes
+references only and are not themselves scanned. Each object found has a state. `live` is a source blob that a run still in use refers to: a run waiting for its commit, the newest full
+run of its source (a complete listing and an ok end), or a run after that. Anything else is `old`, every graph file among them, since the tools no longer read one. Counting changes
 nothing.
 
 `--purge` says what it is about to delete and asks first (`--yes` when no terminal can answer), then has the hub
@@ -4160,12 +4161,12 @@ delete the old objects (`POST /v1/admin/kg/scrub/purge`, at most 1000 hashes a r
 and keeps those that hold no secret any more, are in use, or are not the project's, saying why. For the rest, in one
 transaction holding the blob lock, it drops the project's `blobs` rows, marks the builds of a deleted graph pruned as
 the retention does, records the objects no other project holds for deletion, and writes one `kg.scrub` audit row
-counting what went. Then it deletes the objects and drops the deleted graphs from its cache. Delete in this order, so
-the newest graph and the live blobs are the redacted ones and nothing the project uses holds a secret:
+counting what went. Then it deletes the objects. Delete in this order, so
+the graph in the tables and the live blobs are the redacted ones and nothing the project uses holds a secret:
 
 ```sh
 evo-agents kg sync --build --push              # on each machine: runs with the secrets redacted
-evo-agents hub kg build --project demo --wait  # the newest graph, from the redacted runs
+evo-agents hub kg build --project demo --wait  # the graph in the tables, from the redacted runs
 evo-agents hub kg scrub                        # count, change nothing
 evo-agents hub kg scrub --purge                # delete the old copies, after a yes
 ```
