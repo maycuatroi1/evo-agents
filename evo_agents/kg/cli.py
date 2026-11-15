@@ -425,8 +425,7 @@ def register(sub) -> None:
     sync.set_defaults(func=cmd_sync)
 
     schedule = ksub.add_parser(
-        "schedule",
-        help="hourly LaunchAgent running kg sync --due --all, with --push when signed in, else --build (macOS)",
+        "schedule", help="hourly LaunchAgent running kg sync --due --all --build, and --push when signed in (macOS)"
     )
     schedule.add_argument(
         "action", choices=["print", "install", "uninstall"], help="print the plist, or load or unload it"
