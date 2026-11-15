@@ -1177,9 +1177,11 @@ may still refuse); a run's token answers no decision at all.
 
 An admin of the run's project (the admin role on it, or a hub admin holding a grant on it) may answer another member's
 request too, with the value alone: `as_me`, `both` and `found` lend the dispatcher's own account or secret, which are
-theirs to give (403). The value becomes the admin's own secret of kind `env` of the proposed name (its value replaced
-when the admin holds that name for the variable already, 409 when they hold it for something else), bound to no
-project, and a share of it to the run's principal for the run's project and for that run alone
+theirs to give (403). The value becomes the admin's own new secret of kind `env` of the proposed name, bound to no
+project; when the admin keeps a secret of that name already, whatever it is for, the answer is 409 and nothing is
+written, since replacing it would lose the value the runs that lease it use: the refusal names the secret and the two
+ways on, `evo-agents hub run cancel <run>` and dispatching the work again as the admin, or answering with `--option
+refuse`. A share of the new secret to the run's principal for the run's project and for that run alone
 (`credential_shares.run_id`, migration 0247, an audit row `share.create` ending `run=<id>`) lends it to the run and to
 the runs that resume it, before any other secret for the variable. Nothing is written under the dispatcher's name, no
 other run of theirs is lent it, a personal subscription's login is refused (its share needs the terms warning), and the

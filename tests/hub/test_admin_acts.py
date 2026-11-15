@@ -169,7 +169,7 @@ def test_an_admin_gives_a_credential_as_their_own_secret_lent_to_that_run_alone(
     assert answered.status_code == 200, answered.text
     decision = answered.json()
     assert (decision["answer_option"], decision["answered_by"]) == ("value", LEAD)
-    assert f"their own secret {NEEDED_SECRET} of kind env" in decision["answer_text"]
+    assert f"their own new secret {NEEDED_SECRET} of kind env" in decision["answer_text"]
     assert f"never as {OWNER}'s" in decision["answer_text"] and value not in answered.text
     # the admin's secret, bound to no project; nothing new under the dispatcher's name
     secret = secrets_of(client, lead)[NEEDED_SECRET]
@@ -199,6 +199,37 @@ def test_an_admin_gives_a_credential_as_their_own_secret_lent_to_that_run_alone(
     next_id = claim(client, worker)["id"]
     assert NEEDED_SECRET not in by_name(leased(client, worker, next_id))
     assert share_id and value not in table_dump(hub_db)
+
+
+def test_an_admin_who_keeps_a_secret_of_the_proposed_name_is_refused_and_nothing_is_written(client, hub, hub_db, lead):
+    old = sample("in-use-")
+    credentials_api.env_secret(client, lead, NEEDED_SECRET, NEEDED, old)  # the admin's own, which their runs lease
+    before = secrets_of(client, lead)[NEEDED_SECRET]
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id, asked = credential_run(client, hub, worker, {"env_var": NEEDED})
+    value = sample("deploy-key-")
+
+    refused = answer_of(client, lead, asked["id"], secret=value)
+    assert refused.status_code == 409, refused.text
+    message = refused.json()["message"]
+    assert f"you keep a secret named {NEEDED_SECRET} already" in message and "would be lost" in message
+    assert f"`evo-agents hub run cancel {run_id} --project {PROJECT}`" in message
+    assert f"`evo-agents hub decision answer {asked['id']} --option refuse --project {PROJECT}`" in message
+    assert value not in refused.text and old not in refused.text
+    # nothing was written: the secret, the decision, the shares, the run's log and the dispatcher's notices
+    assert secrets_of(client, lead)[NEEDED_SECRET] == before
+    shown = client.get(f"/v1/projects/{PROJECT}/decisions/{asked['id']}", headers=lead).json()
+    assert (shown["state"], shown["answered_by"]) == ("open", None)
+    assert sql(hub_db, select(tables.credential_shares.c.id)) == []
+    assert admin_events(hub_db, run_id) == [] and notices_of(hub_db, OWNER) == []
+    assert audit_of(hub_db, "secret.put")[-1][0] != f"decision:{asked['id']}"
+    assert value not in table_dump(hub_db)
+
+    # refusing stays open to the admin
+    declined = answer_of(client, lead, asked["id"], option=credential_requests.REFUSE)
+    assert declined.status_code == 200, declined.text
+    assert declined.json()["answer_option"] == credential_requests.REFUSE
+    assert [event["admin_action"] for event in admin_events(hub_db, run_id)] == ["answer"]
 
 
 def test_an_admin_cancels_another_members_parked_plan_run_and_dispatches_the_plan_again(client, hub, hub_db, lead):

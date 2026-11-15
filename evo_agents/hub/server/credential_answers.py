@@ -13,9 +13,9 @@ access route. Its answer is the sentence the hub adds to the decision's answer: 
 value.
 
 An admin of the project who answers another member's request (``give_for_run``, ``runs.service.admin_acts``) gives the
-value alone, never the dispatcher's secret or account (403 for those options): it becomes the admin's own secret of
-kind env of the name the request proposes (replaced when it is theirs for that variable, 409 when it is for something
-else), bound to no project, and a share of it to the run's principal for the run's project and for that run alone
+value alone, never the dispatcher's secret or account (403 for those options): it becomes the admin's own new secret
+of kind env of the name the request proposes (409 with nothing written when the admin keeps a secret of that name
+already, whatever it is for, since its value would be lost to the runs that lease it), bound to no project, and a share of it to the run's principal for the run's project and for that run alone
 (credential_shares.run_id, audited share.create) lends it to the run and the runs that resume it
 (``share_leases.for_run``), before any other secret for the variable. Nothing is written under the dispatcher's name.
 
@@ -314,9 +314,10 @@ async def give_for_run(
     behalf: OnBehalf,
 ) -> str:
     """The answer of ``user``, an admin of the project, to credential request ``request`` of run ``run_id``, which
-    another member dispatched (``behalf``): the value alone, kept as the admin's own secret of the name the request
+    another member dispatched (``behalf``): the value alone, kept as the admin's own new secret of the name the request
     proposes and lent to that run alone under a share to its principal (``share_leases.for_run``), never written as the
-    dispatcher's; 403 for the options that lend the dispatcher's own secret or account, which are theirs to give."""
+    dispatcher's; 403 for the options that lend the dispatcher's own secret or account, which are theirs to give, and
+    409 when the admin keeps a secret of that name already (``_refuse_held``)."""
     env_var = request.get("env_var")
     if credential_requests.grants_account(asked.option) or credential_requests.binds_found(asked.option):
         raise HTTPException(
@@ -336,16 +337,36 @@ async def give_for_run(
     users = tables.users
     # One write of a member's secrets at a time, as PUT /v1/secrets takes them.
     await conn.execute(select(users.c.id).where(users.c.id == user.user_id).with_for_update())
-    held = await _named(conn, user, name, env_var, decision_id)
-    environment = None if held is None else held.environment
-    secret_id, created = await _write_value(conn, sealer, user, name, env_var, environment, asked.value, decision_id)
+    await _refuse_held(conn, user, access, name, decision_id, run_id)
+    await _named(conn, user, name, env_var, decision_id)  # none of that name: the room for one more
+    secret_id, _ = await _write_value(conn, sealer, user, name, env_var, None, asked.value, decision_id)
     share_id = await _lend_for_run(conn, user, access, run_id, secret_id)
-    how = "a new secret" if created else "the value it held replaced"
     return (
-        f"{user.login}, {behalf.as_what}, gave {env_var}: the hub keeps it as their own secret {name} of kind env "
-        f"({how}) and lends it to this run alone under share {share_id}, never as {behalf.owner}'s. The worker takes "
+        f"{user.login}, {behalf.as_what}, gave {env_var}: the hub keeps it as their own new secret {name} of kind env "
+        f"and lends it to this run alone under share {share_id}, never as {behalf.owner}'s. The worker takes "
         f"the run's leases again: read them with `{credential_requests.ENV_COMMAND}` before the command that needs "
         "them (a run that resumes has them in its environment from its start)."
+    )
+
+
+async def _refuse_held(
+    conn: AsyncConnection, user: Principal, access, name: str, decision_id: int, run_id: int
+) -> None:
+    """409, with nothing written, when ``user`` keeps a live secret ``name`` already, whatever it is for: an admin's
+    answer to another member's run never replaces a secret of theirs, whose value the runs that lease it use and which
+    would be lost."""
+    s = tables.secrets
+    held = select(s.c.id).where(s.c.owner_id == user.user_id, s.c.name == name, s.c.deleted_at.is_(None))
+    if (await conn.execute(held)).first() is None:
+        return
+    project = access.name
+    raise HTTPException(
+        409,
+        f"you keep a secret named {name} already: answering decision {decision_id} with a value would replace it, "
+        "and its value, which the runs that lease it use, would be lost; nothing was written. Cancel run "
+        f"{run_id} with `evo-agents hub run cancel {run_id} --project {project}` and dispatch it again as yourself, "
+        f"whose runs get your secret {name}, or answer with `evo-agents hub decision answer {decision_id} --option "
+        f"{credential_requests.REFUSE} --project {project}`",
     )
 
 
