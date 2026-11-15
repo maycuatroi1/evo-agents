@@ -106,10 +106,11 @@ def graph_of(world, *, files: dict | None = None, commit_read: str = C1, knowled
     b = tables.kg_builds
     built = {"status": "succeeded", "content_hash": CONTENT, "nodes": 9, "edges": 9, "started_at": func.now()}
     built["finished_at"] = func.now()
-    artifact = {"artifact_sha256": "e" * 64, "artifact_size": 10}
-    (first,) = sql(db, insert(b).values(project_id=pid, coverage=COVERAGE, **built, **artifact).returning(b.c.id))[0]
-    reused = {"artifact_reused_from": first, "coverage": {**COVERAGE, "skipped": True}}
-    (second,) = sql(db, insert(b).values(project_id=pid, **built, **artifact, **reused).returning(b.c.id))[0]
+    sql(db, insert(b).values(project_id=pid, coverage=COVERAGE, **built))
+    skipped = {"coverage": {**COVERAGE, "skipped": True}}  # the content of the build before it: it changed nothing
+    (second,) = sql(db, insert(b).values(project_id=pid, **built, **skipped).returning(b.c.id))[0]
+    head = {"project_id": pid, "build_id": second, "content_hash": CONTENT, "top_label": [0, 0]}
+    sql(db, insert(tables.kg_graph_heads).values(**head))  # its graph is the one the hub's tables hold
     sql(
         db, insert(b).values(project_id=pid, status="failed", error="no", started_at=func.now(), finished_at=func.now())
     )
@@ -243,8 +244,8 @@ def test_the_hub_measures_each_git_source_of_a_charter_against_its_default_branc
     assert kb["why"] == kg_health.OFF_GITHUB and kb["behind"] is None and kb["missing"] is None
     assert unbuilt["why"] == "no successful build of the graph holds this source yet"
     assert local["why"] == kg_health.NO_REPO and local["repo"] is None and local["graph_files"] == 0
-    unheld = f"no graph of project {PROJECT} is held on this hub yet; try again shortly"  # no snapshot of its tables
-    assert body["eval"]["why"].endswith(unheld) and body["review"] == {"why": unheld}
+    unclustered = "this build has no review queue: it has no clusters"  # the snapshot of its head: an empty graph
+    assert body["eval"]["questions"] == 0 and body["review"]["why"] == unclustered
     asked = [json.loads(call.body) for call in world.github.requests if call.path.endswith("/access_tokens")]
     assert asked[-1]["permissions"] == {"contents": "read", "metadata": "read"}  # it reads; it never writes
 
@@ -349,7 +350,9 @@ def test_the_nights_figures_hold_the_health_of_the_graph_and_the_lens_kg_health_
     assert health["sources"][0]["behind"] == 2 and health["sources"][0]["lag_hours"] == 6.0
     assert all("off" not in item for item in health["sources"])  # the tier rules read those paths, not the Reviewer
     assert health["coverage"]["build_id"] == build_id and health["coverage"]["python"]["uncalled_methods"] == 2
-    assert health["review"] == {"why": f"no graph of project {PROJECT} is held on this hub yet; try again shortly"}
+    assert (
+        health["review"]["why"] == "this build has no review queue: it has no clusters"
+    )  # the snapshot of its head: an empty graph
     builds = health["builds"]
     assert {key: builds[key] for key in ("builds", "succeeded", "failed", "unchanged", "unchanged_rate")} == {
         "builds": 3,
@@ -502,7 +505,9 @@ def test_an_eval_that_fails_leaves_the_measure_of_the_sources_standing(world, tm
     ((_, _, body, error),) = health_rows(world.db)
     assert error is None and body["sources"][0]["behind"] == 2
     assert body["eval"] == {"why": "the evaluation failed: RuntimeError"}
-    assert body["review"]["why"].startswith("no graph of project")  # no snapshot held: the measure stands without it
+    assert (
+        body["review"]["why"] == "this build has no review queue: it has no clusters"
+    )  # the snapshot of an empty graph: the measure stands with it
     ((project, sink, builds, plans),) = asked
     assert project == PROJECT and len(builds) == 2 and "credentials-smoke" in plans  # as the owner
     assert sink == "claude-code@anthropic"  # the agent sink the policy declares, not the hub sink
