@@ -218,7 +218,10 @@ def test_a_login_the_worker_holds_by_lease_is_no_item_and_a_failing_one_is(clien
         "worker.health|login:claude-code:unauthorized|worker:7",
         "worker.health|login:claude-code:missing|worker:7",
     ]
-    assert ops_queue.health_causes({"logins": {"claude-code": "leased", "codex": "unknown"}}) == ["login:codex:unknown"]
+    assert ops_queue.health_causes({"logins": {"claude-code": "leased", "codex": "unknown"}}) == [], (
+        "a timeout is no item"
+    )
+    assert ops_queue.health_causes({"logins": {"codex": "unauthorized"}}) == ["login:codex:unauthorized"]
 
 
 def test_a_low_disk_of_workers_on_one_machine_is_one_batch_keyed_by_the_machine(client, hub, hub_db):
