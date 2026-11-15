@@ -2375,7 +2375,12 @@
         "possible_duplicate": "Có thể trùng lặp",
         "ambiguous_match": "Khớp tên mơ hồ",
         "bulk_noise": "Nhiễu hàng loạt",
-        "conflicting_claim": "Khẳng định mâu thuẫn"
+        "conflicting_claim": "Khẳng định mâu thuẫn",
+        "wrong_endpoint": "Cạnh có đầu sai ontology",
+        "cardinality": "Quá nhiều cạnh của một quan hệ",
+        "cycle": "Chu trình ontology cấm",
+        "duplicate_key": "Nút trùng khóa",
+        "missing_prop": "Nút thiếu thuộc tính bắt buộc"
       },
       "actions": {
         "fix_mention": "Sửa chỗ nhắc tới",
@@ -2384,7 +2389,11 @@
         "merge": "Gộp lại",
         "disambiguate": "Gọi đúng tên đích",
         "exclude": "Loại khỏi đồ thị",
-        "check_claims": "Xem khẳng định nào đúng"
+        "check_claims": "Xem khẳng định nào đúng",
+        "fix_endpoint": "Sửa đầu của cạnh",
+        "keep_one": "Giữ một cạnh",
+        "break_cycle": "Phá chu trình",
+        "set_prop": "Đặt thuộc tính"
       },
       "filters": "Lọc hàng đợi",
       "rule": "Luật",

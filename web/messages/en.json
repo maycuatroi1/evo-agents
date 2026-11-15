@@ -2375,7 +2375,12 @@
         "possible_duplicate": "Possible duplicates",
         "ambiguous_match": "Ambiguous name matches",
         "bulk_noise": "Bulk noise",
-        "conflicting_claim": "Conflicting claims"
+        "conflicting_claim": "Conflicting claims",
+        "wrong_endpoint": "Edges whose ends break the ontology",
+        "cardinality": "Too many edges of one relation",
+        "cycle": "Cycles the ontology forbids",
+        "duplicate_key": "Nodes sharing a key",
+        "missing_prop": "Nodes missing a required property"
       },
       "actions": {
         "fix_mention": "Fix the mention",
@@ -2384,7 +2389,11 @@
         "merge": "Merge them",
         "disambiguate": "Name the target exactly",
         "exclude": "Exclude them from the graph",
-        "check_claims": "Check which claim holds"
+        "check_claims": "Check which claim holds",
+        "fix_endpoint": "Fix the edge's end",
+        "keep_one": "Keep one edge",
+        "break_cycle": "Break the cycle",
+        "set_prop": "Set the property"
       },
       "filters": "Filter the queue",
       "rule": "Rule",

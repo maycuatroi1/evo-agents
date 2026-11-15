@@ -37,10 +37,10 @@ describe("review queue helpers", () => {
     expect(groupReview([])).toEqual([]);
   });
 
-  it("knows the seven rules of the hub", () => {
-    expect(REVIEW_RULES).toHaveLength(7);
-    expect(new Set(REVIEW_RULES).size).toBe(7);
-    expect(REVIEW_RULES.at(-1)).toBe("conflicting_claim");
+  it("knows the twelve rules of the hub", () => {
+    expect(REVIEW_RULES).toHaveLength(12);
+    expect(new Set(REVIEW_RULES).size).toBe(12);
+    expect(REVIEW_RULES.at(-1)).toBe("missing_prop");
   });
 
   it("reads the filter from the URL and drops what the hub would refuse", () => {
