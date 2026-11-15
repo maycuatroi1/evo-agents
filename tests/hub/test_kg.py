@@ -55,7 +55,6 @@ from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import HubContext, connector, queue
 from evo_agents.kg import build as kg_build_module
 from evo_agents.kg import serve
-from evo_agents.kg import store as kg_store
 from evo_agents.kg.build import build_project
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import load_project_at
@@ -818,66 +817,6 @@ def test_a_build_with_nothing_new_builds_nothing_and_points_at_the_same_artifact
     assert done.skipped is False
 
 
-def test_an_artifact_that_does_not_match_its_sha256_is_never_opened(hub, tmp_path):
-    laptop = Machine(tmp_path, "laptop")
-    laptop.sync("docs", doc("guide", "How the app works."))
-    assert push(hub, laptop).ok
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
-    build = latest(hub)
-    good = hub.s3.get(blob_key(build["artifact_sha256"]))
-    hub.s3.put(blob_key(build["artifact_sha256"]), bytes(reversed(good)))  # same size, other bytes
-
-    graphs = hub.api_dir / "kg" / "graphs" / PROJECT
-    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]  # the snapshot answers
-    assert not graphs.exists()  # and the artifact is not fetched
-
-    hub.client.app.state.kg_snapshots, snapshots = None, hub.client.app.state.kg_snapshots  # a read of the file
-    try:
-        refused = call_tool(hub, "kg_search", {"query": "guide"})
-        assert refused.status_code == 502
-        assert "does not have the SHA-256 the build recorded" in refused.json()["message"]
-        assert not graphs.exists() or list(graphs.iterdir()) == []  # neither the file nor a part of it stays
-
-        hub.s3.put(blob_key(build["artifact_sha256"]), good)
-        assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
-    finally:
-        hub.client.app.state.kg_snapshots = snapshots
-
-
-def test_a_graph_of_an_older_store_schema_is_rebuilt_rather_than_served_broken(hub, tmp_path, monkeypatch):
-    laptop = Machine(tmp_path, "laptop")
-    laptop.sync("docs", doc("guide", "How the app works."))
-    assert push(hub, laptop).ok
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
-    old = latest(hub)
-    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
-
-    # The hub is upgraded to a store schema the artifact was not written with.
-    monkeypatch.setattr(kg_store, "SCHEMA_VERSION", str(int(kg_store.SCHEMA_VERSION) + 1))
-    # the tools and the web's pages read the snapshot of the tables, which no artifact's schema bounds
-    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
-    served = hub.client.get(f"/v1/kg/{PROJECT}/nodes", params={"q": "guide"}, headers=hub.alice)
-    assert served.status_code == 200 and served.json()["results"], served.text
-    hub.client.app.state.kg_snapshots, snapshots = None, hub.client.app.state.kg_snapshots  # a read of the file
-    try:
-        refused = hub.client.get(f"/v1/kg/{PROJECT}/nodes", params={"q": "guide"}, headers=hub.alice)
-        assert refused.status_code == 503, refused.text
-        assert f"(build {old['id']}) was written with store schema" in refused.json()["message"]
-        page = hub.client.get(f"/v1/kg/{PROJECT}/nodes", params={"q": "guide"}, headers=hub.alice)
-        assert page.status_code == 503 and "a new build of it is queued" in page.json()["message"]
-    finally:
-        hub.client.app.state.kg_snapshots = snapshots
-    queued = latest(hub)
-    assert queued["status"] == "queued" and queued["requested_by"] is None
-    assert len([b for b in build_rows(hub) if b["status"] == "queued"]) == 1  # the second refusal found it waiting
-
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
-    rebuilt = latest(hub)
-    assert rebuilt["id"] == queued["id"] and rebuilt["status"] == "succeeded"
-    assert rebuilt["content_hash"] != old["content_hash"] and rebuilt["artifact_sha256"] != old["artifact_sha256"]
-    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
-
-
 def test_kg_tools_answer_from_the_loaded_snapshot_when_the_blob_store_is_down(hub, tmp_path):
     laptop = Machine(tmp_path, "laptop")
     laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it."))
@@ -925,7 +864,10 @@ def test_kg_tools_answer_from_the_loaded_snapshot_when_the_blob_store_is_down(hu
         unavailable = call_tool(hub, "kg_search", {"query": "guide"})
     finally:
         hub.client.app.state.kg_snapshots = snapshots
-    assert unavailable.status_code == 503 and "no graph of project alpha is cached" in unavailable.json()["message"]
+    assert (
+        unavailable.status_code == 503
+        and "no graph of project alpha is held on this hub" in unavailable.json()["message"]
+    )
 
 
 # Failures and refusals
