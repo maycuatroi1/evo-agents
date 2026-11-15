@@ -20,7 +20,8 @@ from sqlalchemy import func, select, update
 
 from evo_agents.hub import autonomy_card, runs, tables
 from evo_agents.hub.server import autonomy_gates, principals, run_autonomy
-from tests.hub.live import ADMIN, sql
+from tests.hub import live
+from tests.hub.live import ADMIN, bearer, sql
 from tests.hub.test_autonomy_level_lease import FEATURES
 from tests.hub.test_autonomy_level_runs import daemon, on_db, org, pref, user_id
 from tests.hub.test_decisions import (  # noqa: F401 (client and hub are fixtures)
@@ -36,6 +37,7 @@ from tests.hub.test_plan_runs import dispatched_plan, fleet_worker
 from tests.hub.test_runs import OTHER, OWNER, PROJECT, WRITER, claim, dispatched, moved, set_run
 
 COHORT = "intern-2026"
+LEAD, LEAD_ID = "lab-lead", 611  # a lead of the unit, writer of the project, no admin
 
 
 def interns(client, hub) -> None:
@@ -88,24 +90,30 @@ def test_autonomy_level_routing_migration_0115_adds_asked_of_and_the_categories_
 
 
 def test_autonomy_level_routing_of_an_interns_decision_to_their_mentor_and_after_a_day_to_the_leads_too(
-    client, hub, hub_db
+    client, hub, hub_db, github
 ):
     interns(client, hub)
+    # a lead of the unit who is no admin: a hub admin answers any decision of the project as an admin (admin_acts)
+    lead = bearer(live.sign_in(client, github, LEAD, LEAD_ID)["token"])
+    granted = client.put(f"/v1/admin/projects/{PROJECT}/grants/{LEAD}", json=WRITER, headers=hub["admin"])
+    assert granted.status_code == 200, granted.text
+    org(client, hub["admin"], "POST", "/org/seats", {"login": LEAD, "unit": "lab", "role": "lead"}, 201)
     worker, run, _ = intern_run(client, hub)
     found = asked(client, worker, run["id"], category="merge", question="May I merge pull request 7?")
     assert (found["owner"], found["asked_of"]) == (OTHER, OWNER)
     assert [body.endswith(f"asked of {OWNER}.") for body in notified(client, hub["owner"], found["id"])] == [True]
     assert notified(client, hub["other"], found["id"]) == [], "the intern is not asked"
-    # the intern does not answer a K5 decision of their own run
+    # the intern does not answer a K5 decision of their own run, nor a lead who is no admin before a day has gone by
     refused = answer(client, hub["other"], found["id"], option="postgres")
     assert refused.status_code == 403 and f"only {OWNER}, whom it is asked of" in refused.text
+    assert answer(client, lead, found["id"], option="postgres").status_code == 403
     engine = client.app.state.engine
     assert client.portal.call(principals.escalate, engine) == 0
-    # a day later the hourly job tells the other lead of the unit, once, and they may answer
+    # a day later the hourly job tells the other leads of the unit, once, and they may answer
     d = tables.decisions
     later = update(d).where(d.c.id == found["id"]).values(asked_at=func.now() - timedelta(hours=25))
     sql(hub_db, later)
-    assert client.portal.call(principals.escalate, engine) == 1
+    assert client.portal.call(principals.escalate, engine) == 2, "the admin and the other lead"
     assert client.portal.call(principals.escalate, engine) == 0, "each lead is told once"
     (told,) = notified(client, hub["admin"], found["id"])
     assert f"asked of {OWNER} more than 24 hours ago" in told and "you lead their unit" in told
