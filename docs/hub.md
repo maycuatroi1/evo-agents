@@ -1613,7 +1613,7 @@ thread, of a direct chat the latest of all, since its answers show under the mes
 and its text as one line without markdown, at most 140 characters; a reader who does not clear that message's label
 gets its author and time, `hidden` true and no text. The list takes at most six queries, however many chats it holds.
 
-**Caps.** A chat run has no cost cap: each gets 30 minutes of agent time (`chat_runs.TIME_CAP_SECONDS`), where its
+**Caps.** A chat run has no cost cap: each gets 50 minutes of agent time (`chat_runs.TIME_CAP_SECONDS`), where its
 worker stops it. Schema 0072 dropped the chat's budget, which refused a mention once the chat's runs of a rolling 24
 hours had cost it.
 
