@@ -4631,7 +4631,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.release_schedules`, every minute, one pass at a time: the daily check of each release schedule whose local
   time came within the hour, once a local day, then the landing of the release runs that are done and the watch of the
   CI of each open cycle's tag (The daily release, above; `docs/releases.md`). The `hub worker` command hands the
-  server's release pass to the job runner (`HubContext.release_pass`).
+  server's release pass to the job runner (`HubContext.release_pass`). It goes to the queue `lease`, beside the
+  recovery of runs, so a long job on the default queue (a `curator.collect` measuring the graphs) does not hold back
+  the close of a cycle whose CI is done.
 - `hub.cron_jobs`, every minute, one pass at a time: fires the cron jobs that are due (Cron jobs, above). The `hub
   worker` command hands the server's cron pass to the job runner (`HubContext.cron_pass`).
 - `hub.loop_ticks`, every 5 minutes: a `hub.loop_tick` for each project whose Loop is on (`loop.enabled` of its
