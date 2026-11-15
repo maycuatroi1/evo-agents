@@ -35706,6 +35706,134 @@
           }
         }
       },
+      "/v1/kg/{project}/sources/{source}/state": {
+        "get": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Read Source State",
+          "description": "What the hub holds of one source, which ``kg sync`` reads instead of a corpus (``kg_source_state``): the\nwriter role, as for a push.",
+          "operationId": "read_source_state_v1_kg__project__sources__source__state_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "source",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[^\\x00-\\x1f\\x7f/]+$",
+                "description": "a source's id",
+                "title": "Source"
+              },
+              "description": "a source's id"
+            },
+            {
+              "name": "scope",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the items whose id starts so",
+                "title": "Scope"
+              },
+              "description": "only the items whose id starts so"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SourceState"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
       "/v1/kg/{project}/blobs/check": {
         "post": {
           "tags": [
@@ -49549,6 +49677,134 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/RunLog"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/worker/kg/{project}/sources/{source}/state": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Read Source State",
+          "description": "What the hub holds of one source, as GET /v1/kg/{project}/sources/{source}/state answers it.",
+          "operationId": "read_source_state_v1_worker_kg__project__sources__source__state_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "source",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[^\\x00-\\x1f\\x7f/]+$",
+                "description": "a source's id",
+                "title": "Source"
+              },
+              "description": "a source's id"
+            },
+            {
+              "name": "scope",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the items whose id starts so",
+                "title": "Scope"
+              },
+              "description": "only the items whose id starts so"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SourceState"
                   }
                 }
               }
@@ -128626,6 +128882,22 @@
           ],
           "title": "CuratorStatus"
         },
+        "Cursor": {
+          "properties": {
+            "run_id": {
+              "type": "string",
+              "title": "Run Id"
+            },
+            "cursor": {
+              "title": "Cursor"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id"
+          ],
+          "title": "Cursor"
+        },
         "DayCount": {
           "properties": {
             "day": {
@@ -139145,6 +139417,43 @@
           ],
           "title": "IssuedJoinToken"
         },
+        "Item": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "rev": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rev"
+            },
+            "rev_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rev Time"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "rev",
+            "rev_time"
+          ],
+          "title": "Item"
+        },
         "JevAct": {
           "properties": {
             "id": {
@@ -142259,6 +142568,29 @@
           ],
           "title": "LedgerLine",
           "description": "One line of a proposal's ledger, as the hub added it."
+        },
+        "Lineage": {
+          "properties": {
+            "run_id": {
+              "type": "string",
+              "title": "Run Id"
+            },
+            "lineage": {
+              "type": "string",
+              "title": "Lineage"
+            },
+            "epoch": {
+              "type": "string",
+              "title": "Epoch"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "lineage",
+            "epoch"
+          ],
+          "title": "Lineage"
         },
         "LinkedAttachment": {
           "properties": {
@@ -173253,6 +173585,55 @@
           "title": "RunFigures",
           "description": "The runs that ended in a span of UTC days, of the plans the caller may read."
         },
+        "RunInfo": {
+          "properties": {
+            "run_id": {
+              "type": "string",
+              "title": "Run Id"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "status",
+            "started_at",
+            "finished_at"
+          ],
+          "title": "RunInfo"
+        },
         "RunLease": {
           "properties": {
             "id": {
@@ -179195,6 +179576,86 @@
             "url"
           ],
           "title": "SourceRead"
+        },
+        "SourceState": {
+          "properties": {
+            "source": {
+              "type": "string",
+              "title": "Source"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs"
+            },
+            "unread": {
+              "type": "integer",
+              "title": "Unread"
+            },
+            "last_run": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "last_ok": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cursor": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Cursor"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "lineage": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Lineage"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/Item"
+              },
+              "type": "array",
+              "title": "Items"
+            },
+            "items_cut": {
+              "type": "boolean",
+              "title": "Items Cut",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "source",
+            "runs",
+            "unread",
+            "last_run",
+            "last_ok",
+            "cursor",
+            "lineage",
+            "items"
+          ],
+          "title": "SourceState"
         },
         "SpanOut": {
           "properties": {

@@ -6340,3 +6340,14 @@ def test_0251_takes_a_stored_200_usd_limit_for_the_old_default_and_sets_none(hub
     move_to(hub_db, "0250", down=True)
     assert dict(query(hub_db, select(systems.c.slug, systems.c.spec)))["own"]["limits"]["daily_usd"] == 0
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0251") :]
+
+
+def test_0252_records_the_facts_of_a_run_at_ingest_and_going_back_drops_them(hub_db):
+    facts = {"status", "lineage", "epoch", "run_started_at", "run_finished_at", "cursor"}
+    move_to(hub_db, "0251")
+    assert not facts & columns(hub_db, "kg_ingests")
+    move_to(hub_db, "0252")
+    assert facts <= columns(hub_db, "kg_ingests") and facts <= columns(hub_db, "kg_pending_runs")
+    move_to(hub_db, "0251", down=True)
+    assert not facts & columns(hub_db, "kg_ingests") and not facts & columns(hub_db, "kg_pending_runs")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0252") :]

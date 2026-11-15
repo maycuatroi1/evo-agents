@@ -1706,7 +1706,7 @@ For the worker, with an `evw_` token and the version header:
 | `DELETE /v1/worker/runs/{id}/credentials` | gives back every lease it holds of the run; the hub revokes the GitHub tokens |
 | `POST /v1/worker/runs/{id}/rate-limit` | reports what the agent's CLI said of the usage limit of the account behind a lease of the run, or that the account failed to authenticate (`unauthorized`); on a limit hit or a refused token, answers `failover` (the run moved to another account) or `stop` ([An account's usage limit](#an-accounts-usage-limit)) |
 | websocket `/v1/worker/runs/{id}/terminal` | the worker's end of the terminal |
-| `GET /v1/worker/kg/{p}/runs[?source=S]`, `GET .../runs/{run_id}/log` | for the worker on duty for `p`'s night shift: the runs of `p`'s graph the hub holds, and where to fetch the log of one ([Keeping the graph fresh](#keeping-the-graph-fresh)) |
+| `GET /v1/worker/kg/{p}/runs[?source=S]`, `GET .../runs/{run_id}/log`, `GET .../sources/{source}/state` | for the worker on duty for `p`'s night shift: the runs of `p`'s graph the hub holds, where to fetch the log of one, and the state of a source (its cursor, lineage, last runs and live items) ([Keeping the graph fresh](#keeping-the-graph-fresh)) |
 | `POST /v1/worker/kg/{p}/runs`, `.../runs/{run_id}/commit`, `.../blobs/{check,uploads,commit}` | for the same worker: pushes a run of `p`'s graph as `hub kg push` does, kinds `kg-blob` and `kg-log` alone, no config |
 
 For members, with a web session or a machine token. `{p}` is a project, and run routes sit under

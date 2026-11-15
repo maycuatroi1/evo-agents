@@ -11,7 +11,10 @@ A run log is ``log/<run_id>.jsonl.gz`` exactly as ``evo_agents.kg.corpus.LogWrit
 naming the run, its source and project, then every message of the run with item text replaced by blob references.
 ``read_run_log`` reads one completely (a log cut short or not gzip is refused, not read up to the damage), collects
 the blobs it refers to, and labels every item the way the build will: the source's label from the config, raised by
-the item's own. Items whose label the hub sink does not clear make the whole run refused.
+the item's own. Items whose label the hub sink does not clear make the whole run refused. It also keeps what the run
+says of its source (``RunFacts``): how it ended, the lineage and epoch its header names, when it started and ended, and
+the cursor of its last state message, which kg_ingests keeps for the source state a sync reads
+(``evo_agents.hub.kg_source_state``).
 
 Standard library and the kg package only: the client uses the config half, the server both.
 """
@@ -184,6 +187,63 @@ def _ontology_problems(knowledge: dict, ontology) -> list[str]:
 # Run logs
 
 
+EPOCH = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+MAX_FACT_CHARS = 200  # a lineage, an epoch or a time longer than this is not one a client writes
+MAX_CURSOR_BYTES = 64 * 1024
+
+
+@dataclass
+class RunFacts:
+    """What a run log says of its source, as kg_ingests keeps it: ``status`` ok or failed (failed when no ``run_end``
+    says ok), the ``lineage`` and ``epoch`` of its header, its ``started_at`` and the ``finished_at`` of its run_end,
+    and ``cursor``, ``{"cursor": ...}`` of its last state message, None when it has none or one over
+    MAX_CURSOR_BYTES."""
+
+    status: str = "failed"
+    lineage: str | None = None
+    epoch: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    cursor: dict | None = None
+
+    def feed(self, record: dict) -> None:
+        kind = record.get("type")
+        if kind == "run":
+            self.lineage = _fact(record.get("lineage"))
+            epoch = record.get("epoch")
+            self.epoch = epoch if isinstance(epoch, str) and EPOCH.fullmatch(epoch) else None
+            self.started_at = _fact(record.get("started_at"))
+        elif kind == "run_end":
+            self.status = "ok" if record.get("status") == "ok" else "failed"
+            self.finished_at = _fact(record.get("finished_at"))
+        elif kind == "state":
+            held = {"cursor": record.get("cursor")}
+            self.cursor = held if len(canonical_json(held)) <= MAX_CURSOR_BYTES else None
+
+    def columns(self) -> dict:
+        """The columns of kg_ingests and kg_pending_runs these facts fill."""
+        return {
+            "status": self.status,
+            "lineage": self.lineage,
+            "epoch": self.epoch,
+            "run_started_at": self.started_at,
+            "run_finished_at": self.finished_at,
+            "cursor": self.cursor,
+        }
+
+
+def _fact(value) -> str | None:
+    return value if isinstance(value, str) and 0 < len(value) <= MAX_FACT_CHARS else None
+
+
+def run_facts(path: Path) -> RunFacts:
+    """The facts of the run log at ``path``, read whole. Raises LogProblem."""
+    facts = RunFacts()
+    for record in _lines(path):
+        facts.feed(record)
+    return facts
+
+
 @dataclass
 class RunLog:
     """One run log read whole: its header, the blobs its items refer to, and the items the check refused."""
@@ -197,6 +257,7 @@ class RunLog:
     refused: list[tuple[str, Label]] = field(default_factory=list)  # (item id, label), the first few
     refused_count: int = 0
     source_refused: bool = False  # the source's own label is not cleared
+    facts: RunFacts = field(default_factory=RunFacts)
 
 
 def run_id_of(path: Path) -> str | None:
@@ -273,6 +334,7 @@ def read_run_log(path: Path, project: str, run_id: str, policy: Policy, cleared:
             found = RunLog(run_id, record["source"], record.get("project"))
             found.source_refused = not cleared(policy.source_label(found.source))
         found.records += 1
+        found.facts.feed(record)
         if record.get("type") != "item":
             continue
         item_id = record.get("id")

@@ -18,6 +18,9 @@ Pushing (the writer role, and a hub sink in the project's knowledge.yaml; ``evo-
   holds every one, then in one transaction writes kg_ingests, an audit row and a queued build. Every step is
   idempotent by run id: a run the hub has answers ``ingested`` and writes nothing.
 - POST /v1/kg/{project}/blobs/check returns the hashes of a list that the project does not hold.
+- GET /v1/kg/{project}/sources/{source}/state (writer) is what the hub holds of a source, which ``kg sync`` reads
+  instead of a corpus: its newest runs, cursor, lineage and epoch, and live items (``evo_agents.hub.kg_source_state``).
+  Step (2) keeps what the log says of its source (``kg_ingest.RunFacts``) with the run.
 - DELETE /v1/kg/{project}/sources/{source} (``evo-agents hub kg forget-source``, ``kg_config``) takes every run of a
   source off the hub. A source the config no longer declares takes the highest label, so PUT config refuses to drop
   a source the hub holds runs of and names this command. In one transaction holding the blob lock exclusively
@@ -96,6 +99,7 @@ from evo_agents.hub.kg_ingest import (
     refusal,
 )
 from evo_agents.hub.kg_snapshots import Held
+from evo_agents.hub.kg_source_state import SourceState, source_state
 from evo_agents.hub.kg_sources import reads_chats
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.server import audit, kg_run_access, project_archive, rankers, run_audience, system_traces
@@ -276,6 +280,21 @@ async def list_runs(request: Request, project: ProjectName, user: CurrentUser) -
     return Runs(ingested=list(ingested), pending=list(pending))
 
 
+Scope = Annotated[str | None, Query(min_length=1, max_length=500, description="only the items whose id starts so")]
+
+
+@router.get("/{project}/sources/{source}/state", response_model=SourceState, responses=REFUSALS)
+async def read_source_state(
+    request: Request, project: ProjectName, source: SourceId, user: CurrentUser, scope: Scope = None
+) -> SourceState:
+    """What the hub holds of one source, which ``kg sync`` reads instead of a corpus (``kg_source_state``): the
+    writer role, as for a push."""
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        writer(access, "syncing a source of")
+        return await source_state(conn, access.project_id, source, scope)
+
+
 def _run_ids(runs, project_id: int):
     """The run ids of the project in ``runs`` (kg_ingests or kg_pending_runs), as text, in order."""
     run_id = cast(runs.c.run_id, Text).label("run_id")
@@ -351,6 +370,18 @@ async def _discard_upload(request: Request, user, project_id: int, upload_id: uu
     return row[0] if row else None
 
 
+def _facts(columns) -> tuple:
+    """The columns of kg_pending_runs or kg_ingests that hold a run's facts (``kg_ingest.RunFacts.columns``)."""
+    return (
+        columns.status,
+        columns.lineage,
+        columns.epoch,
+        columns.run_started_at,
+        columns.run_finished_at,
+        columns.cursor,
+    )
+
+
 def _held_log(runs, project_id: int, run_id: uuid.UUID, *columns):
     """``columns`` of the run in ``runs`` (kg_ingests or kg_pending_runs)."""
     return select(*columns).where(runs.c.project_id == project_id, runs.c.run_id == run_id)
@@ -387,6 +418,7 @@ async def _keep_pending(engine, user, project: str, project_id: int, run_id: uui
                 log_size=found["size"],
                 blobs=blobs,
                 pushed_by=user.user_id,
+                **run.facts.columns(),
             )
             .on_conflict_do_nothing(index_elements=[pending_runs.c.project_id, pending_runs.c.run_id])
         )
@@ -551,7 +583,7 @@ async def commit_run(request: Request, project: ProjectName, run_id: RunId, user
         pending = (
             await conn.execute(
                 _held_log(
-                    pending_runs, access.project_id, run_id, p.source, p.log_sha256, p.log_size, p.blobs
+                    pending_runs, access.project_id, run_id, p.source, p.log_sha256, p.log_size, p.blobs, *_facts(p)
                 ).with_for_update()
             )
         ).one_or_none()
@@ -564,7 +596,8 @@ async def commit_run(request: Request, project: ProjectName, run_id: RunId, user
             raise HTTPException(
                 422, f"run {run} has no checked log on the hub: POST /v1/kg/{project}/runs with its log first"
             )
-        source, log_sha256, log_size, blobs = pending
+        source, log_sha256, log_size, blobs = pending[:4]
+        facts = {column.name: value for column, value in zip(_facts(p), pending[4:], strict=True)}
         missing = await _missing(conn, access.project_id, blobs)
         if missing:
             message = (
@@ -581,6 +614,7 @@ async def commit_run(request: Request, project: ProjectName, run_id: RunId, user
                 log_sha256=log_sha256,
                 log_size=log_size,
                 pushed_by=user.user_id,
+                **facts,
             )
             .on_conflict_do_nothing(index_elements=[ingests.c.project_id, ingests.c.run_id])
         )
