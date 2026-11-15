@@ -8,7 +8,8 @@ A build writes, for one branch (0 is main):
 - its node and edge rows, as a store file holds them, to kg_nodes and kg_edges, and its full-text and code rows to
   kg_text_rows (``write_graph``): only a row that is new or differs is upserted, and a row the build no longer has is
   deleted, so a build that changed ten nodes writes ten rows;
-- the rows of its asked index (``evo_agents.kg.asked.Row``) to kg_asked;
+- the rows of its asked index (``evo_agents.kg.asked.Row``) to kg_asked, and its clusters and review items to
+  kg_review_rows;
 - its build, content hash and weight of an asked match to kg_graph_heads, and a notice on the channel ``kg_graph`` (``CHANNEL``) naming the
   project, branch and build, which a reader listens for to load the new snapshot.
 
@@ -27,7 +28,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables, wake
-from evo_agents.kg.snapshot import StoreRows, asked_order
+from evo_agents.kg.snapshot import StoreRows, asked_order, cluster_order
 
 CHANNEL = "kg_graph"
 MAIN = 0
@@ -36,11 +37,13 @@ NODE_KEYS = ("node_id", "kind", "name", "props", "status", "conf", "label_lvl", 
 EDGE_KEYS = ("edge_id", "src", "rel", "dst", "props", "status", "conf", "label_lvl", "label_loc", "label_int")
 TEXT, CODE = "t", "c"  # the kinds of a kg_text_rows row: a keyed full-text row, or the text of a file's code
 ASKED = "a"  # the kind in the key of a kg_asked row
+REVIEW = "r"  # the kind of a kg_review_rows row of a review item; a cluster row's is that of ``cluster_rows``
 UNIT, WHERE, DERIVED = "u", "w", "d"  # the kinds of a kg_provenance row: a unit, a where-provenance, a derivation
 ROW_TABLES = {
     "kg_text_rows": "node_id",
     "kg_provenance": "elem_id",
     "kg_asked": "node_id",
+    "kg_review_rows": "elem_id",
 }  # tables of (key, id, JSON row), by id column
 
 
@@ -122,6 +125,12 @@ def graph_rows(rows: StoreRows) -> dict[str, dict[str, tuple]]:
     asked: dict[str, tuple] = {}
     for row in rows.asked:
         asked[text_row_key(ASKED, row[0], list(row))] = (row[0], json.dumps(list(row), ensure_ascii=False))
+    review: dict[str, tuple] = {}
+    for kind, key, value in rows.clusters:
+        review[f"{kind}\x1f{json.dumps(key)}"] = (str(key), json.dumps([kind, key, value], ensure_ascii=False))
+    for item in rows.review:
+        fp = item["fingerprint"]
+        review[f"{REVIEW}\x1f{fp}"] = (fp, json.dumps([REVIEW, fp, item], ensure_ascii=False))
     vectors = {r[0]: (r[1], r[2], r[3], bytes(r[4])) for r in rows.vectors}
     return {
         "kg_nodes": nodes,
@@ -129,6 +138,7 @@ def graph_rows(rows: StoreRows) -> dict[str, dict[str, tuple]]:
         "kg_text_rows": text,
         "kg_provenance": prov,
         "kg_asked": asked,
+        "kg_review_rows": review,
         "kg_embeddings": vectors,
     }
 
@@ -249,6 +259,13 @@ async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MA
         {UNIT: units, WHERE: wheres, DERIVED: derived}[kind].append(tuple(values))
     vectors = await _read(conn, "kg_embeddings", project_id, branch_id)
     asked = await _read(conn, "kg_asked", project_id, branch_id)
+    clusters, review = [], []
+    for _, row in (await _read(conn, "kg_review_rows", project_id, branch_id)).items():
+        kind, key, value = json.loads(row[1])
+        if kind == REVIEW:
+            review.append(value)
+        else:
+            clusters.append((kind, key, value))
     return StoreRows(
         head.content_hash,
         tuple(nodes.values()),
@@ -264,6 +281,8 @@ async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MA
         head.vectors,
         asked_order(tuple(json.loads(row[1])) for row in asked.values()),
         head.asked_weight,
+        cluster_order(clusters),
+        tuple(sorted(review, key=lambda item: item["fingerprint"])),
     )
 
 

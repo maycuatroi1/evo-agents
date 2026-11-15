@@ -183,7 +183,14 @@ TABLES |= {"plan_run_choices"}  # migration 0238
 TABLES |= {"ops_cursors", "ops_batches", "ops_items"}  # migration 0240
 TABLES |= {"cron_jobs", "cron_fires"}  # migration 0243
 TABLES |= {"kg_corpus_items", "kg_memo_entries", "kg_nodes", "kg_edges", "kg_text_rows", "kg_provenance"}  # 0247
-TABLES |= {"kg_asked", "kg_embeddings", "kg_graph_heads", "kg_branches", "kg_branch_ops"}  # migration 0247
+TABLES |= {
+    "kg_asked",
+    "kg_review_rows",
+    "kg_embeddings",
+    "kg_graph_heads",
+    "kg_branches",
+    "kg_branch_ops",
+}  # migration 0247
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -274,8 +281,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_fifty_five_tables(hub_db):
-    assert len(TABLES) == 255  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_fifty_six_tables(hub_db):
+    assert len(TABLES) == 256  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -6200,7 +6207,7 @@ def test_0247_gives_credential_shares_a_run_for_a_member_alone_and_going_back_re
 
 def test_0247_adds_the_graph_tables_and_going_back_drops_them(hub_db):
     graph = {"kg_corpus_items", "kg_memo_entries", "kg_nodes", "kg_edges", "kg_text_rows", "kg_provenance"}
-    graph |= {"kg_asked", "kg_embeddings", "kg_graph_heads", "kg_branches", "kg_branch_ops"}
+    graph |= {"kg_asked", "kg_review_rows", "kg_embeddings", "kg_graph_heads", "kg_branches", "kg_branch_ops"}
     move_to(hub_db, "0246")
     assert not graph & tables(hub_db)
     move_to(hub_db, "0247")

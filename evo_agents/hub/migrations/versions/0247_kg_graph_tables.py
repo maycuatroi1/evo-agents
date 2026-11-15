@@ -1,4 +1,4 @@
-"""The knowledge graph on Postgres: corpus items, memo, nodes, edges, text rows, provenance, asked rows, embeddings,
+"""The knowledge graph on Postgres: corpus items, memo, nodes, edges, text rows, provenance, asked rows, review rows, embeddings,
 heads, branches.
 
 Revision ID: 0247
@@ -9,7 +9,7 @@ Plan kg-centralized-on-hub, step 2 (criterion a3, ``evo_agents.hub.tables_kg.gra
 project's graph to these tables instead of a graph.sqlite blob: kg_corpus_items holds each item of its sources with its
 row hash, kg_memo_entries what an extractor made of a row hash, kg_nodes, kg_edges, kg_text_rows, kg_provenance (units,
 where-provenance and derivations), kg_asked (what agents asked before they read a node, a store's node_asked) and
-kg_embeddings (the rows of a store's node_vec) the graph of each branch (branch_id 0 is main, another a kg_branches id),
+kg_embeddings (the rows of a store's node_vec), kg_review_rows (its clusters and review items) the graph of each branch (branch_id 0 is main, another a kg_branches id),
 and kg_graph_heads the build, content hash, summary, vector model and weight of an asked match each branch is at. kg_branches and kg_branch_ops hold the draft branches of a graph and their operations. The tables
 start empty: the next build of a project fills them.
 
@@ -120,6 +120,12 @@ def _graph() -> None:
         sa.Column("row", JSONB(), nullable=False),
     )
     _scoped(
+        "kg_review_rows",
+        "row_key",
+        sa.Column("elem_id", sa.Text(), nullable=False),
+        sa.Column("row", JSONB(), nullable=False),
+    )
+    _scoped(
         "kg_embeddings",
         "row_key",
         sa.Column("node_id", sa.Text(), nullable=False),
@@ -198,6 +204,7 @@ def downgrade() -> None:
         "kg_branches",
         "kg_graph_heads",
         "kg_embeddings",
+        "kg_review_rows",
         "kg_asked",
         "kg_provenance",
         "kg_text_rows",

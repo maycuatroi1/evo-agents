@@ -65,7 +65,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import kg_coverage, kg_health_eval, kg_labels, kg_review, kg_snapshots, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.kg_build import kg_root
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, HubSession, open_graph, reading
+from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, HubSession, reading
 from evo_agents.hub.kg_snapshots import Held
 from evo_agents.hub.server import hub_settings, kg_eval_sets, pulls
 from evo_agents.hub.server import plans as plan_routes
@@ -374,25 +374,28 @@ async def measure_eval(engine: AsyncEngine, row, blobs, data_dir: Path | None, g
 # The review queue
 
 
-def _review(cache: GraphCache, blobs, project: str, access: ProjectAccess, sink: str, graphs, dismissed: set[str]):
-    """The review of a measure (see the module). Blocking: run it in a thread."""
+def _review(
+    cache: GraphCache,
+    blobs,
+    project: str,
+    access: ProjectAccess,
+    sink: str,
+    graphs,
+    dismissed: set[str],
+    loaded: Held | None = None,
+):
+    """The review of a measure (see the module), from ``loaded``, the snapshot of the hub's tables, when it is of one
+    of ``graphs``, else from the graph file. Blocking: run it in a thread."""
     ceiling = access.rules.ceiling(access.max_level, sink)
-    path, graph = cache.acquire(blobs, project, graphs)
-    try:
-        store = open_graph(path, project, graph)
-        try:
-            session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
-            if session.error:
-                return {"why": session.error}
-            found, b = session._store()
-            if found.clusters(b) is None and not found.review_items(b):
-                return {"why": kg_review.NO_REVIEW, "build_id": graph.build_id}
-            counts = kg_review.open_counts(found, b, session.visible, dismissed)
-            return {"build_id": graph.build_id, "open": counts}
-        finally:
-            store.close()
-    finally:
-        cache.release(path)
+    with reading(cache, blobs, project, graphs, _snapshotted(loaded, graphs, ceiling)) as (store, graph):
+        session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
+        if session.error:
+            return {"why": session.error}
+        found, b = session._store()
+        if found.clusters(b) is None and not found.review_items(b):
+            return {"why": kg_review.NO_REVIEW, "build_id": graph.build_id}
+        counts = kg_review.open_counts(found, b, session.visible, dismissed)
+        return {"build_id": graph.build_id, "open": counts}
 
 
 async def measure_review(engine: AsyncEngine, row, blobs, data_dir: Path | None, graphs) -> dict:
@@ -406,7 +409,10 @@ async def measure_review(engine: AsyncEngine, row, blobs, data_dir: Path | None,
         dismissed = set((await conn.execute(select(d.c.fingerprint).where(d.c.project_id == row.project_id))).scalars())
     cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
     try:
-        return await asyncio.to_thread(_review, cache, blobs, row.project, access, sink, graphs, dismissed)
+        loaded = await kg_snapshots.load(engine, row.project_id)
+        return await asyncio.to_thread(
+            _review, cache, blobs, row.project, access, sink, graphs, dismissed, loaded=loaded
+        )
     except (GraphUnavailable, ArtifactMismatch) as exc:
         return {"why": str(exc)}
     except Exception as exc:  # the measure stands without the queue's counts

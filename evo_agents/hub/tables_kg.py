@@ -723,7 +723,7 @@ def _label_columns() -> tuple[Column, ...]:
 def graph_tables(metadata: MetaData) -> dict[str, Table]:
     """The graph a build writes to Postgres (0247, plan kg-centralized-on-hub, ``evo_agents.hub.kg_store``): the
     corpus items with their row hash, the memo of what was extracted from a row hash, the nodes, edges, text rows,
-    provenance, asked rows and embeddings of each branch, the head of each branch (``kg_graph_heads``), and the branches with their
+    provenance, asked rows, review rows (clusters and review items) and embeddings of each branch, the head of each branch (``kg_graph_heads``), and the branches with their
     operations. A node or edge row holds the columns of a store file's row (``evo_agents.kg.store_schema``), props as the store's
     JSON text, so a snapshot read from it hashes as one read from the file."""
     corpus = _scoped(
@@ -798,6 +798,13 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         Column("node_id", Text, nullable=False),
         Column("row", JSONB, nullable=False),
     )
+    review_rows = _scoped(
+        "kg_review_rows",
+        metadata,
+        "row_key",
+        Column("elem_id", Text, nullable=False),
+        Column("row", JSONB, nullable=False),
+    )
     embeddings = _scoped(
         "kg_embeddings",
         metadata,
@@ -861,5 +868,5 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
         PrimaryKeyConstraint("id", name="kg_branch_ops_pkey"),
     )
     Index("kg_branch_ops_branch_idx", ops.c.branch_id, ops.c.id)
-    found = (corpus, memo, nodes, edges, text_rows, provenance, asked, embeddings, heads, branches, ops)
+    found = (corpus, memo, nodes, edges, text_rows, provenance, asked, review_rows, embeddings, heads, branches, ops)
     return {t.name: t for t in found}

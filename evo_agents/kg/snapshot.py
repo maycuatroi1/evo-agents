@@ -19,6 +19,7 @@ target (``Partition``), so the edges of a node with given relations and statuses
 
 from __future__ import annotations
 
+import copy
 import json
 import sqlite3
 import struct
@@ -30,6 +31,7 @@ from types import MappingProxyType
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg import snapshot_text
 from evo_agents.kg.policy import audience_below, audience_join
+from evo_agents.kg.store_clusters import Clusters
 from evo_agents.kg.store_filters import LIVE, label_columns, stored_audience, within
 from evo_agents.kg.store_schema import EDGE_COLUMNS, NODE_COLUMNS
 
@@ -170,6 +172,8 @@ class Snapshot:
     aliases: MappingProxyType = MappingProxyType({})  # an alias: the node that holds it (``node_alias``)
     asked: tuple[tuple, ...] = ()  # the rows of the build's asked index (``StoreRows.asked``)
     asked_weight: float | None = None  # the weight of an asked match the build recorded
+    found: Clusters | None = None  # the build's clusters (``Store.clusters``)
+    review: tuple[dict, ...] = ()  # the build's review items (``Store.review_items``)
 
     @classmethod
     def from_rows(
@@ -277,6 +281,8 @@ class Snapshot:
             summary=MappingProxyType(dict(rows.summary)),
             asked=tuple(rows.asked),
             asked_weight=rows.asked_weight,
+            found=rows_clusters(rows.clusters),
+            review=tuple(rows.review),
         )
 
     def view(
@@ -314,6 +320,10 @@ class StoreRows:
     # weight of an asked match the build recorded (``Store.write_asked``); empty and None without them
     asked: tuple[tuple, ...] = ()
     asked_weight: float | None = None
+    # the build's clusters (``Store.clusters``) as ``cluster_rows`` gives them, and its review items
+    # (``Store.review_items``) by fingerprint; empty without them
+    clusters: tuple[tuple, ...] = ()
+    review: tuple[dict, ...] = ()
 
 
 UNIT_KEYS = ("unit", "item", "anchor", "rev", "hash", "source", "span")
@@ -322,6 +332,37 @@ UNIT_KEYS = ("unit", "item", "anchor", "rev", "hash", "source", "span")
 def asked_order(rows) -> tuple[tuple, ...]:
     """Asked rows in one order whatever read them: by node, then by the JSON of the rest (an audience may be None)."""
     return tuple(sorted((tuple(r) for r in rows), key=lambda r: (r[0], json.dumps(r[1:]))))
+
+
+CLUSTER, MEMBER, LINK = "k", "m", "l"  # the kinds of a ``cluster_rows`` row
+
+
+def cluster_rows(found: Clusters | None) -> tuple[tuple, ...]:
+    """``found`` as rows: (CLUSTER, id, its dict), (MEMBER, node id, [top, sub]), (LINK, [level, a, b], weight)."""
+    if found is None:
+        return ()
+    rows: list[tuple] = [(CLUSTER, cid, c) for cid, c in found.clusters.items()]
+    rows += [(MEMBER, nid, list(m)) for nid, m in found.members.items()]
+    rows += [(LINK, list(key), w) for key, w in found.links.items()]
+    return cluster_order(rows)
+
+
+def cluster_order(rows) -> tuple[tuple, ...]:
+    """``cluster_rows`` rows in one order whatever read them: by kind, then by the JSON of the key."""
+    return tuple(sorted(rows, key=lambda r: (r[0], json.dumps(r[1]))))
+
+
+def rows_clusters(rows) -> Clusters | None:
+    """The clusters of ``cluster_rows`` rows; None without a cluster, as ``Store.clusters``."""
+    out = Clusters()
+    for kind, key, value in rows:
+        if kind == CLUSTER:
+            out.clusters[key] = dict(value)
+        elif kind == MEMBER:
+            out.members[key] = (value[0], value[1])
+        else:
+            out.links[(key[0], key[1], key[2])] = value
+    return out if out.clusters else None
 
 
 def store_rows(store, b: int) -> StoreRows:
@@ -374,6 +415,8 @@ def store_rows(store, b: int) -> StoreRows:
         info,
         asked_order(asked),
         store.recorded_asked_weight(),
+        cluster_rows(store.clusters(b)),
+        tuple(store.review_items(b)),
     )
 
 
@@ -433,6 +476,7 @@ class SnapshotView:
     def __init__(self, snap: Snapshot, reader: frozenset[str], ceiling: tuple[int, int] | None, tuning):
         self.snap, self.reader, self.ceiling, self.tuning = snap, reader, ceiling, tuning
         self._ranker = None
+        self._edge_ids: dict[str, dict] | None = None
         self.asked_clearance: tuple[int, int] | None = None  # search reads the asked rows within it (``Store``)
         self.asked_weight: float | None = None  # the weight of an asked match in place of the build's (an eval)
 
@@ -718,6 +762,24 @@ class SnapshotView:
 
     def top_audience(self, b: int = 0) -> frozenset[str]:
         return self.snap.top_audience
+
+    def clusters(self, b: int = 0) -> Clusters | None:
+        """The build's clusters whatever the reader (``Store.clusters``): a copy, so a caller may change it."""
+        found = self.snap.found
+        if found is None:
+            return None
+        return Clusters({k: dict(v) for k, v in found.clusters.items()}, dict(found.members), dict(found.links))
+
+    def review_items(self, b: int = 0) -> list[dict]:
+        """The build's review items whatever the reader, by fingerprint (``Store.review_items``)."""
+        return copy.deepcopy(list(self.snap.review))
+
+    def edge_label(self, edge_id: str, b: int = 0) -> tuple | None:
+        """The label of edge ``edge_id`` if the reader sees it (``Store.edge_label``)."""
+        if self._edge_ids is None:
+            self._edge_ids = {e["id"]: e for e in self.snap.edges}
+        e = self._edge_ids.get(edge_id)
+        return e["label"] if e is not None and self.sees(e) else None
 
     def summary(self) -> dict:
         return dict(self.snap.summary) if self.snap.summary else {"ready": False}

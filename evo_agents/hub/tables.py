@@ -866,6 +866,7 @@ kg_corpus_items, kg_memo_entries = _kg_graph["kg_corpus_items"], _kg_graph["kg_m
 kg_nodes, kg_edges, kg_text_rows = _kg_graph["kg_nodes"], _kg_graph["kg_edges"], _kg_graph["kg_text_rows"]
 kg_embeddings, kg_graph_heads = _kg_graph["kg_embeddings"], _kg_graph["kg_graph_heads"]
 kg_provenance, kg_asked = _kg_graph["kg_provenance"], _kg_graph["kg_asked"]
+kg_review_rows = _kg_graph["kg_review_rows"]
 kg_branches, kg_branch_ops = _kg_graph["kg_branches"], _kg_graph["kg_branch_ops"]
 release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE

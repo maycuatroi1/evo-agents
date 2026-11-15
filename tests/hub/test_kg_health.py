@@ -632,3 +632,39 @@ def test_the_eval_asks_the_holdout_set_through_the_agent_sink_and_pushes_its_sig
     assert world.client.portal.call(again, {"methods": score}) == [], "the same measure pushes once"
     assert world.client.portal.call(again, {"why": "no graph"}) == []
     assert world.client.portal.call(again, {"methods": {"kg_search": {"hit@5": 0.0, "tokens_per_file": None}}}) == []
+
+
+def test_the_review_queue_is_counted_on_the_snapshot_of_the_hubs_tables(world, tmp_path):  # noqa: F811
+    from evo_agents.hub import kg_graph_rows, kg_snapshots
+    from evo_agents.kg import review
+    from evo_agents.kg.snapshot import store_rows
+    from evo_agents.kg.store import Store
+    from tests.kg.test_review import queue
+
+    second = graph_of(world)
+    graph = queue()
+    graph.review = review.compute(graph)
+    store = Store(tmp_path / "graph.sqlite")
+    try:
+        b = store.write(graph, state_digest="x", coverage={}, stats={}, policy=None)
+        rows = store_rows(store, b)
+        kept = (store.clusters(b), store.review_items(b))
+    finally:
+        store.close()
+    assert rows.clusters and rows.review
+
+    async def keep():
+        async with world.app.state.engine.begin() as conn:
+            await kg_graph_rows.write_graph(conn, project_id(world.db), second, rows)
+        return await kg_snapshots.load(world.app.state.engine, project_id(world.db))
+
+    loaded = world.client.portal.call(keep)
+    view = loaded.view(frozenset())
+    assert (view.clusters(0), view.review_items(0)) == kept  # the tables hold what the file held
+    state = world.app.state
+    found = partial(  # no blob store to read a graph file from: only the snapshot can be counted
+        kg_health.measure, state.engine, github_app=state.github_app, blobs=object(), data_dir=tmp_path, now=MEASURED
+    )
+    assert world.client.portal.call(found) == {"measured": 1}
+    ((_, _, body, _),) = health_rows(world.db)
+    assert body["review"]["build_id"] == second and set(body["review"]["open"]) == set(RULES), body["review"]
