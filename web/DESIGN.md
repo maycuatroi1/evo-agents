@@ -436,8 +436,8 @@ changed where the defaults fell short:
   `muted-foreground` until it hovers `accent`, for toolbars, rows and icon-only buttons; `quiet-danger` is `danger`
   text on no fill, for a reversible stop (Cancel run); `destructive` is `danger-solid` with `on-danger`, darker on
   hover (`brightness-94`), only inside the confirm step of something permanent; `link` is `brand`. Sizes: `sm` 28 px
-  (dense toolbars, table rows), `default` 32 px (page and card actions), `lg` 40 px (dialog footers, the composer's
-  Send), `icon`, `icon-sm` and `icon-lg` square at 32, 28 and 40 px; every size has the control radius. Under 768 px
+  (dense toolbars, table rows), `default` 32 px (page and card actions, the composer's Send), `lg` 40 px (dialog
+  footers), `icon`, `icon-sm` and `icon-lg` square at 32, 28 and 40 px; every size has the control radius. Under 768 px
   every button but `link` is at least 44 px tall, and icon buttons 44 px wide too. `busy` sets `aria-busy` and
   `aria-disabled`, hides the button's own icon behind a turning `LoaderCircle` (still under reduced motion) and
   ignores clicks, so a busy submit button does not submit; the caller passes the -ing label ("Dispatching"). The

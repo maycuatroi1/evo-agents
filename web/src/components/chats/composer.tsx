@@ -38,6 +38,11 @@ import { MentionMenu, optionId } from "./mention-menu";
 /** The tallest the text area grows to as the message gets longer (12 rem, `max-h-48`); past it the text scrolls. */
 const MAX_TEXT_HEIGHT = 192;
 
+function fitText(box: HTMLTextAreaElement) {
+  box.style.height = "auto";
+  box.style.height = `${Math.min(box.scrollHeight, MAX_TEXT_HEIGHT)}px`;
+}
+
 /** The byte count shows once a message passes this share of the limit. */
 const COUNT_FROM = 0.75;
 
@@ -106,13 +111,24 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, te
     if (focusKey !== null) area.current?.focus();
   }, [focusKey]);
 
-  // The text area grows with its text, one line at first, up to MAX_TEXT_HEIGHT.
+  // The text area grows with its text, one line at first, up to MAX_TEXT_HEIGHT, and fits again when its width changes
+  // (the window, the thread panel's divider, an expanded thread), since the same text wraps to more or fewer lines.
   useLayoutEffect(() => {
-    const box = area.current;
-    if (!box) return;
-    box.style.height = "auto";
-    box.style.height = `${Math.min(box.scrollHeight, MAX_TEXT_HEIGHT)}px`;
+    if (area.current) fitText(area.current);
   }, [text]);
+
+  useEffect(() => {
+    const box = area.current;
+    if (!box || typeof ResizeObserver === "undefined") return;
+    let width = box.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (box.clientWidth === width) return;
+      width = box.clientWidth;
+      fitText(box);
+    });
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
 
   useLayoutEffect(() => {
     if (caretAfter.current === null || !area.current) return;
