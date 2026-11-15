@@ -162,6 +162,7 @@ class Daemon:
         self.orphans: dict[int, dict] = {}  # run id -> {"agent": agent.json, "record": run.json}, until the hub answers
         self.runtimes: dict[str, dict] = {}
         self.logins: dict[str, str] = {}  # each runtime's login, found with the runtimes (``health``)
+        self._found_logins: dict[str, str] = {}  # what the last look found, before ``health.settle``
         self.leased = health.load_leased(home.root)  # runtime -> whether its last agent authenticated with a lease
         self.health: dict | None = None  # the heartbeat's health, from the last look; None before the first
         self.plugin_runtimes: dict[str, AcpRuntime] = {}  # the declarations the hub sent, by runtime
@@ -250,7 +251,9 @@ class Daemon:
         now = asyncio.get_running_loop().time()
         if force or now - self._runtimes_at > RUNTIMES_EVERY:
             self.runtimes = await asyncio.to_thread(self._detect)
-            self.logins = await asyncio.to_thread(health.logins, path=self.env.get("PATH"))
+            found_logins = await asyncio.to_thread(health.logins, path=self.env.get("PATH"))
+            self.logins = health.settle(self.logins, self._found_logins, found_logins)
+            self._found_logins = found_logins
             await self.browser.look()
             self._runtimes_at = now
         self.health = await asyncio.to_thread(

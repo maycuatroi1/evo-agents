@@ -111,6 +111,18 @@ def logins(names: Iterable[str] = runs.RUNTIMES, *, path: str | None = None) -> 
     return {name: login(name, path=path) for name in names if name in BINARIES}
 
 
+def settle(reported: Mapping[str, str], last: Mapping[str, str], found: Mapping[str, str]) -> dict[str, str]:
+    """``found`` with each runtime's ``reported`` login kept where ``found`` says ``unknown`` once: a status command
+    that times out on a busy machine does not flip a known login; two ``unknown`` in a row (``last`` and ``found``)
+    report it."""
+    return {
+        name: reported[name]
+        if state == "unknown" and last.get(name) != "unknown" and reported.get(name, "unknown") != "unknown"
+        else state
+        for name, state in found.items()
+    }
+
+
 def with_leases(found_logins: Mapping[str, str], leased: Mapping[str, bool]) -> dict[str, str]:
     """``found_logins`` with LEASED for each runtime whose login is not ok and whose last agent authenticated with a
     lease (``leased``)."""

@@ -139,3 +139,11 @@ def test_a_login_the_machine_lacks_reads_leased_while_the_runtimes_agents_authen
     assert health.load_leased(tmp_path) == leased
     (tmp_path / health.LEASED_FILE).write_text("not json")
     assert health.load_leased(tmp_path) == {}
+
+
+def test_one_unknown_login_keeps_the_known_one_and_two_in_a_row_report_it():
+    known = {"codex": "ok", "claude-code": "ok"}
+    once = health.settle(known, known, {"codex": "unknown", "claude-code": "unauthorized"})
+    assert once == {"codex": "ok", "claude-code": "unauthorized"}
+    assert health.settle(once, {"codex": "unknown"}, {"codex": "unknown"}) == {"codex": "unknown"}
+    assert health.settle({}, {}, {"codex": "unknown"}) == {"codex": "unknown"}
