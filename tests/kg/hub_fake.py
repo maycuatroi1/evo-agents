@@ -48,6 +48,7 @@ class KgHub:
         self.builds = 0
         self.unread = 0  # runs pushed before migration 0252 that no build has read: a build reads them
         self.max_items = 200_000  # MAX_ITEMS of the state
+        self.inits = 0  # kg_init runs asked
 
     def put(self, url: str, path: Path) -> None:
         upload_id = url.removeprefix("fake://")
@@ -92,6 +93,9 @@ class KgHub:
             self.builds += 1
             self.unread = 0
             return {"queued": True, "build": {"id": self.builds, "status": "queued"}}
+        if (method, route) == ("POST", f"{base}/init") and not worker:
+            self.inits += 1
+            return {"id": self.inits, "via": "cli", "state": "queued", "summary": "the Curator reads the profile"}
         if (found := re.fullmatch(rf"{re.escape(base)}/builds/([0-9]+)", route)) and not worker:
             return {"id": int(found.group(1)), "status": "succeeded", "error": None}
         if route == f"{base}/blobs/check":

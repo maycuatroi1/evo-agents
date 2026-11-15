@@ -1,6 +1,6 @@
 """The thin client of the knowledge graph, its sync half: ``kg sync`` and its --build, --accept-removals and --due work
 from what the hub holds of each source (GET .../sources/{s}/state) and keep no corpus on the machine
-(``evo_agents.hub.kg_hub_sync``)."""
+(``evo_agents.hub.kg_hub_sync``); ``kg build`` and ``kg init`` ask the hub, which alone builds."""
 
 import datetime as dt
 import json
@@ -131,6 +131,41 @@ def test_build_asks_the_hub_for_a_build_and_waits_on_it(tmp_path, kg_env, hub_fo
 
     assert main(["kg", "sync", "--project", str(root), "--build"]) == 0
     assert "build 2 on the hub: succeeded" in capsys.readouterr().out
+
+
+def test_kg_build_asks_the_hub_for_a_build_and_builds_nothing_here(tmp_path, kg_env, hub_for, capsys):
+    hub = hub_for(PROJECT).hubs[PROJECT]
+    root = harness(tmp_path)
+    assert main(["kg", "build", "--project", str(root), "--json"]) == 0
+    body = json.loads(capsys.readouterr().out)
+    assert body["project"] == PROJECT and body["ok"] and body["build"]["status"] == "succeeded"
+    assert hub.builds == 1 and ("GET", f"/v1/kg/{PROJECT}/builds/1") in hub.calls
+    assert main(["kg", "build", "--project", str(root)]) == 0
+    assert capsys.readouterr().out == "build 2 on the hub: succeeded\n"
+    assert not list(kg_env.rglob("*.sqlite"))  # no graph, memo or corpus on this machine
+    with pytest.raises(SystemExit) as refused:  # the local build's flags are gone with it
+        main(["kg", "build", "--project", str(root), "--verify"])
+    assert refused.value.code == 2
+
+
+def test_kg_build_and_init_without_a_hub_login_say_so(tmp_path, kg_env, capsys):
+    root = harness(tmp_path)
+    assert main(["kg", "build", "--project", str(root)]) == 1
+    assert "error: the hub: not signed in to a hub" in capsys.readouterr().err
+    assert main(["kg", "init", "--project", str(root)]) == 1
+    assert "error: the hub: not signed in to a hub" in capsys.readouterr().err
+
+
+def test_kg_init_asks_the_hub_for_a_kg_init_run(tmp_path, kg_env, hub_for, capsys):
+    hub = hub_for(PROJECT).hubs[PROJECT]
+    root = harness(tmp_path)
+    assert main(["kg", "init", "--project", str(root)]) == 0
+    assert (
+        capsys.readouterr().out == f"kg init run of project {PROJECT}: #1 cli queued: the Curator reads the profile\n"
+    )
+    assert main(["kg", "init", "--project", str(root), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["id"] == 2
+    assert hub.inits == 2 and hub.builds == 0 and not (root / "kg-init.json").exists()
 
 
 def test_a_source_the_hub_sink_does_not_clear_is_not_synced(tmp_path, kg_env, hub_for, capsys):

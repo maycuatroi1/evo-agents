@@ -358,9 +358,9 @@ def demo(tmp_path, kg_env):
 
 def test_eval_command_runs_the_fixture_set_on_a_built_graph(demo, capsys):
     root = str(demo.harness.root)
-    assert main(["kg", "eval", str(FIXTURE), "--project", root, "--json"]) == 0
+    assert main(["kg", "eval", "--backend", "auto", str(FIXTURE), "--project", root, "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert (data["backend"], data["sink"], data["limit"], data["budget_tokens"]) == ("local", "cli", 10, 3000)
+    assert (data["backend"], data["sink"], data["limit"], data["budget_tokens"]) == ("auto", "cli", 10, 3000)
     results = {(r["id"], r["method"]): r for r in data["results"]}
     # stable facts of the demo graph, whatever the ranking does elsewhere
     assert results[("rank", "kg_search")]["ranks"] == [1, 1]
@@ -387,7 +387,24 @@ def test_eval_command_runs_the_fixture_set_on_a_built_graph(demo, capsys):
         assert got["tokens_per_file"] == (round(tokens / len(mine) / recall5, 1) if recall5 else None)
     assert data["set"] is None and data["split"] == "all"
 
-    assert main(["kg", "eval", str(FIXTURE), "--project", root, "--type", "identifier", "--method", "kg_search"]) == 0
+    assert (
+        main(
+            [
+                "kg",
+                "eval",
+                "--backend",
+                "auto",
+                str(FIXTURE),
+                "--project",
+                root,
+                "--type",
+                "identifier",
+                "--method",
+                "kg_search",
+            ]
+        )
+        == 0
+    )
     table = capsys.readouterr().out.splitlines()
     assert table[0].startswith("TYPE") and [line.split()[:3] for line in table[1:3]] == [
         ["identifier", "kg_search", "3"],
@@ -404,29 +421,35 @@ def test_eval_command_asks_one_part_of_a_set_and_names_the_set(demo, tmp_path, c
     parts = {split: [q.id for q in ev.load_set(named).part(split)] for split in ev.SPLITS}
     for split in ev.SPLITS:
         if not parts[split]:
-            assert main(["kg", "eval", str(named), "--project", root, "--split", split]) == 2
+            assert main(["kg", "eval", "--backend", "auto", str(named), "--project", root, "--split", split]) == 2
             assert f"no question of part {split}" in capsys.readouterr().err
             continue
-        assert main(["kg", "eval", str(named), "--project", root, "--split", split, "--json"]) == 0
+        assert main(["kg", "eval", "--backend", "auto", str(named), "--project", root, "--split", split, "--json"]) == 0
         data = json.loads(capsys.readouterr().out)
         assert (data["set"], data["version"], data["split"]) == ("demo", 2, split)
         assert sorted({r["id"] for r in data["results"]}) == sorted(parts[split])
         assert {r["split"] for r in data["results"]} == {split}
-    assert main(["kg", "eval", str(named), "--project", root, "--method", "kg_search"]) == 0
+    assert main(["kg", "eval", "--backend", "auto", str(named), "--project", root, "--method", "kg_search"]) == 0
     assert f"set demo v2, {len(lines)} question(s);" in capsys.readouterr().out
 
 
 def test_eval_command_refuses_a_bad_set_and_fails_when_a_method_errs_on_every_question(demo, tmp_path, capsys):
     bad = tmp_path / "bad.jsonl"
     bad.write_text('{"question": "x", "type": "t"}\n')
-    assert main(["kg", "eval", str(bad), "--project", str(demo.harness.root)]) == 2
+    assert main(["kg", "eval", "--backend", "auto", str(bad), "--project", str(demo.harness.root)]) == 2
     assert "line 1: no answer" in capsys.readouterr().err
-    assert main(["kg", "eval", str(FIXTURE), "--project", str(demo.harness.root), "--type", "nope"]) == 2
-    assert main(["kg", "eval", str(FIXTURE), "--project", str(demo.harness.root), "--repo", "app"]) == 2
+    assert (
+        main(["kg", "eval", "--backend", "auto", str(FIXTURE), "--project", str(demo.harness.root), "--type", "nope"])
+        == 2
+    )
+    assert (
+        main(["kg", "eval", "--backend", "auto", str(FIXTURE), "--project", str(demo.harness.root), "--repo", "app"])
+        == 2
+    )
     assert "--repo takes NAME=PATH" in capsys.readouterr().err
     unknown = tmp_path / "unknown.jsonl"
     unknown.write_text('{"question": "x", "type": "t", "project": "no-such-project", "files": ["a.py"]}\n')
-    assert main(["kg", "eval", str(unknown), "--method", "kg_search"]) == 1
+    assert main(["kg", "eval", "--backend", "auto", str(unknown), "--method", "kg_search"]) == 1
     assert "kg_search: 1 call(s) answered with an error" in capsys.readouterr().out
 
 

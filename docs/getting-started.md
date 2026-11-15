@@ -114,7 +114,7 @@ evo-agents harness init
 evo-agents harness validate
 evo-agents kg sync --build
 evo-agents kg status
-evo-agents kg query kg_search "README" --backend local
+evo-agents kg query kg_search "README"
 ```
 
 Replace the path and search text with your repo and a file or symbol it contains. A successful build reports its

@@ -1,5 +1,5 @@
-"""Graph subcommands: build, query, serve, eval and eval-questions. ``query``, ``serve`` and ``eval`` read the local
-store or the hub (``--backend``)."""
+"""Graph subcommands: build, query, serve, eval and eval-questions. ``build`` asks the hub for a build: graphs are built
+on the hub only. ``query``, ``serve`` and ``eval`` read the hub (``--backend``)."""
 
 from __future__ import annotations
 
@@ -12,36 +12,23 @@ from pathlib import Path
 
 
 def cmd_build(args) -> int:
-    from evo_agents.kg.build import build_project
-    from evo_agents.kg.cli import print_json, project_of
-    from evo_agents.kg.status import code_line
+    """``kg build``: ask the hub for a build of the project's graph and wait until it has finished. Graphs are built on
+    the hub only (``evo_agents.hub.kg_hub_sync.HubSync.build``)."""
+    from evo_agents.hub.client import HubError
+    from evo_agents.hub.kg_hub_sync import BUILD_WAIT
+    from evo_agents.kg.cli import print_json, project_of, syncer
 
     project = project_of(args)
-    report = build_project(project, verify=args.verify, cold=args.cold, force=args.force)
+    try:
+        build = syncer(project).build(timeout=args.timeout or BUILD_WAIT)
+    except HubError as exc:  # signing in, before the build is asked
+        print(f"error: the hub: {exc}", file=sys.stderr)
+        return 1
     if args.json:
-        print_json(report.to_json())
+        print_json({"project": project.name, **build.to_json()})
     else:
-        print(report.summary_line())
-        if report.verify is not None:
-            v = report.verify
-            state = "match" if v.get("match") else "MISMATCH"
-            print(
-                f"verify ({'cold memo' if v.get('cold') else 'warm memo'}): {state}"
-                f" {v.get('rebuilt', '')[:23]} vs {v.get('expected', '')[:23]}"
-            )
-        for src in report.coverage.get("sources", []):
-            refs = f"  refs {src.get('refs_resolved', 0)}/{src.get('refs', 0)}" if src.get("refs") else ""
-            print(
-                f"  {src['id']:<22} {src['items']:>6} items  mentions {src['resolved']}/{src['mentions']}"
-                f" ({src['resolved_ratio']:.0%}), {src['ambiguous']} ambiguous, {src['dangling']} dangling{refs}"
-            )
-            if src.get("code"):
-                print(f"    {code_line(src['code'])}")
-        for warning in report.warnings:
-            print(f"  warning: {warning}", file=sys.stderr)
-        for err in report.errors[:20]:
-            print(f"  error: {err}", file=sys.stderr)
-    return 0 if report.ok else 1
+        print(build.summary_line())
+    return 0 if build.ok else 1
 
 
 def cmd_profile(args) -> int:
@@ -57,7 +44,11 @@ def cmd_profile(args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     if store is None:
-        print(f"error: project {project.name} has no graph yet: run evo-agents kg build", file=sys.stderr)
+        print(
+            f"error: project {project.name} has no graph on this machine; graphs are built on the hub:"
+            f" evo-agents hub kg profile --project {project.name}",
+            file=sys.stderr,
+        )
         return 1
     try:
         summary = store.summary()
@@ -65,7 +56,11 @@ def cmd_profile(args) -> int:
         store.close()
     found = kg_profile.of_coverage(summary.get("coverage")) if summary.get("ready") else None
     if found is None:
-        print("error: the newest build holds no profile: run evo-agents kg build --force", file=sys.stderr)
+        print(
+            "error: the newest build on this machine holds no profile; graphs are built on the hub:"
+            f" evo-agents hub kg profile --project {project.name}",
+            file=sys.stderr,
+        )
         return 1
     if args.json:
         print_json({"project": project.name, "build_id": summary["build_id"], "profile": found})
@@ -167,33 +162,24 @@ def cmd_settings(args) -> int:
 
 
 def cmd_init(args) -> int:
-    """The kg_init run on this machine: the Curator configures the project's graph from its data profile."""
-    from evo_agents.kg import init_local
+    """``kg init``: ask the hub for a kg_init run of the project, in which the Curator configures its graph from its
+    data profile (``evo-agents hub kg init``); the run, or the one already in flight."""
+    from evo_agents.hub.client import Hub, HubError, load_credentials
+    from evo_agents.hub.kg_init_cli import line_of, path_of
     from evo_agents.kg.cli import print_json, project_of
 
     project = project_of(args)
     try:
-        record = init_local.run(project, questions=Path(args.questions).expanduser() if args.questions else None)
-    except (init_local.InitError, OSError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+        credentials = load_credentials()
+        found = Hub(credentials.url, credentials.token).call("POST", path_of(project.name), {})
+    except HubError as exc:
+        print(f"error: the hub: {exc}", file=sys.stderr)
+        return 1
     if args.json:
-        print_json(record)
+        print_json(found)
     else:
-        print(
-            f"kg init {project.name}: {record['questions']['count']} tune questions from {record['questions']['source']}"
-        )
-        for item in record["inputs"]:
-            print(f"  input {item['name']}  {item['sha256']}")
-        if record["error"]:
-            print(f"  not applied: {record['error']}")
-        else:
-            print(f"  applied: {', '.join(record['applied']) or 'nothing'}")
-            build = record["build"]
-            if build:
-                print(f"  build: {'ok' if build['ok'] else 'failed'}")
-        print(f"  record: {project.root / init_local.FILE}")
-    return 1 if record["error"] else 0
+        print(f"kg init run of project {project.name}: {line_of(found or {})}")
+    return 0
 
 
 def cmd_strategy(args) -> int:
@@ -269,15 +255,9 @@ def _figures(text: str | None) -> dict | None:
 
 
 def cmd_query(args) -> int:
-    from evo_agents.kg.cli import project_of
-    from evo_agents.kg.serve import Session
+    from evo_agents.hub.kg_cli import open_session
 
-    if args.backend == "local":
-        session = Session(project_of(args), sink=args.sink)
-    else:
-        from evo_agents.hub.kg_cli import open_session
-
-        session = open_session(args.backend, args.project, args.sink)
+    session = open_session(args.backend, args.project, args.sink)
     params = {}
     for pair in args.arg or []:
         key, _, value = pair.partition("=")
@@ -340,7 +320,9 @@ def cmd_eval(args) -> int:
         session = open_session(args.backend, project or args.project, args.sink)
         if args.search != "graph":
             if not hasattr(session, "semantic"):
-                raise ValueError("--search bm25 or hybrid reads a graph on this machine: use --backend local")
+                raise ValueError(
+                    "--search bm25 or hybrid ranks a graph on this machine; the hub ranks as its graph says"
+                )
             session.semantic = args.search == "hybrid"
         return session
 
@@ -409,7 +391,11 @@ def cmd_commit_questions(args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     if store is None or store.latest_ready() is None:
-        print(f"error: project {project.name} has no graph yet: run evo-agents kg build", file=sys.stderr)
+        print(
+            f"error: project {project.name} has no graph on this machine; graphs are built on the hub:"
+            f" evo-agents hub kg builds --project {project.name}",
+            file=sys.stderr,
+        )
         return 1
     try:
         found = eval_commits.commit_questions(
@@ -531,9 +517,9 @@ def _register_eval(ksub, with_project) -> None:
     run.add_argument("--sink", default="cli", help="sink whose clearance applies (default: cli)")
     run.add_argument(
         "--backend",
-        choices=["auto", "local", "hub"],
-        default="local",
-        help="where the graph is read: this machine's store (default), the hub, or the hub when it has the project",
+        choices=["auto", "hub"],
+        default="hub",
+        help="where the graph is read: the hub (default), or auto, as kg serve does",
     )
     run.add_argument(
         "--search",
@@ -606,12 +592,12 @@ def _register_eval(ksub, with_project) -> None:
 
 
 def register(ksub, with_project) -> None:
-    build = with_project(ksub.add_parser("build", help="build the graph from the corpus"))
-    build.add_argument("--verify", action="store_true", help="rebuild into an empty store and compare (P1)")
-    build.add_argument("--cold", action="store_true", help="with --verify, also start from an empty memo")
-    build.add_argument(
-        "--force", action="store_true", help="build even when the corpus and the config are those of the latest build"
+    build = with_project(
+        ksub.add_parser(
+            "build", help="ask the hub for a build of the project's graph and wait for it (the writer role)"
+        )
     )
+    build.add_argument("--timeout", type=float, help="seconds to wait at most (default: 1800)")
     build.set_defaults(func=cmd_build)
 
     profile = with_project(
@@ -634,9 +620,9 @@ def register(ksub, with_project) -> None:
     )
     query.add_argument(
         "--backend",
-        choices=["auto", "local", "hub"],
-        default="local",
-        help="where the graph is read: this machine's store (default), the hub, or the hub when it has the project",
+        choices=["auto", "hub"],
+        default="hub",
+        help="where the graph is read: the hub (default), or auto, as kg serve does",
     )
     query.set_defaults(func=cmd_query)
 
@@ -645,9 +631,9 @@ def register(ksub, with_project) -> None:
     serve.add_argument("--sink", default="claude-code@anthropic", help="sink profile whose clearance applies")
     serve.add_argument(
         "--backend",
-        choices=["auto", "local", "hub"],
+        choices=["auto", "hub"],
         default="auto",
-        help="auto (default): the hub when signed in and it has a graph of the project, else this machine's store",
+        help="auto (default): the hub when signed in and it has a graph of the project; hub: the hub only",
     )
     serve.set_defaults(func=cmd_serve)
 
@@ -673,12 +659,7 @@ def register(ksub, with_project) -> None:
     st.set_defaults(func=cmd_settings)
 
     ini = with_project(
-        ksub.add_parser("init", help="the Curator configures the project's graph from its data profile (docs/kg.md)")
-    )
-    ini.add_argument(
-        "--questions",
-        metavar="FILE",
-        help="question set: its tune part measures the choices; the holdout is never read",
+        ksub.add_parser("init", help="ask the hub's Curator to configure the project's graph from its data profile")
     )
     ini.set_defaults(func=cmd_init)
 

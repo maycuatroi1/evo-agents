@@ -56,8 +56,7 @@ Declare a cross-repo dependency with a qualified `from`, `rel: depends_on` and `
 dependency silently. Declaring a relationship asserts that it exists; the graph does not verify runtime behavior
 or schema compatibility for you.
 
-After upgrading the resolver, run `evo-agents kg build` for existing local graphs, or rebuild the project graph on
-the hub. The link-stage version invalidates old memo entries, including on an unchanged corpus, so the new snapshot
+After upgrading the resolver on the hub, run `evo-agents kg build` to rebuild the project graph there. The link-stage version invalidates old memo entries, including on an unchanged corpus, so the new snapshot
 removes previously inferred cross-source Python edges. Installing the code alone does not rewrite an existing graph.
 
 ### Seeds with many dependents
@@ -302,8 +301,8 @@ adds `kg_named_graphs`.
 - Labels, audience and `deprecated` filter first, as before: `graph` is one more condition and never shows what the
   reader's clearance hides.
 - A call without `graph`, or with `graph: "default"`, answers exactly as before.
-- A name the project has no graph of is an error result that names `evo-agents hub kg graph list`. On this machine
-  (`--backend local`) no named graph exists, so any name but `default` is that error.
+- A name the project has no graph of is an error result that names `evo-agents hub kg graph list`. A store left on this
+  machine (`--backend auto`, signed out) has no named graph, so any name but `default` is that error there.
 
 A read across projects of a chat run's agent takes it too: `evo-agents worker agent read PROJECT kg-search TEXT
 --graph NAME` (`graph` of `/v1/worker/runs/{id}/agent/reads`) names a graph of the project read, and the check of what
@@ -495,7 +494,7 @@ alike. Store schema 3 added the index's
 `kind` and `path` columns, `nodes_name` and `node_alias`; schema 4 added `label_aud`, the audience of a unit, node or
 edge (`evo_agents/kg/policy.py`), and `node_fts_aud`, which holds the index rows of nodes with an audience apart, so
 they never weigh in the ranking a reader without that audience gets. An older store is rebuilt from the corpus log by
-the next `kg build` or `kg sync --build`, and readers refuse it until then.
+the hub's next build (`kg build` or `kg sync --build` asks for one), and readers refuse it until then.
 
 ## After grep
 
@@ -650,9 +649,9 @@ beyond what `fetch: true` on a source already fetches.
 **Syncs and builds do only what changed.** A git source whose ref still resolves to the commit its last ok run read,
 with the same config and connector code, is not read again: the sync records an ok run, writes no run log and leaves
 the cursor as it is, and `kg sync --due --build` builds only when a source read something. A harness source is always
-read, so files not yet committed in the harness still reach the graph. `kg build` skips a build whose corpus state,
-config, ontology, code and cursors are those of the latest build, names that build, and adds no line to the audit log
-(`--force` builds anyway); the hub's build job skips the same way. A build that does run links again only the items
+read, so files not yet committed in the harness still reach the graph. The hub's build job skips a build whose corpus
+state, config, ontology, code and cursors are those of the latest build, names that build, and adds no line to the
+audit log. A build that does run links again only the items
 whose text or structure changed or that looked up a name or path that now resolves elsewhere, and rewrites only the
 rows of the full-text index that changed (`node_fts_rows`, under Search). The first build after an upgrade that
 changes the structure or link versions is cold.
@@ -683,7 +682,7 @@ What a pass deletes in a project directory:
 - Memo rows that no key used within the memo period nor in the latest build; a corpus that stays the same keeps the
   rows of its latest build. `--all` also prunes the memo the projects share.
 
-None of it changes what a build makes: `kg build --verify --cold` gives the same hash before and after. A SQLite file
+None of it changes what a build makes: a build from scratch gives the same hash before and after. A SQLite file
 is compacted only when at least a tenth of its pages are free.
 
 ```sh
@@ -739,7 +738,7 @@ previous cluster of its level it matches with a Jaccard index of at least 0.5, b
 any other cluster's id is a digest of its members. The same graph, previous clusters and parameters give the same
 clusters and the same content hash. The algorithm's version, its parameters and the engine's version are an input of
 the build, so installing or upgrading the extra rebuilds. Each build keeps the members it started from in
-`cluster_warm`, outside the content hash, so `kg build --verify` reproduces a build whose previous build is gone (the
+`cluster_warm`, outside the content hash, so a build from scratch reproduces a build whose previous build is gone (the
 hub writes each build into an empty store). The tables `clusters`, `cluster_members` and `cluster_links`
 count in the content hash only when they hold rows, so a build without clusters hashes as it did before.
 
@@ -965,6 +964,6 @@ named `written`. The kg_init run waits for the questions run to end, or for 2 ho
 the sink reads no document, no questions run is queued and the kg_init run says why in its notes. `--status --json`
 shows the questions run of each kg_init run under `questions`.
 
-On a machine, `evo-agents kg init --project P [--questions FILE] [--json]` builds the same input from the local graph
-and writes `kg-init.json` with the SHA-256 digests of the input files. The holdout part of the questions never enters the
-run's input.
+On a machine, `evo-agents kg init --project P [--json]` asks the hub for the same run as `evo-agents hub kg init`:
+graphs are built on the hub, so there is no input built from a local graph. The holdout part of the questions never
+enters the run's input.

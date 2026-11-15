@@ -3,8 +3,8 @@
 A build of project P (job ``hub.kg_build``, under the lock ``kg:P``) runs in the worker's cache, ``<data dir>/kg``:
 
 - ``harness/P/``: a harness.yaml, and the knowledge.yaml and ontology.yaml of P's config (``kg_configs``), so the
-  build loads P like any project, and ``evo-agents kg build --verify --project <data dir>/kg/harness/P`` with
-  ``EVO_KG_HOME=<data dir>/kg/home`` checks the worker's store by hand.
+  build loads P like any project, and ``evo_agents.kg.build.build_project`` with ``verify=True`` on that harness,
+  with ``EVO_KG_HOME=<data dir>/kg/home``, checks the worker's store by hand.
 - ``home/P/``: P's corpus as ``evo_agents.kg.corpus`` lays it out (log/, blobs/, corpus.sqlite), its memo and its
   latest graph.sqlite.
 

@@ -11,11 +11,13 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.kg import retention, schedule
+from evo_agents.kg.project import load_project_at, remember
 from evo_agents.kg.scrub import holding_sources
 from evo_agents.kg.sync import sync_project
 from tests.kg.conftest import doc
+from tests.kg.test_due import harness, source
 
-SYNC = ["kg", "sync", "--due", "--all", "--build"]
+SYNC = ["kg", "sync", "--due", "--all"]
 POSIX_PATHS = pytest.mark.skipif(os.name == "nt", reason="the plist names POSIX paths and the gui/<uid> domain")
 
 
@@ -49,7 +51,7 @@ def test_schedule_plist_content(home, kg_env):
 
 
 @POSIX_PATHS
-def test_schedule_pushes_to_the_hub_when_the_machine_is_signed_in(home, kg_env, capsys, monkeypatch):
+def test_the_schedule_only_syncs_signed_in_or_not(home, kg_env, capsys, monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")  # install needs launchd; launchctl is the fake below
     monkeypatch.delenv("EVO_HUB_HOME")  # the login of the test's HOME
     hub = home / ".evo" / "hub"
@@ -57,13 +59,12 @@ def test_schedule_pushes_to_the_hub_when_the_machine_is_signed_in(home, kg_env, 
     (hub / "token").write_text("evh_" + "x" * 43 + "\n")
     (hub / "config.json").write_text(json.dumps({"url": "https://hub.test", "login": "octo"}))
     plist = schedule.build_plist("/opt/tools/bin/evo-agents")
-    assert plist["ProgramArguments"] == ["/opt/tools/bin/evo-agents", *SYNC, "--push"]
-    assert schedule.build_plist("/opt/tools/bin/evo-agents", push=False)["ProgramArguments"][-1] == "--build"
+    assert plist["ProgramArguments"] == ["/opt/tools/bin/evo-agents", *SYNC]  # no --build: the hub builds
     assert main(["kg", "schedule", "print"]) == 0
-    assert plistlib.loads(capsys.readouterr().out.encode())["ProgramArguments"][-6:] == [*SYNC, "--push"]
+    assert plistlib.loads(capsys.readouterr().out.encode())["ProgramArguments"][-4:] == SYNC
     fake = FakeLaunchctl()
     path = schedule.install("/opt/tools/bin/evo-agents", run=fake)
-    assert plistlib.loads(path.read_bytes())["ProgramArguments"][-1] == "--push"
+    assert plistlib.loads(path.read_bytes())["ProgramArguments"][-4:] == SYNC
 
 
 @POSIX_PATHS
@@ -84,7 +85,7 @@ def test_schedule_print_command(home, kg_env, capsys):
     assert main(["kg", "schedule", "print"]) == 0
     plist = plistlib.loads(capsys.readouterr().out.encode())
     assert plist["Label"] == schedule.LABEL
-    assert plist["ProgramArguments"][-5:] == SYNC
+    assert plist["ProgramArguments"][-4:] == SYNC
     assert os.path.isabs(plist["ProgramArguments"][0])
     assert plist["StandardOutPath"] == str(kg_env / "schedule.log")
 
@@ -140,14 +141,14 @@ def test_schedule_install_and_uninstall_against_a_fake_launchctl(home, kg_env, m
 
 def test_schedule_install_needs_launchd(home, monkeypatch):
     monkeypatch.setattr(sys, "platform", "linux")
-    with pytest.raises(schedule.ScheduleError, match="kg sync --due --all --build"):
+    with pytest.raises(schedule.ScheduleError, match="kg sync --due --all$"):
         schedule.install(run=FakeLaunchctl())
     assert not schedule.plist_path().exists()
 
 
 def test_schedule_install_on_windows_names_the_command_for_task_scheduler(home, monkeypatch):
     monkeypatch.setattr(sys, "platform", "win32")
-    with pytest.raises(schedule.ScheduleError, match="Task Scheduler.*kg sync --due --all --build"):
+    with pytest.raises(schedule.ScheduleError, match="Task Scheduler.*kg sync --due --all$"):
         schedule.install(run=FakeLaunchctl())
     assert not schedule.plist_path().exists()
 
@@ -168,6 +169,16 @@ def superseded(project, fake) -> list[str]:
         (result,) = sync_project(project)
         runs.append(result.run_id)
     return runs
+
+
+def test_the_scheduled_sync_pushes_what_is_due_and_asks_the_hub_for_no_build(tmp_path, kg_env, hub_for, capsys):
+    hub = hub_for("alpha").hubs["alpha"]
+    remember(load_project_at(harness(tmp_path, "alpha", [source(tmp_path, "docs", "1h")]), kg_env))
+    assert main([*schedule.SYNC_ARGS, "--json"]) == 0
+    (outcome,) = json.loads(capsys.readouterr().out)["projects"]
+    assert outcome["due"] == ["docs"] and [run["status"] for run in outcome["runs"]] == ["ok"]
+    assert len(hub.ingested) == 1 and hub.builds == 0  # the hub queues its build with the run it ingests
+    assert not list(kg_env.rglob("*.sqlite"))  # no corpus, graph or memo on this machine
 
 
 def test_scheduled_pruning_is_off_until_the_owner_turns_it_on_after_a_count(fake_project, kg_env, hub_for, capsys):

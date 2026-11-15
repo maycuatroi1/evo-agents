@@ -88,13 +88,7 @@ def test_auto_without_graphify_warns_in_build_and_status(tmp_path, kg_env, no_gr
     project = make_billing(tmp_path, kg_env)
     root = str(project.harness.root)
 
-    assert main(["kg", "build", "--project", root]) == 0
-    out, err = capsys.readouterr()
-    assert "code backend auto: 2 item(s); python-ast 1, no symbols 1" in out
-    assert f"  warning: {WARNING}" in err.splitlines()
-
-    assert main(["kg", "build", "--project", root, "--json"]) == 0
-    report = json.loads(capsys.readouterr().out)
+    report = build_project(project).to_json()  # the hub's build engine; kg build asks the hub
     assert report["ok"] and report["warnings"] == [WARNING]
     code = next(s for s in report["coverage"]["sources"] if s["id"] == "billing")["code"]
     assert code["backend"] == "auto"
@@ -126,10 +120,9 @@ def test_explicit_graphify_backend_without_graphify_fails_the_build(tmp_path, kg
     )
     assert report.errors == [message]
 
-    assert main(["kg", "build", "--project", str(project.harness.root)]) == 1
-    out, err = capsys.readouterr()
-    assert out.startswith("build FAILED for billing: source billing declares code backend graphify-ast")
-    assert f"  error: {message}" in err.splitlines()
+    assert report.summary_line().startswith(
+        "build FAILED for billing: source billing declares code backend graphify-ast"
+    )
 
 
 @pytest.mark.parametrize("backend", ["python-ast", "none"])
@@ -145,15 +138,14 @@ def test_auto_with_graphify_has_no_warning(tmp_path, kg_env, capsys):
     project = make_billing(tmp_path, kg_env)
     root = str(project.harness.root)
 
-    assert main(["kg", "build", "--project", root, "--json"]) == 0
-    report = json.loads(capsys.readouterr().out)
+    report = build_project(project).to_json()
     assert report["ok"] and report["warnings"] == [] and report["coverage"]["warnings"] == []
     code = next(s for s in report["coverage"]["sources"] if s["id"] == "billing")["code"]
     assert code["extractors"] == {"graphify-ast": 1, "python-ast": 1}
     assert code["fallback"] == 0 and code["warning"] is None
     assert symbol_paths(project, report["build_id"]) == {"billing/invoice.py", "web/checkout.ts"}
 
-    assert main(["kg", "build", "--project", root]) == 0
+    assert main(["kg", "status", "--project", root]) == 0
     out, err = capsys.readouterr()
     assert "code backend auto: 2 item(s); graphify-ast 1, python-ast 1" in out
     assert "warning" not in out + err

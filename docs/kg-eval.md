@@ -6,13 +6,13 @@ checkouts for comparison, and prints, per question type and method, how many ans
 It only reads: the graph through its tools, the checkouts through `git grep`.
 
 ```sh
-evo-agents kg eval questions.jsonl                         # the project of the current directory, local store
+evo-agents kg eval questions.jsonl                         # the project of the current directory, on the hub
 evo-agents kg eval questions.jsonl --project demo --json > results.json
-evo-agents kg eval questions.jsonl --backend hub           # the graph the hub serves
+evo-agents kg eval questions.jsonl --backend auto          # a store left here when the hub has no graph of it
 evo-agents kg eval questions.jsonl --grep-ref origin/main  # grep the commit the graph was built from
 evo-agents kg eval questions.jsonl --type identifier --method kg_search
 evo-agents kg eval questions.jsonl --split tune            # only the part ranking is tuned on
-evo-agents kg eval questions.jsonl --search hybrid         # rank by words and meaning (docs/kg-semantic.md)
+evo-agents kg eval questions.jsonl --backend auto --search hybrid  # words and meaning, on a store left here
 evo-agents kg eval questions.jsonl --scope repo            # kg_search keeps to each question's repo, as an agent in it
 ```
 
