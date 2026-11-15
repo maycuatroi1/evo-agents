@@ -31,6 +31,10 @@
             "type": "string",
             "description": "only nodes and edges of this named graph of the project, a set of its sources (`evo-agents hub kg graph list`); default: every source"
           },
+          "branch": {
+            "type": "string",
+            "description": "read this draft branch of the graph (`evo-agents hub kg branch list`): main with its operations applied; default: main"
+          },
           "deprecated": {
             "type": "boolean",
             "default": false,
@@ -74,6 +78,10 @@
             "type": "string",
             "description": "only nodes and edges of this named graph of the project, a set of its sources (`evo-agents hub kg graph list`); default: every source"
           },
+          "branch": {
+            "type": "string",
+            "description": "read this draft branch of the graph (`evo-agents hub kg branch list`): main with its operations applied; default: main"
+          },
           "deprecated": {
             "type": "boolean",
             "default": false,
@@ -94,6 +102,10 @@
           "graph": {
             "type": "string",
             "description": "only nodes and edges of this named graph of the project, a set of its sources (`evo-agents hub kg graph list`); default: every source"
+          },
+          "branch": {
+            "type": "string",
+            "description": "read this draft branch of the graph (`evo-agents hub kg branch list`): main with its operations applied; default: main"
           },
           "deprecated": {
             "type": "boolean",
@@ -149,6 +161,10 @@
             "type": "string",
             "description": "only nodes and edges of this named graph of the project, a set of its sources (`evo-agents hub kg graph list`); default: every source"
           },
+          "branch": {
+            "type": "string",
+            "description": "read this draft branch of the graph (`evo-agents hub kg branch list`): main with its operations applied; default: main"
+          },
           "deprecated": {
             "type": "boolean",
             "default": false,
@@ -178,6 +194,10 @@
           "graph": {
             "type": "string",
             "description": "only nodes and edges of this named graph of the project, a set of its sources (`evo-agents hub kg graph list`); default: every source"
+          },
+          "branch": {
+            "type": "string",
+            "description": "read this draft branch of the graph (`evo-agents hub kg branch list`): main with its operations applied; default: main"
           },
           "deprecated": {
             "type": "boolean",
