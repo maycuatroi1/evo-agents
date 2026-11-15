@@ -204,9 +204,7 @@ class MeasureOut(BaseModel):
     why: str | None = Field(None, description="why nothing was measured")
 
 
-def _measure(
-    cache, blobs, project, access, sink, audience, graphs, found_set, current, candidate, split, limit, snapshot=None
-):
+def _measure(project, access, sink, audience, graphs, found_set, current, candidate, split, limit, snapshot=None):
     """The split of ``found_set`` asked of the newest graph with ``current`` and with ``candidate``: ``snapshot``, the
     snapshot of the hub's tables, when given, else the graph file (``kg_graph.reading``). Blocking."""
     from evo_agents.kg.evaluate import HOLDOUT, TUNE
@@ -219,7 +217,7 @@ def _measure(
     if not questions:
         return {"why": f"the project's eval set has no {split} question"}
     ceiling = access.rules.ceiling(access.max_level, sink, audience)
-    with reading(cache, blobs, project, graphs, snapshot) as (opened, graph):
+    with reading(project, snapshot) as (opened, graph):
         session = HubSession(project, access.rules.policy, ceiling, sink, opened, graph, graphs[0])
 
         def asked(tuning):
@@ -268,8 +266,6 @@ async def measure(request: Request, project: ProjectName, body: MeasureBody, use
     try:
         found = await asyncio.to_thread(
             _measure,
-            state.kg_graphs,
-            state.blobs,
             project,
             access,
             sink,

@@ -4,7 +4,7 @@ source kind, edge type and target kind), the commit each source the member can s
 cluster and the compact whole graph (``evo_agents.hub.kg_map``), and the review queue (``evo_agents.hub.kg_review``).
 
 Each read opens the project's latest successful build the way the kg_* tools do (``evo_agents.hub.kg_graph``: the
-verified artifact cache, the fallback to a cached build when the blob store does not answer) and answers with the
+snapshot of the hub's tables) and answers with the
 code of those tools: ``tool_kg_search`` and ``tool_kg_node`` of ``evo_agents.kg.serve.Session`` as they are, and a
 neighbourhood that walks like ``tool_kg_context``. Every node and edge goes through ``Session.visible``, the one
 filter the tools use too; only the ceiling differs. The tools read with the meet of the member's grant and a sink's
@@ -33,8 +33,7 @@ from dataclasses import dataclass, field
 from typing import TypeVar
 
 from evo_agents.hub import kg_decisions, kg_entity_graph, kg_map, kg_review
-from evo_agents.hub.blobs import BlobStore
-from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession, Snapshotted, reading
+from evo_agents.hub.kg_graph import BuiltGraph, HubSession, Snapshotted, reading
 from evo_agents.kg import freshness
 from evo_agents.kg.graph_scope import GraphScope
 from evo_agents.kg.policy import Label, Policy
@@ -501,8 +500,6 @@ def _ranked(groups: dict[str, dict], degree: dict[str, int], group: int, opened:
 
 
 def read(
-    cache: GraphCache,
-    store: BlobStore | None,
     project: str,
     policy: Policy,
     ceiling: Label | None,
@@ -511,8 +508,7 @@ def read(
     snapshot: Snapshotted | None = None,
 ) -> tuple[T, BuiltGraph]:
     """``reader`` over the newest graph of ``project`` that can be read, and that graph, counting the nodes and edges
-    the ceiling's audience holds: the snapshot of the hub's tables when given (``kg_graph.reading``), else the graph
-    file. Raises GraphUnavailable, ArtifactMismatch (``evo_agents.hub.kg_graph``), NotVisible, GraphProblem."""
-    with reading(cache, store, project, graphs, snapshot) as (opened, graph):
+    the ceiling's audience holds: the snapshot of the hub's tables (``kg_graph.reading``). Raises GraphUnavailable, ArtifactMismatch (``evo_agents.hub.kg_graph``), NotVisible, GraphProblem."""
+    with reading(project, snapshot) as (opened, graph):
         session = WebSession(project, policy, ceiling, WEB_SINK, opened, graph, graphs[0])
         return reader(session), session.counted(graph)

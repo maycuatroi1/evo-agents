@@ -1,16 +1,12 @@
-"""The api's side of a knowledge graph on the hub: the built graphs it keeps in its cache, and the kg_* tools answered
-from them with the code of ``evo-agents kg serve``.
+"""The api's side of a knowledge graph on the hub: the kg_* tools answered with the code of ``evo-agents kg serve``
+from the snapshot of a project's graph that the hub holds in memory, made of its tables
+(``evo_agents.hub.kg_snapshots``; ``reading``).
 
-A tool call reads the project's latest successful build that still holds an artifact (``BuiltGraph``, which
-``built_graphs`` of ``evo_agents.hub.server.kg`` reads from Postgres: this module imports no database library). Its
-artifact, the SQLite file the worker uploaded, is looked up in ``<data dir>/kg/graphs/<project>/<sha256>.sqlite``;
-when it is not there it is fetched from the blob store into a temporary file in the same directory, its SHA-256 and
-size are checked, and only then is it renamed into place, so a file in the cache always holds the bytes its name
-promises. A file that does not match is deleted and never opened. The cache keeps the KEEP files installed last per
-project: an older one is deleted unless a call is reading it (an open file stays readable after it is deleted anyway).
-When the blob store does not answer, the newest build whose artifact is cached answers instead, and kg_status says
-which build that is, and the commit each git source of it read, with how far behind its remote's default branch the
-machine that read it counted (the hub has no checkout to count again). Files are opened read-only and immutable: nothing writes them again, so SQLite takes no lock.
+A tool call reads the project's latest successful build (``BuiltGraph``, which ``built_graphs`` of
+``evo_agents.hub.server.kg`` reads from Postgres: this module imports no database library). When the snapshot held is
+of an older build than the newest, that one answers, and kg_status says which build that is, and the commit each git
+source of it read, with how far behind its remote's default branch the machine that read it counted (the hub has no
+checkout to count again).
 
 ``HubSession`` is ``evo_agents.kg.serve.Session`` over such a file, with the hub's read rule as its clearance: the
 meet of the caller's grant and the sink's clearance (``ProjectRules.ceiling``), whose audience is the caller's, as the
@@ -38,18 +34,13 @@ The api runs one process: the in-use counts and the fetch locks are per process.
 
 from __future__ import annotations
 
-import os
 import threading
 import time
-import uuid
-from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import datetime
-from pathlib import Path
 
-from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.srs_baseline import CODE_COMMENT, COMMIT, PLAN_COMPLETED, PULL_REQUEST, STEP_DONE, Evidence
 from evo_agents.kg import freshness
 from evo_agents.kg import settings as kg_settings
@@ -63,7 +54,6 @@ from evo_agents.kg.snapshot import SnapshotView
 from evo_agents.kg.store import StaleSchema, Store
 
 TOOL_NAMES = tuple(tool["name"] for tool in TOOLS)
-KEEP = 2  # graphs kept per project: the latest, and the one before it to fall back on
 MAX_HANDLES = 100  # kg_more handles kept per user and project
 LATEST_COMMITS = 3  # the newest commits of a file whose authors ``unknown`` gives
 COMMITS_PAGE = 500  # edges into a file read at once to find its commits
@@ -72,7 +62,7 @@ MAX_MENTIONS_READ = 500  # edges into the node of one use case read at most
 
 
 class GraphUnavailable(Exception):
-    """No graph of the project can be read: the blob store does not answer and none is cached."""
+    """No graph of the project can be read: none of its builds is held as a snapshot of the hub's tables yet."""
 
 
 class GraphOutdated(GraphUnavailable):
@@ -83,14 +73,6 @@ class GraphOutdated(GraphUnavailable):
             f"the graph of project {project} (build {graph.build_id}) was written with store schema {exc.found}, and "
             f"this hub reads {kg_store.SCHEMA_VERSION}: a new build of it is queued; try again once it has run"
         )
-
-
-def open_graph(path: Path, project: str, graph: BuiltGraph) -> Store:
-    """The cached artifact of ``graph`` as a read-only store; GraphOutdated when an older schema wrote it."""
-    try:
-        return Store.open_file(path, immutable=True)
-    except StaleSchema as exc:
-        raise GraphOutdated(project, graph, exc) from None
 
 
 class ArtifactMismatch(Exception):
@@ -116,106 +98,6 @@ class HubProject:
     """What a Session needs to know of its project when the project lives on the hub."""
 
     name: str
-
-
-class GraphCache:
-    def __init__(self, root: Path, keep: int = KEEP):
-        self.root = root
-        self.keep = keep
-        self._lock = threading.Lock()  # guards the counts and the deletions
-        self._fetching: dict[Path, threading.Lock] = {}
-        self._in_use: Counter[Path] = Counter()
-
-    def path(self, project: str, sha256: str) -> Path:
-        return self.root / project / f"{sha256}.sqlite"
-
-    def _hold(self, path: Path) -> bool:
-        with self._lock:
-            if not path.exists():
-                return False
-            self._in_use[path] += 1
-            return True
-
-    def release(self, path: Path) -> None:
-        with self._lock:
-            self._in_use[path] -= 1
-            if self._in_use[path] <= 0:
-                del self._in_use[path]
-
-    def _fetch(self, store: BlobStore, project: str, graph: BuiltGraph) -> Path:
-        """Put ``graph``'s artifact in the cache and hold it. Raises BlobStoreUnavailable, ArtifactMismatch."""
-        path = self.path(project, graph.sha256)
-        with self._lock:
-            fetching = self._fetching.setdefault(path, threading.Lock())
-        with fetching:  # two calls wanting the same artifact fetch it once
-            try:
-                if self._hold(path):
-                    return path
-                path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.part")
-                try:
-                    with open(tmp, "wb") as handle:
-                        found = store.fetch(blob_key(graph.sha256), handle, graph.size)
-                    if found is None:
-                        raise ArtifactMismatch(
-                            f"the graph of build {graph.build_id} of project {project} is missing from the blob store"
-                        )
-                    if found != (graph.sha256, graph.size):
-                        raise ArtifactMismatch(
-                            f"the graph of build {graph.build_id} of project {project} that the blob store returned "
-                            "does not have the SHA-256 the build recorded; it was not opened"
-                        )
-                    os.replace(tmp, path)
-                    os.utime(path)
-                finally:
-                    tmp.unlink(missing_ok=True)
-                with self._lock:
-                    self._in_use[path] += 1
-            finally:
-                with self._lock:
-                    self._fetching.pop(path, None)
-        self.evict(project)
-        return path
-
-    def evict(self, project: str) -> list[Path]:
-        """Delete the graphs of ``project`` beyond the KEEP installed last, except those a call is reading."""
-        removed = []
-        with self._lock:
-            directory = self.root / project
-            files = sorted(directory.glob("*.sqlite"), key=lambda p: p.stat().st_mtime, reverse=True)
-            for path in files[self.keep :]:
-                if self._in_use[path]:
-                    continue
-                path.unlink(missing_ok=True)
-                removed.append(path)
-        return removed
-
-    def drop(self, project: str, sha256: str) -> bool:
-        """Delete the cached file of artifact ``sha256`` of ``project``, once the hub deleted the artifact; whether
-        there was one. A call reading it reads on: an open file stays readable after it is deleted."""
-        with self._lock:
-            path = self.path(project, sha256)
-            found = path.exists()
-            path.unlink(missing_ok=True)
-        return found
-
-    def acquire(self, store: BlobStore | None, project: str, graphs: list[BuiltGraph]) -> tuple[Path, BuiltGraph]:
-        """The cached file of the newest of ``graphs`` (successful builds, newest first), held until ``release``;
-        when the blob store does not answer, the newest one cached. Raises GraphUnavailable, ArtifactMismatch."""
-        latest = graphs[0]
-        if self._hold(self.path(project, latest.sha256)):
-            return self.path(project, latest.sha256), latest
-        if store is not None:
-            try:
-                return self._fetch(store, project, latest), latest
-            except BlobStoreUnavailable:
-                pass
-        for older in graphs[1:]:
-            if self._hold(self.path(project, older.sha256)):
-                return self.path(project, older.sha256), older
-        raise GraphUnavailable(
-            f"the blob store did not answer and no graph of project {project} is cached on this hub; try again shortly"
-        )
 
 
 class HubSession(Session):
@@ -311,11 +193,7 @@ class HubSession(Session):
             f"{summary.get('units', 0)} units, content {self.graph.content_hash}",
         ]
         if not hub_build["latest"]:
-            behind = (
-                "its graph is not loaded yet; this is the newest graph loaded"
-                if isinstance(self.graph_store, SnapshotView)
-                else "the blob store did not answer; this is the newest graph cached here"
-            )
+            behind = "its graph is not loaded yet; this is the newest graph loaded"
             lines.append(f"note: build {self.latest.build_id} is newer, but {behind}")
         for src in coverage.get("sources", []):
             if "mentions" not in src:  # items with an audience (``within``)
@@ -498,29 +376,15 @@ Snapshotted = tuple[SnapshotView, BuiltGraph]  # a reader's view of a snapshot, 
 
 
 @contextmanager
-def reading(
-    cache: GraphCache, store: BlobStore | None, project: str, graphs: list[BuiltGraph], snapshot: Snapshotted | None
-) -> Iterator[tuple[Store | SnapshotView, BuiltGraph]]:
-    """(the graph to read, the build it is): ``snapshot``, a view of the snapshot of one of ``graphs`` made of the
-    hub's tables (``evo_agents.hub.kg_snapshots``), when given; else the newest graph file that can be read, opened
-    for the call."""
-    if snapshot is not None:
-        yield snapshot
-        return
-    path, graph = cache.acquire(store, project, graphs)
-    try:
-        opened = open_graph(path, project, graph)
-        try:
-            yield opened, graph
-        finally:
-            opened.close()
-    finally:
-        cache.release(path)
+def reading(project: str, snapshot: Snapshotted | None) -> Iterator[Snapshotted]:
+    """(the graph to read, the build it is): ``snapshot``, a view of the snapshot of one of the project's graphs made
+    of the hub's tables (``evo_agents.hub.kg_snapshots``). Raises GraphUnavailable when there is none."""
+    if snapshot is None:
+        raise GraphUnavailable(f"no graph of project {project} is held on this hub yet; try again shortly")
+    yield snapshot
 
 
 def answer(
-    cache: GraphCache,
-    store: BlobStore | None,
     handles: Handles,
     owner: tuple,
     project: str,
@@ -541,7 +405,7 @@ def answer(
     connection in the thread that made it. ``tuning`` is what the project's search is tuned by (its kg_settings);
     ``whole``: the data alone, uncut (``WholeSession``); ``named_graphs``: the named graph the call's ``graph`` names,
     to its sources, as the database holds it (``evo_agents.kg.graph_scope``); ``snapshot``: as ``reading``."""
-    with reading(cache, store, project, graphs, snapshot) as (opened, graph):
+    with reading(project, snapshot) as (opened, graph):
         if tuning is not None:
             opened.tuning = tuning
         session = (WholeSession if whole else HubSession)(project, policy, ceiling, sink, opened, graph, graphs[0])
@@ -551,8 +415,6 @@ def answer(
 
 
 def mentioning(
-    cache: GraphCache,
-    store: BlobStore | None,
     project: str,
     policy: Policy,
     ceiling: Label | None,
@@ -564,7 +426,7 @@ def mentioning(
     """What the newest graph of ``project`` that can be read shows of the delivery of each use case code of ``codes``
     (``HubSession.mentions``), read through ``sink`` under ``ceiling``. Blocking, as ``answer``. Raises
     GraphUnavailable, ArtifactMismatch; ToolError when nothing of the project is visible."""
-    with reading(cache, store, project, graphs, snapshot) as (opened, graph):
+    with reading(project, snapshot) as (opened, graph):
         return HubSession(project, policy, ceiling, sink, opened, graph, graphs[0]).mentions(codes)
 
 
@@ -581,8 +443,6 @@ class UnknownRefs:
 
 
 def node_kinds(
-    cache: GraphCache,
-    store: BlobStore | None,
     project: str,
     policy: Policy,
     ceiling: Label | None,
@@ -594,13 +454,11 @@ def node_kinds(
     """``HubSession.node_kinds`` of ``ids`` in the newest graph of ``project`` that can be read, through ``sink`` under
     ``ceiling``: what an entity map may cite (``evo_agents.kg.entity_map.check``). Blocking. Raises ToolError,
     GraphUnavailable, ArtifactMismatch."""
-    with reading(cache, store, project, graphs, snapshot) as (opened, graph):
+    with reading(project, snapshot) as (opened, graph):
         return HubSession(project, policy, ceiling, sink, opened, graph, graphs[0]).node_kinds(ids)
 
 
 def read_labelled(
-    cache: GraphCache,
-    store: BlobStore | None,
     project: str,
     ceiling: Label | None,
     graphs: list[BuiltGraph],
@@ -611,15 +469,13 @@ def read_labelled(
     ``ceiling`` and ``clearance`` its (level, location), None when ``ceiling`` is: for a caller that filters the rows
     itself (``evo_agents.hub.kg_entity_map_run``); ``snapshot``: as ``reading``. Blocking. Raises GraphUnavailable,
     ArtifactMismatch."""
-    with reading(cache, store, project, graphs, snapshot) as (opened, _):
+    with reading(project, snapshot) as (opened, _):
         if ceiling is not None:
             opened.reader = ceiling.audience
         return read(opened, None if ceiling is None else (ceiling.level, ceiling.location))
 
 
 def unknown(
-    cache: GraphCache,
-    store: BlobStore | None,
     project: str,
     policy: Policy,
     ceiling: Label | None,
@@ -632,7 +488,7 @@ def unknown(
     """Which of ``ids`` and ``paths`` the newest graph of ``project`` that can be read lacks, read through ``sink``
     under ``ceiling``, with the authors of the newest commits of the files they name. Blocking, as ``answer``. Raises
     GraphUnavailable, ArtifactMismatch."""
-    with reading(cache, store, project, graphs, snapshot) as (opened, graph):
+    with reading(project, snapshot) as (opened, graph):
         try:
             session = HubSession(project, policy, ceiling, sink, opened, graph, graphs[0])
             lacking, missing, authors = session.unknown(ids, paths)

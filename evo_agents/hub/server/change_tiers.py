@@ -4,8 +4,7 @@ what the project's knowledge graph knows of those paths, and what the pull reque
 ``graph_view`` reads ``kg_impact`` of some paths in the project's latest graph through the project's hub sink: the files
 their edits reach, and those it has no file for (``unmatched``). A proposal reads it as its review run's owner
 (``evo_agents.hub.server.proposals``); the job curator.changes and a judge run's verdict read it as the owner of the
-project's night shift (``impact_as_owner``), from a cache of graphs of their own under the hub's data directory
-(``GraphReader``).
+project's night shift (``impact_as_owner``), from the snapshot of the hub's tables (``GraphReader``).
 
 ``unknown_paths`` says, of each path, why the graph cannot tell what editing it reaches, which ``tiers.tier_of`` makes
 at least tier 1: a path it has no file for; one the latest successful measure of the graph's health
@@ -44,8 +43,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import knowledge_diff, replay, tables, tiers
-from evo_agents.hub.kg_build import kg_root
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, Handles, answer
+from evo_agents.hub.kg_graph import ArtifactMismatch, GraphUnavailable, Handles, answer
 from evo_agents.hub.server.github import GitHubRefused
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
@@ -105,14 +103,15 @@ async def graph_view(request, owner: Principal, access: ProjectAccess, targets: 
 
 @dataclass(frozen=True)
 class GraphReader:
-    """Where a job reads graphs from: the hub's blob store and a cache of its own; nothing without a data directory."""
+    """Whether a job reads graphs, from the snapshot of the hub's tables: a hub with a data directory does; nothing
+    without one."""
 
     blobs: object | None = None
-    cache: GraphCache | None = None
+    data_dir: Path | None = None
 
     @classmethod
     def at(cls, blobs, data_dir: Path | None) -> GraphReader:
-        return cls(blobs, GraphCache(kg_root(data_dir) / CACHE, keep=1) if data_dir is not None else None)
+        return cls(blobs, data_dir)
 
 
 def _night_owner(project_id: int):
@@ -137,10 +136,9 @@ async def impact_as_owner(
     engine: AsyncEngine, project_id: int, targets: list[str], reader: GraphReader, *, owner_id: int | None = None
 ) -> GraphView | None:
     """``kg_impact`` of ``targets`` in the project's latest graph, read as the owner of its night shift (or as member
-    ``owner_id``, as the merge queue reads it) through its hub sink, from the snapshot of the hub's tables when it is of
-    one of the builds, else from ``reader``; None without a target, a night
-    shift, a graph or a cache, or when the graph cannot be read."""
-    if not targets or reader.cache is None:
+    ``owner_id``, as the merge queue reads it) through its hub sink, from the snapshot of the hub's tables; None without
+    a target, a night shift, a graph or a data directory (``reader``), or when the graph cannot be read."""
+    if not targets or reader.data_dir is None:
         return None
     from evo_agents.hub import kg_snapshots
     from evo_agents.hub.server import kg
@@ -160,7 +158,7 @@ async def impact_as_owner(
     try:
         snapshot = _snapshotted(await kg_snapshots.load(engine, project_id), graphs, ceiling)
         result = await asyncio.to_thread(
-            answer, reader.cache, reader.blobs, Handles(), owner, row.project, access.rules.policy, ceiling, sink,
+            answer, Handles(), owner, row.project, access.rules.policy, ceiling, sink,
             graphs, "kg_impact", arguments, snapshot=snapshot,
         )  # fmt: skip
     except (GraphUnavailable, ArtifactMismatch) as exc:

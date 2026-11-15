@@ -48,8 +48,8 @@ from evo_agents.hub import kg_asked, kg_health_eval, kg_semantic, kg_snapshots, 
 from evo_agents.hub import kg_optimize as model
 from evo_agents.hub.access import has_role
 from evo_agents.hub.jobs import JobQueue
-from evo_agents.hub.kg_build import QueueBusy, kg_root, queue_build
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, HubSession, reading
+from evo_agents.hub.kg_build import QueueBusy, queue_build
+from evo_agents.hub.kg_graph import ArtifactMismatch, GraphUnavailable, HubSession, reading
 from evo_agents.hub.server import audit, kg_eval_sets, kg_health
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -65,7 +65,6 @@ from evo_agents.kg.evaluate import TUNE
 log = logging.getLogger(__name__)
 
 LOOP = "kg-optimize"  # the origin of its decisions (kg_review.LOOP)
-CACHE = "optimize"  # the directory of the worker's cache (``kg_root``) the measured graphs are fetched into
 MAX_TUNE = 300  # tune questions asked at each weight
 SESSION_DAYS = 7  # the days of real searches a first run counts
 HOLD_REVIEW = timedelta(minutes=30)  # a night's review run waits this long for the first measure of its run
@@ -84,8 +83,6 @@ router = APIRouter(prefix="/v1/kg", tags=["kg"], responses={401: {"model": Error
 
 
 def _measure_graph(
-    cache: GraphCache,
-    blobs,
     project: str,
     access,
     sink: str,
@@ -105,7 +102,7 @@ def _measure_graph(
     if not holdout:
         return {"why": "the project's eval set has no holdout question"}
     ceiling = access.rules.ceiling(access.max_level, sink, audience)
-    with reading(cache, blobs, project, graphs, kg_health._snapshotted(loaded, graphs, ceiling)) as (store, graph):
+    with reading(project, kg_health._snapshotted(loaded, graphs, ceiling)) as (store, graph):
         if store.latest_ready() is None:
             return {"why": f"build {graph.build_id} holds no ready graph"}
         session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
@@ -153,13 +150,10 @@ async def measure_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, 
             return {"why": why}
         found_set = await kg_eval_sets.latest_set(conn, row.project_id)
         audience = await agent_audience(conn, row.owner_id, None, None)
-    cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
     try:
         loaded = await kg_snapshots.load(engine, row.project_id)
         found = await asyncio.to_thread(
             _measure_graph,
-            cache,
-            blobs,
             row.project,
             access,
             sink,
@@ -395,7 +389,7 @@ def _shim(engine: AsyncEngine, blobs, data_dir: Path):
         engine=engine,
         blobs=blobs,
         jobs=JobQueue.in_transaction(),
-        kg_graphs=None if data_dir is None else GraphCache(kg_root(data_dir) / CACHE / "graphs", keep=1),
+        kg_snapshots=kg_snapshots.SnapshotCoordinator(engine),
     )
     return SimpleNamespace(app=SimpleNamespace(state=state))
 

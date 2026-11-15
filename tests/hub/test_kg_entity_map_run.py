@@ -11,6 +11,7 @@ pytest.importorskip("sqlalchemy")
 
 from evo_agents.hub import kg_entity_map_run as model
 from evo_agents.hub import review as review_model
+from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg.build import build_project
 from evo_agents.kg.store import Store
 from tests.hub import pg
@@ -75,6 +76,8 @@ def test_the_outline_holds_the_tree_clusters_entities_documents_and_plans_the_si
     assert server["id"].startswith(model.ENTITY_PREFIX) and server["code"] == 2
     assert any(d["id"] == GUIDE and d["sections"] >= 1 for d in found["documents"])
     assert found["plans"] == [{"id": "plan:demo", "name": "demo", "steps": 2}]
+    if not kg_clusters.available():  # a build without the engine writes no cluster (``build.add_clusters``)
+        pytest.skip(f"clusters need {kg_clusters.INSTALL}")
     assert found["clusters"] and all(
         c["code"] and set(c) == {"id", "level", "code", "other", "members"} for c in found["clusters"]
     )

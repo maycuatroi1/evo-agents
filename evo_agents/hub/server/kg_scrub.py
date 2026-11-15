@@ -58,7 +58,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import blob_gc, tables
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.kg_build import ARTIFACT_KIND
-from evo_agents.hub.kg_graph import GraphCache
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.security import Principal
 from evo_agents.kg.scrub import blob_secrets, graph_secrets, might_hold_secret, run_summary
@@ -114,14 +113,11 @@ class ScrubPurged(BaseModel):
 # Reading objects
 
 
-def _read(store: BlobStore, cache: GraphCache, project: str, row, scratch: Path) -> dict[str, int] | str | None:
+def _read(store: BlobStore, row, scratch: Path) -> dict[str, int] | str | None:
     """The secrets of the object of ``row`` (sha256, kind, size); None when the bucket lacks it or holds other
-    bytes. A graph the api's cache holds is read there. A source blob that may hold a secret comes back as its text,
+    bytes. A source blob that may hold a secret comes back as its text,
     for ``_read_rows`` to read as the files its run logs name."""
     if row.kind == ARTIFACT_KIND:
-        cached = cache.path(project, row.sha256)
-        if cached.exists():
-            return graph_secrets(cached, immutable=True)[1]
         with tempfile.TemporaryDirectory(dir=scratch) as tmp:
             path = Path(tmp) / "graph.sqlite"
             with open(path, "wb") as handle:
@@ -137,10 +133,10 @@ def _read(store: BlobStore, cache: GraphCache, project: str, row, scratch: Path)
     return text if might_hold_secret(text) else {}
 
 
-def _read_all(store: BlobStore, cache: GraphCache, project: str, rows: list, scratch: Path) -> list:
+def _read_all(store: BlobStore, rows: list, scratch: Path) -> list:
     scratch.mkdir(parents=True, exist_ok=True)
     with ThreadPoolExecutor(max_workers=PARALLEL, thread_name_prefix="kg-scrub") as pool:
-        return list(pool.map(lambda row: _read(store, cache, project, row, scratch), rows))
+        return list(pool.map(lambda row: _read(store, row, scratch), rows))
 
 
 def _within(rows: list, budget: int) -> tuple[list, bool]:
@@ -357,7 +353,7 @@ def _scratch(state) -> Path:
 async def _read_rows(state, project: str, project_id: int, rows: list) -> list:
     """The secrets of the objects of ``rows`` (``_read``), a source blob read as the files its run logs name."""
     try:
-        read = await asyncio.to_thread(_read_all, state.blobs, state.kg_graphs, project, rows, _scratch(state))
+        read = await asyncio.to_thread(_read_all, state.blobs, rows, _scratch(state))
     except BlobStoreUnavailable:
         raise HTTPException(503, "the blob store did not answer: nothing was read to the end; try again") from None
     if not any(isinstance(found, str) for found in read):
@@ -445,9 +441,6 @@ async def purge(state, project: str, hashes: list[str], user: Principal) -> Scru
         async with state.engine.connect() as conn, conn.begin():
             await blob_gc.lock_exclusive(conn)
             dropped = await _drop(conn, project, project_id, doomed, user)
-        for finding in doomed:
-            if finding.kind == ARTIFACT_KIND:
-                state.kg_graphs.drop(project, finding.sha256)
         try:
             deleted = await blob_gc.delete_pending(state.engine, store)
         except BlobStoreUnavailable:

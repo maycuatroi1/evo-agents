@@ -338,8 +338,6 @@ async def _read(request: Request, user: Principal, project: str, read):
     try:
         found = await asyncio.to_thread(
             read_labelled,
-            state.kg_graphs,
-            state.blobs,
             project,
             ceiling,
             graphs,

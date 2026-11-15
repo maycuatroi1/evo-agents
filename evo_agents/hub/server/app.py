@@ -41,7 +41,7 @@ from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.jobs import JobQueue
-from evo_agents.hub.kg_graph import GraphCache, Handles
+from evo_agents.hub.kg_graph import Handles
 from evo_agents.hub.log import redact_dsn, scrub_data
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import (
@@ -216,7 +216,6 @@ async def _open(app: FastAPI, config: HubConfig):
     app.state.curator_app = curator_app  # None without EVO_HUB_CURATOR_APP_*: no token for a run of the Curator
     app.state.blobs = BlobStore.from_config(config)
     app.state.jobs = await JobQueue.open(pool)
-    app.state.kg_graphs = GraphCache(config.data_dir / "kg" / "graphs")  # built graphs, fetched by sha256
     app.state.kg_handles = Handles()  # kg_more continuations, per user and project
     app.state.kg_snapshots.engine = app.state.engine
     if app.state.blobs is None:

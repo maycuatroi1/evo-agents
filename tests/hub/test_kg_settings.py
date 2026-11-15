@@ -157,25 +157,17 @@ def test_a_query_is_answered_with_the_tuning_of_the_project(monkeypatch):
     class Opened:
         tuning = kg.DEFAULT
 
-        def close(self):
-            pass
-
-    class Cache:
-        def acquire(self, store, project, graphs):
-            return "path", "graph"
-
-        def release(self, path):
-            pass
-
     class Handles:
         def call(self, session, owner, tool, arguments):
             seen["tuning"] = session.opened.tuning
             return {}
 
-    monkeypatch.setattr(kg_graph, "open_graph", lambda *a: Opened())
     monkeypatch.setattr(kg_graph, "HubSession", lambda *a, **k: SimpleNamespace(opened=a[4], explorer=None))
     tuned = kg.of({"semantic_weight": 1.5})
-    kg_graph.answer(Cache(), None, Handles(), (1, "p"), "p", None, None, "hub", [None], "kg_search", {}, tuning=tuned)
+    snapshot = (Opened(), "graph")  # a view of the snapshot of the hub's tables
+    kg_graph.answer(
+        Handles(), (1, "p"), "p", None, None, "hub", [None], "kg_search", {}, tuning=tuned, snapshot=snapshot
+    )
     assert seen["tuning"] == tuned
 
 
@@ -208,7 +200,7 @@ def test_a_measure_asks_with_the_current_and_the_candidate_tuning_and_leaves_bui
     candidate = kg.of({"semantic_weight": 1.5, "semantic_mode": "on"}, current)
     snapshot = (Opened(), SimpleNamespace(build_id=3))  # a view of the snapshot of the hub's tables, no file
     found = route._measure(
-        None, None, "p", access, "cli", frozenset(), [None], (Questions(), "d"), current, candidate, "tune", 2, snapshot
+        "p", access, "cli", frozenset(), [None], (Questions(), "d"), current, candidate, "tune", 2, snapshot
     )
     assert used == [(kg.DEFAULT.semantic_weight, False, 2), (1.5, True, 2)]
     assert found["build_id"] == 3 and found["questions"] == 2 and found["candidate"]["n"] == 2

@@ -694,6 +694,12 @@ class SnapshotView:
     def file_ids(self) -> list[str]:
         return [n["id"] for n in self.snap.nodes if n["kind"] == "File"]
 
+    def alive_ids(self, table: str, b: int) -> set[str]:
+        """The ids of the live rows of ``table`` (nodes, edges, units), whatever the reader, as ``Store.alive_ids``."""
+        if table == "units":
+            return set(self.snap.units)
+        return {row["id"] for row in (self.snap.nodes if table == "nodes" else self.snap.edges)}
+
     def nodes_between(self, low: str, high: str) -> list[tuple[str, dict]]:
         from bisect import bisect_left
 

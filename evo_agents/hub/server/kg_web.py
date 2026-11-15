@@ -243,9 +243,7 @@ async def read_graph(request: Request, user, project: str, reader):
     ceiling = access.rules.grant_label(access.max_level, audience)
     snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     try:
-        data, graph = await asyncio.to_thread(
-            read, state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, graphs, reader, snapshot
-        )
+        data, graph = await asyncio.to_thread(read, project, access.rules.policy, ceiling, graphs, reader, snapshot)
     except GraphOutdated as exc:
         await rebuild_outdated(state, access.project_id, project)
         raise HTTPException(503, str(exc)) from None

@@ -40,7 +40,7 @@ from starlette.requests import Request
 
 from evo_agents.hub import kg_snapshots, outputs, system_context
 from evo_agents.hub.jobs import JobQueue
-from evo_agents.hub.kg_graph import GraphCache, Handles
+from evo_agents.hub.kg_graph import Handles
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.memory_files import memory_type
 from evo_agents.hub.memory_places import HARNESS
@@ -71,8 +71,8 @@ log = logging.getLogger(__name__)
 
 MAX_RESULT_CHARS = 12_000  # what one tool's result hands back to the model
 INTERACTIVE_NAME = "answer.html"
-# the cache of built graphs of each data directory, as the app holds one
-_GRAPHS: dict[Path, tuple[GraphCache, Handles, kg_snapshots.SnapshotCoordinator]] = {}
+# the kg_more handles and the snapshots of each data directory, as the app holds them
+_GRAPHS: dict[Path, tuple[Handles, kg_snapshots.SnapshotCoordinator]] = {}
 
 
 def _function(name: str, description: str, properties: dict, required: list[str]) -> dict:
@@ -223,17 +223,15 @@ class Turn:
             data_dir = Path(self.config.data_dir)
             if data_dir not in _GRAPHS:
                 _GRAPHS[data_dir] = (
-                    GraphCache(data_dir / "kg" / "graphs"),
                     Handles(),
                     kg_snapshots.SnapshotCoordinator(),  # no listener: a snapshot behind the newest build reloads
                 )
-            graphs, handles, snapshots = _GRAPHS[data_dir]
+            handles, snapshots = _GRAPHS[data_dir]
             snapshots.engine = self.engine
             self.state = SimpleNamespace(
                 engine=self.engine,
                 config=self.config,
                 blobs=self.blobs,
-                kg_graphs=graphs,
                 kg_handles=handles,
                 kg_snapshots=snapshots,
                 jobs=JobQueue.in_transaction(),

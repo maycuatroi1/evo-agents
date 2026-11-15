@@ -714,8 +714,7 @@ def _names_graph(arguments) -> bool:
 
 async def snapshot_view(state, project_id: int, graphs: list[BuiltGraph], ceiling: Label | None):
     """(the project's snapshot as ``ceiling``'s audience reads it, the build of ``graphs`` it was made of), for
-    ``kg_graph.reading``; None when the app keeps none, or none of a build of ``graphs`` (the graph file is read
-    then)."""
+    ``kg_graph.reading``; None when the app keeps none, or none of a build of ``graphs``."""
     snapshots = getattr(state, "kg_snapshots", None)
     held = None if snapshots is None else await snapshots.current(project_id, graphs[0].build_id)
     graph = next((g for g in graphs if held is not None and g.build_id == held.build_id), None)
@@ -784,8 +783,6 @@ async def tool_result(
     try:
         result = await asyncio.to_thread(
             answer,
-            state.kg_graphs,
-            state.blobs,
             state.kg_handles,
             (user.user_id, project),
             project,
@@ -849,8 +846,6 @@ async def unknown_refs(
     ceiling = access.rules.ceiling(access.max_level, read_sink(access, through), audience)
     snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     looked = (
-        state.kg_graphs,
-        state.blobs,
         project,
         access.rules.policy,
         ceiling,
@@ -880,7 +875,7 @@ async def visible_nodes(state, access: ProjectAccess, user: Principal, project: 
         raise HTTPException(409, f"project {project} has no knowledge graph on the hub yet: build it first")
     ceiling = access.rules.ceiling(access.max_level, read_sink(access, sink), audience)
     snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
-    looked = (state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, sink, graphs, ids, snapshot)
+    looked = (project, access.rules.policy, ceiling, sink, graphs, ids, snapshot)
     try:
         return await asyncio.to_thread(node_kinds, *looked)
     except GraphOutdated as exc:
@@ -914,7 +909,7 @@ async def delivery_evidence(
     through = access.rules.hub_sink.sink if access.rules.hub_sink else CLI_SINK
     ceiling = access.rules.ceiling(access.max_level, read_sink(access, through), audience)
     snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
-    looked = (state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, through, graphs, codes, snapshot)
+    looked = (project, access.rules.policy, ceiling, through, graphs, codes, snapshot)
     try:
         return await asyncio.to_thread(mentioning, *looked), None
     except GraphOutdated as exc:

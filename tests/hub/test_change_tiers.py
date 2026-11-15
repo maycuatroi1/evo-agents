@@ -357,7 +357,7 @@ def test_tier_a_pull_request_of_a_project_whose_graph_the_job_cannot_read_is_at_
     assert any(reason.startswith("the knowledge graph of the project could not be read now") for reason in reasons)
 
 
-def test_tier_the_job_reads_kg_impact_as_the_night_shifts_owner_from_a_cache_of_its_own(world, monkeypatch, tmp_path):
+def test_tier_the_job_reads_kg_impact_as_the_night_shifts_owner_from_the_snapshot(world, monkeypatch, tmp_path):
     from evo_agents.hub.kg_graph import GraphUnavailable
 
     b = tables.kg_builds
@@ -368,9 +368,9 @@ def test_tier_the_job_reads_kg_impact_as_the_night_shifts_owner_from_a_cache_of_
     )
     asked = []
 
-    def answer(cache, blobs, handles, owner, project, policy, ceiling, sink, graphs, tool, arguments, snapshot=None):
-        assert snapshot is None  # no build wrote the tables here: the file is read
-        asked.append((cache.root, owner, project, sink, tool, arguments, [graph.build_id for graph in graphs]))
+    def answer(handles, owner, project, policy, ceiling, sink, graphs, tool, arguments, snapshot=None):
+        assert snapshot is None  # no build wrote the tables here: ``reading`` says the graph is unavailable
+        asked.append((owner, project, sink, tool, arguments, [graph.build_id for graph in graphs]))
         if arguments["paths"] == ["evo-agents:down.py"]:
             raise GraphUnavailable("the blob store did not answer")
         node = {"id": "file:evo-agents:app/a.py", "props": {"repo": "evo-agents", "path": "app/a.py"}}
@@ -388,9 +388,8 @@ def test_tier_the_job_reads_kg_impact_as_the_night_shifts_owner_from_a_cache_of_
     assert found == change_tiers.GraphView(frozenset({"evo-agents:gone.py"}), frozenset({("evo-agents", "app/a.py")}))
     u = tables.users
     owner_id = sql(world.db, select(u.c.id).where(u.c.login == "owner"))[0][0]
-    ((root, owner, project, sink, tool, arguments, builds),) = asked
-    assert (root, owner, project, tool, builds) == (
-        tmp_path / "kg" / "tiers",
+    ((owner, project, sink, tool, arguments, builds),) = asked
+    assert (owner, project, tool, builds) == (
         (owner_id, PROJECT),
         PROJECT,
         "kg_impact",
@@ -399,7 +398,9 @@ def test_tier_the_job_reads_kg_impact_as_the_night_shifts_owner_from_a_cache_of_
     assert arguments == {"paths": ["evo-agents:b.py", "evo-agents:gone.py"], "depth": 2}
     assert sink == "hub"  # through the project's hub sink
     assert impact(["evo-agents:down.py"]) is None  # the graph cannot be read now
-    assert impact(["evo-agents:b.py"], change_tiers.GraphReader()) is None and len(asked) == 2  # no cache: not asked
+    assert (
+        impact(["evo-agents:b.py"], change_tiers.GraphReader()) is None and len(asked) == 2
+    )  # no data directory: not asked
     assert impact([]) is None and len(asked) == 2
 
 

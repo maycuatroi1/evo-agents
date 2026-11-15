@@ -64,8 +64,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import kg_coverage, kg_health_eval, kg_labels, kg_review, kg_snapshots, tables
 from evo_agents.hub.credentials import github_repo
-from evo_agents.hub.kg_build import kg_root
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, HubSession, reading
+from evo_agents.hub.kg_graph import ArtifactMismatch, GraphUnavailable, HubSession, reading
 from evo_agents.hub.kg_snapshots import Held
 from evo_agents.hub.server import hub_settings, kg_eval_sets, pulls
 from evo_agents.hub.server import plans as plan_routes
@@ -90,7 +89,6 @@ ERROR_CHARS = 2000
 GRAPHS_TRIED = 3  # successful builds the evaluation may fall back on when the blob store does not answer
 MAX_SERIES = 10  # builds of the span the figures list
 HISTORY = (1, 200, 30)  # the fewest, most and default measures and builds the route lists
-CACHE = "health"  # the directory of the worker's cache (``kg_root``) the evaluated graphs are fetched into
 NO_APP = "the hub has no GitHub App to read default branches with (EVO_HUB_GITHUB_APP_*)"
 OFF_GITHUB = "the hub reads the default branches of repos on GitHub only"
 NO_REPO = "the source reads a path, not a repo of the project with an origin"
@@ -228,7 +226,7 @@ def audience_digest(audience: frozenset[str]) -> str:
 
 def _snapshotted(loaded: Held | None, graphs, ceiling):
     """A view of ``loaded`` for ``kg_graph.reading`` as ``ceiling``'s audience reads it, with the one of ``graphs`` it
-    was made of; None without it or when it is of none of them (the graph file is read then)."""
+    was made of; None without it or when it is of none of them (no graph is read then)."""
     graph = next((g for g in graphs if loaded is not None and g.build_id == loaded.build_id), None)
     if loaded is None or graph is None:
         return None
@@ -236,8 +234,6 @@ def _snapshotted(loaded: Held | None, graphs, ceiling):
 
 
 def _evaluate(
-    cache: GraphCache,
-    blobs,
     project: str,
     access: ProjectAccess,
     sink: str,
@@ -250,11 +246,11 @@ def _evaluate(
 ):
     """The eval of a measure (see the module), ``found_set`` the project's latest question set and its digest, if any,
     read with ``audience``, the owner's (``kg_audience.agent_audience``), as the agents' kg_search reads the graph:
-    from ``loaded``, the snapshot of the hub's tables, when it is of one of ``graphs``, else from the graph file.
+    from ``loaded``, the snapshot of the hub's tables, when it is of one of ``graphs``.
     Blocking: run it in a thread."""
     ceiling = access.rules.ceiling(access.max_level, sink, audience)
     heard = audience_digest(audience)
-    with reading(cache, blobs, project, graphs, _snapshotted(loaded, graphs, ceiling)) as (store, graph):
+    with reading(project, _snapshotted(loaded, graphs, ceiling)) as (store, graph):
         b = store.latest_ready()
         if b is None:
             return {"why": f"build {graph.build_id} holds no ready graph"}
@@ -347,13 +343,10 @@ async def measure_eval(engine: AsyncEngine, row, blobs, data_dir: Path | None, g
         plans = await _plans(conn, access)
         previous = await _previous_eval(conn, row.project_id)
         found_set = await kg_eval_sets.latest_set(conn, row.project_id)
-    cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
     try:
         loaded = await kg_snapshots.load(engine, row.project_id)
         return await asyncio.to_thread(
             _evaluate,
-            cache,
-            blobs,
             row.project,
             access,
             sink,
@@ -375,8 +368,6 @@ async def measure_eval(engine: AsyncEngine, row, blobs, data_dir: Path | None, g
 
 
 def _review(
-    cache: GraphCache,
-    blobs,
     project: str,
     access: ProjectAccess,
     sink: str,
@@ -387,7 +378,7 @@ def _review(
     """The review of a measure (see the module), from ``loaded``, the snapshot of the hub's tables, when it is of one
     of ``graphs``, else from the graph file. Blocking: run it in a thread."""
     ceiling = access.rules.ceiling(access.max_level, sink)
-    with reading(cache, blobs, project, graphs, _snapshotted(loaded, graphs, ceiling)) as (store, graph):
+    with reading(project, _snapshotted(loaded, graphs, ceiling)) as (store, graph):
         session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
         if session.error:
             return {"why": session.error}
@@ -407,12 +398,9 @@ async def measure_review(engine: AsyncEngine, row, blobs, data_dir: Path | None,
         if why is not None:
             return {"why": why}
         dismissed = set((await conn.execute(select(d.c.fingerprint).where(d.c.project_id == row.project_id))).scalars())
-    cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
     try:
         loaded = await kg_snapshots.load(engine, row.project_id)
-        return await asyncio.to_thread(
-            _review, cache, blobs, row.project, access, sink, graphs, dismissed, loaded=loaded
-        )
+        return await asyncio.to_thread(_review, row.project, access, sink, graphs, dismissed, loaded=loaded)
     except (GraphUnavailable, ArtifactMismatch) as exc:
         return {"why": str(exc)}
     except Exception as exc:  # the measure stands without the queue's counts
