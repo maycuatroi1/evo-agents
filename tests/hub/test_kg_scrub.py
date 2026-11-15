@@ -186,8 +186,6 @@ def test_scrub_purge_deletes_old_copies_keeps_what_is_in_use_and_audits(hub, lea
     old = {sha for _, sha in states["old"]}
     in_use = {sha for state in ("live", "newest") for _, sha in states[state]}
     stranger = "f" * 64
-    graphs = hub.api_dir / "kg" / "graphs" / PROJECT
-    assert (graphs / f"{first['artifact_sha256']}.sqlite").exists()
     present = objects(hub)
 
     response = hub.client.post(
@@ -208,7 +206,6 @@ def test_scrub_purge_deletes_old_copies_keeps_what_is_in_use_and_audits(hub, lea
     assert not old & set(after) and in_use <= set(after)
     assert not old & held(hub) and in_use <= held(hub)
     assert kg_graphs(hub) == {second["artifact_sha256"]}
-    assert not (graphs / f"{first['artifact_sha256']}.sqlite").exists()
     rows = {build["id"]: build for build in build_rows(hub)}
     assert rows[first["id"]]["artifact_sha256"] is None and rows[first["id"]]["artifact_pruned_at"]
     assert rows[second["id"]]["artifact_sha256"] == second["artifact_sha256"]

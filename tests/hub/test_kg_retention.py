@@ -230,13 +230,11 @@ def test_a_build_of_unchanged_content_points_at_its_artifact_and_uploads_nothing
     third = rebuild(hub)  # names the build that uploaded the artifact, not the one before it
     assert third["artifact_reused_from"] == first["id"] and third["artifact_sha256"] == first["artifact_sha256"]
 
-    # the api answers from the newest build, through its verified cache of that one artifact
+    # the api answers from the newest build, through the snapshot of the hub's tables
     status = tool_ok(hub, "kg_status")["structuredContent"]["hub_build"]
     assert status["build_id"] == third["id"] and status["artifact_sha256"] == first["artifact_sha256"]
     assert status["latest"] is True
     assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
-    cached = sorted(p.name for p in (hub.api_dir / "kg" / "graphs" / PROJECT).iterdir())
-    assert cached == [f"{first['artifact_sha256']}.sqlite"]
 
     changed = graph(hub, laptop, 2)  # new content: its own artifact
     assert changed["content_hash"] != first["content_hash"] and changed["artifact_reused_from"] is None

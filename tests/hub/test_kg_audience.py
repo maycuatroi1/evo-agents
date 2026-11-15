@@ -139,10 +139,15 @@ def build(root: Path, monkeypatch, one: int, two: int) -> SimpleNamespace:
 
 
 def install(db, cache: Path, graph: SimpleNamespace) -> None:
-    """``graph`` as the latest successful build of aud, in the api's cache already."""
-    target = cache / "kg" / "graphs" / A / f"{graph.sha256}.sqlite"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(graph.data)
+    """``graph`` as the latest successful build of aud, its rows in the hub's graph tables (``kg_graph_rows``), which
+    the api reads as its snapshot; ``cache`` is not written."""
+    import asyncio
+
+    from evo_agents.hub import kg_graph_rows
+    from evo_agents.kg.snapshot import store_rows
+    from evo_agents.kg.store import Store
+    from tests.hub.test_kg_postgres_build import make_engine
+
     report, projects = graph.report, tables.projects
     found = select(
         projects.c.id,
@@ -156,7 +161,26 @@ def install(db, cache: Path, graph: SimpleNamespace) -> None:
         func.now(),
     ).where(projects.c.name == A)
     columns = ["project_id", "status", "artifact_sha256", "artifact_size", "content_hash", "nodes", "edges"]
-    live.sql(db, insert(tables.kg_builds).from_select([*columns, "started_at", "finished_at"], found))
+    built = insert(tables.kg_builds).from_select([*columns, "started_at", "finished_at"], found)
+    ((build_id, project_id),) = live.sql(db, built.returning(tables.kg_builds.c.id, tables.kg_builds.c.project_id))
+    path = cache / "graph.sqlite"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(graph.data)
+    store = Store.open_file(path, immutable=True)
+    try:
+        rows = store_rows(store, store.latest_ready())
+    finally:
+        store.close()
+
+    async def keep():
+        engine = make_engine(db)
+        try:
+            async with engine.begin() as conn:
+                await kg_graph_rows.write_graph(conn, project_id, build_id, rows)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(keep())
 
 
 def done(response, status: int = 200) -> dict | None:
