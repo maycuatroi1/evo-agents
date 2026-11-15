@@ -2282,7 +2282,16 @@ there. A stream that breaks off before that, because a proxy closed it or the hu
 on that bring nothing, not even the hub's ping, the command gives up and names the `--after` that reads what came
 since. `--json` prints what the hub answered, with the keys the command line contract declares; for `logs` that is
 every event read as one object, so it does not go with `--follow`. `send`, `cancel`, `approve`, `takeover`,
-`handback` and `rerun` belong to the member who dispatched the run: another member gets 403.
+`handback` and `rerun` belong to the member who dispatched the run: another member gets 403. An admin of the run's
+project (the admin role on it, or a hub admin holding any grant on it), signed in as themself, may `cancel`, `approve`
+and `rerun` another member's run too, and list its `candidates` (`runs/service/admin_acts.py`): each act writes a
+`system` event into the run's log naming the admin, as what (`project_admin` or `hub_admin`) and the dispatcher, the
+state event's reason names them too, the audit row ends `for=<dispatcher> as=<standing>`, and the dispatcher gets a
+notice of kind `run_admin_action`. An admin's rerun is the admin's own run, on their workers with their accounts and
+secrets, and runs as them only with `--as-me`; the candidates of a failed run are the admin's then. A run's token never
+acts as an admin, and the other controls stay the dispatcher's. A plan with an active plan run refuses a new one with
+409 naming the run and `evo-agents hub run cancel <run>`, which its dispatcher or an admin may run before dispatching
+the plan again.
 
 `run watch [RUN ...] [--plan PLAN[:STEP,...]]` waits until something an agent waiting on the hub needs to see has
 changed against its first look, prints what changed and exits 0: a run named is in another state (with `--state`,
@@ -2350,8 +2359,9 @@ evo-agents hub notifications --read all                       # or --read 12,14
 why the agent recommends its option, whether and how the act can be undone and the refs of its evidence, when the agent
 gave them, and both commands with `--json` carry `recommended_reason`, `reversible`, `undo` and `evidence` (`[]` for
 none; `docs/notifications.md`, Why the agent recommends). `decision answer` (`POST
-.../decisions/{id}/answer`) belongs to the member who dispatched the run: another member gets 403, and a decision that
-is no longer open 409. The answer names an option of the decision, gives words of your own (at most 4 KiB), or both. It
+.../decisions/{id}/answer`) belongs to the member who dispatched the run (the person it is asked of), one it was
+escalated to, or an admin of the project, whose answer the run's log and a `run_admin_action` notice to the dispatcher
+name as above: another member gets 403, and a decision that is no longer open 409. The answer names an option of the decision, gives words of your own (at most 4 KiB), or both. It
 goes to the run's inbox, which the worker hands to the agent; a parked run is resumed on its worker in its session, as a
 new run that the answer names. `notifications` lists your own (`GET /v1/me/notifications`), filtered by `--unread`,
 `--kind` (`decision`, `notice` or `proposal`), `--project`, `--run` and `--search` (words of the title or the body),

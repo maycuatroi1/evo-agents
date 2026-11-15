@@ -1,6 +1,8 @@
 """The owner's controls of a run: cancel, takeover, handback, approve and rerun, each for the member who dispatched the
-run alone (403 for another member, 404 without a grant on the project), and the refusal of a token that would steer a
-run on a worker set to take runs dispatched from the web only (``web_only_steering``)."""
+run (403 for another member, 404 without a grant on the project), cancel, approve and rerun for an admin of its project
+too (``controlled_run``, ``admin_acts``), and the refusal of a token that would steer a run on a worker set to take runs
+dispatched from the web only (``web_only_steering``). An admin's rerun of another member's run is the admin's own run,
+on their workers with their accounts and secrets, and runs as them only when they ask (``Rerun.as_me``)."""
 
 from __future__ import annotations
 
@@ -18,7 +20,7 @@ from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_retry import next_attempt
 from evo_agents.hub.server.run_state import move_run, notify_queued
 from evo_agents.hub.server.runs.models import AccessChange, Rerun, Run
-from evo_agents.hub.server.runs.service import browsers
+from evo_agents.hub.server.runs.service import admin_acts, browsers
 from evo_agents.hub.server.runs.service.accounts import rerun_picks
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.dispatch import (
@@ -43,6 +45,28 @@ async def owned_run(conn: AsyncConnection, user: Principal, project: str, run_id
     """(access, row) for a run of ``project`` that ``user`` dispatched, its row locked: dispatched_by, login, state,
     plan_id, step_key, cancel_requested_at, requested_runtime, mode, approval, timeout_s, pinned_worker_id, kind and
     model. 404 for a run ``user`` cannot see, 403 for another member's."""
+    access, row = await _locked_run(conn, user, project, run_id, action)
+    if row[0] != user.user_id:
+        raise HTTPException(403, f"only {row[1]}, who dispatched run {run_id}, may {action} it")
+    return access, row
+
+
+async def controlled_run(conn: AsyncConnection, user: Principal, project: str, run_id: int, action: str):
+    """(access, row, behalf) as ``owned_run``, for the member who dispatched the run, or an admin of its project
+    (``admin_acts``), for whom ``behalf`` says whose run it is (None for its dispatcher). 403 for any other member, with
+    the refusal of ``owned_run`` and who else may."""
+    access, row = await _locked_run(conn, user, project, run_id, action)
+    try:
+        behalf = admin_acts.on_behalf(user, access, row[0], row[1])
+    except LookupError:
+        raise HTTPException(
+            403, f"only {row[1]}, who dispatched run {run_id}, or an admin of project {project}, may {action} it"
+        ) from None
+    return access, row, behalf
+
+
+async def _locked_run(conn: AsyncConnection, user: Principal, project: str, run_id: int, action: str):
+    """(access, row) of ``owned_run`` for any run of ``project`` ``user`` can see; 409 for a local run."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
     r, u = tables.runs, tables.users
@@ -69,8 +93,6 @@ async def owned_run(conn: AsyncConnection, user: Principal, project: str, run_id
     row = (await conn.execute(query)).one_or_none()
     if row is None:
         raise HTTPException(404, f"project {project} has no run {run_id}: see GET /v1/projects/{project}/runs")
-    if row[0] != user.user_id:
-        raise HTTPException(403, f"only {row[1]}, who dispatched run {run_id}, may {action} it")
     if row.kind == "local":
         raise HTTPException(409, f"run {run_id} is a local session the hub only watches: it cannot {action} it")
     return access, row
@@ -127,7 +149,7 @@ async def web_only_steering(
 async def cancel_run(engine, user: Principal, project: str, run_id: int) -> Run:
     """Cancel a queued run or one in review at once; ask the worker holding a held run to stop it."""
     async with engine.begin() as conn:
-        access, row = await owned_run(conn, user, project, run_id, "cancel")
+        access, row, behalf = await controlled_run(conn, user, project, run_id, "cancel")
         state, plan_id, key, cancel_requested_at = row[2], row[3], row[4], row[5]
         if state in runs.TERMINAL_STATES:
             raise HTTPException(409, f"run {run_id} is {state}, which is final")
@@ -136,10 +158,14 @@ async def cancel_run(engine, user: Principal, project: str, run_id: int) -> Run:
                 return await run_view(conn, run_id)
             r = tables.runs
             await conn.execute(update(r).values(cancel_requested_at=func.now()).where(r.c.id == run_id))
+            did = "asked its worker to stop it"
         else:
-            reason = f"{user.login} cancelled it"
+            reason = admin_acts.acted(user, behalf, "cancelled it")
             await move_run(conn, run_id, state, "cancelled", "owner", reason=reason, token_id=user.token_id)
-        await audit_run(conn, user, access, audit.RUN_CANCEL, run_target(project, plan_id, key, run_id))
+            did = "cancelled it"
+        await audit_run(conn, user, access, audit.RUN_CANCEL, run_target(project, plan_id, key, run_id) + _for(behalf))
+        if behalf is not None:
+            await admin_acts.record_act(conn, user, access, run_id, behalf, "cancel", did)
         view = await run_view(conn, run_id)
     log.info("run cancelled", extra={"run_id": run_id, "state": view.state, "login": user.login})
     return view
@@ -188,13 +214,16 @@ async def ask_control(engine, user: Principal, project: str, run_id: int, action
 async def approve_run(engine, user: Principal, project: str, run_id: int) -> Run:
     """Approve a run in review: the run is done, and so is its step."""
     async with engine.begin() as conn:
-        access, row = await owned_run(conn, user, project, run_id, "approve")
+        access, row, behalf = await controlled_run(conn, user, project, run_id, "approve")
         check_dispatcher(access)
         state, plan_id, key = row[2], row[3], row[4]
         if state != "review":
             raise HTTPException(409, f"run {run_id} is {state}; only a run in review is approved")
-        await move_run(conn, run_id, state, "done", "owner", reason=f"{user.login} approved it", token_id=user.token_id)
-        await audit_run(conn, user, access, audit.RUN_APPROVE, run_target(project, plan_id, key, run_id))
+        reason = admin_acts.acted(user, behalf, "approved it")
+        await move_run(conn, run_id, state, "done", "owner", reason=reason, token_id=user.token_id)
+        await audit_run(conn, user, access, audit.RUN_APPROVE, run_target(project, plan_id, key, run_id) + _for(behalf))
+        if behalf is not None:
+            await admin_acts.record_act(conn, user, access, run_id, behalf, "approve", "approved it")
         view = await run_view(conn, run_id)
     log.info("run approved", extra={"run_id": run_id, "login": user.login})
     return view
@@ -230,7 +259,7 @@ async def rerun_in(
 ) -> Run:
     """``rerun_run`` in the caller's transaction. ``runtime`` asks for that runtime instead of the run's, with the
     profile's model then (the triage of a failed run, ``evo_agents.hub.server.triage_actions``, changes it)."""
-    access, row = await owned_run(conn, user, project, run_id, "rerun")
+    access, row, behalf = await controlled_run(conn, user, project, run_id, "rerun")
     check_dispatcher(access)
     await check_seat(conn, user, "running a run again")
     _, _, state, plan_id, key, _, asked_runtime, mode, approval, timeout_s, _, kind, model = row
@@ -263,7 +292,7 @@ async def rerun_in(
     no_plan_run(activity, plan_id)
     browser, identities, holder = await browsers.rerun_browser(conn, user, run_id, body)
     worker = None if holder is None else await worker_as_pinned(conn, holder)  # the node that holds the identities
-    as_owner = await _rerun_as_owner(conn, run_id, body)
+    as_owner = await _rerun_as_owner(conn, run_id, body, behalf)
     run_access.refuse_onward(user, as_owner)
     new_id = await queue_run(
         conn,
@@ -288,12 +317,20 @@ async def rerun_in(
         as_owner=as_owner,
     )
     accounts = "".join(account.audit_text() for account in picked) + chosen.audit_text()
-    target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}"
+    target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}{_for(behalf)}"
     await audit_run(conn, user, access, audit.RUN_RERUN, target)
     if as_owner:
         granted = f"{run_target(project, plan_id, key, new_id)} by=rerun of run:{run_id}"
         await run_access.record(conn, user, access.project_id, granted, granted=True)
+    if behalf is not None:  # the rerun is the admin's own run: their workers, accounts and secrets
+        did = f"ran it again as run #{new_id}, which they dispatched"
+        await admin_acts.record_act(conn, user, access, run_id, behalf, "rerun", did, extra={"rerun_id": new_id})
     return await run_view(conn, new_id)
+
+
+def _for(behalf: admin_acts.OnBehalf | None) -> str:
+    """What an audit row of an admin's act on another member's run adds to its target: whose run it is."""
+    return "" if behalf is None else f" for={behalf.owner} as={behalf.standing}"
 
 
 async def rerun_plan_in(conn: AsyncConnection, user: Principal, project: str, run_id: int) -> int:
@@ -323,10 +360,16 @@ async def rerun_plan_in(conn: AsyncConnection, user: Principal, project: str, ru
     return new_id
 
 
-async def _rerun_as_owner(conn: AsyncConnection, run_id: int, body: Rerun | None) -> bool:
-    """Whether the rerun of run ``run_id`` runs as its owner: as ``body`` says, else as the run did."""
+async def _rerun_as_owner(
+    conn: AsyncConnection, run_id: int, body: Rerun | None, behalf: admin_acts.OnBehalf | None = None
+) -> bool:
+    """Whether the rerun of run ``run_id`` runs as its owner: as ``body`` says, else as the run did; an admin's rerun of
+    another member's run, which runs as the admin's own, only when ``body`` says so, since the member let the run they
+    dispatched act as them, not the admin's."""
     if body is not None and body.as_me is not None:
         return body.as_me
+    if behalf is not None:
+        return False
     r = tables.runs
     return bool((await conn.execute(select(r.c.as_owner).where(r.c.id == run_id))).scalar_one())
 

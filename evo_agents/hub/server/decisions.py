@@ -20,8 +20,10 @@ question in the category of any other class its card has auto (``autonomy_card.c
 #1675 asked under access to merge, at A5); the reason quotes the card's rule (``admit_ask``,
 ``autonomy_card.left_to_agent``); a run without a snapshot asks as before.
 
-POST /v1/projects/{p}/decisions/{id}/answer is for the run's owner alone, with a web session or a machine token of
-their own: another member gets 403, as does a worker's token (the middleware keeps it under /v1/worker/) and the token
+POST /v1/projects/{p}/decisions/{id}/answer is for the person it is asked of (the run's owner), one it was escalated
+to, or an admin of the project or of the hub (``runs.service.admin_acts``), with a web session or a machine token of
+their own: an admin's answer to another member's run writes an event into the run's log naming the admin and the
+dispatcher, and tells the dispatcher with a notice; another member gets 403, as does a worker's token (the middleware keeps it under /v1/worker/) and the token
 of any run that runs as its owner (``run_access``), and someone without a grant on the project 404. A
 machine token also gets 403 when the run is on a worker set to take runs dispatched from the web only, held, pinned or
 parked there (``runs.web_only_steering``): its answer would steer that worker's agent, or resume the parked run on it.
@@ -46,8 +48,9 @@ A credential request (a decision of category credential that carries ``credentia
 ``evo_agents.hub.credential_requests``) is asked of the run's owner whoever the run's principal reports to, and takes
 the hub's options. Its answer may carry the value of the variable it asks for (``AnswerIn.secret``):
 ``credential_answers`` keeps it as the owner's secret of kind env for the run's project and lets the run run as them
-when the option says so, for the run's owner alone, before a parked run is resumed, so the run that resumes it is
-leased both. The decision's answer text, and the inbox message, carry the hub's sentence of what was given, by name,
+when the option says so, for the run's owner, before a parked run is resumed, so the run that resumes it is
+leased both. An admin answering another member's request gives a value alone: it becomes the admin's own secret, which
+a share for that run alone lends it (``credential_answers``), never the dispatcher's. The decision's answer text, and the inbox message, carry the hub's sentence of what was given, by name,
 never the value. Before it is asked, the hub looks for the owner's env secret of that variable
 (``credential_resolver``): the run leased one, or one the hub may bind under K12 auto, and the hub answers the request
 itself, answered by nobody, with a notice to the owner; else the decision's context names the secret, and the option
@@ -104,6 +107,7 @@ from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.server.runs.models import MAX_ID, REFUSALS, RunId
+from evo_agents.hub.server.runs.service import admin_acts
 from evo_agents.hub.server.runs.service.controls import web_only_steering
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
@@ -645,25 +649,35 @@ class Answered:
 
 
 async def _asked_of(conn: AsyncConnection, user: Principal, access: ProjectAccess, decision_id: int):
-    """The plan and step key of decision ``decision_id``, once ``user`` may answer it: its run's owner, or one it was
-    escalated to (403 for anyone else, and for a run's token)."""
+    """(plan, step key, behalf) of decision ``decision_id``, once ``user`` may answer it: the person it is asked of,
+    one it was escalated to, or an admin of the project (``admin_acts``), for whom ``behalf`` names the member who
+    dispatched the run (None for anyone else); 403 for anyone else, and for a run's token."""
     if user.acts_for_run is not None:  # a run's token acts as the owner, but answers no decision (run_access)
         raise HTTPException(
             403,
             f"decision {decision_id} is a question to a member, and a run's token (evr_...) answers no decision of any "
             "run: the owner answers with their own sign-in",
         )
-    d, r, u = tables.decisions, tables.runs, tables.users
+    d, r, u, owner = tables.decisions, tables.runs, tables.users, tables.users.alias("owner")
     query = (
-        select(d.c.plan_id, d.c.step_key, u.c.id, u.c.login, r.c.dispatched_by)
-        .select_from(d.join(r, r.c.id == d.c.run_id).join(u, u.c.id == asked_person()))
+        select(d.c.plan_id, d.c.step_key, u.c.id, u.c.login, r.c.dispatched_by, owner.c.login.label("owner"))
+        .select_from(
+            d.join(r, r.c.id == d.c.run_id)
+            .join(u, u.c.id == asked_person())
+            .join(owner, owner.c.id == r.c.dispatched_by)
+        )
         .where(d.c.id == decision_id, d.c.project_id == access.project_id)
     )
     found = (await conn.execute(query)).one()
-    if found.id != user.user_id and user.user_id not in await principals.escalated_to(conn, decision_id):
+    if found.id == user.user_id or user.user_id in await principals.escalated_to(conn, decision_id):
+        return found.plan_id, found.step_key, None
+    held = admin_acts.standing(user, access)
+    if held is None:
         who = "who dispatched its run" if found.id == found.dispatched_by else "whom it is asked of"
-        raise HTTPException(403, f"only {found.login}, {who}, may answer decision {decision_id}")
-    return found.plan_id, found.step_key
+        raise HTTPException(
+            403, f"only {found.login}, {who}, or an admin of project {access.name}, may answer decision {decision_id}"
+        )
+    return found.plan_id, found.step_key, admin_acts.OnBehalf(found.dispatched_by, found.owner, held, access.name)
 
 
 def _chosen(decision_id: int, options: list[dict], key: str | None) -> dict | None:
@@ -749,7 +763,7 @@ async def answer_decision(
     ``sealer``. The answer route and the Telegram channel (``via="telegram"``, which the audit row names) both answer
     through it; it raises the HTTPException the route answers with."""
     access = await readable_decision(conn, user, project, decision_id, None)
-    plan_id, key = await _asked_of(conn, user, access, decision_id)
+    plan_id, key, behalf = await _asked_of(conn, user, access, decision_id)
     check_dispatcher(access)
     # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
     # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
@@ -763,6 +777,9 @@ async def answer_decision(
         raise HTTPException(409, f"decision {decision_id} is {state}, not open: it takes no answer any more")
     asked = credential_answers.checked(decision_id, request, body)
     chosen = _chosen(decision_id, options, asked.option)
+    if behalf is not None:  # an admin answers another member's run: its log and its dispatcher say so
+        did = f"answered decision #{decision_id} of it" + ("" if asked.option is None else f" with {asked.option}")
+        await admin_acts.record_act(conn, user, access, run_id, behalf, "answer", did, decision_id=decision_id)
     if category in runs.HUB_DECISION_CATEGORIES:
         return await _answer_hub(conn, user, project, decision_id, run_id, category, chosen, body, via)
     _takes_answer(decision_id, run_id, run_state, kind)
@@ -772,7 +789,9 @@ async def answer_decision(
         return await _hold(conn, user, access.project_id, decision_id, run_id, chosen, body, target, via)
     words = body.text
     if credential_answers.acts(request, asked):  # before a resume, which copies what the run may do
-        given = await credential_answers.give(conn, user, sealer, access, project, decision_id, run_id, request, asked)
+        given = await credential_answers.give(
+            conn, user, sealer, access, project, decision_id, run_id, request, asked, behalf=behalf
+        )
         words = credential_answers.with_sentence(body.text, given)
     await _record_answer(conn, user, decision_id, asked.option, words)
     if kind == "local" and run_state == "waiting":  # the session waited for this: it goes on once none is open
@@ -782,6 +801,8 @@ async def answer_decision(
     inbox_run = await _resume(conn, user, run_id, decision_id, text) if resumes else run_id
     await _to_inbox(conn, user, inbox_run, decision_id, text)
     target = answer_target(project, plan_id, key, decision_id, run_id, asked.option, kind)
+    if behalf is not None:
+        target += f" for={behalf.owner} as={behalf.standing}"
     if inbox_run != run_id:
         target += f" resumed as run:{inbox_run}"
     if via is not None:

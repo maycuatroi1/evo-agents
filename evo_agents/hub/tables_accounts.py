@@ -21,7 +21,8 @@ an address from these rows, or from GitHub's noreply address, which needs none.
 
 credential_shares holds each share an owner gave of a secret or an account (``evo_agents.hub.credential_shares``): to
 one member, a unit of the org chart or everyone, with its level, budget, usage ceiling, most runs at once, end, the
-moment its owner acknowledged the terms warning, and when it was revoked; never deleted. credential_share_projects
+moment its owner acknowledged the terms warning, when it was revoked, and the one run it lends to when an admin gave a
+value for another member's run (0247, ``evo_agents.hub.server.credential_answers``); never deleted. credential_share_projects
 holds the projects each share is for. credential_leases (``evo_agents.hub.tables``) gains here who each lease was
 made for and the share it came under (0106), and the hash of a gateway lease's run token (0152); runs gains the
 provider prefix of a run that goes through the model gateway (0152, ``evo_agents.hub.gateway_runs``).
@@ -172,16 +173,19 @@ def share_tables(metadata: MetaData, credential_leases: Table) -> tuple[Table, T
         _stamp("created_at"),
         _when("revoked_at"),
         Column("revoked_by", BigInteger),
+        Column("run_id", BigInteger),  # the one run it lends to, and those that resume it (0247); null for every run
         key("credential_shares", "secret_id", "secrets", "CASCADE"),
         key("credential_shares", "grantee_user_id", "users", "CASCADE"),
         key("credential_shares", "grantee_unit_id", "org_units", "RESTRICT"),
         key("credential_shares", "created_by", "users", "RESTRICT"),
         key("credential_shares", "revoked_by", "users", "RESTRICT"),
+        key("credential_shares", "run_id", "runs", ondelete="SET NULL"),
         PrimaryKeyConstraint("id", name="credential_shares_pkey"),
         Index("credential_shares_user_idx", "grantee_user_id"),
         Index("credential_shares_unit_idx", "grantee_unit_id"),
     )
     Index("credential_shares_secret_idx", shares.c.secret_id, postgresql_where=shares.c.revoked_at.is_(None))
+    Index("credential_shares_run_idx", shares.c.run_id, postgresql_where=shares.c.run_id.is_not(None))
     projects = Table(
         "credential_share_projects",
         metadata,

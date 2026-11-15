@@ -286,6 +286,16 @@ def plan_busy(plan_id: str, active: ActiveRun) -> str:
     return f"plan {plan_id} has plan run #{active.id}, {active.state}, dispatched by {active.dispatched_by}"
 
 
+def cancel_first(active: ActiveRun) -> str:
+    """How a member goes on past the active run ``active`` of a plan: cancel it, as its dispatcher or an admin of the
+    project may (``controls.controlled_run``), then dispatch again once it has ended."""
+    stops = "its worker stops it, " if active.state in runs.HELD_STATES else ""
+    return (
+        f"cancel it first with `evo-agents hub run cancel {active.id}` (its dispatcher or an admin of the project may), "
+        f"then dispatch again once {stops}it is cancelled"
+    )
+
+
 def trace_busy(plan_id: str, trace: PlanTrace) -> str:
     return (
         f"plan {plan_id} is run by system {trace.system} in trace #{trace.id}, whose run #{trace.run_id} is "

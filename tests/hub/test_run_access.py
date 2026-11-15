@@ -1350,7 +1350,12 @@ def test_credential_request_answer_refusals_say_why_without_the_value(client, hu
     assert plain.status_code == 201, plain.text
     value = sample("deploy-key-")
     for headers, body, status, why in (
-        (hub["other"], {"secret": value}, 403, f"only {OWNER}, who dispatched its run, may answer"),
+        (
+            hub["other"],
+            {"secret": value},
+            403,
+            f"only {OWNER}, who dispatched its run, or an admin of project {PROJECT}",
+        ),
         (hub["owner"], {"option": "value"}, 422, "gives the value of NORTHWIND_DEPLOY_KEY: paste it with"),
         (hub["owner"], {"option": "refuse", "secret": value}, 422, "takes no value"),
         (hub["owner"], {"secret": value, "text": f"it is {value}"}, 422, "your words hold the value"),

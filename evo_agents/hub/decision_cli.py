@@ -5,11 +5,12 @@ author runs ask you, and what the hub tells you.
 reader of the run may; a decision of a run that has put no plan (an author run before its plan, a local session)
 has none, and shows its run alone.
 ``decision answer ID`` answers one (POST .../decisions/{id}/answer) with an option of the decision (``--option KEY``),
-words of your own (``--text``, ``-`` reads them from stdin), or both; only the member who dispatched the run may, and
-the answer goes to the agent through the run's inbox, or resumes a parked run on its worker. A credential request
+words of your own (``--text``, ``-`` reads them from stdin), or both; the member who dispatched the run may, and an
+admin of its project (its log and a notice to the dispatcher say so), and the answer goes to the agent through the
+run's inbox, or resumes a parked run on its worker. A credential request
 (``evo_agents.hub.credential_requests``) also takes the value of the variable it asks for with ``--secret``, read from
 stdin when it is not a terminal, else asked for without echo, never from the command line; the hub keeps it as your
-secret and the answer says its name, never the value. An option marked waits
+secret and the answer says its name, never the value (an admin's, for another member's run, lent to that run alone). An option marked waits
 leaves the decision open and tells the agent nothing; a decision of category wait is a wait of the agent's for a time
 or an event, which the hub answers itself, and ``decision show`` says what it waits for, and for any decision why the
 agent recommends its option, whether the act can be undone and how, and the refs of its evidence.

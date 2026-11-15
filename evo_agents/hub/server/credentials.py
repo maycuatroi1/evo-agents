@@ -261,6 +261,7 @@ class _Secret:
     on_worker: bool  # bound to this worker, not to any worker of its owner
     owner_id: int | None  # the member who owns it; None for an agent's account
     share_id: int | None = None  # the share another member lent it under (``share_leases``); None for the run's owner's
+    for_run: bool = False  # that share is for this run alone: an admin gave its value for it (``credential_answers``)
     agent: str | None = None  # the handle of the agent profile that owns it (``agent_accounts``); None: a member's
     profile_id: int | None = None  # that profile
     pool: str | None = None  # the account pool it is leased from (``account_pools``); None: not from one
@@ -508,6 +509,7 @@ async def survey_run(
             on_worker=row.on_worker,
             owner_id=row.owner_id,
             share_id=getattr(row, "share_id", None),
+            for_run=bool(getattr(row, "for_run", False)),
         )
         for row in rows
         if not (row.kind == "env" and row.env_var in claimed)

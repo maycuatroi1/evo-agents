@@ -612,7 +612,8 @@
           "created_by",
           "created_at",
           "revoked_at",
-          "revoked_by"
+          "revoked_by",
+          "run_id"
         ],
         "schema": "CredentialShare"
       }
@@ -716,7 +717,8 @@
           "created_by",
           "created_at",
           "revoked_at",
-          "revoked_by"
+          "revoked_by",
+          "run_id"
         ],
         "schema": "CredentialShare"
       }
@@ -23686,7 +23688,8 @@
           "created_by",
           "created_at",
           "revoked_at",
-          "revoked_by"
+          "revoked_by",
+          "run_id"
         ],
         "schema": "CredentialShare"
       }
@@ -23729,7 +23732,8 @@
           "created_by",
           "created_at",
           "revoked_at",
-          "revoked_by"
+          "revoked_by",
+          "run_id"
         ],
         "schema": "CredentialShare"
       }
@@ -29566,7 +29570,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.64.1"
+      "version": "0.66.0"
     },
     "paths": {
       "/v1/health": {
@@ -125621,6 +125625,18 @@
                 }
               ],
               "title": "Revoked By"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the one run it lends to, and the runs that resume it: a value an admin of the project gave for another member's run; null for every run of its grantee in its projects"
             }
           },
           "type": "object",
@@ -148806,7 +148822,7 @@
                 "$ref": "#/components/schemas/TierChoice"
               },
               "type": "array",
-              "maxItems": 43,
+              "maxItems": 44,
               "title": "Tiers",
               "description": "the kinds to set; the others stay"
             },
@@ -186387,7 +186403,8 @@
                 "ops_cap",
                 "ops_paused",
                 "ops_digest",
-                "cron_paused"
+                "cron_paused",
+                "run_admin_action"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
@@ -186464,7 +186481,8 @@
                 "ops_cap",
                 "ops_paused",
                 "ops_digest",
-                "cron_paused"
+                "cron_paused",
+                "run_admin_action"
               ],
               "title": "Kind",
               "description": "a kind of notification: decision, proposal or a notice's"
