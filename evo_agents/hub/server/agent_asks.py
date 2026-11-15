@@ -3,8 +3,8 @@
 design.
 
 The route takes the worker token of the worker that holds a chat run (404 for a run it does not hold, 422 for a run of
-another kind). It refuses, with why, before it writes anything: past ``chat_runs.MAX_HOPS`` or to the run's own agent
-(``chat_runs.hop_problem``), an agent the person at the origin of the chain cannot see, one that takes no work
+another kind). It refuses, with why, before it writes anything: an ask of the run's own agent
+(``chat_runs.hop_problem``; hops have no limit), an agent the person at the origin of the chain cannot see, one that takes no work
 (``agent_tasking.work_home``: deleted, or no pool of its own), one that person may not give work
 (``agent_tasking.task_refusal``: the writer rule of a mention). A refusal is answered (201, ``refusal``) and said in the
 run's thread.

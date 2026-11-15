@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_runs as rules
 from evo_agents.hub import tables
 from evo_agents.hub.plugin_calls import enabled_query
 
@@ -64,10 +63,12 @@ async def route_of(conn: AsyncConnection, profile_id: int) -> Route | None:
 async def origin(conn: AsyncConnection, run_id: int) -> int | None:
     """The person at the origin of the chain of chat run ``run_id``: the author of the message that started it, or,
     for a message of an agent, the origin of that agent's run (its dispatcher, for a run of another kind); None when
-    the message is the hub's own, for the run's dispatcher to stand. At most MAX_HOPS steps back."""
+    the message is the hub's own, for the run's dispatcher to stand. Hops have no limit, so it walks back as far as
+    the chain goes, each run once."""
     r, m = tables.runs, tables.chat_messages
-    current = run_id
-    for _ in range(rules.MAX_HOPS + 1):
+    current, seen = run_id, set()
+    while current not in seen:
+        seen.add(current)
         query = (
             select(r.c.kind, r.c.dispatched_by, m.c.author_user_id, m.c.run_id)
             .select_from(r.outerjoin(m, m.c.id == r.c.chat_message_id))

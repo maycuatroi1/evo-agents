@@ -67,7 +67,7 @@ class SystemOps(BaseModel):
     slug: str
     default: bool = Field(description="it is the project's default system, whose queue the hub fills")
     ops: OpsSettings
-    ops_daily_usd: float = Field(description="what the runs of its ops threads may spend in 24 hours")
+    ops_daily_usd: float = Field(description="what the runs of its ops threads may spend in 24 hours; 0: no limit")
     paused: bool
     paused_at: datetime | None
     paused_reason: str | None

@@ -61,6 +61,9 @@ export type SpecNode = {
 export type SpecEdge = { from: string; to: string; kind: EdgeKind; description: string };
 /** `limits.trace_runs` that sets no limit on the runs of a trace (`system_spec.UNLIMITED_RUNS`). */
 export const UNLIMITED_RUNS = 0;
+
+/** A limit in USD (`trace_usd`, `daily_usd`, `ops_daily_usd`) that sets none (`system_spec.UNLIMITED_USD`). */
+export const UNLIMITED_USD = 0;
 /** `limits` of a spec: the hub fills in the defaults of the keys it does not name (`system_spec.LIMITS`). */
 export type Limits = Partial<Record<"trace_usd" | "trace_runs" | "daily_usd" | "idle_minutes_hub" | "idle_minutes_worker" | "ops_daily_usd", number>>;
 /** `ops` of a spec: how the Orchestrator of the project's default system handles its operations events. */

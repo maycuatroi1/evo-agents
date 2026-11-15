@@ -9,7 +9,7 @@ import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { LOGIN_PATH } from "@/lib/config";
 import { planKeys } from "@/lib/plan-queries";
-import { type Spec, specOf, UNLIMITED_RUNS } from "@/lib/systems";
+import { type Spec, specOf, UNLIMITED_RUNS, UNLIMITED_USD } from "@/lib/systems";
 import { systemKeys, systemQuery, systemsQuery } from "@/lib/systems-queries";
 
 import { Choice, Section } from "./dispatch-fields";
@@ -22,6 +22,7 @@ import {
   type PlanTarget,
   type SystemOption,
   systemOptions,
+  type TraceLimits,
 } from "./plan-run-choice";
 import { runKeys } from "./queries";
 
@@ -29,6 +30,15 @@ import { runKeys } from "./queries";
  * The plan handed to an agent system from the browser, as `useDispatchPlanRun`: either way the project's runs, the plan
  * (its readiness says the trace that holds it) and the system's traces are read again.
  */
+/** The line of a system's trace limits: both, the runs or the cost alone, or neither when the spec sets none. */
+function limitsKey(limits: TraceLimits): "limits" | "limitsUsd" | "limitsRuns" | "limitsNone" {
+  const runs = limits.trace_runs !== UNLIMITED_RUNS;
+  const usd = limits.trace_usd !== UNLIMITED_USD;
+  if (runs && usd) return "limits";
+  if (usd) return "limitsUsd";
+  return runs ? "limitsRuns" : "limitsNone";
+}
+
 export function useDispatchPlanInSystem(project: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -142,7 +152,7 @@ export function WhereField({
                     <span>{t.rich("entry", { handle: option.entry, name: (chunks) => <span className="font-mono text-foreground">{chunks}</span> })}</span>
                     {option.limits ? (
                       <span className="tabular-nums">
-                        {t(option.limits.trace_runs === UNLIMITED_RUNS ? "limitsUsd" : "limits", { runs: option.limits.trace_runs, usd: format.number(option.limits.trace_usd, { style: "currency", currency: "USD" }) })}
+                        {t(limitsKey(option.limits), { runs: option.limits.trace_runs, usd: format.number(option.limits.trace_usd, { style: "currency", currency: "USD" }) })}
                       </span>
                     ) : null}
                   </span>

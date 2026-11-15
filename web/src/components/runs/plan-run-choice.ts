@@ -24,7 +24,7 @@ export type PlanTarget = PlanRunChoice["target"];
 export { isSystemDispatched, type PlanInSystem, type PlanRunOutcome, type SystemDispatched } from "./plan-run-outcome";
 
 /** `system_spec.LIMITS` defaults: a spec saved by the hub always holds them, an older one may not. */
-export const DEFAULT_LIMITS = { trace_usd: 200, trace_runs: 0, daily_usd: 200 } satisfies Limits;
+export const DEFAULT_LIMITS = { trace_usd: 0, trace_runs: 0, daily_usd: 0 } satisfies Limits;
 
 /** The limits of a trace the dialog shows: a spec's own, over `DEFAULT_LIMITS` for the keys it does not name. */
 export type TraceLimits = Limits & typeof DEFAULT_LIMITS;

@@ -59,16 +59,19 @@ MAX_LABEL_CHARS = 80
 MAX_DESCRIPTION_CHARS = 500
 MAX_POSITION = 1_000_000.0
 LIMITS = {  # name: (default, lowest, highest); the budgets the hub holds a trace and a day of the system to
-    "trace_usd": (200.0, 0.01, 1000.0),  # the cost of one trace, worker runs of its tree included
+    # the cost of one trace, worker runs of its tree included; 0 (UNLIMITED_USD), the default, sets no limit
+    "trace_usd": (0.0, 0.0, 1_000_000.0),
     "trace_runs": (0, 0, 100_000),  # the runs of one trace; 0 (UNLIMITED_RUNS) sets no limit
-    "daily_usd": (200.0, 0.01, 1000.0),  # what the hub runtime of the system spends in a day
+    "daily_usd": (0.0, 0.0, 1_000_000.0),  # what the hub runtime of the system spends in a day; 0 sets no limit
     # the minutes with no new span after which an open trace is idle and its Orchestrator is told
     # (triage_rules.IDLE_MINUTES), for runs of the hub runtime and for runs on a worker
     "idle_minutes_hub": (10, 1, 1440),
     "idle_minutes_worker": (30, 1, 1440),
-    "ops_daily_usd": (200.0, 0.01, 1000.0),  # what the runs of its ops threads spend in 24 hours (plan hub-steward)
+    # what the runs of its ops threads spend in 24 hours (plan hub-steward); 0 sets no limit
+    "ops_daily_usd": (0.0, 0.0, 1_000_000.0),
 }
 UNLIMITED_RUNS = 0  # limits.trace_runs of a system whose traces may make any number of runs
+UNLIMITED_USD = 0.0  # a limit in USD of a system (trace_usd, daily_usd, ops_daily_usd) that sets none
 OPTIONAL_LIMITS = ("ops_daily_usd",)  # filled in only when given, so a spec from before them reads back unchanged
 OPS = {  # name: (default, lowest, highest); how its Orchestrator handles the operations events of the project
     "debounce_minutes": (5, 0, 1440),  # a batch closes this long after its first item
@@ -212,6 +215,11 @@ def limit_of(spec, name: str) -> float | int:
     if isinstance(value, bool) or not isinstance(value, int | float) or not low <= value <= high:
         return default
     return value
+
+
+def over_usd(spent: float, limit: float) -> bool:
+    """Whether ``spent`` USD reached ``limit``, a limit in USD of LIMITS; never for UNLIMITED_USD."""
+    return limit != UNLIMITED_USD and spent >= limit
 
 
 def _position(c: _Checker, given, path: str, node: str | None) -> dict:

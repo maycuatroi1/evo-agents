@@ -5,7 +5,7 @@ b4: the ask makes a run of the agent asked, on its pool, for the person at the o
 linked to the asking run by ``spawned_by_run_id``; the asking run parks on a wait and holds no worker, and the end of
 the run asked wakes it with the answer, or with why it failed; the thread of the asking run shows what was asked and
 the answer. The hub refuses, with why and with no run, when that person may not give the agent work, when the agent
-has no pool, and past MAX_HOPS.
+has no pool, and never to the asking agent itself: hops have no limit.
 """
 
 from __future__ import annotations
@@ -316,25 +316,18 @@ def test_delegation_refused_without_right_to_task_target(client, hub, hub_db, ro
     assert f"@{KB_AGENT}: {said}" in bodies(client, hub["other"], chat, mention["id"])
 
 
-def test_delegation_hop_limit(client, hub, hub_db):
-    assert chat_runs.MAX_HOPS == 3
+def test_delegation_has_no_hop_limit(client, hub, hub_db):
     kb_project(client, hub, hub_db)
     studio = chat_worker(client, hub["owner"], "studio")
     kb_node(client, hub["owner"], hub_db)
     chat = created(client, hub["owner"])
     mention, spec = started(client, hub, studio, chat)
     r = tables.runs
-    sql(hub_db, update(r).values(hop=chat_runs.MAX_HOPS).where(r.c.id == spec["id"]))
+    deep = 10  # far past the 3 hops the hub once allowed
+    sql(hub_db, update(r).values(hop=deep).where(r.c.id == spec["id"]))
     before = runs_of(hub_db)
 
-    refused = ask(client, studio, spec["id"])
-    assert refused["run_id"] is None and refused["decision_id"] is None
-    assert refused["refusal"] == chat_runs.hop_problem(chat_runs.MAX_HOPS + 1, False)
-    assert "at most 3 hops" in refused["refusal"]
-    assert runs_of(hub_db) == before
-
-    # one hop less is taken, and an agent with no pool of its own is refused with why
-    sql(hub_db, update(r).values(hop=chat_runs.MAX_HOPS - 1).where(r.c.id == spec["id"]))
+    # an agent with no pool of its own is refused with why, whatever the hop
     agent(client, hub["owner"], "kb-poolless", project=KB)
     p = tables.worker_pools
     profile = select(tables.agent_profiles.c.id).where(tables.agent_profiles.c.handle == "kb-poolless")
@@ -346,9 +339,9 @@ def test_delegation_hop_limit(client, hub, hub_db):
     taken = ask(client, studio, spec["id"])
     assert taken["refusal"] is None
     (row,) = sql(hub_db, select(r.c.hop, r.c.spawned_by_run_id).where(r.c.id == taken["run_id"]))
-    assert row == (chat_runs.MAX_HOPS, spec["id"])
+    assert row == (deep + 1, spec["id"])
     shown = bodies(client, hub["owner"], chat, mention["id"])
-    assert f"@{KB_AGENT}: {refused['refusal']}" in shown
+    assert f"@kb-poolless: {no_pool['refusal']}" in shown
 
 
 def started_by(client, headers, worker: dict, chat: dict) -> tuple:
