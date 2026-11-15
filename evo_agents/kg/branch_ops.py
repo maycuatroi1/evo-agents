@@ -26,7 +26,7 @@ import json
 from hashlib import sha256
 
 from evo_agents.kg import search as text_search
-from evo_agents.kg.policy import Label, audience_below
+from evo_agents.kg.policy import Label, audience_below, audience_join
 from evo_agents.kg.snapshot import StoreRows, edge_dict, edge_row, node_dict, node_row
 
 OPS = ("node.put", "node.delete", "edge.put", "edge.delete", "entity_map", "decision")
@@ -214,6 +214,8 @@ class _Graph:
             dst = keep if e["dst"] == gone else e["dst"]
             if src != dst:
                 self.put_edge({"props": e["props"], "status": e["status"]}, src, e["rel"], dst)
+                moved_to = self.edges[edge_id(src, e["rel"], dst)]
+                moved_to["label"] = _label_join(moved_to["label"], e["label"])  # it keeps the label of what it holds
 
     def decide(self, op: dict) -> None:
         kind = op["kind"]
@@ -333,6 +335,13 @@ def _reads(label: tuple, reader: frozenset[str], ceiling: tuple[int, int] | None
     )
 
 
+def changed_ids(before: StoreRows, after: StoreRows) -> set[str]:
+    """The ids of the nodes and edges ``after`` adds, changes or removes from ``before``."""
+    old = {r[0]: r for r in (*before.nodes, *before.edges)}
+    new = {r[0]: r for r in (*after.nodes, *after.edges)}
+    return {key for key in old.keys() | new.keys() if old.get(key) != new.get(key)}
+
+
 def write_refusal(
     main: StoreRows, rows: StoreRows, ids, reader: frozenset[str], ceiling: tuple[int, int] | None
 ) -> str | None:
@@ -349,6 +358,12 @@ def write_refusal(
         if old is not None and new is not None and _lowered(old, new):
             return f"{key} would be labelled below what it is: a branch may raise a label, not lower it"
     return None
+
+
+def _label_join(a: tuple, b: tuple) -> tuple:
+    """The label of a row that holds what rows of labels ``a`` and ``b`` held: the higher of each part."""
+    integrity = "U" if "U" in (a[2], b[2]) else a[2]
+    return (max(a[0], b[0]), max(a[1], b[1]), integrity, audience_join(frozenset(a[3]), frozenset(b[3])))
 
 
 def _lowered(old: tuple, new: tuple) -> bool:

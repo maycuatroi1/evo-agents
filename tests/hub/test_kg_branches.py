@@ -20,7 +20,7 @@ pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server ext
 from evo_agents.hub import kg_branches_cli
 from evo_agents.kg import branch_ops, store
 from evo_agents.kg.policy import Label
-from evo_agents.kg.snapshot import StoreRows, node_dict, node_row
+from evo_agents.kg.snapshot import StoreRows, edge_dict, edge_row, node_dict, node_row
 from tests.hub import pg
 
 TOP = ((1, 0), frozenset())
@@ -154,6 +154,36 @@ def test_a_writer_may_not_change_what_it_does_not_read_nor_lower_a_label():
     assert "above your grant" in refusal({**raised, "id": "doc:new", "label": [3, 0]})
     assert refusal({"op": "node.put", "id": "doc:new", "kind": "Document", "label": [1, 0]}) is None
     assert "above your grant" in refusal(raised, None)
+
+
+def test_a_merge_or_a_delete_may_not_move_or_take_away_an_edge_above_the_writer_s_grant():
+    high = Label(3, 0, "T", frozenset(), frozenset())
+    nodes = (
+        node_row("k", _node("k")),
+        node_row("g", _node("g")),
+        node_row("x", {**_node("x"), "label": high}),
+    )
+    pays = {
+        "id": branch_ops.edge_id("g", "pays", "x"),
+        "src": "g",
+        "rel": "pays",
+        "dst": "x",
+        "props": {"amount": 9},
+        "status": "parsed",
+        "conf": 1.0,
+        "label": high,
+    }
+    main = StoreRows("sha256:main", nodes, (edge_row(pays["id"], pays),), (), {}, TOP)
+    for op in ({"op": "decision", "kind": "merge", "src": "k", "dst": "g"}, {"op": "node.delete", "id": "g"}):
+        fresh = branch_ops.normalize(op)
+        rows = branch_ops.apply(main, [fresh])
+        ids = {*branch_ops.touched(fresh)[0], *branch_ops.changed_ids(main, rows)}
+        assert pays["id"] in ids
+        assert "above your grant" in branch_ops.write_refusal(main, rows, ids, frozenset(), (1, 0))
+        assert branch_ops.write_refusal(main, rows, ids, frozenset(), (3, 0)) is None
+    merged = branch_ops.apply(main, [branch_ops.normalize({"op": "decision", "kind": "merge", "src": "k", "dst": "g"})])
+    (moved,) = merged.edges
+    assert edge_dict(moved)["label"][:2] == (3, 0)  # the moved edge keeps the label of what it holds
 
 
 def test_the_cli_reads_operations_from_a_file_or_stdin(tmp_path, monkeypatch):

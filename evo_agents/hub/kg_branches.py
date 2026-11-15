@@ -203,9 +203,11 @@ async def apply(
         raise BranchError(422, str(exc)) from None
     main = await _main_rows(conn, project_id)
     kept = await _ops(conn, branch.id)
-    branch_rows = _applied(main, [*kept, *fresh])
-    touched = [key for op in fresh for ids in branch_ops.touched(op) for key in ids]
-    refused = branch_ops.write_refusal(main, branch_rows, touched, *writer)
+    before = _applied(main, kept)
+    branch_rows = _applied(before, fresh)
+    touched = {key for op in fresh for ids in branch_ops.touched(op) for key in ids}
+    touched |= branch_ops.changed_ids(before, branch_rows)  # a merge moves edges, a delete takes them away
+    refused = branch_ops.write_refusal(before, branch_rows, touched, *writer)
     if refused:
         raise BranchError(403, refused)
     values = []
