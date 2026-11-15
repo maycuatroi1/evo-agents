@@ -280,3 +280,58 @@ def test_loads_making_snapshots_leave_the_pool_to_the_workers_heartbeats(hub, tm
     beat, done = asyncio.run(run())
     assert beat == 1
     assert len({held.snapshot.content_hash for held in done}) == 1 and "guide" in found(done[0].snapshot, "kiwi")
+
+
+def test_a_plugin_read_of_a_project_not_in_memory_waits_for_no_load(hub, tmp_path, caplog, monkeypatch):
+    """A core plugin reads the graph holding its own transaction (``kg_snapshots.held_for``): a project the api holds
+    no snapshot of yet answers None at once and loads in the background, so plugin reads made meanwhile do not each
+    hold a connection, idle, for the minutes the snapshot takes to make."""
+    from psycopg_pool import AsyncConnectionPool
+    from sqlalchemy import text
+
+    from evo_agents.hub.db import make_engine as pooled_engine
+
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the kiwi app works."))
+    assert push(hub, laptop).ok
+    first, _ = build(hub, caplog)
+    pid = project_id(hub)
+    release, making = threading.Event(), threading.Event()
+    from_stored = Snapshot.from_stored
+
+    def slow(*args, **kwargs):
+        making.set()
+        assert release.wait(30)
+        return from_stored(*args, **kwargs)
+
+    monkeypatch.setattr(kg_snapshots.Snapshot, "from_stored", slow)
+
+    async def run():
+        pool = AsyncConnectionPool(hub.db.dsn, min_size=0, max_size=3, timeout=2, close_returns=True, open=False)
+        await pool.open()
+        engine = pooled_engine(pool)
+        coordinator = kg_snapshots.SnapshotCoordinator(engine)
+        monkeypatch.setattr(kg_snapshots, "serving", coordinator)
+
+        async def plugin_read():
+            async with engine.begin() as conn:
+                return await asyncio.wait_for(kg_snapshots.held_for(conn, pid, first["id"]), 1)
+
+        try:
+            cold = await asyncio.gather(*(plugin_read() for _ in range(3)))
+            assert await asyncio.to_thread(making.wait, 30)
+            async with engine.begin() as conn:  # a heartbeat, while the snapshot is made
+                beat = await conn.scalar(text("select 1"))
+            release.set()
+            await asyncio.gather(*coordinator._tasks)
+            warm = await plugin_read()
+        finally:
+            release.set()
+            await coordinator.close()
+            await engine.dispose()
+            await pool.close()
+        return cold, beat, warm
+
+    cold, beat, warm = asyncio.run(run())
+    assert cold == [None, None, None] and beat == 1
+    assert warm is not None and warm.build_id == first["id"]

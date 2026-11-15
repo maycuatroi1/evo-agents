@@ -106,11 +106,11 @@ def hub_build(rows: StoreRows, build_id: int | None) -> tuple[StoreRows, int]:
 
 async def held_for(conn: AsyncConnection, project_id: int, build_id: int) -> Held | None:
     """The project's snapshot for a reader that has only its connection: the one the api keeps (``serving``,
-    ``SnapshotCoordinator.current``), loaded on connections of its own, else one read on ``conn`` (``load_on``),
-    as in a process with no api."""
+    ``SnapshotCoordinator.held``), None while its first load runs, else one read on ``conn`` (``load_on``), as in a
+    process with no api. The reader holds ``conn`` in its transaction, so it never waits for a load."""
     coordinator = serving
     if coordinator is not None and coordinator.engine is not None:
-        return await coordinator.current(project_id, build_id)
+        return await coordinator.held(project_id, build_id)
     return await load_on(conn, project_id)
 
 
@@ -169,6 +169,18 @@ class SnapshotCoordinator:
             self._tasks.add(task)
             task.add_done_callback(self._done)
         return held
+
+    async def held(self, project_id: int, build_id: int) -> Held | None:
+        """``current`` for a caller that must not wait for a load: None while the project has no snapshot in memory,
+        whose load this starts in the background (``kg_graph.reading`` then answers "try again shortly")."""
+        if project_id in self._held:
+            return await self.current(project_id, build_id)
+        if self._listener is not None:
+            self._listener.start()
+        task = self._load(project_id)
+        self._tasks.add(task)
+        task.add_done_callback(self._done)
+        return None
 
     async def branch(self, project_id: int, name: str) -> Held:
         """The snapshot of draft branch ``name``: main's rows with its operations applied (``kg_branches.graph``),
