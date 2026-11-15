@@ -297,6 +297,9 @@ CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "finish",
 # at once; one that waits only for a time or an event of the hub, later than this, is parked at once
 DECISION_WAIT_SECONDS = 10 * 60
 PARKED_DAYS = 7  # a run parked this long is cancelled, and its open decisions expire
+# the longest timeout the runs table takes for a run of a kind other than step (schema 0014): that of a chat, task or
+# question run, which no time cap stops before
+LONGEST_TIMEOUT_MIN = 24 * 60
 RESUME_KINDS = ("plan", "author", "chat")  # the kinds of run that wait for their owner, are parked and resumed
 # the kinds whose run may go on in the session and worktrees of an earlier one (resume_of_run_id); a chat run that
 # waits for nothing ends done with its turn, and its next turn is a new run too (``evo_agents.hub.chat_runs``)

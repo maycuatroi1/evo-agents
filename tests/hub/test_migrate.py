@@ -6277,3 +6277,66 @@ def test_0249_lets_a_dismissal_name_the_ontology_rules_and_going_back_deletes_th
     move_to(hub_db, "0248", down=True)
     assert query(hub_db, select(d.c.rule)) == [("conflicting_claim",)], "the other dismissals stay"
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0249") :]
+
+
+def test_0250_takes_any_hop_from_1_and_going_back_sets_a_deeper_hop_to_3(hub_db):
+    move_to(hub_db, "0249")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        chat_id = one(conn, insert(t.chats).values(title="Hops", created_by=ids["user"]).returning(t.chats.c.id))
+        message = insert(t.chat_messages).values(chat_id=chat_id, seq=1, body="@reviewer look", label=[])
+        message_id = one(conn, message.returning(t.chat_messages.c.id))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(_chat_run(ids, chat_id, message_id, hop=4))
+    move_to(hub_db, "0250")
+    with live.connect(hub_db) as conn:
+        deep = one(conn, _chat_run(ids, chat_id, message_id, hop=40))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(_chat_run(ids, chat_id, message_id, hop=0))
+    move_to(hub_db, "0249", down=True)
+    runs = t.runs
+    assert query(hub_db, select(runs.c.hop).where(runs.c.id == deep)) == [(3,)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0250") :]
+
+
+def test_0251_takes_a_stored_200_usd_limit_for_the_old_default_and_sets_none(hub_db):
+    move_to(hub_db, "0250")
+    systems = table(
+        "agent_systems",
+        column("id"),
+        column("project_id"),
+        column("slug", Text),
+        column("name", Text),
+        column("spec", JSONB),
+    )
+    revisions = table("agent_system_revisions", column("system_id"), column("revision"), column("spec", JSONB))
+    filled = {
+        "schema": "evo-agent-system/1",
+        "limits": {"trace_usd": 200.0, "daily_usd": 200.0, "ops_daily_usd": 200.0},
+    }
+    own = {"schema": "evo-agent-system/1", "limits": {"trace_usd": 50.0, "daily_usd": 200.0}}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        made = {}
+        for slug, spec in (("filled", filled), ("own", own), ("bare", {"schema": "evo-agent-system/1"})):
+            made[slug] = one(
+                conn,
+                insert(systems)
+                .values(project_id=ids["project"], slug=slug, name=slug, spec=spec)
+                .returning(systems.c.id),
+            )
+        conn.execute(insert(revisions).values(system_id=made["filled"], revision=1, spec=filled))
+    move_to(hub_db, "0251")
+    found = dict(query(hub_db, select(systems.c.slug, systems.c.spec)))
+    assert found["filled"]["limits"] == {"trace_usd": 0, "daily_usd": 0, "ops_daily_usd": 200.0}
+    assert found["own"]["limits"] == {"trace_usd": 50.0, "daily_usd": 0}
+    assert found["bare"] == {"schema": "evo-agent-system/1"}
+    assert query(hub_db, select(revisions.c.spec["limits"]))[0][0] == {
+        "trace_usd": 0,
+        "daily_usd": 0,
+        "ops_daily_usd": 200.0,
+    }
+    move_to(hub_db, "0250", down=True)
+    assert dict(query(hub_db, select(systems.c.slug, systems.c.spec)))["own"]["limits"]["daily_usd"] == 0
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0251") :]

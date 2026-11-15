@@ -873,8 +873,8 @@ def test_a_plan_run_step_session_prompt_stays_within_32_kib_whatever_the_plan_ho
 def test_a_task_dispatch_budget_is_what_is_left_of_the_cap_and_a_spent_cap_refuses_it():
     from evo_agents.hub import task_runs
 
-    assert task_runs.run_budget(1.234567) == {"max_usd": 1.2346, "max_seconds": task_runs.TIME_CAP_SECONDS}
-    assert task_runs.run_budget(-2) == {"max_usd": 0.0, "max_seconds": task_runs.TIME_CAP_SECONDS}
+    assert task_runs.run_budget(1.234567) == {"max_usd": 1.2346}  # no time cap
+    assert task_runs.run_budget(-2) == {"max_usd": 0.0}
     assert task_runs.spent_problem(4.99, 5, "triager") is None
     said = task_runs.spent_problem(5, 5, "triager")
     assert said.startswith("the task runs of agent type triager cost $5.00 in the last 24 hours")

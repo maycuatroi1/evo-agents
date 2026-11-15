@@ -123,8 +123,7 @@ class TaskIn(BaseModel):
         None,
         ge=1,
         le=task_runs.MAX_MINUTES,
-        description=f"the agent time the run may take, at most {task_runs.MAX_MINUTES}; default: "
-        f"{task_runs.TIME_CAP_SECONDS // 60}",
+        description=f"the agent time the run may take, at most {task_runs.MAX_MINUTES}; default: no time cap",
     )
     repos: list[RepoName | TaskRepo] | None = Field(
         None,
@@ -175,7 +174,7 @@ class TaskIn(BaseModel):
 
 class TaskBudget(BaseModel):
     max_usd: float = Field(description="what is left of the agent type's cap, the run's cost cap")
-    max_seconds: int
+    max_seconds: int | None = Field(None, description="the agent time the task asked for; null: no time cap")
 
 
 class Task(BaseModel):

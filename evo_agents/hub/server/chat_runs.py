@@ -284,7 +284,7 @@ async def _to_inbox(conn: AsyncConnection, run_id: int, hand: Hand) -> None:
     await write_user_message(conn, run_id, event | ({"attachments": as_event(files)} if files else {}))
 
 
-CONTINUED = ("kind", "project_id", "title", "mode", "approval", "timeout_s", "repos", "branch", "model", "chat_id")
+CONTINUED = ("kind", "project_id", "title", "mode", "approval", "repos", "branch", "model", "chat_id")
 CONTINUED += ("profile_id", "profile_version", "session_id", "runtime", "principal_id", "autonomy")
 CONTINUED += ("gateway_provider",)
 CONTINUED += ("spawned_by_run_id", "spawned_wait_id")  # a run another agent asked: the run that ends answers it
@@ -292,9 +292,11 @@ CONTINUED += ("spawned_by_run_id", "spawned_wait_id")  # a run another agent ask
 
 def _continue_run(previous: int, values: dict):
     """The run that goes on in the session of chat run ``previous``: its project, profile, repos, branch, runtime and
-    model, pinned to its worker, in its session; ``values`` names the rest, and a title (``_titled``), or else the
-    run takes the title of ``previous``."""
+    model, pinned to its worker, in its session, with the timeout of a chat run today (``rules.TIMEOUT_MIN``, not that
+    of ``previous``); ``values`` names the rest, and a title (``_titled``), or else the run takes the title of
+    ``previous``."""
     r = tables.runs
+    values = {"timeout_s": rules.TIMEOUT_MIN * 60, **values}
     copied = tuple(name for name in CONTINUED if name not in values)
     pin = [] if "pinned_worker_id" in values else [r.c.worker_id.label("pinned_worker_id")]  # values may unpin it
     source = select(

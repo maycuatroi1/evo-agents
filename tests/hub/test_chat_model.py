@@ -125,7 +125,7 @@ def test_a_chat_run_prompt_has_the_rules_the_repos_and_the_message_whole():
     assert "Repos of the project this worker has no checkout of: evo-cli." in prompt
     for command in ("post", "react", "create", "mention"):
         assert f"evo-agents worker chat {command}" in prompt
-    assert "at hop 2 of at most 3, never to yourself (@reviewer)." in prompt and "budget" not in prompt
+    assert "at hop 2, never to yourself (@reviewer)." in prompt and "budget" not in prompt and "at most 3" not in prompt
     assert prompt.index("# The chat, shortened") < prompt.index("# The message to answer")
     assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES and "detail detail" in prompt
 
@@ -174,10 +174,9 @@ def test_a_chat_runs_rules_have_it_act_without_asking_and_warn_of_no_secret_that
 def test_chat_run_rules_of_hops_caps_branches_and_the_inbox():
     from evo_agents.hub import chat_runs
 
-    assert chat_runs.hop_problem(2, False) is None and chat_runs.hop_problem(3, False) is None
-    assert "hop 4 from the person's message" in chat_runs.hop_problem(4, False)
+    assert chat_runs.hop_problem(2, False) is None and chat_runs.hop_problem(400, False) is None  # no hop limit
     assert chat_runs.hop_problem(2, True) == "an agent does not mention itself: it goes on in its own session"
-    assert chat_runs.run_budget() == {"max_seconds": chat_runs.TIME_CAP_SECONDS}  # a time cap, no cost cap
+    assert chat_runs.run_budget() == {}  # no time cap, no cost cap
     assert chat_runs.branch_of(41) == "chat/41" and chat_runs.is_chat_branch("chat/41")
     assert not any(chat_runs.is_chat_branch(name) for name in ("chat/", "chat/x", "chat/41/a", "main", None))
     text = chat_runs.inbox_text("owner", 9, "  also the retries \n" + "y" * 10_000)

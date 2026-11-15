@@ -45843,7 +45843,7 @@ export interface components {
             ops: components["schemas"]["OpsSettings"];
             /**
              * Ops Daily Usd
-             * @description what the runs of its ops threads may spend in 24 hours
+             * @description what the runs of its ops threads may spend in 24 hours; 0: no limit
              */
             ops_daily_usd: number;
             /** Paused */
@@ -46088,8 +46088,11 @@ export interface components {
              * @description what is left of the agent type's cap, the run's cost cap
              */
             max_usd: number;
-            /** Max Seconds */
-            max_seconds: number;
+            /**
+             * Max Seconds
+             * @description the agent time the task asked for; null: no time cap
+             */
+            max_seconds?: number | null;
         };
         /** TaskIn */
         TaskIn: {
@@ -46115,7 +46118,7 @@ export interface components {
             branch?: string | null;
             /**
              * Minutes
-             * @description the agent time the run may take, at most 120; default: 30
+             * @description the agent time the run may take, at most 120; default: no time cap
              */
             minutes?: number | null;
             /**
@@ -49117,8 +49120,11 @@ export interface components {
              * @description the deepest hop of its runs
              */
             hop: number | null;
-            /** Max Hops */
-            max_hops: number;
+            /**
+             * Max Hops
+             * @description the most hops of a trace; null: hops have no limit
+             */
+            max_hops?: number | null;
             /**
              * Trace Runs
              * @description the runs a trace of its revision may make; 0 for no limit

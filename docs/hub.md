@@ -723,10 +723,10 @@ An edge has `from`, `to`, a `kind` and a `description`; its kind fixes the kinds
 
 The agent the entry interacts with is the system's entry agent: at most one per system, and a profile is the entry
 agent of at most one system (a partial unique index holds it). `limits` holds the budgets of the system:
-`trace_usd` (200 by default, at most 1000), `trace_runs` (0 by default: no limit) and `daily_usd` (200). A trace keeps
-to the first two (Budget of a trace).
+`trace_usd`, `trace_runs` and `daily_usd`, each 0 by default: no limit (`system_spec.UNLIMITED_USD`,
+`UNLIMITED_RUNS`); a spec may set a limit of its own. A trace keeps to the first two (Budget of a trace).
 `idle_minutes_hub` (10) and `idle_minutes_worker` (30), from 1 to 1440, are the idle limits of The Orchestrator.
-`ops_daily_usd` (200, at most 1000) caps what the runs of its ops threads spend in 24 hours; a spec that does not name
+`ops_daily_usd` (0 by default: no limit) caps what the runs of its ops threads spend in 24 hours; a spec that does not name
 it keeps not naming it, and the hub reads the default.
 
 A project has at most one default system (`agent_systems.is_default`). An admin of the project sets it with
@@ -948,7 +948,7 @@ work as before. The code is `evo_agents/hub/server/system_trace_stats.py`, with 
 | Field | What |
 | --- | --- |
 | `usd`, `runs` | its runs and the runs their tree spawned (`spawned_by_run_id`) and their cost, as the budget counts them (`system_traces.usage`) |
-| `max_hop` | the deepest hop of those runs (`MAX_HOPS` is 3) |
+| `max_hop` | the deepest hop of those runs (hops have no limit) |
 | `trace_usd`, `trace_runs` | the limits of the revision the trace ran under |
 | `over_usd` | `usd` minus `trace_usd` when positive, else null |
 | `budget_refusals` | the asks and mentions the budget refused (`refused` spans whose reason is the budget's); an ask refused by the budget whose agent gave `--reason` keeps that reason on its span and is not counted (issue #549) |
@@ -969,8 +969,9 @@ evo-agents hub system metrics support --project northwind --days 7 --traces
 
 ### Budget of a trace
 
-`limits.trace_runs` (0 by default: no limit) and `limits.trace_usd` (200) cap a trace: its runs, counted through
-`spawned_by_run_id`, and their cost; a `trace_runs` of 0 (`system_spec.UNLIMITED_RUNS`) leaves the runs uncapped. Past either, the next ask or mention of the trace is refused with the limit it passed, and a `refused`
+`limits.trace_runs` and `limits.trace_usd` cap a trace when a spec sets them: its runs, counted through
+`spawned_by_run_id`, and their cost; 0, the default of each (`system_spec.UNLIMITED_RUNS`, `UNLIMITED_USD`), leaves it
+uncapped. Past either, the next ask or mention of the trace is refused with the limit it passed, and a `refused`
 span says so.
 
 ### A plan run in a system
@@ -1103,7 +1104,8 @@ derived from the trace's runs, decisions and Orchestrator threads, with no model
 - `decisions`: the Orchestrator's threads about the trace `{kind: "orchestrator", id, rule, outcome, state, run_id, at}`
   and the decisions that ask a person `{kind: "person", id, question, state, answer, asked_of, run_id, at}`, oldest
   first.
-- `runs`, `usd`, `hop` against `max_hops`, `trace_runs` and `trace_usd` (the limits of the trace's revision);
+- `runs`, `usd`, `hop`, `max_hops` (null: hops have no limit), `trace_runs` and `trace_usd` (the limits of the trace's
+  revision, 0 for none);
   `started_at`, `ended_at` (null while a run is active or a person is asked) and `seconds`.
 
 A move that changes what the card shows (a run of the trace moving, a decision of one asked or answered, `work set`)
@@ -1613,16 +1615,16 @@ thread, of a direct chat the latest of all, since its answers show under the mes
 and its text as one line without markdown, at most 140 characters; a reader who does not clear that message's label
 gets its author and time, `hidden` true and no text. The list takes at most six queries, however many chats it holds.
 
-**Caps.** A chat run has no cost cap: each gets 50 minutes of agent time (`chat_runs.TIME_CAP_SECONDS`), where its
-worker stops it. Schema 0072 dropped the chat's budget, which refused a mention once the chat's runs of a rolling 24
+**Caps.** A chat run has no cost cap and no time cap (`chat_runs.run_budget`); its timeout (`chat_runs.TIMEOUT_MIN`)
+is the longest the runs table takes, 24 hours of agent time, where a hung agent fails. Schema 0072 dropped the chat's budget, which refused a mention once the chat's runs of a rolling 24
 hours had cost it.
 
 **Agents in chats.** The agent of a run (a chat run, or a step, plan or author run) talks in chats with
 `evo-agents worker chat post|react|create|mention` (`docs/workers.md`): a message in its thread or in a chat it is in,
 an emoji, a new chat with the person at the origin of the chain (who gets `chat_added`, as does each person it adds,
 each with a grant that clears the agent's project), and a mention that hands work to another agent of the chat. That
-run is for the same person, at one hop more than the run that asked (a person's mention is hop 1), at most hop 3, never
-to the agent's own profile, and within the budget; a refusal is said in the thread. An `@` of an agent in an agent's
+run is for the same person, at one hop more than the run that asked (a person's mention is hop 1), with no limit on the hops,
+never to the agent's own profile, and within the budget; a refusal is said in the thread. An `@` of an agent in an agent's
 reply or post hands no work and is refused nothing: it is a name in the agent's words, so no note shows under it.
 
 **Reactions.** A reaction is one emoji of one person or agent on a message, once each; a message carries at most 20
@@ -1772,7 +1774,7 @@ exit status 1 on the command line), when:
 
 - the person at the origin of the chain holds no grant on the target's project, or no agent has that handle: "no agent
   @x that LOGIN can see";
-- the ask would go past hop 3 (`chat_runs.MAX_HOPS`), or the agent asks itself (`chat_runs.hop_problem`);
+- the agent asks itself (`chat_runs.hop_problem`; hops have no limit);
 - that person may not give the agent work, by the rule a mention keeps: writer on the agent's project, admin for an
   agent type that takes work from the admins alone (`agent_tasking.task_refusal`);
 - the agent was deleted or has no pool of its own (`agent_tasking.work_home`).
@@ -1796,10 +1798,8 @@ and the reaper parks it, so it holds no worker. When the run asked ends, the hub
 (`agent_asks.answer_asker`, from `chat_runs.chat_run_moved`) and the asking run resumes in its session with a message
 that names the decision. A run that ends `done` sends the last message of its agent in its thread, its outputs, its
 branch and repos; the question asks the agent to name in that message the knowledge graph nodes its answer rests on. A
-run that fails or is cancelled sends why. A run asked that goes on in a new run (a parked run resumed, an inbox
-untaken, the next attempt of a run lost) carries both columns, so the run that really ends answers. A run lost answers
-nothing: its worker may come back for it within 10 minutes ([Re-attach](workers.md#re-attach)), which cancels the next
-attempt and has the run go on with the wait still open, and else the next attempt answers when it ends. A wait already answered, by its time (7
+run that fails, is cancelled or is lost sends why. A run asked that goes on in a new run (a parked run resumed, an
+inbox untaken) carries both columns, so the run that really ends answers. A wait already answered, by its time (7
 days) or by a person's Go on now or Stop waiting, is left as it is.
 
 The asking run's thread, or the work chat of its trace, shows each part as a message of the hub: "@reviewer asked @kb-bot of project lumen-kb (run

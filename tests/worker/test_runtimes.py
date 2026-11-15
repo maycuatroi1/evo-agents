@@ -1017,6 +1017,24 @@ def test_claude_with_a_time_cap_waits_for_a_background_command_past_the_wait_and
     assert outcome.completed and outcome.summary == "DONE" and outcome.cap is None
 
 
+def test_claude_with_no_time_cap_waits_for_a_background_command_by_default(tmp_path):
+    async def behaviour(cli: FakeCLI) -> None:
+        await _started_in_background(cli)
+        await asyncio.sleep(0.4)  # longer than any wait a test sets
+        _print(cli, background_end())
+        cli.print(INIT)
+        cli.print(_text("DONE"))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    assert claude_module.BACKGROUND_WAIT is None, "a background command has no time limit"
+    adapter = _claude(tmp_path, behaviour, timers={**SLOW, "background_wait": claude_module.BACKGROUND_WAIT})
+    events, outcome = asyncio.run(_collect(adapter))
+    assert adapter.cli.log[-3:] == [("result", "STARTED"), ("result", "DONE"), ("end_input",)]
+    assert outcome.completed and outcome.summary == "DONE"
+
+
 def test_claude_with_a_time_cap_ends_a_wait_for_a_background_command_at_the_cap(tmp_path):
     async def behaviour(cli: FakeCLI) -> None:
         await _started_in_background(cli)

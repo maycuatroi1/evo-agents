@@ -5805,6 +5805,8 @@
         "entry": "Entry agent <name>@{handle}</name>",
         "limits": "A trace takes up to {runs} runs and {usd}",
         "limitsUsd": "A trace takes any number of runs, up to {usd}",
+        "limitsRuns": "A trace takes up to {runs} runs, at any cost",
+        "limitsNone": "A trace takes any number of runs, at any cost",
         "over": "{steps} pending steps may need about {runs} runs, over the {limit} a trace takes: past it, the hub refuses the trace's next hand-off."
       },
       "trace": {

@@ -49,8 +49,9 @@ here.
   Should no turn open within ``follow_up_after`` seconds of that end, the adapter writes to the agent itself
   (FOLLOW_UP, with the CLI's summary and output file of each command). After a turn in which a background command
   ended, the CLI has ``turn_grace`` seconds to open a turn for its notification. A command that still runs
-  ``background_wait`` seconds after the turn ended is left: the input ends, and the CLI stops it and exits. A run with
-  a time cap waits for the command up to that cap instead, where ``QueueAdapter`` interrupts the agent: a shard of the
+  ``background_wait`` seconds after the turn ended is left: the input ends, and the CLI stops it and exits; by default
+  (None) it is never left, and the run's timeout is the bound. A run with a time cap waits for the command up to that
+  cap instead, where ``QueueAdapter`` interrupts the agent: a shard of the
   tests on a busy worker ran 46 and 57 minutes in release runs #1072 and #1069 of evo-agents, the input ended at 30,
   and Claude Code 2.1.310 then kept the command running but refused the agent's next tool call ("The user doesn't
   want to take this action right now"), so neither run wrote its result. Once the agent has written
@@ -217,8 +218,9 @@ REMOTE_CONTROL_NOTE = (
 MODEL_HELP = re.compile(r"^\s*--model[ =<].*?(?=^\s*-|\Z)", re.M | re.S)
 MODEL_ALIAS = re.compile(r"'([A-Za-z][A-Za-z0-9._\[\]-]*)'")
 # Seconds the session stays open, once a turn has ended, while a command the agent started in the background still
-# runs; then the input ends, and the CLI stops the command and exits. A run with a time cap waits up to that cap.
-BACKGROUND_WAIT = 30 * 60.0
+# runs; then the input ends, and the CLI stops the command and exits. None: no limit, the session stays open until
+# the command ends, the run's time cap when it has one, or its timeout.
+BACKGROUND_WAIT: float | None = None
 # Seconds the CLI has to open a turn by itself once a background command ended while no turn ran, before the adapter
 # writes to the agent (FOLLOW_UP). Claude Code 2.1.291 opens it at once.
 FOLLOW_UP_AFTER = 15.0
@@ -248,8 +250,8 @@ PLAN_WAIT_NOTE = (
     "the hub, a deploy): no Monitor, no loop that sleeps, no long sleep, no watch. Wait with `evo-agents worker wait` "
     "(a GitHub Actions run: --on github.workflow_run --contains repo=OWNER/NAME --contains run_id=ID) and end your "
     "turn: the run parks, holds no worker, and this session goes on when the wait wakes. A command you start in the "
-    "background on this machine needs no watch either: when it ends within 30 minutes of your turn's end, and "
-    "before you write .evo-run/result.json, you are told in a new turn."
+    "background on this machine needs no watch either: when it ends before you write .evo-run/result.json, you are "
+    "told in a new turn."
 )
 # The tools a plan run's session is not offered (the CLI's ``--disallowedTools``): Monitor only waits.
 PLAN_DISALLOWED_TOOLS = ("Monitor",)
@@ -635,7 +637,8 @@ class ClaudeCodeAdapter(QueueAdapter):
         if self.stopping or self.interrupted or self._result_written():
             await self._close_input()
         elif self.background.pending:
-            if self._time_cap is None:  # a run's time cap ends the wait itself, by interrupting the agent
+            # a run's time cap ends the wait itself, by interrupting the agent; with no background_wait, its timeout
+            if self._time_cap is None and self.background_wait is not None:
                 self._arm(self.background_wait, self._leave_background)
         elif ended_in_turn:
             self._arm(self.turn_grace, self._close_input)

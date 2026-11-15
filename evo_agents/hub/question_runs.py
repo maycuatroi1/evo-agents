@@ -4,7 +4,8 @@ JSON values, standard library only, so the api and the worker daemon share them.
 
 A core plugin asks with ``core_plugin_api.ask_agent_type`` (``evo_agents.hub.server.question_dispatch``): the hub
 queues a run of kind question under the type's profile, dispatched by its ``run_as``, with the question as its request
-and what is left of the type's cap (the cap its task runs share, ``task_runs.BUDGET_HOURS``) as its cost cap. The run
+and what is left of the type's cap (the cap its task runs share, ``task_runs.BUDGET_HOURS``) as its cost cap, and no
+time cap (``run_budget``). The run
 is one headless turn of the agent in a read-only worktree of each repo of the project, detached at its default branch:
 it changes nothing, pushes nothing and sends no output; on the hub's MCP it reads as a reader, up to the level of the
 project's default label. The agent writes its answer in RESULT_FILE under ``"answer"``; the worker sends it, cut to
@@ -18,7 +19,7 @@ from __future__ import annotations
 
 import re
 
-from evo_agents.hub.runs import MAX_PROMPT_BYTES, RESULT_DIR, RESULT_FILE, clip
+from evo_agents.hub.runs import LONGEST_TIMEOUT_MIN, MAX_PROMPT_BYTES, RESULT_DIR, RESULT_FILE, clip
 
 ANSWER_EVENT = "agent.answer"  # the event a core plugin gets when a question run of its agent type ends
 RESULT_STATES = ("done", "failed", "cancelled")  # the ends of a question run, its one attempt
@@ -28,8 +29,7 @@ MAX_QUESTION_BYTES = 4096  # the question's text, in UTF-8
 MAX_ASKER_CHARS = 200
 MAX_REF_CHARS = 200
 MAX_ANSWER_CHARS = 8000  # the answer the worker sends (runs.models.StateReport.answer)
-TIMEOUT_MIN = 15  # the agent time of one question run
-TIME_CAP_SECONDS = 600  # and its time cap, what the runtime stops at
+TIMEOUT_MIN = LONGEST_TIMEOUT_MIN  # the agent time of one question run, where a hung agent fails; no time cap
 QUEUE_SECONDS = 600  # a question run still queued this long after it was queued fails: no_worker
 MAX_ATTEMPTS = 1  # a lost question run fails: asking again is the plugin's, with a new ref
 LINE = re.compile(r"[^\x00-\x1f\x7f]+")  # one line, no control characters (runs.models.LINE)
@@ -66,8 +66,8 @@ def line_problem(name: str, value, limit: int) -> str | None:
 
 
 def run_budget(left_usd: float) -> dict:
-    """The caps of a question run when ``left_usd`` of its agent type's cap is left: that cost, and TIME_CAP_SECONDS."""
-    return {"max_usd": round(max(left_usd, 0.0), 4), "max_seconds": TIME_CAP_SECONDS}
+    """The caps of a question run when ``left_usd`` of its agent type's cap is left: that cost, and no time cap."""
+    return {"max_usd": round(max(left_usd, 0.0), 4)}
 
 
 def spent_problem(spent_usd: float, cap_usd: float, agent_type: str, hours: int) -> str | None:
