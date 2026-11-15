@@ -71,7 +71,9 @@ def hub(hub_db, tmp_path, github, s3):
 
 def transcript(tmp_path: Path, lines: list | None = None, name: str = "t.jsonl") -> Path:
     path = tmp_path / name
-    path.write_text("".join(json.dumps(line) + "\n" for line in (lines or session_lines())), encoding="utf-8")
+    path.write_text(
+        "".join(json.dumps(line) + "\n" for line in (lines or session_lines())), encoding="utf-8", newline="\n"
+    )
     return path
 
 
@@ -420,7 +422,7 @@ def codex_rollout(cwd: str) -> list[dict]:
 
 def write(path: Path, lines: list[dict]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8")
+    path.write_text("".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8", newline="\n")
     return path
 
 
@@ -504,7 +506,7 @@ def test_backfill_sends_every_transcript_of_the_machine_once_and_a_second_run_se
         bad = evo(m.home, "sessions", "backfill", "--since", "last week")
         assert bad.returncode == 2 and "--since" in bad.stderr
 
-        with open(m.main, "a", encoding="utf-8") as handle:
+        with open(m.main, "a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(said("the session goes on", 20)) + "\n")
         grown = report(evo(m.home, "sessions", "sync", "--json"))
         assert grown["uploaded"]["parts"] == 1 and grown["missing"] == 0
