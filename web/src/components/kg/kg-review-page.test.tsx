@@ -55,7 +55,7 @@ const item = (fingerprint: string, extra: Partial<ReviewItem> = {}): ReviewItem 
 });
 
 const counts = (open: Partial<Record<ReviewItem["rule"], number>>) =>
-  (["dangling_mention", "unmentioned_document", "cluster_without_knowledge", "possible_duplicate", "ambiguous_match", "bulk_noise", "conflicting_claim"] as const).map((rule) => ({
+  (["dangling_mention", "unmentioned_document", "cluster_without_knowledge", "possible_duplicate", "ambiguous_match", "bulk_noise", "conflicting_claim", "wrong_endpoint", "cardinality", "cycle", "duplicate_key", "missing_prop"] as const).map((rule) => ({
     rule,
     open: open[rule] ?? 0,
     dismissed: 0,

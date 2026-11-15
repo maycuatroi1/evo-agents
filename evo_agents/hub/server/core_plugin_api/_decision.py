@@ -31,19 +31,19 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import kg_decisions, runs, tables
+from evo_agents.hub import kg_decisions, kg_snapshots, runs, tables
 from evo_agents.hub.access import ProjectRules
-from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.jobs import JobQueue
-from evo_agents.hub.kg_build import kg_root, queue_if_configured
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphOutdated, GraphUnavailable
+from evo_agents.hub.kg_build import queue_if_configured
+from evo_agents.hub.kg_graph import GraphUnavailable
 from evo_agents.hub.kg_web import GraphProblem, WebSession, read
 from evo_agents.hub.redact import redact
 from evo_agents.hub.server import audit as audit_log
 from evo_agents.hub.server.core_plugin_api._reads import enabled_project
 from evo_agents.hub.server.core_plugin_api._types import EgressSink, Plugin, Refused, own_plugin
 from evo_agents.hub.server.kg import GRAPHS_TRIED, built_graphs
+from evo_agents.hub.server.kg_health import _snapshotted
 from evo_agents.hub.server.run_cause import CAUSE_KEY, CLASSIFIED, classified
 from evo_agents.hub.server.run_state import write_event
 from evo_agents.hub.signals import project_rules
@@ -60,7 +60,6 @@ MAX_REASON_CHARS = kg_decisions.MAX_REASON_CHARS
 NO_SINK = "project {project} declares no sink {sink} in its policy, or it clears no level its ladder knows"
 NO_RUN = "project {project} has no run {run}"
 NO_GRAPH = "project {project} has no graph on the hub yet"
-GRAPH_CACHE = "decisions"  # the directory of the hub's kg data (``kg_root``) the graphs a plugin reads are fetched into
 
 DECISION_KINDS = kg_decisions.KINDS
 
@@ -484,25 +483,20 @@ async def read_accepted_rules(
 async def _graph(
     conn: AsyncConnection, config: HubConfig, project_id: int, project: str, rules: ProjectRules, sink: str, reader
 ):
-    """``reader(session)`` over the project's newest graph read through ``sink``'s ceiling, and its build id; (None, None)
-    when no build succeeded yet."""
+    """``reader(session)`` over the project's newest graph read through ``sink``'s ceiling, and its build id: the snapshot
+    of the hub's tables when it is of one of the builds; (None, None) when no build succeeded
+    yet."""
     graphs = await built_graphs(conn, project_id, GRAPHS_TRIED)
     if not graphs:
         return None, None
     ceiling = rules.ceiling(rules.levels[-1], sink)
-    blobs = BlobStore.from_config(config)
-    cache = GraphCache(kg_root(config.data_dir) / GRAPH_CACHE, keep=1)
+    snapshot = _snapshotted(await kg_snapshots.load_on(conn, project_id), graphs, ceiling)
     try:
-        data, graph = await asyncio.to_thread(read, cache, blobs, project, rules.policy, ceiling, graphs, reader)
-    except (GraphOutdated, GraphUnavailable) as exc:
+        data, graph = await asyncio.to_thread(read, project, rules.policy, ceiling, graphs, reader, snapshot)
+    except GraphUnavailable as exc:
         raise Refused(503, str(exc)) from None
-    except ArtifactMismatch as exc:
-        raise Refused(502, str(exc)) from None
     except GraphProblem as exc:
         raise Refused(503, f"the graph of project {project} cannot be read: {exc}") from None
-    finally:
-        if blobs is not None:
-            blobs.close()
     return data, graph.build_id
 
 

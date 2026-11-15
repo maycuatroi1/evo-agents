@@ -30,11 +30,10 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import kg_questions as model
-from evo_agents.hub import runs, tables
+from evo_agents.hub import kg_snapshots, runs, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.kg_build import kg_root
 from evo_agents.hub.kg_eval_starter import set_digest
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, open_graph
+from evo_agents.hub.kg_graph import GraphUnavailable, reading
 from evo_agents.hub.server import audit, kg_eval_sets, kg_health
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -47,7 +46,6 @@ from evo_agents.kg.evaluate import HOLDOUT, split_of
 
 log = logging.getLogger(__name__)
 
-CACHE = "questions"  # the directory of the worker's cache (``kg_root``) the graphs read here are fetched into
 MAX_QUESTIONS = 2000
 
 router = APIRouter(prefix="/v1/kg", tags=["kg"], responses={401: {"model": ErrorBody}})
@@ -64,29 +62,23 @@ async def _read_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, re
     as its owner's agents read it, in a thread; {"why": ...} when it cannot."""
     async with engine.begin() as conn:
         graphs = await built_graphs(conn, row.project_id, kg_health.GRAPHS_TRIED)
-        access, sink, why = await kg_health._owner_reads(conn, row, blobs, data_dir, graphs, agent=True)
+        access, sink, why = await kg_health._owner_reads(conn, row, graphs, agent=True)
         if why is not None:
             return {"why": why}
         audience = await agent_audience(conn, row.owner_id, None, None)
     label = access.rules.ceiling(access.max_level, sink, audience)
     ceiling = (label.level, label.location) if label else None
-    cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
 
-    def blocking() -> dict:
-        path, graph = cache.acquire(blobs, row.project, graphs)
-        try:
-            store = open_graph(path, row.project, graph)
-            try:
-                store.reader = audience
-                return {"sink": sink, **read(store, ceiling)}
-            finally:
-                store.close()
-        finally:
-            cache.release(path)
+    def blocking(loaded) -> dict:
+        snapshot = kg_health._snapshotted(loaded, graphs, None)
+        with reading(row.project, snapshot) as (store, _):
+            store.reader = audience
+            return {"sink": sink, **read(store, ceiling)}
 
     try:
-        return await asyncio.to_thread(blocking)
-    except (GraphUnavailable, ArtifactMismatch) as exc:
+        loaded = await kg_snapshots.load(engine, row.project_id)
+        return await asyncio.to_thread(blocking, loaded)
+    except GraphUnavailable as exc:
         return {"why": str(exc)}
     except Exception as exc:
         log.exception("reading the graph for starter questions failed", extra={"project": row.project})

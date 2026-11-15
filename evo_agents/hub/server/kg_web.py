@@ -52,11 +52,11 @@ from evo_agents.hub.kg_entity_graph import (
     MAX_ENTITY_NODES,
     TOP_NODES,
 )
-from evo_agents.hub.kg_graph import ArtifactMismatch, BuiltGraph, GraphOutdated, GraphUnavailable
+from evo_agents.hub.kg_graph import BuiltGraph, GraphUnavailable
 from evo_agents.hub.kg_web import MAX_HOPS, MAX_NODES, SEARCH_LIMIT, GraphProblem, NotVisible, WebSession, read
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg import built_graphs, rebuild_outdated
+from evo_agents.hub.server.kg import built_graphs, snapshot_view
 from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
@@ -64,7 +64,7 @@ from evo_agents.kg.graph_scope import DEFAULT_GRAPH, GraphScope
 
 log = logging.getLogger(__name__)
 
-GRAPHS_TRIED = 10  # successful builds holding an artifact tried, newest first, when the newest cannot be fetched
+GRAPHS_TRIED = 10  # kept graphs a page may find its snapshot among: the newest, or one it still holds
 
 router = APIRouter(
     prefix="/v1/kg",
@@ -241,18 +241,11 @@ async def read_graph(request: Request, user, project: str, reader):
     if not graphs:
         return None, None
     ceiling = access.rules.grant_label(access.max_level, audience)
+    snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     try:
-        data, graph = await asyncio.to_thread(
-            read, state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, graphs, reader
-        )
-    except GraphOutdated as exc:
-        await rebuild_outdated(state, access.project_id, project)
-        raise HTTPException(503, str(exc)) from None
+        data, graph = await asyncio.to_thread(read, project, access.rules.policy, ceiling, graphs, reader, snapshot)
     except GraphUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
-    except ArtifactMismatch as exc:
-        log.error("kg graph artifact refused", extra={"project": project, "build_id": graphs[0].build_id})
-        raise HTTPException(502, str(exc)) from None
     except GraphProblem as exc:
         log.error("kg graph unreadable", extra={"project": project, "build_id": graphs[0].build_id})
         raise HTTPException(503, f"the graph of project {project} cannot be read: {exc}") from None

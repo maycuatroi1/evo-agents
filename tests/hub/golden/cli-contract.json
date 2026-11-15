@@ -12664,7 +12664,12 @@
             "possible_duplicate",
             "ambiguous_match",
             "bulk_noise",
-            "conflicting_claim"
+            "conflicting_claim",
+            "wrong_endpoint",
+            "cardinality",
+            "cycle",
+            "duplicate_key",
+            "missing_prop"
           ]
         },
         {
@@ -37670,7 +37675,12 @@
                       "possible_duplicate",
                       "ambiguous_match",
                       "bulk_noise",
-                      "conflicting_claim"
+                      "conflicting_claim",
+                      "wrong_endpoint",
+                      "cardinality",
+                      "cycle",
+                      "duplicate_key",
+                      "missing_prop"
                     ],
                     "type": "string"
                   },
@@ -114337,7 +114347,12 @@
                 "possible_duplicate",
                 "ambiguous_match",
                 "bulk_noise",
-                "conflicting_claim"
+                "conflicting_claim",
+                "wrong_endpoint",
+                "cardinality",
+                "cycle",
+                "duplicate_key",
+                "missing_prop"
               ],
               "title": "Rule"
             },
@@ -114405,7 +114420,12 @@
                       "possible_duplicate",
                       "ambiguous_match",
                       "bulk_noise",
-                      "conflicting_claim"
+                      "conflicting_claim",
+                      "wrong_endpoint",
+                      "cardinality",
+                      "cycle",
+                      "duplicate_key",
+                      "missing_prop"
                     ]
                   },
                   "type": "array"
@@ -117233,6 +117253,11 @@
               ],
               "title": "Runs"
             },
+            "graph_kept": {
+              "type": "boolean",
+              "title": "Graph Kept",
+              "description": "its graph is in the hub's tables, or was until a newer build replaced it: the newest such build is the graph the reads answer from"
+            },
             "artifact_sha256": {
               "anyOf": [
                 {
@@ -117243,7 +117268,7 @@
                 }
               ],
               "title": "Artifact Sha256",
-              "description": "the graph file in the blob store; null until the build succeeded, and once it was pruned"
+              "description": "the graph file an older build put in the blob store; null for a build since the hub keeps the graph in its tables, and once it was pruned"
             },
             "artifact_size": {
               "anyOf": [
@@ -117363,6 +117388,7 @@
             "requested_by",
             "config_digest",
             "runs",
+            "graph_kept",
             "artifact_sha256",
             "artifact_size",
             "artifact_reused_from",
@@ -168911,7 +168937,12 @@
                 "possible_duplicate",
                 "ambiguous_match",
                 "bulk_noise",
-                "conflicting_claim"
+                "conflicting_claim",
+                "wrong_endpoint",
+                "cardinality",
+                "cycle",
+                "duplicate_key",
+                "missing_prop"
               ],
               "title": "Rule"
             },
@@ -169229,7 +169260,12 @@
                 "possible_duplicate",
                 "ambiguous_match",
                 "bulk_noise",
-                "conflicting_claim"
+                "conflicting_claim",
+                "wrong_endpoint",
+                "cardinality",
+                "cycle",
+                "duplicate_key",
+                "missing_prop"
               ],
               "title": "Rule"
             },
@@ -169976,7 +170012,12 @@
                 "possible_duplicate",
                 "ambiguous_match",
                 "bulk_noise",
-                "conflicting_claim"
+                "conflicting_claim",
+                "wrong_endpoint",
+                "cardinality",
+                "cycle",
+                "duplicate_key",
+                "missing_prop"
               ],
               "title": "Rule"
             },
@@ -173975,11 +174016,10 @@
               "type": "string",
               "enum": [
                 "old",
-                "live",
-                "newest"
+                "live"
               ],
               "title": "State",
-              "description": "newest: the graph the kg tools read; live: a source blob a run in use refers to; old: neither"
+              "description": "live: a source blob a run in use refers to; old: a graph file, or a source blob no run in use refers to"
             },
             "secrets": {
               "additionalProperties": {
@@ -174009,6 +174049,35 @@
           ],
           "title": "ScrubFound"
         },
+        "ScrubGraph": {
+          "properties": {
+            "rows": {
+              "type": "integer",
+              "title": "Rows",
+              "description": "rows of the graph in the hub's tables read: nodes, edges and full-text rows"
+            },
+            "holding": {
+              "type": "integer",
+              "title": "Holding",
+              "description": "those holding a secret; in use, never purged"
+            },
+            "secrets": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Secrets",
+              "description": "the secrets they hold, by kind; never a value"
+            }
+          },
+          "type": "object",
+          "required": [
+            "rows",
+            "holding",
+            "secrets"
+          ],
+          "title": "ScrubGraph"
+        },
         "ScrubKept": {
           "properties": {
             "sha256": {
@@ -174018,7 +174087,6 @@
             "reason": {
               "type": "string",
               "enum": [
-                "newest",
                 "live",
                 "clean",
                 "missing",
@@ -174040,6 +174108,17 @@
             "project": {
               "type": "string",
               "title": "Project"
+            },
+            "graph": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ScrubGraph"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "on the first page only: the graph the kg tools read, from the hub's tables"
             },
             "scanned": {
               "type": "integer",

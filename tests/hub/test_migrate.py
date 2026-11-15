@@ -182,6 +182,15 @@ TABLES |= {"workflow_run_reads"}  # migration 0236
 TABLES |= {"plan_run_choices"}  # migration 0238
 TABLES |= {"ops_cursors", "ops_batches", "ops_items"}  # migration 0240
 TABLES |= {"cron_jobs", "cron_fires"}  # migration 0243
+TABLES |= {"kg_corpus_items", "kg_memo_entries", "kg_nodes", "kg_edges", "kg_text_rows", "kg_provenance"}  # 0248
+TABLES |= {
+    "kg_asked",
+    "kg_review_rows",
+    "kg_embeddings",
+    "kg_graph_heads",
+    "kg_branches",
+    "kg_branch_ops",
+}  # migration 0248
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -272,8 +281,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_forty_four_tables(hub_db):
-    assert len(TABLES) == 244  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_fifty_six_tables(hub_db):
+    assert len(TABLES) == 256  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -295,6 +304,7 @@ def test_a_fresh_database_gets_the_two_hundred_and_forty_four_tables(hub_db):
         ("credential_leases", "nonce"),
         ("credential_leases", "sealed_value"),
         ("credential_leases", "token_hash"),
+        ("kg_embeddings", "vector"),  # a float16 vector, as the store file's node_vec holds it
         ("marketing_posts", "screenshot"),
         ("secrets", "nonce"),
         ("secrets", "sealed"),
@@ -6193,3 +6203,77 @@ def test_0247_gives_credential_shares_a_run_for_a_member_alone_and_going_back_re
     revoked = select(cs.c.id, cs.c.revoked_at.is_not(None)).order_by(cs.c.id)
     assert query(hub_db, revoked) == [(before, False), (for_run, True)], "one for a run would lend to every run"
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0247") :]
+
+
+def test_0248_adds_the_graph_tables_and_going_back_drops_them(hub_db):
+    graph = {"kg_corpus_items", "kg_memo_entries", "kg_nodes", "kg_edges", "kg_text_rows", "kg_provenance"}
+    graph |= {"kg_asked", "kg_review_rows", "kg_embeddings", "kg_graph_heads", "kg_branches", "kg_branch_ops"}
+    move_to(hub_db, "0247")
+    assert not graph & tables(hub_db)
+    move_to(hub_db, "0248")
+    assert graph <= tables(hub_db)
+    move_to(hub_db, "0247", down=True)
+    assert not graph & tables(hub_db)
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0248") :]
+
+
+def test_0248_lets_a_succeeded_build_hold_no_graph_file_and_going_back_fails_those(hub_db):
+    """Since 0248 a build keeps its graph in the tables and succeeds with no artifact; a build that did not succeed
+    still holds none. Going back fails a succeeded build with no artifact and none pruned from it, which the earlier
+    revision cannot read, and keeps a build with a graph file and one pruned."""
+    builds = hub_tables.kg_builds
+    move_to(hub_db, "0247")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        with_file = one(conn, build(ids["project"], "a" * 64, "sha256:" + "c" * 64))
+        pruned = one(conn, build(ids["project"], "b" * 64, "sha256:" + "c" * 64))
+        conn.execute(
+            update(builds).values(artifact_sha256=None, artifact_pruned_at=func.now()).where(builds.c.id == pruned)
+        )
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # before 0248 a success holds a file
+        conn.execute(build(ids["project"], None, "sha256:" + "d" * 64))
+    move_to(hub_db, "0248")
+    with live.connect(hub_db) as conn:
+        in_tables = one(conn, build(ids["project"], None, "sha256:" + "d" * 64))
+        conn.execute(update(builds).values(artifact_size=None).where(builds.c.id == in_tables))
+        for bad in (
+            update(builds).values(content_hash=None).where(builds.c.id == in_tables),  # a success is still counted
+            insert(builds).values(project_id=ids["project"], status="failed", artifact_sha256="e" * 64),
+            insert(builds).values(project_id=ids["project"], status="queued", artifact_pruned_at=func.now()),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+    move_to(hub_db, "0247", down=True)
+    kept = select(builds.c.id, builds.c.status, builds.c.error).order_by(builds.c.id)
+    (a, b, c) = query(hub_db, kept)
+    assert a == (with_file, "succeeded", None) and b == (pruned, "succeeded", None)
+    assert c[:2] == (in_tables, "failed") and "tables" in c[2]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0248") :]
+
+
+def test_0249_lets_a_dismissal_name_the_ontology_rules_and_going_back_deletes_those(hub_db):
+    move_to(hub_db, "0248")
+    d = hub_tables.kg_review_dismissals
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        row = {
+            "project_id": ids["project"],
+            "fingerprint": "r:0123456789abcdef",
+            "rule": "conflicting_claim",
+            "reason": "both hold",
+            "dismissed_by": ids["user"],
+        }
+        conn.execute(insert(d).values(row))
+    cycle = {**row, "fingerprint": "r:fedcba9876543210", "rule": "cycle", "reason": "the loop is on purpose"}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(insert(d).values(cycle))
+    move_to(hub_db, "0249")
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(d).values(cycle))
+        conn.execute(insert(d).values({**cycle, "fingerprint": "r:1", "rule": "missing_prop"}))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(insert(d).values({**cycle, "fingerprint": "r:2", "rule": "whatever"}))
+    assert query(hub_db, select(d.c.rule).order_by(d.c.rule)) == [("conflicting_claim",), ("cycle",), ("missing_prop",)]
+    move_to(hub_db, "0248", down=True)
+    assert query(hub_db, select(d.c.rule)) == [("conflicting_claim",)], "the other dismissals stay"
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0249") :]

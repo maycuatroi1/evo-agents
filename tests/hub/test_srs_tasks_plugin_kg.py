@@ -184,7 +184,7 @@ def test_srs_tasks_plugin_graph_on_the_hub_traces_a_use_case_to_its_task_step_an
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     same = build_rows(hub)[0]
     assert same["id"] != built["id"] and same["content_hash"] == built["content_hash"]
-    assert same["artifact_reused_from"] == built["id"]
+    assert same["graph_kept"] and same["artifact_sha256"] is None  # its graph is in the tables; no file uploaded
     checked = build_project(worker_project(hub.worker_dir, PROJECT), verify=True)
     assert checked.ok and checked.verify["match"] and checked.content_hash == built["content_hash"]
 

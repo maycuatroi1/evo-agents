@@ -15634,7 +15634,7 @@ export interface components {
              * Rule
              * @enum {string}
              */
-            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim";
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim" | "wrong_endpoint" | "cardinality" | "cycle" | "duplicate_key" | "missing_prop";
             /**
              * Whole
              * @description true when every decision of the item's fix is taken or was said already
@@ -15666,7 +15666,7 @@ export interface components {
              * Rules
              * @description only the items of these rules; every rule when null
              */
-            rules?: ("dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim")[] | null;
+            rules?: ("dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim" | "wrong_endpoint" | "cardinality" | "cycle" | "duplicate_key" | "missing_prop")[] | null;
             /**
              * Dry Run
              * @description say what would be decided and decide nothing
@@ -16965,8 +16965,13 @@ export interface components {
             /** Runs */
             runs: number | null;
             /**
+             * Graph Kept
+             * @description its graph is in the hub's tables, or was until a newer build replaced it: the newest such build is the graph the reads answer from
+             */
+            graph_kept: boolean;
+            /**
              * Artifact Sha256
-             * @description the graph file in the blob store; null until the build succeeded, and once it was pruned
+             * @description the graph file an older build put in the blob store; null for a build since the hub keeps the graph in its tables, and once it was pruned
              */
             artifact_sha256: string | null;
             /** Artifact Size */
@@ -39471,7 +39476,7 @@ export interface components {
              * Rule
              * @enum {string}
              */
-            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim";
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim" | "wrong_endpoint" | "cardinality" | "cycle" | "duplicate_key" | "missing_prop";
             /** Cluster */
             cluster: string | null;
             /** Cluster Label */
@@ -39595,7 +39600,7 @@ export interface components {
              * Rule
              * @enum {string}
              */
-            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim";
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim" | "wrong_endpoint" | "cardinality" | "cycle" | "duplicate_key" | "missing_prop";
             /**
              * Action
              * @description what the rule suggests: fix_mention, link_or_deprecate, add_knowledge, merge, disambiguate, exclude or check_claims
@@ -39956,7 +39961,7 @@ export interface components {
              * Rule
              * @enum {string}
              */
-            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim";
+            rule: "dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim" | "wrong_endpoint" | "cardinality" | "cycle" | "duplicate_key" | "missing_prop";
             /** Open */
             open: number;
             /** Dismissed */
@@ -55317,7 +55322,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description only the items of this rule */
-                rule?: ("dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim") | null;
+                rule?: ("dangling_mention" | "unmentioned_document" | "cluster_without_knowledge" | "possible_duplicate" | "ambiguous_match" | "bulk_noise" | "conflicting_claim" | "wrong_endpoint" | "cardinality" | "cycle" | "duplicate_key" | "missing_prop") | null;
                 /** @description only the items of this cluster */
                 cluster?: string | null;
                 /** @description which items to list */

@@ -30,7 +30,7 @@ from datetime import datetime
 from evo_agents.hub.facets import KG_LOOKUPS
 from evo_agents.kg import freshness
 from evo_agents.kg.connectors._files import excluded, selected
-from evo_agents.kg.review import RULES as REVIEW_RULES
+from evo_agents.kg.review import ONTOLOGY_RULES
 
 MAX_FILES = 50_000  # files of one git source a build keeps; past that the list is cut and says so
 SAMPLES = 5  # paths, sessions and runs an entry names
@@ -386,10 +386,14 @@ REVIEW_WORDS = {
     "ambiguous_match": "mentions and links of the knowledge graph that matched one of several nodes by name",
     "bulk_noise": "groups of images, generated files and repeated plan steps in the knowledge graph",
     "conflicting_claim": "pairs of claims two documents of the knowledge graph state differently",
+    # the five rules of the ontology (wrong_endpoint, cardinality, cycle, duplicate_key, missing_prop) count as one
+    "ontology": "edges, cycles and nodes of the knowledge graph that break a rule its ontology states",
 }
 
 
 def _review_metric(rule: str):
+    if rule == "ontology":
+        return lambda figure: sum(review_open(figure, one) for one in ONTOLOGY_RULES)
     return lambda figure: review_open(figure, rule)
 
 
@@ -419,9 +423,9 @@ METRICS = {
     "kg_unclicked": ("percent of kg searches with results whose files the agent did not open", unclicked_percent),
 }
 METRICS.update(
-    {f"kg_review_{rule}": (f"open review items: {REVIEW_WORDS[rule]}", _review_metric(rule)) for rule in REVIEW_RULES}
+    {f"kg_review_{rule}": (f"open review items: {REVIEW_WORDS[rule]}", _review_metric(rule)) for rule in REVIEW_WORDS}
 )
-REVIEW = frozenset(f"kg_review_{rule}" for rule in REVIEW_RULES)  # open items of the review queue, per rule
+REVIEW = frozenset(f"kg_review_{rule}" for rule in REVIEW_WORDS)  # open items of the review queue, per rule
 # what agents get from a lookup: a size or a share, not a count that grows with the activity
 RETRIEVAL_LEVELS = frozenset(
     {"kg_lookup_tokens_p50", "kg_lookup_tokens_p90", "kg_answer_tokens", "kg_grep_after", "kg_unclicked"}

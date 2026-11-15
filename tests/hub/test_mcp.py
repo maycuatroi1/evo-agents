@@ -934,7 +934,35 @@ def install_graph(db, cache: Path, laptop) -> None:
         func.now(),
     ).where(projects.c.name == PROJECT)
     columns = ["project_id", "status", "artifact_sha256", "artifact_size", "content_hash", "nodes", "edges"]
-    live.sql(db, insert(tables.kg_builds).from_select([*columns, "started_at", "finished_at"], build))
+    built = insert(tables.kg_builds).from_select([*columns, "started_at", "finished_at"], build)
+    ((build_id, project_id),) = live.sql(db, built.returning(tables.kg_builds.c.id, tables.kg_builds.c.project_id))
+    keep_rows(db, project_id, build_id, target)
+
+
+def keep_rows(db, project_id: int, build_id: int, path: Path) -> None:
+    """The rows of the graph file at ``path`` in the hub's graph tables (``kg_graph_rows``) as build ``build_id``."""
+    import asyncio
+
+    from evo_agents.hub import kg_graph_rows
+    from evo_agents.kg.snapshot import store_rows
+    from evo_agents.kg.store import Store
+    from tests.hub.test_kg_postgres_build import make_engine
+
+    store = Store.open_file(path, immutable=True)
+    try:
+        rows = store_rows(store, store.latest_ready())
+    finally:
+        store.close()
+
+    async def keep():
+        engine = make_engine(db)
+        try:
+            async with engine.begin() as conn:
+                await kg_graph_rows.write_graph(conn, project_id, build_id, rows)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(keep())
 
 
 MCP_HEADERS = {"Accept": "application/json", "Content-Type": "application/json", "MCP-Protocol-Version": "2025-11-25"}

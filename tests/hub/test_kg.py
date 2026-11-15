@@ -55,7 +55,6 @@ from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import HubContext, connector, queue
 from evo_agents.kg import build as kg_build_module
 from evo_agents.kg import serve
-from evo_agents.kg import store as kg_store
 from evo_agents.kg.build import build_project
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import load_project_at
@@ -390,14 +389,9 @@ def test_a_pushed_run_is_built_by_the_worker_and_answered_by_kg_tools(hub, tmp_p
     assert build["status"] == "succeeded", build
     assert build["runs"] == 1 and build["nodes"] > 0 and build["edges"] > 0
     assert build["content_hash"].startswith("sha256:") and build["requested_by"] is None
-    artifact = hub.s3.get(blob_key(build["artifact_sha256"]))
-    assert (
-        artifact is not None and sha(artifact) == build["artifact_sha256"] and len(artifact) == build["artifact_size"]
-    )
+    assert build["graph_kept"] and build["artifact_sha256"] is None  # its graph is in the tables: no file uploaded
     blobs = tables.blobs
-    assert query(
-        hub.db, select(blobs.c.kind, blobs.c.created_by).where(blobs.c.sha256 == build["artifact_sha256"])
-    ) == [("kg-graph", None)]
+    assert query(hub.db, select(blobs.c.kind).where(blobs.c.kind == "kg-graph")) == []
 
     found = tool_ok(hub, "kg_search", {"query": "guide"})
     assert found["structuredContent"]["project"] == PROJECT
@@ -405,8 +399,7 @@ def test_a_pushed_run_is_built_by_the_worker_and_answered_by_kg_tools(hub, tmp_p
     status = tool_ok(hub, "kg_status")["structuredContent"]
     assert status["graph"]["nodes"] == build["nodes"] and status["graph"]["edges"] == build["edges"]
     assert status["hub_build"]["build_id"] == build["id"] and status["hub_build"]["latest"]
-    cached = sorted(p.name for p in (hub.api_dir / "kg" / "graphs" / PROJECT).iterdir())
-    assert cached == [f"{build['artifact_sha256']}.sqlite"]
+    assert not (hub.api_dir / "kg" / "graphs" / PROJECT).exists()  # the tools read the snapshot of the tables
 
 
 def test_pushing_the_same_run_twice_ingests_it_once(hub, tmp_path):
@@ -802,10 +795,10 @@ def test_a_build_with_nothing_new_builds_nothing_and_points_at_the_same_artifact
             run_jobs(hub.db, hub.s3, hub.worker_dir)
     second = latest(hub)
     assert second["id"] != first["id"] and second["status"] == "succeeded", second
-    assert (second["content_hash"], second["artifact_sha256"]) == (first["content_hash"], first["artifact_sha256"])
+    assert second["content_hash"] == first["content_hash"] and second["graph_kept"]
     assert (second["nodes"], second["edges"]) == (first["nodes"], first["edges"])
     (done,) = [r for r in caplog.records if r.getMessage() == "kg build succeeded"]
-    assert done.skipped is True and done.artifact_reused_from == first["id"]
+    assert done.skipped is True
     assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
 
     laptop.sync("docs", doc("guide", "Edited.", rev="2"), doc("setup", "Install it."))
@@ -819,52 +812,7 @@ def test_a_build_with_nothing_new_builds_nothing_and_points_at_the_same_artifact
     assert done.skipped is False
 
 
-def test_an_artifact_that_does_not_match_its_sha256_is_never_opened(hub, tmp_path):
-    laptop = Machine(tmp_path, "laptop")
-    laptop.sync("docs", doc("guide", "How the app works."))
-    assert push(hub, laptop).ok
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
-    build = latest(hub)
-    good = hub.s3.get(blob_key(build["artifact_sha256"]))
-    hub.s3.put(blob_key(build["artifact_sha256"]), bytes(reversed(good)))  # same size, other bytes
-
-    refused = call_tool(hub, "kg_search", {"query": "guide"})
-    assert refused.status_code == 502
-    assert "does not have the SHA-256 the build recorded" in refused.json()["message"]
-    graphs = hub.api_dir / "kg" / "graphs" / PROJECT
-    assert not graphs.exists() or list(graphs.iterdir()) == []  # neither the file nor a part of it stays
-
-    hub.s3.put(blob_key(build["artifact_sha256"]), good)
-    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
-
-
-def test_a_graph_of_an_older_store_schema_is_rebuilt_rather_than_served_broken(hub, tmp_path, monkeypatch):
-    laptop = Machine(tmp_path, "laptop")
-    laptop.sync("docs", doc("guide", "How the app works."))
-    assert push(hub, laptop).ok
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
-    old = latest(hub)
-    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
-
-    # The hub is upgraded to a store schema the artifact was not written with.
-    monkeypatch.setattr(kg_store, "SCHEMA_VERSION", str(int(kg_store.SCHEMA_VERSION) + 1))
-    refused = call_tool(hub, "kg_search", {"query": "guide"})
-    assert refused.status_code == 503, refused.text
-    assert f"(build {old['id']}) was written with store schema" in refused.json()["message"]
-    page = hub.client.get(f"/v1/kg/{PROJECT}/nodes", params={"q": "guide"}, headers=hub.alice)
-    assert page.status_code == 503 and "a new build of it is queued" in page.json()["message"]
-    queued = latest(hub)
-    assert queued["status"] == "queued" and queued["requested_by"] is None
-    assert len([b for b in build_rows(hub) if b["status"] == "queued"]) == 1  # the second refusal found it waiting
-
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
-    rebuilt = latest(hub)
-    assert rebuilt["id"] == queued["id"] and rebuilt["status"] == "succeeded"
-    assert rebuilt["content_hash"] != old["content_hash"] and rebuilt["artifact_sha256"] != old["artifact_sha256"]
-    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
-
-
-def test_kg_tools_answer_from_the_cached_graph_when_the_blob_store_is_down(hub, tmp_path):
+def test_kg_tools_answer_from_the_loaded_snapshot_when_the_blob_store_is_down(hub, tmp_path):
     laptop = Machine(tmp_path, "laptop")
     laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it."))
     assert push(hub, laptop).ok
@@ -874,22 +822,23 @@ def test_kg_tools_answer_from_the_cached_graph_when_the_blob_store_is_down(hub, 
 
     hub.s3.stop()
     assert tool_ok(hub, "kg_search", {"query": "guide"}) == before
-    # a newer build whose graph is not cached yet: the cached one answers, and kg_status says so
+    # a newer succeeded build whose graph the tables do not hold: not the graph in use, the held one answers
     projects = tables.projects
-    query(
+    ((newer,),) = query(
         hub.db,
-        insert(tables.kg_builds).values(
+        insert(tables.kg_builds)
+        .values(
             project_id=select(projects.c.id).where(projects.c.name == PROJECT).scalar_subquery(),
             status="succeeded",
-            artifact_sha256="f" * 64,
-            artifact_size=10,
             content_hash="sha256:" + "f" * 64,
             nodes=1,
             edges=0,
             started_at=func.now(),
             finished_at=func.now(),
-        ),
+        )
+        .returning(tables.kg_builds.c.id),
     )
+    assert newer > build["id"]
     assert (
         tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
         == (before["structuredContent"]["results"])
@@ -900,13 +849,20 @@ def test_kg_tools_answer_from_the_cached_graph_when_the_blob_store_is_down(hub, 
         "artifact_sha256": build["artifact_sha256"],
         "content_hash": build["content_hash"],
         "finished_at": status["structuredContent"]["hub_build"]["finished_at"],
-        "latest": False,
+        "latest": True,
     }
-    assert "the blob store did not answer" in status["content"][0]["text"]
 
-    shutil.rmtree(hub.api_dir / "kg" / "graphs")  # nothing cached and the store down: 503, not a guess
-    unavailable = call_tool(hub, "kg_search", {"query": "guide"})
-    assert unavailable.status_code == 503 and "no graph of project alpha is cached" in unavailable.json()["message"]
+    assert not (hub.api_dir / "kg" / "graphs").exists()
+    # read from the file: none cached and the store down, 503, not a guess
+    hub.client.app.state.kg_snapshots, snapshots = None, hub.client.app.state.kg_snapshots
+    try:
+        unavailable = call_tool(hub, "kg_search", {"query": "guide"})
+    finally:
+        hub.client.app.state.kg_snapshots = snapshots
+    assert (
+        unavailable.status_code == 503
+        and "no graph of project alpha is held on this hub" in unavailable.json()["message"]
+    )
 
 
 # Failures and refusals
@@ -1272,7 +1228,8 @@ def test_runs_pushed_while_a_build_waits_join_that_build_and_carry_no_content(hu
     with caplog.at_level("INFO"):
         run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert latest(hub)["runs"] == 2
-    dump = live.table_dump(hub.db)
+    # The graph a build keeps (0248, plan kg-centralized-on-hub) holds the content by design; nothing else does.
+    dump = live.table_dump(hub.db, frozenset({"kg_corpus_items", "kg_nodes", "kg_edges", "kg_text_rows"}))
     logged = "\n".join(r.getMessage() + json.dumps(r.__dict__, default=str) for r in caplog.records)
     for text in ("Body text that stays", "Second body text"):
         assert text not in dump and text not in logged
@@ -1488,6 +1445,30 @@ def test_a_build_whose_job_ended_without_recording_it_is_failed(hub, tmp_path):
     assert statuses[replacement_id] == "failed" and list(statuses.values()).count("queued") == 1
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert latest(hub)["status"] == "succeeded"
+
+
+def test_a_project_built_before_the_graph_tables_gets_a_build_that_fills_them(hub, tmp_path):
+    """After the upgrade to 0248 the tables hold no graph and a build from before them only uploaded a graph file, so
+    the project served no graph until its next push. The recovery pass queues that build, once."""
+    builds, heads = tables.kg_builds, tables.kg_graph_heads
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."))
+    assert push(hub, laptop).ok
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert latest(hub)["status"] == "succeeded"
+    assert recover(hub, tmp_path / "recover")["filled"] == []  # a build after 0248 holds its graph already
+
+    # the database as 0248 leaves it: a succeeded build that uploaded a graph file, and no head
+    query(hub.db, delete(heads))
+    query(hub.db, update(builds).values(artifact_sha256="ab" * 32, artifact_size=1))
+    recovered = recover(hub, tmp_path / "recover")
+    assert recovered["filled"] == [PROJECT] and recovered["queued"] == []
+    assert [row[0] for row in query(hub.db, select(builds.c.status).order_by(builds.c.id))] == ["succeeded", "queued"]
+    assert recover(hub, tmp_path / "recover")["filled"] == []  # the queued build is the newest: nothing more
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert latest(hub)["status"] == "succeeded" and latest(hub)["graph_kept"]
+    assert query(hub.db, select(heads.c.build_id)) == [(latest(hub)["id"],)]
+    assert recover(hub, tmp_path / "recover")["filled"] == []
 
 
 def test_a_build_the_worker_stops_is_recorded_and_queued_again(hub, tmp_path, monkeypatch):

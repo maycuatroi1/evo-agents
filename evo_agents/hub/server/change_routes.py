@@ -222,7 +222,7 @@ async def record_verdict(
         elif body.paths:
             charter = await charter_of(conn, row.project_id)
             state = request.app.state
-            reader = change_tiers.GraphReader(state.blobs, state.kg_graphs)
+            reader = change_tiers.GraphReader(state.blobs, state.config.data_dir)
             facts = await change_tiers.verdict_facts(state.engine, change, body.paths, reader)
             values["tier"] = await change_tiers.retier(conn, change, facts, charter)
         await set_change(conn, change.id, **values)

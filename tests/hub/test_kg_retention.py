@@ -1,9 +1,9 @@
-"""Built graphs on the hub stop piling up in the bucket: a build whose content did not change reuses the artifact it
-already has, and the retention deletes the artifacts of older graphs (``evo_agents.hub.kg_build``,
-``evo_agents.hub.kg_prune``, ``evo_agents.hub.blob_gc``).
+"""The graph files older builds uploaded leave the bucket: the retention deletes the artifacts of older graphs
+(``evo_agents.hub.kg_prune``, ``evo_agents.hub.blob_gc``). A build keeps its graph in the hub's tables and uploads no
+file (``evo_agents.hub.kg_build``), so each test gives its builds the artifact such a build had by hand
+(``seed_artifact``): bytes in the bucket, a kg-graph row in ``blobs`` and the build's ``artifact_*`` columns.
 
-Checked here: a build with the content hash of the project's latest build holding an artifact uploads nothing and
-points at that artifact, which the api's verified cache keeps serving; a changed graph uploads its own. A prune keeps
+Checked here: a prune keeps
 the artifacts of each project's newest graphs (an artifact several builds share counted once), drops the others from
 the build rows and ``blobs`` before deleting their objects, never touches run logs, source blobs or skill bundles, is
 refused to anyone but a hub admin, and deletes nothing the second time. Every hash the restore drill of the
@@ -30,7 +30,7 @@ from tests.hub.contract_keys import assert_json_keys
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import Boolean, Text, cast, column, func, select, table
+from sqlalchemy import Boolean, Text, cast, column, func, insert, select, table, update
 
 from evo_agents.hub import blob_gc, tables
 from evo_agents.hub.blobs import BLOB_PREFIX, BlobStore, blob_key
@@ -115,23 +115,51 @@ def run_worker(hub, keep: int = MAX_KG_KEEP_ARTIFACTS) -> None:
     asyncio.run(main())
 
 
+def seed_artifact(
+    hub, build: dict, project: str = PROJECT, shares: dict | None = None, data: bytes | None = None
+) -> dict:
+    """Give ``build`` the artifact a build had before the hub kept graphs in its tables: a graph file of its own in
+    the bucket and in ``blobs`` (kind kg-graph, no creator), ``data`` or bytes naming the build, or the one of
+    ``shares``, which it then names in ``artifact_reused_from``. The build as the api shows it then."""
+    builds = tables.kg_builds
+    if shares is None:
+        data = data or f"the graph file of build {build['id']}".encode()
+        sha256, size, reused_from = sha(data), len(data), None
+        hub.s3.put(blob_key(sha256), data)
+        owner = select(builds.c.project_id).where(builds.c.id == build["id"]).scalar_subquery()
+        values = {"project_id": owner, "sha256": sha256, "size": size, "kind": "kg-graph", "created_by": None}
+        query(hub.db, insert(tables.blobs).values(**values))
+    else:
+        sha256, size, reused_from = shares["artifact_sha256"], shares["artifact_size"], shares["id"]
+    query(
+        hub.db,
+        update(builds)
+        .values(artifact_sha256=sha256, artifact_size=size, artifact_reused_from=reused_from)
+        .where(builds.c.id == build["id"]),
+    )
+    found = hub.as_alice.call("GET", f"/v1/kg/{project}/builds")["builds"]
+    return next(b for b in found if b["id"] == build["id"])
+
+
 def graph(hub, machine: Machine, version: int) -> dict:
-    """Push a run whose content is new (version ``version`` of the guide) and build it; the build."""
+    """Push a run whose content is new (version ``version`` of the guide) and build it; the build, with an artifact
+    of its own."""
     machine.sync("docs", doc("guide", f"How the app works, version {version}.", rev=str(version)))
     assert push(hub, machine).ok
     run_worker(hub)
     build = latest(hub)
     assert build["status"] == "succeeded", build
-    return build
+    return seed_artifact(hub, build)
 
 
-def rebuild(hub, member: str = "alice") -> dict:
-    response = hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=getattr(hub, member))
+def rebuild(hub, shares: dict) -> dict:
+    """Build the project again, its content unchanged; the build, pointing at the artifact of ``shares``."""
+    response = hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice)
     assert response.status_code == 202 and response.json()["queued"], response.text
     run_worker(hub)
     build = latest(hub)
-    assert build["status"] == "succeeded", build
-    return build
+    assert build["status"] == "succeeded" and build["content_hash"] == shares["content_hash"], build
+    return seed_artifact(hub, build, shares=shares)
 
 
 def objects(hub) -> dict[str, int]:
@@ -200,63 +228,6 @@ def live_skill(tmp_path):
     return directory
 
 
-# Reusing the artifact of unchanged content
-
-
-def test_a_build_of_unchanged_content_points_at_its_artifact_and_uploads_nothing(hub, tmp_path, monkeypatch, caplog):
-    laptop = Machine(tmp_path, "laptop")
-    first = graph(hub, laptop, 1)
-    assert first["artifact_reused_from"] is None and first["artifact_pruned_at"] is None
-    puts = []
-    original = BlobStore.put_file
-
-    def counted(self, sha256, path, **options):
-        puts.append(sha256)
-        return original(self, sha256, path, **options)
-
-    monkeypatch.setattr(BlobStore, "put_file", counted)
-    before = objects(hub)
-
-    with caplog.at_level("INFO", logger="evo_agents.hub.kg_build"):
-        second = rebuild(hub)
-    assert second["id"] != first["id"] and second["content_hash"] == first["content_hash"]
-    assert (second["artifact_sha256"], second["artifact_size"]) == (first["artifact_sha256"], first["artifact_size"])
-    assert second["artifact_reused_from"] == first["id"]
-    assert puts == [] and objects(hub) == before  # nothing went to the bucket
-    assert kg_graphs(hub) == {first["artifact_sha256"]}
-    (done,) = [r for r in caplog.records if r.getMessage() == "kg build succeeded"]
-    assert done.artifact_reused_from == first["id"] and done.build_id == second["id"]
-
-    third = rebuild(hub)  # names the build that uploaded the artifact, not the one before it
-    assert third["artifact_reused_from"] == first["id"] and third["artifact_sha256"] == first["artifact_sha256"]
-
-    # the api answers from the newest build, through its verified cache of that one artifact
-    status = tool_ok(hub, "kg_status")["structuredContent"]["hub_build"]
-    assert status["build_id"] == third["id"] and status["artifact_sha256"] == first["artifact_sha256"]
-    assert status["latest"] is True
-    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
-    cached = sorted(p.name for p in (hub.api_dir / "kg" / "graphs" / PROJECT).iterdir())
-    assert cached == [f"{first['artifact_sha256']}.sqlite"]
-
-    changed = graph(hub, laptop, 2)  # new content: its own artifact
-    assert changed["content_hash"] != first["content_hash"] and changed["artifact_reused_from"] is None
-    assert changed["artifact_sha256"] != first["artifact_sha256"] and puts == [changed["artifact_sha256"]]
-    assert objects(hub)[changed["artifact_sha256"]] == changed["artifact_size"]
-    assert tool_ok(hub, "kg_status")["structuredContent"]["hub_build"]["build_id"] == changed["id"]
-    assert_drill_holds(hub)
-
-
-def test_an_artifact_missing_from_the_bucket_is_not_reused(hub, tmp_path):
-    laptop = Machine(tmp_path, "laptop")
-    first = graph(hub, laptop, 1)
-    hub.s3.client().delete_object(Bucket=hub.s3.bucket, Key=blob_key(first["artifact_sha256"]))
-
-    again = rebuild(hub)
-    assert again["content_hash"] == first["content_hash"] and again["artifact_reused_from"] is None
-    assert objects(hub)[again["artifact_sha256"]] == again["artifact_size"]
-    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
-
-
 # The retention
 
 
@@ -264,7 +235,7 @@ def test_prune_keeps_each_project_s_newest_graphs_and_deletes_only_older_artifac
     bundle = publish_bundle(hub, tmp_path)
     laptop = Machine(tmp_path, "laptop")
     b1 = graph(hub, laptop, 1)
-    b2 = rebuild(hub)  # shares b1's artifact
+    b2 = rebuild(hub, b1)  # shares b1's artifact
     b3, b4, b5 = (graph(hub, laptop, version) for version in (2, 3, 4))
     add_beta(hub)
     beta_build = graph_of(hub, Machine(tmp_path, "beta-laptop", project=BETA), BETA)
@@ -348,7 +319,7 @@ def graph_of(hub, machine: Machine, project: str) -> dict:
     run_worker(hub)
     (build, *_) = hub.as_alice.call("GET", f"/v1/kg/{project}/builds")["builds"]
     assert build["status"] == "succeeded", build
-    return build
+    return seed_artifact(hub, build, project)
 
 
 def test_prune_is_for_hub_admins_and_checks_what_it_is_given(hub):
@@ -379,7 +350,7 @@ def test_every_hash_the_restore_drill_reads_has_its_object_after_the_hourly_prun
     publish_bundle(hub, tmp_path)
     laptop = Machine(tmp_path, "laptop")
     first = graph(hub, laptop, 1)
-    rebuild(hub)
+    rebuild(hub, first)
     for version in (2, 3):
         graph(hub, laptop, version)
     assert_drill_holds(hub)
@@ -434,7 +405,7 @@ def test_a_build_that_finishes_while_a_prune_runs_is_kept_and_nothing_dangles(hu
     monkeypatch.setattr(blob_gc, "lock_shared", held)
     answers = []
     with BackgroundWorker(hub.db, hub.s3, hub.worker_dir, concurrency=1):
-        assert recording.wait(60), "the build did not reach the point where it records its artifact"
+        assert recording.wait(60), "the build did not reach the point where it records its graph"
         pruning = threading.Thread(target=lambda: answers.append(prune_api(hub, keep=1)), daemon=True)
         pruning.start()
         deadline = time.monotonic() + 10
@@ -454,15 +425,17 @@ def test_a_build_that_finishes_while_a_prune_runs_is_kept_and_nothing_dangles(hu
     assert answer.json()["projects"] == [
         {
             "project": PROJECT,
-            "artifacts": 3,
+            "artifacts": 2,
             "kept": 1,
-            "pruned": 2,
-            "pruned_bytes": first["artifact_size"] + second["artifact_size"],
-            "builds": 2,
+            "pruned": 1,
+            "pruned_bytes": first["artifact_size"],
+            "builds": 1,
         }
     ]
-    assert third["artifact_pruned_at"] is None and objects(hub)[third["artifact_sha256"]] == third["artifact_size"]
-    assert kg_graphs(hub) == {third["artifact_sha256"]}
+    # the third build uploaded nothing: its graph is in the tables, and the newest artifact stays
+    assert third["graph_kept"] and third["artifact_sha256"] is None and third["artifact_pruned_at"] is None
+    assert objects(hub)[second["artifact_sha256"]] == second["artifact_size"]
+    assert kg_graphs(hub) == {second["artifact_sha256"]}
     assert_drill_holds(hub)
 
 

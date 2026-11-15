@@ -16,9 +16,8 @@ plain list of names states no rule, and a hub kind or relation may be named only
 
 A violation says its rule, a stable key, the nodes and edges it is about and what it found; ``review_items`` turns
 the violations into items of the review queue (``evo_agents.kg.review``), fingerprinted by rule and key so a
-dismissal holds across builds, and a check of a draft graph reads the same list. The five rules are not yet among
-``evo_agents.kg.review.RULES``: a build writes them to the queue only once the hub's Rule list, its dismissal check
-(a migration, as 0199 did for conflicting_claim) and the web's REVIEW_RULES name them."""
+dismissal holds across builds, and a check of a draft graph reads the same list. The five rules are among
+``evo_agents.kg.review.RULES``, and a build puts their items in its review queue (``evo_agents.kg.build.add_review``)."""
 
 from __future__ import annotations
 
@@ -26,19 +25,14 @@ import json
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from evo_agents.kg.review import EVIDENCE, fingerprint
+from evo_agents.kg.review import ACTIONS as REVIEW_ACTIONS
+from evo_agents.kg.review import EVIDENCE, ONTOLOGY_RULES, fingerprint
 from evo_agents.kg.schema import entry_name
 
 ONE_SOURCE = ("one_to_one", "one_to_many")  # a target has at most one source
 ONE_TARGET = ("one_to_one", "many_to_one")  # a source has at most one target
 SAMPLES = 5
-ACTIONS = {  # slugs, as evo_agents.kg.review.ACTIONS gives its rules'
-    "wrong_endpoint": "fix_endpoint",
-    "cardinality": "keep_one",
-    "cycle": "break_cycle",
-    "duplicate_key": "merge",
-    "missing_prop": "set_prop",
-}
+ACTIONS = {rule: REVIEW_ACTIONS[rule] for rule in ONTOLOGY_RULES}
 
 
 @dataclass(frozen=True)

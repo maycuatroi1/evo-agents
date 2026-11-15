@@ -28,11 +28,11 @@ from evo_agents.hub import kg_health_eval, tables
 from evo_agents.hub import kg_optimize as model
 from evo_agents.hub import kg_settings as store
 from evo_agents.hub.access import has_role
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphUnavailable, HubSession, open_graph
+from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.server import audit, kg_eval_sets
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg import GRAPHS_TRIED, built_graphs, member, read_sink
+from evo_agents.hub.server.kg import GRAPHS_TRIED, built_graphs, member, read_sink, snapshot_view
 from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.kg_web import require_reader
 from evo_agents.hub.server.projects import project_access
@@ -204,8 +204,9 @@ class MeasureOut(BaseModel):
     why: str | None = Field(None, description="why nothing was measured")
 
 
-def _measure(cache, blobs, project, access, sink, audience, graphs, found_set, current, candidate, split, limit):
-    """The split of ``found_set`` asked of the newest graph with ``current`` and with ``candidate``. Blocking."""
+def _measure(project, access, sink, audience, graphs, found_set, current, candidate, split, limit, snapshot=None):
+    """The split of ``found_set`` asked of the newest graph with ``current`` and with ``candidate``: ``snapshot``, the
+    snapshot of the hub's tables, when given, else the graph file (``kg_graph.reading``). Blocking."""
     from evo_agents.kg.evaluate import HOLDOUT, TUNE
 
     question_set = found_set[0] if found_set else None
@@ -216,28 +217,21 @@ def _measure(cache, blobs, project, access, sink, audience, graphs, found_set, c
     if not questions:
         return {"why": f"the project's eval set has no {split} question"}
     ceiling = access.rules.ceiling(access.max_level, sink, audience)
-    path, graph = cache.acquire(blobs, project, graphs)
-    try:
-        opened = open_graph(path, project, graph)
-        try:
-            session = HubSession(project, access.rules.policy, ceiling, sink, opened, graph, graphs[0])
+    with reading(project, snapshot) as (opened, graph):
+        session = HubSession(project, access.rules.policy, ceiling, sink, opened, graph, graphs[0])
 
-            def asked(tuning):
-                opened.tuning = tuning
-                session.semantic = tuning.semantic_mode == "on" and opened.vector_info() is not None
-                found = kg_health_eval.score(questions, [], 0, session, plan_steps=0, sink=sink)
-                return model.figures((found.get("methods") or {}).get("kg_search"))
+        def asked(tuning):
+            opened.tuning = tuning
+            session.semantic = tuning.semantic_mode == "on" and opened.vector_info() is not None
+            found = kg_health_eval.score(questions, [], 0, session, plan_steps=0, sink=sink)
+            return model.figures((found.get("methods") or {}).get("kg_search"))
 
-            return {
-                "build_id": graph.build_id,
-                "questions": len(questions),
-                "current": asked(current),
-                "candidate": asked(candidate),
-            }
-        finally:
-            opened.close()
-    finally:
-        cache.release(path)
+        return {
+            "build_id": graph.build_id,
+            "questions": len(questions),
+            "current": asked(current),
+            "candidate": asked(candidate),
+        }
 
 
 @router.post("/{project}/measure", response_model=MeasureOut)
@@ -265,14 +259,16 @@ async def measure(request: Request, project: ProjectName, body: MeasureBody, use
     out = dict(empty, candidate_settings=candidate.to_json(), needs_rebuild=needs)
     if not graphs:
         return MeasureOut(**out, why=f"project {project} has no graph on the hub yet")
+    sink = read_sink(access, "cli")
+    snapshot = await snapshot_view(
+        state, access.project_id, graphs, access.rules.ceiling(access.max_level, sink, audience)
+    )
     try:
         found = await asyncio.to_thread(
             _measure,
-            state.kg_graphs,
-            state.blobs,
             project,
             access,
-            read_sink(access, "cli"),
+            sink,
             audience,
             graphs,
             found_set,
@@ -280,8 +276,9 @@ async def measure(request: Request, project: ProjectName, body: MeasureBody, use
             candidate,
             body.split,
             body.max_questions,
+            snapshot,
         )
-    except (GraphUnavailable, ArtifactMismatch) as e:
+    except GraphUnavailable as e:
         return MeasureOut(**out, why=str(e))
     if "why" in found:
         return MeasureOut(**out, why=found["why"])

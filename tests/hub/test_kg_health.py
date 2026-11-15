@@ -28,6 +28,7 @@ if not pg.DSN:
 from sqlalchemy import delete, func, insert, select
 
 from evo_agents.hub import tables
+from evo_agents.hub.kg_coverage import REVIEW_WORDS
 from evo_agents.hub.kg_ingest import knowledge_config
 from evo_agents.hub.kg_push import Pusher
 from evo_agents.hub.migrate import migrate
@@ -106,10 +107,11 @@ def graph_of(world, *, files: dict | None = None, commit_read: str = C1, knowled
     b = tables.kg_builds
     built = {"status": "succeeded", "content_hash": CONTENT, "nodes": 9, "edges": 9, "started_at": func.now()}
     built["finished_at"] = func.now()
-    artifact = {"artifact_sha256": "e" * 64, "artifact_size": 10}
-    (first,) = sql(db, insert(b).values(project_id=pid, coverage=COVERAGE, **built, **artifact).returning(b.c.id))[0]
-    reused = {"artifact_reused_from": first, "coverage": {**COVERAGE, "skipped": True}}
-    (second,) = sql(db, insert(b).values(project_id=pid, **built, **artifact, **reused).returning(b.c.id))[0]
+    sql(db, insert(b).values(project_id=pid, coverage=COVERAGE, **built))
+    skipped = {"coverage": {**COVERAGE, "skipped": True}}  # the content of the build before it: it changed nothing
+    (second,) = sql(db, insert(b).values(project_id=pid, **built, **skipped).returning(b.c.id))[0]
+    head = {"project_id": pid, "build_id": second, "content_hash": CONTENT, "top_label": [0, 0]}
+    sql(db, insert(tables.kg_graph_heads).values(**head))  # its graph is the one the hub's tables hold
     sql(
         db, insert(b).values(project_id=pid, status="failed", error="no", started_at=func.now(), finished_at=func.now())
     )
@@ -243,8 +245,8 @@ def test_the_hub_measures_each_git_source_of_a_charter_against_its_default_branc
     assert kb["why"] == kg_health.OFF_GITHUB and kb["behind"] is None and kb["missing"] is None
     assert unbuilt["why"] == "no successful build of the graph holds this source yet"
     assert local["why"] == kg_health.NO_REPO and local["repo"] is None and local["graph_files"] == 0
-    assert body["eval"] == {"why": "this process has no blob store and cache to read the graph from"}
-    assert body["review"] == {"why": "this process has no blob store and cache to read the graph from"}
+    unclustered = "this build has no review queue: it has no clusters"  # the snapshot of its head: an empty graph
+    assert body["eval"]["questions"] == 0 and body["review"]["why"] == unclustered
     asked = [json.loads(call.body) for call in world.github.requests if call.path.endswith("/access_tokens")]
     assert asked[-1]["permissions"] == {"contents": "read", "metadata": "read"}  # it reads; it never writes
 
@@ -349,7 +351,9 @@ def test_the_nights_figures_hold_the_health_of_the_graph_and_the_lens_kg_health_
     assert health["sources"][0]["behind"] == 2 and health["sources"][0]["lag_hours"] == 6.0
     assert all("off" not in item for item in health["sources"])  # the tier rules read those paths, not the Reviewer
     assert health["coverage"]["build_id"] == build_id and health["coverage"]["python"]["uncalled_methods"] == 2
-    assert health["review"] == {"why": "this process has no blob store and cache to read the graph from"}
+    assert (
+        health["review"]["why"] == "this build has no review queue: it has no clusters"
+    )  # the snapshot of its head: an empty graph
     builds = health["builds"]
     assert {key: builds[key] for key in ("builds", "succeeded", "failed", "unchanged", "unchanged_rate")} == {
         "builds": 3,
@@ -375,7 +379,7 @@ def test_the_nights_figures_hold_the_health_of_the_graph_and_the_lens_kg_health_
         ],
     )
     assert made.status_code == 201, made.text
-    assert [item["resolved"] for item in made.json()["evidence"]] == ["repo", "facet"]
+    assert [item["resolved"] for item in made.json()["evidence"]] == ["unmatched", "facet"]  # the head lacks it
     proposal = proposed(
         world.client,
         world.worker,
@@ -397,7 +401,7 @@ def test_the_nights_figures_hold_the_health_of_the_graph_and_the_lens_kg_health_
         "kg_empty": 2.0,
         "kg_fallbacks": 1.0,
         "kg_misses": 1.0,
-        **{f"kg_review_{rule}": 0.0 for rule in RULES},  # no blob store here: the queue is not counted
+        **{f"kg_review_{rule}": 0.0 for rule in REVIEW_WORDS},  # the head holds no review queue: nothing open
         # what agents got from their lookups: no session read any here, so each level is 0
         "kg_lookup_tokens_p50": 0.0,
         "kg_lookup_tokens_p90": 0.0,
@@ -489,7 +493,7 @@ def test_an_eval_that_fails_leaves_the_measure_of_the_sources_standing(world, tm
     graph_of(world)
     asked = []
 
-    def broken(cache, blobs, project, access, sink, graphs, plans, previous, found_set=None, audience=frozenset()):
+    def broken(project, access, sink, graphs, plans, previous, found_set=None, audience=frozenset(), loaded=None):
         asked.append((project, sink, [graph.build_id for graph in graphs], [plan_id for plan_id, _ in plans]))
         raise RuntimeError("sqlite went away")
 
@@ -502,7 +506,9 @@ def test_an_eval_that_fails_leaves_the_measure_of_the_sources_standing(world, tm
     ((_, _, body, error),) = health_rows(world.db)
     assert error is None and body["sources"][0]["behind"] == 2
     assert body["eval"] == {"why": "the evaluation failed: RuntimeError"}
-    assert body["review"]["why"].startswith("counting the review queue failed")  # the measure stands without it
+    assert (
+        body["review"]["why"] == "this build has no review queue: it has no clusters"
+    )  # the snapshot of an empty graph: the measure stands with it
     ((project, sink, builds, plans),) = asked
     assert project == PROJECT and len(builds) == 2 and "credentials-smoke" in plans  # as the owner
     assert sink == "claude-code@anthropic"  # the agent sink the policy declares, not the hub sink
@@ -588,7 +594,7 @@ def test_the_eval_asks_the_holdout_set_through_the_agent_sink_and_pushes_its_sig
     asked = []
     score = {"kg_search": {"n": 9, "hit@5": 0.625, "recall@5": 0.5, "tokens_per_file": 812.4}}
 
-    def scored(cache, blobs, project, access, sink, graphs, plans, previous, found_set=None, audience=frozenset()):
+    def scored(project, access, sink, graphs, plans, previous, found_set=None, audience=frozenset(), loaded=None):
         asked.append((sink, found_set[0].version, len(found_set[0].questions), found_set[1]))
         return {"questions": 9, "methods": score, "build_id": graphs[0].build_id, "sink": sink}
 
@@ -628,3 +634,39 @@ def test_the_eval_asks_the_holdout_set_through_the_agent_sink_and_pushes_its_sig
     assert world.client.portal.call(again, {"methods": score}) == [], "the same measure pushes once"
     assert world.client.portal.call(again, {"why": "no graph"}) == []
     assert world.client.portal.call(again, {"methods": {"kg_search": {"hit@5": 0.0, "tokens_per_file": None}}}) == []
+
+
+def test_the_review_queue_is_counted_on_the_snapshot_of_the_hubs_tables(world, tmp_path):  # noqa: F811
+    from evo_agents.hub import kg_graph_rows, kg_snapshots
+    from evo_agents.kg import review
+    from evo_agents.kg.snapshot import store_rows
+    from evo_agents.kg.store import Store
+    from tests.kg.test_review import queue
+
+    second = graph_of(world)
+    graph = queue()
+    graph.review = review.compute(graph)
+    store = Store(tmp_path / "graph.sqlite")
+    try:
+        b = store.write(graph, state_digest="x", coverage={}, stats={}, policy=None)
+        rows = store_rows(store, b)
+        kept = (store.clusters(b), store.review_items(b))
+    finally:
+        store.close()
+    assert rows.clusters and rows.review
+
+    async def keep():
+        async with world.app.state.engine.begin() as conn:
+            await kg_graph_rows.write_graph(conn, project_id(world.db), second, rows)
+        return await kg_snapshots.load(world.app.state.engine, project_id(world.db))
+
+    loaded = world.client.portal.call(keep)
+    view = loaded.view(frozenset())
+    assert (view.clusters(0), view.review_items(0)) == kept  # the tables hold what the file held
+    state = world.app.state
+    found = partial(  # no blob store to read a graph file from: only the snapshot can be counted
+        kg_health.measure, state.engine, github_app=state.github_app, blobs=object(), data_dir=tmp_path, now=MEASURED
+    )
+    assert world.client.portal.call(found) == {"measured": 1}
+    ((_, _, body, _),) = health_rows(world.db)
+    assert body["review"]["build_id"] == second and set(body["review"]["open"]) == set(RULES), body["review"]

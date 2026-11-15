@@ -210,6 +210,11 @@ def run_summary(path: Path) -> RunSummary:
     return summary
 
 
+def row_secrets(text: str | None, document: str | None) -> dict[str, int]:
+    """The secrets of a row of a graph read as ``GRAPH_QUERIES`` read it: a text and a JSON document, either empty."""
+    return _most(secrets_in(text or ""), secrets_in_json(document) if document else {})
+
+
 def graph_secrets(path: Path, *, immutable: bool = False) -> tuple[int, dict[str, int]]:
     """The rows of the graph file at ``path`` holding a secret, and the secrets by kind: the full-text index of the
     nodes (name and text), and the name and properties of every node and edge, current or not."""
@@ -223,7 +228,7 @@ def graph_secrets(path: Path, *, immutable: bool = False) -> tuple[int, dict[str
             except sqlite3.OperationalError:  # a store from another schema: what it lacks holds nothing
                 continue
             for first, second in found:
-                counts = _most(secrets_in(first or ""), secrets_in_json(second) if second else {})
+                counts = row_secrets(first, second)
                 if counts:
                     rows += 1
                     kinds.update(counts)

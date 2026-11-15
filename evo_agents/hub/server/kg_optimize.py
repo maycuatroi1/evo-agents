@@ -44,12 +44,12 @@ from sqlalchemy import and_, func, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import kg_asked, kg_health_eval, kg_semantic, runs, tables
+from evo_agents.hub import kg_asked, kg_health_eval, kg_semantic, kg_snapshots, runs, tables
 from evo_agents.hub import kg_optimize as model
 from evo_agents.hub.access import has_role
 from evo_agents.hub.jobs import JobQueue
-from evo_agents.hub.kg_build import QueueBusy, kg_root, queue_build
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, HubSession, open_graph
+from evo_agents.hub.kg_build import QueueBusy, queue_build
+from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.server import audit, kg_eval_sets, kg_health
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -65,7 +65,6 @@ from evo_agents.kg.evaluate import TUNE
 log = logging.getLogger(__name__)
 
 LOOP = "kg-optimize"  # the origin of its decisions (kg_review.LOOP)
-CACHE = "optimize"  # the directory of the worker's cache (``kg_root``) the measured graphs are fetched into
 MAX_TUNE = 300  # tune questions asked at each weight
 SESSION_DAYS = 7  # the days of real searches a first run counts
 HOLD_REVIEW = timedelta(minutes=30)  # a night's review run waits this long for the first measure of its run
@@ -84,8 +83,6 @@ router = APIRouter(prefix="/v1/kg", tags=["kg"], responses={401: {"model": Error
 
 
 def _measure_graph(
-    cache: GraphCache,
-    blobs,
     project: str,
     access,
     sink: str,
@@ -94,58 +91,53 @@ def _measure_graph(
     weight: float,
     tune,
     audience: frozenset[str] = frozenset(),
+    loaded=None,
 ):
     """The holdout of ``found_set`` asked of the latest graph by words and by meaning, and with ``tune`` the tune split
     at each weight of model.WEIGHTS, read with ``audience`` (the owner's, as their agents' kg_search reads the graph).
+    Of ``loaded``, the snapshot of the hub's tables, when it is of one of ``graphs``, else of the graph file.
     Blocking: run it in a thread."""
     question_set = found_set[0] if found_set else None
     holdout = kg_health_eval.holdout_questions(question_set, project)
     if not holdout:
         return {"why": "the project's eval set has no holdout question"}
     ceiling = access.rules.ceiling(access.max_level, sink, audience)
-    path, graph = cache.acquire(blobs, project, graphs)
-    try:
-        store = open_graph(path, project, graph)
-        try:
-            if store.latest_ready() is None:
-                return {"why": f"build {graph.build_id} holds no ready graph"}
-            session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
+    with reading(project, kg_health._snapshotted(loaded, graphs, ceiling)) as (store, graph):
+        if store.latest_ready() is None:
+            return {"why": f"build {graph.build_id} holds no ready graph"}
+        session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
 
-            def asked(questions, *, meaning: bool, at: float):
-                store.asked_weight = at
-                session.semantic = meaning
-                found = kg_health_eval.score(questions, [], 0, session, plan_steps=0, sink=sink)
-                return model.figures((found.get("methods") or {}).get("kg_search"))
+        def asked(questions, *, meaning: bool, at: float):
+            store.asked_weight = at
+            session.semantic = meaning
+            found = kg_health_eval.score(questions, [], 0, session, plan_steps=0, sink=sink)
+            return model.figures((found.get("methods") or {}).get("kg_search"))
 
-            words = asked(holdout, meaning=False, at=weight)
-            meaning, why = None, None
-            info = store.vector_info()
-            if info is None:
-                why = "the graph holds no vectors (search by meaning is off for the project: set its mode to index)"
+        words = asked(holdout, meaning=False, at=weight)
+        meaning, why = None, None
+        info = store.vector_info()
+        if info is None:
+            why = "the graph holds no vectors (search by meaning is off for the project: set its mode to index)"
+        else:
+            try:
+                semantic.embedder(info.model)
+            except semantic.SemanticUnavailable as exc:
+                why = f"the model {info.model} cannot be loaded here: {exc}"
             else:
-                try:
-                    semantic.embedder(info.model)
-                except semantic.SemanticUnavailable as exc:
-                    why = f"the model {info.model} cannot be loaded here: {exc}"
-                else:
-                    meaning = asked(holdout, meaning=True, at=weight)
-            tuned = {}
-            if tune:
-                questions = [q for q in question_set.part(TUNE) if q.project in (None, project)][:MAX_TUNE]
-                if questions:
-                    tuned = {f"{w:g}": asked(questions, meaning=False, at=w) for w in model.WEIGHTS}
-            return {
-                "build_id": graph.build_id,
-                "content_hash": graph.content_hash,
-                "words": words,
-                "meaning": meaning,
-                "why_meaning": why,
-                "tuned": tuned,
-            }
-        finally:
-            store.close()
-    finally:
-        cache.release(path)
+                meaning = asked(holdout, meaning=True, at=weight)
+        tuned = {}
+        if tune:
+            questions = [q for q in question_set.part(TUNE) if q.project in (None, project)][:MAX_TUNE]
+            if questions:
+                tuned = {f"{w:g}": asked(questions, meaning=False, at=w) for w in model.WEIGHTS}
+        return {
+            "build_id": graph.build_id,
+            "content_hash": graph.content_hash,
+            "words": words,
+            "meaning": meaning,
+            "why_meaning": why,
+            "tuned": tuned,
+        }
 
 
 async def measure_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, weight: float, tune: bool) -> dict:
@@ -153,17 +145,26 @@ async def measure_graph(engine: AsyncEngine, row, blobs, data_dir: Path | None, 
     the agents' sink with the owner's audience: ``_measure_graph``'s, with ``review`` (kg_health.measure_review); {"why": ...} when it cannot."""
     async with engine.begin() as conn:
         graphs = await built_graphs(conn, row.project_id, kg_health.GRAPHS_TRIED)
-        access, sink, why = await kg_health._owner_reads(conn, row, blobs, data_dir, graphs, agent=True)
+        access, sink, why = await kg_health._owner_reads(conn, row, graphs, agent=True)
         if why is not None:
             return {"why": why}
         found_set = await kg_eval_sets.latest_set(conn, row.project_id)
         audience = await agent_audience(conn, row.owner_id, None, None)
-    cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
     try:
+        loaded = await kg_snapshots.load(engine, row.project_id)
         found = await asyncio.to_thread(
-            _measure_graph, cache, blobs, row.project, access, sink, graphs, found_set, weight, tune, audience=audience
+            _measure_graph,
+            row.project,
+            access,
+            sink,
+            graphs,
+            found_set,
+            weight,
+            tune,
+            audience=audience,
+            loaded=loaded,
         )
-    except (GraphUnavailable, ArtifactMismatch) as exc:
+    except GraphUnavailable as exc:
         return {"why": str(exc)}
     review = await kg_health.measure_review(engine, row, blobs, data_dir, graphs)
     return {**found, "review": review}
@@ -388,7 +389,7 @@ def _shim(engine: AsyncEngine, blobs, data_dir: Path):
         engine=engine,
         blobs=blobs,
         jobs=JobQueue.in_transaction(),
-        kg_graphs=None if data_dir is None else GraphCache(kg_root(data_dir) / CACHE / "graphs", keep=1),
+        kg_snapshots=kg_snapshots.SnapshotCoordinator(engine),
     )
     return SimpleNamespace(app=SimpleNamespace(state=state))
 

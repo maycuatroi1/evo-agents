@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import gzip
 import json
-from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -396,81 +395,3 @@ def test_auto_answers_locally_unless_signed_in_to_a_hub_with_the_graph(machine):
     named = open_session("hub", "beta", "hub")  # a project only the hub knows, by name
     assert isinstance(named, RemoteSession) and named.project == "beta"
     assert isinstance(Hub(dead).url, str)
-
-
-# The api's cache of built graphs
-
-
-class FakeStore:
-    """``BlobStore.fetch`` over a dict of blobs; ``down`` makes it raise as R2 going away."""
-
-    def __init__(self, blobs: dict[str, bytes]):
-        self.blobs = blobs
-        self.down = False
-        self.fetched = []
-
-    def fetch(self, key, sink, limit):
-        from evo_agents.hub.blobs import BlobStoreUnavailable
-
-        if self.down:
-            raise BlobStoreUnavailable("the blob store did not complete GetObject (EndpointConnectionError)")
-        self.fetched.append(key)
-        data = self.blobs.get(key.rsplit("/", 1)[-1])
-        if data is None:
-            return None
-        import hashlib
-
-        sink.seek(0)
-        sink.truncate()
-        sink.write(data[:limit])
-        return hashlib.sha256(data[:limit]).hexdigest(), min(len(data), limit + 1)
-
-
-def test_the_graph_cache_keeps_two_checks_every_fetch_and_never_deletes_a_graph_in_use(tmp_path):
-    pytest.importorskip("boto3")
-    import hashlib
-    import os
-    import time as clock
-    from datetime import datetime
-
-    from evo_agents.hub.kg_graph import ArtifactMismatch, BuiltGraph, GraphCache, GraphUnavailable
-
-    payloads = {n: f"graph {n}".encode() * 100 for n in range(1, 5)}
-    blobs = {hashlib.sha256(data).hexdigest(): data for data in payloads.values()}
-    store = FakeStore(blobs)
-    now = datetime.now(UTC)
-    graphs = {
-        n: BuiltGraph(n, hashlib.sha256(data).hexdigest(), len(data), "sha256:" + "0" * 64, 1, 0, now)
-        for n, data in payloads.items()
-    }
-    cache = GraphCache(tmp_path / "graphs")
-
-    def newest_first(n: int) -> list:
-        return [graphs[i] for i in range(n, 0, -1)]
-
-    held, first = cache.acquire(store, "alpha", newest_first(1))
-    assert first.build_id == 1 and held.read_bytes() == payloads[1]
-    for n in (2, 3):
-        path, _ = cache.acquire(store, "alpha", newest_first(n))
-        cache.release(path)
-        clock.sleep(0.01)
-    # build 1 is being read: it stays although it is not among the two installed last
-    assert sorted(p.name for p in held.parent.iterdir()) == sorted(f"{graphs[n].sha256}.sqlite" for n in (1, 2, 3))
-    cache.release(held)
-    assert cache.evict("alpha") == [held]
-    path, again = cache.acquire(store, "alpha", newest_first(3))
-    assert again.build_id == 3 and len(store.fetched) == 3  # cached: not fetched again
-    cache.release(path)
-
-    store.blobs[graphs[4].sha256] = b"x" * graphs[4].size  # the store returns other bytes
-    with pytest.raises(ArtifactMismatch):
-        cache.acquire(store, "alpha", newest_first(4))
-    assert not (cache.path("alpha", graphs[4].sha256)).exists() and not [
-        p for p in os.listdir(held.parent) if p.endswith(".part")
-    ]
-    store.down = True  # R2 down: the newest cached graph answers
-    path, fallback = cache.acquire(store, "alpha", newest_first(4))
-    assert fallback.build_id == 3
-    cache.release(path)
-    with pytest.raises(GraphUnavailable):
-        cache.acquire(store, "beta", newest_first(4))

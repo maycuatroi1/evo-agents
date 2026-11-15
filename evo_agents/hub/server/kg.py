@@ -29,9 +29,10 @@ Pushing (the writer role, and a hub sink in the project's knowledge.yaml; ``evo-
   their archives and items.
 
 Building: POST /v1/kg/{project}/builds (writer) queues a build; GET /v1/kg/{project}/builds lists the builds, newest
-first, and the jobs of the project still in the queue; GET /v1/kg/{project}/builds/{id} is one build. A build whose
-content did not change names the build whose artifact it reuses (``artifact_reused_from``), and a build whose artifact
-the retention deleted has ``artifact_pruned_at`` and no ``artifact_sha256`` (``evo_agents.hub.kg_prune``). A build job
+first, and the jobs of the project still in the queue; GET /v1/kg/{project}/builds/{id} is one build. A build keeps
+its graph in the hub's tables (``graph_kept``) and uploads no file. An older build may still name the graph file it
+uploaded (``artifact_sha256``), or the build whose file it reused (``artifact_reused_from``), until the retention
+deletes it (``artifact_pruned_at``, ``evo_agents.hub.kg_prune``). A build job
 holds the lock and the queueing lock ``kg:<project>``, so one runs at a time and at most one waits; queueing while one
 waits returns the waiting build. The waiting job's row is locked until the queueing transaction commits, and the
 worker takes jobs with SKIP LOCKED, so a build that is already queued always sees the run that asked for it. A build
@@ -39,7 +40,7 @@ of a project whose graph holds its group chats (``kg_sources.reads_chats``) show
 totals count messages most members may not read, and kg_status and the web's graph pages count what each reader sees.
 
 Reading: POST /v1/kg/{project}/tools/{tool} {arguments, sink} answers one of the seven kg_* tools of ``kg serve`` for a
-member, from the latest successful build holding an artifact (``evo_agents.hub.kg_graph``), with the hub's read rule:
+member, from the latest successful build whose graph the hub's tables hold (``evo_agents.hub.kg_graph``), with the hub's read rule:
 the meet of the member's grant and the sink's clearance, holding the audience the database gives the member at this
 call (``evo_agents.hub.server.kg_audience``). The sink defaults to Claude Code's; ``cli``, when the project
 declares no such sink, reads through the hub sink, as the local ``cli`` sink reads everything on the machine. The answer
@@ -67,7 +68,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi import Path as PathParam
 from fastapi.responses import JSONResponse
 from pydantic import UUID4, BaseModel, Field, model_validator
-from sqlalchemy import Text, cast, delete, exists, func, literal, select
+from sqlalchemy import Text, and_, cast, delete, exists, func, literal, select
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -79,9 +80,7 @@ from evo_agents.hub.jobs import kg_lock
 from evo_agents.hub.kg_build import QueueBusy, procrastinate_jobs, queue_build
 from evo_agents.hub.kg_graph import (
     TOOL_NAMES,
-    ArtifactMismatch,
     BuiltGraph,
-    GraphOutdated,
     GraphUnavailable,
     UnknownRefs,
     answer,
@@ -89,6 +88,7 @@ from evo_agents.hub.kg_graph import (
     node_kinds,
     unknown,
 )
+from evo_agents.hub.kg_graph_rows import MAIN
 from evo_agents.hub.kg_ingest import (
     LogProblem,
     RunLog,
@@ -113,7 +113,7 @@ log = logging.getLogger(__name__)
 MAX_CHECK = 10_000  # hashes in one blobs/check
 MISSING_SHOWN = 100  # missing blobs named in a refused commit
 BUILDS_LIMIT = 100
-GRAPHS_TRIED = 10  # builds holding an artifact a tool call may fall back on when the newest cannot be fetched
+GRAPHS_TRIED = 10  # kept graphs a tool call may find its snapshot among: the newest, or one it still holds
 CLI_SINK = "cli"
 LOG_KIND = "kg-log"
 REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
@@ -168,8 +168,13 @@ class Build(BaseModel):
     requested_by: str | None = Field(description="the member who queued it; null when a pushed run did")
     config_digest: str | None
     runs: int | None
+    graph_kept: bool = Field(
+        description="its graph is in the hub's tables, or was until a newer build replaced it: the newest such build "
+        "is the graph the reads answer from"
+    )
     artifact_sha256: str | None = Field(
-        description="the graph file in the blob store; null until the build succeeded, and once it was pruned"
+        description="the graph file an older build put in the blob store; null for a build since the hub keeps the "
+        "graph in its tables, and once it was pruned"
     )
     artifact_size: int | None
     artifact_reused_from: int | None = Field(
@@ -498,6 +503,7 @@ async def find_builds(
             users.c.login.label("requested_by"),
             b.c.config_digest,
             b.c.runs,
+            graph_kept(b).label("graph_kept"),
             b.c.artifact_sha256,
             b.c.artifact_size,
             b.c.artifact_reused_from,
@@ -650,12 +656,23 @@ async def request_build(request: Request, project: ProjectName, user: CurrentUse
 # The tools
 
 
+def graph_kept(builds):
+    """Whether a row of ``builds`` (kg_builds) is a succeeded build whose graph the hub's tables hold, or held until a
+    newer build replaced it: the build of the project's main head (``kg_graph_rows.write_graph``) or an older one. A
+    reader's snapshot may still be of an older one while the newest is loaded."""
+    heads = tables.kg_graph_heads
+    head = (
+        select(heads.c.build_id)
+        .where(heads.c.project_id == builds.c.project_id, heads.c.branch_id == MAIN)
+        .scalar_subquery()
+    )
+    return func.coalesce(and_(builds.c.status == "succeeded", builds.c.id <= head), False)
+
+
 async def built_graphs(conn: AsyncConnection, project_id: int, limit: int) -> list[BuiltGraph]:
-    """The successful builds of a project that still hold an artifact, newest first, at most ``limit``: what the
-    tools here and the web's graph pages (``evo_agents.hub.server.kg_web``) read from. Several builds may share one
-    artifact (a build with unchanged content reuses it), and the retention takes away the artifact of older ones
-    (``evo_agents.hub.kg_prune``). It lives here rather than in ``evo_agents.hub.kg_graph``, which imports no database
-    library."""
+    """The successful builds of a project whose graph the hub's tables hold or held (``graph_kept``), newest first, at
+    most ``limit``: what the tools here and the web's graph pages (``evo_agents.hub.server.kg_web``) read from. It
+    lives here rather than in ``evo_agents.hub.kg_graph``, which imports no database library."""
     builds = tables.kg_builds
     query = (
         select(
@@ -668,27 +685,11 @@ async def built_graphs(conn: AsyncConnection, project_id: int, limit: int) -> li
             builds.c.finished_at,
             builds.c.coverage["vectors"].label("vectors"),
         )
-        .where(
-            builds.c.project_id == project_id,
-            builds.c.status == "succeeded",
-            builds.c.artifact_sha256.is_not(None),
-        )
+        .where(builds.c.project_id == project_id, graph_kept(builds))
         .order_by(builds.c.id.desc())
         .limit(limit)
     )
     return [BuiltGraph(**row._mapping) for row in await conn.execute(query)]
-
-
-async def rebuild_outdated(state, project_id: int, project: str) -> None:
-    """Queue a build of a project whose newest graph an older store schema wrote (GraphOutdated), unless one waits
-    already: the new build writes the schema this hub reads. It needs no new run, so nobody has to push."""
-    try:
-        async with state.engine.begin() as conn:
-            _, queued = await queue_build(state.jobs, conn, project_id, project, None)
-    except QueueBusy:
-        return
-    if queued:
-        log.warning("kg graph of an older store schema: a new build is queued", extra={"project": project})
 
 
 def read_sink(access: ProjectAccess, sink: str) -> str:
@@ -710,6 +711,17 @@ async def _named_graph(conn: AsyncConnection, project_id: int, arguments) -> dic
 def _names_graph(arguments) -> bool:
     graph = arguments.get("graph") if isinstance(arguments, dict) else None
     return isinstance(graph, str) and bool(graph.strip())
+
+
+async def snapshot_view(state, project_id: int, graphs: list[BuiltGraph], ceiling: Label | None):
+    """(the project's snapshot as ``ceiling``'s audience reads it, the build of ``graphs`` it was made of), for
+    ``kg_graph.reading``; None when the app keeps none, or none of a build of ``graphs``."""
+    snapshots = getattr(state, "kg_snapshots", None)
+    held = None if snapshots is None else await snapshots.current(project_id, graphs[0].build_id)
+    graph = next((g for g in graphs if held is not None and g.build_id == held.build_id), None)
+    if held is None or graph is None:
+        return None
+    return held.view(ceiling.audience if ceiling is not None else frozenset()), graph
 
 
 async def tool_result(
@@ -768,11 +780,10 @@ async def tool_result(
     ceiling = rules.ceiling(access.max_level, read_sink(access, sink), audience)
     if narrow is not None:
         ceiling = narrow(ceiling)
+    snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     try:
         result = await asyncio.to_thread(
             answer,
-            state.kg_graphs,
-            state.blobs,
             state.kg_handles,
             (user.user_id, project),
             project,
@@ -786,15 +797,10 @@ async def tool_result(
             tuning,
             whole,
             named,
+            snapshot,
         )
-    except GraphOutdated as exc:
-        await rebuild_outdated(state, access.project_id, project)
-        raise HTTPException(503, str(exc)) from None
     except GraphUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
-    except ArtifactMismatch as exc:
-        log.error("kg graph artifact refused", extra={"project": project, "build_id": graphs[0].build_id})
-        raise HTTPException(502, str(exc)) from None
     if run_id is not None and narrow is None:
         async with state.engine.begin() as conn:
             graph = arguments.get("graph") if isinstance(arguments, dict) else None
@@ -833,13 +839,20 @@ async def unknown_refs(
         return UnknownRefs(*every, f"project {project} has no knowledge graph on the hub yet")
     through = sink or (access.rules.hub_sink.sink if access.rules.hub_sink else CLI_SINK)
     ceiling = access.rules.ceiling(access.max_level, read_sink(access, through), audience)
-    looked = (state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, through, graphs, ids, paths)
+    snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
+    looked = (
+        project,
+        access.rules.policy,
+        ceiling,
+        through,
+        graphs,
+        ids,
+        paths,
+        snapshot,
+    )
     try:
         return await asyncio.to_thread(unknown, *looked)
-    except GraphOutdated as exc:
-        await rebuild_outdated(state, access.project_id, project)
-        return UnknownRefs(*every, str(exc))
-    except (GraphUnavailable, ArtifactMismatch) as exc:
+    except GraphUnavailable as exc:
         return UnknownRefs(*every, str(exc))
 
 
@@ -853,16 +866,12 @@ async def visible_nodes(state, access: ProjectAccess, user: Principal, project: 
     if not graphs:
         raise HTTPException(409, f"project {project} has no knowledge graph on the hub yet: build it first")
     ceiling = access.rules.ceiling(access.max_level, read_sink(access, sink), audience)
-    looked = (state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, sink, graphs, ids)
+    snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
+    looked = (project, access.rules.policy, ceiling, sink, graphs, ids, snapshot)
     try:
         return await asyncio.to_thread(node_kinds, *looked)
-    except GraphOutdated as exc:
-        await rebuild_outdated(state, access.project_id, project)
-        raise HTTPException(409, str(exc)) from None
     except (GraphUnavailable, ToolError) as exc:
         raise HTTPException(409, str(exc)) from None
-    except ArtifactMismatch as exc:
-        raise HTTPException(502, str(exc)) from None
 
 
 async def delivery_evidence(
@@ -886,13 +895,11 @@ async def delivery_evidence(
         return None, f"project {project} has no knowledge graph on the hub yet"
     through = access.rules.hub_sink.sink if access.rules.hub_sink else CLI_SINK
     ceiling = access.rules.ceiling(access.max_level, read_sink(access, through), audience)
-    looked = (state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, through, graphs, codes)
+    snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
+    looked = (project, access.rules.policy, ceiling, through, graphs, codes, snapshot)
     try:
         return await asyncio.to_thread(mentioning, *looked), None
-    except GraphOutdated as exc:
-        await rebuild_outdated(state, access.project_id, project)
-        return None, str(exc)
-    except (GraphUnavailable, ArtifactMismatch, ToolError) as exc:
+    except (GraphUnavailable, ToolError) as exc:
         return None, str(exc)
 
 

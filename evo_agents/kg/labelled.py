@@ -25,7 +25,16 @@ class Labelled:
 
 
 def labelled_nodes(store: Store, kinds: Sequence[str] = (), node_id: str | None = None) -> Iterator[Labelled]:
-    """The live nodes of the latest ready build of ``store``: of ``kinds``, or the one ``node_id`` names."""
+    """The live nodes of the latest ready build of ``store``: of ``kinds``, or the one ``node_id`` names. ``store`` may
+    be a view of a snapshot (``evo_agents.kg.snapshot.SnapshotView``), whose nodes are those of its one build."""
+    snap = getattr(store, "snap", None)
+    if snap is not None:
+        wanted = set(kinds)
+        for n in snap.nodes:
+            if (n["id"] == node_id) if node_id is not None else (not wanted or n["kind"] in wanted):
+                label = n["label"]
+                yield Labelled(n["id"], n["props"], label[0] or 0, label[1] or 0, store.sees(n))
+        return
     b = store.latest_ready()
     if b is None:
         return

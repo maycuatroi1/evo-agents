@@ -19,17 +19,21 @@ import pytest
 pytest.importorskip("sqlalchemy", reason="the hub's graph health needs the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub import kg_build, kg_coverage, kg_health_eval, ledger, review
-from evo_agents.hub.kg_graph import BuiltGraph, GraphCache
+from evo_agents.hub.kg_graph import BuiltGraph
+from evo_agents.hub.kg_snapshots import Held
 from evo_agents.hub.server import kg_health
 from evo_agents.kg.build import build_project
 from evo_agents.kg.health import is_test_path
 from evo_agents.kg.policy import Label
-from evo_agents.kg.review import RULES
+from evo_agents.kg.review import ONTOLOGY_RULES, RULES
 from evo_agents.kg.serve import Session
+from evo_agents.kg.snapshot import Snapshot, store_rows
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, git, make_project, write
 from tests.kg.test_clusters import needs_engine
+
+LENS_RULES = (*(rule for rule in RULES if rule not in ONTOLOGY_RULES), "ontology")  # the ontology's count as one
 
 SHA = "4f1c2e7a9b3d5f60718293a4b5c6d7e8f9012345"
 NOW = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
@@ -325,7 +329,7 @@ def test_the_lens_kg_health_has_its_figure_and_metrics_in_the_ledger():
         list(review.LENSES)[-4:] == ["kg_health", "kg_init", "kg_questions", "kg_entity_map"]
         and "kg_health" in review.FIGURE_KEYS
     )
-    queue = tuple(f"kg_review_{rule}" for rule in RULES)
+    queue = tuple(f"kg_review_{rule}" for rule in LENS_RULES)
     assert ledger.LENS_METRICS["kg_health"] == (
         "kg_behind",
         "kg_files_off",
@@ -341,7 +345,7 @@ def test_the_lens_kg_health_has_its_figure_and_metrics_in_the_ledger():
     )
     before = night(4, behind=3, missing=2, empty=4, fallbacks=2, edited=4, in_top=1)
     values = [ledger.read_metric(before, key) for key in ledger.LENS_METRICS["kg_health"]]
-    assert values == [3.0, 3.0, 4.0, 2.0, 3.0, 400.0, 2000.0, 1200.0, 25.0, 50.0, *[0.0] * len(RULES)]  # no queue yet
+    assert values == [3.0, 3.0, 4.0, 2.0, 3.0, 400.0, 2000.0, 1200.0, 25.0, 50.0, *[0.0] * len(LENS_RULES)]  # no queue yet
     assert len(ledger.LENS_METRICS["kg_health"]) <= ledger.MAX_METRICS, "a trigger holds every metric of the lens"
     before["kg_health"]["review"] = {"build_id": 7, "open": {"dangling_mention": 2, "bulk_noise": 1}}
     assert ledger.read_metric(before, "kg_review_dangling_mention") == 2.0
@@ -377,7 +381,7 @@ def test_a_level_of_the_graph_compares_as_it_is_and_a_count_per_session_or_run()
         "kg_answer_tokens": "same",
         "kg_grep_after": "same",
         "kg_unclicked": "same",
-        **{f"kg_review_{rule}": "same" for rule in RULES},
+        **{f"kg_review_{rule}": "same" for rule in LENS_RULES},
     }
     assert outcome["result"] == "keep"
     grepping = night(4, behind=3, missing=2, empty=4, fallbacks=2, edited=4, in_top=1, grep_after_rate=0.75)
@@ -572,7 +576,7 @@ def test_the_eval_asks_the_holdout_part_of_the_set_of_its_project_and_scores_eac
 
 
 class FileBlobs:
-    """A blob store holding one file: what GraphCache fetches an artifact from."""
+    """A blob store holding one file: the artifact a build uploaded."""
 
     def __init__(self, path: Path):
         self.data = path.read_bytes()
@@ -607,25 +611,34 @@ def test_the_eval_reads_the_hubs_artifact_as_the_owner_through_the_hub_sink_and_
         ),
     )
     head = git(demo.app, "rev-parse", "HEAD").strip()
-    cache = GraphCache(tmp_path / "cache", keep=1)
+    loaded = held(staged, 7)
     plans = [("demo", plan(head))]
-    first = kg_health._evaluate(cache, blobs, "demo", access, "agent", [built], plans, None)
+    first = kg_health._evaluate("demo", access, "agent", [built], plans, None, loaded=loaded)
     assert first["sink"] == "agent" and first["set"] is None
     assert first["build_id"] == 7 and first["content_hash"] == built.content_hash and first["questions"] == 1
-    assert first["methods"]["kg_search"]["n"] == 1 and blobs.fetched == 1
+    assert first["methods"]["kg_search"]["n"] == 1 and blobs.fetched == 0  # the snapshot, no artifact
 
     def no_score(*args):
         raise AssertionError("the same questions of the same graph are not asked again")
 
     monkeypatch.setattr(kg_health_eval, "score", no_score)
-    again = kg_health._evaluate(cache, blobs, "demo", access, "agent", [built], plans, first)
-    assert again == first and blobs.fetched == 1  # the cached artifact, and the score it had
+    again = kg_health._evaluate("demo", access, "agent", [built], plans, first, loaded=loaded)
+    assert again == first  # the score it had
     assert first["audience"] == kg_health.audience_digest(frozenset())
 
     monkeypatch.undo()
     heard = frozenset({"chat:7"})  # the owner's audience: a chat they are cleared for
-    read = kg_health._evaluate(cache, blobs, "demo", access, "agent", [built], plans, first, None, heard)
+    read = kg_health._evaluate("demo", access, "agent", [built], plans, first, None, heard, loaded)
     assert read["audience"] == kg_health.audience_digest(heard) != first["audience"]  # asked again with it
+
+
+def held(path, build_id: int) -> Held:
+    """The snapshot the hub holds of the graph file at ``path``, as if build ``build_id`` wrote its rows."""
+    store = Store.open_file(path, immutable=True)
+    try:
+        return Held(build_id, Snapshot.from_stored(store_rows(store, store.latest_ready())))
+    finally:
+        store.close()
 
 
 @needs_engine
@@ -649,12 +662,12 @@ def test_the_review_counts_read_the_hubs_artifact_as_the_owner_and_leave_the_dis
             policy=demo.project.policy, ceiling=lambda max_level, sink: Label(level, 0, "U", frozenset())
         ),
     )
-    cache = GraphCache(tmp_path / "cache", keep=1)
-    found = kg_health._review(cache, blobs, "demo", access, "agent", [built], set())
+    loaded = held(staged, 7)
+    found = kg_health._review("demo", access, "agent", [built], set(), loaded)
     assert found["build_id"] == 7 and set(found["open"]) == set(RULES)
     assert 0 < sum(found["open"].values()) <= len(stored) == sum(demo.report.coverage["review"].values())
     one = stored[0]
-    fewer = kg_health._review(cache, blobs, "demo", access, "agent", [built], {one["fingerprint"]})
+    fewer = kg_health._review("demo", access, "agent", [built], {one["fingerprint"]}, loaded)
     assert fewer["open"][one["rule"]] == found["open"][one["rule"]] - 1
     assert kg_coverage.review_open({"review": fewer}, one["rule"]) == fewer["open"][one["rule"]]
 

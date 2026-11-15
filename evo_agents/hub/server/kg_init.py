@@ -43,11 +43,11 @@ from sqlalchemy import func, null, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, kg_health_eval, kg_init, kg_init_db, kg_settings, runs, tables
+from evo_agents.hub import curator, kg_health_eval, kg_init, kg_init_db, kg_settings, kg_snapshots, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.jobs import JobQueue
-from evo_agents.hub.kg_build import QueueBusy, kg_root, queue_build
-from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, HubSession, open_graph
+from evo_agents.hub.kg_build import QueueBusy, queue_build
+from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.server import audit, kg_eval_sets, kg_health, kg_questions
 from evo_agents.hub.server.admin import ProjectName, admin
 from evo_agents.hub.server.errors import ErrorBody
@@ -63,7 +63,6 @@ from evo_agents.kg.evaluate import TUNE
 
 log = logging.getLogger(__name__)
 
-CACHE = "init"  # the directory of the worker's cache (``kg_root``) the measured graphs are fetched into
 MAX_TUNE = 300  # starter questions asked
 QUEUE_WAIT = timedelta(hours=24)  # a run that no node could take in this long fails
 MAX_LISTED = 10
@@ -79,39 +78,33 @@ admin_router = APIRouter(
 # Measuring
 
 
-def _starter(cache: GraphCache, blobs, project: str, access, sink: str, graphs, found_set, audience) -> dict:
-    """The tune split of ``found_set`` asked of the latest graph by words and by meaning, read with ``audience``.
-    Blocking: run it in a thread. {"why": ...} when it cannot; the holdout is never asked."""
+def _starter(project: str, access, sink: str, graphs, found_set, audience, loaded=None) -> dict:
+    """The tune split of ``found_set`` asked of the latest graph by words and by meaning, read with ``audience``: of
+    ``loaded``, the snapshot of the hub's tables, when it is of one of ``graphs``, else of the graph file. Blocking:
+    run it in a thread. {"why": ...} when it cannot; the holdout is never asked."""
     question_set = found_set[0] if found_set else None
     questions = [q for q in (question_set.part(TUNE) if question_set else []) if q.project in (None, project)]
     if not questions:
         return {"why": "the project's eval set has no tune question"}
     questions = questions[:MAX_TUNE]
     ceiling = access.rules.ceiling(access.max_level, sink, audience)
-    path, graph = cache.acquire(blobs, project, graphs)
-    try:
-        store = open_graph(path, project, graph)
-        try:
-            if store.latest_ready() is None:
-                return {"why": f"build {graph.build_id} holds no ready graph"}
-            session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
+    with reading(project, kg_health._snapshotted(loaded, graphs, ceiling)) as (store, graph):
+        if store.latest_ready() is None:
+            return {"why": f"build {graph.build_id} holds no ready graph"}
+        session = HubSession(project, access.rules.policy, ceiling, sink, store, graph, graphs[0])
 
-            def asked(*, meaning: bool):
-                session.semantic = meaning
-                found = kg_health_eval.score(questions, [], 0, session, plan_steps=0, sink=sink)
-                return init_run.figures((found.get("methods") or {}).get("kg_search"))
+        def asked(*, meaning: bool):
+            session.semantic = meaning
+            found = kg_health_eval.score(questions, [], 0, session, plan_steps=0, sink=sink)
+            return init_run.figures((found.get("methods") or {}).get("kg_search"))
 
-            found = {"build_id": graph.build_id, "words": asked(meaning=False), "meaning": None}
-            if store.vector_info() is not None:
-                try:
-                    found["meaning"] = asked(meaning=True)
-                except Exception as exc:  # no model here: the figures by words stand
-                    found["why_meaning"] = f"{type(exc).__name__}: {exc}"[:200]
-            return found
-        finally:
-            store.close()
-    finally:
-        cache.release(path)
+        found = {"build_id": graph.build_id, "words": asked(meaning=False), "meaning": None}
+        if store.vector_info() is not None:
+            try:
+                found["meaning"] = asked(meaning=True)
+            except Exception as exc:  # no model here: the figures by words stand
+                found["why_meaning"] = f"{type(exc).__name__}: {exc}"[:200]
+        return found
 
 
 async def measure_starter(engine: AsyncEngine, row, blobs, data_dir: Path | None) -> dict:
@@ -119,15 +112,15 @@ async def measure_starter(engine: AsyncEngine, row, blobs, data_dir: Path | None
     graph; {"why": ...} when it cannot."""
     async with engine.begin() as conn:
         graphs = await built_graphs(conn, row.project_id, kg_health.GRAPHS_TRIED)
-        access, sink, why = await kg_health._owner_reads(conn, row, blobs, data_dir, graphs, agent=True)
+        access, sink, why = await kg_health._owner_reads(conn, row, graphs, agent=True)
         if why is not None:
             return {"why": why}
         found_set = await kg_eval_sets.latest_set(conn, row.project_id)
         audience = await agent_audience(conn, row.owner_id, None, None)
-    cache = GraphCache(kg_root(data_dir) / CACHE, keep=1)
     try:
-        return await asyncio.to_thread(_starter, cache, blobs, row.project, access, sink, graphs, found_set, audience)
-    except (GraphUnavailable, ArtifactMismatch) as exc:
+        loaded = await kg_snapshots.load(engine, row.project_id)
+        return await asyncio.to_thread(_starter, row.project, access, sink, graphs, found_set, audience, loaded=loaded)
+    except GraphUnavailable as exc:
         return {"why": str(exc)}
     except Exception as exc:  # a run goes on without figures
         log.exception("the starter measure of a kg init run failed", extra={"project": row.project})

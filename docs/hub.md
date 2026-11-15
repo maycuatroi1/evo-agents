@@ -4094,7 +4094,7 @@ questions `kg eval-questions` makes, built from the plans the charter's owner ma
 the hash of their ids, asked of `kg_search` as the owner reads the graph through the hub sink; Recall@1 and @5, MRR,
 the empty share, answers per 1,000 tokens and the time of a call. The same questions of the same graph keep the score
 they had. The night's figures (`kg_health`) take the latest measure, the coverage of the latest build, the builds of
-the span with those that changed nothing (`artifact_reused_from`), and what the facets of the span's sessions and runs
+the span with those that changed nothing (the content hash of the build before them), and what the facets of the span's sessions and runs
 say agents got from the graph: kg lookups that came back empty, the first search after an empty one (a fall back to
 grep), and the files edited after a lookup that it named in its top 5. The lens `kg_health` of the Curator reads them,
 and its metrics in the ledger are the commits behind, the files missing, stale or deleted, the empty lookups, the fall
@@ -4109,15 +4109,29 @@ evo-agents hub kg health --project demo            # each git source: commit rea
 evo-agents hub kg health --project demo --json     # the measures and the builds, newest first
 ```
 
-A build's artifact is the graph's SQLite file in the bucket, and its bytes differ from one build to the next even when
-the graph does not. A build whose content hash equals that of the project's latest build still holding an artifact
-therefore uploads nothing: it points at that artifact, and `artifact_reused_from` names the build that uploaded it.
-The content hash covers the store's schema and what its full-text index holds, so the first build after an upgrade
-that changes either uploads a new artifact. A `kg_*` tool call or a graph page that meets a graph written with an older
-store schema answers 503 and queues a build of the project, which needs no new run; the tools answer again once it
-has run.
-Every hour the worker deletes the artifacts of graphs older than each project's `EVO_HUB_KG_KEEP_ARTIFACTS` newest (3 by
-default; an artifact several builds share counts once, and the newest always stays). A pruned build keeps its row, its
+**Where the graph is kept.** A build uploads no graph file. It writes the graph's rows into the hub's tables (schema
+0248, `evo_agents/hub/kg_graph_rows.py`): `kg_nodes`, `kg_edges`, `kg_text_rows`, `kg_embeddings`, `kg_provenance`,
+`kg_asked`, `kg_review_rows` and the corpus items in `kg_corpus_items`, each row keyed by project and branch (the main
+branch for now), changing only the rows that differ from the graph before. In the same transaction it points
+`kg_graph_heads` at the build, with its content hash, and notifies the channel `kg_graph`. A build whose content hash
+equals that of the build before it changes no row and says so (`skipped` in its coverage); the night's figures count it
+as unchanged. The content hash covers the store's schema and what its full-text index holds, so the first build after
+an upgrade that changes either writes the rows again. The tables start empty at 0248: the worker's recovery pass
+(`hub.recover_kg_builds`, every five minutes) queues one build of each project whose newest build succeeded before
+0248, with a graph file and no head, so every project that had a graph serves it again once that build ends.
+
+The api reads the graph from a snapshot held in memory (`evo_agents/hub/kg_snapshots.py`): per project, the main
+branch's rows as the tables keep them, loaded on the project's first read. On a `kg_graph` notification it builds the
+new snapshot in the background and swaps it in at once, so a reader keeps the snapshot it was given and never waits for
+a build; after its listener reconnects it reads every project it holds again. Each reader sees the snapshot through
+its own clearance and audience. A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
+the build at the head or one before it: the graph it wrote is the one the tables hold or an older one they replaced.
+
+**Graph files of older builds.** Builds before 0248 uploaded the graph's SQLite file to the bucket as a blob of kind
+`kg-graph` (`artifact_sha256`, `artifact_size`, and `artifact_reused_from` when a build of unchanged content pointed at
+an earlier build's file). Those columns stay, null for every new build, and so do the files until the retention deletes
+them. Every hour the worker deletes the files of graphs older than each project's `EVO_HUB_KG_KEEP_ARTIFACTS` newest (3
+by default; a file several builds share counts once, and the newest always stays). A pruned build keeps its row, its
 content hash and its counts, gets `artifact_pruned_at`, and loses `artifact_sha256`, so no row names an object that is
 gone. The retention never deletes run logs, source blobs or skill bundles. A hub admin can run it by hand:
 
@@ -4128,17 +4142,18 @@ evo-agents hub kg prune --project demo --keep 5
 
 **Secrets in old copies.** The git connector redacts secrets before a file enters a corpus (see the README), but
 runs pushed before it did keep them on the hub, in their source blobs and in the graphs built from them. A hub admin
-finds them with `evo-agents hub kg scrub` (every project, or `--project demo`). It reads each built graph and source
-blob a project holds in the bucket, page by page (`POST /v1/admin/kg/scrub`, at most 1000 objects and 256 MiB a
-page), with the connector's patterns, and lists those holding a secret by hash, kind, size and the kinds of secret,
-never a value. A graph is read from the api's cache when it is there. A source blob is read as the file the items of
+finds them with `evo-agents hub kg scrub` (every project, or `--project demo`). It reads the graph the hub's tables
+hold for the project's main branch, which the `kg_*` tools read (node names and properties, edge properties and the
+full-text rows), and counts the rows holding a secret by kind; that graph is in use and a purge never deletes it. It
+also reads each graph file older builds uploaded and each source blob a project holds in the bucket, page by page (`POST /v1/admin/kg/scrub`, at most 1000
+objects and 256 MiB a page), with the connector's patterns, and lists those holding a secret by hash, kind, size and the kinds of secret,
+never a value. A source blob is read as the file the items of
 the project's run logs say it is (their `props.path`), as `evo-agents kg scrub` reads it on a machine: in code a bare
 value after `=` is an expression, in a config file or a document a literal. A blob no item names with a path is read
 as a document. The first page that meets a source blob that may hold a secret reads every run log of the project for
 those paths, so it takes longer; the api keeps them, and reads only the logs of new runs after that. Run logs hold
-references only and are not themselves scanned. Each object found has a state. `newest` is the graph the `kg_*`
-tools read, and `live` a source blob that a run still in use refers to: a run waiting for its commit, the newest full
-run of its source (a complete listing and an ok end), or a run after that. Anything else is `old`. Counting changes
+references only and are not themselves scanned. Each object found has a state. `live` is a source blob that a run still in use refers to: a run waiting for its commit, the newest full
+run of its source (a complete listing and an ok end), or a run after that. Anything else is `old`, every graph file among them, since the tools no longer read one. Counting changes
 nothing.
 
 `--purge` says what it is about to delete and asks first (`--yes` when no terminal can answer), then has the hub
@@ -4146,12 +4161,12 @@ delete the old objects (`POST /v1/admin/kg/scrub/purge`, at most 1000 hashes a r
 and keeps those that hold no secret any more, are in use, or are not the project's, saying why. For the rest, in one
 transaction holding the blob lock, it drops the project's `blobs` rows, marks the builds of a deleted graph pruned as
 the retention does, records the objects no other project holds for deletion, and writes one `kg.scrub` audit row
-counting what went. Then it deletes the objects and drops the deleted graphs from its cache. Delete in this order, so
-the newest graph and the live blobs are the redacted ones and nothing the project uses holds a secret:
+counting what went. Then it deletes the objects. Delete in this order, so
+the graph in the tables and the live blobs are the redacted ones and nothing the project uses holds a secret:
 
 ```sh
 evo-agents kg sync --build --push              # on each machine: runs with the secrets redacted
-evo-agents hub kg build --project demo --wait  # the newest graph, from the redacted runs
+evo-agents hub kg build --project demo --wait  # the graph in the tables, from the redacted runs
 evo-agents hub kg scrub                        # count, change nothing
 evo-agents hub kg scrub --purge                # delete the old copies, after a yes
 ```
@@ -4495,7 +4510,7 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.recover_kg_builds`, every 5 minutes: fails builds whose worker stopped sending heartbeats and queues a new one.
   It also fails builds still queued or running whose job ended (failed, cancelled, aborted, or pruned) without
   recording them, and queues a new build of the project unless a later build already took their place.
-- `hub.prune_kg_artifacts`, hourly at minute 31: deletes the artifacts of graphs older than each project's
+- `hub.prune_kg_artifacts`, hourly at minute 31: deletes the graph files older builds uploaded, past each project's
   `EVO_HUB_KG_KEEP_ARTIFACTS` newest.
 - `hub.recover_runs`, every minute: runs whose worker stopped extending the lease become lost and their step is
   queued again, or fail on their third attempt; runs past their timeout fail; a run that waited 10 minutes for an
@@ -4812,7 +4827,7 @@ environment, never in a committed file.
 | `EVO_HUB_SENTRY_DSN` | api, worker | optional error reporting |
 | `EVO_HUB_LOG_LEVEL` | api, worker | `DEBUG`, `INFO` (default), `WARNING` or `ERROR` |
 | `EVO_HUB_BLOB_CONCURRENCY` | api | uploads one process checks and copies in the blob store at once, every commit together; default `32`, at most `256` |
-| `EVO_HUB_KG_KEEP_ARTIFACTS` | api, worker | newest built graphs of each project whose artifact stays in the bucket; older ones are deleted every hour; default `3`, at least `1` |
+| `EVO_HUB_KG_KEEP_ARTIFACTS` | api, worker | newest graph files older builds uploaded that stay in the bucket, per project; older ones are deleted every hour; default `3`, at least `1` |
 | `EVO_HUB_KG_UPLOAD_MAX_BYTES` | api | the largest archive (`.zip`, `.tar`, `.tar.gz`, `.tgz`) a writer may upload as a graph source with `evo-agents hub kg upload`, in bytes; default `21474836480` (20 GiB), at most 600 GiB |
 | `EVO_HUB_RUN_LOG_DAYS` | worker | days the events of a finished run are kept before the daily pruning deletes them; default `30`, from `1` to `3650` |
 | `EVO_HUB_AUDIT_DAYS` | worker | days an audit row is kept before the daily `hub.prune_audit` deletes it; default `365`, from `30` to `3650` |
@@ -4970,8 +4985,8 @@ again, and a dump and the key together open every secret.
 In a live database every hash that `blobs`, `skill_versions`, `kg_builds.artifact_sha256` and `kg_ingests.log_sha256`
 name has its object in the bucket, prunes included: a prune drops the references in one transaction, then deletes the
 objects. `blob_deletions` lists the blobs being deleted, which are not references. A restore check that compares an
-older dump with today's bucket can find artifacts pruned since the dump. When the newest build of a restored project
-is one of them, its `kg_*` tools answer with an error until `evo-agents hub kg build --project P` builds the graph
+older dump with today's bucket can find graph files pruned since the dump. The graph itself is in the dump, in the
+hub's tables, so the `kg_*` tools of a restored project answer from it; `evo-agents hub kg build --project P` builds it
 again from the run logs, which are never deleted.
 
 **Restore.** Stop the api and the worker. Restore the dump into an empty database with `pg_restore --no-owner

@@ -123,6 +123,7 @@ describe("build status", () => {
     requested_by: null,
     config_digest: null,
     runs: 2,
+    graph_kept: true,
     artifact_sha256: "cd".repeat(32),
     artifact_size: 20480,
     artifact_reused_from: null,
@@ -194,18 +195,20 @@ describe("build status", () => {
     expect(screen.queryByTestId("graph-content-hash")).toBeNull();
   });
 
-  it("reads the newest build that still holds an artifact, and the history shows every artifact's state", () => {
+  it("reads the newest build whose graph the tables hold, and the history shows every artifact's state", () => {
     const builds = [
+      succeeded(15, { graph_kept: false }), // succeeded, its graph not written to the tables yet
+      succeeded(14, { artifact_sha256: null, artifact_size: null }),
       succeeded(13, { artifact_reused_from: 11 }),
       succeeded(12, { artifact_sha256: null, artifact_pruned_at: "2026-10-05T03:31:00Z" }),
       succeeded(11),
-      { ...succeeded(10), status: "failed" as const, artifact_sha256: null, error: "boom" },
+      { ...succeeded(10), status: "failed" as const, graph_kept: false, artifact_sha256: null, error: "boom" },
     ];
-    expect(latestSucceeded(builds)?.id).toBe(13);
-    expect(latestSucceeded(builds.slice(1))?.id).toBe(11); // a pruned build is never the graph in use
+    expect(latestSucceeded(builds)?.id).toBe(14); // a build without an artifact is read from the tables
+    expect(latestSucceeded(builds.slice(2, 4))?.id).toBe(13);
     renderVi(<BuildHistory builds={builds} now={null} />);
     const states = screen.getAllByTestId("build-artifact").map((cell) => cell.getAttribute("data-state"));
-    expect(states).toEqual(["reused", "pruned", "own", "none"]);
+    expect(states).toEqual(["own", "none", "reused", "pruned", "own", "none"]);
   });
 });
 
@@ -385,6 +388,7 @@ describe("knowledge graph overview", () => {
     requested_by: null,
     config_digest: null,
     runs: 1,
+    graph_kept: true,
     artifact_sha256: "b".repeat(64),
     artifact_size: 10,
     artifact_reused_from: null,

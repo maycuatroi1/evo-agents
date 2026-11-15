@@ -17,6 +17,11 @@ export const REVIEW_RULES: readonly ReviewRule[] = [
   "ambiguous_match",
   "bulk_noise",
   "conflicting_claim",
+  "wrong_endpoint",
+  "cardinality",
+  "cycle",
+  "duplicate_key",
+  "missing_prop",
 ];
 
 const STATES: readonly ReviewState[] = ["open", "dismissed", "all"];

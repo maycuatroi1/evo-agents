@@ -45,7 +45,9 @@ steps: []                  # optional build steps, such as entities
 ```
 
 A file with an unknown key, an invalid identifier pattern, a value out of range or a `knowledge` key other than
-`identifiers` and `ontology` is refused, and the error names every problem.
+`identifiers` and `ontology` is refused, and the error names every problem. Rules a strategy's
+`ontology` states (endpoints, cardinality, acyclic relations, keys, required properties) are checked by every
+build, and what breaks them goes to the review queue (see Ontology rules in [kg.md](kg.md)).
 
 A strategy never adds, removes or relabels a source. Labels stay what the project's policy says.
 
