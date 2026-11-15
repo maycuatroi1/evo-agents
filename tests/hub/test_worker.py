@@ -320,14 +320,15 @@ def test_lease_recovery_not_starved_by_a_long_job_holding_every_slot(hub_db, tmp
 
     async def defer_all(job_queue, pool):
         long_job = await job_queue.defer(jobs.PING, seconds=25)
-        for task in (jobs.RECOVER_RUNS, jobs.DELIVER_NOTIFICATIONS):
+        for task in (jobs.RECOVER_RUNS, jobs.DELIVER_NOTIFICATIONS, jobs.RELEASE_SCHEDULES):
             await job_queue.defer(task, queueing_lock=task, timestamp=int(time.time()))
         return long_job
 
     with running_worker(hub_db, tmp_path, s3) as worker:  # concurrency 1: the ping takes the one slot
         long_job = asyncio.run(with_queue(hub_db, defer_all))
         wait_for(lambda: job(hub_db, long_job)["status"] == "doing", what="the long job starting")
-        for task in (jobs.RECOVER_RUNS, jobs.DELIVER_NOTIFICATIONS):
+        # the watch of a release cycle's CI waited behind a curator.collect that ran for half an hour
+        for task in (jobs.RECOVER_RUNS, jobs.DELIVER_NOTIFICATIONS, jobs.RELEASE_SCHEDULES):
             done = select(cast(j.status, Text)).where(j.task_name == task)
             wait_for(lambda done=done: ("succeeded",) in query(hub_db, done), timeout=20, what=f"{task} running")
         assert job(hub_db, long_job)["status"] == "doing"  # they ran beside it, not after it
@@ -336,6 +337,7 @@ def test_lease_recovery_not_starved_by_a_long_job_holding_every_slot(hub_db, tmp
     assert {
         jobs.RECOVER_RUNS: jobs.LEASE,
         jobs.DELIVER_NOTIFICATIONS: jobs.LEASE,
+        jobs.RELEASE_SCHEDULES: jobs.LEASE,
         jobs.PING: "default",
     }.items() <= dict(query(hub_db, queues)).items()
 

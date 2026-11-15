@@ -2,15 +2,14 @@
 
 The worker migrates the database like the api (under the advisory lock), then takes jobs from the procrastinate
 queue in Postgres, ``concurrency`` at a time, until SIGTERM or SIGINT. A second procrastinate worker in the same
-process takes only the queue ``jobs.LEASE`` (recovering runs, delivering notifications), one job at a time, so those
-run every minute even while long jobs fill the ``concurrency`` slots; a third takes only ``jobs.HUB_QUEUE``, the turns
-of the hub runtime, HUB_CONCURRENCY at a time; a fourth only ``jobs.DELIVERY_QUEUE``, the deliveries to plugins,
-DELIVERY_CONCURRENCY at a time, so what a commit queues for a plugin goes out within seconds. On the first signal it
-takes no new job and
-waits up to SHUTDOWN_GRACE for the running ones; procrastinate aborts what is still running after that, and a second
-signal kills the process. Stopped by a signal, it exits 0; stopped by anything else, such as losing Postgres, it
-exits 1, so the container is restarted and the failure shows. It needs the blob store: what it builds lives in R2,
-and it removes the uploads nobody committed. ``--data-dir`` is its cache, which can be deleted at any time.
+process takes only the queue ``jobs.LEASE`` (recovering runs, delivering notifications, the release pass), one job
+at a time, so those run every minute even while long jobs fill the ``concurrency`` slots; a third takes only
+``jobs.HUB_QUEUE``, the turns of the hub runtime, HUB_CONCURRENCY at a time; a fourth only ``jobs.DELIVERY_QUEUE``,
+the deliveries to plugins, DELIVERY_CONCURRENCY at a time, so what a commit queues for a plugin goes out within
+seconds. On the first signal it takes no new job and waits up to SHUTDOWN_GRACE for the running ones; procrastinate
+aborts what is still running after that, and a second signal kills the process. Stopped by a signal, it exits 0;
+stopped by anything else, such as losing Postgres, it exits 1, so the container is restarted and the failure shows. It
+needs the blob store: what it builds lives in R2, and it removes the uploads nobody committed. ``--data-dir`` is its cache, which can be deleted at any time.
 
 Jobs (names in ``evo_agents.hub.jobs``):
 
@@ -527,7 +526,11 @@ async def read_nightly(context: JobContext, timestamp: int | None = None) -> dic
 
 @queue.periodic(cron="* * * * *")
 @queue.task(
-    name=jobs.RELEASE_SCHEDULES, pass_context=True, lock=jobs.RELEASE_SCHEDULES, queueing_lock=jobs.RELEASE_SCHEDULES
+    name=jobs.RELEASE_SCHEDULES,
+    pass_context=True,
+    lock=jobs.RELEASE_SCHEDULES,
+    queueing_lock=jobs.RELEASE_SCHEDULES,
+    queue=jobs.LEASE,  # a long job on the default queue held the watch of the tag's CI back for half an hour
 )
 async def release_schedules(context: JobContext, timestamp: int | None = None) -> dict:
     found = hub(context)

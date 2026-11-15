@@ -16,9 +16,9 @@ The caller's connection is an ``AsyncConnection`` of the hub's engine (``evo_age
 only async connector is psycopg's, gets the psycopg connection under it through ``driver``, and the savepoint is the
 engine's ``begin_nested()``. This is the one place the hub hands out that psycopg connection.
 
-The jobs that keep runs and notifications moving (``LEASE_JOBS``) go to the queue ``LEASE``, the turns of the hub
-runtime to HUB_QUEUE, the deliveries to plugins (DELIVER_PLUGIN_EVENTS) to DELIVERY_QUEUE, kg builds to KG_QUEUE, every
-other job to DEFAULT_QUEUE. A worker that takes the default queue runs a worker of its own on ``LEASE``, one on
+The jobs that keep runs, notifications and release cycles moving (``LEASE_JOBS``) go to the queue ``LEASE``, the
+turns of the hub runtime to HUB_QUEUE, the deliveries to plugins (DELIVER_PLUGIN_EVENTS) to DELIVERY_QUEUE, kg builds to
+KG_QUEUE, every other job to DEFAULT_QUEUE. A worker that takes the default queue runs a worker of its own on ``LEASE``, one on
 HUB_QUEUE and one on DELIVERY_QUEUE, so a long plugin job on the default queue never holds them back, the turns of the
 agents of a system, up to 180 seconds each, run beside each other instead of one at a time behind every other job, and
 a message of a bridged group chat goes out within seconds of its commit; ``queue_of`` names a task's queue, and
@@ -98,7 +98,7 @@ HUB_TURN = "hub.hub_turn"  # deferred: one turn of a chat run on the hub runtime
 
 
 LEASE = "lease"  # the short jobs that must run every minute whatever else runs
-LEASE_JOBS = frozenset({RECOVER_RUNS, DELIVER_NOTIFICATIONS})
+LEASE_JOBS = frozenset({RECOVER_RUNS, DELIVER_NOTIFICATIONS, RELEASE_SCHEDULES})
 
 
 def queue_of(task: str) -> str:
