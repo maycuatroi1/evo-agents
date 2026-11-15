@@ -250,7 +250,8 @@ class Daemon:
         now = asyncio.get_running_loop().time()
         if force or now - self._runtimes_at > RUNTIMES_EVERY:
             self.runtimes = await asyncio.to_thread(self._detect)
-            self.logins = await asyncio.to_thread(health.logins, path=self.env.get("PATH"))
+            found = await asyncio.to_thread(health.logins, path=self.env.get("PATH"))
+            self.logins = health.steady(self.logins, found)
             await self.browser.look()
             self._runtimes_at = now
         self.health = await asyncio.to_thread(

@@ -111,6 +111,12 @@ def logins(names: Iterable[str] = runs.RUNTIMES, *, path: str | None = None) -> 
     return {name: login(name, path=path) for name in names if name in BINARIES}
 
 
+def steady(previous: Mapping[str, str], found_logins: Mapping[str, str]) -> dict[str, str]:
+    """``found_logins`` with each ``unknown`` replaced by what ``previous`` knew of that runtime: a status command
+    that timed out (a loaded machine) says nothing of the login, so it does not turn a known login into a fault."""
+    return {name: previous.get(name, state) if state == "unknown" else state for name, state in found_logins.items()}
+
+
 def with_leases(found_logins: Mapping[str, str], leased: Mapping[str, bool]) -> dict[str, str]:
     """``found_logins`` with LEASED for each runtime whose login is not ok and whose last agent authenticated with a
     lease (``leased``)."""
