@@ -129,6 +129,5 @@ class Graphs:
                 "error": state.error,
                 "failed": failed,
                 "pushed": sum(found.pushed for found in state.sources.values()),
-                "pulled": sum(found.pulled for found in state.sources.values()),
             },
         )

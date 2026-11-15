@@ -54122,6 +54122,8 @@ export interface operations {
             query?: {
                 /** @description only the items whose id starts so */
                 scope?: string | null;
+                /** @description false leaves the items out, for a caller that reads only the runs */
+                items?: boolean;
             };
             header?: never;
             path: {
@@ -63807,6 +63809,8 @@ export interface operations {
             query?: {
                 /** @description only the items whose id starts so */
                 scope?: string | null;
+                /** @description false leaves the items out, for a caller that reads only the runs */
+                items?: boolean;
             };
             header?: never;
             path: {

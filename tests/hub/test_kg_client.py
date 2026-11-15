@@ -296,12 +296,12 @@ def test_a_commit_waits_longer_the_more_it_carries():
     assert log_timeout(0) == 30.0 and log_timeout(256 * 1024 * 1024) == pytest.approx(30.0 + 256)
 
 
-def test_kg_sync_push_without_signing_in_fails_after_syncing(machine, capsys):
+def test_kg_sync_without_signing_in_fails_before_reading(machine, capsys):
     project, sync, _ = machine
     sync("docs", item("guide"))
     code = main(["kg", "sync", "--project", str(project.harness.root), "--source", "docs", "--push"])
-    out = capsys.readouterr().out
-    assert code == 1 and "FAIL push: not signed in to a hub" in out and "OK   docs" in out
+    out, err = capsys.readouterr()
+    assert code == 1 and "error: the hub: not signed in to a hub" in err and "docs" not in out
 
 
 # Forgetting a source

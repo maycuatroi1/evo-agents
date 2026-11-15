@@ -168,9 +168,8 @@ def test_kg_api_heartbeat_names_the_duty_projects_and_keeps_the_report(hub):
     beat(client, hub.duty, features=features, kg_sync=REPORT)
     shown = ok(client.get(f"/v1/workers/{hub.duty['id']}", headers=hub.otto))
     source = shown["kg_sync"]["projects"][0]["sources"][0]
-    assert {key: source[key] for key in ("source", "status", "error", "pulled", "pushed")} == {
+    assert {key: source[key] for key in ("source", "status", "error", "pushed")} == {
         **REPORT["projects"][0]["sources"][0],
-        "pulled": 0,
         "pushed": 0,
     }
 
@@ -230,7 +229,7 @@ def test_kg_api_worker_and_laptop_pushing_in_turn_leave_the_built_graph_at_the_n
     stage.app.commit({"a.md": "# A\n\ntwo\n", "b.md": None, "d.md": "# D\n\none\n"}, T[1])  # C2
     state = worker.look(PROJECT, stage.checkouts)
     assert state.error is None and state.sources["app"].status == "ok", state
-    assert state.sources["app"].pulled == 1 and state.sources["app"].pushed == 1
+    assert state.sources["app"].pushed == 1
     c2 = stage.app.files()
     assert built_files(hub) == c2
 
@@ -239,7 +238,7 @@ def test_kg_api_worker_and_laptop_pushing_in_turn_leave_the_built_graph_at_the_n
     assert kg_push.Pusher(laptop, stage.laptop).push().ok
     assert "app:file:b.md" in built_files(hub), "the laptop's stale run brought b back"
     state = worker.look(PROJECT, stage.checkouts)
-    assert state.sources["app"].pulled == 1 and state.sources["app"].pushed == 1
+    assert state.sources["app"].pushed == 1, "the cursor the hub holds is the laptop's C1: the worker reads C2 again"
     assert built_files(hub) == c2, "the worker read C2 again: nothing of C1 is left"
 
     i, a = tables.kg_ingests, tables.audit  # the worker's pushes went in as its owner, with its token
@@ -249,7 +248,7 @@ def test_kg_api_worker_and_laptop_pushing_in_turn_leave_the_built_graph_at_the_n
     assert hub.duty["token_id"] in tokens
 
     again = worker.look(PROJECT, stage.checkouts)
-    assert again.sources["app"].pushed == 0 and again.sources["app"].pulled == 0, "nothing new: nothing pushed"
+    assert again.sources["app"].pushed == 0, "nothing new: nothing pushed"
 
 
 def test_kg_api_the_night_figures_name_the_sync_that_failed(hub):

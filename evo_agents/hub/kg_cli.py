@@ -34,19 +34,21 @@ whose machine is not signed in, still reads its graph. Standard library only.
 from __future__ import annotations
 
 import sys
-import time
+from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.hub.kg_hub_sync import wait_for
 from evo_agents.hub.kg_push import push_all, push_project
+
+if TYPE_CHECKING:
+    from evo_agents.kg.project import Project
 
 BACKENDS = ("auto", "local", "hub")
 PROBE_TIMEOUT = 5.0  # seconds auto waits for the hub before answering locally
-WAIT_INTERVAL = 2.0
 DEFAULT_WAIT = 1800.0
-FINISHED = ("succeeded", "failed")
 PRUNE_TIMEOUT = 600.0  # seconds a prune may take: it deletes objects in the blob store
 SCRUB_TIMEOUT = 600.0  # seconds one page of a scrub, or one purge, may take: it reads objects in the blob store
 MEASURE_TIMEOUT = 600.0  # seconds a measure may take: the hub opens the graph and asks the questions twice
@@ -61,13 +63,13 @@ def _base(project: str) -> str:
 # Pushing
 
 
-def local_projects(project: str | None, everything: bool) -> list[tuple[str, object]]:
+def local_projects(project: str | None, everything: bool) -> list[tuple[str, Project | Exception]]:
     """(name, project or the error it failed to load with) for ``--project`` or ``--all``."""
     from evo_agents.kg.project import ProjectError, load_project_at, resolve_project
     from evo_agents.kg.sync import indexed_projects
 
     if everything:
-        found = []
+        found: list[tuple[str, Project | Exception]] = []
         for name, root in indexed_projects():
             try:
                 found.append((name, load_project_at(root)))
@@ -173,17 +175,6 @@ def cmd_builds(args) -> int:
     return 0
 
 
-def wait_for(hub: Hub, project: str, build_id: int, timeout: float, sleep=time.sleep, clock=time.monotonic) -> dict:
-    deadline = clock() + timeout
-    while True:
-        build = hub.call("GET", f"{_base(project)}/builds/{build_id}")
-        if build["status"] in FINISHED:
-            return build
-        if clock() >= deadline:
-            raise HubError(f"build {build_id} of project {project} has not finished after {timeout:g}s")
-        sleep(WAIT_INTERVAL)
-
-
 @client_command
 def cmd_build(args) -> int:
     hub, _ = signed_in()
@@ -192,7 +183,7 @@ def cmd_build(args) -> int:
     if build is None:
         raise HubError(f"a build of project {args.project} is waiting already, but the hub names none")
     if args.wait:
-        build = wait_for(hub, args.project, build["id"], args.timeout)
+        build = wait_for(hub, _base(args.project), build["id"], args.timeout)
     if args.json:
         print_json({"queued": queued["queued"], "build": build})
     else:
