@@ -75,9 +75,9 @@ def test_a_spec_of_every_node_and_edge_kind_has_no_problem_and_gets_the_default_
     assert {n["kind"] for n in found["nodes"]} == set(system_spec.NODE_KINDS)
     assert {e["kind"] for e in found["edges"]} == set(system_spec.EDGE_KINDS)
     assert found["limits"] == {
-        "trace_usd": 2.0,
-        "trace_runs": 12,
-        "daily_usd": 5.0,
+        "trace_usd": 200.0,
+        "trace_runs": system_spec.UNLIMITED_RUNS,
+        "daily_usd": 200.0,
         "idle_minutes_hub": 10,
         "idle_minutes_worker": 30,
     }
@@ -131,11 +131,13 @@ def test_limits_take_numbers_in_their_bounds():
     assert problems == [] and found["limits"] == {
         "trace_usd": 1.5,
         "trace_runs": 20,
-        "daily_usd": 5.0,
+        "daily_usd": 200.0,
         "idle_minutes_hub": 10,
         "idle_minutes_worker": 30,
     }
-    assert errors_of({**SPEC, "limits": {"trace_runs": 0, "daily_usd": "5"}}) == [
+    assert system_spec.check({**SPEC, "limits": {"trace_runs": 0}})[0]["limits"]["trace_runs"] == 0  # no limit
+    assert errors_of({**SPEC, "limits": {"trace_runs": -1, "daily_usd": "5", "trace_usd": 1001}}) == [
+        ("limits.trace_usd", None, None),
         ("limits.trace_runs", None, None),
         ("limits.daily_usd", None, None),
     ]

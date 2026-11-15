@@ -48,9 +48,9 @@ def test_a_trace_row_counts_the_overrun_only_when_positive_and_the_off_design_ra
         "off_design_ratio": 0.5,
     }
     assert edges[("fix", "review")]["off_design_ratio"] == 1.0
-    assert system_context.trace_row({}, usd=3, runs=1, max_hop=None, budget_refusals=0, threads={}, crossings=[])[
+    assert system_context.trace_row({}, usd=203, runs=1, max_hop=None, budget_refusals=0, threads={}, crossings=[])[
         "over_usd"
-    ] == pytest.approx(3 - system_context.limits_of({})[0]), "a spec with no limits has the defaults"
+    ] == pytest.approx(203 - system_context.limits_of({})[0]), "a spec with no limits has the defaults"
 
 
 def test_the_distribution_of_a_system_sums_the_rows_and_none_is_empty():

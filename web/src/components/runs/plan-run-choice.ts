@@ -4,7 +4,7 @@ import { type ApiClient, call } from "@/lib/api/client";
 import { csrfHeaders } from "@/lib/api/csrf";
 import type { ApiSource } from "@/lib/queries";
 import { isCoreRuntime, type RequestedRuntime } from "@/lib/runtimes";
-import type { Limits, Spec, SystemSummary } from "@/lib/systems";
+import { type Limits, type Spec, type SystemSummary, UNLIMITED_RUNS } from "@/lib/systems";
 
 import type { SystemDispatched } from "./plan-run-outcome";
 import { DEFAULT_PLAN_TIMEOUT, PLAN_TIMEOUT_CHOICES, type PlanTimeout, type RunMode } from "./queries";
@@ -24,7 +24,7 @@ export type PlanTarget = PlanRunChoice["target"];
 export { isSystemDispatched, type PlanInSystem, type PlanRunOutcome, type SystemDispatched } from "./plan-run-outcome";
 
 /** `system_spec.LIMITS` defaults: a spec saved by the hub always holds them, an older one may not. */
-export const DEFAULT_LIMITS = { trace_usd: 2, trace_runs: 12, daily_usd: 5 } satisfies Limits;
+export const DEFAULT_LIMITS = { trace_usd: 200, trace_runs: 0, daily_usd: 200 } satisfies Limits;
 
 /** The limits of a trace the dialog shows: a spec's own, over `DEFAULT_LIMITS` for the keys it does not name. */
 export type TraceLimits = Limits & typeof DEFAULT_LIMITS;
@@ -143,7 +143,7 @@ export function systemOptions(systems: readonly SystemSummary[], specs: Readonly
 
 /** The runs a trace may need for `pending` steps when that is more than its limit allows; null when it fits. */
 export function overLimit(pending: number, limits: TraceLimits | null): { runs: number; limit: number } | null {
-  if (!limits) return null;
+  if (!limits || limits.trace_runs === UNLIMITED_RUNS) return null;
   const runs = pending * RUNS_PER_STEP;
   return runs > limits.trace_runs ? { runs, limit: limits.trace_runs } : null;
 }

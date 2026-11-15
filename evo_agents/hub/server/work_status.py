@@ -131,7 +131,7 @@ class WorkCard(WorkBrief):
     usd: float
     hop: int | None = Field(description="the deepest hop of its runs")
     max_hops: int
-    trace_runs: int = Field(description="the runs a trace of its revision may make")
+    trace_runs: int = Field(description="the runs a trace of its revision may make; 0 for no limit")
     trace_usd: float = Field(description="the USD a trace of its revision may spend")
     started_at: datetime
     ended_at: datetime | None = Field(description="its last span, once no run of it is active; null while running")

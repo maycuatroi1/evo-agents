@@ -192,8 +192,8 @@ describe("PlanRunDialog where it runs", () => {
     expect(review).toHaveTextContent("@lumen-lead");
     expect(review).toHaveTextContent(/4 run/);
     expect(within(review).getByTestId("plan-run-where-over")).toHaveTextContent(/3 bước.*6 run.*4 run/);
-    // northwind-ops keeps the hub's default limits: 12 runs, no warning.
-    await waitFor(() => expect(ops).toHaveTextContent(/12 run/));
+    // northwind-ops keeps the hub's default limits: any number of runs up to 200 USD, no warning.
+    await waitFor(() => expect(ops).toHaveTextContent(/bao nhiêu run cũng được, tối đa/));
     expect(within(ops).queryByTestId("plan-run-where-over")).toBeNull();
 
     // The worker's fields are hidden while a system is chosen.

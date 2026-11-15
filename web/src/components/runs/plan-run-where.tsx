@@ -9,7 +9,7 @@ import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { LOGIN_PATH } from "@/lib/config";
 import { planKeys } from "@/lib/plan-queries";
-import { type Spec, specOf } from "@/lib/systems";
+import { type Spec, specOf, UNLIMITED_RUNS } from "@/lib/systems";
 import { systemKeys, systemQuery, systemsQuery } from "@/lib/systems-queries";
 
 import { Choice, Section } from "./dispatch-fields";
@@ -142,7 +142,7 @@ export function WhereField({
                     <span>{t.rich("entry", { handle: option.entry, name: (chunks) => <span className="font-mono text-foreground">{chunks}</span> })}</span>
                     {option.limits ? (
                       <span className="tabular-nums">
-                        {t("limits", { runs: option.limits.trace_runs, usd: format.number(option.limits.trace_usd, { style: "currency", currency: "USD" }) })}
+                        {t(option.limits.trace_runs === UNLIMITED_RUNS ? "limitsUsd" : "limits", { runs: option.limits.trace_runs, usd: format.number(option.limits.trace_usd, { style: "currency", currency: "USD" }) })}
                       </span>
                     ) : null}
                   </span>

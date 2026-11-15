@@ -723,9 +723,10 @@ An edge has `from`, `to`, a `kind` and a `description`; its kind fixes the kinds
 
 The agent the entry interacts with is the system's entry agent: at most one per system, and a profile is the entry
 agent of at most one system (a partial unique index holds it). `limits` holds the budgets of the system:
-`trace_usd` (2 by default), `trace_runs` (12) and `daily_usd` (5). A trace keeps to the first two (Budget of a trace).
+`trace_usd` (200 by default, at most 1000), `trace_runs` (0 by default: no limit) and `daily_usd` (200). A trace keeps
+to the first two (Budget of a trace).
 `idle_minutes_hub` (10) and `idle_minutes_worker` (30), from 1 to 1440, are the idle limits of The Orchestrator.
-`ops_daily_usd` (5, at most 1000) caps what the runs of its ops threads spend in 24 hours; a spec that does not name
+`ops_daily_usd` (200, at most 1000) caps what the runs of its ops threads spend in 24 hours; a spec that does not name
 it keeps not naming it, and the hub reads the default.
 
 A project has at most one default system (`agent_systems.is_default`). An admin of the project sets it with
@@ -968,8 +969,8 @@ evo-agents hub system metrics support --project northwind --days 7 --traces
 
 ### Budget of a trace
 
-`limits.trace_runs` (12) and `limits.trace_usd` (2) cap a trace: its runs, counted through `spawned_by_run_id`, and
-their cost. Past either, the next ask or mention of the trace is refused with the limit it passed, and a `refused`
+`limits.trace_runs` (0 by default: no limit) and `limits.trace_usd` (200) cap a trace: its runs, counted through
+`spawned_by_run_id`, and their cost; a `trace_runs` of 0 (`system_spec.UNLIMITED_RUNS`) leaves the runs uncapped. Past either, the next ask or mention of the trace is refused with the limit it passed, and a `refused`
 span says so.
 
 ### A plan run in a system

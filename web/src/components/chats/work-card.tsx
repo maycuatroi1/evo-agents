@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useMediaQuery } from "@/hooks/use-media-query";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { answerable, threadHref, type WorkAsk, type WorkCard, type WorkDecision } from "@/lib/work";
+import { UNLIMITED_RUNS } from "@/lib/systems";
 import { cn } from "@/lib/utils";
 
 import { AskStatus } from "./work-ask";
@@ -118,7 +119,7 @@ function Figures({ card }: { card: WorkCard }) {
   const money = useMoney();
   const time = useWorkTime();
   const figures = [
-    { key: "runs", label: t("runs"), value: t("of", { value: card.runs, max: card.trace_runs }) },
+    { key: "runs", label: t("runs"), value: card.trace_runs === UNLIMITED_RUNS ? String(card.runs) : t("of", { value: card.runs, max: card.trace_runs }) },
     { key: "cost", label: t("cost"), value: t("of", { value: money(card.usd), max: money(card.trace_usd) }) },
     { key: "hop", label: t("hop"), value: t("of", { value: card.hop ?? 0, max: card.max_hops }) },
     { key: "time", label: t("time"), value: time(card.seconds) },

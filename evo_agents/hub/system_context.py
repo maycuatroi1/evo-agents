@@ -174,11 +174,25 @@ def node_kind(spec: dict, handle: str) -> str | None:
 
 
 def limits_of(spec: dict) -> tuple[float, int]:
-    """(trace_usd, trace_runs) of a spec, the defaults of ``system_spec.LIMITS`` for what it does not set."""
+    """(trace_usd, trace_runs) of a spec, the defaults of ``system_spec.LIMITS`` for what it does not set; trace_runs
+    ``system_spec.UNLIMITED_RUNS`` (0) sets no limit on the runs."""
     limits = spec.get("limits") or {}
     usd = limits.get("trace_usd", system_spec.LIMITS["trace_usd"][0])
     count = limits.get("trace_runs", system_spec.LIMITS["trace_runs"][0])
     return float(usd), int(count)
+
+
+def _budget_line(count: int, usd: float) -> str:
+    """The budget of a trace as the System section says it, with no runs named when ``count`` sets no limit."""
+    if count == system_spec.UNLIMITED_RUNS:
+        return (
+            f"- A trace of this system may make any number of runs and spend at most {usd:g} USD; past that, the hub "
+            "refuses new asks and mentions in it."
+        )
+    return (
+        f"- A trace of this system runs at most {count} runs and {usd:g} USD; past either, the hub refuses new asks "
+        "and mentions in it."
+    )
 
 
 @dataclass(frozen=True)
@@ -251,8 +265,7 @@ def system_lines(place: Place) -> list[str]:
         "it is finished); add `--bounds` (what not to do) and `--ref` (repeatable) when they help.",
         f"- To pass an answer of a run you asked on to this thread as it is, use `{FORWARD_COMMAND} --run RUN` "
         "rather than retyping it.",
-        f"- A trace of this system runs at most {count} runs and {usd:g} USD; past either, the hub refuses new asks "
-        "and mentions in it.",
+        _budget_line(count, usd),
     ]
     return _clip("\n".join(lines), SYSTEM_BYTES).split("\n")
 
@@ -330,7 +343,7 @@ def budget_problem(spec: dict, runs: int, usd: float) -> str | None:
     """Why a trace of ``runs`` runs that cost ``usd`` takes no new ask or mention under the limits of ``spec``; None
     while it does."""
     limit_usd, limit_runs = limits_of(spec)
-    if runs >= limit_runs:
+    if limit_runs != system_spec.UNLIMITED_RUNS and runs >= limit_runs:
         return (
             f"the trace reached its budget of {limit_runs} runs (limits.trace_runs of the system): no new ask or "
             "mention in it; answer with what you have"
