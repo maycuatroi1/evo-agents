@@ -16,7 +16,7 @@ import logging
 from dataclasses import dataclass
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import tables
 from evo_agents.hub.kg_graph_rows import CHANNEL, MAIN, read_graph
@@ -47,12 +47,17 @@ class Held:
 async def load(engine: AsyncEngine, project_id: int) -> Held | None:
     """The snapshot of the project's main branch read from the tables now, not kept: for a job that reads the graph
     once (``evo_agents.hub.server.kg_health``); None before its first build kept a graph."""
-    heads = tables.kg_graph_heads
     async with engine.connect() as conn:
-        build_id = await conn.scalar(
-            select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
-        )
-        rows = await read_graph(conn, project_id)
+        return await load_on(conn, project_id)
+
+
+async def load_on(conn: AsyncConnection, project_id: int) -> Held | None:
+    """``load`` on the caller's connection."""
+    heads = tables.kg_graph_heads
+    build_id = await conn.scalar(
+        select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
+    )
+    rows = await read_graph(conn, project_id)
     if rows is None:
         return None
     return Held(build_id, await asyncio.to_thread(Snapshot.from_stored, rows))
