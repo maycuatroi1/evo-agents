@@ -6217,6 +6217,40 @@ def test_0248_adds_the_graph_tables_and_going_back_drops_them(hub_db):
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0248") :]
 
 
+def test_0248_lets_a_succeeded_build_hold_no_graph_file_and_going_back_fails_those(hub_db):
+    """Since 0248 a build keeps its graph in the tables and succeeds with no artifact; a build that did not succeed
+    still holds none. Going back fails a succeeded build with no artifact and none pruned from it, which the earlier
+    revision cannot read, and keeps a build with a graph file and one pruned."""
+    builds = hub_tables.kg_builds
+    move_to(hub_db, "0247")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        with_file = one(conn, build(ids["project"], "a" * 64, "sha256:" + "c" * 64))
+        pruned = one(conn, build(ids["project"], "b" * 64, "sha256:" + "c" * 64))
+        conn.execute(
+            update(builds).values(artifact_sha256=None, artifact_pruned_at=func.now()).where(builds.c.id == pruned)
+        )
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # before 0248 a success holds a file
+        conn.execute(build(ids["project"], None, "sha256:" + "d" * 64))
+    move_to(hub_db, "0248")
+    with live.connect(hub_db) as conn:
+        in_tables = one(conn, build(ids["project"], None, "sha256:" + "d" * 64))
+        conn.execute(update(builds).values(artifact_size=None).where(builds.c.id == in_tables))
+        for bad in (
+            update(builds).values(content_hash=None).where(builds.c.id == in_tables),  # a success is still counted
+            insert(builds).values(project_id=ids["project"], status="failed", artifact_sha256="e" * 64),
+            insert(builds).values(project_id=ids["project"], status="queued", artifact_pruned_at=func.now()),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+    move_to(hub_db, "0247", down=True)
+    kept = select(builds.c.id, builds.c.status, builds.c.error).order_by(builds.c.id)
+    (a, b, c) = query(hub_db, kept)
+    assert a == (with_file, "succeeded", None) and b == (pruned, "succeeded", None)
+    assert c[:2] == (in_tables, "failed") and "tables" in c[2]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0248") :]
+
+
 def test_0249_lets_a_dismissal_name_the_ontology_rules_and_going_back_deletes_those(hub_db):
     move_to(hub_db, "0248")
     d = hub_tables.kg_review_dismissals
