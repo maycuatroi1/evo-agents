@@ -197,6 +197,10 @@ class KgHub:
     def pushes(self) -> int:
         return sum(1 for method, path in self.calls if method == "POST" and path.endswith("/runs"))
 
+    def close(self) -> None:
+        """Closes the corpus's SQLite connection: Windows keeps an open database's file locked."""
+        self.corpus.close()
+
 
 class KgHubs:
     """A hub of several projects, each a ``KgHub``, that lists them all (GET /v1/projects) as projects the caller
@@ -219,3 +223,7 @@ class KgHubs:
         if name not in self.hubs:
             raise HubError(f"project {name} not found", 404)
         return self.hubs[name].call(method, path, body, timeout=timeout)
+
+    def close(self) -> None:
+        for hub in self.hubs.values():
+            hub.close()
