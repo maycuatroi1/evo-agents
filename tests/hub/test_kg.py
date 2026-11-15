@@ -588,11 +588,8 @@ def test_two_machines_pushing_in_either_order_give_the_same_content_hash(hub, tm
     monkeypatch.setenv("EVO_KG_HOME", str(hub.worker_dir / "kg" / "home"))
     report = build_project(worker_project(hub.worker_dir, PROJECT), verify=True)
     assert report.ok and report.verify["match"] and report.content_hash == forward["content_hash"]
-    env = {**pg.clean_env(), "EVO_KG_HOME": str(hub.worker_dir / "kg" / "home")}
-    harness = hub.worker_dir / "kg" / "harness" / PROJECT
-    verified = pg.cli(["kg", "build", "--verify", "--cold", "--project", str(harness), "--json"], env=env)
-    assert verified.returncode == 0, verified.stdout + verified.stderr
-    assert json.loads(verified.stdout)["verify"]["match"] is True
+    cold = build_project(worker_project(hub.worker_dir, PROJECT), verify=True, cold=True)
+    assert cold.ok and cold.verify["match"] and cold.verify["cold"]
 
     # and a machine holding both corpora builds the same graph locally
     both = Machine(tmp_path, "both")
@@ -1275,7 +1272,7 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
         env = pg.clean_env(HOME=str(home), EVO_KG_HOME=str(laptop.home))
         harness = str(laptop.harness)
 
-        ok(pg.cli(["kg", "build", "--project", harness], env=env))  # the graph of this machine, to compare below
+        assert build_project(load_project_at(laptop.harness, laptop.home)).ok  # a graph built here, to compare below
         pushed = ok(pg.cli(["hub", "kg", "push", "--project", harness], env=env))
         assert pushed.stdout.startswith("project alpha: pushed 1 run(s)")
         again = ok(pg.cli(["hub", "kg", "push", "--project", harness], env=env))
@@ -1327,16 +1324,14 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
 
         on_the_hub = f"project {PROJECT} on the hub: build"
         assert on_the_hub in shown(served_hub[2])["text"]
-        served_local = mcp(
-            ["kg", "serve", "--backend", "local", "--project", harness], env, hello, tools, status, search
-        )
+        signed_out = pg.clean_env(HOME=str(tmp_path / "nobody"), EVO_KG_HOME=str(laptop.home))
+        served_local = mcp(["kg", "serve", "--project", harness], signed_out, hello, tools, status, search)
         assert on_the_hub not in shown(served_local[2])["text"]
         hub_found, local_found = shown(served_hub[3]), shown(served_local[3])
         assert hub_found["text"].splitlines()[1:] == local_found["text"].splitlines()[1:]  # the first names the build
         assert hub_found["_meta"] == local_found["_meta"] and hub_found["_meta"][READ_META]["results_read"]
         auto = mcp(["kg", "serve", "--project", harness], env, status)  # signed in, and the hub has a graph
         assert on_the_hub in shown(auto[0])["text"]
-        signed_out = pg.clean_env(HOME=str(tmp_path / "nobody"), EVO_KG_HOME=str(laptop.home))
         auto = mcp(["kg", "serve", "--project", harness], signed_out, status)
         assert on_the_hub not in shown(auto[0])["text"]
 

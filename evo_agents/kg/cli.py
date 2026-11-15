@@ -85,7 +85,7 @@ def _hub_errors(command):
     return run
 
 
-def _syncer(project):
+def syncer(project):
     """The sync of ``project`` against the hub this machine is signed in to (``evo_agents.hub.kg_hub_sync``)."""
     from evo_agents.hub.kg_hub_sync import hub_sync
 
@@ -152,7 +152,7 @@ def _cmd_sync_due(args) -> int:
 
     project = project_of(args)
     try:
-        outcome = sync_due(_syncer(project), build=args.build, accept=args.accept_removals)
+        outcome = sync_due(syncer(project), build=args.build, accept=args.accept_removals)
     except ProjectError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -175,7 +175,7 @@ def cmd_sync(args) -> int:
     if args.due:
         return _cmd_sync_due(args)
     project = project_of(args)
-    results, build = sync_project(_syncer(project), args.source or None, accept=args.accept_removals, build=args.build)
+    results, build = sync_project(syncer(project), args.source or None, accept=args.accept_removals, build=args.build)
     ok = all(r.ok and not r.held for r in results) and (build is None or build.ok)
     left = [] if args.source else cleared_sources(project)[1]
     if args.json:
@@ -414,7 +414,7 @@ def register(sub) -> None:
     sync.set_defaults(func=cmd_sync)
 
     schedule = ksub.add_parser(
-        "schedule", help="hourly LaunchAgent running kg sync --due --all --build, and --push when signed in (macOS)"
+        "schedule", help="hourly LaunchAgent running kg sync --due --all: it syncs, and the hub builds (macOS)"
     )
     schedule.add_argument(
         "action", choices=["print", "install", "uninstall"], help="print the plist, or load or unload it"

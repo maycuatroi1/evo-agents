@@ -1,10 +1,15 @@
-"""``evo-agents kg schedule``: a macOS LaunchAgent that runs ``kg sync --due --all --build`` every hour.
+"""``evo-agents kg schedule``: a macOS LaunchAgent that runs ``kg sync --due --all`` every hour.
+
+The schedule only syncs: it pushes the runs of the sources that are due to the hub and builds nothing, here or on the
+hub. The hub queues a build of a project with each run it ingests, from this machine, another member or the worker on
+duty, so a project this machine skips (not on the hub, a reader's, no sink of kind hub) or fails to push still gets
+its builds from the runs the hub takes from the others.
 
 launchd starts a job with almost no environment, so the plist names this evo-agents by absolute path,
 declares PATH explicitly, pins EVO_KG_HOME, and sets ``EVO_KG_TRIGGER=schedule`` so a run can tell it was
-started by the schedule. Output of every run is appended to ``<kg home>/schedule.log``. When this machine is
-signed in to a hub (``evo-agents hub login``), the command also gets ``--push``: every run pushes the runs the
-hub lacks. Install again after signing in or out to change that.
+started by the schedule. Output of every run is appended to ``<kg home>/schedule.log``. A plist installed before
+names ``--build`` or ``--push`` too, and still runs: ``--build`` waits for a build of each project that read
+something, ``--push`` does nothing. Install again to drop them.
 """
 
 from __future__ import annotations
@@ -21,8 +26,7 @@ from evo_agents.kg.corpus import kg_home
 
 LABEL = "io.github.maycuatroi1.evo-agents.kg-sync"
 INTERVAL = 3600
-SYNC_ARGS = ("kg", "sync", "--due", "--all", "--build")
-PUSH_ARG = "--push"
+SYNC_ARGS = ("kg", "sync", "--due", "--all")
 SYSTEM_PATH = ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin")
 
 
@@ -45,29 +49,12 @@ def plist_path() -> Path:
     return Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
 
 
-def signed_in() -> bool:
-    """Whether this machine holds hub credentials, so the scheduled sync can push."""
-    from evo_agents.hub.client import HubError, load_credentials
-
-    try:
-        load_credentials()
-    except HubError:
-        return False
-    return True
-
-
-def sync_args(push: bool | None = None) -> tuple[str, ...]:
-    """The kg command the schedule runs; with ``--push`` when ``push``, or, when it is None, when signed in."""
-    push = signed_in() if push is None else push
-    return (*SYNC_ARGS, PUSH_ARG) if push else SYNC_ARGS
-
-
-def build_plist(argv0: str | None = None, home: Path | None = None, push: bool | None = None) -> dict:
+def build_plist(argv0: str | None = None, home: Path | None = None) -> dict:
     home = home or kg_home()
     log = str(home / "schedule.log")
     return {
         "Label": LABEL,
-        "ProgramArguments": [*executable(argv0), *sync_args(push)],
+        "ProgramArguments": [*executable(argv0), *SYNC_ARGS],
         "StartInterval": INTERVAL,
         "EnvironmentVariables": {
             "PATH": os.pathsep.join([str(Path.home() / ".local" / "bin"), *SYSTEM_PATH]),
@@ -91,12 +78,12 @@ def _require_launchd() -> None:
     if sys.platform == "win32":
         raise ScheduleError(
             "kg schedule install needs launchd (macOS). On Windows, add a Task Scheduler task that runs this every"
-            f" hour: {subprocess.list2cmdline([*executable(), *sync_args()])}"
+            f" hour: {subprocess.list2cmdline([*executable(), *SYNC_ARGS])}"
         )
     if sys.platform != "darwin":
         raise ScheduleError(
             "kg schedule install needs launchd (macOS). Elsewhere, run this every hour from cron or a systemd"
-            f" timer: {shlex.join([*executable(), *sync_args()])}"
+            f" timer: {shlex.join([*executable(), *SYNC_ARGS])}"
         )
 
 

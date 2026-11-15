@@ -317,7 +317,19 @@ def test_eval_questions_command_prints_a_session_set_kg_eval_reads(cluster, tmp_
 
     questions = tmp_path / "sessions.jsonl"
     questions.write_text(out.out, encoding="utf-8")
-    evaluate = ["kg", "eval", str(questions), "--project", str(root), "--type", "session", "--method", "grep"]
+    evaluate = [
+        "kg",
+        "eval",
+        "--backend",
+        "auto",
+        str(questions),
+        "--project",
+        str(root),
+        "--type",
+        "session",
+        "--method",
+        "grep",
+    ]
     assert main([*evaluate, "--repo", f"northwind-api={api}", "--json"]) == 0
     [result] = json.loads(capsys.readouterr().out)["results"]
     assert result["method"] == "grep" and result["ranks"][0] is not None

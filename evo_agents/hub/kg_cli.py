@@ -21,10 +21,10 @@ dismisses one item of it (``evo_agents.hub.kg_review_cli``). ``entities``, insid
 the entity requests of its latest build (``evo_agents.hub.kg_entities_cli``). ``decisions`` lists the decisions on the graph the caller
 can see, and a writer takes or steps one (``evo_agents.hub.kg_decisions_cli``).
 
-``open_session`` picks where kg_* are answered. ``local`` reads the store on this machine, as before the hub.
+``open_session`` picks where kg_* are answered; graphs are built on the hub only, so there is no ``local`` backend.
 ``hub`` sends every call to the hub's /mcp as a tools/call (``RemoteSession``), the seven tools with the same names and
 results, so an MCP client sees no difference. ``auto`` takes the hub when this machine is signed in and the hub has
-a successful build of the project it can show the caller, and the local store otherwise, including when the hub does
+a successful build of the project it can show the caller, and a store left on this machine otherwise, including when the hub does
 not answer within PROBE_TIMEOUT. Inside a run of this machine's worker (``mcp_proxy.run_credentials``), ``auto`` and
 ``hub`` ask the hub as the agent of that run, with the worker's token and X-Evo-Run, as ``evo-agents hub mcp`` does
 there: the hub binds the session to the run's project, so a run whose worktree names no project of this machine, or
@@ -46,7 +46,7 @@ from evo_agents.hub.kg_push import push_all, push_project
 if TYPE_CHECKING:
     from evo_agents.kg.project import Project
 
-BACKENDS = ("auto", "local", "hub")
+BACKENDS = ("auto", "hub")
 PROBE_TIMEOUT = 5.0  # seconds auto waits for the hub before answering locally
 DEFAULT_WAIT = 1800.0
 PRUNE_TIMEOUT = 600.0  # seconds a prune may take: it deletes objects in the blob store
@@ -360,7 +360,7 @@ def scrub_scan(hub: Hub, project: str, progress=None) -> dict:
     after = None
     while True:
         body = {"project": project, **({"after": after} if after else {})}
-        page = hub.call("POST", "/v1/admin/kg/scrub", body, timeout=SCRUB_TIMEOUT)
+        page = hub.call("POST", "/v1/admin/kg/scrub", body, timeout=SCRUB_TIMEOUT) or {}
         for key in ("scanned", "scanned_bytes", "missing"):
             report[key] += page[key]
         report["found"] += page["found"]
@@ -653,12 +653,9 @@ def hub_has_graph(hub: Hub, project: str) -> bool:
 
 def open_session(backend: str, project: str | None, sink: str):
     """What answers kg_* for ``kg serve`` and ``kg query``: a local Session or a RemoteSession (see the module)."""
+    from evo_agents.hub.mcp_proxy import run_credentials, session_credentials
     from evo_agents.kg.project import ProjectError, resolve_project
     from evo_agents.kg.serve import Session, make_session
-
-    if backend == "local":
-        return make_session(project, sink)
-    from evo_agents.hub.mcp_proxy import run_credentials, session_credentials
 
     run = run_credentials()
     if run is not None:  # the hub knows the run's project; a worker token reads no build list to probe

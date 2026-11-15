@@ -24,7 +24,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from evo_agents.kg import init_local, init_run
+from evo_agents.kg import init_run
 from evo_agents.kg import profile as kg_profile
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg import strategy as kg_strategy
@@ -36,6 +36,8 @@ SKILL_ENV = "EVO_CURATOR_SKILL"
 SKILL_FILES = ("references/kg.md", "references/lenses.md")
 FORMAT = "evo-kg-bench-curator/1"
 DECIDE_TRIES = 2
+AGENT_ENV = "EVO_KG_INIT_AGENT"
+AGENT_TIMEOUT = 900
 
 
 # -- the skill ------------------------------------------------------------------------------------------------------
@@ -341,13 +343,33 @@ def prompt_text(bench: str, profile: dict, table: dict, strategies: list[dict], 
 # -- the run ----------------------------------------------------------------------------------------------------
 
 
+def agent_argv() -> list[str]:
+    """The command of the agent runtime on this machine that gives the Curator's answer: the argv in AGENT_ENV (it
+    reads the prompt on stdin and writes its answer on stdout), else Claude Code or Codex, with no tools."""
+    custom = os.environ.get(AGENT_ENV)
+    if custom:
+        try:
+            argv = json.loads(custom)
+        except ValueError:
+            argv = None
+        if not isinstance(argv, list) or not argv or not all(isinstance(a, str) for a in argv):
+            raise BenchError(f"{AGENT_ENV} must be a JSON list of strings")
+        return argv
+    if shutil.which("claude"):
+        return [
+            "claude", "--print", "--output-format", "json", "--max-turns", "1", "--tools", "", "--strict-mcp-config",
+            "--disable-slash-commands", "--no-session-persistence",
+        ]  # fmt: skip
+    if shutil.which("codex"):
+        return ["codex", "exec", "--skip-git-repo-check", "-"]
+    raise BenchError(f"no agent runtime on this machine (claude or codex), and {AGENT_ENV} is not set")
+
+
 def ask_curator(prompt: str) -> tuple[str, float | None]:
     """(the Curator's answer, its cost in USD when the runtime says): the agent runtime of this machine."""
-    argv = init_local.agent_argv()
+    argv = agent_argv()
     try:
-        done = subprocess.run(
-            argv, input=prompt, capture_output=True, text=True, timeout=init_local.AGENT_TIMEOUT, check=False
-        )
+        done = subprocess.run(argv, input=prompt, capture_output=True, text=True, timeout=AGENT_TIMEOUT, check=False)
     except (OSError, subprocess.SubprocessError) as exc:
         raise BenchError(f"the agent runtime did not answer: {type(exc).__name__}: {exc}") from None
     if done.returncode != 0:

@@ -1334,3 +1334,16 @@ def test_curator_decide_refuses_tune_scores_that_hold_the_holdout(tmp_path):
     (work / "locbench" / "tune" / "default.json").write_text(json.dumps(_run_summary("locbench", SCORES, "holdout")))
     with pytest.raises(BenchError, match="run them with --part tune"):
         curator.decide_from(work, tmp_path / "cache", "locbench", ask=lambda p: ("", None))
+
+
+def test_the_curator_runtime_can_be_set_by_the_environment(monkeypatch, tmp_path):
+    from evo_agents.kg.bench import curator
+
+    script = tmp_path / "agent.py"
+    script.write_text("import sys\nprint('got ' + str(len(sys.stdin.read())))\n")
+    monkeypatch.setenv(curator.AGENT_ENV, json.dumps([sys.executable, str(script)]))
+    answer, cost = curator.ask_curator("hello")
+    assert answer.startswith("got 5") and cost is None
+    monkeypatch.setenv(curator.AGENT_ENV, "not json")
+    with pytest.raises(BenchError, match="JSON list"):
+        curator.ask_curator("hello")

@@ -235,7 +235,20 @@ def test_eval_runs_both_ways_on_one_build(tmp_path, kg_env, words, capsys):
     assert f"vectors of {FAKE}, mode index" in capsys.readouterr().out
     runs = {}
     for search in ("bm25", "hybrid", "graph"):
-        args = ["kg", "eval", str(FIXTURE), "--project", root, "--method", "kg_search", "--search", search, "--json"]
+        args = [
+            "kg",
+            "eval",
+            "--backend",
+            "auto",
+            str(FIXTURE),
+            "--project",
+            root,
+            "--method",
+            "kg_search",
+            "--search",
+            search,
+            "--json",
+        ]
         assert main(args) == 0
         data = json.loads(capsys.readouterr().out)
         assert data["search"] == search

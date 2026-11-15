@@ -115,7 +115,7 @@ def test_claude_code_shows_the_model_the_text_the_cli_prints(hub_db, tmp_path, m
     project = make_project(tmp_path / "kg", kg_home, level="public", app_level="customer")
     sync_project(project)
     assert build_project(project).ok
-    bound = ["--project", str(project.harness.root), "--backend", "local", "--sink", "wide"]
+    bound = ["--project", str(project.harness.root), "--backend", "auto", "--sink", "wide"]
 
     with live.running_hub(hub_db, tmp_path, EVO_HUB_ADMINS=live.ADMIN) as served:
         admin = live.bearer(live.insert_token(hub_db, live.ADMIN))

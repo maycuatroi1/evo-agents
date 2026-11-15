@@ -45,11 +45,11 @@ INIT_DECISION = ("run", "applied")
 INIT_QUESTIONS = ("run", "set", "version", "questions", "holdout", "classes")
 
 
-def _path(project: str) -> str:
+def path_of(project: str) -> str:
     return f"/v1/kg/{quote(project, safe='')}/init"
 
 
-def _line(run: dict) -> str:
+def line_of(run: dict) -> str:
     review = f", review run {run['agent_run_id']}" if run.get("agent_run_id") else ""
     asked = run.get("questions") or {}
     if asked.get("state"):
@@ -79,11 +79,11 @@ def _questions(path: str) -> list:
 
 
 def _send_questions(hub, args) -> int:
-    found = hub.call("GET", f"{_path(args.project)}?limit={args.limit}")
+    found = hub.call("GET", f"{path_of(args.project)}?limit={args.limit}")
     run = args.run or (found.get("active") or {}).get("id")
     if run is None:
         sys.exit(f"project {args.project} has no kg init run in flight; pass --run ID")
-    made = hub.call("POST", f"{_path(args.project)}/{int(run)}/questions", {"questions": _questions(args.questions)})
+    made = hub.call("POST", f"{path_of(args.project)}/{int(run)}/questions", {"questions": _questions(args.questions)})
     if args.json:
         print_json(made)
         return 0
@@ -124,12 +124,14 @@ def cmd_init(args) -> int:
     if args.questions:
         return _send_questions(hub, args)
     if args.status or args.decide:
-        found = hub.call("GET", f"{_path(args.project)}?limit={args.limit}")
+        found = hub.call("GET", f"{path_of(args.project)}?limit={args.limit}")
         if args.decide:
             run = args.run or (found.get("active") or {}).get("id")
             if run is None:
                 sys.exit(f"project {args.project} has no kg init run in flight; pass --run ID")
-            made = hub.call("POST", f"{_path(args.project)}/{int(run)}/decision", {"decision": _decision(args.decide)})
+            made = hub.call(
+                "POST", f"{path_of(args.project)}/{int(run)}/decision", {"decision": _decision(args.decide)}
+            )
             if args.json:
                 print_json(made)
                 return 0
@@ -143,13 +145,13 @@ def cmd_init(args) -> int:
         if not found["runs"]:
             print(f"project {args.project} has no kg init run yet")
         for run in found["runs"]:
-            print(_line(run))
+            print(line_of(run))
         return 0
-    found = hub.call("POST", _path(args.project), {})
+    found = hub.call("POST", path_of(args.project), {})
     if args.json:
         print_json(found)
         return 0
-    print(f"kg init run of project {args.project}: {_line(found)}")
+    print(f"kg init run of project {args.project}: {line_of(found or {})}")
     return 0
 
 
