@@ -25,11 +25,12 @@ was true when it was taken. Before you answer:
 3. Find the fact that decides the cause, not one that fits it: the config the code reads, the log line of the run
    the finding blames, the figure before and after. Say in the thread what you checked, in one short paragraph
    (`evo-agents worker chat post TEXT`).
-4. A proposal that changes how kg_search ranks results is measured first, never judged by its examples: when the run
-   has the project's harness and the evo-agents repo, run `evo-agents kg eval QUESTIONS --project PROJECT --split tune
-   --method kg_search --backend local --json` on the default branch and on the change, then on `--split holdout`.
-   Ship it only when hit@5 falls on neither; put the numbers in the note. Without the harness or the questions, defer
-   it with that reason.
+4. A proposal that changes how kg_search ranks results is measured first, never judged by its examples. Graphs of a
+   project are built and ranked on the hub, by the code it runs, so measure the change with the bench, which builds
+   its graphs from the checkout: when the run has the evo-agents repo, run `evo-agents kg bench run --out base.json`
+   on the default branch and `evo-agents kg bench run --out new.json` on the change, then `evo-agents kg bench
+   compare base.json new.json --split holdout --gate` (docs/kg-bench.md). Ship it only when the gate passes; put the
+   numbers in the note. Without the repo or the bench's sets, defer it with that reason.
 
 ## Answer
 
