@@ -77,6 +77,12 @@ RULES = (
     "ambiguous_match",
     "bulk_noise",
     "conflicting_claim",
+    # the rules an ontology states (``evo_agents.kg.ontology_rules``); a graph whose ontology states none has no item
+    "wrong_endpoint",
+    "cardinality",
+    "cycle",
+    "duplicate_key",
+    "missing_prop",
 )
 ACTIONS = {
     "dangling_mention": "fix_mention",
@@ -86,6 +92,11 @@ ACTIONS = {
     "ambiguous_match": "disambiguate",
     "bulk_noise": "exclude",
     "conflicting_claim": "check_claims",
+    "wrong_endpoint": "fix_endpoint",
+    "cardinality": "keep_one",
+    "cycle": "break_cycle",
+    "duplicate_key": "merge",
+    "missing_prop": "set_prop",
 }
 KNOWLEDGE_KINDS = frozenset({"Document", "Plan", "Problem", "Claim"})
 CODE_KINDS = frozenset({"File", "Symbol"})

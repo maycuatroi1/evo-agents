@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents import __version__
-from evo_agents.kg import audit, entities, entity_map, strategy
+from evo_agents.kg import audit, entities, entity_map, ontology_rules, strategy
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg import review as kg_review
 from evo_agents.kg import search as text_search
@@ -62,6 +62,7 @@ from evo_agents.kg.schema import known_kinds, known_relations
 from evo_agents.kg.settings import DEFAULT as DEFAULT_TUNING
 from evo_agents.kg.settings import SettingsError, Tuning
 from evo_agents.kg.settings import read as read_tuning
+from evo_agents.kg.snapshot import Snapshot
 from evo_agents.kg.store import Graph, StaleSchema, Store
 from evo_agents.kg.store_clusters import Clusters
 from evo_agents.kg.store_filters import label_columns
@@ -668,7 +669,7 @@ def _build(
         target = project.root / "graph.sqlite"
         warm = previous_clusters(store, target)
         add_clusters(project, graph, coverage, warm)
-        add_review(graph, coverage)
+        add_review(graph, coverage, project.ontology)
         if store is None:
             found = Store.stored_schema(target)
             if found not in (None, kg_store.SCHEMA_VERSION):
@@ -723,12 +724,20 @@ def add_clusters(project: Project, graph: Graph, coverage: dict, warm: Clusters 
     coverage["clusters"] = {**kg_clusters.coverage(graph.clusters), "warm": warm is not None}
 
 
-def add_review(graph: Graph, coverage: dict) -> None:
-    """Compute the review items of a graph with clusters (``evo_agents.kg.review``) and count them per rule in
-    ``coverage["review"]``; a graph without clusters has none, and its coverage says nothing of them."""
-    if graph.clusters is None:
+def add_review(graph: Graph, coverage: dict, ontology: dict | None = None) -> None:
+    """Compute the review items of a graph with clusters (``evo_agents.kg.review``), with those of the rules
+    ``ontology`` states (``evo_agents.kg.ontology_rules``, checked on a snapshot of the graph only when it states one),
+    and count them per rule in ``coverage["review"]``; a graph with neither has none, and its coverage says nothing of
+    them."""
+    items = kg_review.compute(graph) if graph.clusters is not None else []
+    rules = ontology_rules.rules_of(ontology)
+    if rules.relations or rules.kinds:
+        members = graph.clusters.members if graph.clusters is not None else {}
+        violations = ontology_rules.check(Snapshot.from_graph(graph), rules)
+        items += ontology_rules.review_items(violations, lambda nid: (members.get(nid) or [None])[0])
+    if graph.clusters is None and not items:
         return
-    graph.review = kg_review.compute(graph)
+    graph.review = sorted(items, key=lambda item: item["fingerprint"])
     coverage["review"] = kg_review.counts(graph.review)
 
 
@@ -819,7 +828,7 @@ def verify_build(
             return {"match": False, "errors": errors[:10]}
         add_curation(graph, coverage)
         add_clusters(project, graph, coverage, warm)
-        add_review(graph, coverage)
+        add_review(graph, coverage, project.ontology)
         b = store.write(graph, state_digest=corpus.read_digest, coverage=coverage, stats={}, policy=project.policy)
         got = store.build_row(b)["content_hash"]
         return {"match": got == expected, "expected": expected, "rebuilt": got, "cold": cold}

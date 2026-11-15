@@ -85,3 +85,15 @@ def test_commits_and_pull_requests_are_hub_kinds_an_ontology_may_not_redefine(tm
     store = Store.for_project(project)
     commits = store.db.execute("SELECT COUNT(*) FROM nodes WHERE kind = 'Commit' AND node_id LIKE 'app:commit:%'")
     assert commits.fetchone()[0] == 1
+
+
+def test_a_build_puts_what_breaks_its_ontology_rules_in_the_review_queue(tmp_path, kg_env):
+    ontology = "node_kinds:\n  - name: Screen\n    required_props: [owner]\n"
+    project = with_screens(make_project(tmp_path, kg_env), ontology)
+    report = build_project(project)
+    assert report.ok, report.errors
+    store = Store.for_project(project)
+    found = [item for item in store.review_items(report.build_id) if item["rule"] == "missing_prop"]
+    assert [(item["evidence"], item["action"]) for item in found] == [(["screen:SCR-7"], "set_prop")]
+    assert found[0]["detail"]["missing"] == ["owner"]
+    assert report.coverage["review"]["missing_prop"] == 1
