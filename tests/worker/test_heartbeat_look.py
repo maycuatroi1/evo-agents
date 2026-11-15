@@ -139,3 +139,12 @@ def test_a_login_the_machine_lacks_reads_leased_while_the_runtimes_agents_authen
     assert health.load_leased(tmp_path) == leased
     (tmp_path / health.LEASED_FILE).write_text("not json")
     assert health.load_leased(tmp_path) == {}
+
+
+def test_a_status_command_that_times_out_keeps_the_login_last_found():
+    assert health.steady({"codex": "ok", "claude-code": "ok"}, {"codex": "unknown", "claude-code": "ok"}) == {
+        "codex": "ok",
+        "claude-code": "ok",
+    }
+    assert health.steady({}, {"codex": "unknown"}) == {"codex": "unknown"}
+    assert health.steady({"codex": "ok"}, {"codex": "unauthorized"}) == {"codex": "unauthorized"}
