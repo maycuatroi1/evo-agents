@@ -212,3 +212,24 @@ def test_the_entity_map_reads_of_a_view_are_those_of_the_file(tmp_path, monkeypa
             assert reads.cluster_rows(view, b) == [tuple(r) for r in reads.cluster_rows(store, b)]
     finally:
         store.close()
+
+
+def test_the_coordinator_holds_the_most_recently_read_projects_and_no_finished_load(monkeypatch):
+    loads = []
+
+    async def load(engine, project_id):
+        loads.append(project_id)
+        return kg_snapshots.Held(project_id, None)
+
+    monkeypatch.setattr(kg_snapshots, "load", load)
+    monkeypatch.setattr(kg_snapshots, "HELD_PROJECTS", 2)
+
+    async def run():
+        coordinator = kg_snapshots.SnapshotCoordinator(object())
+        for pid in (1, 2, 1, 3, 1):
+            assert (await coordinator.get(pid)).build_id == pid
+        return coordinator
+
+    coordinator = asyncio.run(run())
+    assert loads == [1, 2, 3]  # 1 was read again before 3 came, so 2 went
+    assert list(coordinator._held) == [3, 1] and coordinator._loading == {}

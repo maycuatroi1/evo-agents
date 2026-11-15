@@ -63,6 +63,9 @@ async def load_on(conn: AsyncConnection, project_id: int) -> Held | None:
     return Held(build_id, await asyncio.to_thread(Snapshot.from_stored, rows))
 
 
+HELD_PROJECTS = 16  # projects whose snapshot the api keeps in memory, the most recently read; another is loaded again
+
+
 class SnapshotCoordinator:
     def __init__(self, engine: AsyncEngine | None = None, listener=None):
         self.engine = engine  # the api's, set once it opened
@@ -78,8 +81,9 @@ class SnapshotCoordinator:
         """The project's snapshot, loaded on first use; None before its first build kept a graph."""
         if self._listener is not None:
             self._listener.start()  # the first claim, stream or graph read starts it
-        held = self._held.get(project_id)
+        held = self._held.pop(project_id, None)
         if held is not None:
+            self._held[project_id] = held  # the most recently read last: ``_keep`` drops the first ones
             return held
         return await self._load(project_id)
 
@@ -116,12 +120,26 @@ class SnapshotCoordinator:
         if after is not None:
             await asyncio.gather(after, return_exceptions=True)
         assert self.engine is not None
-        held = await load(self.engine, project_id)
+        try:
+            held = await load(self.engine, project_id)
+        finally:
+            if self._loading.get(project_id) is asyncio.current_task():
+                del self._loading[project_id]  # a finished load is not kept; a fresh one queued behind it stays
         if held is None:
             return None
-        self._held[project_id] = held  # one assignment: a reader sees the old snapshot or the new one
+        self._keep(project_id, held)
         log.info("kg snapshot loaded", extra={"project_id": project_id, "build_id": held.build_id})
         return held
+
+    def _keep(self, project_id: int, held: Held) -> None:
+        """Hold ``held`` as the project's snapshot, the most recently read, and drop the least recently read ones
+        past HELD_PROJECTS: a notification for a dropped project is ignored, and its next read loads it again."""
+        self._held.pop(project_id, None)
+        self._held[project_id] = held  # one assignment: a reader sees the old snapshot or the new one
+        while len(self._held) > HELD_PROJECTS:
+            dropped = next(iter(self._held))
+            del self._held[dropped]
+            self._asked.pop(dropped, None)
 
     def notified(self, payload: str | None) -> None:
         """A listener's handler: rebuild the snapshot a notification names, or each held one after a reconnection."""
