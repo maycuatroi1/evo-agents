@@ -7,7 +7,7 @@ of step 1, answer 1): it reserves nothing and settles no cost; each run it hands
   stops at its turns, Codex at its time.
 - A task run (``brainstorm`` and ``discover`` of @strategist, ``use_case`` of @ba): handed to the agent type through
   ``task_dispatch.hand_own_task`` like any task run of a core plugin (``hand_task``): its cost cap is what is left of
-  the type's ``daily_usd`` in the last 24 hours, with the time cap of a task run. A type that is off, whose run_as no
+  the type's ``daily_usd`` in the last 24 hours, and no time cap, as any task run. A type that is off, whose run_as no
   longer holds writer, or whose cap is spent hands out nothing, and the work item stays queued with reason
   ``type_refused`` and the hub's why.
 

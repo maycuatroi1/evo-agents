@@ -1091,7 +1091,8 @@ derived from the trace's runs, decisions and Orchestrator threads, with no model
 
 - `status`, the first that holds: `needs_person` (a decision of a run of the trace, in the system's project, asks a
   person and is open; a wait asks nobody), `failed` (the coordinator's latest run of the trace failed or was lost, or a
-  thread of rule `failed` of the Orchestrator about the trace has no outcome), `running` (a run of the trace is active),
+  thread of rule `failed` of the Orchestrator about the trace has no outcome and is open), `running` (a run of the
+  trace is active),
   `done`.
 - `agent`: the handle of the latest run of the trace at work; `waiting`, what the work waits for, the first that holds:
   `{kind: "decision", decision_id, login, question}`, `{kind: "person", run_id, agent}` (a run a person drives or
@@ -1287,8 +1288,12 @@ it has three more actions (`orchestrator_actions.py`; `docs/workers.md`, Failure
 Answer and reassign hand their work in the chat of the thread, so in the work chat for a trace that has one. Each
 posts a `Decision:` line in the thread and writes the audit row `orchestrator.answer`, `orchestrator.reassign` or
 `orchestrator.ask_owner`, whose target names the system, the thread, the rule, the agent and the Orchestrator's run.
-Answer and reassign close the thread. An escalation adds no hop, the trace's budget does not refuse it, and the work
-the Orchestrator reassigns keeps its hop: the hop limit of 3 stays as it is. An agent with no `orchestrates` edge
+Answer and reassign close the thread. A thread of rule `failed` or `stale` with no outcome also closes, with none,
+once a later run of its agent in the same trace ended done and the Orchestrator's run on it, if any, ended: the reaper
+does it on each pass (`orchestrator.close_recovered`), posts a line of the hub that starts with `Closed:` in the
+thread, and the work card reads it again, so a trace whose work went on stops showing `failed` for a thread the hub
+could hand no Orchestrator run or whose Orchestrator ended without an answer. An escalation adds no hop, the trace's
+budget does not refuse it, and the work the Orchestrator reassigns keeps its hop. An agent with no `orchestrates` edge
 keeps the triage it had; one with only an `escalates` edge escalates to that Orchestrator and has no other thread.
 
 Runs that still wait on each other (each open wait of an ask, `decisions.awaits_run_id`, points from the run that

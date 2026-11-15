@@ -164,7 +164,7 @@ def test_loop_admission_holds_business_work_items_at_the_cycle_cap_the_rate_the_
     brainstorm = item(hub_db, "brainstorm:G-1:r1")
     assert (brainstorm["state"], brainstorm["reason"], brainstorm["attempts"]) == ("running", None, 1)
     kind, budget, *_ = run_row(hub_db, brainstorm["run_id"])
-    assert (kind, budget) == ("task", {"max_usd": 5.0, "max_seconds": 1800})
+    assert (kind, budget) == ("task", {"max_usd": 5.0})
     assert [(row[0], row[3]) for row in waits(hub_db, "brainstorm:G-1:r1")] == [
         ("created", None),
         ("dispatched", brainstorm["run_id"]),
@@ -298,10 +298,10 @@ def test_loop_caps_a_task_run_the_loop_hands_out_keeps_the_daily_cap_of_its_agen
             return await hand_task(conn, pid, kind, "Brainstorm assumptions for goal G-1", "Loop brainstorm of G-1")
 
     first = client.portal.call(hand)
-    assert first.reason is None and run_row(hub_db, first.run_id)[1] == {"max_usd": 5.0, "max_seconds": 1800}
+    assert first.reason is None and run_row(hub_db, first.run_id)[1] == {"max_usd": 5.0}
     set_run(hub_db, first.run_id, usage={"total_cost_usd": 4.0})
     second = client.portal.call(hand)
-    assert run_row(hub_db, second.run_id)[1] == {"max_usd": 1.0, "max_seconds": 1800}  # what is left of the day
+    assert run_row(hub_db, second.run_id)[1] == {"max_usd": 1.0}  # what is left of the day
     set_run(hub_db, second.run_id, usage={"total_cost_usd": 1.5})
     spent = client.portal.call(hand)
     assert (spent.run_id, spent.reason) == (None, "type_refused")

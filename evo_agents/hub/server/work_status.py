@@ -108,7 +108,10 @@ class WorkDecision(BaseModel):
     )
     id: int = Field(description="the thread's id, or the decision's")
     rule: str | None = Field(description="the rule that opened the thread (failed, escalate, ...)")
-    outcome: str | None = Field(description="answer, reassign or ask_owner; null while the thread is open")
+    outcome: str | None = Field(
+        description="answer, reassign or ask_owner; null while the thread is open, and on a failed or stale thread "
+        "the hub closed once a later run of its agent ended done"
+    )
     question: str | None
     state: str = Field(description="open or closed for a thread; the decision's state")
     answer: str | None = Field(description="the option and words of the answer")
