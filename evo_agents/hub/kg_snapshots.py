@@ -78,7 +78,10 @@ def uncollected():
     collection walked them all, holding the GIL, the loop of the api with it, for seconds, dozens of times while a
     large graph loaded and again now and then once it was held, and the heartbeats and claims waiting meanwhile timed
     out on the pool. A snapshot has no reference cycle, so one dropped is freed though frozen. Loads share the
-    process's collector: the last one to end turns it back on, as it was before the first."""
+    process's collector: the last one to end collects once what is not frozen yet, so the cyclic garbage the requests
+    served meanwhile left is not frozen with the snapshot, then freezes the rest and turns the collector back on, as it
+    was before the first. That one collection walks the new snapshot, not those frozen before; an object of a request
+    still running then is frozen with it, and a cycle it is in later is not collected."""
     global _loads, _collecting
     if _loads == 0:
         _collecting = gc.isenabled()
@@ -89,6 +92,7 @@ def uncollected():
     finally:
         _loads -= 1
         if _loads == 0:
+            gc.collect()
             gc.freeze()
             if _collecting:
                 gc.enable()

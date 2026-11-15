@@ -4172,7 +4172,9 @@ graph's hundreds of thousands of rows in one go stalled every request for second
 heartbeats and claims waiting meanwhile timed out on the pool all at once. While a load runs, Python's cyclic garbage
 collector is off, and the snapshot it made is frozen out of later collections (`gc.freeze`): a large graph is
 millions of tracked objects, and each full collection walked them all holding the GIL, stalling the loop for seconds,
-dozens of times per load. A snapshot has no reference cycle, so one replaced is freed though frozen. A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
+dozens of times per load. As the last load running ends, one collection frees the cyclic garbage the requests served
+meanwhile left, before the rest is frozen, so it is not frozen with the snapshot. A snapshot has no reference cycle,
+so one replaced is freed though frozen. A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
 the build at the head or one before it: the graph it wrote is the one the tables hold or an older one they replaced.
 
 **Graph files of older builds.** Builds before 0248 uploaded the graph's SQLite file to the bucket as a blob of kind

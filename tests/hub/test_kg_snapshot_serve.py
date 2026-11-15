@@ -363,6 +363,29 @@ def test_a_load_runs_no_garbage_collection_and_leaves_the_snapshot_out_of_later_
     assert "guide" in found(held.snapshot, "kiwi")
 
 
+def test_the_garbage_made_during_a_load_is_collected_not_frozen():
+    """The cyclic garbage made while the collector is off for a load is collected as the load ends, before what is
+    left is frozen: frozen, it would never be, and the api would grow by what each load's requests left."""
+    import gc
+    import weakref
+
+    class Node:
+        pass
+
+    gc.unfreeze()
+    try:
+        with kg_snapshots.uncollected():
+            node = Node()
+            node.me = node  # garbage only a collection frees
+            gone = weakref.ref(node)
+            del node
+            assert gone() is not None  # not collected while the load runs
+        assert gone() is None
+        assert gc.isenabled()
+    finally:
+        gc.unfreeze()
+
+
 async def held_on_engine(db, pid: int):
     engine = make_engine(db)
     try:
