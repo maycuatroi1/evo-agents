@@ -51,7 +51,7 @@ import yaml
 
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError
-from evo_agents.hub.kg_hub_sync import HubSync
+from evo_agents.hub.kg_hub_sync import HubSync, UnreadRuns
 from evo_agents.hub.kg_push import worker_routes
 from evo_agents.hub.redact import redact
 from evo_agents.kg.project import Project, ProjectError, load_project_at
@@ -472,7 +472,7 @@ class KgSync:
             self.save()
             self.reports[project] = state.report()
             return state
-        syncer = HubSync(self.hub, view.project, routes=worker_routes(project), send_config=False)
+        syncer = HubSync(self.hub, view.project, routes=worker_routes(project), send_config=False, builds=False)
         try:
             self._sources(view, syncer, state)
         except HubError as exc:
@@ -524,6 +524,9 @@ class KgSync:
             if exc.status == 401:
                 raise  # the worker's token: no source can go
             found.status, found.error = "failed", cut(f"the hub: {exc}", self.secrets)
+            return
+        except UnreadRuns as exc:  # the next look tries again, once a member's build read them
+            found.status, found.error = "skipped", cut(str(exc), self.secrets)
             return
         except Exception as exc:  # a sync of the source running already, a directory that cannot be written
             found.status, found.error = "failed", cut(f"{type(exc).__name__}: {exc}", self.secrets)

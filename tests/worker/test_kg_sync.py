@@ -252,6 +252,16 @@ def test_kg_sync_report_names_a_failed_fetch_a_refused_hub_and_a_missing_harness
     assert lines[0].startswith(f"graph of {PROJECT}: looked at ") and any("source app: failed" in x for x in lines)
 
 
+def test_kg_sync_skips_a_source_with_runs_no_build_read_yet_since_the_worker_may_not_build(stage):
+    stage.hub.unread = 2
+    state = stage.look()
+    assert state.sources["app"].status == "skipped" and "2 run(s) of source app" in state.sources["app"].error
+    assert stage.hub.builds == 0 and stage.hub.pushes() == 0
+
+    stage.hub.unread = 0  # a member's build read them
+    assert stage.look().sources["app"].status == "ok" and stage.hub.pushes() == 1
+
+
 def test_kg_sync_clones_a_repo_without_checkout_from_its_https_origin_once(stage, monkeypatch):
     monkeypatch.setenv("GIT_CONFIG_COUNT", "1")  # the https origin of harness.yaml, served by the bare repo
     monkeypatch.setenv("GIT_CONFIG_KEY_0", f"url.{stage.app.origin.as_uri()}.insteadOf")

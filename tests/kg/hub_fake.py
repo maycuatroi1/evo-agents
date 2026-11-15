@@ -46,6 +46,7 @@ class KgHub:
         self.calls: list[tuple[str, str]] = []
         self.on_duty = True
         self.builds = 0
+        self.unread = 0  # runs pushed before migration 0252 that no build has read: a build reads them
         self.max_items = 200_000  # MAX_ITEMS of the state
 
     def put(self, url: str, path: Path) -> None:
@@ -89,6 +90,7 @@ class KgHub:
             return self.state(found.group(1), query.get("scope", [None])[0], query.get("items") != ["false"])
         if (method, route) == ("POST", f"{base}/builds") and not worker:
             self.builds += 1
+            self.unread = 0
             return {"queued": True, "build": {"id": self.builds, "status": "queued"}}
         if (found := re.fullmatch(rf"{re.escape(base)}/builds/([0-9]+)", route)) and not worker:
             return {"id": int(found.group(1)), "status": "succeeded", "error": None}
@@ -169,7 +171,7 @@ class KgHub:
         return {
             "source": source,
             "runs": len(runs),
-            "unread": 0,
+            "unread": self.unread,
             "last_run": info(runs),
             "last_ok": info([(r, run) for r, run in runs if run["status"] == "ok"]),
             "cursor": {"run_id": with_cursor[-1][0], "cursor": with_cursor[-1][1]["cursor"]} if with_cursor else None,

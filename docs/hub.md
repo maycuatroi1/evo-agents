@@ -3883,7 +3883,8 @@ none with `?items=false`, for a caller that reads only the runs (`kg sync --due`
 in the items yet. A run pushed before 0252 counts in `unread` until the next build
 reads its log and fills its facts in (`fill_run_facts` of `evo_agents/hub/kg_source_state.py`), or marks it `failed`
 when its log cannot be fetched or read, so `unread` is 0 after the first build that succeeds. While it is not 0, a
-caller that needs those runs asks for a build and reads again. `unbuilt` counts the runs of the source the hub
+caller that needs those runs asks for a build and reads again; the worker on duty, which may not ask for one, reports
+the source `skipped` and reads it at a later look, once a build read them. `unbuilt` counts the runs of the source the hub
 received after the latest build of main started, which the items do not show yet. `held` lists the removals the
 deletion guard held back, from the `held` and `listed` of each run's `run_end` (schema 0253): for each scope, those of
 the newest run that ended ok and listed that scope completely, each with that run's id, its reason and the item ids,

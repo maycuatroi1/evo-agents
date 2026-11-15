@@ -6,6 +6,7 @@ import datetime as dt
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 
 from evo_agents.cli import main
@@ -151,3 +152,21 @@ def test_without_a_hub_login_kg_sync_says_so(tmp_path, kg_env, capsys):
     FakeSource(tmp_path / "fake-docs.json").set(items=[doc("a")])
     assert main(["kg", "sync", "--project", str(harness(tmp_path))]) == 1
     assert "error: the hub: not signed in to a hub" in capsys.readouterr().err
+
+
+def test_runs_no_build_read_yet_get_a_build_first_from_a_member_and_none_from_the_worker(tmp_path, kg_env, hub_for):
+    from evo_agents.hub.kg_hub_sync import UnreadRuns
+    from evo_agents.hub.kg_push import worker_routes
+
+    hub = hub_for(PROJECT).hubs[PROJECT]
+    FakeSource(tmp_path / "fake-docs.json").set(items=[doc("a")])
+    project = load_project_at(harness(tmp_path), kg_env)
+    hub.unread = 3
+    worker = HubSync(hub, project, routes=worker_routes(PROJECT), send_config=False, builds=False)
+    with pytest.raises(UnreadRuns, match="3 run"):
+        worker.sync_source("docs")
+    assert hub.builds == 0 and not hub.ingested  # the worker may not build, and reads nothing meanwhile
+
+    result = HubSync(hub, project).sync_source("docs")
+    assert result.ok and hub.builds == 1 and hub.unread == 0 and alive(hub) == ["docs:doc:a"]
+    assert worker.sync_source("docs").ok  # once a build read them

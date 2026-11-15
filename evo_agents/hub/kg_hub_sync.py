@@ -12,7 +12,8 @@ What a sync needs of what the source holds already, it reads from the hub's stat
   its removals from, through the same deletion guard (``evo_agents.kg.sync._removals``). They are those of the hub's
   latest build: a run pushed since is not in them yet, so a deletion it made is written again, which changes nothing,
   and one of an item it added waits for the next sync. When the state says runs pushed before migration 0252 are unread,
-  the sync asks for a build and waits on it first, since the cursor and lineage may lie in them. A scope of more items
+  a member's sync asks for a build and waits on it first, since the cursor and lineage may lie in them; the worker on
+  duty, which the hub does not let build, reads nothing of the source until a build read them (``UnreadRuns``). A scope of more items
   than the state lists is asked for alone; one still cut fails the run rather than delete what it does not see;
 - the removals the guard held back (``held``), which ``--accept-removals`` applies: a run of connector
   ``evo:accept-removals`` with a tombstone for each held item still alive, whose ``listed`` names the scopes it applied,
@@ -66,6 +67,11 @@ def wait_for(hub: Hub, base: str, build_id: int, timeout: float, sleep=time.slee
         if clock() >= deadline:
             raise HubError(f"build {build_id} has not finished after {timeout:g}s")
         sleep(WAIT_INTERVAL)
+
+
+class UnreadRuns(RuntimeError):
+    """The hub's state of a source has runs no build has read yet, and this sync may not ask for a build: the worker on
+    duty reads nothing of the source until a member's build reads them."""
 
 
 class TooManyItems(RuntimeError):
@@ -126,7 +132,7 @@ class Spool:
 
 class HubSync:
     """The syncs of one project's sources against the hub. ``routes`` and ``send_config`` as ``Pusher`` takes them;
-    ``plans`` reads the hub's plans for a harness source (``ConnectorContext.plans``)."""
+    ``builds`` False for routes that may not ask for a build (the worker's); ``plans`` reads the hub's plans for a harness source (``ConnectorContext.plans``)."""
 
     def __init__(
         self,
@@ -135,6 +141,7 @@ class HubSync:
         *,
         routes: tuple[str, str] | None = None,
         send_config: bool = True,
+        builds: bool = True,
         plans=None,
         credential_getter=None,
         kill_after: int | None = None,
@@ -146,6 +153,7 @@ class HubSync:
         self.routes = routes or member_routes(project.name)
         self.base = self.routes[0]
         self.send_config = send_config
+        self.builds = builds
         self.plans = plans
         self.credential_getter = credential_getter
         self.kill_after = kill_after
@@ -239,6 +247,11 @@ class HubSync:
     def _fresh_state(self, source: str) -> dict:
         """The hub's state of ``source``, after a build when runs pushed before migration 0252 are unread in it."""
         state = self.state(source)
+        if state.get("unread") and not self.builds:
+            raise UnreadRuns(
+                f"the hub has {state['unread']} run(s) of source {source} no build has read yet; the source syncs once "
+                "a build on the hub reads them"
+            )
         if state.get("unread"):
             built = self.build()
             if not built.ok:
