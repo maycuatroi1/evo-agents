@@ -53,7 +53,7 @@ def test_the_system_section_names_purpose_edges_in_and_out_graphs_and_the_orches
     assert "read them when you name no graph):\n- docs: product docs" in triage
     assert "`--goal`" in triage and "`--output`" in triage and "`--done-when`" in triage
     assert "`--reason WHY`" in triage and "evo-agents worker agent forward --run RUN" in triage
-    assert "at most 12 runs and 2 USD" in triage
+    assert "any number of runs and spend at most 200 USD" in triage
     billing = "\n".join(system_context.system_lines(system_context.place_of("support", spec, "lumen-billing")))
     assert "Who hands you work:\n- @lumen-triage: invoices" in billing
     assert "The Orchestrator you escalate to (with `evo-agents worker escalate --question TEXT`" in billing
@@ -123,10 +123,13 @@ def test_the_refusal_off_the_edges_lists_the_targets_and_how_to_give_a_reason():
 
 def test_the_budget_of_a_trace_is_its_runs_and_its_cost():
     spec = checked(SPEC)
-    assert system_context.limits_of(spec) == (2.0, 12)
-    assert system_context.budget_problem(spec, 11, 1.99) is None
-    assert "budget of 12 runs (limits.trace_runs" in system_context.budget_problem(spec, 12, 0)
-    assert "budget of 2 USD (limits.trace_usd" in system_context.budget_problem(spec, 1, 2.0)
+    assert system_context.limits_of(spec) == (200.0, system_spec.UNLIMITED_RUNS)
+    assert system_context.budget_problem(spec, 10_000, 199.99) is None, "no limit on the runs by default"
+    assert "budget of 200 USD (limits.trace_usd" in system_context.budget_problem(spec, 1, 200.0)
+    capped = checked({**SPEC, "limits": {"trace_runs": 12, "trace_usd": 2}})
+    assert system_context.budget_problem(capped, 11, 1.99) is None
+    assert "budget of 12 runs (limits.trace_runs" in system_context.budget_problem(capped, 12, 0)
+    assert "budget of 2 USD (limits.trace_usd" in system_context.budget_problem(capped, 1, 2.0)
     tight = checked({**SPEC, "limits": {"trace_runs": 2, "trace_usd": 0.5}})
     assert system_context.budget_problem(tight, 2, 0) is not None
     assert system_context.budget_problem(tight, 1, 0.6) is not None

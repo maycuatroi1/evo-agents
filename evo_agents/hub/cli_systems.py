@@ -112,6 +112,11 @@ def _print_problems(problems: list[dict], stream=sys.stdout) -> None:
         print(_problem_line(problem), file=stream)
 
 
+def _runs_limit(count) -> str:
+    """limits.trace_runs as ``show`` prints it: "N runs", or "any number of runs" for UNLIMITED_RUNS."""
+    return "any number of runs" if count == system_spec.UNLIMITED_RUNS else f"{count} runs"
+
+
 def _show(system: dict) -> None:
     latest = "" if system["revision"] == system["latest_revision"] else f" (latest {system['latest_revision']})"
     print(
@@ -124,7 +129,7 @@ def _show(system: dict) -> None:
     print(f"  entry agent: {'@' + system['entry_agent'] if system['entry_agent'] else 'none'}")
     limits = spec.get("limits") or {}
     print(
-        f"  limits: {limits.get('trace_usd')} USD and {limits.get('trace_runs')} runs a trace, "
+        f"  limits: {limits.get('trace_usd')} USD and {_runs_limit(limits.get('trace_runs'))} a trace, "
         f"{limits.get('daily_usd')} USD a day"
     )
     for node in spec.get("nodes") or ():

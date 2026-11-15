@@ -32,7 +32,7 @@ def test_a_spec_from_before_ops_reads_as_ops_off_and_is_stored_as_it_is():
     assert "ops" not in found and "ops_daily_usd" not in found["limits"]
     assert system_spec.check(found)[0] == found, "checked again, it is the same spec: no new revision"
     assert system_spec.ops_of(found)["enabled"] is False
-    assert system_spec.limit_of(found, "ops_daily_usd") == 5.0
+    assert system_spec.limit_of(found, "ops_daily_usd") == 200.0
 
 
 def test_ops_and_ops_daily_usd_are_checked_in_their_bounds():
@@ -114,7 +114,7 @@ def test_only_an_admin_sets_the_default_list_marks_it_and_deleting_it_leaves_non
     assert refused.status_code == 403, refused.text
     assert c.put(path(hub, "default-system"), json={"slug": "nope"}, headers=hub["owner"]).status_code == 404
     found = c.put(path(hub, "default-system"), json={"slug": "support"}, headers=hub["owner"]).json()
-    assert (found["slug"], found["ops"]["enabled"], found["limits"]["ops_daily_usd"]) == ("support", False, 5.0)
+    assert (found["slug"], found["ops"]["enabled"], found["limits"]["ops_daily_usd"]) == ("support", False, 200.0)
     assert c.put(path(hub, "default-system"), json={"slug": "spare"}, headers=hub["owner"]).status_code == 200
     listed = c.get(path(hub, "systems"), headers=hub["reader"]).json()
     assert [(s["slug"], s["default"]) for s in listed] == [("spare", True), ("support", False)]

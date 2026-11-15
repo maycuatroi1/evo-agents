@@ -24,7 +24,7 @@ export type OpsHolding = Schemas["OpsHolding"];
 export const OPS_BOUNDS = {
   debounce_minutes: { fallback: 5, min: 0, max: 1440 },
   max_items: { fallback: 20, min: 1, max: 1000 },
-  ops_daily_usd: { fallback: 5, min: 0.01, max: 1000 },
+  ops_daily_usd: { fallback: 200, min: 0.01, max: 1000 },
 } as const;
 export type OpsField = keyof typeof OPS_BOUNDS;
 

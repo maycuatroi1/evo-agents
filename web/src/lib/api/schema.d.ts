@@ -47550,7 +47550,7 @@ export interface components {
             trace_usd: number;
             /**
              * Trace Runs
-             * @description limits.trace_runs of the revision it ran under
+             * @description limits.trace_runs of the revision it ran under; 0 for no limit
              */
             trace_runs: number;
             /**
@@ -48893,7 +48893,7 @@ export interface components {
             max_hops: number;
             /**
              * Trace Runs
-             * @description the runs a trace of its revision may make
+             * @description the runs a trace of its revision may make; 0 for no limit
              */
             trace_runs: number;
             /**

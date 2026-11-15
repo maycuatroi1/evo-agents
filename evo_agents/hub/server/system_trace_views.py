@@ -176,7 +176,7 @@ class TraceNumbers(BaseModel):
     runs: int = Field(description="its runs and the runs their tree spawned, as the budget counts them")
     max_hop: int | None = Field(description="the deepest hop of its runs; null when none has one")
     trace_usd: float = Field(description="limits.trace_usd of the revision it ran under")
-    trace_runs: int = Field(description="limits.trace_runs of the revision it ran under")
+    trace_runs: int = Field(description="limits.trace_runs of the revision it ran under; 0 for no limit")
     over_usd: float | None = Field(description="usd minus trace_usd when positive, else null")
     budget_refusals: int = Field(description="asks and mentions the budget refused")
     loop_threads: int

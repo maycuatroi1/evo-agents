@@ -187458,7 +187458,7 @@
             "trace_runs": {
               "type": "integer",
               "title": "Trace Runs",
-              "description": "limits.trace_runs of the revision it ran under"
+              "description": "limits.trace_runs of the revision it ran under; 0 for no limit"
             },
             "over_usd": {
               "anyOf": [
@@ -190532,7 +190532,7 @@
             "trace_runs": {
               "type": "integer",
               "title": "Trace Runs",
-              "description": "the runs a trace of its revision may make"
+              "description": "the runs a trace of its revision may make; 0 for no limit"
             },
             "trace_usd": {
               "type": "number",
