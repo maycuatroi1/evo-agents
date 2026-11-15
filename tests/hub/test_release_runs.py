@@ -295,7 +295,7 @@ def test_the_check_keeps_the_range_and_only_a_daemon_that_runs_release_runs_is_h
         "Run `python scripts/bump_version.py <version>` in the worktree.",
         "`pytest.importorskip`",
         'newline="\\n"',
-        "`sqlite3` connection that is never closed",
+        "SQLite connection that is never closed",
         "Do not push, tag or open a pull request",
         "no commit message names a customer",
         '"version" (X.Y.Z), "decision"',

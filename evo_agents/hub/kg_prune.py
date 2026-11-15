@@ -14,6 +14,10 @@ an object any other row refers to stays. A queued or running build holds no arti
 prune runs records its artifact holding the blob lock shared, so one waits for the other, and the artifact it reuses
 is its project's newest, which a prune keeps. A second run right after the first finds nothing to drop.
 
+With ``graph_files`` a project whose main graph the hub's tables hold (``kg_graph_heads``) keeps none of its
+artifacts: since the tables hold the graph the reads use, the graph files older builds uploaded are history alone. The
+worker's hourly run leaves it off.
+
 The worker prunes every hour (``hub.prune_kg_artifacts``) with EVO_HUB_KG_KEEP_ARTIFACTS (default 3). An admin prunes
 by hand with ``evo-agents hub kg prune`` (POST /v1/admin/kg/prune), and ``--dry-run`` answers the same report from a
 transaction that is rolled back.
@@ -87,6 +91,7 @@ class ProjectPruned:
 class PruneReport:
     dry_run: bool
     keep: int
+    graph_files: bool = False  # every artifact of a project whose graph the tables hold went, newest included
     projects: list[ProjectPruned] = field(default_factory=list)
     deleted: int = 0  # objects deleted from the bucket by this run; for a dry run, those it would delete
     deleted_bytes: int = 0
@@ -114,11 +119,24 @@ def check_keep(keep: int) -> int:
     return keep
 
 
+async def _in_tables(conn: AsyncConnection) -> set[int]:
+    """The projects whose main graph the hub's tables hold."""
+    heads = tables.kg_graph_heads
+    return set((await conn.execute(select(heads.c.project_id).where(heads.c.branch_id == 0))).scalars())
+
+
 async def _drop(
-    conn: AsyncConnection, keep: int, project: str | None, actor_id: int | None, token_id: int | None, audit: bool
+    conn: AsyncConnection,
+    keep: int,
+    project: str | None,
+    actor_id: int | None,
+    token_id: int | None,
+    audit: bool,
+    graph_files: bool = False,
 ) -> list[ProjectPruned]:
-    """Drop the references to the artifacts beyond ``keep`` and record the blobs left unreferenced, in ``conn``'s
-    transaction, which holds the blob lock exclusively."""
+    """Drop the references to the artifacts beyond ``keep`` (every one of a project whose graph the tables hold, with
+    ``graph_files``) and record the blobs left unreferenced, in ``conn``'s transaction, which holds the blob lock
+    exclusively."""
     from evo_agents.hub.server import audit as audit_trail
 
     builds, blobs, projects = tables.kg_builds, tables.blobs, tables.projects
@@ -129,12 +147,13 @@ async def _drop(
             raise UnknownProject(f"project {project} is not registered on this hub")
         project_id = row[0]
     rows = (await conn.execute(_plan(project_id))).all()
+    held = await _in_tables(conn) if graph_files else set()
     found: dict[str, ProjectPruned] = {}
     doomed: dict[tuple[int, str], dict[str, int]] = {}  # (project id, name) -> {sha256: size}
     for name, pid, sha256, size, rank in rows:
         entry = found.setdefault(name, ProjectPruned(name))
         entry.artifacts += 1
-        if rank is not None and rank <= keep:
+        if rank is not None and rank <= keep and pid not in held:
             entry.kept += 1
             continue
         entry.pruned += 1
@@ -176,6 +195,7 @@ async def prune(
     project: str | None = None,
     *,
     dry_run: bool = False,
+    graph_files: bool = False,
     actor_id: int | None = None,
     token_id: int | None = None,
 ) -> PruneReport:
@@ -186,11 +206,11 @@ async def prune(
     check_keep(keep)
     async with engine.connect() as conn, conn.begin() as transaction:
         await blob_gc.lock_exclusive(conn)
-        projects = await _drop(conn, keep, project, actor_id, token_id, audit=not dry_run)
+        projects = await _drop(conn, keep, project, actor_id, token_id, not dry_run, graph_files)
         waiting, waiting_bytes = await blob_gc.pending(conn)
         if dry_run:  # what a run would do, written nowhere
             await transaction.rollback()
-    report = PruneReport(dry_run, keep, projects)
+    report = PruneReport(dry_run, keep, graph_files, projects)
     if dry_run:
         report.deleted, report.deleted_bytes = waiting, waiting_bytes
         return report

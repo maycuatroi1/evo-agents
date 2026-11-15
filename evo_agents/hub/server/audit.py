@@ -67,6 +67,9 @@ KG_UPLOAD = "kg.upload"
 # A writer or the agent of a run created, changed or deleted a named graph of a project (evo_agents.hub.server.kg_graphs):
 # "<project> graph=<name> kind=<create|update|delete> sources=<n>".
 KG_GRAPH = "kg.graph"
+# A writer or the agent of a run created, changed, merged or dropped a draft branch of a project's graph
+# (evo_agents.hub.server.kg_branches): "<project> branch=<name> kind=<create|apply|merge|drop> ops=<n>".
+KG_BRANCH = "kg.branch"
 # Workers belong to no project; a target names the pairing or the worker by id and name, never a code or a token.
 WORKER_PAIR = "worker.pair"  # a member created a pairing code: "pairing:<id> name=<worker name>"
 # A machine joined with a code or a pool's join token, as its owner with the new worker token:

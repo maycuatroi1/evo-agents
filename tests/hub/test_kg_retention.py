@@ -251,6 +251,7 @@ def test_prune_keeps_each_project_s_newest_graphs_and_deletes_only_older_artifac
     assert dry.json() == {
         "dry_run": True,
         "keep": 2,
+        "graph_files": False,
         "projects": [
             {"project": PROJECT, "artifacts": 4, "kept": 2, "pruned": 2, "pruned_bytes": old_bytes, "builds": 3},
             {"project": BETA, "artifacts": 1, "kept": 1, "pruned": 0, "pruned_bytes": 0, "builds": 0},
@@ -332,11 +333,32 @@ def test_prune_is_for_hub_admins_and_checks_what_it_is_given(hub):
     assert prune_api(hub, dry_run=True).json() == {
         "dry_run": True,
         "keep": 3,
+        "graph_files": False,
         "projects": [],
         "deleted": 0,
         "deleted_bytes": 0,
         "pending": 0,
     }
+
+
+def test_graph_files_prunes_every_graph_file_of_a_project_whose_graph_the_tables_hold(hub, tmp_path):
+    laptop = Machine(tmp_path, "laptop")
+    b1, b2 = (graph(hub, laptop, version) for version in (1, 2))
+    kept_corpus = corpus(hub)
+    hourly = prune_api(hub, keep=3, dry_run=True).json()
+    assert hourly["graph_files"] is False and hourly["deleted"] == 0  # the newest graphs keep their file
+    dry = prune_api(hub, keep=3, dry_run=True, graph_files=True).json()
+    assert dry["graph_files"] is True and dry["projects"][0]["pruned"] == 2 and dry["projects"][0]["kept"] == 0
+    assert kg_graphs(hub) == {b1["artifact_sha256"], b2["artifact_sha256"]}  # a dry run deletes nothing
+    done = prune_api(hub, keep=3, graph_files=True)
+    assert done.status_code == 200, done.text
+    assert done.json()["deleted"] == 2 and kg_graphs(hub) == set()
+    assert not {b1["artifact_sha256"], b2["artifact_sha256"]} & set(objects(hub))
+    assert corpus(hub) == kept_corpus  # run logs and source blobs stay
+    response = hub.client.post(
+        f"/v1/kg/{PROJECT}/tools/kg_search", json={"arguments": {"query": "app"}}, headers=hub.alice
+    )
+    assert response.status_code == 200 and not response.json().get("isError")  # the tools read the tables
 
 
 def test_every_hash_the_restore_drill_reads_has_its_object_after_the_hourly_prune(hub, tmp_path):
@@ -535,7 +557,15 @@ def test_the_cli_prunes_as_a_hub_admin_only(hub_db, tmp_path, s3):
 
         dry = json.loads(ok(pg.cli(["hub", "kg", "prune", "--dry-run", "--json"], env=env)).stdout)
         assert_json_keys("hub kg prune", dry)
-        assert dry == {"dry_run": True, "keep": 3, "projects": [], "deleted": 0, "deleted_bytes": 0, "pending": 0}
+        assert dry == {
+            "dry_run": True,
+            "keep": 3,
+            "graph_files": False,
+            "projects": [],
+            "deleted": 0,
+            "deleted_bytes": 0,
+            "pending": 0,
+        }
         text = ok(pg.cli(["hub", "kg", "prune", "--project", PROJECT, "--keep", "2"], env=env)).stdout
         assert text.splitlines() == [
             "PROJECT  ARTIFACTS  KEPT  PRUNED  PRUNED SIZE  BUILDS",

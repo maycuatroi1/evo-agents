@@ -329,7 +329,7 @@ def cmd_forget_source(args) -> int:
 @client_command
 def cmd_prune(args) -> int:
     hub, _ = signed_in()
-    body = {"project": args.project, "keep": args.keep, "dry_run": args.dry_run}
+    body = {"project": args.project, "keep": args.keep, "dry_run": args.dry_run, "graph_files": args.graph_files}
     report = hub.call("POST", "/v1/admin/kg/prune", body, timeout=PRUNE_TIMEOUT)
     if args.json:
         print_json(report)
@@ -544,9 +544,16 @@ def _register_cleanup_commands(ksub) -> None:
         help="newest graphs of each project whose artifact stays (default: the hub's EVO_HUB_KG_KEEP_ARTIFACTS, 3)",
     )
     prune.add_argument("--dry-run", action="store_true", help="say what would be deleted, and delete nothing")
+    prune.add_argument(
+        "--graph-files",
+        action="store_true",
+        help="also delete every graph file (.sqlite) of a project whose graph the hub's tables hold, the newest too",
+    )
     json_option(
         prune,
-        returns_object("dry_run", "keep", "projects", "deleted", "deleted_bytes", "pending", schema="KgPruned"),
+        returns_object(
+            "dry_run", "keep", "graph_files", "projects", "deleted", "deleted_bytes", "pending", schema="KgPruned"
+        ),
     )
     prune.set_defaults(func=cmd_prune)
 
@@ -614,6 +621,10 @@ def register_kg(hsub) -> None:
     from evo_agents.hub import kg_graphs_cli
 
     kg_graphs_cli.register(ksub)
+
+    from evo_agents.hub import kg_branches_cli
+
+    kg_branches_cli.register(ksub)
 
 
 # The hub backend of kg serve and kg query

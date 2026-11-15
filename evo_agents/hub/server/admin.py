@@ -129,6 +129,10 @@ class PruneRequest(BaseModel):
         description="the newest graphs of each project whose artifact stays; default EVO_HUB_KG_KEEP_ARTIFACTS",
     )
     dry_run: bool = Field(False, description="answer what would be deleted, and change nothing")
+    graph_files: bool = Field(
+        False,
+        description="also delete every graph file of a project whose graph the hub's tables hold, the newest included",
+    )
 
 
 class ScrubRequest(BaseModel):
@@ -160,6 +164,7 @@ class ProjectPruned(BaseModel):
 class KgPruned(BaseModel):
     dry_run: bool
     keep: int
+    graph_files: bool = Field(description="every graph file of a project whose graph the tables hold was pruned")
     projects: list[ProjectPruned]
     deleted: int = Field(description="objects deleted from the bucket; for a dry run, those that would be")
     deleted_bytes: int
@@ -646,6 +651,7 @@ async def prune_kg(request: Request, body: PruneRequest, user: AdminUser) -> KgP
             keep,
             body.project,
             dry_run=body.dry_run,
+            graph_files=body.graph_files,
             actor_id=user.user_id,
             token_id=user.token_id,
         )

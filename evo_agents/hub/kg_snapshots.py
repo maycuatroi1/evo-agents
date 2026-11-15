@@ -11,6 +11,7 @@ reader sees it through its own clearance and audience (``evo_agents.kg.snapshot_
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 from dataclasses import dataclass
@@ -18,10 +19,10 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import tables
+from evo_agents.hub import kg_branches, tables
 from evo_agents.hub.kg_graph_rows import CHANNEL, MAIN, read_graph
 from evo_agents.kg import settings as kg_settings
-from evo_agents.kg.snapshot import Snapshot, SnapshotView
+from evo_agents.kg.snapshot import Snapshot, SnapshotView, StoreRows
 
 log = logging.getLogger(__name__)
 
@@ -60,10 +61,30 @@ async def load_on(conn: AsyncConnection, project_id: int) -> Held | None:
     rows = await read_graph(conn, project_id)
     if rows is None:
         return None
-    return Held(build_id, await asyncio.to_thread(Snapshot.from_stored, rows))
+    return Held(build_id, await asyncio.to_thread(Snapshot.from_stored, *hub_build(rows, build_id)))
+
+
+def hub_build(rows: StoreRows, build_id: int | None) -> tuple[StoreRows, int]:
+    """(``rows`` whose summary names the kg_builds id ``build_id``, that id): a build makes its rows in a fresh store,
+    whose own build is 1, so a tool's answer would name build 1 instead of the hub's."""
+    if build_id is None:
+        return rows, 0
+    return dataclasses.replace(rows, summary={**rows.summary, "build_id": build_id}), build_id
 
 
 HELD_PROJECTS = 16  # projects whose snapshot the api keeps in memory, the most recently read; another is loaded again
+HELD_BRANCHES = 8  # draft branches whose snapshot the api keeps, the most recently read
+
+
+async def _branch_key(conn: AsyncConnection, project_id: int, name: str) -> tuple:
+    """What a draft branch's snapshot is made of: the branch, its status and operations, and main's rows now. Raises
+    kg_branches.BranchError 404 for a branch the project lacks."""
+    branch = await kg_branches.get(conn, project_id, name)
+    heads = tables.kg_graph_heads
+    head = await conn.scalar(
+        select(heads.c.content_hash).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
+    )
+    return branch.id, branch.status, branch.ops, head
 
 
 class SnapshotCoordinator:
@@ -73,6 +94,7 @@ class SnapshotCoordinator:
         self._held: dict[int, Held] = {}
         self._loading: dict[int, asyncio.Task] = {}
         self._tasks: set[asyncio.Task] = set()
+        self._branches: dict[tuple[int, str], tuple[tuple, Held]] = {}  # (project, branch): (its key, snapshot)
         self._asked: dict[int, int] = {}  # project: the newest build ``current`` loaded again for
         if listener is not None:
             listener.on(CHANNEL, self.notified)
@@ -105,6 +127,23 @@ class SnapshotCoordinator:
             self._tasks.add(task)
             task.add_done_callback(self._done)
         return held
+
+    async def branch(self, conn: AsyncConnection, project_id: int, name: str) -> Held:
+        """The snapshot of draft branch ``name``: main's rows with its operations applied (``kg_branches.graph``),
+        made again once it or main changed. Raises kg_branches.BranchError 404 for a branch the project lacks."""
+        key = await _branch_key(conn, project_id, name)
+        found = self._branches.pop((project_id, name), None)
+        if found is None or found[0] != key:
+            heads = tables.kg_graph_heads
+            build_id = await conn.scalar(
+                select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
+            )
+            _, _, rows = await kg_branches.graph(conn, project_id, name)
+            found = key, Held(build_id, await asyncio.to_thread(Snapshot.from_stored, *hub_build(rows, build_id)))
+        self._branches[(project_id, name)] = found
+        while len(self._branches) > HELD_BRANCHES:
+            del self._branches[next(iter(self._branches))]
+        return found[1]
 
     def _load(self, project_id: int, fresh: bool = False) -> asyncio.Task:
         """The task loading the project's snapshot; ``fresh``: one that reads the tables after this call, queued

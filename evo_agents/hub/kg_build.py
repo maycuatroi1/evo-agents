@@ -65,6 +65,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import (
     blob_gc,
     kg_asked,
+    kg_branches,
     kg_coverage,
     kg_entity_map_db,
     kg_entity_maps,
@@ -554,6 +555,8 @@ async def keep_graph(conn: AsyncConnection, project_id: int, build_id: int, buil
     if rows is None:
         return
     rows = dataclasses.replace(rows, content_hash=built.content_hash)
+    await kg_branches.lock(conn, project_id)  # a merge of a draft branch writes main too (``kg_branches``)
+    rows = await kg_branches.overlay(conn, project_id, rows)
     changed = await kg_graph_rows.write_graph(conn, project_id, build_id, rows)
     log.info(
         "kg graph kept", extra={"project_id": project_id, "build_id": build_id, "corpus": corpus.counts(), **changed}

@@ -309,6 +309,66 @@ A read across projects of a chat run's agent takes it too: `evo-agents worker ag
 --graph NAME` (`graph` of `/v1/worker/runs/{id}/agent/reads`) names a graph of the project read, and the check of what
 the run's own project lets in still applies to what it returns (`docs/hub.md`, Agents across projects).
 
+## Draft branches
+
+A draft branch is a project's graph on the hub with changes applied that main does not have yet: a writer, or the
+agent of a run of the project, opens one from main, applies operations to it, reads it as the tools and the web's graph
+pages read main, checks it, then merges it into main or drops it (`evo_agents/hub/kg_branches.py`, plan
+kg-centralized-on-hub criterion a5). Main does not change until the merge.
+
+```
+evo-agents hub kg branch create billing-links --project northwind
+evo-agents hub kg branch apply billing-links --project northwind --ops ops.json
+evo-agents hub kg branch diff billing-links --project northwind
+evo-agents hub kg branch check billing-links --project northwind    # exit 1: it would not merge now
+evo-agents hub kg branch merge billing-links --project northwind
+evo-agents hub kg branch list --project northwind --status merged
+evo-agents hub kg branch drop other-draft --project northwind
+```
+
+`--ops` names a JSON file (`-` for stdin) of a list of operations, or an object with `ops`; one call applies 1 to 1000,
+all or none (`evo_agents/kg/branch_ops.py`):
+
+```json
+[
+  {"op": "node.put", "id": "concept:lumen-billing", "kind": "Concept", "name": "Lumen billing"},
+  {"op": "edge.put", "src": "lumen-api:README.md", "rel": "mentions", "dst": "concept:lumen-billing"},
+  {"op": "entity_map", "entity": "concept:lumen-billing", "code": "lumen-api:billing.py"},
+  {"op": "decision", "kind": "deprecate", "src": "lumen-api:OLD.md"},
+  {"op": "node.delete", "id": "lumen-api:scratch.md"}
+]
+```
+
+- `node.put` puts a node (`id`, `kind`, `name`, `props`), new or in place of one; a new one takes `label`
+  (`[level, location]`) and `audience` when given, else the graph's top label. `node.delete` takes a node away with
+  its edges.
+- `edge.put` puts an edge (`src`, `rel`, `dst`, `props`, `status`, `declared` by default) between two nodes the branch
+  holds; `edge.delete` takes one away.
+- `entity_map` declares `entity` implemented by `code` (an `implemented_by` edge, or `rel`).
+- `decision` does what a decision does to the graph: `deprecate` a node (`src`) or an edge (`src`, `rel`, `dst`),
+  `merge` node `dst` into `src`, or `link` two nodes with a declared edge.
+
+An apply is refused with 403 when an operation touches a node or an edge the writer's grant does not read, labels one
+above that grant, or lowers a label (its level, location or audience): a branch may raise a label, never lower it.
+`diff` and `check` show only the nodes and edges the reader's grant reads.
+
+The kg tools that take `graph` also take `branch`, and the web's graph routes `?branch=NAME`: they read main with the
+branch's operations applied; `main`, or none, reads main. `diff` lists the nodes and edges the branch adds, changes and
+removes. `check` lists the violations of the project's ontology rules (Ontology rules) the branch has, those main does
+not have, and of those the ones of a hard rule (`wrong_endpoint`, `cardinality`, `cycle`, `duplicate_key`), with the
+operations whose rows main changed since they were applied.
+
+A merge runs in one transaction under the project's advisory lock, which a build that writes main takes too. It is
+refused with 409 when main changed a node or an edge an operation read when it was applied (open a new branch from
+main), or when the branch adds a violation of a hard rule; otherwise main's tables take the branch's rows and the
+readers load them as after a build. The operations of a merged branch stay as a layer of main: every later build
+applies them, in the order the branches merged, to what it built, so a merge outlives the next build; one that no
+longer applies (its node left the sources) is skipped and logged. A merged branch cannot be dropped; dropping an open
+one deletes it and its operations. The API is `GET|POST /v1/kg/{project}/branches`, `GET|DELETE
+/v1/kg/{project}/branches/{name}`, `POST .../{name}/ops`, `GET .../{name}/diff`, `GET .../{name}/check` and
+`POST .../{name}/merge` (`evo_agents/hub/server/kg_branches.py`); reading needs a grant on the project, writing the
+writer role or the token of a run of the project, and each write is audited as `kg.branch`.
+
 ## Search
 
 `kg_search`, the seeds of `kg_context` and the search box of the hub's graph pages all go through `Store.search`
