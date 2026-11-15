@@ -50,6 +50,9 @@ def _print_runs(results) -> None:
 
 def _print_due(outcome) -> None:
     # Everything goes to stdout: under launchd both streams share schedule.log, and stdout is buffered.
+    if outcome.skipped:
+        print(f"project {outcome.project}: skipped, {outcome.skipped}")
+        return
     if outcome.error:
         print(f"FAIL project {outcome.project}: {outcome.error}")
         return
@@ -64,37 +67,29 @@ def _print_due(outcome) -> None:
             print(f"warning: {warning}")
 
 
-def _push(project=None) -> tuple[list, str | None]:
-    """``--push``: send the runs the hub lacks, of ``project``, or without one of every project of projects.json the
-    hub takes a push for. The push reports, and the error that stopped the push before any report, if one did."""
-    from evo_agents.hub.client import Hub, HubError, load_credentials
-    from evo_agents.hub.kg_cli import push
-    from evo_agents.hub.kg_push import push_project
+def _hub_errors(command):
+    """``command``, with a hub that cannot be reached, refuses the caller, or is not signed in to, said on stderr and
+    exit 1."""
+    import functools
 
-    try:
-        credentials = load_credentials()
-        hub = Hub(credentials.url, credentials.token)
-        return ([push_project(hub, project)] if project is not None else push(hub, None, True)), None
-    except HubError as exc:
-        return [], str(exc)
+    @functools.wraps(command)
+    def run(args) -> int:
+        from evo_agents.hub.client import HubError
 
+        try:
+            return command(args)
+        except HubError as exc:
+            print(f"error: the hub: {exc}", file=sys.stderr)
+            return 1
 
-def _push_json(reports: list, error: str | None) -> dict:
-    return {
-        "ok": error is None and all(r.ok for r in reports),
-        "error": error,
-        "projects": [r.to_json() for r in reports],
-    }
+    return run
 
 
-def _print_push(reports: list, error: str | None) -> None:
-    # stdout, like the rest of a scheduled run's output
-    if error:
-        print(f"FAIL push: {error}")
-    for report in reports:
-        print(("push " if report.ok else "FAIL push ") + report.summary_line())
-        for line in report.errors:
-            print(f"     {line}")
+def _syncer(project):
+    """The sync of ``project`` against the hub this machine is signed in to (``evo_agents.hub.kg_hub_sync``)."""
+    from evo_agents.hub.kg_hub_sync import hub_sync
+
+    return hub_sync(project, plans=_hub_plans())
 
 
 def _hub_plans():
@@ -106,42 +101,48 @@ def _hub_plans():
 
 
 def _sync_due_all(args) -> int:
-    """``kg sync --due --all``, the LaunchAgent's command: sync every project, push with --push, then prune what the
-    retention schedule asks for (``evo_agents.kg.retention``; off until ``kg prune --schedule on``)."""
+    """``kg sync --due --all``, the LaunchAgent's command: sync every project the hub takes a run of from this
+    machine, then prune what the retention schedule asks for (``evo_agents.kg.retention``; off until ``kg prune
+    --schedule on``)."""
+    from evo_agents.hub.client import Hub, HubError, load_credentials
+    from evo_agents.hub.kg_cli import local_projects
+    from evo_agents.hub.kg_hub_sync import sync_all_due
     from evo_agents.kg import cli_prune
     from evo_agents.kg.ids import utc_now
-    from evo_agents.kg.sync import sync_all_due
 
     if args.project or args.accept_removals:
         print("error: --all goes with --due, --build, --push and --json only", file=sys.stderr)
         return 2
-    outcomes = sync_all_due(build=args.build, plans=_hub_plans())
-    ok = all(o.ok for o in outcomes)
-    pushed = _push() if args.push else None
-    if pushed is not None:
-        ok = ok and _push_json(*pushed)["ok"]
+    failed = None
+    try:  # the prune goes on when the hub cannot be read: it needs no hub
+        credentials = load_credentials()
+        hub = Hub(credentials.url, credentials.token)
+        outcomes = sync_all_due(hub, local_projects(None, True), build=args.build, plans=_hub_plans())
+    except HubError as exc:
+        outcomes, failed = [], f"the hub: {exc}"
+    ok = failed is None and all(o.ok for o in outcomes)
     pruned = cli_prune.scheduled()
     prune = cli_prune.scheduled_json(*pruned)
     ok = ok and (prune is None or prune["ok"])
     if args.json:
         body = {"ok": ok, "projects": [o.to_json() for o in outcomes]}
-        if pushed is not None:
-            body["push"] = _push_json(*pushed)
+        if failed is not None:
+            body["error"] = failed
         if prune is not None:
             body["prune"] = prune
         print_json(body)
     else:
         print(f"kg sync --due --all at {utc_now()}: {len(outcomes)} project(s)")
+        if failed is not None:
+            print(f"FAIL sync: {failed}")
         for outcome in outcomes:
             _print_due(outcome)
-        if pushed is not None:
-            _print_push(*pushed)
         cli_prune.print_scheduled(*pruned)
     return 0 if ok else 1
 
 
 def _cmd_sync_due(args) -> int:
-    from evo_agents.kg.sync import sync_due
+    from evo_agents.hub.kg_hub_sync import sync_due
 
     if args.source:
         print("error: --due picks the sources itself; drop --source", file=sys.stderr)
@@ -151,26 +152,22 @@ def _cmd_sync_due(args) -> int:
 
     project = project_of(args)
     try:
-        outcome = sync_due(project, build=args.build, accept=args.accept_removals, plans=_hub_plans())
+        outcome = sync_due(_syncer(project), build=args.build, accept=args.accept_removals)
     except ProjectError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    pushed = _push(project) if args.push else None
-    ok = outcome.ok and (pushed is None or _push_json(*pushed)["ok"])
     if args.json:
-        body = outcome.to_json()
-        if pushed is not None:
-            body["push"] = _push_json(*pushed)
-        print_json(body)
+        print_json(outcome.to_json())
     else:
         _print_due(outcome)
-        if pushed is not None:
-            _print_push(*pushed)
-    return 0 if ok else 1
+    return 0 if outcome.ok else 1
 
 
+@_hub_errors
 def cmd_sync(args) -> int:
-    from evo_agents.kg.sync import sync_project
+    """``kg sync``: run the connectors of a project's sources and push each run to the hub, with no corpus here
+    (``evo_agents.hub.kg_hub_sync``); --push is what every sync does now."""
+    from evo_agents.hub.kg_hub_sync import cleared_sources, sync_project
 
     if args.all and not args.due:
         print("error: --all needs --due; a full sync of every project is not offered", file=sys.stderr)
@@ -178,30 +175,20 @@ def cmd_sync(args) -> int:
     if args.due:
         return _cmd_sync_due(args)
     project = project_of(args)
-    results = sync_project(project, args.source or None, accept=args.accept_removals, plans=_hub_plans())
-    ok = all(r.ok and not r.held for r in results)
-    report = None
-    if args.build:
-        from evo_agents.kg.build import build_project
-
-        report = build_project(project)
-        ok = ok and report.ok
-    pushed = _push(project) if args.push else None
-    if pushed is not None:
-        ok = ok and _push_json(*pushed)["ok"]
+    results, build = sync_project(_syncer(project), args.source or None, accept=args.accept_removals, build=args.build)
+    ok = all(r.ok and not r.held for r in results) and (build is None or build.ok)
+    left = [] if args.source else cleared_sources(project)[1]
     if args.json:
-        body = {"project": project.name, "runs": [r.to_json() for r in results]}
-        if pushed is not None:
-            body["push"] = _push_json(*pushed)
+        body = {"project": project.name, "runs": [r.to_json() for r in results], "left_out": left}
+        if build is not None:
+            body["build"] = build.to_json()
         print_json(body)
     else:
         _print_runs(results)
-        if report is not None:
-            print(report.summary_line())
-            for warning in report.warnings:
-                print(f"warning: {warning}")
-        if pushed is not None:
-            _print_push(*pushed)
+        for source_id in left:
+            print(f"SKIP {source_id}: the hub sink does not clear its label, so the hub takes none of its runs")
+        if build is not None:
+            print(build.summary_line())
     return 0 if ok else 1
 
 
@@ -405,11 +392,13 @@ def register(sub) -> None:
         p.add_argument("--json", action="store_true", help="machine-readable output")
         return p
 
-    sync = with_project(ksub.add_parser("sync", help="run connectors into the corpus"))
+    sync = with_project(ksub.add_parser("sync", help="run connectors and push their runs to the hub"))
     sync.add_argument("--source", action="append", help="only this source (repeatable)")
     sync.add_argument("--accept-removals", action="store_true", help="apply deletions a guard held back")
     sync.add_argument(
-        "--build", action="store_true", help="build the graph after syncing (with --due: only if a source ran)"
+        "--build",
+        action="store_true",
+        help="then ask the hub for a build of the graph and wait for it (with --due: only if a source ran)",
     )
     sync.add_argument(
         "--due", action="store_true", help="only sources whose refresh interval has passed since their last ok run"
@@ -420,7 +409,7 @@ def register(sub) -> None:
     sync.add_argument(
         "--push",
         action="store_true",
-        help="then send the runs the hub lacks (`hub kg push`); with --all, of every project the hub takes",
+        help="kept for older schedules: every sync pushes its runs to the hub",
     )
     sync.set_defaults(func=cmd_sync)
 

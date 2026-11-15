@@ -1396,7 +1396,7 @@ it holds:
                   "update_now": {"requested_at": "...", "ended": null}},
   "kg_sync": {"projects": [{"project": "evo-agents", "checked_at": "...", "sources": [
     {"source": "evo-agents", "status": "ok", "ref": "origin/main", "commit": "<40 hex>", "behind": 0,
-     "checked_at": "...", "read_at": "...", "pushed_at": "...", "pulled": 0, "pushed": 1}]}]}
+     "checked_at": "...", "read_at": "...", "pushed_at": "...", "pushed": 1}]}]}
 }
 ```
 
@@ -1451,8 +1451,9 @@ state). `GET /v1/workers` and `GET /v1/workers/{id}` show them as `agent_commit`
 both null for an older daemon, which sends neither. `kg_sync`, optional, is what a daemon of feature `kg_sync` last
 did for each project of the answer's `kg_sync`: the project, when it looked (`checked_at`, required), what stopped
 the look (`error`), and for each source at most 50, its `source`, `status` (a name as `state` above; this daemon sends
-one of `runs.KG_SYNC_STATES`), `error`, `ref`, `commit`, `behind`, `checked_at`, `read_at`, `pushed_at`, `pulled` and
-`pushed`, at most 50 projects and every error 1 to 500 characters. Each heartbeat replaces what the hub holds
+one of `runs.KG_SYNC_STATES`), `error`, `ref`, `commit`, `behind`, `checked_at`, `read_at`, `pushed_at`, `pulled`
+(runs merged from the hub, which only an older daemon sends) and `pushed`, at most 50 projects and every error 1 to 500
+characters. Each heartbeat replaces what the hub holds
 (`workers.kg_sync`, schema 0053), and one without it clears it; `GET /v1/workers/{id}` shows it as `kg_sync`.
 `health`, optional, is what the daemon last found of its machine (`evo_agents/worker/health.py`): `disk`, the free
 space of the drive that holds its worktrees (`free_gb`, `free_pct`, `reserve_gb`, the free space it keeps there, and
@@ -2993,20 +2994,21 @@ a time in a thread. A look:
    fetched first, from its checkout of the harness (a checkout of the project with `harness.yaml` at its root), never
    from that checkout's working tree. It writes them to `~/.evo/worker/kg/harness/<project>/`, with each repo's path
    pointing at its checkout here and `knowledge.yaml` byte for byte, so each source's lineage is the one a member's
-   machine computes. The corpus is `~/.evo/worker/kg/home/<project>/`.
+   machine computes. No corpus is kept here: the hub holds the source's state.
 2. Takes the git sources whose `ref` is `origin/<branch>` and that name a `repo:` of `harness.yaml`. The `harness`
    source and `exec` connectors are read on members' machines alone and are left out. A git source with no `ref`, with
    another ref or with `path:` is reported `skipped`, with the reason. One whose repo has no checkout here is `failed`.
-3. For each source, merges first the runs of it that the hub holds and the corpus here lacks, which other machines
-   pushed (`GET /v1/worker/kg/{project}/runs?source=`, then each log, checked against its SHA-256 and size). The
-   deletions its own run derives from its complete listing then cover every file the hub holds, and its records take
-   the epoch of the hub's newest runs of the source. Then it syncs the source as `fetch: true` reads it, holding the
-   daemon's lock of the checkout as a run does. A source still at the commit it read last is not read again, unless
-   the runs merged changed what the source holds alive since this worker last read it: then it reads the commit again,
-   so the hub's state becomes that commit's whatever an older or partial run of a laptop left there.
-4. Pushes the runs here that the hub lacks through `/v1/worker/kg/{project}/...` with the worker's token
-   (`docs/hub.md`, Memories, skills and knowledge graphs), leaving the knowledge config as the members sent it. When
-   nothing was read and every run is on the hub, nothing is pushed; the push still asks what the hub holds once a day.
+3. For each source, reads what the hub holds of it (`GET /v1/worker/kg/{project}/sources/{source}/state`) and syncs
+   it from that state as `kg sync` does on a member's machine (`evo_agents/hub/kg_hub_sync.py`, `docs/hub.md`, kg sync
+   against the hub), as `fetch: true` reads it, holding the daemon's lock of the checkout as a run does: the cursor,
+   the epoch and the live items the deletions of a complete listing are worked out from are the hub's, whichever
+   machine pushed them. A source whose newest run on the hub read the commit at the tip already is not read again; one
+   whose newest run is a laptop's of an older commit is, so the hub's state becomes the newest commit's. While the
+   state counts runs no build has read yet (`unread`), the worker, which may not ask for a build, reads nothing of the
+   source and reports it `skipped`, until a build on the hub reads them.
+4. Pushes the run it wrote through `/v1/worker/kg/{project}/...` with the worker's token (`docs/hub.md`, Memories,
+   skills and knowledge graphs), leaving the knowledge config as the members sent it, and deletes its spool. When
+   nothing was read, nothing is pushed.
 
 A laptop and the worker pushing one source in turn therefore leave the graph with the files of the newest commit of
 the branch once the worker has looked after the laptop's push. That holds even for a laptop pushing from a clone it

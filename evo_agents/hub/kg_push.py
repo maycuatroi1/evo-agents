@@ -304,6 +304,17 @@ class Pusher:
             report.build = committed["build"]
         self._say(f"{label}: ingested")
 
+    def push_log(self, corpus, path: Path, run_id: str, report: PushReport) -> None:
+        """Push the run logged at ``path``, its blobs in ``corpus`` (anything with ``blob_path`` and
+        ``record_on_hub``), retrying as ``push`` does a run: ``kg sync`` pushes each run it wrote this way
+        (``evo_agents.hub.kg_hub_sync``). A HubError says why the hub did not take it."""
+        label = f"run {run_id}"
+        self._retrying(label, partial(self.push_run, corpus, path, run_id, report, label))
+
+    def put_config(self) -> None:
+        """Send the project's knowledge config, as ``push`` does first; a ProjectError when it does not load."""
+        self._send_config(f"project {self.name}", knowledge_config(self.project))
+
     def _uncleared_source(self, path: Path) -> str | None:
         """The source of the run logged at ``path`` when the project's hub sink does not clear its label."""
         header = log_header(path)
@@ -373,7 +384,7 @@ def push_project(hub: Hub, project: Project, progress: Callable[[str], None] | N
     return Pusher(hub, project, progress=progress).push()
 
 
-def _pushable(project: dict) -> str | None:
+def pushable(project: dict) -> str | None:
     """Why a project the hub lists cannot take a push from the caller, None when it can."""
     if project.get("role") not in ("writer", "admin"):
         return "pushing needs the writer role on it"
@@ -392,7 +403,7 @@ def push_all(
     for name, project in projects:
         if name not in listed:
             reports.append(PushReport(name, skipped="not on the hub, or not visible to you"))
-        elif (reason := _pushable(listed[name])) is not None:
+        elif (reason := pushable(listed[name])) is not None:
             reports.append(PushReport(name, skipped=reason))
         elif isinstance(project, Exception):
             reports.append(PushReport(name, errors=[f"the project does not load here: {project}"]))

@@ -6,13 +6,14 @@ import datetime as dt
 import json
 import re
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from evo_agents import __version__
 from evo_agents.kg import audit
-from evo_agents.kg.corpus import Corpus, LogWriter, kg_home, run_epoch
+from evo_agents.kg.corpus import Corpus, ItemRecord, LogWriter, kg_home, run_epoch
 from evo_agents.kg.ids import parse_utc, utc_now, uuid7
 from evo_agents.kg.project import Project, ProjectError, load_project_at, read_index, remember
 from evo_agents.kg.protocol import StreamChecker, sha256
@@ -174,15 +175,12 @@ def _finish(project: Project, corpus: Corpus, result: SyncResult, connector: str
     )
 
 
-def _read_already(corpus: Corpus, ctx: ConnectorContext, result: SyncResult) -> bool:
-    """Whether a git source whose last run was ok would read the commit and config its cursor names
+def read_already(last_ok: bool, ctx: ConnectorContext, result: SyncResult) -> bool:
+    """Whether a git source whose last run was ok (``last_ok``) would read the commit and config its cursor names
     (``connectors.git.read_already``). Such a sync reads nothing: no log, no change to the state or the cursor, and
     ``result`` is ok and ``unchanged``. When it fetched and found something new, the run that follows does not fetch
     again."""
-    if ctx.source.get("connector") != "git":
-        return False
-    last = corpus.runs(ctx.source_id, limit=1)
-    if not last or last[0]["status"] != "ok":
+    if ctx.source.get("connector") != "git" or not last_ok:
         return False
     from evo_agents.kg.connectors import git
 
@@ -195,7 +193,18 @@ def _read_already(corpus: Corpus, ctx: ConnectorContext, result: SyncResult) -> 
     return same
 
 
-def _read(run: ConnectorRun, checker: StreamChecker, corpus: Corpus, writer: LogWriter, result: SyncResult, states):
+class Known(Protocol):
+    """What a sync reads of the items a source holds already: a corpus here, or the state the hub holds of the source
+    (``evo_agents.hub.kg_hub_sync``)."""
+
+    def to_log_record(self, message: dict) -> dict: ...
+
+    def get(self, item_id: str) -> ItemRecord | None: ...
+
+    def alive_in_scope(self, scope: str) -> list[ItemRecord]: ...
+
+
+def _read(run: ConnectorRun, checker: StreamChecker, corpus: Known, writer: LogWriter, result: SyncResult, states):
     """Log every message of the run and count it into ``result``; append each state message to ``states``."""
     for message in run:
         problems = checker.feed(message)
@@ -228,7 +237,7 @@ def _read(run: ConnectorRun, checker: StreamChecker, corpus: Corpus, writer: Log
             writer.write(message)
 
 
-def _removals(corpus: Corpus, source: dict, checker: StreamChecker, writer: LogWriter, result: SyncResult) -> list:
+def _removals(corpus: Known, source: dict, checker: StreamChecker, writer: LogWriter, result: SyncResult) -> list:
     """Tombstones for the items a complete listing no longer names, written to the log, unless the deletion guard
     holds them back: the rows of ``held`` for those."""
     held_rows = []
@@ -264,6 +273,50 @@ def _listed(checker: StreamChecker) -> list[str]:
     return sorted({listing["scope"] for listing in checker.listings if listing.get("complete")})
 
 
+def read_run(
+    ctx: ConnectorContext,
+    checker: StreamChecker,
+    corpus: Known,
+    writer: LogWriter,
+    result: SyncResult,
+    states: list[dict],
+    kill_after: int | None = None,
+) -> list:
+    """Run the connector of ``ctx`` into ``writer``'s log, its removals and its run_end included, and count it into
+    ``result``, whose status it sets; append each state message to ``states``. Returns the rows of the removals the
+    deletion guard held back, as ``_removals``."""
+    run = ConnectorRun(ctx, kill_after=kill_after)
+    try:
+        _read(run, checker, corpus, writer, result, states)
+    except ConnectorError as exc:
+        result.issues.append(str(exc))
+    result.returncode = run.returncode
+    result.exception = run.exception
+    result.stderr_tail = list(run.stderr_tail)[-10:]
+    result.issues.extend(str(p) for p in checker.finish())
+    if run.killed:
+        result.issues.append("connector was killed before it finished")
+
+    complete = checker.complete_run and not result.issues
+    held_rows = _removals(corpus, ctx.source, checker, writer, result) if complete else []
+    result.status = "ok" if complete else "failed"
+    writer.write(
+        {
+            "type": "run_end",
+            "status": result.status,
+            "items": result.items,
+            "tombstones": result.tombstones,
+            "removals": result.removals,
+            "finished_at": utc_now(),  # the hub keeps it (kg_ingests.run_finished_at), which due_sources reads
+            # the hub keeps them too (kg_ingests.held, .listed), which kg sync --accept-removals reads from it: the
+            # hold of a scope is that of the newest ok run that listed it completely
+            **({"listed": listed} if (listed := _listed(checker) if complete else []) else {}),
+            **({"held": [{"scope": r[2], "reason": r[3], "ids": r[4]} for r in held_rows]} if held_rows else {}),
+        }
+    )
+    return held_rows
+
+
 def sync_source(
     project: Project,
     source_id: str,
@@ -277,7 +330,7 @@ def sync_source(
 ) -> SyncResult:
     """Run one source's connector into the corpus. The run gets a row in the runs table and a line in the
     project's audit log, once its state is committed. A git source whose commit and config are those its last ok
-    run read is not read again (``_read_already``), unless ``force``: the worker's sync reads it again when the runs
+    run read is not read again (``read_already``), unless ``force``: the worker's sync reads it again when the runs
     of other machines it merged changed what the source holds (``evo_agents.worker.kg_sync``). ``plans`` reads the
     plans of the hub for a harness source (``ConnectorContext.plans``)."""
     source = project.source(source_id)
@@ -296,42 +349,15 @@ def sync_source(
             return result
 
         ctx = ConnectorContext(project.name, source, project.harness, corpus.cursor(source_id), env, plans)
-        if not force and _read_already(corpus, ctx, result):
+        last = corpus.runs(source_id, limit=1)
+        if not force and read_already(bool(last) and last[0]["status"] == "ok", ctx, result):
             result.seconds = round(time.monotonic() - started_clock, 3)
             _finish(project, corpus, result, source["connector"], __version__, started)
             return result
         writer = _open_log(project, corpus, source, run_id)
         checker = StreamChecker(source_id)
-        run = ConnectorRun(ctx, kill_after=kill_after)
         states: list[dict] = []
-        try:
-            _read(run, checker, corpus, writer, result, states)
-        except ConnectorError as exc:
-            result.issues.append(str(exc))
-        result.returncode = run.returncode
-        result.exception = run.exception
-        result.stderr_tail = list(run.stderr_tail)[-10:]
-        result.issues.extend(str(p) for p in checker.finish())
-        if run.killed:
-            result.issues.append("connector was killed before it finished")
-
-        complete = checker.complete_run and not result.issues
-        held_rows = _removals(corpus, source, checker, writer, result) if complete else []
-        result.status = "ok" if complete else "failed"
-        writer.write(
-            {
-                "type": "run_end",
-                "status": result.status,
-                "items": result.items,
-                "tombstones": result.tombstones,
-                "removals": result.removals,
-                "finished_at": utc_now(),  # the hub keeps it (kg_ingests.run_finished_at), which due_sources reads
-                # the hub keeps them too (kg_ingests.held, .listed), which kg sync --accept-removals reads from it: the
-                # hold of a scope is that of the newest ok run that listed it completely
-                **({"listed": listed} if (listed := _listed(checker) if complete else []) else {}),
-                **({"held": [{"scope": r[2], "reason": r[3], "ids": r[4]} for r in held_rows]} if held_rows else {}),
-            }
-        )
+        held_rows = read_run(ctx, checker, corpus, writer, result, states, kill_after)
         result.log = str(writer.close())
         hello = checker.hello or {}
         connector, version = hello.get("connector", source["connector"]), hello.get("version")
@@ -441,11 +467,26 @@ def parse_refresh(value) -> int:
     return int(match.group(1)) * REFRESH_UNITS[match.group(2)]
 
 
-def due_sources(project: Project, corpus: Corpus | None = None, now: dt.datetime | None = None) -> list[str]:
+def last_ok_here(corpus: Corpus) -> Callable[[str], str | None]:
+    """When the last ok run of a source finished, as the corpus here records it."""
+
+    def finished(source: str) -> str | None:
+        last = corpus.runs(source, limit=1, status="ok")
+        return last[0]["finished_at"] if last else None
+
+    return finished
+
+
+def due_sources(
+    project: Project, corpus: Corpus | None = None, now: dt.datetime | None = None, *, last_ok=None
+) -> list[str]:
     """Sources that declare ``refresh`` and either never had an ok run or whose last ok run finished at least
     ``refresh`` ago, less a slack of DUE_SLACK_SECONDS (at most a tenth of the interval). A source without
-    ``refresh`` is never due; a failed run does not reset the clock."""
-    corpus = corpus or project.corpus()
+    ``refresh`` is never due; a failed run does not reset the clock. ``last_ok(source)`` says when the last ok run of
+    a source finished, None when there is none: the hub's state of the source for ``kg sync --due``
+    (``evo_agents.hub.kg_hub_sync``), ``corpus`` by default."""
+    if last_ok is None:
+        last_ok = last_ok_here(corpus or project.corpus())
     now = now or dt.datetime.now(dt.UTC)
     due = []
     for src in project.sources():
@@ -455,11 +496,11 @@ def due_sources(project: Project, corpus: Corpus | None = None, now: dt.datetime
             interval = parse_refresh(src["refresh"])
         except ValueError as exc:
             raise ProjectError(f"project {project.name!r}, source {src['id']!r}: {exc}") from exc
-        last = corpus.runs(src["id"], limit=1, status="ok")
-        if not last or not last[0]["finished_at"]:
+        finished = last_ok(src["id"])
+        if not finished:
             due.append(src["id"])
             continue
-        age = (now - parse_utc(last[0]["finished_at"])).total_seconds()
+        age = (now - parse_utc(finished)).total_seconds()
         if age >= interval - min(DUE_SLACK_SECONDS, interval // 10):
             due.append(src["id"])
     return due
@@ -473,8 +514,9 @@ class ProjectSync:
     harness: str
     due: list[str] = field(default_factory=list)
     runs: list[SyncResult] = field(default_factory=list)
-    build: BuildReport | None = None
+    build: BuildReport | HubBuild | None = None
     error: str | None = None
+    skipped: str | None = None  # why the project was not synced: the hub takes no run of it from the caller
 
     @property
     def ok(self) -> bool:
@@ -491,7 +533,32 @@ class ProjectSync:
             "runs": [r.to_json() for r in self.runs],
             "build": self.build.to_json() if self.build is not None else None,
             "error": self.error,
+            "skipped": self.skipped,
         }
+
+
+@dataclass
+class HubBuild:
+    """The build of a project's graph on the hub that ``kg sync --build`` asked for and waited on, as the hub answers it
+    (GET /v1/kg/{project}/builds/{id}); ``error`` when asking or waiting failed."""
+
+    build: dict | None = None
+    error: str | None = None
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None and self.build is not None and self.build.get("status") == "succeeded"
+
+    def to_json(self) -> dict:
+        return {"ok": self.ok, "build": self.build, "error": self.error}
+
+    def summary_line(self) -> str:
+        if self.build is None:
+            return f"FAIL build on the hub: {self.error}"
+        line = f"build {self.build.get('id')} on the hub: {self.build.get('status')}"
+        failed = self.error or self.build.get("error")
+        return f"FAIL {line}: {failed}" if not self.ok and failed else line
 
 
 def sync_due(project: Project, *, build: bool = False, now: dt.datetime | None = None, **kwargs) -> ProjectSync:

@@ -166,7 +166,8 @@ def test_sync_due_runs_only_due_sources_and_builds_only_when_one_ran(tmp_path, k
     assert len(project.corpus().runs("hourly")) == 1
 
 
-def test_sync_due_all_one_failing_project_does_not_stop_the_others(tmp_path, kg_env, builds, capsys):
+def test_sync_due_all_one_failing_project_does_not_stop_the_others(tmp_path, kg_env, hub_for, capsys):
+    hub = hub_for("alpha", "broken", "idle", "zeta")
     for name, sources in [
         ("alpha", [source(tmp_path, "docs", "1h")]),
         ("broken", [source(tmp_path, "docs", "soon")]),
@@ -187,20 +188,26 @@ def test_sync_due_all_one_failing_project_does_not_stop_the_others(tmp_path, kg_
     assert outcomes["alpha"]["ok"] and [r["source"] for r in outcomes["alpha"]["runs"]] == ["docs"]
     assert outcomes["zeta"]["ok"] and outcomes["zeta"]["due"] == ["docs"]
     assert outcomes["idle"]["ok"] and outcomes["idle"]["runs"] == [] and outcomes["idle"]["build"] is None
-    assert builds == ["alpha", "zeta"]
+    built = {name: project.builds for name, project in hub.hubs.items()}
+    assert built == {"alpha": 1, "broken": 0, "idle": 0, "zeta": 1}  # the hub builds what was read
+    assert hub.hubs["zeta"].ingested and not (kg_env / "zeta" / "corpus.sqlite").exists()  # no corpus here
 
     # Nothing is due an instant later, so nothing runs or builds; broken still fails the exit code.
     assert main(["kg", "sync", "--due", "--all", "--build"]) == 1
     out = capsys.readouterr().out
     assert "FAIL project broken:" in out and "project alpha: nothing due" in out
-    assert builds == ["alpha", "zeta"]
+    assert {name: project.builds for name, project in hub.hubs.items()} == built
 
 
-def test_sync_due_all_succeeds_without_failing_projects(tmp_path, kg_env, builds):
+def test_sync_due_all_succeeds_without_failing_projects(tmp_path, kg_env, builds, hub_for, capsys):
     remember(load_project_at(harness(tmp_path, "alpha", [source(tmp_path, "docs", "1h")]), kg_env))
     outcomes = sync_all_due(kg_env, build=True)
     assert [o.project for o in outcomes] == ["alpha"] and all(o.ok for o in outcomes)
+    assert main(["kg", "sync", "--due", "--all"]) == 1  # not signed in to a hub: nothing can sync
+    assert "FAIL sync: the hub: not signed in" in capsys.readouterr().out
+    hub_for("alpha")
     assert main(["kg", "sync", "--due", "--all"]) == 0
+    assert "project alpha: 1 source(s) due" in capsys.readouterr().out
 
 
 def test_sync_due_flag_combinations_are_rejected(tmp_path, kg_env, capsys):

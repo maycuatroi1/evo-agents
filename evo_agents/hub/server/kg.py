@@ -281,18 +281,24 @@ async def list_runs(request: Request, project: ProjectName, user: CurrentUser) -
 
 
 Scope = Annotated[str | None, Query(min_length=1, max_length=500, description="only the items whose id starts so")]
+WithItems = Annotated[bool, Query(description="false leaves the items out, for a caller that reads only the runs")]
 
 
 @router.get("/{project}/sources/{source}/state", response_model=SourceState, responses=REFUSALS)
 async def read_source_state(
-    request: Request, project: ProjectName, source: SourceId, user: CurrentUser, scope: Scope = None
+    request: Request,
+    project: ProjectName,
+    source: SourceId,
+    user: CurrentUser,
+    scope: Scope = None,
+    items: WithItems = True,
 ) -> SourceState:
     """What the hub holds of one source, which ``kg sync`` reads instead of a corpus (``kg_source_state``): the
     writer role, as for a push."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         writer(access, "syncing a source of")
-        return await source_state(conn, access.project_id, source, scope)
+        return await source_state(conn, access.project_id, source, scope, items=items)
 
 
 def _run_ids(runs, project_id: int):

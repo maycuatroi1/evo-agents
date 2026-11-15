@@ -3852,7 +3852,7 @@ to the hub version that adds it leaves every skill that exists `everyone`'s, so 
 later is removed, after a backup, by the next `hub skills sync` of a member who no longer sees it.
 
 **Knowledge graphs.** A project's graph is built on the hub from the run logs machines push. `evo-agents hub kg push
---project demo` (or `evo-agents kg sync --push`) sends the connector runs the hub lacks; a run whose label the hub sink
+--project demo` sends the connector runs of a local corpus the hub lacks (`kg sync` pushes each run itself); a run whose label the hub sink
 does not clear stays on the machine. It reports a line per run and per batch of blobs on stderr. Blobs go in commits of
 at most 100 uploads and 256 MiB, each given time in proportion to what it carries. A commit that gets no answer may
 still finish on the hub, so the push asks which of its blobs the project holds before calling it failed. A run that
@@ -3878,17 +3878,29 @@ times, and the cursor of its last state message. A run whose `run_end` does not 
 `/v1/worker/kg/{project}/sources/{source}/state` for the worker on duty) answers from them: how many runs the hub
 holds of the source, the newest run and the newest that ended ok, the cursor the next run resumes from, the lineage and
 epoch of the run whose (epoch, run id) is highest, and the source's live items with their rev and rev_time from the
-latest build's corpus, optionally only the ids that start with `?scope=` (at most 200000, `items_cut` past that). Runs
-pushed since that build are not in the items yet. A run pushed before 0252 counts in `unread` until the next build
+latest build's corpus, optionally only the ids that start with `?scope=` (at most 200000, `items_cut` past that), or
+none with `?items=false`, for a caller that reads only the runs (`kg sync --due`). Runs pushed since that build are not
+in the items yet. A run pushed before 0252 counts in `unread` until the next build
 reads its log and fills its facts in (`fill_run_facts` of `evo_agents/hub/kg_source_state.py`), or marks it `failed`
 when its log cannot be fetched or read, so `unread` is 0 after the first build that succeeds. While it is not 0, a
-caller that needs those runs asks for a build and reads again. `unbuilt` counts the runs of the source the hub
+caller that needs those runs asks for a build and reads again; the worker on duty, which may not ask for one, reports
+the source `skipped` and reads it at a later look, once a build read them. `unbuilt` counts the runs of the source the hub
 received after the latest build of main started, which the items do not show yet. `held` lists the removals the
 deletion guard held back, from the `held` and `listed` of each run's `run_end` (schema 0253): for each scope, those of
 the newest run that ended ok and listed that scope completely, each with that run's id, its reason and the item ids,
 which `kg sync --accept-removals` applies. A run that lists a scope completely works its removals out again, so one
 that holds none of it clears that scope's hold, as the run of `--accept-removals` does for the scopes it applies; a
 run that does not list a scope leaves its hold as it is.
+
+**kg sync against the hub.** `evo-agents kg sync` keeps no corpus on the machine (`evo_agents/hub/kg_hub_sync.py`): for
+each source it reads that state, gives the connector the hub's cursor, takes the epoch from the hub's lineage, works the
+removals of a complete listing out from the hub's live items, writes the run's log and blobs to a spool under the
+project's kg home, pushes them as `hub kg push` does, and deletes the spool. `--accept-removals` pushes a run of
+tombstones for the held items the hub still holds alive, `--due` reads when each source's last ok run on the hub
+ended (`?items=false`), and `--build` asks the hub for a build and waits for it, as `hub kg build --wait` does.
+`--push` is accepted and changes nothing. A sync of every source leaves out a source whose label the hub sink does not
+clear and says so (`left_out` in `--json`); naming one with `--source` fails. A machine not signed in to a hub cannot
+sync: `kg sync` says so and exits 1. The worker on duty syncs the same way through `/v1/worker/kg/{project}`.
 
 **Clusters, review and decisions.** A build with the `clusters` extra groups the graph into named clusters, computes
 a review queue by seven rules, and applies the decisions writers took on the hub (`docs/kg.md`, Clusters, Review,

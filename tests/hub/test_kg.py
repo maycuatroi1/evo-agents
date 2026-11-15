@@ -1265,9 +1265,8 @@ def ok(result: subprocess.CompletedProcess) -> subprocess.CompletedProcess:
 
 def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3):
     laptop = Machine(tmp_path, "laptop")
-    laptop.files["docs"].write_text(
-        json.dumps({"items": [doc("guide", "How the app works."), doc("setup", "Install it.")]}), encoding="utf-8"
-    )
+    laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it."))
+    laptop.sync("vault")
     with live.running_hub(hub_db, tmp_path, EVO_HUB_ADMINS=live.ADMIN, **s3.env()) as served:
         admin = Hub(served.url, live.insert_token(hub_db, live.ADMIN))
         admin.call("PUT", f"/v1/projects/{PROJECT}", REGISTRATION)
@@ -1276,9 +1275,9 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
         env = pg.clean_env(HOME=str(home), EVO_KG_HOME=str(laptop.home))
         harness = str(laptop.harness)
 
-        synced = ok(pg.cli(["kg", "sync", "--project", harness, "--build", "--push", "--json"], env=env))
-        pushed = json.loads(synced.stdout)["push"]
-        assert pushed["ok"] and len(pushed["projects"][0]["pushed"]) == 1
+        ok(pg.cli(["kg", "build", "--project", harness], env=env))  # the graph of this machine, to compare below
+        pushed = ok(pg.cli(["hub", "kg", "push", "--project", harness], env=env))
+        assert pushed.stdout.startswith("project alpha: pushed 1 run(s)")
         again = ok(pg.cli(["hub", "kg", "push", "--project", harness], env=env))
         assert again.stdout == (
             "project alpha: pushed 0 run(s) and 0 blob(s); 1 of 2 run(s) were on the hub already; 1 run(s) of vault "
@@ -1343,13 +1342,20 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
 
         # --all pushes what the hub takes and says why it skipped the rest
         zeta = Machine(tmp_path, "zeta", project="zeta")
-        zeta_env = dict(env)
-        ok(pg.cli(["kg", "sync", "--project", str(zeta.harness)], env=zeta_env))
+        sync_project(load_project_at(zeta.harness, laptop.home), ["docs"])  # a corpus in the same kg home
         everything = ok(pg.cli(["hub", "kg", "push", "--all"], env=env))
         assert "project alpha: pushed 0 run(s)" in everything.stdout
         assert "project zeta: skipped, not on the hub, or not visible to you" in everything.stdout
-        due = ok(pg.cli(["kg", "sync", "--due", "--all", "--build", "--push"], env=env))
-        assert "push project alpha: pushed 0 run(s)" in due.stdout
+        due = ok(pg.cli(["kg", "sync", "--due", "--all", "--build"], env=env))
+        assert "project alpha: nothing due" in due.stdout
+        assert "project zeta: skipped, not on the hub, or not visible to you" in due.stdout
+
+        # kg sync reads from what the hub holds and pushes there, with this machine's corpus left as it is
+        logs = laptop.logs()
+        synced = json.loads(ok(pg.cli(["kg", "sync", "--project", harness, "--json"], env=env)).stdout)
+        (run,) = synced["runs"]
+        assert run["source"] == "docs" and run["status"] == "ok" and synced["left_out"] == ["vault"]
+        assert run["items"] == 2 and run["removals"] == 0 and laptop.logs() == logs
 
         served.proc.terminate()
         served.proc.wait(timeout=30)
