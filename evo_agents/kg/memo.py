@@ -31,6 +31,7 @@ import json
 import sqlite3
 import time
 from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
 
 from evo_agents.kg.ids import utc_now
@@ -157,6 +158,17 @@ class Memo:
 
 def _read_only(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+
+
+def usages(path: Path, stage: str) -> Iterator[dict]:
+    """The ``usage`` (tokens, cost) of each answer of ``stage`` in the memo at ``path``, ``{}`` for an answer without
+    one. Reads only."""
+    db = _read_only(path)
+    try:
+        for (blob,) in db.execute("SELECT output FROM memo WHERE stage = ?", (stage,)):
+            yield (json.loads(gzip.decompress(blob)) or {}).get("usage") or {}
+    finally:
+        db.close()
 
 
 def unused(path: Path, cutoff: str) -> tuple[int, int, str | None]:

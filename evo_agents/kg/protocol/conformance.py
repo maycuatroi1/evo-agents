@@ -10,13 +10,12 @@ from __future__ import annotations
 import contextlib
 import json
 import random
-import sqlite3
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents.harness import Harness
-from evo_agents.kg.corpus import SCHEMA, Corpus
+from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.policy import DEFAULT_LEVELS
 from evo_agents.kg.project import Project
 from evo_agents.kg.protocol import StreamChecker
@@ -72,14 +71,6 @@ def summary(messages: list[dict]) -> list[dict]:
     return sorted(out, key=lambda e: json.dumps(e, sort_keys=True))
 
 
-def _digest_after(corpus: Corpus, runs: list[tuple[str, list[dict]]]) -> str:
-    with contextlib.closing(sqlite3.connect(":memory:")) as db:
-        db.executescript(SCHEMA)
-        for run_id, records in runs:
-            corpus.merge(records, run_id, db)
-        return corpus.state_digest(db)
-
-
 def _truncated_listing(source: dict, harness: Harness | None, env, items: int, tmp: Path) -> Check:
     """A full sync, then one cut short after about half its items: the cut one fails and derives no deletion."""
     project = Project(
@@ -94,8 +85,7 @@ def _truncated_listing(source: dict, harness: Harness | None, env, items: int, t
 
     with contextlib.closing(project.corpus()) as synced:
         full = sync_source(project, source["id"], env=env, corpus=synced)
-        with synced.db:  # without its cursor the cut run reads everything again, as the full one did
-            synced.db.execute("DELETE FROM cursors WHERE source = ?", (source["id"],))
+        synced.forget_cursor(source["id"])  # without its cursor the cut run reads everything again, as the full one did
         cut = sync_source(project, source["id"], kill_after=1 + items // 2, env=env, corpus=synced)
         alive = len(synced.items(source["id"]))
     ok = full.ok and not cut.ok and cut.removals == 0 and alive == full.items
@@ -135,12 +125,12 @@ def run_conformance(
 
     with tempfile.TemporaryDirectory() as tmp, contextlib.closing(Corpus("conformance", Path(tmp))) as corpus:
         records = [corpus.to_log_record(m) for m in first if m.get("type") in ("item", "tombstone")]
-        base = _digest_after(corpus, [("run-1", records)])
+        base = corpus.replayed_digest([("run-1", records)])
         shuffled = list(records) * 2
         random.Random(42).shuffle(shuffled)
-        replayed = _digest_after(corpus, [("run-1", shuffled)])
-        two_runs = _digest_after(corpus, [("run-2", records), ("run-1", records)])
-        ok = base == replayed == _digest_after(corpus, [("run-1", records), ("run-2", records)]) == two_runs
+        replayed = corpus.replayed_digest([("run-1", shuffled)])
+        two_runs = corpus.replayed_digest([("run-2", records), ("run-1", records)])
+        ok = base == replayed == corpus.replayed_digest([("run-1", records), ("run-2", records)]) == two_runs
         checks.append(Check("replay", ok, [] if ok else ["merge depends on message order or repetition"]))
 
         items = [m for m in first if m.get("type") == "item"]

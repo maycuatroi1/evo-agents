@@ -643,9 +643,7 @@ def _entities_finished(report) -> str | None:
 def extraction(lay: graphs.Layout, task: Task, documents: int) -> dict | None:
     """What the entities step's answers in the graph's memo cost, all builds together: answers, tokens, USD, and USD
     per 1,000 documents of the corpus. None for a graph without the step."""
-    import gzip
-    import sqlite3
-
+    from evo_agents.kg import memo
     from evo_agents.kg import settings as kg_settings
     from evo_agents.kg.build import memo_path
 
@@ -657,19 +655,14 @@ def extraction(lay: graphs.Layout, task: Task, documents: int) -> dict | None:
         return None
     answers = tokens_in = tokens_out = 0
     usd = 0.0
-    db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    try:
-        for (blob,) in db.execute("SELECT output FROM memo WHERE stage = 'entities'"):
-            usage = (json.loads(gzip.decompress(blob)) or {}).get("usage") or {}
-            answers += 1
-            tokens_in += int(usage.get("input_tokens") or 0)
-            tokens_out += int(usage.get("output_tokens") or 0)
-            if usage.get("cost") is not None:
-                usd += float(usage["cost"])
-            else:
-                usd += _priced(usage, settings.get("price") or {})
-    finally:
-        db.close()
+    for usage in memo.usages(path, "entities"):
+        answers += 1
+        tokens_in += int(usage.get("input_tokens") or 0)
+        tokens_out += int(usage.get("output_tokens") or 0)
+        if usage.get("cost") is not None:
+            usd += float(usage["cost"])
+        else:
+            usd += _priced(usage, settings.get("price") or {})
     return {
         "model": settings.get("model"),
         "documents": documents,
