@@ -686,8 +686,14 @@ def test_a_daemon_killed_mid_run_loses_the_run_to_a_second_worker_in_another_hom
     assert time.monotonic() - killed_at > LEASE_SECONDS / 2, "not before the lease ran out"
     assert lost["error"] == "its worker mac-mini stopped extending the lease"
     assert world.moves(run_id) == [("leased", "worker"), ("running", "worker"), ("lost", "reaper")]
-    reaped = [line for line in pg.log_lines(world.hub.jobs_log.read_text(encoding="utf-8")) if line.get("lost")]
-    assert reaped and reaped[0]["msg"] == "runs recovered", "the job worker's reaper found it"
+
+    # The reaper commits the move before its other passes and logs the pass at its end: wait for the line, whole.
+    def reaped() -> list[dict]:
+        text = world.hub.jobs_log.read_text(encoding="utf-8")
+        return [line for line in pg.log_lines(text[: text.rfind("\n") + 1]) if line.get("lost")]
+
+    found = wait_until(reaped, "the job worker's reaper to log the pass that lost the run", WAIT, world.explain)
+    assert found[0]["msg"] == "runs recovered", "the job worker's reaper found it"
 
     # The reaper queued the next attempt of the step, and lab-02's waiting claim took it.
     retries = [run for run in world.runs_of_step(2) if run["parent_run_id"] == run_id]
