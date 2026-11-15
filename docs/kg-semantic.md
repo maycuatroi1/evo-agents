@@ -86,13 +86,8 @@ in about 30 ms on 8 cores, no GPU needed. Models are read from `EVO_KG_MODEL_DIR
 `~/.cache/evo-agents/models`. A build downloads the model when it is missing; a search never does: it loads the model
 from that directory only, and searches by words when it is not there.
 
-On a member's machine or a worker:
-
-```sh
-uv tool install 'evo-ak[worker,semantic]'      # or: pip install 'evo-ak[semantic]'
-export EVO_KG_MODEL_DIR=~/.cache/evo-agents/models
-evo-agents kg semantic --project demo --mode index --index    # downloads the model once, then embeds
-```
+A member's machine needs neither the extra nor the model: the hub's builds embed, and
+`evo-agents kg semantic --project demo --mode index` sets the mode its next build reads.
 
 On the hub, install the extra next to `hub-server` in the image or the virtualenv the hub and its kg worker run
 (`pip install 'evo-ak[hub-server,semantic]'`), give both processes the same `EVO_KG_MODEL_DIR` on a volume that

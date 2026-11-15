@@ -60,7 +60,7 @@ def hub_status(project: str | None, sink: str | None = None, timeout: float | No
         text = " ".join(block.get("text", "") for block in found.get("content", []))
         raise HubError(text.removeprefix("error: ") or "the hub refused kg_status")
     text = "\n".join(block.get("text", "") for block in found.get("content", []) if block.get("type") == "text")
-    return text, found.get("structuredContent") or {}
+    return text, found.get("structuredContent") or {"project": name}
 
 
 def _on_hub(args, command, **extra) -> int:

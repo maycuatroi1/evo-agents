@@ -255,7 +255,7 @@ class Asked:
 
 
 def session_of(project, search: str, files: tuple | None = None):
-    """A CLI session on ``project`` that ranks the way ``search`` says, as `kg eval --search` does, or by plain BM25."""
+    """A CLI session on ``project`` that ranks the way ``search`` says (``kg bench --search``), or by plain BM25."""
     from evo_agents.kg.serve import Session
 
     session = Session(project, "cli")
