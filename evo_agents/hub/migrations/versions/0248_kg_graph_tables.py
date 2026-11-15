@@ -11,7 +11,8 @@ row hash, kg_memo_entries what an extractor made of a row hash, kg_nodes, kg_edg
 where-provenance and derivations), kg_asked (what agents asked before they read a node, a store's node_asked) and
 kg_embeddings (the rows of a store's node_vec), kg_review_rows (its clusters and review items) the graph of each branch (branch_id 0 is main, another a kg_branches id),
 and kg_graph_heads the build, content hash, summary, vector model and weight of an asked match each branch is at. kg_branches and kg_branch_ops hold the draft branches of a graph and their operations. The tables
-start empty: the next build of a project fills them.
+start empty: the next build of a project fills them, and the worker's recovery pass queues that build for each project
+whose newest build came before them (``evo_agents.hub.kg_build._fill_headless``).
 
 A build keeps its graph in these tables and uploads no graph file, so a succeeded build may hold no artifact:
 kg_builds_artifact_check now only keeps an artifact off a build that did not succeed, and kg_builds_check1 no longer

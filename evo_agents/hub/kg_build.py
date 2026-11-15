@@ -872,10 +872,62 @@ async def _fail_orphaned(context, manager) -> tuple[int, list[str]]:
     return failed, queued
 
 
+def _headless():
+    """The projects, not archived, whose newest build succeeded while the hub's tables hold no graph of their main
+    branch: that build came before the tables (schema 0248) and uploaded a graph file instead (``artifact_sha256``, or
+    ``artifact_pruned_at`` once the retention deleted it), so the project serves no graph until a build writes its
+    rows. A project whose newest build failed, is in flight or came after 0248 is not among them, so a build that
+    keeps failing is not queued again on every pass."""
+    builds, heads, projects = tables.kg_builds, tables.kg_graph_heads, tables.projects
+    earlier = builds.alias("earlier")
+    newest = (
+        select(func.max(earlier.c.id))
+        .where(earlier.c.project_id == projects.c.id)
+        .correlate(projects)
+        .scalar_subquery()
+    )
+    head = exists().where(
+        heads.c.project_id == projects.c.id, heads.c.branch_id == kg_graph_rows.MAIN, heads.c.build_id.is_not(None)
+    )
+    return (
+        select(projects.c.id, projects.c.name)
+        .join_from(projects, builds, builds.c.id == newest)
+        .where(
+            projects.c.archived_at.is_(None),
+            builds.c.status == "succeeded",
+            or_(builds.c.artifact_sha256.is_not(None), builds.c.artifact_pruned_at.is_not(None)),
+            ~head,
+        )
+        .order_by(projects.c.id)
+    )
+
+
+async def _fill_headless(context, manager) -> list[str]:
+    """Queue a build of each project ``_headless`` finds, which writes its graph into the hub's tables: the first
+    passes after the upgrade to 0248 fill the tables of every project that had a graph. A busy queue leaves the
+    project for the next pass."""
+    async with context.engine.connect() as conn:
+        found = (await conn.execute(_headless())).all()
+    queued = []
+    for project_id, project in found:
+        try:
+            async with context.engine.begin() as conn:
+                build_id, _ = await queue_build(JobQueue(manager), conn, project_id, project, None)
+        except QueueBusy:
+            log.warning("kg build to fill the graph tables left for the next pass", extra={"project": project})
+            continue
+        if build_id is not None:
+            queued.append(project)
+    if queued:
+        log.info("kg builds queued to fill the graph tables", extra={"projects": queued})
+    return queued
+
+
 async def recover_stalled(context, manager) -> dict:
     """Fail the kg builds whose worker stopped sending heartbeats (killed, or its machine lost), which would hold
     their project's lock for ever, and queue a new build of each such project; then fail the builds whose job ended
-    without recording them (``_fail_orphaned``), which hold no lock but would say queued or running for ever."""
+    without recording them (``_fail_orphaned``), which hold no lock but would say queued or running for ever; last,
+    queue a build of each project whose graph the hub's tables lack (``_fill_headless``)."""
     from procrastinate.jobs import Status
 
     stalled = await manager.get_stalled_jobs(task_name=KG_BUILD, seconds_since_heartbeat=STALLED_AFTER)
@@ -905,4 +957,5 @@ async def recover_stalled(context, manager) -> dict:
     if stalled:
         log.warning("abandoned kg builds failed and queued again", extra={"jobs": len(stalled), "projects": queued})
     orphaned, requeued = await _fail_orphaned(context, manager)
-    return {"failed": len(stalled), "orphaned": orphaned, "queued": sorted({*queued, *requeued})}
+    filled = await _fill_headless(context, manager)
+    return {"failed": len(stalled), "orphaned": orphaned, "queued": sorted({*queued, *requeued}), "filled": filled}

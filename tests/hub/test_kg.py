@@ -1447,6 +1447,30 @@ def test_a_build_whose_job_ended_without_recording_it_is_failed(hub, tmp_path):
     assert latest(hub)["status"] == "succeeded"
 
 
+def test_a_project_built_before_the_graph_tables_gets_a_build_that_fills_them(hub, tmp_path):
+    """After the upgrade to 0248 the tables hold no graph and a build from before them only uploaded a graph file, so
+    the project served no graph until its next push. The recovery pass queues that build, once."""
+    builds, heads = tables.kg_builds, tables.kg_graph_heads
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."))
+    assert push(hub, laptop).ok
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert latest(hub)["status"] == "succeeded"
+    assert recover(hub, tmp_path / "recover")["filled"] == []  # a build after 0248 holds its graph already
+
+    # the database as 0248 leaves it: a succeeded build that uploaded a graph file, and no head
+    query(hub.db, delete(heads))
+    query(hub.db, update(builds).values(artifact_sha256="ab" * 32, artifact_size=1))
+    recovered = recover(hub, tmp_path / "recover")
+    assert recovered["filled"] == [PROJECT] and recovered["queued"] == []
+    assert [row[0] for row in query(hub.db, select(builds.c.status).order_by(builds.c.id))] == ["succeeded", "queued"]
+    assert recover(hub, tmp_path / "recover")["filled"] == []  # the queued build is the newest: nothing more
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert latest(hub)["status"] == "succeeded" and latest(hub)["graph_kept"]
+    assert query(hub.db, select(heads.c.build_id)) == [(latest(hub)["id"],)]
+    assert recover(hub, tmp_path / "recover")["filled"] == []
+
+
 def test_a_build_the_worker_stops_is_recorded_and_queued_again(hub, tmp_path, monkeypatch):
     from evo_agents.hub.db import open_pool
     from evo_agents.hub.jobs import JobQueue

@@ -4116,7 +4116,9 @@ branch for now), changing only the rows that differ from the graph before. In th
 `kg_graph_heads` at the build, with its content hash, and notifies the channel `kg_graph`. A build whose content hash
 equals that of the build before it changes no row and says so (`skipped` in its coverage); the night's figures count it
 as unchanged. The content hash covers the store's schema and what its full-text index holds, so the first build after
-an upgrade that changes either writes the rows again.
+an upgrade that changes either writes the rows again. The tables start empty at 0248: the worker's recovery pass
+(`hub.recover_kg_builds`, every five minutes) queues one build of each project whose newest build succeeded before
+0248, with a graph file and no head, so every project that had a graph serves it again once that build ends.
 
 The api reads the graph from a snapshot held in memory (`evo_agents/hub/kg_snapshots.py`): per project, the main
 branch's rows as the tables keep them, loaded on the project's first read. On a `kg_graph` notification it builds the
