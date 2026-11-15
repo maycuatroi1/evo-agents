@@ -845,7 +845,8 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
     under its messages changed (``chat_progress``); the agent's reaction on the message that started it, the hub's
     reply in the thread when it failed, and when it ended done with messages of its inbox untaken, the run that goes on
     in its session with them (its id), titled by the first of them. A run another agent's run asked that ended, and
-    goes on in no run, answers that run's wait (``agent_asks.answer_asker``). Then the work cards of its traces are
+    goes on in no run, answers that run's wait (``agent_asks.answer_asker``); a lost one does not, since its next
+    attempt carries the wait and the run may come back (``run_reattach``): the attempt that really ends answers. Then the work cards of its traces are
     refreshed (``work_cards``)."""
     went_on = await _moved(conn, run_id, new, old)
     from evo_agents.hub.server.work_cards import run_moved  # it reads the traces' work through this module
@@ -875,7 +876,7 @@ async def _moved(conn: AsyncConnection, run_id: int, new: str, old: str | None) 
 
         await on_turn_failed(conn, run_id)
     went_on = await _go_on_untaken(conn, run_id, found) if new == "done" else None
-    if profile is not None and went_on is None:
+    if profile is not None and went_on is None and new != "lost":  # a lost run's next attempt, or itself, answers
         from evo_agents.hub.server.agent_asks import answer_asker  # its route hands work through this module
 
         await answer_asker(conn, run_id, new, profile.handle)

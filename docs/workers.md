@@ -456,7 +456,8 @@ minutes ago (`runs.REATTACH_SECONDS`), whose cancel nobody asked and whose next 
 hub re-attaches the run instead of answering cancel (`server.run_reattach`): the reaper cancels the next attempt without
 writing the plan, and moves the run back to the held state it was lost in, its lease from now, the stall not counted in
 its agent time. The decisions its agent asked that the loss cancelled are open again, and the browser identities it
-was dispatched with that are still free are its own again. The loss gave back its leases, and the GitHub tokens among
+was dispatched with that are still free are its own again. A chat run another agent's run asked answered nothing when
+it was lost, so the asker's wait is still open and the run's real end answers it. The loss gave back its leases, and the GitHub tokens among
 them were revoked at GitHub, so the answer says `renew: true` once, and the worker takes the run's leases again. The
 hub does this only for a daemon whose heartbeat names the feature `reattach`, which names apart (`orphans`) the runs a
 previous daemon left, whose agent it stops whatever the answer; and only for runs of kinds whose loss moved nothing on

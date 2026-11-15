@@ -26,10 +26,12 @@ asked, in which project, and what, in the asking run's thread, or in the work ch
 When the run asked ends (``answer_asker``, from ``chat_runs.chat_run_moved``), the hub answers that wait
 (``run_waits.wake``), which resumes the asking run in its session, with ``delegated_answer``: the last message of the
 agent asked in its thread and the refs of its work (its outputs, its branch and repos; the knowledge graph nodes are
-named in its answer, as the question asks), or why it failed, was cancelled or lost. The same text goes where the
+named in its answer, as the question asks), or why it failed or was cancelled. The same text goes where the
 asked line went, once an asker. A run asked that goes on in its session (a parked run resumed, an inbox untaken)
 carries both columns, and every wait whose ``awaits_run_id`` is in its chain of resumed runs is answered too, so the
-run that really ends answers each ask that reached it. A wait answered already, by its time or by a person, is left as it is.
+run that really ends answers each ask that reached it. A run lost is no end: its next attempt carries both columns and
+its chain goes back through ``parent_run_id``, and the run lost answers nothing (``chat_runs.chat_run_moved``), since its
+worker may come back for it (``run_reattach``), which cancels that attempt and has the run go on with its waits open. A wait answered already, by its time or by a person, is left as it is.
 Waits that close a cycle, two runs each waiting on the other's end, are broken by the reaper (``wait_cycles``).
 """
 
@@ -41,7 +43,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import exists, func, select, update
+from sqlalchemy import exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
@@ -408,14 +410,15 @@ async def delegated_answer(conn: AsyncConnection, run_id: int, state: str, wait_
 
 def _waits(run_id: int):
     """The waits the end of run ``run_id`` answers: the one it carries (``spawned_wait_id``) and each open wait of an
-    ask that run, or a run it goes on from in its session, took in its inbox (``decisions.awaits_run_id``)."""
+    ask that run, or a run it goes on from in its session or retries after a loss, took in its inbox
+    (``decisions.awaits_run_id``)."""
     r, d = tables.runs, tables.decisions
-    chain = select(r.c.id, r.c.resume_of_run_id).where(r.c.id == run_id).cte("answering", recursive=True)
+    columns = (r.c.id, r.c.resume_of_run_id, r.c.parent_run_id)
+    chain = select(*columns).where(r.c.id == run_id).cte("answering", recursive=True)
     earlier = r.alias("earlier")
+    went_on = or_(earlier.c.id == chain.c.resume_of_run_id, earlier.c.id == chain.c.parent_run_id)
     chain = chain.union(
-        select(earlier.c.id, earlier.c.resume_of_run_id).join_from(
-            earlier, chain, earlier.c.id == chain.c.resume_of_run_id
-        )
+        select(earlier.c.id, earlier.c.resume_of_run_id, earlier.c.parent_run_id).join_from(earlier, chain, went_on)
     )
     carried = select(r.c.spawned_wait_id).where(r.c.id == run_id).scalar_subquery()
     awaited = d.c.awaits_run_id.in_(select(chain.c.id))

@@ -10,6 +10,8 @@ has no pool, and past MAX_HOPS.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
 from tests.hub import pg
@@ -19,7 +21,7 @@ if not pg.DSN:
 
 from sqlalchemy import delete, func, insert, select, update
 
-from evo_agents.hub import chat_runs, tables
+from evo_agents.hub import chat_runs, runs, tables
 from tests.hub.account_pool_setup import give_account_pool
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (  # noqa: F401
@@ -27,6 +29,7 @@ from tests.hub.test_chat_runs import (  # noqa: F401
     OTHER,
     OWNER,
     app_key,
+    beat,
     chat_worker,
     claim,
     client,
@@ -42,6 +45,7 @@ from tests.hub.test_chat_runs import (  # noqa: F401
 )
 from tests.hub.test_chats import agent
 from tests.hub.test_plans import registration
+from tests.hub.test_runs import expire, set_run, steady
 
 KB = "lumen-kb"
 KB_AGENT = "kb-bot"
@@ -184,6 +188,87 @@ def test_an_agent_naming_the_agent_it_asked_is_refused_nothing(client, hub, hub_
     reply(client, studio, resumed, answered)
     assert mentions_of(answered) == [(KB_AGENT, child, None)]
     assert len(runs_of(hub_db)) == 3  # naming it handed @kb-bot no new work
+
+
+def asked_and_parked(client, hub, db) -> tuple:
+    """@reviewer's run in a chat asks @kb-bot and parks on the wait; @kb-bot's run is running on its node, which says it
+    re-attaches: (studio, node, parent, child, wait id)."""
+    kb_project(client, hub, db)
+    studio = chat_worker(client, hub["owner"], "studio")
+    node = kb_node(client, hub["owner"], db)
+    assert runs.REATTACH in node["features"]
+    _, spec = started(client, hub, studio, created(client, hub["owner"]))
+    asked = ask(client, studio, spec["id"])
+    moved(client, studio, spec["id"], "waiting")
+    recover(client)
+    assert claim(client, node)["id"] == asked["run_id"]
+    moved(client, node, asked["run_id"], "running", session_id="sess-kb")
+    return studio, node, spec["id"], asked["run_id"], asked["decision_id"]
+
+
+def wait_of(db, wait_id: int) -> tuple:
+    d = tables.decisions
+    return sql(db, select(d.c.state, d.c.answer_text).where(d.c.id == wait_id))[0]
+
+
+def test_a_run_asked_that_is_lost_and_comes_back_answers_its_asker(client, hub, hub_db):
+    """The incident of 2026-11-15: the reaper lost the run asked (its worker missed a lease extension), the same pass
+    woke the asker's wait with 'ended lost ... It gave no answer', the worker came back for the run a minute later, and
+    the run, gone on in a resumed run, answered with no wait left to carry it."""
+    studio, node, parent, child, wait_id = asked_and_parked(client, hub, hub_db)
+    r, i = tables.runs, tables.run_inbox
+
+    expire(hub_db, child)
+    assert recover(client)["lost"] == 1
+    ((retry, carried),) = sql(hub_db, select(r.c.id, r.c.spawned_wait_id).where(r.c.parent_run_id == child))
+    assert carried == wait_id, "the next attempt carries the wait"
+    recover(client)  # the next pass, whose wake_waits would wake a wait the loss had answered
+    assert wait_of(hub_db, wait_id) == ("open", None)
+    assert sql(hub_db, select(r.c.state).where(r.c.id == parent)) == [("parked",)]
+
+    control = beat(client, node, held=[child])["runs"][0]  # its worker comes back for it
+    assert (control["held"], control["state"], control["cancel"]) == (True, "running", False)
+    assert sql(hub_db, select(r.c.state).where(r.c.id == retry)) == [("cancelled",)]
+    assert wait_of(hub_db, wait_id) == ("open", None)
+
+    # it goes on in its session, as a resumed run, with a message its worker did not take, and that run answers
+    (owner,) = sql(hub_db, select(tables.users.c.id).where(tables.users.c.login == OWNER))[0]
+    sql(hub_db, insert(i).values(run_id=child, sent_by=owner, body="Also say where the key is rotated."))
+    reply(client, node, child, "Looking at the export service.")
+    ended(client, node, child)
+    assert wait_of(hub_db, wait_id) == ("open", None)
+    ((resumed,),) = sql(hub_db, select(r.c.id).where(r.c.resume_of_run_id == child))
+    assert claim(client, node)["id"] == resumed
+    moved(client, node, resumed, "running", session_id="sess-kb")
+    sql(hub_db, update(i).values(delivered_at=func.now()).where(i.c.run_id == resumed))  # its worker took the message
+    reply(client, node, resumed, "The export service signs them; kb/export/keys.py::load_key reads and rotates it.")
+    ended(client, node, resumed)
+
+    state, answer = wait_of(hub_db, wait_id)
+    assert state == "answered" and f"run #{resumed} of @{KB_AGENT}, which you asked, answered" in answer
+    assert "load_key" in answer and "lost" not in answer
+    woke = sql(hub_db, select(r.c.state).where(r.c.resume_of_run_id == parent))
+    assert woke == [("queued",)], "the asker goes on in its session with the answer"
+
+
+def test_a_run_asked_that_is_lost_for_good_answers_by_its_next_attempt(client, hub, hub_db):
+    studio, node, parent, child, wait_id = asked_and_parked(client, hub, hub_db)
+    r = tables.runs
+    expire(hub_db, child)
+    assert recover(client)["lost"] == 1
+    ((retry,),) = sql(hub_db, select(r.c.id).where(r.c.parent_run_id == child))
+    assert wait_of(hub_db, wait_id) == ("open", None)
+
+    set_run(hub_db, child, finished_at=func.now() - timedelta(seconds=runs.REATTACH_SECONDS + 1))
+    assert beat(client, node, held=[child])["runs"][0]["cancel"] is True  # back too late: its agent is stopped
+    steady(hub_db, node)
+    assert claim(client, node)["id"] == retry
+    moved(client, node, retry, "running", session_id="sess-kb-2")
+    reply(client, node, retry, "The export service signs them.")
+    ended(client, node, retry)
+    state, answer = wait_of(hub_db, wait_id)
+    assert state == "answered" and f"run #{retry} of @{KB_AGENT}, which you asked, answered" in answer
+    assert sql(hub_db, select(r.c.state).where(r.c.resume_of_run_id == parent)) == [("queued",)]
 
 
 @pytest.mark.parametrize(
