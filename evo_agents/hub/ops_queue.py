@@ -16,7 +16,8 @@ nowhere. Any other becomes an item of the open batch of its cause key (``cause_k
 the plan, as ``inbox.fold_same_cause`` folds failed runs, or the machine for a worker's low disk alone, which the
 workers of one machine share), which the first item opens and which closes
 ``debounce_minutes`` after it opened, or at once when it holds ``max_items`` pending items. An item tier 0 handled
-before its batch closed leaves it (``settle``); a batch that closes with no pending item left is ``empty`` and opens
+before its batch closed leaves it (``settle``), and so does a run.ended item whose run came back before it closed (a
+run lost while its worker was silent and given back, or retried); a batch that closes with no pending item left is ``empty`` and opens
 no run, one with some is ``ready`` for the step that opens the Orchestrator's run. Nothing here calls a model.
 
 SQLAlchemy Core on ``evo_agents.hub.tables``; nothing here imports ``evo_agents.hub.server``.
@@ -405,10 +406,27 @@ async def enqueue(conn: AsyncConnection, project_id: int, config: OpsConfig, eve
     return batch_id
 
 
+ENDED = ("failed", "lost", "cancelled")  # the states of a run whose run.ended item still tells of something to do
+
+
+async def _recovered(conn: AsyncConnection, batch_id: int) -> int:
+    """Mark handled, by ``recovered``, the pending run.ended items of batch ``batch_id`` whose run is no longer ended:
+    a run the reaper found lost and gave back when its worker came back, or that the hub retried. How many."""
+    i, r = tables.ops_items, tables.runs
+    back = exists().where(r.c.id == i.c.run_id, r.c.state.not_in(ENDED))
+    done = await conn.execute(
+        update(i)
+        .values(state="handled", handled_by="recovered", handled_at=func.now())
+        .where(i.c.batch_id == batch_id, i.c.state == "pending", i.c.kind == hub_events.RUN_ENDED, back)
+    )
+    return done.rowcount or 0
+
+
 async def close_batch(conn: AsyncConnection, batch_id: int) -> str | None:
-    """Close open batch ``batch_id``: ``ready`` with pending items left, ``empty`` without. Its new state, or None
-    when it was not open."""
+    """Close open batch ``batch_id``: ``ready`` with pending items left, ``empty`` without, after its run.ended items
+    whose run came back left it (``_recovered``). Its new state, or None when it was not open."""
     b, i = tables.ops_batches, tables.ops_items
+    await _recovered(conn, batch_id)
     left = select(func.count()).where(i.c.batch_id == batch_id, i.c.state == "pending").scalar_subquery()
     state = case((left > 0, "ready"), else_="empty")
     closing = update(b).values(state=state, closed_at=func.now()).where(b.c.id == batch_id, b.c.state == "open")

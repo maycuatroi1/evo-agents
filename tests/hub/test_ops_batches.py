@@ -17,6 +17,7 @@ from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import hub_events, ops_queue, tables
 from evo_agents.hub.server.ops_queue import ops_pass
+from evo_agents.hub.server.runs.service.dispatch import insert_run
 from tests.hub.live import sql
 from tests.hub.test_runs import OWNER, PROJECT, add_worker, client, hub  # noqa: F401 (fixtures)
 
@@ -154,6 +155,44 @@ def test_items_tier_0_handled_leave_and_an_emptied_batch_closes_without_a_run(cl
         (401, "tier0:rerun"),
         (402, "tier0:rerun"),
     ]
+
+
+def a_run(client, db, state: str) -> int:
+    """An author run of the project in state ``state``."""
+    u = tables.users
+    owner = sql(db, select(u.c.id).where(u.c.login == OWNER))[0][0]
+    values = {"kind": "author", "project_id": project_id(db), "title": "Loop", "dispatched_by": owner}
+    values |= {"requested_runtime": "claude-code", "runtime": "claude-code", "mode": "headless", "approval": "auto"}
+    values |= {"timeout_s": 600, "request": "Write the plan"}
+    values["repos"] = [{"repo": "evo-agents-harness", "branch": None}]
+
+    async def made() -> int:
+        async with client.app.state.engine.begin() as conn:
+            return await insert_run(conn, values)
+
+    run_id = client.portal.call(made)
+    r = tables.runs
+    if state != "queued":
+        sql(db, update(r).values(state=state, error="stopped", finished_at=func.now()).where(r.c.id == run_id))
+    return run_id
+
+
+def test_a_run_back_before_its_batch_closes_leaves_it(client, hub, hub_db):
+    system(hub_db, {"enabled": True})
+    run_pass(client)
+    back, still = a_run(client, hub_db, "queued"), a_run(client, hub_db, "failed")
+    failed(client, hub_db, back, "agent")
+    failed(client, hub_db, still, "agent")
+    failed(client, hub_db, 9901, "agent")
+    assert run_pass(client)["queued"] == 3
+    due(hub_db)
+    assert run_pass(client)["ready"] == 1
+    i = tables.ops_items
+    assert sql(hub_db, select(i.c.run_id, i.c.state, i.c.handled_by).order_by(i.c.id)) == [
+        (back, "handled", "recovered"),
+        (still, "pending", None),
+        (9901, "pending", None),
+    ], "a run back in the queue leaves; one still failed, or one the hub does not know, stays"
 
 
 def test_read_ops_defaults_and_bounds():
