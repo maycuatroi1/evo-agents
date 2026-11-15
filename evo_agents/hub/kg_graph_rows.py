@@ -19,6 +19,7 @@ these tables hashes as one read from the build's file."""
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from dataclasses import dataclass
@@ -33,6 +34,7 @@ from evo_agents.kg.snapshot import StoreRows, asked_order, cluster_order
 CHANNEL = "kg_graph"
 MAIN = 0
 BATCH = 1000
+READ_BATCH = 2000  # rows ``_read`` fetches at a time, giving the event loop back between two fetches
 NODE_KEYS = ("node_id", "kind", "name", "props", "status", "conf", "label_lvl", "label_loc", "label_int", "aliases")
 EDGE_KEYS = ("edge_id", "src", "rel", "dst", "props", "status", "conf", "label_lvl", "label_loc", "label_int")
 TEXT, CODE = "t", "c"  # the kinds of a kg_text_rows row: a keyed full-text row, or the text of a file's code
@@ -171,12 +173,16 @@ def _stored(name: str, values) -> tuple:
 
 
 async def _read(conn: AsyncConnection, name: str, project_id: int, branch_id: int) -> dict[str, tuple]:
+    """The rows of table ``name`` of a branch, by key, fetched ``READ_BATCH`` at a time on a server-side cursor: a
+    large graph has hundreds of thousands, and fetching and decoding them in one go held the event loop for seconds,
+    so every request of the api, the workers' heartbeats and claims among them, waited and timed out."""
     table = getattr(tables, name)
     key = table.primary_key.columns.values()[-1]
-    rows = await conn.execute(
-        select(table).where(table.c.project_id == project_id, table.c.branch_id == branch_id).order_by(key)
-    )
-    return {row._mapping[key.name]: _stored(name, row._mapping) for row in rows}
+    query = select(table).where(table.c.project_id == project_id, table.c.branch_id == branch_id).order_by(key)
+    found: dict[str, tuple] = {}
+    async for part in (await conn.stream(query.execution_options(yield_per=READ_BATCH))).partitions():
+        found.update((row._mapping[key.name], _stored(name, row._mapping)) for row in part)
+    return found
 
 
 async def _apply(conn: AsyncConnection, name: str, project_id: int, branch_id: int, fresh: dict, changes: Changes):
@@ -233,7 +239,9 @@ async def notify(conn: AsyncConnection, project_id: int, branch_id: int, build_i
 
 
 async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MAIN) -> StoreRows | None:
-    """The rows a snapshot of a branch is made of, as ``write_graph`` kept them; None before its first build."""
+    """The rows a snapshot of a branch is made of, as ``write_graph`` kept them; None before its first build. The
+    rows are fetched a batch at a time (``_read``) and put together in a thread (``_assembled``), so a large graph
+    does not hold the event loop."""
     heads = tables.kg_graph_heads
     head = (
         await conn.execute(
@@ -249,10 +257,25 @@ async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MA
     ).one_or_none()
     if head is None:
         return None
-    nodes = await _read(conn, "kg_nodes", project_id, branch_id)
-    edges = await _read(conn, "kg_edges", project_id, branch_id)
+    read = {name: await _read(conn, name, project_id, branch_id) for name in GRAPH_TABLES}
+    return await asyncio.to_thread(_assembled, head, read)
+
+
+GRAPH_TABLES = (
+    "kg_nodes",
+    "kg_edges",
+    "kg_text_rows",
+    "kg_provenance",
+    "kg_embeddings",
+    "kg_asked",
+    "kg_review_rows",
+)  # the tables ``read_graph`` reads a branch's rows from
+
+
+def _assembled(head, read: dict[str, dict[str, tuple]]) -> StoreRows:
+    """The ``StoreRows`` of the head of a branch and the rows of its tables (``GRAPH_TABLES``) by key."""
     keyed, code = [], {}
-    for _, row in (await _read(conn, "kg_text_rows", project_id, branch_id)).items():
+    for _, row in read["kg_text_rows"].items():
         kind, key, value = json.loads(row[1])
         if kind == TEXT:
             keyed.append((key, tuple(value)))
@@ -260,13 +283,11 @@ async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MA
             code[key] = value
     top = ((head.top_label[0], head.top_label[1]), frozenset(head.top_audience))
     units, wheres, derived = [], [], []
-    for _, row in sorted((await _read(conn, "kg_provenance", project_id, branch_id)).items()):
+    for _, row in sorted(read["kg_provenance"].items()):
         kind, *values = json.loads(row[1])
         {UNIT: units, WHERE: wheres, DERIVED: derived}[kind].append(tuple(values))
-    vectors = await _read(conn, "kg_embeddings", project_id, branch_id)
-    asked = await _read(conn, "kg_asked", project_id, branch_id)
     clusters, review = [], []
-    for _, row in (await _read(conn, "kg_review_rows", project_id, branch_id)).items():
+    for _, row in read["kg_review_rows"].items():
         kind, key, value = json.loads(row[1])
         if kind == REVIEW:
             review.append(value)
@@ -274,8 +295,8 @@ async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MA
             clusters.append((kind, key, value))
     return StoreRows(
         head.content_hash,
-        tuple(nodes.values()),
-        tuple(edges.values()),
+        tuple(read["kg_nodes"].values()),
+        tuple(read["kg_edges"].values()),
         tuple(sorted(keyed)),
         code,
         top,
@@ -283,9 +304,9 @@ async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MA
         tuple(sorted(wheres, key=lambda w: (w[0], w[1], w[2] is not None, w[2] or ""))),  # as SQLite orders them
         tuple(derived),
         head.summary,
-        tuple((key, *row) for key, row in sorted(vectors.items())),
+        tuple((key, *row) for key, row in sorted(read["kg_embeddings"].items())),
         head.vectors,
-        asked_order(tuple(json.loads(row[1])) for row in asked.values()),
+        asked_order(tuple(json.loads(row[1])) for row in read["kg_asked"].values()),
         head.asked_weight,
         cluster_order(clusters),
         tuple(sorted(review, key=lambda item: item["fingerprint"])),
