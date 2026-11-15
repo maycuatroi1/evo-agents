@@ -389,14 +389,9 @@ def test_a_pushed_run_is_built_by_the_worker_and_answered_by_kg_tools(hub, tmp_p
     assert build["status"] == "succeeded", build
     assert build["runs"] == 1 and build["nodes"] > 0 and build["edges"] > 0
     assert build["content_hash"].startswith("sha256:") and build["requested_by"] is None
-    artifact = hub.s3.get(blob_key(build["artifact_sha256"]))
-    assert (
-        artifact is not None and sha(artifact) == build["artifact_sha256"] and len(artifact) == build["artifact_size"]
-    )
+    assert build["graph_kept"] and build["artifact_sha256"] is None  # its graph is in the tables: no file uploaded
     blobs = tables.blobs
-    assert query(
-        hub.db, select(blobs.c.kind, blobs.c.created_by).where(blobs.c.sha256 == build["artifact_sha256"])
-    ) == [("kg-graph", None)]
+    assert query(hub.db, select(blobs.c.kind).where(blobs.c.kind == "kg-graph")) == []
 
     found = tool_ok(hub, "kg_search", {"query": "guide"})
     assert found["structuredContent"]["project"] == PROJECT
@@ -800,10 +795,10 @@ def test_a_build_with_nothing_new_builds_nothing_and_points_at_the_same_artifact
             run_jobs(hub.db, hub.s3, hub.worker_dir)
     second = latest(hub)
     assert second["id"] != first["id"] and second["status"] == "succeeded", second
-    assert (second["content_hash"], second["artifact_sha256"]) == (first["content_hash"], first["artifact_sha256"])
+    assert second["content_hash"] == first["content_hash"] and second["graph_kept"]
     assert (second["nodes"], second["edges"]) == (first["nodes"], first["edges"])
     (done,) = [r for r in caplog.records if r.getMessage() == "kg build succeeded"]
-    assert done.skipped is True and done.artifact_reused_from == first["id"]
+    assert done.skipped is True
     assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
 
     laptop.sync("docs", doc("guide", "Edited.", rev="2"), doc("setup", "Install it."))
@@ -827,22 +822,23 @@ def test_kg_tools_answer_from_the_loaded_snapshot_when_the_blob_store_is_down(hu
 
     hub.s3.stop()
     assert tool_ok(hub, "kg_search", {"query": "guide"}) == before
-    # a newer build whose graph is not cached yet: the cached one answers, and kg_status says so
+    # a newer succeeded build whose graph the tables do not hold: not the graph in use, the held one answers
     projects = tables.projects
-    query(
+    ((newer,),) = query(
         hub.db,
-        insert(tables.kg_builds).values(
+        insert(tables.kg_builds)
+        .values(
             project_id=select(projects.c.id).where(projects.c.name == PROJECT).scalar_subquery(),
             status="succeeded",
-            artifact_sha256="f" * 64,
-            artifact_size=10,
             content_hash="sha256:" + "f" * 64,
             nodes=1,
             edges=0,
             started_at=func.now(),
             finished_at=func.now(),
-        ),
+        )
+        .returning(tables.kg_builds.c.id),
     )
+    assert newer > build["id"]
     assert (
         tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
         == (before["structuredContent"]["results"])
@@ -853,9 +849,8 @@ def test_kg_tools_answer_from_the_loaded_snapshot_when_the_blob_store_is_down(hu
         "artifact_sha256": build["artifact_sha256"],
         "content_hash": build["content_hash"],
         "finished_at": status["structuredContent"]["hub_build"]["finished_at"],
-        "latest": False,
+        "latest": True,
     }
-    assert "is newer, but its graph is not loaded yet" in status["content"][0]["text"]
 
     assert not (hub.api_dir / "kg" / "graphs").exists()
     # read from the file: none cached and the store down, 503, not a guess

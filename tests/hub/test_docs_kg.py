@@ -102,9 +102,8 @@ def test_docs_graph_on_the_hub_holds_each_document_at_its_latest_version_under_i
     assert queued(hub) == 0
     assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
     run_jobs(hub.db, hub.s3, hub.worker_dir)
-    same = build_rows(hub)[0]  # the documents give the same items: the build before's artifact
-    assert same["id"] != built["id"] and same["content_hash"] == built["content_hash"]
-    assert same["artifact_reused_from"] == built["id"]
+    same = build_rows(hub)[0]  # the documents give the same items: the content of the build before
+    assert same["id"] != built["id"] and same["content_hash"] == built["content_hash"] and same["graph_kept"]
     changed = BODY.replace("three hops without progress", "five tool calls that change nothing")
     assert save(hub, RESEARCH, "Budgets and loops", changed, "dave")["version"] == 2
     assert queued(hub) == 1
