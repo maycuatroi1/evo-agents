@@ -2,7 +2,7 @@
 heads, branches.
 
 Revision ID: 0248
-Revises: 0246
+Revises: 0247
 Create Date: 2026-11-15
 
 Plan kg-centralized-on-hub, step 2 (criterion a3, ``evo_agents.hub.tables_kg.graph_tables``). A build writes a
