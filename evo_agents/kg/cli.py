@@ -104,7 +104,7 @@ def _sync_due_all(args) -> int:
     """``kg sync --due --all``, the LaunchAgent's command: sync every project the hub takes a run of from this
     machine, then prune what the retention schedule asks for (``evo_agents.kg.retention``; off until ``kg prune
     --schedule on``)."""
-    from evo_agents.hub.client import Hub, load_credentials
+    from evo_agents.hub.client import Hub, HubError, load_credentials
     from evo_agents.hub.kg_cli import local_projects
     from evo_agents.hub.kg_hub_sync import sync_all_due
     from evo_agents.kg import cli_prune
@@ -113,20 +113,28 @@ def _sync_due_all(args) -> int:
     if args.project or args.accept_removals:
         print("error: --all goes with --due, --build, --push and --json only", file=sys.stderr)
         return 2
-    credentials = load_credentials()
-    hub = Hub(credentials.url, credentials.token)
-    outcomes = sync_all_due(hub, local_projects(None, True), build=args.build, plans=_hub_plans())
-    ok = all(o.ok for o in outcomes)
+    failed = None
+    try:  # the prune goes on when the hub cannot be read: it needs no hub
+        credentials = load_credentials()
+        hub = Hub(credentials.url, credentials.token)
+        outcomes = sync_all_due(hub, local_projects(None, True), build=args.build, plans=_hub_plans())
+    except HubError as exc:
+        outcomes, failed = [], f"the hub: {exc}"
+    ok = failed is None and all(o.ok for o in outcomes)
     pruned = cli_prune.scheduled()
     prune = cli_prune.scheduled_json(*pruned)
     ok = ok and (prune is None or prune["ok"])
     if args.json:
         body = {"ok": ok, "projects": [o.to_json() for o in outcomes]}
+        if failed is not None:
+            body["error"] = failed
         if prune is not None:
             body["prune"] = prune
         print_json(body)
     else:
         print(f"kg sync --due --all at {utc_now()}: {len(outcomes)} project(s)")
+        if failed is not None:
+            print(f"FAIL sync: {failed}")
         for outcome in outcomes:
             _print_due(outcome)
         cli_prune.print_scheduled(*pruned)
@@ -159,7 +167,7 @@ def _cmd_sync_due(args) -> int:
 def cmd_sync(args) -> int:
     """``kg sync``: run the connectors of a project's sources and push each run to the hub, with no corpus here
     (``evo_agents.hub.kg_hub_sync``); --push is what every sync does now."""
-    from evo_agents.hub.kg_hub_sync import sync_project
+    from evo_agents.hub.kg_hub_sync import cleared_sources, sync_project
 
     if args.all and not args.due:
         print("error: --all needs --due; a full sync of every project is not offered", file=sys.stderr)
@@ -169,13 +177,16 @@ def cmd_sync(args) -> int:
     project = project_of(args)
     results, build = sync_project(_syncer(project), args.source or None, accept=args.accept_removals, build=args.build)
     ok = all(r.ok and not r.held for r in results) and (build is None or build.ok)
+    left = [] if args.source else cleared_sources(project)[1]
     if args.json:
-        body = {"project": project.name, "runs": [r.to_json() for r in results]}
+        body = {"project": project.name, "runs": [r.to_json() for r in results], "left_out": left}
         if build is not None:
             body["build"] = build.to_json()
         print_json(body)
     else:
         _print_runs(results)
+        for source_id in left:
+            print(f"SKIP {source_id}: the hub sink does not clear its label, so the hub takes none of its runs")
         if build is not None:
             print(build.summary_line())
     return 0 if ok else 1

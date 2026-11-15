@@ -72,6 +72,8 @@ def test_a_pushed_run_gives_the_source_its_cursor_lineage_and_last_run(hub, tmp_
         ("docs:doc:setup", "1"),
     ]
     assert [item["id"] for item in state(hub, scope="docs:doc:se")["items"]] == ["docs:doc:setup"]
+    dates = state(hub, items="false")  # what kg sync --due reads: the runs without the items
+    assert dates["items"] == [] and not dates["items_cut"] and dates["last_ok"] == state(hub)["last_ok"]
 
     second = sync(laptop, doc("guide", "How the app works now.", rev="2"))  # no state message: the cursor stays
     assert push(hub, laptop).ok

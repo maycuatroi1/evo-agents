@@ -93,7 +93,7 @@ Then, from the harness:
 
 ```sh
 evo-agents harness validate          # schema and reference checks for every harness file
-evo-agents kg sync --build           # run connectors, build the graph
+evo-agents kg sync --build           # run connectors, push their runs, build the graph on the hub
 evo-agents kg status                 # freshness, coverage and held deletions per source
 evo-agents kg build --verify         # rebuild from scratch and compare hashes
 evo-agents kg query kg_search "KB-01"
@@ -148,11 +148,12 @@ evo-agents kg scrub --all --purge            # delete the old copies of every pr
 ## Scheduled sync
 
 To keep graphs fresh, give sources a `refresh` interval (`30m`, `6h`, `1d`). `kg sync --due` runs only
-the sources whose interval has passed since their last ok run; `--all` does that for every project that
-has synced on this machine. On macOS, `kg schedule install` loads a LaunchAgent that runs
-`kg sync --due --all --build` every hour (`kg schedule print` shows the plist, `kg schedule uninstall`
-removes it; output goes to `~/.evo/kg/schedule.log`). On a machine signed in to a hub, the command also
-gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand). To drop from
+the sources whose interval has passed since the last ok run the hub holds of each; `--all` does that for every project
+that has synced on this machine and takes a run from you on the hub. `kg sync` talks to the hub this machine is
+signed in to and keeps no corpus here (`docs/hub.md`, kg sync against the hub). On macOS, `kg schedule install` loads
+a LaunchAgent that runs `kg sync --due --all --build` every hour (`kg schedule print` shows the plist, `kg schedule
+uninstall` removes it; output goes to `~/.evo/kg/schedule.log`). On a machine signed in to a hub, the command also
+gets `--push`, which older releases needed and which now changes nothing. To drop from
 knowledge.yaml a source the hub holds runs of, take them off first with `evo-agents hub kg forget-source --project
 demo --source old-repo`, then push; the other way round the push is refused (`docs/hub.md`, Dropping a source).
 

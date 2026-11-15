@@ -51,6 +51,7 @@ def test_schedule_plist_content(home, kg_env):
 @POSIX_PATHS
 def test_schedule_pushes_to_the_hub_when_the_machine_is_signed_in(home, kg_env, capsys, monkeypatch):
     monkeypatch.setattr(sys, "platform", "darwin")  # install needs launchd; launchctl is the fake below
+    monkeypatch.delenv("EVO_HUB_HOME")  # the login of the test's HOME
     hub = home / ".evo" / "hub"
     hub.mkdir(parents=True)
     (hub / "token").write_text("evh_" + "x" * 43 + "\n")
@@ -169,8 +170,9 @@ def superseded(project, fake) -> list[str]:
     return runs
 
 
-def test_scheduled_pruning_is_off_until_the_owner_turns_it_on_after_a_count(fake_project, kg_env, capsys):
+def test_scheduled_pruning_is_off_until_the_owner_turns_it_on_after_a_count(fake_project, kg_env, hub_for, capsys):
     project, fake = fake_project
+    hub_for(project.name)
     runs = superseded(project, fake)
     assert retention.load_config(kg_env) == retention.Config()  # off, with the default periods
     assert retention.load_config(kg_env).periods == {"logs": "1d", "history": "1d", "memo": "14d"}

@@ -13,8 +13,8 @@ config the members sent (PUT /v1/kg/{project}/config), and a project with none a
 - GET /v1/worker/kg/{p}/runs, ``?source=`` for one source's: the runs the hub holds, ingested and pending, as GET
   /v1/kg/{p}/runs answers them.
 - GET /v1/worker/kg/{p}/runs/{run_id}/log: an ingested run's source, its log's SHA-256 and size, and a presigned GET
-  URL of the log, valid for an hour. The worker merges the runs other machines pushed of a source before it reads the
-  source, so the deletions its own run derives cover every item the hub holds (``evo_agents.kg.sync.merge_pulled``).
+  URL of the log, valid for an hour, for a daemon of an older release, which merged the runs other machines pushed of
+  a source before it read the source; a daemon of this release reads the source's state instead.
 - GET /v1/worker/kg/{p}/sources/{source}/state, POST /v1/worker/kg/{p}/runs, POST .../runs/{run_id}/commit, POST
   .../blobs/check: as under /v1/kg/{p}.
 - POST /v1/worker/kg/{p}/blobs/uploads and POST .../blobs/commit: as POST /v1/blobs/uploads and /v1/blobs/commit for

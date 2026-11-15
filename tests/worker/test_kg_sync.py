@@ -5,34 +5,26 @@ repos, a member's laptop syncing and pushing through the member routes, the work
 Checked: the worker reads knowledge.yaml at the harness's origin, syncs only the git sources whose ref is
 origin/<branch>, fetching first, and names the others skipped; it pushes nothing when nothing changed; laptop and
 worker pushing one source in turn, the laptop once from a stale clone, leave the hub with the files of the newest
-commit and nothing of an older one, once the worker looked after the laptop's push; a sync that fails, a fetch that
-fails, a refused hub and a missing checkout show in the report the heartbeat carries, which the hub's model takes; the
-daemon says the feature, looks at a project the heartbeat answer names, sends what it found, and does neither with
-EVO_WORKER_KG_SYNC=off."""
+commit and nothing of an older one, each run working its removals out from the items the hub holds; a sync that
+fails, a fetch that fails, a refused hub and a missing checkout show in the report the heartbeat carries, which the
+hub's model takes; the daemon says the feature, looks at a project the heartbeat answer names, sends what it found, and
+does neither with EVO_WORKER_KG_SYNC=off."""
 
 from __future__ import annotations
 
-import gzip
-import hashlib
 import json
 import os
-import re
-import shutil
 import subprocess
-import uuid
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
 from evo_agents.hub import kg_push
-from evo_agents.hub.client import HubError
-from evo_agents.hub.kg_ingest import blob_refs
-from evo_agents.kg.corpus import Corpus
+from evo_agents.hub.kg_hub_sync import HubSync
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.sync import sync_source
 from evo_agents.worker import kg_sync
 from evo_agents.worker.kg_sync import KgSync
+from tests.kg.hub_fake import KgHub
 
 PROJECT = "demo"
 ORIGIN = "https://github.com/acme/app.git"
@@ -141,118 +133,6 @@ class Upstream:
         return found
 
 
-def records_of(path: Path) -> list[dict]:
-    """The records of a run log the store holds under its hash, with no suffix to say it is gzip."""
-    with gzip.open(path, "rt", encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
-
-
-class KgHub:
-    """The kg routes of the hub, member's and worker's, in memory: the runs it ingested are merged into ``corpus`` as
-    the hub's build merges them. Presigned PUTs go through ``put`` (patched in for ``kg_push.put_presigned``), and the
-    presigned GET of a log is a file URL of the store."""
-
-    url = "https://hub.test"
-
-    def __init__(self, root: Path):
-        self.store = root / "store"
-        self.store.mkdir(parents=True)
-        self.corpus = Corpus(PROJECT, root / "hub-kg")
-        self.blobs: dict[str, Path] = {}
-        self.uploads: dict[str, dict] = {}
-        self.pending: dict[str, dict] = {}
-        self.ingested: dict[str, dict] = {}
-        self.calls: list[tuple[str, str]] = []
-        self.on_duty = True
-
-    def put(self, url: str, path: Path) -> None:
-        upload_id = url.removeprefix("fake://")
-        target = self.store / f"upload-{upload_id}"
-        shutil.copy(path, target)
-        self.uploads[upload_id]["path"] = target
-
-    def keep(self, path: Path) -> str:
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        target = self.store / digest
-        if not target.exists():
-            shutil.copy(path, target)
-        self.blobs[digest] = target
-        return digest
-
-    def call(self, method: str, path: str, body=None, *, timeout=None):
-        self.calls.append((method, path))
-        parts = urlsplit(path)
-        route, query = parts.path, parse_qs(parts.query)
-        worker = route.startswith("/v1/worker/kg/")
-        if worker and not self.on_duty:
-            raise HubError(f"worker mac is not on duty for the night shift of project {PROJECT}", 403)
-        base = f"/v1/worker/kg/{PROJECT}" if worker else f"/v1/kg/{PROJECT}"
-        blobs = f"{base}/blobs" if worker else "/v1/blobs"
-        if (method, route) == ("PUT", f"{base}/config") and not worker:
-            return {"digest": "sha256:" + "0" * 64, "changed": False}
-        if (method, route) == ("GET", f"{base}/runs"):
-            source = query.get("source", [None])[0]
-            ids = sorted(r for r, run in self.ingested.items() if source in (None, run["source"]))
-            return {"ingested": ids, "pending": sorted(self.pending)}
-        if (method, route) == ("POST", f"{base}/runs"):
-            return self._push(body)
-        if found := re.fullmatch(rf"{re.escape(base)}/runs/([0-9a-f-]+)/commit", route):
-            return self._commit(found.group(1))
-        if (found := re.fullmatch(rf"{re.escape(base)}/runs/([0-9a-f-]+)/log", route)) and worker:
-            run = self.ingested[found.group(1)]
-            url = self.blobs[run["log_sha256"]].as_uri()
-            return {"run_id": found.group(1), **run, "url": url}
-        if route == f"{base}/blobs/check":
-            return {"missing": [digest for digest in body["sha256"] if digest not in self.blobs]}
-        if route == f"{blobs}/uploads":
-            tickets = []
-            for item in body["items"]:
-                if item["sha256"] not in self.blobs:
-                    upload_id = str(uuid.uuid4())
-                    self.uploads[upload_id] = {**item, "path": None}
-                    tickets.append({"sha256": item["sha256"], "upload_id": upload_id, "url": f"fake://{upload_id}"})
-            return {"uploads": tickets, "present": [], "expires_at": "2026-10-02T00:00:00Z"}
-        if route == f"{blobs}/commit":
-            for upload_id in body["upload_ids"]:
-                self.keep(self.uploads.pop(upload_id)["path"])
-            return {"blobs": [], "added": len(body["upload_ids"])}
-        raise HubError(f"no route {method} {route}", 404)
-
-    def _push(self, body: dict) -> dict:
-        run_id = body["run_id"]
-        if run_id in self.ingested:
-            return {"run_id": run_id, "status": "ingested", "log_sha256": None, "blobs": 0, "missing": []}
-        if body.get("log_upload_id"):
-            digest = self.keep(self.uploads.pop(body["log_upload_id"])["path"])
-        else:
-            digest = body["log_sha256"]
-        records = records_of(self.blobs[digest])
-        refs = sorted({ref for r in records if r.get("type") == "item" for ref in blob_refs(r)})
-        self.pending[run_id] = {"source": records[0]["source"], "log_sha256": digest, "refs": refs}
-        missing = [ref for ref in refs if ref not in self.blobs]
-        return {"run_id": run_id, "status": "pending", "log_sha256": digest, "blobs": len(refs), "missing": missing}
-
-    def _commit(self, run_id: str) -> dict:
-        run = self.pending.pop(run_id)
-        assert all(ref in self.blobs for ref in run["refs"]), "committed before its blobs"
-        path = self.blobs[run["log_sha256"]]
-        self.ingested[run_id] = {
-            "source": run["source"],
-            "log_sha256": run["log_sha256"],
-            "log_size": path.stat().st_size,
-        }
-        with self.corpus.db:
-            self.corpus.merge(records_of(path), run_id)
-        return {"run_id": run_id, "status": "ingested", "created": True, "build": None, "queued": False}
-
-    def files(self) -> dict[str, str]:
-        """``app:file:<path>`` -> rev of every file item the hub's merged state holds alive."""
-        return {r.item_id: r.rev for r in self.corpus.items("app") if r.item_id.startswith("app:file:")}
-
-    def pushes(self) -> int:
-        return sum(1 for method, path in self.calls if method == "POST" and path.endswith("/runs"))
-
-
 class Stage:
     """The app's origin and the harness's, a laptop with its clones, the worker with its checkouts, and the hub."""
 
@@ -272,9 +152,8 @@ class Stage:
         self.laptop = load_project_at(self.laptop_harness, tmp / "laptop" / "kg-home")
 
     def laptop_push(self, *, force: bool = False):
-        result = sync_source(self.laptop, "app", force=force)
-        report = kg_push.Pusher(self.hub, self.laptop).push()
-        assert report.ok, report.errors
+        result = HubSync(self.hub, self.laptop).sync_source("app", force=force)
+        assert result.ok, result.issues
         return result
 
     def look(self) -> kg_sync.ProjectState:
@@ -323,8 +202,7 @@ def test_kg_sync_interleaved_pushes_of_laptop_and_worker_leave_the_newest_commit
     assert stage.hub.files() == stage.app.files()
 
     stage.app.commit({"a.md": "# A\n\ntwo\n", "b.md": None, "d.md": "# D\n\none\n"}, T[1])  # C2
-    state = stage.look()
-    assert state.sources["app"].pulled == 1, "the laptop's run, merged before the worker read"
+    stage.look()
     assert stage.hub.files() == stage.app.files(), "b, which only the laptop's run named, is gone from the hub too"
     c2 = stage.app.files()
 
@@ -333,15 +211,15 @@ def test_kg_sync_interleaved_pushes_of_laptop_and_worker_leave_the_newest_commit
     assert any("fetch failed" in warning for warning in stale.warnings)
     assert "app:file:b.md" in stage.hub.files(), "the stale run brings b back for now"
     state = stage.look()
-    assert state.sources["app"].pulled == 1 and state.sources["app"].pushed == 1
-    assert stage.hub.files() == c2, "the worker read C2 again: the hub holds C2 and nothing of C1"
+    assert state.sources["app"].pushed == 1, "the newest run on the hub read C1: the worker reads C2 again"
+    assert stage.hub.files() == c2, "the hub holds C2 and nothing of C1"
 
     git(stage.laptop_app, "remote", "set-url", "origin", str(stage.app.origin))  # back online
     stage.app.commit({"c.md": "# C\n\ntwo\n", "d.md": None}, T[2])  # C3 drops d, which only the worker's runs named
     stage.laptop_push()
-    assert "app:file:d.md" in stage.hub.files(), "the laptop never knew d: its run leaves it"
+    assert stage.hub.files() == stage.app.files(), "the laptop never read d, but the hub's items name it: it goes"
     stage.look()
-    assert stage.hub.files() == stage.app.files(), "the worker's look after the laptop's push removes d"
+    assert stage.hub.files() == stage.app.files()
     commit_items = {r.item_id for r in stage.hub.corpus.items("app") if r.item_id.startswith("app:commit:")}
     assert len(commit_items) == 3
 
@@ -359,7 +237,7 @@ def test_kg_sync_report_names_a_failed_fetch_a_refused_hub_and_a_missing_harness
     stage.hub.on_duty = False
     state = stage.look()
     assert state.sources["app"].status == "failed"
-    assert "merging the hub's runs" in state.sources["app"].error and "not on duty" in state.sources["app"].error
+    assert "not on duty" in state.sources["app"].error
 
     missing = stage.sync.look("other-project", stage.checkouts)
     assert missing.error.startswith("no checkout of the harness of project other-project")

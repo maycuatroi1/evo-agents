@@ -35758,6 +35758,18 @@
                 "title": "Scope"
               },
               "description": "only the items whose id starts so"
+            },
+            {
+              "name": "items",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "false leaves the items out, for a caller that reads only the runs",
+                "default": true,
+                "title": "Items"
+              },
+              "description": "false leaves the items out, for a caller that reads only the runs"
             }
           ],
           "responses": {
@@ -49796,6 +49808,18 @@
                 "title": "Scope"
               },
               "description": "only the items whose id starts so"
+            },
+            {
+              "name": "items",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "false leaves the items out, for a caller that reads only the runs",
+                "default": true,
+                "title": "Items"
+              },
+              "description": "false leaves the items out, for a caller that reads only the runs"
             }
           ],
           "responses": {

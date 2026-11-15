@@ -330,7 +330,7 @@ def sync_source(
 ) -> SyncResult:
     """Run one source's connector into the corpus. The run gets a row in the runs table and a line in the
     project's audit log, once its state is committed. A git source whose commit and config are those its last ok
-    run read is not read again (``_read_already``), unless ``force``: the worker's sync reads it again when the runs
+    run read is not read again (``read_already``), unless ``force``: the worker's sync reads it again when the runs
     of other machines it merged changed what the source holds (``evo_agents.worker.kg_sync``). ``plans`` reads the
     plans of the hub for a harness source (``ConnectorContext.plans``)."""
     source = project.source(source_id)

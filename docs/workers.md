@@ -1396,7 +1396,7 @@ it holds:
                   "update_now": {"requested_at": "...", "ended": null}},
   "kg_sync": {"projects": [{"project": "evo-agents", "checked_at": "...", "sources": [
     {"source": "evo-agents", "status": "ok", "ref": "origin/main", "commit": "<40 hex>", "behind": 0,
-     "checked_at": "...", "read_at": "...", "pushed_at": "...", "pulled": 0, "pushed": 1}]}]}
+     "checked_at": "...", "read_at": "...", "pushed_at": "...", "pushed": 1}]}]}
 }
 ```
 
@@ -1451,8 +1451,8 @@ state). `GET /v1/workers` and `GET /v1/workers/{id}` show them as `agent_commit`
 both null for an older daemon, which sends neither. `kg_sync`, optional, is what a daemon of feature `kg_sync` last
 did for each project of the answer's `kg_sync`: the project, when it looked (`checked_at`, required), what stopped
 the look (`error`), and for each source at most 50, its `source`, `status` (a name as `state` above; this daemon sends
-one of `runs.KG_SYNC_STATES`), `error`, `ref`, `commit`, `behind`, `checked_at`, `read_at`, `pushed_at`, `pulled` and
-`pushed`, at most 50 projects and every error 1 to 500 characters. Each heartbeat replaces what the hub holds
+one of `runs.KG_SYNC_STATES`), `error`, `ref`, `commit`, `behind`, `checked_at`, `read_at`, `pushed_at`, `pulled` (runs merged from the hub, which
+only an older daemon sends) and `pushed`, at most 50 projects and every error 1 to 500 characters. Each heartbeat replaces what the hub holds
 (`workers.kg_sync`, schema 0053), and one without it clears it; `GET /v1/workers/{id}` shows it as `kg_sync`.
 `health`, optional, is what the daemon last found of its machine (`evo_agents/worker/health.py`): `disk`, the free
 space of the drive that holds its worktrees (`free_gb`, `free_pct`, `reserve_gb`, the free space it keeps there, and

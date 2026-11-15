@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents.kg.project import load_project_at
+from tests.kg.hub_fake import KgHubs
 
 
 class FakeSource:
@@ -18,6 +19,30 @@ class FakeSource:
     def set(self, **spec):
         self.spec = {"items": [], **spec}
         self.save()
+
+
+@pytest.fixture(autouse=True)
+def _not_signed_in(tmp_path, monkeypatch):
+    """No test of the knowledge graph signs in to the hub of this machine: ``kg sync`` talks to the hub it is signed
+    in to, so a test that wants one signs in to a fake with ``hub_for``."""
+    monkeypatch.setenv("EVO_HUB_HOME", str(tmp_path / "no-hub-login"))
+
+
+@pytest.fixture
+def hub_for(tmp_path, monkeypatch):
+    """``hub_for(*names)``: this machine signed in to an in-memory hub of projects ``names`` (``KgHubs``)."""
+    from evo_agents.hub import client, kg_hub_sync, kg_push
+
+    def sign_in(*names: str) -> KgHubs:
+        hub = KgHubs(tmp_path / "hub", list(names))
+        credentials = client.Credentials(hub.url, "alice", "evo_test")
+        monkeypatch.setattr(client, "load_credentials", lambda: credentials)
+        monkeypatch.setattr(client, "Hub", lambda url, token, **kwargs: hub)
+        monkeypatch.setattr(kg_hub_sync, "Hub", lambda url, token, **kwargs: hub)
+        monkeypatch.setattr(kg_push, "put_presigned", hub.put)
+        return hub
+
+    return sign_in
 
 
 @pytest.fixture

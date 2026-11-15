@@ -34,6 +34,7 @@ whose machine is not signed in, still reads its graph. Standard library only.
 from __future__ import annotations
 
 import sys
+from typing import TYPE_CHECKING
 from urllib.parse import quote
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
@@ -41,6 +42,9 @@ from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.kg_hub_sync import wait_for
 from evo_agents.hub.kg_push import push_all, push_project
+
+if TYPE_CHECKING:
+    from evo_agents.kg.project import Project
 
 BACKENDS = ("auto", "local", "hub")
 PROBE_TIMEOUT = 5.0  # seconds auto waits for the hub before answering locally
@@ -59,13 +63,13 @@ def _base(project: str) -> str:
 # Pushing
 
 
-def local_projects(project: str | None, everything: bool) -> list[tuple[str, object]]:
+def local_projects(project: str | None, everything: bool) -> list[tuple[str, Project | Exception]]:
     """(name, project or the error it failed to load with) for ``--project`` or ``--all``."""
     from evo_agents.kg.project import ProjectError, load_project_at, resolve_project
     from evo_agents.kg.sync import indexed_projects
 
     if everything:
-        found = []
+        found: list[tuple[str, Project | Exception]] = []
         for name, root in indexed_projects():
             try:
                 found.append((name, load_project_at(root)))

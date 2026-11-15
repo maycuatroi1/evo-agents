@@ -60,7 +60,7 @@ def wait_for(hub: Hub, base: str, build_id: int, timeout: float, sleep=time.slee
     not after ``timeout`` seconds (``hub kg build --wait``, ``kg sync --build``)."""
     deadline = clock() + timeout
     while True:
-        build = hub.call("GET", f"{base}/builds/{build_id}")
+        build = hub.call("GET", f"{base}/builds/{build_id}") or {}
         if build["status"] in FINISHED:
             return build
         if clock() >= deadline:
@@ -159,12 +159,12 @@ class HubSync:
     def state(self, source: str, *, scope: str | None = None, items: bool = True) -> dict:
         query = {key: value for key, value in (("scope", scope), ("items", "false" if not items else None)) if value}
         path = f"{self.base}/sources/{quote(source, safe='')}/state"
-        return self.hub.call("GET", path + (f"?{urlencode(query)}" if query else ""))
+        return self.hub.call("GET", path + (f"?{urlencode(query)}" if query else "")) or {}
 
     def build(self, timeout: float = BUILD_WAIT) -> HubBuild:
         """Ask the hub for a build of the project's graph and wait until it has finished."""
         try:
-            queued = self.hub.call("POST", f"{self.base}/builds")
+            queued = self.hub.call("POST", f"{self.base}/builds") or {}
             build = queued.get("build")
             if build is None:
                 return HubBuild(error="the hub queued a build but names none")
@@ -358,6 +358,14 @@ def hub_sync(project: Project, **kwargs) -> HubSync:
     return HubSync(Hub(credentials.url, credentials.token), project, **kwargs)
 
 
+def cleared_sources(project: Project) -> tuple[list[str], list[str]]:
+    """The ids of the project's sources a sync of every source reads, and of those it leaves out: the sources whose
+    label the hub sink does not clear, whose runs the hub never takes."""
+    ids = [source["id"] for source in project.sources()]
+    left = [source_id for source_id in ids if project.policy.hub_clears(source_id) is False]
+    return [source_id for source_id in ids if source_id not in left], left
+
+
 def sync_project(
     syncer: HubSync, sources: list[str] | None = None, *, accept: bool = False, build: bool = False
 ) -> tuple[list[SyncResult], HubBuild | None]:
@@ -366,7 +374,7 @@ def sync_project(
     project = syncer.project
     remember(project)
     results = []
-    for source_id in sources or [s["id"] for s in project.sources()]:
+    for source_id in sources or cleared_sources(project)[0]:
         if accept:
             syncer.accept_removals(source_id)
         results.append(syncer.sync_source(source_id))
@@ -377,7 +385,8 @@ def sync_due(syncer: HubSync, *, build: bool = False, accept: bool = False, now=
     """``kg sync --due`` of one project: its sources whose refresh is due by the last ok run the hub holds of each;
     with ``build``, a build on the hub if one of them read something."""
     project = syncer.project
-    due = due_sources(project, now=now, last_ok=syncer.last_ok)
+    cleared = set(cleared_sources(project)[0])
+    due = [source for source in due_sources(project, now=now, last_ok=syncer.last_ok) if source in cleared]
     outcome = ProjectSync(project.name, str(project.harness.root), due)
     if due:
         outcome.runs, _ = sync_project(syncer, due, accept=accept)
@@ -392,7 +401,7 @@ def sync_all_due(hub: Hub, projects: list[tuple[str, Project | Exception]], **kw
     on its outcome and does not stop the others; a credential the hub refuses stops them all."""
     from evo_agents.hub.kg_push import pushable
 
-    listed = {p["name"]: p for p in hub.call("GET", "/v1/projects")}
+    listed = {p["name"]: p for p in hub.call("GET", "/v1/projects") or ()}
     outcomes = []
     for name, project in projects:
         reason = "not on the hub, or not visible to you" if name not in listed else pushable(listed[name])
