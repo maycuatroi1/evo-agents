@@ -14,6 +14,7 @@ import asyncio
 import dataclasses
 import json
 import logging
+import weakref
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -47,21 +48,52 @@ class Held:
 
 async def load(engine: AsyncEngine, project_id: int) -> Held | None:
     """The snapshot of the project's main branch read from the tables now, not kept: for a job that reads the graph
-    once (``evo_agents.hub.server.kg_health``); None before its first build kept a graph."""
-    async with engine.connect() as conn:
-        return await load_on(conn, project_id)
+    once (``evo_agents.hub.server.kg_health``); None before its first build kept a graph. The rows are read on a
+    connection of their own, in one of the process's ``READS`` slots, and it goes back to the pool before the snapshot
+    is made of them: making it takes minutes on a large graph, and a connection held meanwhile, idle in its
+    transaction, is one the workers' heartbeats and claims wait for."""
+    async with read_slot(), engine.connect() as conn:
+        found = await _rows(conn, project_id)
+    return None if found is None else await _made(*found)
 
 
 async def load_on(conn: AsyncConnection, project_id: int) -> Held | None:
-    """``load`` on the caller's connection."""
+    """``load`` on the caller's connection, which it holds while the snapshot is made: a caller that can give its
+    connection back first uses ``load``."""
+    found = await _rows(conn, project_id)
+    return None if found is None else await _made(*found)
+
+
+async def _rows(conn: AsyncConnection, project_id: int) -> tuple[int | None, StoreRows] | None:
+    """(the build that wrote the rows of the project's main branch, those rows); None before its first build."""
     heads = tables.kg_graph_heads
     build_id = await conn.scalar(
         select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
     )
     rows = await read_graph(conn, project_id)
-    if rows is None:
-        return None
+    return None if rows is None else (build_id, rows)
+
+
+async def _made(build_id: int | None, rows: StoreRows) -> Held:
+    """The snapshot of ``rows``, made in a thread, with no connection held."""
     return Held(build_id, await asyncio.to_thread(Snapshot.from_stored, *hub_build(rows, build_id)))
+
+
+READS = 2  # graph reads a process runs at once, each on a connection of the pool; the next waits for a slot
+
+
+_slots: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = weakref.WeakKeyDictionary()
+
+
+def read_slot() -> asyncio.Semaphore:
+    """The semaphore of the running loop that bounds its graph reads to ``READS``: the rows of a large graph take a
+    connection for a minute, so loads of many projects, or of the same project by several jobs, would otherwise hold
+    the whole pool. One per loop, as a semaphore belongs to the loop it first waited on."""
+    loop = asyncio.get_running_loop()
+    slot = _slots.get(loop)
+    if slot is None:
+        slot = _slots[loop] = asyncio.Semaphore(READS)
+    return slot
 
 
 def hub_build(rows: StoreRows, build_id: int | None) -> tuple[StoreRows, int]:
@@ -70,6 +102,16 @@ def hub_build(rows: StoreRows, build_id: int | None) -> tuple[StoreRows, int]:
     if build_id is None:
         return rows, 0
     return dataclasses.replace(rows, summary={**rows.summary, "build_id": build_id}), build_id
+
+
+async def held_for(conn: AsyncConnection, project_id: int, build_id: int) -> Held | None:
+    """The project's snapshot for a reader that has only its connection: the one the api keeps (``serving``,
+    ``SnapshotCoordinator.held``), None while its first load runs, else one read on ``conn`` (``load_on``), as in a
+    process with no api. The reader holds ``conn`` in its transaction, so it never waits for a load."""
+    coordinator = serving
+    if coordinator is not None and coordinator.engine is not None:
+        return await coordinator.held(project_id, build_id)
+    return await load_on(conn, project_id)
 
 
 HELD_PROJECTS = 16  # projects whose snapshot the api keeps in memory, the most recently read; another is loaded again
@@ -128,18 +170,35 @@ class SnapshotCoordinator:
             task.add_done_callback(self._done)
         return held
 
-    async def branch(self, conn: AsyncConnection, project_id: int, name: str) -> Held:
+    async def held(self, project_id: int, build_id: int) -> Held | None:
+        """``current`` for a caller that must not wait for a load: None while the project has no snapshot in memory,
+        whose load this starts in the background (``kg_graph.reading`` then answers "try again shortly")."""
+        if project_id in self._held:
+            return await self.current(project_id, build_id)
+        if self._listener is not None:
+            self._listener.start()
+        task = self._load(project_id)
+        self._tasks.add(task)
+        task.add_done_callback(self._done)
+        return None
+
+    async def branch(self, project_id: int, name: str) -> Held:
         """The snapshot of draft branch ``name``: main's rows with its operations applied (``kg_branches.graph``),
-        made again once it or main changed. Raises kg_branches.BranchError 404 for a branch the project lacks."""
-        key = await _branch_key(conn, project_id, name)
+        made again once it or main changed. Reads on connections of its own, given back before the snapshot is made,
+        as ``load`` does: the caller holds none meanwhile. Raises kg_branches.BranchError 404 for a branch the
+        project lacks."""
+        assert self.engine is not None
+        async with self.engine.connect() as conn:
+            key = await _branch_key(conn, project_id, name)
         found = self._branches.pop((project_id, name), None)
         if found is None or found[0] != key:
             heads = tables.kg_graph_heads
-            build_id = await conn.scalar(
-                select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
-            )
-            _, _, rows = await kg_branches.graph(conn, project_id, name)
-            found = key, Held(build_id, await asyncio.to_thread(Snapshot.from_stored, *hub_build(rows, build_id)))
+            async with read_slot(), self.engine.connect() as conn:
+                build_id = await conn.scalar(
+                    select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
+                )
+                _, _, rows = await kg_branches.graph(conn, project_id, name)
+            found = key, await _made(build_id, rows)
         self._branches[(project_id, name)] = found
         while len(self._branches) > HELD_BRANCHES:
             del self._branches[next(iter(self._branches))]
@@ -203,6 +262,12 @@ class SnapshotCoordinator:
             log.error("kg snapshot rebuild failed", exc_info=task.exception())
 
     async def close(self) -> None:
+        global serving
+        if serving is self:
+            serving = None
         for task in [*self._tasks, *self._loading.values()]:
             task.cancel()
         await asyncio.gather(*self._tasks, *self._loading.values(), return_exceptions=True)
+
+
+serving: SnapshotCoordinator | None = None  # the api's, set as it opens: what ``held_for`` reads through

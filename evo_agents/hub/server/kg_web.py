@@ -241,13 +241,13 @@ async def read_graph(request: Request, user, project: str, reader):
         require_reader(access)
         graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
         audience = await reader_audience(conn, user) if graphs else frozenset()
-        if graphs and branch not in ("", "main"):
-            try:
-                held = await state.kg_snapshots.branch(conn, access.project_id, branch)
-            except kg_branches.BranchError as exc:
-                raise HTTPException(exc.status, str(exc)) from None
     if not graphs:
         return None, None
+    if branch not in ("", "main"):
+        try:
+            held = await state.kg_snapshots.branch(access.project_id, branch)
+        except kg_branches.BranchError as exc:
+            raise HTTPException(exc.status, str(exc)) from None
     ceiling = access.rules.grant_label(access.max_level, audience)
     if held is not None:
         snapshot = held.view(ceiling.audience if ceiling is not None else frozenset()), graphs[0]

@@ -774,9 +774,10 @@ async def snapshot_view(state, project_id: int, graphs: list[BuiltGraph], ceilin
     return held.view(ceiling.audience if ceiling is not None else frozenset()), graph
 
 
-async def _on_branch(state, conn: AsyncConnection, project_id: int, arguments) -> tuple[dict, Held | str | None]:
+async def _on_branch(state, project_id: int, arguments) -> tuple[dict, Held | str | None]:
     """(``arguments`` without ``branch``, the snapshot of the draft branch it names or an error to answer with):
-    None for no branch or ``main`` (``evo_agents.hub.kg_branches``)."""
+    None for no branch or ``main`` (``evo_agents.hub.kg_branches``). Called with no connection held, as the
+    snapshot of a branch can take minutes to make."""
     if not isinstance(arguments, dict) or "branch" not in arguments:
         return arguments, None
     arguments = dict(arguments)
@@ -787,7 +788,7 @@ async def _on_branch(state, conn: AsyncConnection, project_id: int, arguments) -
     if not isinstance(name, str) or snapshots is None:
         return arguments, "error: branch takes the name of a draft branch of the graph"
     try:
-        return arguments, await snapshots.branch(conn, project_id, name.strip())
+        return arguments, await snapshots.branch(project_id, name.strip())
     except kg_branches.BranchError as exc:
         return arguments, f"error: {exc}: `evo-agents hub kg branch list` lists them"
 
@@ -819,9 +820,6 @@ async def tool_result(
             audience = await reader_audience(conn, user)
         tuning = await kg_settings.read(conn, access.project_id) if graphs else None
         named = await _named_graph(conn, access.project_id, arguments) if graphs else {}
-        arguments, on_branch = (
-            await _on_branch(state, conn, access.project_id, arguments) if graphs else (arguments, None)
-        )
         run_id = user.acts_for_run
         if (
             graphs
@@ -835,6 +833,7 @@ async def tool_result(
             default = await system_traces.default_graph(conn, run_id, access.project_id)
             if default is not None:  # the graphs its agent uses in its system (uses_kg)
                 arguments, named = {**arguments, "graph": default[0]}, {default[0]: default[1]}
+    arguments, on_branch = await _on_branch(state, access.project_id, arguments) if graphs else (arguments, None)
     if not graphs:
         message = (
             f"error: project {project} has no graph on the hub yet: push its runs with `evo-agents hub kg push` "

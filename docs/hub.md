@@ -4162,7 +4162,10 @@ The api reads the graph from a snapshot held in memory (`evo_agents/hub/kg_snaps
 branch's rows as the tables keep them, loaded on the project's first read. On a `kg_graph` notification it builds the
 new snapshot in the background and swaps it in at once, so a reader keeps the snapshot it was given and never waits for
 a build; after its listener reconnects it reads every project it holds again. Each reader sees the snapshot through
-its own clearance and audience. A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
+its own clearance and audience. A load reads the rows on a connection of its own, at most two loads of a process at
+once (`READS`), and gives the connection back to the pool before it makes the snapshot of them, which takes minutes
+on a large graph: a load holding its connection meanwhile, idle in its transaction, left the workers' heartbeats and
+claims without one (`PoolTimeout`), whatever `EVO_HUB_POOL_MAX_SIZE` was. A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
 the build at the head or one before it: the graph it wrote is the one the tables hold or an older one they replaced.
 
 **Graph files of older builds.** Builds before 0248 uploaded the graph's SQLite file to the bucket as a blob of kind
