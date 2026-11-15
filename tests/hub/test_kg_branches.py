@@ -99,6 +99,42 @@ def test_an_edge_to_a_node_the_branch_lacks_is_refused():
         branch_ops.apply(rows_of("a"), [branch_ops.normalize({"op": "edge.put", "src": "a", "rel": "r", "dst": "z"})])
 
 
+def test_a_merged_change_to_a_node_that_left_the_sources_is_left_out_not_made_again():
+    from evo_agents.hub import kg_branches as hub_branches
+
+    main = rows_of("doc:guide")
+    payload = {"op": "node.put", "id": "doc:guide", "kind": "Document", "props": {"owner": "kiwi"}}
+    before = {"doc:guide": list(main.nodes[0])}
+    replayed = hub_branches._replayed({**branch_ops.normalize(payload), "before": before})
+    skipped: list[str] = []
+    rebuilt = branch_ops.apply(rows_of("doc:other"), [replayed], skipped)
+    assert len(skipped) == 1 and "doc:guide" not in {r[0] for r in rebuilt.nodes}
+    kept = branch_ops.apply(main, [replayed], [])
+    assert node_dict(next(r for r in kept.nodes if r[0] == "doc:guide"))["props"] == {"owner": "kiwi"}
+    added = hub_branches._replayed({**branch_ops.normalize(payload), "before": {"doc:guide": None}})
+    assert "doc:guide" in {r[0] for r in branch_ops.apply(rows_of("doc:other"), [added], []).nodes}
+
+
+def test_a_diff_shows_only_what_the_reader_reads():
+    secret = {**_node("doc:secret"), "label": Label(3, 0, "T", frozenset(), frozenset())}
+    main = StoreRows(
+        "sha256:main", (node_row("doc:a", _node("doc:a")), node_row("doc:secret", secret)), (), (), {}, TOP
+    )
+    ops = [
+        branch_ops.normalize(op)
+        for op in (
+            {"op": "node.put", "id": "doc:secret", "kind": "Document", "props": {"x": 1}},
+            {"op": "node.put", "id": "doc:a", "kind": "Document", "props": {"y": 1}},
+        )
+    ]
+    found = branch_ops.diff(main, branch_ops.apply(main, ops))
+    seen = branch_ops.visible(main, frozenset(), (1, 0))
+    assert seen == {"doc:a"} and branch_ops.visible(main, frozenset(), None) == set()
+    shown = branch_ops.shown_diff(found, seen)
+    assert [c["after"]["id"] for c in shown["nodes"]["changed"]] == ["doc:a"]
+    assert shown["counts"]["nodes_changed"] == 1 and "secret" not in json.dumps(shown)
+
+
 def test_the_cli_reads_operations_from_a_file_or_stdin(tmp_path, monkeypatch):
     ops = [{"op": "node.delete", "id": "a"}]
     path = tmp_path / "ops.json"
@@ -116,7 +152,7 @@ def test_the_cli_reads_operations_from_a_file_or_stdin(tmp_path, monkeypatch):
 needs_db = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
 
 if pg.DSN:
-    from sqlalchemy import update
+    from sqlalchemy import select, update
 
     from evo_agents.hub import tables
     from tests.hub.live import sql
@@ -259,3 +295,70 @@ def test_kg_search_names_the_hub_build_and_kg_status_runs_for_a_run(hub, tmp_pat
     assert branch.status_code == 201
     on_branch = tool_ok(hub, "kg_search", {"query": "kiwi", "branch": "label"})["content"][0]["text"]
     assert f"(build {second['id']})" in on_branch
+
+
+@needs_db
+def test_an_apply_waits_for_a_merge_under_way_and_is_then_refused(hub, tmp_path, caplog):
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from evo_agents.hub import kg_branches as hub_branches
+
+    laptop, _ = _built(hub, tmp_path, caplog, doc("guide", "How the kiwi app works."))
+    assert _post(hub, _base(), {"name": "race"}).status_code == 201
+    first = [{"op": "node.put", "id": "concept:early", "kind": "Concept", "name": "Early"}]
+    assert _post(hub, f"{_base('race')}/ops", {"ops": first}).status_code == 200
+    pid = project_id(hub)
+    late = [{"op": "node.put", "id": "concept:late", "kind": "Concept", "name": "Late"}]
+
+    async def race():
+        engine = create_async_engine(hub.db.dsn.replace("postgresql://", "postgresql+psycopg://", 1))
+        try:
+            async with engine.connect() as merging, engine.connect() as applying:
+                await merging.begin()
+                await hub_branches.merge(merging, pid, "race", None)
+                await applying.begin()
+                waiting = asyncio.create_task(hub_branches.apply(applying, pid, "race", late, None))
+                await asyncio.sleep(0.5)
+                assert not waiting.done()  # the project's lock holds it until the merge ends
+                await merging.commit()
+                with pytest.raises(hub_branches.BranchError) as refused:
+                    await waiting
+                await applying.rollback()
+                return refused.value
+        finally:
+            await engine.dispose()
+
+    refused = asyncio.run(race())
+    assert refused.status == 409 and "merged" in str(refused)
+    laptop.sync("docs", doc("guide", "How the kiwi app works, again.", rev="2"))
+    assert push(hub, laptop).ok
+    build(hub, caplog)
+    nodes = {r[0] for r in read_back(hub.db, project_id(hub)).nodes}
+    assert "concept:early" in nodes and "concept:late" not in nodes
+
+
+@needs_db
+def test_kg_status_and_kg_more_answer_a_run_whose_system_has_a_default_graph(hub, tmp_path, caplog, monkeypatch):
+    from evo_agents.hub.server import security, system_traces
+    from evo_agents.hub.server.security import RUN, Principal
+
+    _built(hub, tmp_path, caplog, doc("guide", "How the kiwi app works."))
+
+    async def default_graph(conn, run_id, project_id):
+        return "docs", frozenset({"docs"})
+
+    monkeypatch.setattr(system_traces, "default_graph", default_graph)
+    (user,) = sql(hub.db, select(tables.users.c.id).where(tables.users.c.login == "alice"))[0]
+    hub.client.app.dependency_overrides[security.principal] = lambda: Principal(
+        user, "alice", False, 0, RUN, "", run_id=41
+    )
+    try:
+        for tool in ("kg_status", "kg_more"):
+            answer = call_tool(hub, tool, {}).json()
+            text = answer["content"][0]["text"]
+            assert "no argument 'graph'" not in text, text
+        assert not call_tool(hub, "kg_status", {}).json().get("isError")
+    finally:
+        hub.client.app.dependency_overrides.pop(security.principal, None)

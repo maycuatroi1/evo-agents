@@ -26,7 +26,7 @@ import json
 from hashlib import sha256
 
 from evo_agents.kg import search as text_search
-from evo_agents.kg.policy import Label
+from evo_agents.kg.policy import Label, audience_below
 from evo_agents.kg.snapshot import StoreRows, edge_dict, edge_row, node_dict, node_row
 
 OPS = ("node.put", "node.delete", "edge.put", "edge.delete", "entity_map", "decision")
@@ -154,6 +154,8 @@ class _Graph:
 
     def put_node(self, op: dict) -> None:
         old = self.nodes.get(op["id"])
+        if old is None and op.get("update"):  # it changed a node of main that left the sources since
+            raise OpError(f"no node {op['id']} on the branch")
         name = op.get("name") or (old or {}).get("name") or op["id"]
         props = {**((old or {}).get("props") or {}), **op["props"]} if old else dict(op["props"])
         self.nodes[op["id"]] = {
@@ -310,6 +312,32 @@ def diff(base: StoreRows, branch: StoreRows) -> dict:
         f"{what}_{side}": len(found[side]) for what, found in (("nodes", nodes), ("edges", edges)) for side in found
     }
     return {"nodes": nodes, "edges": edges, "counts": counts}
+
+
+def visible(rows: StoreRows, reader: frozenset[str], ceiling: tuple[int, int] | None) -> set[str]:
+    """The ids of the nodes and edges of ``rows`` a reader of audience ``reader`` reads at most ``ceiling`` (level,
+    location): none for a None ceiling, a reader without a grant."""
+    if ceiling is None:
+        return set()
+    out = set()
+    for row, read in [*((r, node_dict) for r in rows.nodes), *((r, edge_dict) for r in rows.edges)]:
+        label = read(row)["label"]
+        if label[0] <= ceiling[0] and label[1] <= ceiling[1] and audience_below(label[3], reader):
+            out.add(row[0])
+    return out
+
+
+def shown_diff(found: dict, seen: set[str]) -> dict:
+    """``found`` (``diff``) without the nodes and edges whose id is not in ``seen``, its counts made again."""
+    nodes, edges = (
+        {side: [x for x in items if _id(x) in seen] for side, items in found[k].items()} for k in ("nodes", "edges")
+    )
+    counts = {f"{what}_{side}": len(part[side]) for what, part in (("nodes", nodes), ("edges", edges)) for side in part}
+    return {"nodes": nodes, "edges": edges, "counts": counts}
+
+
+def _id(entry: dict) -> str:
+    return entry["after"]["id"] if "after" in entry else entry["id"]
 
 
 def rows_of(rows: StoreRows, node_ids, edge_ids) -> dict[str, tuple | None]:

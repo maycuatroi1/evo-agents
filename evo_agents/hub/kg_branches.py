@@ -149,6 +149,15 @@ def _plain(op: dict) -> dict:
     return {k: v for k, v in op.items() if k != "before"}
 
 
+def _replayed(op: dict) -> dict:
+    """``op`` of a merged branch to apply on a new build: a ``node.put`` that changed a node main had then is marked
+    ``update``, so it is left out rather than re-creating the node once it left the sources."""
+    plain = _plain(op)
+    if plain.get("op") == "node.put" and (op.get("before") or {}).get(plain.get("id")) is not None:
+        plain["update"] = True
+    return plain
+
+
 def _json_rows(found: dict[str, tuple | None]) -> dict[str, list | None]:
     return {key: None if row is None else list(row) for key, row in found.items()}
 
@@ -176,7 +185,9 @@ def _applied(rows: StoreRows, ops: list[dict]) -> StoreRows:
 
 async def apply(conn: AsyncConnection, project_id: int, name: str, ops: list, user_id: int | None) -> dict:
     """Add ``ops`` to open branch ``name``, after its own, each checked and recording the rows of main it reads; all
-    or none. Raises BranchError: 422 for an operation that is not one or names what the branch lacks."""
+    or none, under the project's lock so no merge runs meanwhile. Raises BranchError: 422 for an operation that is
+    not one or names what the branch lacks."""
+    await lock(conn, project_id)
     branch = await _open(conn, project_id, name)
     if not isinstance(ops, list) or not ops or len(ops) > branch_ops.MAX_OPS:
         raise BranchError(422, f"apply takes a list of 1 to {branch_ops.MAX_OPS} operations")
@@ -211,10 +222,26 @@ async def graph(conn: AsyncConnection, project_id: int, name: str) -> tuple[Bran
     return branch, main, _applied(main, await _ops(conn, branch.id))
 
 
-async def diff(conn: AsyncConnection, project_id: int, name: str) -> dict:
-    """The structural diff of branch ``name`` from main (``branch_ops.diff``)."""
+Reader = tuple[frozenset[str], tuple[int, int] | None]  # a reader's audience and its ceiling (level, location)
+
+
+def _seen(main: StoreRows, rows: StoreRows, reader: Reader | None) -> set[str] | None:
+    """The node and edge ids ``reader`` reads on main and on the branch, wherever each is; None reads all."""
+    if reader is None:
+        return None
+    every = {r[0] for r in (*main.nodes, *main.edges, *rows.nodes, *rows.edges)}
+    hidden = set()
+    for side in (main, rows):
+        hidden |= {r[0] for r in (*side.nodes, *side.edges)} - branch_ops.visible(side, *reader)
+    return every - hidden
+
+
+async def diff(conn: AsyncConnection, project_id: int, name: str, reader: Reader | None = None) -> dict:
+    """The structural diff of branch ``name`` from main (``branch_ops.diff``), of what ``reader`` reads."""
     branch, main, rows = await graph(conn, project_id, name)
-    return {"branch": branch.as_dict(), **branch_ops.diff(main, rows)}
+    found = branch_ops.diff(main, rows)
+    seen = _seen(main, rows, reader)
+    return {"branch": branch.as_dict(), **(found if seen is None else branch_ops.shown_diff(found, seen))}
 
 
 async def _rules(conn: AsyncConnection, project_id: int) -> ontology_rules.Rules:
@@ -235,17 +262,22 @@ def violations(main: StoreRows, rows: StoreRows, rules: ontology_rules.Rules) ->
     return {"rules": True, "violations": shown, "new": new, "hard": [v for v in new if v["rule"] in HARD]}
 
 
-async def check(conn: AsyncConnection, project_id: int, name: str) -> dict:
-    """The ontology rule violations of branch ``name`` (``violations``) and whether it would merge now."""
+async def check(conn: AsyncConnection, project_id: int, name: str, reader: Reader | None = None) -> dict:
+    """The ontology rule violations of branch ``name`` (``violations``) and whether it would merge now; the
+    violations and conflicts listed are those of what ``reader`` reads, whether it merges counts them all."""
     branch, main, rows = await graph(conn, project_id, name)
     found = await asyncio.to_thread(violations, main, rows, await _rules(conn, project_id))
     conflicts = _conflicts(main, await _ops(conn, branch.id)) if branch.status == "open" else []
-    return {
-        "branch": branch.as_dict(),
-        **found,
-        "conflicts": conflicts,
-        "mergeable": not found["hard"] and not conflicts and branch.status == "open",
-    }
+    mergeable = not found["hard"] and not conflicts and branch.status == "open"
+    seen = _seen(main, rows, reader)
+    if seen is not None:
+        found = {k: v if k == "rules" else [x for x in v if _shown(x, seen)] for k, v in found.items()}
+        conflicts = [c for c in conflicts if c["id"] in seen]
+    return {"branch": branch.as_dict(), **found, "conflicts": conflicts, "mergeable": mergeable}
+
+
+def _shown(violation: dict, seen: set[str]) -> bool:
+    return all(i in seen for i in (*violation["nodes"], *violation["edges"]))
 
 
 def _conflicts(main: StoreRows, ops: list[dict]) -> list[dict]:
@@ -294,7 +326,9 @@ async def merge(conn: AsyncConnection, project_id: int, name: str, user_id: int 
 
 
 async def drop(conn: AsyncConnection, project_id: int, name: str) -> dict:
-    """Delete open branch ``name`` and its operations. Raises BranchError 409 for a merged one."""
+    """Delete open branch ``name`` and its operations, under the project's lock. Raises BranchError 409 for a merged
+    one."""
+    await lock(conn, project_id)
     branch = await get(conn, project_id, name)
     if branch.status == "merged":
         raise BranchError(409, f"graph branch {name!r} is merged: its operations are a layer of main")
@@ -314,7 +348,7 @@ async def overlay(conn: AsyncConnection, project_id: int, rows: StoreRows) -> St
         .where(b.c.project_id == project_id, b.c.status == "merged", o.c.op != MERGED_OP)
         .order_by(merged_at.c.at, o.c.id)
     )
-    ops = [_plain(row.payload) for row in await conn.execute(query)]
+    ops = [_replayed(row.payload) for row in await conn.execute(query)]
     if not ops:
         return rows
     skipped: list[str] = []

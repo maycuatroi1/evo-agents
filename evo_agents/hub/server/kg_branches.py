@@ -27,6 +27,7 @@ from evo_agents.hub import kg_branches as store
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody, error_response
+from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.kg_graphs import may_change
 from evo_agents.hub.server.kg_web import require_reader
 from evo_agents.hub.server.projects import project_access
@@ -153,6 +154,13 @@ async def apply_ops(
     return BranchResult(**done)
 
 
+async def _reader(conn, user, access) -> store.Reader:
+    """The audience and ceiling (level, location) of ``user``'s grant, as the kg reads of ``kg_web`` take them."""
+    audience = await reader_audience(conn, user)
+    ceiling = access.rules.grant_label(access.max_level, audience)
+    return audience, None if ceiling is None else (ceiling.level, ceiling.location)
+
+
 @router.get("/{project}/branches/{name}/diff", response_model=BranchResult)
 async def diff_branch(
     request: Request, project: ProjectName, name: BranchName, user: CurrentUser
@@ -161,8 +169,9 @@ async def diff_branch(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         require_reader(access)
+        reader = await _reader(conn, user, access)
         try:
-            return BranchResult(**await store.diff(conn, access.project_id, name))
+            return BranchResult(**await store.diff(conn, access.project_id, name, reader))
         except store.BranchError as exc:
             return _refused(request, exc)
 
@@ -175,8 +184,9 @@ async def check_branch(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         require_reader(access)
+        reader = await _reader(conn, user, access)
         try:
-            return BranchResult(**await store.check(conn, access.project_id, name))
+            return BranchResult(**await store.check(conn, access.project_id, name, reader))
         except store.BranchError as exc:
             return _refused(request, exc)
 
