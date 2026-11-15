@@ -117253,6 +117253,11 @@
               ],
               "title": "Runs"
             },
+            "graph_kept": {
+              "type": "boolean",
+              "title": "Graph Kept",
+              "description": "its graph is in the hub's tables, or was until a newer build replaced it: the newest such build is the graph the reads answer from"
+            },
             "artifact_sha256": {
               "anyOf": [
                 {
@@ -117263,7 +117268,7 @@
                 }
               ],
               "title": "Artifact Sha256",
-              "description": "the graph file in the blob store; null until the build succeeded, and once it was pruned"
+              "description": "the graph file an older build put in the blob store; null for a build since the hub keeps the graph in its tables, and once it was pruned"
             },
             "artifact_size": {
               "anyOf": [
@@ -117383,6 +117388,7 @@
             "requested_by",
             "config_digest",
             "runs",
+            "graph_kept",
             "artifact_sha256",
             "artifact_size",
             "artifact_reused_from",
