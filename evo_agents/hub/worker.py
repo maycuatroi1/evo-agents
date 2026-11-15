@@ -9,7 +9,8 @@ the deliveries to plugins, DELIVERY_CONCURRENCY at a time, so what a commit queu
 seconds. On the first signal it takes no new job and waits up to SHUTDOWN_GRACE for the running ones; procrastinate
 aborts what is still running after that, and a second signal kills the process. Stopped by a signal, it exits 0;
 stopped by anything else, such as losing Postgres, it exits 1, so the container is restarted and the failure shows. It
-needs the blob store: what it builds lives in R2, and it removes the uploads nobody committed. ``--data-dir`` is its cache, which can be deleted at any time.
+needs the blob store: what it builds lives in R2, and it removes the uploads nobody committed. ``--data-dir`` is its
+cache, which can be deleted at any time.
 
 Jobs (names in ``evo_agents.hub.jobs``):
 
