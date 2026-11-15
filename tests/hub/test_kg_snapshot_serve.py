@@ -239,7 +239,7 @@ def test_loads_making_snapshots_leave_the_pool_to_the_workers_heartbeats(hub, tm
     """A snapshot is made with no connection held: loads of a large graph, which take minutes to make it, left the
     workers' heartbeats and claims without a connection of the pool, and runs lost their lease."""
     from psycopg_pool import AsyncConnectionPool
-    from sqlalchemy import text
+    from sqlalchemy import literal, select
 
     from evo_agents.hub.db import make_engine as pooled_engine
 
@@ -267,7 +267,7 @@ def test_loads_making_snapshots_leave_the_pool_to_the_workers_heartbeats(hub, tm
             for _ in range(kg_snapshots.READS):
                 assert await asyncio.to_thread(making.acquire, True, 30)
             async with engine.begin() as conn:  # a heartbeat, while the snapshots are made
-                beat = await conn.scalar(text("select 1"))
+                beat = await conn.scalar(select(literal(1)))
             release.set()
             done = await asyncio.gather(*loads)
         finally:
@@ -335,7 +335,7 @@ def test_a_plugin_read_of_a_project_not_in_memory_waits_for_no_load(hub, tmp_pat
     no snapshot of yet answers None at once and loads in the background, so plugin reads made meanwhile do not each
     hold a connection, idle, for the minutes the snapshot takes to make."""
     from psycopg_pool import AsyncConnectionPool
-    from sqlalchemy import text
+    from sqlalchemy import literal, select
 
     from evo_agents.hub.db import make_engine as pooled_engine
 
@@ -369,7 +369,7 @@ def test_a_plugin_read_of_a_project_not_in_memory_waits_for_no_load(hub, tmp_pat
             cold = await asyncio.gather(*(plugin_read() for _ in range(3)))
             assert await asyncio.to_thread(making.wait, 30)
             async with engine.begin() as conn:  # a heartbeat, while the snapshot is made
-                beat = await conn.scalar(text("select 1"))
+                beat = await conn.scalar(select(literal(1)))
             release.set()
             await asyncio.gather(*coordinator._tasks)
             warm = await plugin_read()

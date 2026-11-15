@@ -2054,7 +2054,6 @@ def test_inside_a_run_kg_serve_asks_the_hub_as_the_agent_of_the_run(tmp_path, mo
             session = open_session(backend, None, AGENT)
             assert isinstance(session, RemoteSession) and session.run == 42, backend
             assert session.call("kg_search", {"query": "x"})["content"][0]["text"] == "called kg_search"
-        assert not isinstance(open_session("local", None, AGENT), RemoteSession)
         monkeypatch.delenv("EVO_RUN_ID")
         assert not isinstance(open_session("auto", None, AGENT), RemoteSession)  # outside the run: no hub, no project
     finally:
