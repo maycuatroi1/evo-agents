@@ -64,6 +64,7 @@ from evo_agents.kg.sessions import READ_META
 from tests.hub import live
 from tests.hub.fake_github import Account
 from tests.hub.live import ADMIN, bearer
+from tests.hub.test_mcp import keep_rows
 from tests.hub.test_plans import registration as plans_registration
 from tests.hub.test_runs import OWNER, PROJECT, WRITER
 from tests.worker import fake_adapter
@@ -168,7 +169,8 @@ sources:
 
 def install_graph(db: pg.Database, cache: Path, root: Path, monkeypatch) -> None:
     """A graph of PROJECT built on a laptop under ``root``, put where ``hub serve`` keeps the graphs it fetched
-    (``cache``, its EVO_HUB_DATA_DIR) and recorded as the project's latest successful build."""
+    (``cache``, its EVO_HUB_DATA_DIR), recorded as the project's latest successful build and kept in the hub's graph
+    tables as the head of its main."""
     import hashlib
 
     from evo_agents.hub.kg_build import build_graph
@@ -207,7 +209,9 @@ def install_graph(db: pg.Database, cache: Path, root: Path, monkeypatch) -> None
         func.now(),
     ).where(projects.c.name == PROJECT)
     columns = ["project_id", "status", "artifact_sha256", "artifact_size", "content_hash", "nodes", "edges"]
-    live.sql(db, insert(builds).from_select([*columns, "started_at", "finished_at"], built))
+    inserted = insert(builds).from_select([*columns, "started_at", "finished_at"], built)
+    ((build_id, project_id),) = live.sql(db, inserted.returning(builds.c.id, builds.c.project_id))
+    keep_rows(db, project_id, build_id, target)  # the hub reads the graph from its tables, from the main head on
 
 
 # The worker machine
