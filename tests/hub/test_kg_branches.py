@@ -135,6 +135,27 @@ def test_a_diff_shows_only_what_the_reader_reads():
     assert shown["counts"]["nodes_changed"] == 1 and "secret" not in json.dumps(shown)
 
 
+def test_a_writer_may_not_change_what_it_does_not_read_nor_lower_a_label():
+    secret = {**_node("doc:secret"), "props": {"salary": 1}, "label": Label(3, 0, "T", frozenset(), frozenset())}
+    main = StoreRows(
+        "sha256:main", (node_row("doc:a", _node("doc:a")), node_row("doc:secret", secret)), (), (), {}, TOP
+    )
+
+    def refusal(op: dict, ceiling: tuple[int, int] | None = (1, 0)) -> str | None:
+        fresh = branch_ops.normalize(op)
+        rows = branch_ops.apply(main, [fresh])
+        return branch_ops.write_refusal(main, rows, [*branch_ops.touched(fresh)[0]], frozenset(), ceiling)
+
+    lowered = {"op": "node.put", "id": "doc:secret", "kind": "Document", "label": [0, 0]}
+    assert "above your grant" in refusal(lowered)  # a level-1 writer may not touch a level-3 node
+    assert "below" in refusal(lowered, (3, 0))  # nor may a level-3 writer lower it
+    raised = {"op": "node.put", "id": "doc:a", "kind": "Document", "label": [1, 0]}
+    assert refusal(raised) is None
+    assert "above your grant" in refusal({**raised, "id": "doc:new", "label": [3, 0]})
+    assert refusal({"op": "node.put", "id": "doc:new", "kind": "Document", "label": [1, 0]}) is None
+    assert "above your grant" in refusal(raised, None)
+
+
 def test_the_cli_reads_operations_from_a_file_or_stdin(tmp_path, monkeypatch):
     ops = [{"op": "node.delete", "id": "a"}]
     path = tmp_path / "ops.json"
@@ -319,7 +340,9 @@ def test_an_apply_waits_for_a_merge_under_way_and_is_then_refused(hub, tmp_path,
                 await merging.begin()
                 await hub_branches.merge(merging, pid, "race", None)
                 await applying.begin()
-                waiting = asyncio.create_task(hub_branches.apply(applying, pid, "race", late, None))
+                waiting = asyncio.create_task(
+                    hub_branches.apply(applying, pid, "race", late, None, (frozenset(), (9, 9)))
+                )
                 await asyncio.sleep(0.5)
                 assert not waiting.done()  # the project's lock holds it until the merge ends
                 await merging.commit()
@@ -362,3 +385,14 @@ def test_kg_status_and_kg_more_answer_a_run_whose_system_has_a_default_graph(hub
         assert not call_tool(hub, "kg_status", {}).json().get("isError")
     finally:
         hub.client.app.dependency_overrides.pop(security.principal, None)
+
+
+@needs_db
+def test_a_branch_refuses_with_403_an_operation_that_lowers_a_label(hub, tmp_path, caplog):
+    _built(hub, tmp_path, caplog, doc("guide", "How the kiwi app works."))
+    guide = _guide(hub)
+    assert _post(hub, _base(), {"name": "lower"}).status_code == 201
+    op = {"op": "node.put", "id": guide, "kind": "Document", "label": [0, 0], "audience": []}
+    refused = _post(hub, f"{_base('lower')}/ops", {"ops": [op]})
+    assert refused.status_code == 403, refused.text
+    assert hub.client.get(_base("lower"), headers=hub.alice).json()["ops"] == 0

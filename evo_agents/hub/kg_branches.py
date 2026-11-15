@@ -63,6 +63,9 @@ class Branch:
         return dataclasses.asdict(self)
 
 
+Reader = tuple[frozenset[str], tuple[int, int] | None]  # a reader's audience and its ceiling (level, location)
+
+
 async def lock(conn: AsyncConnection, project_id: int) -> None:
     """Take the project's ``kg:<project>`` advisory lock until the caller's transaction ends."""
     await conn.execute(select(func.pg_advisory_xact_lock(literal(LOCK_BASE, BigInteger) + project_id)))
@@ -183,10 +186,13 @@ def _applied(rows: StoreRows, ops: list[dict]) -> StoreRows:
         raise BranchError(422, str(exc)) from None
 
 
-async def apply(conn: AsyncConnection, project_id: int, name: str, ops: list, user_id: int | None) -> dict:
+async def apply(
+    conn: AsyncConnection, project_id: int, name: str, ops: list, user_id: int | None, writer: Reader
+) -> dict:
     """Add ``ops`` to open branch ``name``, after its own, each checked and recording the rows of main it reads; all
     or none, under the project's lock so no merge runs meanwhile. Raises BranchError: 422 for an operation that is
-    not one or names what the branch lacks."""
+    not one or names what the branch lacks, 403 for one that changes a row ``writer`` does not read, labels one above
+    its grant or lowers a label (``branch_ops.write_refusal``)."""
     await lock(conn, project_id)
     branch = await _open(conn, project_id, name)
     if not isinstance(ops, list) or not ops or len(ops) > branch_ops.MAX_OPS:
@@ -198,6 +204,10 @@ async def apply(conn: AsyncConnection, project_id: int, name: str, ops: list, us
     main = await _main_rows(conn, project_id)
     kept = await _ops(conn, branch.id)
     branch_rows = _applied(main, [*kept, *fresh])
+    touched = [key for op in fresh for ids in branch_ops.touched(op) for key in ids]
+    refused = branch_ops.write_refusal(main, branch_rows, touched, *writer)
+    if refused:
+        raise BranchError(403, refused)
     values = []
     for op in fresh:
         node_ids, edge_ids = branch_ops.touched(op)
@@ -220,9 +230,6 @@ async def graph(conn: AsyncConnection, project_id: int, name: str) -> tuple[Bran
     if branch.status != "open":
         return branch, main, main
     return branch, main, _applied(main, await _ops(conn, branch.id))
-
-
-Reader = tuple[frozenset[str], tuple[int, int] | None]  # a reader's audience and its ceiling (level, location)
 
 
 def _seen(main: StoreRows, rows: StoreRows, reader: Reader | None) -> set[str] | None:

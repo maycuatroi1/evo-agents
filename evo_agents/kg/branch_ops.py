@@ -317,14 +317,42 @@ def diff(base: StoreRows, branch: StoreRows) -> dict:
 def visible(rows: StoreRows, reader: frozenset[str], ceiling: tuple[int, int] | None) -> set[str]:
     """The ids of the nodes and edges of ``rows`` a reader of audience ``reader`` reads at most ``ceiling`` (level,
     location): none for a None ceiling, a reader without a grant."""
-    if ceiling is None:
-        return set()
-    out = set()
-    for row, read in [*((r, node_dict) for r in rows.nodes), *((r, edge_dict) for r in rows.edges)]:
-        label = read(row)["label"]
-        if label[0] <= ceiling[0] and label[1] <= ceiling[1] and audience_below(label[3], reader):
-            out.add(row[0])
+    labels = _labels(rows)
+    return {key for key, label in labels.items() if _reads(label, reader, ceiling)}
+
+
+def _labels(rows: StoreRows) -> dict[str, tuple]:
+    out = {r[0]: node_dict(r)["label"] for r in rows.nodes}
+    out.update({r[0]: edge_dict(r)["label"] for r in rows.edges})
     return out
+
+
+def _reads(label: tuple, reader: frozenset[str], ceiling: tuple[int, int] | None) -> bool:
+    return (
+        ceiling is not None and label[0] <= ceiling[0] and label[1] <= ceiling[1] and audience_below(label[3], reader)
+    )
+
+
+def write_refusal(
+    main: StoreRows, rows: StoreRows, ids, reader: frozenset[str], ceiling: tuple[int, int] | None
+) -> str | None:
+    """Why a writer of audience ``reader`` and grant ``ceiling`` may not make ``rows`` from ``main`` for these
+    node and edge ids, None when it may: it changes a row it does not read, leaves one above its grant, or lowers a
+    row's label (level, location or audience); a branch may raise a label, never lower it."""
+    before, after = _labels(main), _labels(rows)
+    for key in sorted(set(ids)):
+        old, new = before.get(key), after.get(key)
+        if old is not None and not _reads(old, reader, ceiling):
+            return f"{key} is above your grant"
+        if new is not None and not _reads(new, reader, ceiling):
+            return f"{key} would be labelled above your grant"
+        if old is not None and new is not None and _lowered(old, new):
+            return f"{key} would be labelled below what it is: a branch may raise a label, not lower it"
+    return None
+
+
+def _lowered(old: tuple, new: tuple) -> bool:
+    return new[0] < old[0] or new[1] < old[1] or not audience_below(old[3], new[3])
 
 
 def shown_diff(found: dict, seen: set[str]) -> dict:

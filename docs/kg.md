@@ -348,6 +348,10 @@ all or none (`evo_agents/kg/branch_ops.py`):
 - `decision` does what a decision does to the graph: `deprecate` a node (`src`) or an edge (`src`, `rel`, `dst`),
   `merge` node `dst` into `src`, or `link` two nodes with a declared edge.
 
+An apply is refused with 403 when an operation touches a node or an edge the writer's grant does not read, labels one
+above that grant, or lowers a label (its level, location or audience): a branch may raise a label, never lower it.
+`diff` and `check` show only the nodes and edges the reader's grant reads.
+
 The kg tools that take `graph` also take `branch`, and the web's graph routes `?branch=NAME`: they read main with the
 branch's operations applied; `main`, or none, reads main. `diff` lists the nodes and edges the branch adds, changes and
 removes. `check` lists the violations of the project's ontology rules (Ontology rules) the branch has, those main does

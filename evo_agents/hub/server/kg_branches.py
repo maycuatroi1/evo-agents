@@ -147,7 +147,8 @@ async def apply_ops(
         access = await project_access(conn, user, project)
         await may_change(conn, user, access)
         try:
-            done = await store.apply(conn, access.project_id, name, list(body.ops), user.user_id)
+            writer = await _reader(conn, user, access)
+            done = await store.apply(conn, access.project_id, name, list(body.ops), user.user_id, writer)
         except store.BranchError as exc:
             return _refused(request, exc)
         await _audit(conn, user, access, project, name, "apply", done["applied"])
