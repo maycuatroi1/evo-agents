@@ -137,12 +137,14 @@ async def impact_as_owner(
     engine: AsyncEngine, project_id: int, targets: list[str], reader: GraphReader, *, owner_id: int | None = None
 ) -> GraphView | None:
     """``kg_impact`` of ``targets`` in the project's latest graph, read as the owner of its night shift (or as member
-    ``owner_id``, as the merge queue reads it) through its hub sink from ``reader``; None without a target, a night
+    ``owner_id``, as the merge queue reads it) through its hub sink, from the snapshot of the hub's tables when it is of
+    one of the builds, else from ``reader``; None without a target, a night
     shift, a graph or a cache, or when the graph cannot be read."""
     if not targets or reader.cache is None:
         return None
+    from evo_agents.hub import kg_snapshots
     from evo_agents.hub.server import kg
-    from evo_agents.hub.server.kg_health import owner_access
+    from evo_agents.hub.server.kg_health import _snapshotted, owner_access
 
     query = _night_owner(project_id) if owner_id is None else _member(project_id, owner_id)
     async with engine.begin() as conn:
@@ -156,9 +158,10 @@ async def impact_as_owner(
     arguments = {"paths": targets, "depth": GRAPH_DEPTH}
     owner = (row.owner_id, row.project)
     try:
+        snapshot = _snapshotted(await kg_snapshots.load(engine, project_id), graphs, ceiling)
         result = await asyncio.to_thread(
             answer, reader.cache, reader.blobs, Handles(), owner, row.project, access.rules.policy, ceiling, sink,
-            graphs, "kg_impact", arguments,
+            graphs, "kg_impact", arguments, snapshot=snapshot,
         )  # fmt: skip
     except (GraphUnavailable, ArtifactMismatch) as exc:
         log.info("the knowledge graph cannot be read for a tier", extra={"project": row.project, "why": str(exc)})

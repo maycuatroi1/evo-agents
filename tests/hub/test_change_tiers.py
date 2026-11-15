@@ -368,7 +368,8 @@ def test_tier_the_job_reads_kg_impact_as_the_night_shifts_owner_from_a_cache_of_
     )
     asked = []
 
-    def answer(cache, blobs, handles, owner, project, policy, ceiling, sink, graphs, tool, arguments):
+    def answer(cache, blobs, handles, owner, project, policy, ceiling, sink, graphs, tool, arguments, snapshot=None):
+        assert snapshot is None  # no build wrote the tables here: the file is read
         asked.append((cache.root, owner, project, sink, tool, arguments, [graph.build_id for graph in graphs]))
         if arguments["paths"] == ["evo-agents:down.py"]:
             raise GraphUnavailable("the blob store did not answer")
