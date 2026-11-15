@@ -15,6 +15,7 @@ from tests.hub import pg
 
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
+pytest.importorskip("sqlalchemy", reason="a source's state needs the hub-server extra, evo-ak[hub-server]")
 
 from sqlalchemy import Text, cast, select, update
 from sqlalchemy.ext.asyncio import create_async_engine
