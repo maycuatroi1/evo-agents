@@ -17,6 +17,13 @@ GRAPH = {  # a named graph of the project on the hub: some of its sources (``evo
         "list`); default: every source"
     ),
 }
+BRANCH = {  # a draft branch of the project's graph on the hub (``evo_agents.hub.kg_branches``)
+    "type": "string",
+    "description": (
+        "read this draft branch of the graph (`evo-agents hub kg branch list`): main with its operations applied; "
+        "default: main"
+    ),
+}
 DEPRECATED = {  # the argument that shows what a writer deprecated on the hub too (``evo_agents.kg.pipeline.curation``)
     "type": "boolean",
     "default": False,
@@ -57,6 +64,7 @@ TOOLS = [
                     "description": "only results of this repo: a source (kg_status lists them) or its git repo name",
                 },
                 "graph": GRAPH,
+                "branch": BRANCH,
                 "deprecated": DEPRECATED,
             },
             "required": ["query"],
@@ -82,6 +90,7 @@ TOOLS = [
                 },
                 "hops": {"type": "integer", "minimum": 1, "maximum": 3, "default": 2},
                 "graph": GRAPH,
+                "branch": BRANCH,
                 "deprecated": DEPRECATED,
             },
         },
@@ -94,7 +103,12 @@ TOOLS = [
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {"id": {"type": "string"}, "graph": GRAPH, "deprecated": DEPRECATED},
+            "properties": {
+                "id": {"type": "string"},
+                "graph": GRAPH,
+                "branch": BRANCH,
+                "deprecated": DEPRECATED,
+            },
             "required": ["id"],
         },
     },
@@ -128,6 +142,7 @@ TOOLS = [
                     "description": "dependents listed per hop, and a quarter as many documents; the rest are counted",
                 },
                 "graph": GRAPH,
+                "branch": BRANCH,
                 "deprecated": DEPRECATED,
             },
         },
@@ -145,6 +160,7 @@ TOOLS = [
                 "to": {"type": "string"},
                 "max_hops": {"type": "integer", "minimum": 1, "maximum": 6, "default": 6},
                 "graph": GRAPH,
+                "branch": BRANCH,
                 "deprecated": DEPRECATED,
             },
             "required": ["from"],

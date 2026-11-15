@@ -48,7 +48,7 @@ EVO_PROGRAMS = frozenset({"evo-agents", "evo-ak"})
 SKIPPED = frozenset({"sudo", "env", "command", "nohup", "time", "exec", "builtin", "nice", "doas", "xargs"})
 SHELLS = frozenset({"bash", "sh", "zsh", "dash"})
 SQL_CLIENTS = re.compile(
-    r"\b(psql|pgcli|mysql|mariadb|sqlite3|sqlcmd|clickhouse-client|clickhouse|duckdb|cockroach|mongosh|cqlsh|"
+    r"\b(psql|pgcli|mysql|mariadb|sqlite\d?|sqlcmd|clickhouse-client|clickhouse|duckdb|cockroach|mongosh|cqlsh|"
     r"supabase\s+db|evo-agents\s+hub\s+db)\b"
 )
 SQL_DROP = re.compile(r"\bdrop\s+(table|database|schema|index|view|materialized\s+view|sequence|type)\b", re.I)
