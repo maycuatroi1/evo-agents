@@ -29,7 +29,7 @@ def code_line(code: dict) -> str:
 def cluster_line(clusters: dict | None) -> str:
     """What the build's coverage says of its clusters (``evo_agents.kg.clusters``)."""
     if clusters is None:
-        return "clusters: none, the build predates them: run evo-agents kg build"
+        return "clusters: none, the build predates them: evo-agents hub kg health shows the hub's"
     if not clusters.get("computed"):
         return f"clusters: none, {clusters.get('reason')}"
     return (
@@ -234,7 +234,9 @@ def render_status(status: dict, *, brief: bool = False) -> str:
         lines += _graph_lines(status, graph)
     else:
         lines.append("")
-        lines.append("graph   not built: run evo-agents kg build")
+        lines.append(
+            "graph   none on this machine: graphs are built on the hub (evo-agents hub kg builds, hub kg health)"
+        )
     lines.append("")
     lines.append("OK" if status["ok"] else "NOT OK: a source failed, never synced, or has deletions held")
     return "\n".join(lines)

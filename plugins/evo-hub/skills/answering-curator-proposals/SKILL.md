@@ -25,12 +25,14 @@ was true when it was taken. Before you answer:
 3. Find the fact that decides the cause, not one that fits it: the config the code reads, the log line of the run
    the finding blames, the figure before and after. Say in the thread what you checked, in one short paragraph
    (`evo-agents worker chat post TEXT`).
-4. A proposal that changes how kg_search ranks results is measured first, never judged by its examples. Graphs of a
-   project are built and ranked on the hub, by the code it runs, so measure the change with the bench, which builds
-   its graphs from the checkout: when the run has the evo-agents repo, run `evo-agents kg bench run --out base.json`
-   on the default branch and `evo-agents kg bench run --out new.json` on the change, then `evo-agents kg bench
-   compare base.json new.json --split holdout --gate` (docs/kg-bench.md). Ship it only when the gate passes; put the
-   numbers in the note. Without the repo or the bench's sets, defer it with that reason.
+4. A proposal that changes how kg_search ranks results is measured first, never judged by its examples, on the
+   project's own questions. The hub ranks with the code it runs, so measure the change with the bench, which ranks in
+   the checkout's code: when the run has the project's harness with a graph of it on the machine, the evo-agents repo
+   and the questions, run `evo-agents kg bench run --set PROJECT=QUESTIONS --project PROJECT --out base.json` on the
+   default branch and the same with `--out new.json` on the change, then `evo-agents kg bench compare base.json
+   new.json --split tune` and `--split holdout` (docs/kg-bench.md). Ship it only when hit@5 of the set falls on
+   neither; `--gate` is an extra check, not the rule. Put the numbers in the note. Without the harness, its graph or
+   the questions, defer it with that reason.
 
 ## Answer
 

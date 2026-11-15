@@ -22,8 +22,8 @@ Three periods, each ``0`` or a number with a unit m, h, d or w (``parse_period``
   (``evo_agents.kg.memo.unused``): a project whose corpus stays the same keeps the rows of its latest build.
 
 None of this changes what a build makes. A build reads the merged state, the blobs its items refer to, the rows of the
-latest build and memo rows, which hold what a task returns; so ``kg build --verify --cold`` gives the hash it gave
-before, and the next build the graph it would have made.
+latest build and memo rows, which hold what a task returns; so a cold build (``build_project`` with ``verify=True,
+cold=True``) gives the hash it gave before, and the next build the graph it would have made.
 
 ``plan`` only counts. ``apply`` deletes what a plan found, then compacts each SQLite file whose free pages are at
 least FREE_SHARE of it, and appends a ``prune`` line with the counts to the project's audit log; run both holding

@@ -16,7 +16,7 @@ def cmd_build(args) -> int:
     the hub only (``evo_agents.hub.kg_hub_sync.HubSync.build``)."""
     from evo_agents.hub.client import HubError
     from evo_agents.hub.kg_hub_sync import BUILD_WAIT
-    from evo_agents.kg.cli import syncer, print_json, project_of
+    from evo_agents.kg.cli import print_json, project_of, syncer
 
     project = project_of(args)
     try:
@@ -44,7 +44,11 @@ def cmd_profile(args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     if store is None:
-        print(f"error: project {project.name} has no graph yet: run evo-agents kg build", file=sys.stderr)
+        print(
+            f"error: project {project.name} has no graph on this machine; graphs are built on the hub:"
+            f" evo-agents hub kg profile --project {project.name}",
+            file=sys.stderr,
+        )
         return 1
     try:
         summary = store.summary()
@@ -52,7 +56,11 @@ def cmd_profile(args) -> int:
         store.close()
     found = kg_profile.of_coverage(summary.get("coverage")) if summary.get("ready") else None
     if found is None:
-        print("error: the newest build holds no profile: run evo-agents kg build --force", file=sys.stderr)
+        print(
+            "error: the newest build on this machine holds no profile; graphs are built on the hub:"
+            f" evo-agents hub kg profile --project {project.name}",
+            file=sys.stderr,
+        )
         return 1
     if args.json:
         print_json({"project": project.name, "build_id": summary["build_id"], "profile": found})
@@ -383,7 +391,11 @@ def cmd_commit_questions(args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     if store is None or store.latest_ready() is None:
-        print(f"error: project {project.name} has no graph yet: run evo-agents kg build", file=sys.stderr)
+        print(
+            f"error: project {project.name} has no graph on this machine; graphs are built on the hub:"
+            f" evo-agents hub kg builds --project {project.name}",
+            file=sys.stderr,
+        )
         return 1
     try:
         found = eval_commits.commit_questions(

@@ -146,7 +146,10 @@ class SessionView:
             self._opened.append(store)
         b = store.latest_ready() if store else None
         if store is None or b is None:
-            raise ToolError(f"project {self.project.name!r} has no graph yet: run `evo-agents kg sync --build`")
+            raise ToolError(
+                f"project {self.project.name!r} has no graph on this machine: graphs are built on the hub,"
+                " which kg serve reads signed in"
+            )
         return store, b
 
     def _lookup(self, store: Store, node_id: str, b: int) -> dict | None:
