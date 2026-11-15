@@ -82,7 +82,7 @@ def test_the_metadata_holds_the_two_hundred_and_thirty_eight_hub_tables():
     # chat_bridge_codes, chat_bridge_messages, plugin_records, plugin_record_leases, srs_delivery, srs_baselines, context_answer_loads, kg_query_labels, kg_eval_sets, kg_semantic, kg_optimize_runs, merge_checks, proposal_threads, account_pools, account_pool_members, guard_terms, guard_targets, kg_uploads, plugin_cron, kg_answer_jobs, kg_answers, kg_entity_map_runs, kg_named_graphs, agent_systems,
     # agent_system_revisions, system_traces, system_spans, agent_ask_briefs, orchestrator_threads,
     # srs_use_case_revisions, srs_use_case_releases, chat_label_shares, workflow_run_reads,
-    # plan_run_choices, ops_cursors, ops_batches, ops_items, cron_jobs, cron_fires, the 12 graph tables of 0247 (kg_asked among them); 252 with the 14 tables of crm,
+    # plan_run_choices, ops_cursors, ops_batches, ops_items, cron_jobs, cron_fires, the 12 graph tables of 0248 (kg_asked among them); 252 with the 14 tables of crm,
     # pm and marketing, whose plugins keep them
     assert len(hub_tables()) == 238
     assert len(PLUGIN_OWNED_TABLES) == 14 and PLUGIN_OWNED_TABLES <= TABLES

@@ -715,7 +715,7 @@ keeps its fingerprint across builds. A conflicting claim hashes its subject, rel
 the entities step folds the same way in every build.
 
 **Dismissing.** A writer of the project dismisses an item with a reason, on the web's review page or with `evo-agents
-hub kg review dismiss`. The hub keeps the dismissal by fingerprint (`kg_review_dismissals`, migration 0141; 0199 adds `conflicting_claim` and 0248 the five ontology rules to the rules a dismissal names), so the item stays
+hub kg review dismiss`. The hub keeps the dismissal by fingerprint (`kg_review_dismissals`, migration 0141; 0199 adds `conflicting_claim` and 0249 the five ontology rules to the rules a dismissal names), so the item stays
 dismissed in later builds. Dismissing an item again replaces the reason and keeps the first build. There is no undo.
 
 **Who sees what.** A reader sees an item only through its nodes: the first nodes the rule requires must all be
@@ -763,7 +763,7 @@ on a hub name until they move to one that reads it.
 review queue's shape, with action slugs `fix_endpoint`, `keep_one`, `break_cycle`, `merge` and `set_prop`. When the
 project's ontology states a rule, the build (`add_review`) checks a snapshot of the graph and puts the violations in
 the review queue next to the seven rules above; an ontology that states none adds nothing. The coverage counts each
-rule, the kg_health lens counts the five as one metric, `kg_review_ontology`, and migration 0248 lets a dismissal
+rule, the kg_health lens counts the five as one metric, `kg_review_ontology`, and migration 0249 lets a dismissal
 name them.
 
 ## Decisions

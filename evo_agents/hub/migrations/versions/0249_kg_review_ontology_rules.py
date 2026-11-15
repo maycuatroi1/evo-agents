@@ -1,7 +1,7 @@
 """A dismissal of the review queue's five ontology rules.
 
-Revision ID: 0248
-Revises: 0247
+Revision ID: 0249
+Revises: 0248
 Create Date: 2026-11-15
 
 The names below are copies of ``evo_agents.kg.review`` as of this revision, never imports, so a later change to them
@@ -19,8 +19,8 @@ them on a hub of that revision) and restores the check of 0199.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0248"
-down_revision = "0247"
+revision = "0249"
+down_revision = "0248"
 branch_labels = None
 depends_on = None
 

@@ -1,7 +1,7 @@
 """The knowledge graph on Postgres: corpus items, memo, nodes, edges, text rows, provenance, asked rows, review rows, embeddings,
 heads, branches.
 
-Revision ID: 0247
+Revision ID: 0248
 Revises: 0246
 Create Date: 2026-11-15
 
@@ -25,8 +25,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
-revision = "0247"
-down_revision = "0246"
+revision = "0248"
+down_revision = "0247"
 branch_labels = None
 depends_on = None
 

@@ -1228,7 +1228,7 @@ def test_runs_pushed_while_a_build_waits_join_that_build_and_carry_no_content(hu
     with caplog.at_level("INFO"):
         run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert latest(hub)["runs"] == 2
-    # The graph a build keeps (0247, plan kg-centralized-on-hub) holds the content by design; nothing else does.
+    # The graph a build keeps (0248, plan kg-centralized-on-hub) holds the content by design; nothing else does.
     dump = live.table_dump(hub.db, frozenset({"kg_corpus_items", "kg_nodes", "kg_edges", "kg_text_rows"}))
     logged = "\n".join(r.getMessage() + json.dumps(r.__dict__, default=str) for r in caplog.records)
     for text in ("Body text that stays", "Second body text"):

@@ -1,4 +1,4 @@
-"""A project's graph in the hub's tables (0247, plan kg-centralized-on-hub, criterion a3): what a build writes there
+"""A project's graph in the hub's tables (0248, plan kg-centralized-on-hub, criterion a3): what a build writes there
 instead of a graph.sqlite file, and what a snapshot of it reads back (``evo_agents.kg.snapshot.Snapshot.from_stored``).
 
 A build writes, for one branch (0 is main):

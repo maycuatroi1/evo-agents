@@ -1,4 +1,4 @@
-"""A build keeps its corpus items and its graph in the hub's tables (``evo_agents.hub.kg_graph_rows``, migration 0247,
+"""A build keeps its corpus items and its graph in the hub's tables (``evo_agents.hub.kg_graph_rows``, migration 0248,
 plan kg-centralized-on-hub criterion a3): the graph read back hashes as the build, a second build writes only the rows
 that changed, a deleted item leaves the corpus, and the readers listening on ``kg_graph`` hear of each build."""
 

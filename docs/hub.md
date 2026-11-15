@@ -4110,7 +4110,7 @@ evo-agents hub kg health --project demo --json     # the measures and the builds
 ```
 
 **Where the graph is kept.** A build uploads no graph file. It writes the graph's rows into the hub's tables (schema
-0247, `evo_agents/hub/kg_graph_rows.py`): `kg_nodes`, `kg_edges`, `kg_text_rows`, `kg_embeddings`, `kg_provenance`,
+0248, `evo_agents/hub/kg_graph_rows.py`): `kg_nodes`, `kg_edges`, `kg_text_rows`, `kg_embeddings`, `kg_provenance`,
 `kg_asked`, `kg_review_rows` and the corpus items in `kg_corpus_items`, each row keyed by project and branch (the main
 branch for now), changing only the rows that differ from the graph before. In the same transaction it points
 `kg_graph_heads` at the build, with its content hash, and notifies the channel `kg_graph`. A build whose content hash
@@ -4125,7 +4125,7 @@ a build; after its listener reconnects it reads every project it holds again. Ea
 its own clearance and audience. A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
 the build at the head or one before it: the graph it wrote is the one the tables hold or an older one they replaced.
 
-**Graph files of older builds.** Builds before 0247 uploaded the graph's SQLite file to the bucket as a blob of kind
+**Graph files of older builds.** Builds before 0248 uploaded the graph's SQLite file to the bucket as a blob of kind
 `kg-graph` (`artifact_sha256`, `artifact_size`, and `artifact_reused_from` when a build of unchanged content pointed at
 an earlier build's file). Those columns stay, null for every new build, and so do the files until the retention deletes
 them. Every hour the worker deletes the files of graphs older than each project's `EVO_HUB_KG_KEEP_ARTIFACTS` newest (3

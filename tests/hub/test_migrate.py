@@ -182,7 +182,7 @@ TABLES |= {"workflow_run_reads"}  # migration 0236
 TABLES |= {"plan_run_choices"}  # migration 0238
 TABLES |= {"ops_cursors", "ops_batches", "ops_items"}  # migration 0240
 TABLES |= {"cron_jobs", "cron_fires"}  # migration 0243
-TABLES |= {"kg_corpus_items", "kg_memo_entries", "kg_nodes", "kg_edges", "kg_text_rows", "kg_provenance"}  # 0247
+TABLES |= {"kg_corpus_items", "kg_memo_entries", "kg_nodes", "kg_edges", "kg_text_rows", "kg_provenance"}  # 0248
 TABLES |= {
     "kg_asked",
     "kg_review_rows",
@@ -190,7 +190,7 @@ TABLES |= {
     "kg_graph_heads",
     "kg_branches",
     "kg_branch_ops",
-}  # migration 0247
+}  # migration 0248
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -6205,20 +6205,20 @@ def test_0247_gives_credential_shares_a_run_for_a_member_alone_and_going_back_re
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0247") :]
 
 
-def test_0247_adds_the_graph_tables_and_going_back_drops_them(hub_db):
+def test_0248_adds_the_graph_tables_and_going_back_drops_them(hub_db):
     graph = {"kg_corpus_items", "kg_memo_entries", "kg_nodes", "kg_edges", "kg_text_rows", "kg_provenance"}
     graph |= {"kg_asked", "kg_review_rows", "kg_embeddings", "kg_graph_heads", "kg_branches", "kg_branch_ops"}
-    move_to(hub_db, "0246")
-    assert not graph & tables(hub_db)
     move_to(hub_db, "0247")
+    assert not graph & tables(hub_db)
+    move_to(hub_db, "0248")
     assert graph <= tables(hub_db)
-    move_to(hub_db, "0246", down=True)
+    move_to(hub_db, "0247", down=True)
     assert not graph & tables(hub_db)
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0247") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0248") :]
 
 
-def test_0248_lets_a_dismissal_name_the_ontology_rules_and_going_back_deletes_those(hub_db):
-    move_to(hub_db, "0247")
+def test_0249_lets_a_dismissal_name_the_ontology_rules_and_going_back_deletes_those(hub_db):
+    move_to(hub_db, "0248")
     d = hub_tables.kg_review_dismissals
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -6233,13 +6233,13 @@ def test_0248_lets_a_dismissal_name_the_ontology_rules_and_going_back_deletes_th
     cycle = {**row, "fingerprint": "r:fedcba9876543210", "rule": "cycle", "reason": "the loop is on purpose"}
     with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
         conn.execute(insert(d).values(cycle))
-    move_to(hub_db, "0248")
+    move_to(hub_db, "0249")
     with live.connect(hub_db) as conn:
         conn.execute(insert(d).values(cycle))
         conn.execute(insert(d).values({**cycle, "fingerprint": "r:1", "rule": "missing_prop"}))
         with pytest.raises(errors.CheckViolation):
             conn.execute(insert(d).values({**cycle, "fingerprint": "r:2", "rule": "whatever"}))
     assert query(hub_db, select(d.c.rule).order_by(d.c.rule)) == [("conflicting_claim",), ("cycle",), ("missing_prop",)]
-    move_to(hub_db, "0247", down=True)
+    move_to(hub_db, "0248", down=True)
     assert query(hub_db, select(d.c.rule)) == [("conflicting_claim",)], "the other dismissals stay"
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0248") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0249") :]
