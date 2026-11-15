@@ -259,6 +259,11 @@ def _removals(corpus: Corpus, source: dict, checker: StreamChecker, writer: LogW
     return held_rows
 
 
+def _listed(checker: StreamChecker) -> list[str]:
+    """The scopes a run listed completely, each of which it worked out the removals of."""
+    return sorted({listing["scope"] for listing in checker.listings if listing.get("complete")})
+
+
 def sync_source(
     project: Project,
     source_id: str,
@@ -321,7 +326,9 @@ def sync_source(
                 "tombstones": result.tombstones,
                 "removals": result.removals,
                 "finished_at": utc_now(),  # the hub keeps it (kg_ingests.run_finished_at), which due_sources reads
-                # the hub keeps them too (kg_ingests.held), which kg sync --accept-removals reads from it
+                # the hub keeps them too (kg_ingests.held, .listed), which kg sync --accept-removals reads from it: the
+                # hold of a scope is that of the newest ok run that listed it completely
+                **({"listed": listed} if (listed := _listed(checker) if complete else []) else {}),
                 **({"held": [{"scope": r[2], "reason": r[3], "ids": r[4]} for r in held_rows]} if held_rows else {}),
             }
         )

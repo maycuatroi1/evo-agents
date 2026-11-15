@@ -124,6 +124,7 @@ def _run_facts() -> tuple[Column, ...]:
         Column("run_finished_at", Text),
         Column("cursor", JSONB(none_as_null=True)),  # a Python None is SQL NULL, not JSON null
         Column("held", JSONB(none_as_null=True)),  # 0253: the removals the run's deletion guard held back
+        Column("listed", JSONB(none_as_null=True)),  # 0253: the scopes the run listed completely
     )
 
 

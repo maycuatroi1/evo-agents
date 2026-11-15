@@ -3884,9 +3884,11 @@ reads its log and fills its facts in (`fill_run_facts` of `evo_agents/hub/kg_sou
 when its log cannot be fetched or read, so `unread` is 0 after the first build that succeeds. While it is not 0, a
 caller that needs those runs asks for a build and reads again. `unbuilt` counts the runs of the source the hub
 received after the latest build of main started, which the items do not show yet. `held` lists the removals the
-deletion guard of the newest run that ended ok held back, from the `held` of its `run_end` (schema 0253), each with its
-scope, reason and item ids, which `kg sync --accept-removals` applies; every sync of a complete listing works them out
-again, so a later run that holds none clears them.
+deletion guard held back, from the `held` and `listed` of each run's `run_end` (schema 0253): for each scope, those of
+the newest run that ended ok and listed that scope completely, each with that run's id, its reason and the item ids,
+which `kg sync --accept-removals` applies. A run that lists a scope completely works its removals out again, so one
+that holds none of it clears that scope's hold, as the run of `--accept-removals` does for the scopes it applies; a
+run that does not list a scope leaves its hold as it is.
 
 **Clusters, review and decisions.** A build with the `clusters` extra groups the graph into named clusters, computes
 a review queue by seven rules, and applies the decisions writers took on the hub (`docs/kg.md`, Clusters, Review,

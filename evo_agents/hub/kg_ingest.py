@@ -191,6 +191,8 @@ EPOCH = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 MAX_FACT_CHARS = 200  # a lineage, an epoch or a time longer than this is not one a client writes
 MAX_CURSOR_BYTES = 64 * 1024
 MAX_HELD_IDS = 100_000  # item ids a run_end may say the deletion guard held back, in all its scopes
+MAX_LISTED = 10_000  # scopes a run_end may say it listed completely
+MAX_SCOPE_CHARS = 1000
 
 
 @dataclass
@@ -200,7 +202,8 @@ class RunFacts:
     and ``cursor``, ``{"cursor": ...}`` of its last state message, None when it has none or one over
     MAX_CURSOR_BYTES. ``held``: the removals the deletion guard of the run held back, which its run_end lists
     (``evo_agents.kg.sync``), each ``{"scope", "reason", "ids"}``; None when it lists none or more than MAX_HELD_IDS
-    ids, or one that is not of that shape."""
+    ids, or one that is not of that shape. ``listed``: the scopes its run_end says it listed completely, whose removals
+    it worked out (held or not); None when it names none, more than MAX_LISTED or one that is not a string."""
 
     status: str = "failed"
     lineage: str | None = None
@@ -209,6 +212,7 @@ class RunFacts:
     finished_at: str | None = None
     cursor: dict | None = None
     held: list[dict] | None = None
+    listed: list[str] | None = None
 
     def feed(self, record: dict) -> None:
         kind = record.get("type")
@@ -221,6 +225,7 @@ class RunFacts:
             self.status = "ok" if record.get("status") == "ok" else "failed"
             self.finished_at = _fact(record.get("finished_at"))
             self.held = _held(record.get("held"))
+            self.listed = _listed(record.get("listed"))
         elif kind == "state":
             held = {"cursor": record.get("cursor")}
             self.cursor = held if len(canonical_json(held)) <= MAX_CURSOR_BYTES else None
@@ -235,6 +240,7 @@ class RunFacts:
             "run_finished_at": self.finished_at,
             "cursor": self.cursor,
             "held": self.held,
+            "listed": self.listed,
         }
 
 
@@ -251,7 +257,7 @@ def _held(value) -> list[dict] | None:
         if not isinstance(entry, dict):
             return None
         scope, reason, ids = entry.get("scope"), entry.get("reason"), entry.get("ids")
-        if not isinstance(scope, str) or not isinstance(reason, str) or not isinstance(ids, list):
+        if not _scope(scope) or not isinstance(reason, str) or not isinstance(ids, list):
             return None
         if not all(isinstance(item_id, str) for item_id in ids):
             return None
@@ -260,6 +266,17 @@ def _held(value) -> list[dict] | None:
             return None
         held.append({"scope": scope, "reason": reason[:MAX_FACT_CHARS], "ids": ids})
     return held
+
+
+def _scope(value) -> bool:
+    return isinstance(value, str) and 0 < len(value) <= MAX_SCOPE_CHARS
+
+
+def _listed(value) -> list[str] | None:
+    """The scopes a run_end says it listed completely; None for anything but a list of up to MAX_LISTED scopes."""
+    if not isinstance(value, list) or not value or len(value) > MAX_LISTED or not all(_scope(s) for s in value):
+        return None
+    return sorted(set(value))
 
 
 def run_facts(path: Path) -> RunFacts:

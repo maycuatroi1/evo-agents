@@ -33,8 +33,9 @@ def state(hub, source: str = "docs", member: str = "alice", **params) -> dict:
     return response.json()
 
 
-def sync(machine: Machine, *items: dict, cursor=None) -> str:
-    machine.files["docs"].write_text(json.dumps({"items": list(items), "cursor": cursor}), encoding="utf-8")
+def sync(machine: Machine, *items: dict, cursor=None, **spec) -> str:
+    spec = {"items": list(items), "cursor": cursor, **spec}
+    machine.files["docs"].write_text(json.dumps(spec), encoding="utf-8")
     (result,) = sync_project(machine.project(), ["docs"])
     assert result.ok, result.issues
     return result.run_id
@@ -131,7 +132,7 @@ def test_the_removals_a_guard_held_back_and_the_runs_no_build_read_yet_are_in_th
     laptop = Machine(tmp_path, "laptop")
     sync(laptop, doc("guide", "How the app works."), doc("setup", "Install it."))
     assert push(hub, laptop).ok
-    assert (state(hub)["unbuilt"], state(hub)["held"]) == (1, None)  # no build yet: every run is unbuilt
+    assert (state(hub)["unbuilt"], state(hub)["held"]) == (1, [])  # no build yet: every run is unbuilt
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert latest(hub)["status"] == "succeeded" and state(hub)["unbuilt"] == 0
 
@@ -139,13 +140,35 @@ def test_the_removals_a_guard_held_back_and_the_runs_no_build_read_yet_are_in_th
     assert push(hub, laptop).ok
     held = state(hub)
     assert held["unbuilt"] == 1 and held["last_ok"]["run_id"] == emptied
-    assert held["held"]["run_id"] == emptied
-    ((removal),) = held["held"]["removals"]
-    assert removal["scope"] == "docs:" and removal["reason"].startswith("empty listing")
+    (removal,) = held["held"]
+    assert (removal["run_id"], removal["scope"]) == (emptied, "docs:")
+    assert removal["reason"].startswith("empty listing")
     assert sorted(removal["ids"]) == ["docs:doc:guide", "docs:doc:setup"]
-    (facts,) = query(hub.db, select(tables.kg_ingests.c.held).where(tables.kg_ingests.c.held.is_not(None)))
-    assert facts[0] == held["held"]["removals"]
+    ingests = tables.kg_ingests
+    (facts,) = query(hub.db, select(ingests.c.held, ingests.c.listed).where(ingests.c.held.is_not(None)))
+    assert facts == ([{key: removal[key] for key in ("scope", "reason", "ids")}], ["docs:"])
 
-    sync(laptop, doc("guide", "How the app works."), doc("setup", "Install it."))  # holds none: clears them
+    sync(laptop, doc("note", "A new one."), listing=False)  # lists nothing completely: the hold stays
     assert push(hub, laptop).ok
-    assert (state(hub)["held"], state(hub)["unbuilt"]) == (None, 2)
+    assert state(hub)["held"] == [removal]
+
+    sync(laptop, doc("guide", "How the app works."), doc("setup", "Install it."))  # lists docs: and holds none
+    assert push(hub, laptop).ok
+    assert (state(hub)["held"], state(hub)["unbuilt"]) == ([], 3)
+
+
+def test_the_hold_of_each_scope_is_that_of_the_newest_run_that_listed_it(hub, tmp_path):
+    laptop = Machine(tmp_path, "laptop")
+    kinds = ["doc", "memo"]
+    sync(laptop, doc("guide", "How the app works."), doc("minutes", "We met.", kind="memo"), kinds=kinds)
+    assert push(hub, laptop).ok
+    emptied = sync(laptop, kinds=kinds)  # both scopes would lose every item: both held back
+    assert push(hub, laptop).ok
+    assert [(r["run_id"], r["scope"], r["ids"]) for r in state(hub)["held"]] == [
+        (emptied, "docs:doc:", ["docs:doc:guide"]),
+        (emptied, "docs:memo:", ["docs:memo:minutes"]),
+    ]
+
+    sync(laptop, doc("guide", "How the app works."), kinds=["doc"])  # lists docs:doc: only, which holds none now
+    assert push(hub, laptop).ok
+    assert [(r["run_id"], r["scope"]) for r in state(hub)["held"]] == [(emptied, "docs:memo:")]

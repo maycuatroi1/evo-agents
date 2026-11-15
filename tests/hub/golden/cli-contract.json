@@ -136832,27 +136832,6 @@
           ],
           "title": "HeartbeatRequest"
         },
-        "Held": {
-          "properties": {
-            "run_id": {
-              "type": "string",
-              "title": "Run Id"
-            },
-            "removals": {
-              "items": {
-                "$ref": "#/components/schemas/Removal"
-              },
-              "type": "array",
-              "title": "Removals"
-            }
-          },
-          "type": "object",
-          "required": [
-            "run_id",
-            "removals"
-          ],
-          "title": "Held"
-        },
         "HeldAnswer": {
           "properties": {
             "transcripts": {
@@ -169965,6 +169944,10 @@
         },
         "Removal": {
           "properties": {
+            "run_id": {
+              "type": "string",
+              "title": "Run Id"
+            },
             "scope": {
               "type": "string",
               "title": "Scope"
@@ -169983,6 +169966,7 @@
           },
           "type": "object",
           "required": [
+            "run_id",
             "scope",
             "reason",
             "ids"
@@ -179696,14 +179680,12 @@
               "default": 0
             },
             "held": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/Held"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "items": {
+                "$ref": "#/components/schemas/Removal"
+              },
+              "type": "array",
+              "title": "Held",
+              "default": []
             }
           },
           "type": "object",
