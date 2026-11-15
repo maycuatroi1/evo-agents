@@ -150,9 +150,10 @@ evo-agents kg scrub --all --purge            # delete the old copies of every pr
 To keep graphs fresh, give sources a `refresh` interval (`30m`, `6h`, `1d`). `kg sync --due` runs only
 the sources whose interval has passed since their last ok run; `--all` does that for every project that
 has synced on this machine. On macOS, `kg schedule install` loads a LaunchAgent that runs
-`kg sync --due --all --build` every hour (`kg schedule print` shows the plist, `kg schedule uninstall`
-removes it; output goes to `~/.evo/kg/schedule.log`). On a machine signed in to a hub, the command also
-gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand). To drop from
+`kg sync --due --all` every hour (`kg schedule print` shows the plist, `kg schedule uninstall`
+removes it; output goes to `~/.evo/kg/schedule.log`). On a machine signed in to a hub, the command only syncs and
+gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand); the hub builds the
+graph from them. A machine that is not signed in gets `--build` instead and builds its graph itself. To drop from
 knowledge.yaml a source the hub holds runs of, take them off first with `evo-agents hub kg forget-source --project
 demo --source old-repo`, then push; the other way round the push is refused (`docs/hub.md`, Dropping a source).
 

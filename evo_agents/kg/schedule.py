@@ -1,10 +1,11 @@
-"""``evo-agents kg schedule``: a macOS LaunchAgent that runs ``kg sync --due --all --build`` every hour.
+"""``evo-agents kg schedule``: a macOS LaunchAgent that runs ``kg sync --due --all`` every hour.
 
 launchd starts a job with almost no environment, so the plist names this evo-agents by absolute path,
 declares PATH explicitly, pins EVO_KG_HOME, and sets ``EVO_KG_TRIGGER=schedule`` so a run can tell it was
 started by the schedule. Output of every run is appended to ``<kg home>/schedule.log``. When this machine is
-signed in to a hub (``evo-agents hub login``), the command also gets ``--push``: every run pushes the runs the
-hub lacks. Install again after signing in or out to change that.
+signed in to a hub (``evo-agents hub login``), the command only syncs and gets ``--push``: every run pushes the runs
+the hub lacks, and the hub builds the graph from them. A machine that is not signed in gets ``--build`` instead and
+builds its graph itself. Install again after signing in or out to change that.
 """
 
 from __future__ import annotations
@@ -21,8 +22,9 @@ from evo_agents.kg.corpus import kg_home
 
 LABEL = "io.github.maycuatroi1.evo-agents.kg-sync"
 INTERVAL = 3600
-SYNC_ARGS = ("kg", "sync", "--due", "--all", "--build")
+SYNC_ARGS = ("kg", "sync", "--due", "--all")
 PUSH_ARG = "--push"
+BUILD_ARG = "--build"
 SYSTEM_PATH = ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin")
 
 
@@ -57,9 +59,10 @@ def signed_in() -> bool:
 
 
 def sync_args(push: bool | None = None) -> tuple[str, ...]:
-    """The kg command the schedule runs; with ``--push`` when ``push``, or, when it is None, when signed in."""
+    """The kg command the schedule runs: with ``--push`` when ``push``, or, when it is None, when signed in, and with
+    ``--build`` otherwise."""
     push = signed_in() if push is None else push
-    return (*SYNC_ARGS, PUSH_ARG) if push else SYNC_ARGS
+    return (*SYNC_ARGS, PUSH_ARG if push else BUILD_ARG)
 
 
 def build_plist(argv0: str | None = None, home: Path | None = None, push: bool | None = None) -> dict:

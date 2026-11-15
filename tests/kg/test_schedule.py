@@ -15,7 +15,7 @@ from evo_agents.kg.scrub import holding_sources
 from evo_agents.kg.sync import sync_project
 from tests.kg.conftest import doc
 
-SYNC = ["kg", "sync", "--due", "--all", "--build"]
+SYNC = ["kg", "sync", "--due", "--all"]
 POSIX_PATHS = pytest.mark.skipif(os.name == "nt", reason="the plist names POSIX paths and the gui/<uid> domain")
 
 
@@ -33,7 +33,7 @@ def test_schedule_plist_content(home, kg_env):
     plist = schedule.build_plist("/opt/tools/bin/evo-agents")
     assert plist["Label"] == "io.github.maycuatroi1.evo-agents.kg-sync"
     assert plist["StartInterval"] == 3600
-    assert plist["ProgramArguments"] == ["/opt/tools/bin/evo-agents", *SYNC]
+    assert plist["ProgramArguments"] == ["/opt/tools/bin/evo-agents", *SYNC, "--build"]
     env = plist["EnvironmentVariables"]
     assert env["PATH"].split(":") == [
         str(home / ".local" / "bin"),
@@ -56,10 +56,10 @@ def test_schedule_pushes_to_the_hub_when_the_machine_is_signed_in(home, kg_env, 
     (hub / "token").write_text("evh_" + "x" * 43 + "\n")
     (hub / "config.json").write_text(json.dumps({"url": "https://hub.test", "login": "octo"}))
     plist = schedule.build_plist("/opt/tools/bin/evo-agents")
-    assert plist["ProgramArguments"] == ["/opt/tools/bin/evo-agents", *SYNC, "--push"]
+    assert plist["ProgramArguments"] == ["/opt/tools/bin/evo-agents", *SYNC, "--push"]  # the hub builds
     assert schedule.build_plist("/opt/tools/bin/evo-agents", push=False)["ProgramArguments"][-1] == "--build"
     assert main(["kg", "schedule", "print"]) == 0
-    assert plistlib.loads(capsys.readouterr().out.encode())["ProgramArguments"][-6:] == [*SYNC, "--push"]
+    assert plistlib.loads(capsys.readouterr().out.encode())["ProgramArguments"][-5:] == [*SYNC, "--push"]
     fake = FakeLaunchctl()
     path = schedule.install("/opt/tools/bin/evo-agents", run=fake)
     assert plistlib.loads(path.read_bytes())["ProgramArguments"][-1] == "--push"
@@ -83,7 +83,7 @@ def test_schedule_print_command(home, kg_env, capsys):
     assert main(["kg", "schedule", "print"]) == 0
     plist = plistlib.loads(capsys.readouterr().out.encode())
     assert plist["Label"] == schedule.LABEL
-    assert plist["ProgramArguments"][-5:] == SYNC
+    assert plist["ProgramArguments"][-5:] == [*SYNC, "--build"]
     assert os.path.isabs(plist["ProgramArguments"][0])
     assert plist["StandardOutPath"] == str(kg_env / "schedule.log")
 

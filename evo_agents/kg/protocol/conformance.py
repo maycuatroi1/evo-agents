@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents.harness import Harness
-from evo_agents.kg.corpus import Corpus
+from evo_agents.kg.corpus import replayed_digest, to_log_record
 from evo_agents.kg.policy import DEFAULT_LEVELS
 from evo_agents.kg.project import Project
 from evo_agents.kg.protocol import StreamChecker
@@ -123,16 +123,16 @@ def run_conformance(
     same = summary(first) == summary(second)
     checks.append(Check("determinism", same, [] if same else ["two runs gave different IDs, hashes or listings"]))
 
-    with tempfile.TemporaryDirectory() as tmp, contextlib.closing(Corpus("conformance", Path(tmp))) as corpus:
-        records = [corpus.to_log_record(m) for m in first if m.get("type") in ("item", "tombstone")]
-        base = corpus.replayed_digest([("run-1", records)])
-        shuffled = list(records) * 2
-        random.Random(42).shuffle(shuffled)
-        replayed = corpus.replayed_digest([("run-1", shuffled)])
-        two_runs = corpus.replayed_digest([("run-2", records), ("run-1", records)])
-        ok = base == replayed == corpus.replayed_digest([("run-1", records), ("run-2", records)]) == two_runs
-        checks.append(Check("replay", ok, [] if ok else ["merge depends on message order or repetition"]))
+    records = [to_log_record(m) for m in first if m.get("type") in ("item", "tombstone")]
+    base = replayed_digest([("run-1", records)])
+    shuffled = list(records) * 2
+    random.Random(42).shuffle(shuffled)
+    replayed = replayed_digest([("run-1", shuffled)])
+    two_runs = replayed_digest([("run-2", records), ("run-1", records)])
+    ok = base == replayed == replayed_digest([("run-1", records), ("run-2", records)]) == two_runs
+    checks.append(Check("replay", ok, [] if ok else ["merge depends on message order or repetition"]))
 
+    with tempfile.TemporaryDirectory() as tmp:
         items = [m for m in first if m.get("type") == "item"]
         if len(items) >= 2 and any(m.get("type") == "listing" and m.get("complete") for m in first):
             checks.append(_truncated_listing(source, harness, env, len(items), Path(tmp)))

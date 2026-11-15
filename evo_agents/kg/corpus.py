@@ -113,6 +113,72 @@ def order_key(record: dict, run_id: str, epoch: str = "") -> tuple[str, str, str
     )
 
 
+def blob_ref(text: str) -> str:
+    """The reference of a blob holding ``text``, which ``Corpus.put_blob`` would store it under."""
+    return sha256(text.encode("utf-8"))
+
+
+def to_log_record(message: dict, put=blob_ref) -> dict:
+    """``message`` as a log keeps it: the text of an item's body and fragments replaced by the reference ``put(text)``
+    gives, which stores it or, by default, only names it."""
+    if message.get("type") != "item":
+        return dict(message)
+    record = {k: v for k, v in message.items() if k not in ("body", "fragments")}
+    if "body" in message:
+        body = {k: v for k, v in message["body"].items() if k != "text"}
+        body["blob"] = put(message["body"]["text"])
+        record["body"] = body
+    if "fragments" in message:
+        frags = []
+        for f in message["fragments"]:
+            frag = {k: v for k, v in f.items() if k != "text"}
+            frag["blob"] = put(f["text"])
+            frags.append(frag)
+        record["fragments"] = frags
+    return record
+
+
+class MergedState:
+    """The merged state sigma_p in memory, without SQLite: for every item ID the record with the largest order key,
+    merged as ``Corpus.merge`` merges, so ``digest`` equals the ``Corpus.state_digest`` of a corpus that merged the
+    same runs."""
+
+    def __init__(self):
+        self.rows: dict[str, tuple[tuple[str, str, str, str, str], int, dict]] = {}
+
+    def merge(self, records: Iterable[dict], run_id: str) -> int:
+        """Merge item and tombstone records of one run, each with the epoch the run's header names; how many changed."""
+        changed = 0
+        epoch = ""
+        for record in records:
+            kind = record.get("type")
+            if kind == "run":
+                epoch = run_epoch(record)
+            if kind not in ("item", "tombstone"):
+                continue
+            key = order_key(record, run_id, epoch)
+            known = self.rows.get(record["id"])
+            if known is not None and known[0] >= key:
+                continue
+            # the record as Corpus.merge stores it and reads it back: through JSON
+            stored = json.loads(json.dumps(record, ensure_ascii=False, sort_keys=True))
+            self.rows[record["id"]] = (key, 1 if kind == "tombstone" else 0, stored)
+            changed += 1
+        return changed
+
+    def digest(self) -> str:
+        """``Corpus.state_digest`` of this state."""
+        return sha256(canonical_json([[item_id, row[1], row[2]] for item_id, row in sorted(self.rows.items())]))
+
+
+def replayed_digest(runs: Iterable[tuple[str, Iterable[dict]]]) -> str:
+    """The state digest of a state that starts empty and merges ``runs`` (run id, records) in their order."""
+    state = MergedState()
+    for run_id, records in runs:
+        state.merge(records, run_id)
+    return state.digest()
+
+
 @dataclass
 class ItemRecord:
     """One item as the merged state holds it."""
@@ -183,21 +249,7 @@ class Corpus:
 
     def to_log_record(self, message: dict) -> dict:
         """Move item text into blobs; the log keeps references only."""
-        if message.get("type") != "item":
-            return dict(message)
-        record = {k: v for k, v in message.items() if k not in ("body", "fragments")}
-        if "body" in message:
-            body = {k: v for k, v in message["body"].items() if k != "text"}
-            body["blob"] = self.put_blob(message["body"]["text"])
-            record["body"] = body
-        if "fragments" in message:
-            frags = []
-            for f in message["fragments"]:
-                frag = {k: v for k, v in f.items() if k != "text"}
-                frag["blob"] = self.put_blob(f["text"])
-                frags.append(frag)
-            record["fragments"] = frags
-        return record
+        return to_log_record(message, self.put_blob)
 
     def body_text(self, record: dict) -> str | None:
         body = record.get("body")
@@ -317,15 +369,6 @@ class Corpus:
             "SELECT item_id, record FROM items WHERE source = ? AND deleted = 0 ORDER BY item_id", (source,)
         ).fetchall()
         return sha256(canonical_json([[r[0], json.loads(r[1])] for r in rows]))
-
-    def replayed_digest(self, runs: Iterable[tuple[str, Iterable[dict]]]) -> str:
-        """``state_digest`` of a state that starts empty and merges ``runs`` (run id, records) in their order; the
-        corpus's own state stays as it is."""
-        with contextlib.closing(sqlite3.connect(":memory:")) as db:
-            db.executescript(SCHEMA)
-            for run_id, records in runs:
-                self.merge(records, run_id, db)
-            return self.state_digest(db)
 
     def rebuild_state(self, files: list[Path] | None = None) -> sqlite3.Connection:
         """Recompute sigma_p from the log alone, into an in-memory database."""
