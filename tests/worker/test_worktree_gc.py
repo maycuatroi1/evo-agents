@@ -14,6 +14,10 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("aiohttp")
+pytest.importorskip(
+    "sqlalchemy",
+    reason="the band of a worker's disk (evo_agents.hub.ops_events) needs the hub-server extra, evo-ak[hub-server]",
+)
 
 from evo_agents.hub import ops_events  # noqa: E402
 from evo_agents.worker import daemon_cleanup  # noqa: E402
