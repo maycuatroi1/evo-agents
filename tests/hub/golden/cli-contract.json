@@ -184178,7 +184178,7 @@
             "ops_daily_usd": {
               "type": "number",
               "title": "Ops Daily Usd",
-              "description": "what the runs of its ops threads may spend in 24 hours"
+              "description": "what the runs of its ops threads may spend in 24 hours; 0: no limit"
             },
             "paused": {
               "type": "boolean",
@@ -184697,14 +184697,21 @@
               "description": "what is left of the agent type's cap, the run's cost cap"
             },
             "max_seconds": {
-              "type": "integer",
-              "title": "Max Seconds"
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Seconds",
+              "description": "the agent time the task asked for; null: no time cap"
             }
           },
           "type": "object",
           "required": [
-            "max_usd",
-            "max_seconds"
+            "max_usd"
           ],
           "title": "TaskBudget"
         },
@@ -184771,7 +184778,7 @@
                 }
               ],
               "title": "Minutes",
-              "description": "the agent time the run may take, at most 120; default: 30"
+              "description": "the agent time the run may take, at most 120; default: no time cap"
             },
             "repos": {
               "anyOf": [
@@ -191836,8 +191843,16 @@
               "description": "the deepest hop of its runs"
             },
             "max_hops": {
-              "type": "integer",
-              "title": "Max Hops"
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Hops",
+              "description": "the most hops of a trace; null: hops have no limit"
             },
             "trace_runs": {
               "type": "integer",
@@ -191891,7 +191906,6 @@
             "runs",
             "usd",
             "hop",
-            "max_hops",
             "trace_runs",
             "trace_usd",
             "started_at",
