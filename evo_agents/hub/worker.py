@@ -33,7 +33,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   under the project's kg lock.
 - ``hub.recover_kg_builds``, every 5 minutes: kg builds whose worker stopped sending heartbeats are failed, which
   frees their project's lock, and their projects get a new build; so are builds whose job ended without recording
-  them, whose project gets a new build when no later one took their place.
+  them, whose project gets a new build when no later one took their place. The other jobs of a worker that stopped
+  sending heartbeats are failed too (``jobs.fail_stalled``), which frees their locks.
 - ``hub.prune_kg_artifacts``, hourly: the artifacts of each project's graphs beyond its EVO_HUB_KG_KEEP_ARTIFACTS
   newest leave the bucket (``evo_agents.hub.kg_prune``).
 - ``hub.recover_runs``, every minute: runs whose worker stopped extending the lease become lost, and the next attempt
@@ -363,7 +364,11 @@ async def kg_build(context: JobContext, project: str, build_id: int | None = Non
 async def recover_kg_builds(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.kg_build import recover_stalled
 
-    return await recover_stalled(hub(context), context.app.job_manager)
+    recovered = await recover_stalled(hub(context), context.app.job_manager)
+    stalled = await jobs.fail_stalled(context.app.job_manager, but=frozenset({jobs.KG_BUILD}))
+    if stalled:
+        log.warning("jobs of stopped workers failed", extra={"jobs": stalled})
+    return {**recovered, "stalled": stalled}
 
 
 @queue.periodic(cron="31 * * * *")
