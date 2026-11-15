@@ -33,8 +33,11 @@ def hub_for(tmp_path, monkeypatch):
     """``hub_for(*names)``: this machine signed in to an in-memory hub of projects ``names`` (``KgHubs``)."""
     from evo_agents.hub import client, kg_hub_sync, kg_push
 
+    opened: list[KgHubs] = []
+
     def sign_in(*names: str) -> KgHubs:
         hub = KgHubs(tmp_path / "hub", list(names))
+        opened.append(hub)
         credentials = client.Credentials(hub.url, "alice", "evo_test")
         monkeypatch.setattr(client, "load_credentials", lambda: credentials)
         monkeypatch.setattr(client, "Hub", lambda url, token, **kwargs: hub)
@@ -42,7 +45,9 @@ def hub_for(tmp_path, monkeypatch):
         monkeypatch.setattr(kg_push, "put_presigned", hub.put)
         return hub
 
-    return sign_in
+    yield sign_in
+    for hub in opened:
+        hub.close()
 
 
 @pytest.fixture

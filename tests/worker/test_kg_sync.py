@@ -162,7 +162,9 @@ class Stage:
 
 @pytest.fixture
 def stage(tmp_path, monkeypatch):
-    return Stage(tmp_path, monkeypatch)
+    stage = Stage(tmp_path, monkeypatch)
+    yield stage
+    stage.hub.close()
 
 
 def test_kg_sync_reads_the_ref_sources_from_origins_harness_and_pushes_nothing_new_twice(stage):
