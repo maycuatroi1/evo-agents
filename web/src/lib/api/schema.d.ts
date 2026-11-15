@@ -49171,7 +49171,7 @@ export interface components {
             rule: string | null;
             /**
              * Outcome
-             * @description answer, reassign or ask_owner; null while the thread is open
+             * @description answer, reassign or ask_owner; null while the thread is open, and on a failed or stale thread the hub closed once a later run of its agent ended done
              */
             outcome: string | null;
             /** Question */

@@ -247,7 +247,8 @@ async def reap_pool_nodes(engine: AsyncEngine, sealer, github_app) -> dict:
 async def open_threads(engine: AsyncEngine, github_app: GitHubApp | None) -> None:
     """The part of the reaper's pass that opens threads: the triage thread of a run that says nothing while its worker
     heartbeats (``triage.open_stale``), the thread of a trace of an agent system that wrote no span for its idle limit
-    (``orchestrator.open_idle``), and the draft pull requests of run branches whose work went in elsewhere or that an
+    (``orchestrator.open_idle``), the close of a failed or stale thread whose agent's later run in the trace ended done
+    (``orchestrator.close_recovered``), and the draft pull requests of run branches whose work went in elsewhere or that an
     ended trace left (``draft_pulls.settle_pass``, with ``github_app``), the Orchestrator asked of those it cannot
     settle."""
     from evo_agents.hub.server import triage  # it reads runs through this module
@@ -256,6 +257,7 @@ async def open_threads(engine: AsyncEngine, github_app: GitHubApp | None) -> Non
     from evo_agents.hub.server import draft_pulls, orchestrator  # it opens threads through triage
 
     await orchestrator.open_idle(engine)
+    await orchestrator.close_recovered(engine)
     await draft_pulls.settle_pass(engine, github_app, orchestrator.on_draft)
 
 
@@ -277,7 +279,8 @@ async def recover_runs(
     ``parked_for`` cancelled, each in a transaction of its own, a question run queued for
     ``question_runs.QUEUE_SECONDS`` fails (no_worker), a run running or verifying with no event for
     ``triage.STALE_MINUTES`` while its worker heartbeats opens its triage thread (``triage.open_stale``), a trace of an
-    agent system idle past its limit opens a thread to its Orchestrator (``orchestrator.open_idle``), the draft pull
+    agent system idle past its limit opens a thread to its Orchestrator (``orchestrator.open_idle``), a failed or stale
+    thread whose agent's later run in the trace ended done closes (``orchestrator.close_recovered``), the draft pull
     requests of chat and task runs are settled (``draft_pulls.settle_pass``, with ``github_app``), a queued run
     dispatched with browser that no worker can take has the hub ask its owner's nearest worker that lacks only Chromium
     to install it (``browser_install.ask_for_queued``), a project never seeded gets its ``orchestrator`` system when it

@@ -390,7 +390,7 @@ def test_the_first_hand_off_posts_the_work_card_in_the_root_thread(client, hub, 
         "login": None,
         "question": None,
     }
-    assert shown["max_hops"] == 3 and shown["runs"] >= 2 and shown["ended_at"] is None
+    assert shown["max_hops"] is None and shown["runs"] >= 2 and shown["ended_at"] is None, "hops have no limit"
     assert card_events(hub_db, chat["id"], message_id) >= 1, "the wait of the ask changed the card"
     others = [item for item in messages_in(hub_db, chat["id"]) if item["id"] != message_id]
     assert not any(item["body"].startswith("Work card") for item in others), "one card"
