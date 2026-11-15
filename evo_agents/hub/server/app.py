@@ -218,6 +218,7 @@ async def _open(app: FastAPI, config: HubConfig):
     app.state.jobs = await JobQueue.open(pool)
     app.state.kg_handles = Handles()  # kg_more continuations, per user and project
     app.state.kg_snapshots.engine = app.state.engine
+    kg_snapshots.serving = app.state.kg_snapshots  # what a core plugin's graph read uses (kg_snapshots.held_for)
     if app.state.blobs is None:
         log.warning(
             "blob store not configured: the blob routes answer 503",

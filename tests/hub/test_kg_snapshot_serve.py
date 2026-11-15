@@ -233,3 +233,50 @@ def test_the_coordinator_holds_the_most_recently_read_projects_and_no_finished_l
     coordinator = asyncio.run(run())
     assert loads == [1, 2, 3]  # 1 was read again before 3 came, so 2 went
     assert list(coordinator._held) == [3, 1] and coordinator._loading == {}
+
+
+def test_loads_making_snapshots_leave_the_pool_to_the_workers_heartbeats(hub, tmp_path, caplog, monkeypatch):
+    """A snapshot is made with no connection held: loads of a large graph, which take minutes to make it, left the
+    workers' heartbeats and claims without a connection of the pool, and runs lost their lease."""
+    from psycopg_pool import AsyncConnectionPool
+    from sqlalchemy import text
+
+    from evo_agents.hub.db import make_engine as pooled_engine
+
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the kiwi app works."))
+    assert push(hub, laptop).ok
+    build(hub, caplog)
+    pid = project_id(hub)
+    release, making = threading.Event(), threading.Semaphore(0)
+    from_stored = Snapshot.from_stored
+
+    def slow(*args, **kwargs):
+        making.release()
+        assert release.wait(30)
+        return from_stored(*args, **kwargs)
+
+    monkeypatch.setattr(kg_snapshots.Snapshot, "from_stored", slow)
+
+    async def run():
+        pool = AsyncConnectionPool(hub.db.dsn, min_size=0, max_size=2, timeout=2, close_returns=True, open=False)
+        await pool.open()
+        engine = pooled_engine(pool)
+        loads = [asyncio.create_task(kg_snapshots.load(engine, pid)) for _ in range(3)]
+        try:
+            for _ in range(kg_snapshots.READS):
+                assert await asyncio.to_thread(making.acquire, True, 30)
+            async with engine.begin() as conn:  # a heartbeat, while the snapshots are made
+                beat = await conn.scalar(text("select 1"))
+            release.set()
+            done = await asyncio.gather(*loads)
+        finally:
+            release.set()
+            await asyncio.gather(*loads, return_exceptions=True)
+            await engine.dispose()
+            await pool.close()
+        return beat, done
+
+    beat, done = asyncio.run(run())
+    assert beat == 1
+    assert len({held.snapshot.content_hash for held in done}) == 1 and "guide" in found(done[0].snapshot, "kiwi")

@@ -490,7 +490,7 @@ async def _graph(
     if not graphs:
         return None, None
     ceiling = rules.ceiling(rules.levels[-1], sink)
-    snapshot = _snapshotted(await kg_snapshots.load_on(conn, project_id), graphs, ceiling)
+    snapshot = _snapshotted(await kg_snapshots.held_for(conn, project_id, graphs[0].build_id), graphs, ceiling)
     try:
         data, graph = await asyncio.to_thread(read, project, rules.policy, ceiling, graphs, reader, snapshot)
     except GraphUnavailable as exc:
