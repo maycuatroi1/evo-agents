@@ -203,7 +203,8 @@ class RunFacts:
     MAX_CURSOR_BYTES. ``held``: the removals the deletion guard of the run held back, which its run_end lists
     (``evo_agents.kg.sync``), each ``{"scope", "reason", "ids"}``; None when it lists none or more than MAX_HELD_IDS
     ids, or one that is not of that shape. ``listed``: the scopes its run_end says it listed completely, whose removals
-    it worked out (held or not); None when it names none, more than MAX_LISTED or one that is not a string."""
+    it worked out (held or not); None when it names none, more than MAX_LISTED or one that is not a string, and when
+    its ``held`` is one the hub does not keep, so that the run clears no hold."""
 
     status: str = "failed"
     lineage: str | None = None
@@ -225,7 +226,10 @@ class RunFacts:
             self.status = "ok" if record.get("status") == "ok" else "failed"
             self.finished_at = _fact(record.get("finished_at"))
             self.held = _held(record.get("held"))
-            self.listed = _listed(record.get("listed"))
+            # a hold the hub cannot keep (over MAX_HELD_IDS, or not of its shape) must not read as none: the run then
+            # names no scope it listed, so the holds of earlier runs stay
+            unread_hold = self.held is None and record.get("held") not in (None, [])
+            self.listed = None if unread_hold else _listed(record.get("listed"))
         elif kind == "state":
             held = {"cursor": record.get("cursor")}
             self.cursor = held if len(canonical_json(held)) <= MAX_CURSOR_BYTES else None

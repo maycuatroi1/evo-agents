@@ -19,7 +19,7 @@ if not pg.DSN:
 from sqlalchemy import Text, cast, select, update
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from evo_agents.hub import tables
+from evo_agents.hub import kg_ingest, tables
 from evo_agents.hub.kg_source_state import fill_run_facts
 from evo_agents.kg.sync import sync_project
 from tests.hub.test_kg import PROJECT, Machine, doc, hub, latest, push, query, run_jobs  # noqa: F401
@@ -172,3 +172,21 @@ def test_the_hold_of_each_scope_is_that_of_the_newest_run_that_listed_it(hub, tm
     sync(laptop, doc("guide", "How the app works."), kinds=["doc"])  # lists docs:doc: only, which holds none now
     assert push(hub, laptop).ok
     assert [(r["run_id"], r["scope"]) for r in state(hub)["held"]] == [(emptied, "docs:memo:")]
+
+
+def test_a_hold_the_hub_cannot_keep_leaves_the_older_hold_of_its_scope(hub, tmp_path, monkeypatch):
+    laptop = Machine(tmp_path, "laptop")
+    sync(laptop, doc("guide", "How the app works."), doc("setup", "Install it."))
+    assert push(hub, laptop).ok
+    emptied = sync(laptop)
+    assert push(hub, laptop).ok
+    (removal,) = state(hub)["held"]
+    assert removal["run_id"] == emptied
+
+    monkeypatch.setattr(kg_ingest, "MAX_HELD_IDS", 1)  # the next run holds back 2 ids: more than the hub keeps
+    sync(laptop)
+    assert push(hub, laptop).ok
+    ingests = tables.kg_ingests
+    newest = query(hub.db, select(ingests.c.held, ingests.c.listed).order_by(ingests.c.run_id.desc()).limit(1))
+    assert newest == [(None, None)]  # it names no scope it listed, so it clears none
+    assert state(hub)["held"] == [removal]
