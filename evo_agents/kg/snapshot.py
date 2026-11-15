@@ -153,6 +153,15 @@ def _partitions(count: int, src: array, dst: array, groups: dict[tuple[str, str]
     return MappingProxyType(out)
 
 
+_EMPTY = MappingProxyType({})
+
+
+def _empty():
+    """An empty mapping as a field's default: Python 3.11 refuses a mappingproxy as a default, hashable only from
+    3.12, so it comes from a factory."""
+    return field(default_factory=lambda: _EMPTY)
+
+
 @dataclass(frozen=True)
 class Snapshot:
     """One build of a graph in RAM: its nodes by number (``ids``, ``index``), its edges by number in the order (rel,
@@ -174,12 +183,12 @@ class Snapshot:
     top_label: tuple[int, int] = (0, 0)  # the highest level and location of its labels
     top_audience: frozenset[str] = frozenset()  # the join of its audiences
     # what the reads of provenance and status give (``StoreRows``); empty for a snapshot of an assembled graph
-    units: MappingProxyType = MappingProxyType({})  # unit id: its row (UNIT_KEYS, then label_aud, label_lvl, label_loc)
-    where: MappingProxyType = MappingProxyType({})  # element id: its (unit, span) rows
-    derivations: MappingProxyType = MappingProxyType({})  # element id: its (units, needs) rows
-    bodies: MappingProxyType = MappingProxyType({})  # node id: the body of its own full-text row and that row's aud
-    summary: MappingProxyType = MappingProxyType({})  # ``Store.summary`` of the build
-    aliases: MappingProxyType = MappingProxyType({})  # an alias: the node that holds it (``node_alias``)
+    units: MappingProxyType = _empty()  # unit id: its row (UNIT_KEYS, then label_aud, label_lvl, label_loc)
+    where: MappingProxyType = _empty()  # element id: its (unit, span) rows
+    derivations: MappingProxyType = _empty()  # element id: its (units, needs) rows
+    bodies: MappingProxyType = _empty()  # node id: the body of its own full-text row and that row's aud
+    summary: MappingProxyType = _empty()  # ``Store.summary`` of the build
+    aliases: MappingProxyType = _empty()  # an alias: the node that holds it (``node_alias``)
     asked: tuple[tuple, ...] = ()  # the rows of the build's asked index (``StoreRows.asked``)
     asked_weight: float | None = None  # the weight of an asked match the build recorded
     found: Clusters | None = None  # the build's clusters (``Store.clusters``)
