@@ -2,18 +2,21 @@
 kg_semantic, off without one. ``read`` gives the build its settings; ``write`` is how the KG optimize loop turns the
 search by meaning on, to ``on`` only when the holdout of its eval set says it helps (plan kg-retrieval-quality, a12):
 hit@5 at least five points above the search by words, tokens per answer file not up, p95 under a second.
-``index`` puts the vectors the settings ask for into a built graph.sqlite, out of WAL mode again after."""
+``index`` puts the vectors the settings ask for into a built graph.sqlite, out of WAL mode again after, embedding only
+what the project's ``HubCache`` lacks: its vectors by model and digest of their text, in kg_vector_cache."""
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Iterable
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.kg import semantic
+from evo_agents.kg import semantic, store_vectors
 
 DEFAULT_NEW_MODE = "index"  # a project registered now: vectors written, search by words until the holdout says on
 
@@ -46,10 +49,110 @@ async def write(
 EMBED_BUDGET_SECONDS = 300.0  # a build embeds for 5 minutes at most, so it frees its worker; the rest wait for the next
 
 
-def index(path: Path, settings: semantic.Settings, cache: Path) -> semantic.Indexed:
-    """The vectors ``settings`` asks for, in the graph at ``path``; embedded only when ``cache`` lacks them, for at
-    most EMBED_BUDGET_SECONDS (the model is downloaded first, here, never by a search). Blocking."""
-    return semantic.index_file(path, settings, cache, leave_wal=True, budget=EMBED_BUDGET_SECONDS)
+def index(path: Path, settings: semantic.Settings, cache: semantic.Cache | Path) -> semantic.Indexed:
+    """The vectors ``settings`` asks for, in the graph at ``path``; embedded only when ``cache`` (a HubCache, or the
+    path of a vectors.sqlite) lacks them, for at most EMBED_BUDGET_SECONDS (the model is downloaded first, here,
+    never by a search). Blocking."""
+    if isinstance(cache, Path):
+        return store_vectors.index_file(path, settings, cache, leave_wal=True, budget=EMBED_BUDGET_SECONDS)
+    return store_vectors.index_file(path, settings, cache=cache, leave_wal=True, budget=EMBED_BUDGET_SECONDS)
+
+
+SEED_FILES = (
+    store_vectors.CACHE_FILE,
+    "graph.sqlite",
+)  # what a project's builds kept vectors in before kg_vector_cache
+PUT_ROWS = 1000  # vectors one insert of the cache writes
+
+
+class HubCache:
+    """The vectors of project ``project_id`` by model and digest of their text, in kg_vector_cache
+    (``semantic.Cache``). Its calls block: they run on ``loop``, the hub's, from the thread of a build."""
+
+    def __init__(self, engine, loop: asyncio.AbstractEventLoop, project_id: int):
+        self.engine, self.loop, self.project_id = engine, loop, project_id
+
+    def _run(self, coro):
+        return asyncio.run_coroutine_threadsafe(coro, self.loop).result()
+
+    def get(self, model: str, digests: list[str]) -> dict[str, bytes]:
+        return self._run(self._get(model, digests))
+
+    def put(self, model: str, rows: Iterable[tuple[str, bytes]]) -> None:
+        self._run(self._put(model, list(rows)))
+
+    def keep(self, model: str, digests: set[str]) -> None:
+        self._run(self._keep(model, digests))
+
+    def held(self, model: str) -> bool:
+        """Whether the cache has a vector of ``model``."""
+        return self._run(self._held(model))
+
+    def close(self) -> None:
+        pass
+
+    def seed(self, root: Path, model: str) -> int:
+        """When the cache has no vector of ``model``, take the ones the project's directory ``root`` kept of it, in
+        its vectors.sqlite and its graph.sqlite, so the first build after kg_vector_cache embeds nothing again. The
+        files stay. How many vectors it took."""
+        if self.held(model):
+            return 0
+        found: dict[str, bytes] = store_vectors.cache_file_vectors(root / SEED_FILES[0], model)
+        found.update(store_vectors.cached_in_file(root / SEED_FILES[1], model))
+        self.put(model, sorted(found.items()))
+        return len(found)
+
+    async def _get(self, model: str, digests: list[str]) -> dict[str, bytes]:
+        t = tables.kg_vector_cache
+        out: dict[str, bytes] = {}
+        async with self.engine.connect() as conn:
+            for i in range(0, len(digests), PUT_ROWS):
+                chunk = digests[i : i + PUT_ROWS]
+                rows = await conn.execute(
+                    select(t.c.digest, t.c.vector).where(
+                        t.c.project_id == self.project_id, t.c.model == model, t.c.digest.in_(chunk)
+                    )
+                )
+                out.update((d, bytes(v)) for d, v in rows)
+        return out
+
+    async def _put(self, model: str, rows: list[tuple[str, bytes]]) -> None:
+        t = tables.kg_vector_cache
+        async with self.engine.begin() as conn:
+            for i in range(0, len(rows), PUT_ROWS):
+                values = [
+                    {"project_id": self.project_id, "model": model, "digest": d, "vector": v}
+                    for d, v in rows[i : i + PUT_ROWS]
+                ]
+                statement = pg_insert(t).values(values)
+                await conn.execute(
+                    statement.on_conflict_do_update(
+                        index_elements=[t.c.project_id, t.c.model, t.c.digest],
+                        set_={"vector": statement.excluded.vector},
+                    )
+                )
+
+    async def _keep(self, model: str, digests: set[str]) -> None:
+        t = tables.kg_vector_cache
+        async with self.engine.begin() as conn:
+            held = (
+                await conn.execute(select(t.c.digest).where(t.c.project_id == self.project_id, t.c.model == model))
+            ).scalars()
+            gone = sorted(d for d in held if d not in digests)
+            for i in range(0, len(gone), PUT_ROWS):
+                await conn.execute(
+                    delete(t).where(
+                        t.c.project_id == self.project_id, t.c.model == model, t.c.digest.in_(gone[i : i + PUT_ROWS])
+                    )
+                )
+
+    async def _held(self, model: str) -> bool:
+        t = tables.kg_vector_cache
+        async with self.engine.connect() as conn:
+            found = await conn.execute(
+                select(t.c.digest).where(t.c.project_id == self.project_id, t.c.model == model).limit(1)
+            )
+            return found.first() is not None
 
 
 def model_available(model: str) -> bool:

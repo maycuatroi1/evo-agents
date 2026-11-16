@@ -552,7 +552,7 @@ def _semantic_of(tuning):
 def _vectors(project: Project, report: BuildReport) -> None:
     """Make the project's graph hold the vectors its ``semantic.json`` asks for (``evo_agents.kg.semantic``), outside
     the build's content hash; a model that cannot be loaded is a warning, and the graph searches by words."""
-    from evo_agents.kg import semantic
+    from evo_agents.kg import store_vectors
 
     path = project.root / "graph.sqlite"
     try:
@@ -562,7 +562,7 @@ def _vectors(project: Project, report: BuildReport) -> None:
         return
     if not path.exists():
         return
-    found = semantic.index_file(path, settings)
+    found = store_vectors.index_file(path, settings)
     if found.error:
         report.warnings.append(found.line())
 

@@ -252,12 +252,12 @@ def synonyms(
 
 
 def _pairs(items: list[tuple[str, str, str]], model: str, cache_path: Path | None, threshold: float) -> list[list]:
-    from evo_agents.kg import semantic
+    from evo_agents.kg import semantic, store_vectors
 
     np = semantic._numpy()
     texts = [name for _, _, name in items]
     digests = [semantic.text_digest(model, t) for t in texts]
-    cache = semantic.Cache(cache_path) if cache_path is not None else None
+    cache = store_vectors.FileCache(cache_path) if cache_path is not None else None
     try:
         held = cache.get(model, sorted(set(digests))) if cache else {}
         todo = sorted({d: t for d, t in zip(digests, texts, strict=True) if d not in held}.items())

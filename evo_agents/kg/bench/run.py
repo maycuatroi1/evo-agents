@@ -234,10 +234,10 @@ def part_numbers(records: list[dict], outcomes: list[Outcome], method: str, prim
 
 
 def ensure_vectors(project_dir: Path, cache: Path) -> None:
-    from evo_agents.kg import semantic
+    from evo_agents.kg import semantic, store_vectors
 
     path = project_dir / "graph.sqlite"
-    found = semantic.index_file(path, semantic.Settings("on"), cache, forget=False)
+    found = store_vectors.index_file(path, semantic.Settings("on"), cache, forget=False)
     if found.error:
         raise BenchError(f"hybrid search needs the vectors of {path}: {found.line()}")
 

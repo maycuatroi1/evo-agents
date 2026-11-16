@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.kg import semantic
+from evo_agents.kg import semantic, store_vectors
 from evo_agents.kg.serve import Session
 from evo_agents.kg.store import SCHEMA_VERSION, Store
 from tests.kg.projects import commit, write
@@ -75,7 +75,7 @@ def test_a_project_searches_by_words_alone_until_it_turns_meaning_on(tmp_path, k
     assert semantic.read_settings(project.root) == semantic.Settings("off", semantic.DEFAULT_MODEL)
     sync_build(project)
     store = Store.for_project(project)
-    assert store.vector_info() is None and not semantic.has_vectors(store.db)
+    assert store.vector_info() is None and not store_vectors.has_vectors(store.db)
     assert semantic.query_vector(store, "automobile", True) is None  # no vectors: by words, whatever is asked
     before = {q: found(store, q) for q in ("automobile", "graph builder", "do thi tri thuc")}
     assert CAR not in before["automobile"]
@@ -148,18 +148,18 @@ def test_a_build_embeds_only_the_rows_whose_text_changed(tmp_path, kg_env, words
     semantic.write_settings(project.root, semantic.Settings("index", FAKE))
     sync_build(project)
     first = words.texts
-    assert first > 0 and (project.root / semantic.CACHE_FILE).exists()
+    assert first > 0 and (project.root / store_vectors.CACHE_FILE).exists()
     path = project.root / "graph.sqlite"
     words.texts = 0
-    assert semantic.index_file(path, semantic.Settings("on", FAKE)).embedded == 0  # same rows: the mode alone
+    assert store_vectors.index_file(path, semantic.Settings("on", FAKE)).embedded == 0  # same rows: the mode alone
     assert Store.open_file(path).vector_info().mode == "on" and words.texts == 0
     db = sqlite3.connect(path)
     try:
         with db:
-            semantic.drop(db)
+            store_vectors.drop(db)
     finally:
         db.close()
-    again = semantic.index_file(path, semantic.Settings("on", FAKE))
+    again = store_vectors.index_file(path, semantic.Settings("on", FAKE))
     assert again.embedded == 0 and again.rows > 0 and words.texts == 0  # every vector from the cache
     app = tmp_path / "demo-app"
     write(app / "docs/garage.md", "# Garage\n\nThe motorcar sleeps here.\n")
@@ -286,7 +286,7 @@ def test_each_embed_call_gets_the_models_chunk_so_the_api_backend_fills_its_requ
     project = with_garage(tmp_path, kg_env)
     sync_build(project)
     words.chunk, words.calls, words.texts = 2, 0, 0
-    found = semantic.index_file(project.root / "graph.sqlite", semantic.Settings("index", FAKE))
+    found = store_vectors.index_file(project.root / "graph.sqlite", semantic.Settings("index", FAKE))
     assert found.embedded == words.texts > 2 and words.calls == -(-words.texts // 2)
 
 
@@ -295,7 +295,7 @@ def test_a_spent_budget_leaves_the_rest_for_the_next_build(tmp_path, kg_env, wor
     sync_build(project)
     path = project.root / "graph.sqlite"
     settings = semantic.Settings("index", FAKE)
-    none = semantic.index_file(path, settings, budget=0.0)
+    none = store_vectors.index_file(path, settings, budget=0.0)
     assert none.total > 0 and none.rows == 0 and none.embedded == 0 and none.partial
     assert none.coverage(FAKE) == {
         "model": FAKE,
@@ -304,9 +304,9 @@ def test_a_spent_budget_leaves_the_rest_for_the_next_build(tmp_path, kg_env, wor
         "vectors": 0,
         "partial": True,
     }
-    full = semantic.index_file(path, settings)  # no budget: the same graph, every row
+    full = store_vectors.index_file(path, settings)  # no budget: the same graph, every row
     assert full.rows == full.total == none.total and not full.partial and full.embedded > 0
     assert full.digest != none.digest
     words.texts = 0
-    again = semantic.index_file(path, settings, budget=0.0)  # everything held: nothing left to stop
+    again = store_vectors.index_file(path, settings, budget=0.0)  # everything held: nothing left to stop
     assert again.rows == again.total and again.embedded == 0 and words.texts == 0
