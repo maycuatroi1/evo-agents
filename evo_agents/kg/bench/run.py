@@ -50,7 +50,7 @@ LIMITS = {datasets.SWE_EXPLORE: 5}
 DEFAULT_LIMIT = 10
 DEFAULT_BUDGET_TOKENS = 3000
 MAX_HOURS = 6.0
-# plain: plain BM25 (Store.plain_search), the sets' baseline; snapshot: the graph's ranking on an in-RAM snapshot of the
+# plain: plain BM25 (SnapshotView.plain_search), the sets' baseline; snapshot: the graph's ranking on an in-RAM snapshot of the
 # build (evo_agents.kg.snapshot), kg_search only
 SEARCHES = ("graph", "bm25", "plain", "files", "hybrid", "snapshot")
 
@@ -234,12 +234,23 @@ def part_numbers(records: list[dict], outcomes: list[Outcome], method: str, prim
 
 
 def ensure_vectors(project_dir: Path, cache: Path) -> None:
-    from evo_agents.kg import semantic, store_vectors
+    """Put into the graph of the project in ``project_dir`` the vectors of its rows, those the repo's other snapshots
+    had read from ``cache`` (``rows_file.VectorFile``), and keep the graph again when they changed."""
+    from evo_agents.kg import semantic
+    from evo_agents.kg.bench import rows_file
+    from evo_agents.kg.graph_rows import RowsVectors
 
-    path = project_dir / "graph.sqlite"
-    found = store_vectors.index_file(path, semantic.Settings("on"), cache, forget=False)
+    rows = rows_file.read_rows(project_dir)
+    graph = RowsVectors(rows)
+    vectors = rows_file.VectorFile(cache)
+    try:
+        found = semantic.index(graph, semantic.Settings("on"), vectors, forget=False)
+    finally:
+        vectors.close()
     if found.error:
-        raise BenchError(f"hybrid search needs the vectors of {path}: {found.line()}")
+        raise BenchError(f"hybrid search needs the vectors of {project_dir / rows_file.ROWS}: {found.line()}")
+    if (graph.held.vectors, graph.held.vector_info) != (rows.vectors, rows.vector_info):
+        rows_file.write_rows(project_dir, graph.held)
 
 
 @dataclass
@@ -254,11 +265,12 @@ class Asked:
     seconds: float = 0.0
 
 
-def session_of(project, search: str, files: tuple | None = None):
-    """A CLI session on ``project`` that ranks the way ``search`` says (``kg bench --search``), or by plain BM25."""
-    from evo_agents.kg.store_session import StoreSession
+def session_of(project, search: str, files: tuple | None = None, snap=None):
+    """A CLI session on ``project`` that ranks the way ``search`` says (``kg bench --search``), or by plain BM25. It
+    reads ``snap``, else the graph the bench keeps in the project (``rows_file``)."""
+    from evo_agents.kg.bench import rows_file
 
-    session = StoreSession(project, "cli")
+    session = rows_file.RowsSession(project, "cli", snap if snap is not None else rows_file.snapshot_of(project.root))
     if search == "snapshot":
         return snapshot_session(session)
     if search != "graph":
@@ -270,22 +282,14 @@ def session_of(project, search: str, files: tuple | None = None):
 
 
 def snapshot_session(session):
-    """A session that answers kg_search on an in-RAM snapshot of the latest build ``session`` reads, as its clearance
-    and audience read it (``evo_agents.kg.snapshot_search``)."""
-    from evo_agents.kg.snapshot import Snapshot
+    """A session that answers kg_search on the in-RAM snapshot ``session`` (a ``rows_file.RowsSession``) reads, as
+    its clearance and audience read it (``evo_agents.kg.snapshot_search``)."""
     from evo_agents.kg.snapshot_search import SnapshotSearch, SnapshotSession
-    from evo_agents.kg.store import Store
 
-    store = Store.open_readonly(session.project)
-    b = store.latest_ready() if store else None
-    if store is None or b is None:
-        raise ValueError(f"project {session.project.name!r} has no graph yet")
-    try:
-        snap = Snapshot.from_store(store, b)
-        tuning = store.tuning
-    finally:
-        store.close()
-    search = SnapshotSearch(snap, session.clearance, session.audience, tuning=tuning, semantic_on=session.semantic)
+    view = session.view()
+    search = SnapshotSearch(
+        view.snap, session.clearance, session.audience, tuning=view.tuning, semantic_on=session.semantic
+    )
     return SnapshotSession(search)
 
 
@@ -356,9 +360,21 @@ def _ask_repo(cache: Path, bench: str, tasks: list[Task], options: Options) -> A
 
 def ranking_digest() -> str:
     """Digest of the code that ranks and serves a search (not of the graph's extractor): a change of it asks again."""
-    from evo_agents.kg import asked, locate, ppr, rank, search, semantic, serve, store, text
+    from evo_agents.kg import (
+        asked,
+        locate,
+        ppr,
+        rank,
+        search,
+        semantic,
+        serve,
+        serve_search,
+        snapshot,
+        snapshot_search,
+        text,
+    )
 
-    modules = (asked, locate, ppr, rank, search, semantic, serve, store, text)
+    modules = (asked, locate, ppr, rank, search, semantic, serve, serve_search, snapshot, snapshot_search, text)
     parts = [Path(m.__file__).read_bytes() for m in modules]
     # the learned order: on or off, and which model (a run with it on never reuses the answers of one without)
     parts.append(json.dumps(rank.state(), sort_keys=True).encode())

@@ -107,13 +107,17 @@ def test_kg_search_answers_as_a_session_does_for_each_clearance(tmp_path, kg_env
 
 def test_a_bench_snapshot_walks_with_the_projects_settings(tmp_path, kg_env):
     """The walk and entity_code are project settings: a snapshot read without them ranks as an unwalked graph."""
+    from evo_agents.kg.bench.rows_file import RowsSession
     from evo_agents.kg.bench.run import snapshot_session
+    from tests.kg.built import build, snapshot_of
+    from tests.kg.hub_graph import hub_session
 
     project = entity_project(tmp_path, kg_env)
+    assert build(project).ok
     walk_on(project)
     kg_settings.write(project.root, kg_settings.of({"entity_code": True}, kg_settings.read(project.root)))
-    session = StoreSession(project, "agent")
-    mine = snapshot_session(session)
+    session = hub_session(project, "agent")
+    mine = snapshot_session(RowsSession(project, "agent", snapshot_of(project)))
     for query in ("zephyr launcher", "Quasar", "comet tail", "engine"):
         args = {"query": query, "limit": 10}
         assert results(mine.call("kg_search", args)) == results(session.call("kg_search", args)), query

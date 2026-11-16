@@ -205,20 +205,14 @@ def set_graphs(cache: Path, bench: str, ids: set[str] | None = None) -> list[Pat
 
 def set_profile(cache: Path, bench: str, ids: set[str] | None = None) -> dict:
     """The merged data profile of the graphs of ``bench`` that exist (see ``set_graphs``)."""
-    from evo_agents.kg.store import StaleSchema, Store
+    from evo_agents.kg.bench import rows_file
 
     found = []
     for project in dict.fromkeys(set_graphs(cache, bench, ids)):
-        if not (project / "graph.sqlite").is_file():
+        summary = rows_file.summary_of(project)
+        if summary is None:
             continue
-        try:
-            store = Store.open_file(project / "graph.sqlite")
-        except (StaleSchema, OSError):
-            continue
-        try:
-            one = kg_profile.of_coverage((store.summary() or {}).get("coverage"))
-        finally:
-            store.close()
+        one = kg_profile.of_coverage(summary.get("coverage"))
         if one:
             found.append(one)
     return merge_profiles(found)
