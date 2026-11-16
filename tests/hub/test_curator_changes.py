@@ -701,6 +701,56 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
     }
 
 
+KNOWLEDGE_GLOB = "evo-agents-harness:knowledge.yaml"
+
+
+def listing_knowledge(world, state: str = "accepted") -> None:
+    """The charter protects the harness's knowledge.yaml too, and the accepted proposal lists that path besides its
+    own; its state set to ``state``."""
+    globs = ["curator.yaml", ".github/workflows/**", KNOWLEDGE_GLOB]
+    written(world.client, world.headers["owner"], curator_charter(protected_paths=globs))
+    listed = [
+        {"repo": "evo-agents", "path": "tests/test_wait.py"},
+        {"repo": "evo-agents-harness", "path": "knowledge.yaml"},
+    ]
+    sql(world.db, update(tables.proposals).values(paths=listed, state=state))
+
+
+def test_curator_plan_a_builder_is_not_stopped_on_a_protected_path_its_accepted_proposal_lists(world):
+    accepted(world)
+    listing_knowledge(world)
+    assert protect(world).status_code == 200
+    assert fire(world.client, NIGHT)["builder"] == 1
+    spec = claim(world.client, world.worker)
+    # the glob the proposal lists is left out; the protected paths it does not list stay
+    assert spec["curator"]["role"] == "builder"
+    assert spec["curator"]["protected_paths"] == ["curator.yaml", ".github/workflows/**"]
+
+
+def test_curator_plan_a_builder_of_a_proposal_no_longer_accepted_keeps_every_protected_path(world):
+    accepted(world)
+    listing_knowledge(world, state="open")
+    assert protect(world).status_code == 200
+    assert fire(world.client, NIGHT)["builder"] == 1
+    spec = claim(world.client, world.worker)
+    assert spec["curator"]["protected_paths"] == ["curator.yaml", ".github/workflows/**", KNOWLEDGE_GLOB]
+
+
+def test_curator_plan_the_judge_keeps_every_protected_path_the_proposal_lists(world):
+    accepted(world)
+    listing_knowledge(world)
+    builder(world)
+    assert moved_on(world) == {"opened": 1}
+    spec = judge_run(world)
+    assert spec["curator"]["role"] == "judge"
+    assert spec["curator"]["protected_paths"] == ["curator.yaml", ".github/workflows/**", KNOWLEDGE_GLOB]
+    assert inputs(world, spec["id"]).json()["protected_paths"] == [
+        "curator.yaml",
+        ".github/workflows/**",
+        KNOWLEDGE_GLOB,
+    ]
+
+
 @contextmanager
 def workers_app_alone(hub_db, tmp_path, github, app_key):  # noqa: F811
     """The world of ``world`` on a hub with the workers' App alone, installed on evo-agents: no Curator App."""

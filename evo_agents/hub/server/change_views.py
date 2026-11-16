@@ -353,7 +353,8 @@ async def refuse_manual_dispatch(conn: AsyncConnection, project_id: int, plan_id
 @dataclass(frozen=True)
 class CuratorPolicy:
     """A run of the Curator, and what its charter lets it have: its role, the owner's git secret it uses on other
-    forges than GitHub, the env secrets it gets, and the charter's protected paths."""
+    forges than GitHub, the env secrets it gets, and the charter's protected paths (a Builder's without those its
+    accepted proposal lists, ``_left_protected``)."""
 
     role: str  # reviewer, builder, judge or replay
     git_secret: str | None
@@ -381,13 +382,35 @@ async def curator_policy(
         return None
     charter = await charter_of(conn, project_id)
     secret = charter.get("git_secret")
+    protected = tuple(path for path in charter.get("protected_paths") or [] if isinstance(path, str))
+    if role == "builder" and change is not None:
+        protected = await _left_protected(conn, change.proposal_id, protected)
     return CuratorPolicy(
         role=role,
         git_secret=secret if isinstance(secret, str) and secret else None,
         env_secrets=tuple(name for name in charter.get("env_secrets") or [] if isinstance(name, str)),
-        protected=tuple(path for path in charter.get("protected_paths") or [] if isinstance(path, str)),
+        protected=protected,
         change_id=None if change is None else change.id,
     )
+
+
+async def _left_protected(conn: AsyncConnection, proposal_id: int | None, protected: tuple[str, ...]) -> tuple:
+    """The protected globs a Builder's watchdog still stops it on: those that match no path (``repo:path``) its
+    change's proposal lists, once the owner accepted it, as the owner saw those paths and their tier 3 when accepting;
+    all of them for a proposal not accepted. The Judge and the merge gate still show each protected path the diff
+    touches."""
+    if proposal_id is None or not protected:
+        return protected
+    p = tables.proposals
+    row = (await conn.execute(select(p.c.state, p.c.paths).where(p.c.id == proposal_id))).one_or_none()
+    if row is None or row.state != "accepted":
+        return protected
+    listed = [
+        (item["repo"], item["path"])
+        for item in row.paths or []
+        if isinstance(item, dict) and isinstance(item.get("repo"), str) and isinstance(item.get("path"), str)
+    ]
+    return tuple(glob for glob in protected if not any(tiers.matches(glob, repo, path) for repo, path in listed))
 
 
 async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | None:

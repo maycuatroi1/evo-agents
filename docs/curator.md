@@ -484,8 +484,9 @@ request merged. A step in a repo the plan does not name is refused. The change's
 each with its state and pull request, and `--json` of the change prints them as `repos`.
 
 **The watchdog.** After each heartbeat the daemon compares what changed in the worktrees of a run of the Curator with
-the charter's protected paths, and the run's agent time and cost with its caps. A protected file changed, or a cap
-passed, stops the run, which fails, and its owner gets the notice `run_failed`. On Claude Code a run of the Curator uses
+the charter's protected paths, and the run's agent time and cost with its caps. A Builder's watchdog leaves out each
+protected glob that matches a path its accepted proposal lists, as the owner accepted that tier 3 knowing the path; the
+Judge and the merge gate still show the touch. A protected file changed, or a cap passed, stops the run, which fails, and its owner gets the notice `run_failed`. On Claude Code a run of the Curator uses
 the Claude subscription login alone, never an API key.
 
 ### The lens product
