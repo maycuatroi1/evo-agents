@@ -129,3 +129,33 @@ def test_a_snapshot_dropped_in_the_api_is_freed_in_a_thread_a_part_at_a_time(mon
     del snap
     assert done.wait(30)
     assert set(freed) == {"kg-free-aside"}  # none on the thread that dropped it
+
+
+def test_a_part_that_raises_as_it_is_taken_apart_does_not_stop_the_thread_freeing_the_next_snapshot(monkeypatch):
+    """One part raising as it is opened is logged, and the thread goes on: ended, it left every snapshot dropped
+    after it in memory until the api restarted."""
+    import threading
+
+    from evo_agents.kg.snapshot import Snapshot
+
+    freed = threading.Event()
+
+    class Raising:
+        def __getattribute__(self, name):
+            if name == "__dict__":
+                raise RuntimeError("a part that cannot be opened")
+            return object.__getattribute__(self, name)
+
+    class Part:
+        def __del__(self):
+            freed.set()
+
+    monkeypatch.setattr(pacing, "_aside", None)  # a thread of this test's own, gone with it
+    pacing.free_aside()
+    snap = Snapshot.from_stored(graph_rows(10))
+    object.__setattr__(snap, "review", Raising())
+    del snap
+    snap = Snapshot.from_stored(graph_rows(10))
+    object.__setattr__(snap, "review", Part())
+    del snap
+    assert freed.wait(30)

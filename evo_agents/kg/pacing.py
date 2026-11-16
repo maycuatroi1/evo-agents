@@ -13,6 +13,7 @@ event loop beside it (``kg build``, the bench) runs at full speed."""
 from __future__ import annotations
 
 import heapq
+import logging
 import queue
 import sys
 import threading
@@ -87,6 +88,8 @@ OPEN = 64  # items of a container ``let_go`` opens, not frees at once: such a co
 HAND_OVER = 0.01  # seconds the thread waits before it takes apart what it was given: ``let_go`` returns meanwhile
 ALONE = 2  # ``sys.getrefcount`` of an object only a local variable holds: it and the argument of the call
 
+log = logging.getLogger(__name__)
+
 _aside: queue.SimpleQueue | None = None  # what ``let_go`` was given, for the thread ``free_aside`` started
 
 
@@ -115,7 +118,10 @@ def _freeing(given: queue.SimpleQueue) -> None:
         while True:
             parts = given.get()
             time.sleep(HAND_OVER)
-            _take_apart(parts)
+            try:
+                _take_apart(parts)
+            except Exception:  # the thread goes on: ended, every snapshot dropped after it would stay in memory
+                log.exception("kg free aside failed")
             del parts
 
 
