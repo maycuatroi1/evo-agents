@@ -726,6 +726,30 @@ class SnapshotView:
         ids = self.snap.ids
         return [(ids[i], self.snap.nodes[i]["props"]) for i in range(bisect_left(ids, low), bisect_left(ids, high))]
 
+    def _prefixed(self, prefix: str) -> range:
+        """The node numbers whose id starts with ``prefix``: ids are sorted, so one run of them."""
+        from bisect import bisect_left
+
+        ids = self.snap.ids
+        return range(bisect_left(ids, prefix), bisect_left(ids, prefix[:-1] + chr(ord(prefix[-1]) + 1)))
+
+    def entity_graph(self, b: int = 0, prefix: str = "entity:") -> tuple[list[dict], list[dict]]:
+        """The nodes the reader sees whose id starts with ``prefix`` and the edges it sees into one of them, by id
+        (``Store.entity_graph``)."""
+        held = self._prefixed(prefix)
+        nodes = [dict(self.snap.nodes[i]) for i in held if self.sees(self.snap.nodes[i])]
+        found = {e for p in self.snap.partitions.values() for i in held for e in p.into(i)}
+        edges = sorted((self.snap.edges[e] for e in found if self.sees(self.snap.edges[e])), key=lambda e: e["id"])
+        return nodes, [dict(e) for e in edges]
+
+    def entity_code(self, b: int, rels, prefix: str = "entity:") -> list[dict]:
+        """The edges the reader sees with one of ``rels`` out of a node whose id starts with ``prefix``, by id
+        (``Store.entity_code``)."""
+        held, rels = self._prefixed(prefix), set(rels)
+        found = {e for (rel, _), p in self.snap.partitions.items() if rel in rels for i in held for e in p.out_of(i)}
+        edges = sorted((self.snap.edges[e] for e in found if self.sees(self.snap.edges[e])), key=lambda e: e["id"])
+        return [dict(e) for e in edges]
+
     def changed_by(self, file_id: str, limit: int) -> list[str]:
         i = self.snap.index.get(file_id)
         if i is None:
