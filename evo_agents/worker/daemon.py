@@ -290,8 +290,13 @@ class Daemon:
             self._checkouts_at = float("-inf")
 
     def _detect(self) -> dict[str, dict]:
-        """The runtimes of the core, then those of the plugins the hub declared, as the heartbeat reports them."""
-        return {**detect_runtimes(self.adapters), **detect_adapters(self.plugin_adapters)}
+        """The runtimes of the core, then those of the plugins the hub declared, as the heartbeat reports them; one whose
+        --version times out keeps what the last look found (``adapter.steady``)."""
+        last = dict(self.runtimes)
+        return {
+            **detect_runtimes(self.adapters, previous=last),
+            **detect_adapters(self.plugin_adapters, previous=last),
+        }
 
     @property
     def free_slots(self) -> int:

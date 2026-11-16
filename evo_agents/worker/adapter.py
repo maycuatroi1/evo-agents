@@ -169,6 +169,9 @@ class Detection:
     version: str | None = None
     reason: str | None = None
     models: tuple[str, ...] | None = None
+    # The runtime's --version gave no answer in time: a loaded machine, which says nothing of whether the runtime is
+    # there (``steady``). Not part of the report.
+    timed_out: bool = False
 
     def report(self) -> dict:
         version = _line(self.version, MAX_VERSION_CHARS) if self.version else None
@@ -422,7 +425,7 @@ def probe_binary(binary: str, *, path: str | None = None, timeout: float = VERSI
             errors="replace",
         )
     except subprocess.TimeoutExpired:
-        return Detection(False, None, f"{binary} --version gave no answer within {timeout:g}s")
+        return Detection(False, None, f"{binary} --version gave no answer within {timeout:g}s", timed_out=True)
     except OSError as exc:
         return Detection(False, None, f"{binary} --version failed: {exc}")
     match = _VERSION.search(done.stdout or "") or _VERSION.search(done.stderr or "")
@@ -514,24 +517,43 @@ def _detected(cls: type[Adapter], runtime: str) -> Detection:
     return detection
 
 
-def detect_adapters(adapters: Mapping[str, type[Adapter]]) -> dict[str, dict]:
-    """The heartbeat's report of each runtime of ``adapters`` (the runtimes of plugins), by name."""
-    return {runtime: _detected(cls, runtime).report() for runtime, cls in adapters.items()}
+def steady(detection: Detection, previous: Mapping | None) -> dict:
+    """The heartbeat's report of ``detection``, or ``previous``, the last report of the runtime, when its --version
+    timed out and ``previous`` had it available: a loaded machine must not take a runtime off the worker, or the hub
+    refuses the agents of its pool for no runtime while the machine is only slow."""
+    if detection.timed_out and isinstance(previous, Mapping) and previous.get("available") is True:
+        return dict(previous)
+    return detection.report()
 
 
-def detect_runtimes(adapters: Mapping[str, type[Adapter]], *, path: str | None = None) -> dict[str, dict]:
+def detect_adapters(
+    adapters: Mapping[str, type[Adapter]], *, previous: Mapping[str, Mapping] | None = None
+) -> dict[str, dict]:
+    """The heartbeat's report of each runtime of ``adapters`` (the runtimes of plugins), by name; ``previous`` is
+    the last look's (``steady``)."""
+    last = previous or {}
+    return {runtime: steady(_detected(cls, runtime), last.get(runtime)) for runtime, cls in adapters.items()}
+
+
+def detect_runtimes(
+    adapters: Mapping[str, type[Adapter]],
+    *,
+    path: str | None = None,
+    previous: Mapping[str, Mapping] | None = None,
+) -> dict[str, dict]:
     """The heartbeat's ``runtimes``: each of the three, from its adapter's ``detect`` when it has one, with the models
     its ``models`` lists when the runtime is available; a runtime without an adapter is unavailable even when its
-    binary is there."""
+    binary is there. A runtime whose --version timed out keeps its report of ``previous``, the last look's
+    (``steady``)."""
+    last = previous or {}
     found: dict[str, dict] = {}
     for runtime in runs.RUNTIMES:
         cls = adapters.get(runtime)
         if cls is not None:
-            detection = _detected(cls, runtime)
-        else:
-            binary = BINARIES[runtime]
-            probe = probe_binary(binary, path=path)
-            reason = f"evo-agents {__version__} has no adapter for {runtime} yet"
-            detection = Detection(False, probe.version, reason if probe.available else probe.reason)
-        found[runtime] = detection.report()
+            found[runtime] = steady(_detected(cls, runtime), last.get(runtime))
+            continue
+        binary = BINARIES[runtime]
+        probe = probe_binary(binary, path=path)
+        reason = f"evo-agents {__version__} has no adapter for {runtime} yet"
+        found[runtime] = Detection(False, probe.version, reason if probe.available else probe.reason).report()
     return found
