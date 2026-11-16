@@ -166,7 +166,7 @@ class FileSymbols:
 def find_matches(view, hits: list[Hit], files: dict[Key, dict], visible) -> list[Match]:
     """The visible nodes the hits fall in, best first: symbols whose definition matched, other symbols, then files."""
     numbered = {files[key]["id"] for key, number, _ in hits if number is not None and key in files}
-    spans = view.unit_spans(numbered) if numbered else {}
+    spans = view.unit_spans(numbered, visible) if numbered else {}
     per_file: dict[str, FileSymbols] = {}
     placed = []
     for order, (key, number, text) in enumerate(hits):
