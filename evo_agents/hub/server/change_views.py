@@ -353,7 +353,8 @@ async def refuse_manual_dispatch(conn: AsyncConnection, project_id: int, plan_id
 @dataclass(frozen=True)
 class CuratorPolicy:
     """A run of the Curator, and what its charter lets it have: its role, the owner's git secret it uses on other
-    forges than GitHub, the env secrets it gets, and the charter's protected paths."""
+    forges than GitHub, the env secrets it gets, and the charter's protected paths (a Builder's without those its
+    accepted proposal lists, ``_left_protected``)."""
 
     role: str  # reviewer, builder, judge or replay
     git_secret: str | None
@@ -381,13 +382,58 @@ async def curator_policy(
         return None
     charter = await charter_of(conn, project_id)
     secret = charter.get("git_secret")
+    protected = tuple(path for path in charter.get("protected_paths") or [] if isinstance(path, str))
+    if role == "builder" and change is not None:
+        protected = await _left_protected(conn, project_id, change.proposal_id, protected)
     return CuratorPolicy(
         role=role,
         git_secret=secret if isinstance(secret, str) and secret else None,
         env_secrets=tuple(name for name in charter.get("env_secrets") or [] if isinstance(name, str)),
-        protected=tuple(path for path in charter.get("protected_paths") or [] if isinstance(path, str)),
+        protected=protected,
         change_id=None if change is None else change.id,
     )
+
+
+async def _left_protected(
+    conn: AsyncConnection, project_id: int, proposal_id: int | None, protected: tuple[str, ...]
+) -> tuple:
+    """The protected globs a Builder's watchdog still stops it on: the charter's, less each file its change's proposal
+    lists that a glob naming one file alone (no wildcard) protects, once the owner accepted that proposal at tier 3, as
+    the owner then saw the path and why it made the proposal tier 3. Such a glob scoped to that file's repo is left
+    out; one with no repo becomes the same glob scoped to each other repo of the project. A glob with a wildcard stays
+    whole, as it also covers files the owner never accepted; so does every glob of a proposal not accepted, or accepted
+    below tier 3 (a path protected after it was accepted). The Judge and the merge gate still show each protected path
+    the diff touches."""
+    if proposal_id is None or not protected:
+        return protected
+    p, pr = tables.proposals, tables.project_repos
+    row = (await conn.execute(select(p.c.state, p.c.tier, p.c.paths).where(p.c.id == proposal_id))).one_or_none()
+    if row is None or row.state != "accepted" or row.tier != 3:
+        return protected
+    listed = {
+        (item["repo"], tiers.normalize_path(item["path"]))
+        for item in row.paths or []
+        if isinstance(item, dict) and isinstance(item.get("repo"), str) and isinstance(item.get("path"), str)
+    }
+    repos = (await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id).order_by(pr.c.name))).scalars()
+    repos = list(repos)
+    left: list[str] = []
+    for glob in protected:
+        if any(char in glob for char in "*?"):
+            left.append(glob)
+            continue
+        scoped = tiers.split_target(glob)
+        if scoped is not None and "/" not in scoped[0]:  # repo:path
+            if scoped not in listed:
+                left.append(glob)
+            continue
+        path = tiers.normalize_path(glob)
+        accepted_in = {repo for repo, listed_path in listed if listed_path == path}
+        if path is None or not accepted_in:
+            left.append(glob)
+            continue
+        left += [f"{repo}:{path}" for repo in repos if repo not in accepted_in]
+    return tuple(left)
 
 
 async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | None:
