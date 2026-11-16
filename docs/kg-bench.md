@@ -67,7 +67,7 @@ data/SET/tasks.jsonl                 the tasks read from them; fetched.json: rev
 data/SET/questions.jsonl             the last run's tasks as a `kg eval` question set
 repos/OWNER__NAME.git                a bare clone of each repo
 kg/EXTRACTOR/home/                   the EVO_KG_HOME of the bench: a project per repo and base commit
-kg/EXTRACTOR/memo/OWNER__NAME.sqlite the extraction memo of each repo, shared by its snapshots
+kg/EXTRACTOR/memo/OWNER__NAME/      the extraction memo of each repo, shared by its snapshots
 kg/EXTRACTOR/builds.jsonl            how long each build took
 kg/EXTRACTOR/home/PROJECT/bench.json the marker of a finished build: its size; its mtime is the graph's last use
 ```

@@ -502,8 +502,8 @@ def is_structured(record: dict) -> bool:
 
 def memo_path(project: Project) -> Path:
     if project.policy.memo == "shared":
-        return project.home / "_shared" / "memo.sqlite"
-    return project.root / "memo.sqlite"
+        return project.home / "_shared" / "memo"
+    return project.root / "memo"
 
 
 def build_project(
