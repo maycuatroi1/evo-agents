@@ -3,8 +3,8 @@
 For each graph, one in ten of its parsed edges is hidden, another share chooses the threshold at which the model
 reaches the precision asked for, and the hidden edges, each paired with a false edge of a node of the same kind (of
 the same name when one exists), give the precision and the recall at that threshold (``links.evaluate``). The graphs
-are a project's own (``--set NAME=PROJECT``, its latest build) and a sample of the tune graphs of bench sets the cache
-holds, drawn by the seed among those built.
+are a project's own (``--set NAME=PROJECT``, a build of it made in memory) and a sample of the tune graphs of bench
+sets the cache holds, drawn by the seed among those built.
 
 The summary has the bench summary's format (``evo-kg-bench/1``), so ``kg bench show`` prints and checks it: each set
 has one part, ``holdout`` (the hidden edges), whose ``precision`` and ``recall`` pool the true and the proposed edges
@@ -26,7 +26,7 @@ from evo_agents.kg.bench.datasets import BenchError
 from evo_agents.kg.bench.run import FORMAT, evo_ak_sha
 from evo_agents.kg.bench.tasks import HOLDOUT, TUNE, load_tasks
 from evo_agents.kg.ids import utc_now
-from evo_agents.kg.store import Store
+from evo_agents.kg.snapshot import SnapshotView
 
 KIND = "links"
 METHOD = "links"
@@ -34,7 +34,8 @@ PRIMARY = "precision"
 
 
 def tune_graphs(cache: Path, bench: str, count: int, seed: int) -> list[tuple[str, Path]]:
-    """``count`` built tune graphs of ``bench``, one per repo, drawn with ``seed``: (name, graph.sqlite)."""
+    """``count`` built tune graphs of ``bench``, one per repo, drawn with ``seed``: (name, its project directory,
+    which keeps its rows: ``rows_file``)."""
     lay = graphs.layout(cache)
     tasks, _ = load_tasks(cache, bench)
     by_repo: dict[str, str] = {}
@@ -43,25 +44,21 @@ def tune_graphs(cache: Path, bench: str, count: int, seed: int) -> list[tuple[st
             by_repo[task.repo] = lay.name(task)
     repos = sorted(by_repo)
     random.Random(f"{seed}:{bench}").shuffle(repos)
-    return [(by_repo[r], lay.home / by_repo[r] / "graph.sqlite") for r in repos[:count]]
+    return [(by_repo[r], lay.home / by_repo[r]) for r in repos[:count]]
 
 
-def graph_numbers(path: Path, options: dict, say=None) -> dict:
-    """The numbers of one graph (``links.evaluate``) at its latest build."""
-    store = Store.open_file(path, immutable=True)
-    try:
-        b = store.latest_ready()
-        if b is None:
-            raise BenchError(f"{path} has no build")
-        g = links.read(store, b)
-    finally:
-        store.close()
+def graph_numbers(name: str, view: SnapshotView, options: dict, say=None) -> dict:
+    """The numbers of the graph ``name`` (``links.evaluate``), as ``view`` reads its build."""
+    b = view.latest_ready()
+    if b is None:
+        raise BenchError(f"{name} has no build")
+    g = links.read(view, b)
     started = time.monotonic()
     _, numbers = links.evaluate(g, **options)
     numbers["seconds"] = round(time.monotonic() - started, 1)
     if say:
         say(
-            f"{path.parent.name}: {numbers['n']} hidden, precision {numbers['precision']}, recall {numbers['recall']}"
+            f"{name}: {numbers['n']} hidden, precision {numbers['precision']}, recall {numbers['recall']}"
             f", auc {numbers['auc']}, threshold {numbers['threshold']}, {numbers['seconds']}s"
         )
     return numbers

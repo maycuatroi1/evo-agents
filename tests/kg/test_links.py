@@ -2,15 +2,14 @@
 and the hub route, which only proposes."""
 
 import json
-import sqlite3
 
 import pytest
 
 from evo_agents.cli import main
 from evo_agents.kg import links
 from evo_agents.kg.bench import compare, links_eval
+from tests.kg.built import sync_build, view_of
 from tests.kg.projects import make_project
-from tests.kg.test_store import sync_build
 
 
 def toy_graph(groups: int = 6, size: int = 6) -> links.LinkGraph:
@@ -134,25 +133,16 @@ def test_proposals_keep_a_clear_winner_above_the_threshold():
     assert "0.95" in first["reason"] and "'load'" in first["reason"]
 
 
-def _edges(path):
-    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    try:
-        return con.execute("SELECT count(*), max(tx_from) FROM edges").fetchone()
-    finally:
-        con.close()
+def _graph_files(project):
+    return sorted(p.name for p in project.root.iterdir() if p.name.startswith("graph"))
 
 
 def test_read_and_propose_on_a_built_project_write_nothing(tmp_path, kg_env, capsys):
     pytest.importorskip("numpy")
     project = make_project(tmp_path, kg_env)
     sync_build(project)
-    from evo_agents.kg.store import Store
-
-    store = Store.open_readonly(project)
-    try:
-        g = links.read(store, store.latest_ready())
-    finally:
-        store.close()
+    view = view_of(project)
+    g = links.read(view, view.latest_ready())
     assert g.parsed and all(len(e) == 3 for e in g.parsed)
     assert set(g.kinds) >= {"File", "Symbol"}
 
@@ -161,8 +151,7 @@ def test_read_and_propose_on_a_built_project_write_nothing(tmp_path, kg_env, cap
     review.write_text(
         json.dumps({"items": [{"rule": "dangling_mention", "nodes": [{"id": guide}], "detail": {"samples": ["x.py"]}}]})
     )
-    graph = project.root / "graph.sqlite"
-    before = _edges(graph)
+    before = _graph_files(project)
     out = tmp_path / "proposals.json"
     argv = ["kg", "links", "propose", "--project", str(project.harness.root), "--review", str(review)]
     argv += ["--dim", "8", "--epochs", "3", "--precision", "0", "--out", str(out), "--json"]
@@ -170,7 +159,7 @@ def test_read_and_propose_on_a_built_project_write_nothing(tmp_path, kg_env, cap
     result = json.loads(capsys.readouterr().out)
     assert result["evaluation"]["model"] == links.MODELS[0] and result["sent"] == []
     assert json.loads(out.read_text())["candidates"] == result["candidates"]
-    assert _edges(graph) == before  # proposals only: the graph is as it was
+    assert _graph_files(project) == before == []  # proposals only, of a build in memory: no graph is written
 
 
 def test_eval_summary_is_checked_by_bench_show_without_split(tmp_path, kg_env, capsys):

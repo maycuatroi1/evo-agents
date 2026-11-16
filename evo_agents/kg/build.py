@@ -681,11 +681,13 @@ def build_rows(
     entity_outbox: list | None = None,
     entity_inbox: dict | None = None,
     entity_keys: dict | None = None,
+    memo: Memo | None = None,
 ) -> tuple[BuildReport, StoreRows | None]:
     """Build the project's graph in memory, without a store: the report and the rows a store would hold of the build
     (``graph_rows``), None when the build failed. The clustering starts from ``warm``, the clusters of the build
     before; the corpus state the build read is the stats' ``state_digest``, for ``unchanged_rows``. The audit log
-    gets its line, as from ``build_project``."""
+    gets its line, as from ``build_project``. The memo is the project's (``memo_path``) unless ``memo`` is given, which
+    the caller closes."""
     from evo_agents.kg.graph_rows import graph_rows
 
     started_at = utc_now()
@@ -693,9 +695,11 @@ def build_rows(
     crashed, rows = None, None
     started = time.monotonic()
     corpus = project.corpus()
-    path = memo_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    memo = Memo(path)
+    own_memo = memo is None
+    if memo is None:
+        path = memo_path(project)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        memo = Memo(path)
     try:
         found = _assemble(project, report, corpus, memo, lambda: warm, entity_outbox, entity_inbox, entity_keys)
         if found is not None:
@@ -715,7 +719,8 @@ def build_rows(
         crashed = type(exc).__name__
         raise
     finally:
-        memo.close()
+        if own_memo:
+            memo.close()
         corpus.close()
         report.seconds = round(time.monotonic() - started, 3)
         audit.record_build(project.root, report, started=started_at, finished=utc_now(), exception=crashed)

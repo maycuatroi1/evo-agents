@@ -241,16 +241,11 @@ def git_labels(
 
 
 def _held(lay, task: Task) -> set[str]:
-    """The paths of the File nodes of a task's graph."""
-    from evo_agents.kg.store import Store
+    """The paths of the File nodes of a task's graph (``rows_file``)."""
+    from evo_agents.kg.bench import rows_file
 
-    store = Store.open_file(lay.project_dir(task) / "graph.sqlite")
-    try:
-        file_ids = store.file_ids()
-    finally:
-        store.close()
     out = set()
-    for node_id in file_ids:
+    for node_id in rows_file.snapshot_of(lay.project_dir(task)).view().file_ids():
         m = locate._FILE_ID.match(node_id)
         if m:
             out.add(m["path"])
@@ -356,9 +351,8 @@ def group_of(store, b: int, label: Label, params=locate.DEFAULT, length=None) ->
 
 def collect(cache: Path, labels: list[Label], out: Path, *, progress=None) -> Counter:
     """Ask each label and append its group to ``out`` (JSON lines); the labels of a graph are asked together."""
-    from evo_agents.kg.bench import run
+    from evo_agents.kg.bench import rows_file, run
     from evo_agents.kg.project import resolve_project
-    from evo_agents.kg.store_session import StoreSession
 
     lay = graphs.layout(cache)
     stats: Counter = Counter()
@@ -375,7 +369,8 @@ def collect(cache: Path, labels: list[Label], out: Path, *, progress=None) -> Co
                     with graphs.bench_home(lay.home):
                         store, b = run.session_of(graphs.project_of(lay, task), "graph")._store()
                 else:
-                    store, b = StoreSession(resolve_project(name), "cli")._store()
+                    project = resolve_project(name)  # a build in memory of the corpus on this machine
+                    store, b = run.session_of(project, "graph", snap=rows_file.local_snapshot(project))._store()
             except Exception as exc:  # noqa: BLE001 - one graph that cannot be read leaves its labels out
                 stats["graph_error"] += len(group)
                 if progress:

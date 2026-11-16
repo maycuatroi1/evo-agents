@@ -463,7 +463,7 @@ def build_stand_in(
         with contextlib.suppress(OSError):
             os.utime(lay.project_dir(task) / graphs.MARKER)
         return graphs.Built(task, reused=True)
-    from evo_agents.kg.build import build_project
+    from evo_agents.kg.bench import rows_file
     from evo_agents.kg.sync import sync_project
 
     graphs.make_room(lay, task, room, keep | {lay.name(task)})
@@ -477,7 +477,7 @@ def build_stand_in(
             if failed:
                 why = failed[0].exception or "; ".join(failed[0].issues[:2]) or failed[0].status
                 return graphs.Built(task, False, time.monotonic() - start, f"sync: {why}")
-            report = build_project(project)
+            report, _ = rows_file.build(project, lay.project_dir(task))
             if not report.ok:
                 return graphs.Built(task, False, time.monotonic() - start, f"build: {'; '.join(report.errors[:2])}")
             unfinished = check(report) if check is not None else None
