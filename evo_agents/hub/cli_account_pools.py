@@ -1,10 +1,12 @@
-"""``evo-agents hub account-pool list|show|create|delete|add|remove`` and ``hub agent account-pool HANDLE POOL``: the
+"""``evo-agents hub account-pool list|show|create|policy|delete|add|remove`` and ``hub agent account-pool HANDLE POOL``: the
 account pools of a project (``evo_agents.hub.server.account_pools``), named sets of accounts that an agent in pool mode
 leases from alone. Every command needs the admin role on the project or on the hub.
 
 ``add POOL NAME`` puts one of your own env or provider accounts in the pool, or with ``--agent HANDLE`` an account of
 an agent of the project; ``remove POOL NAME`` takes it out (the account itself stays). ``agent account-pool HANDLE POOL``
-attaches a pool to an agent, ``--none`` detaches it. Nothing prints a value. Standard library only.
+attaches a pool to an agent, ``--none`` detaches it. ``create`` and ``policy POOL`` set the strategy the pool's agents
+pick its accounts by (``--strategy``, quota-pacing among them) and the thresholds of quota-pacing (``--hard-reserve-pct``,
+``--five-hour-ceiling-pct``). Nothing prints a value. Standard library only.
 """
 
 from __future__ import annotations
@@ -12,12 +14,24 @@ from __future__ import annotations
 import sys
 from urllib.parse import quote
 
+from evo_agents.hub.accounts import STRATEGIES
 from evo_agents.hub.cli_agents import PROJECT_HELP, project_of
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 
 EXIT_USAGE = 2
-POOL_KEYS = ("id", "project", "name", "created_by", "created_at", "accounts", "agents")
+POOL_KEYS = (
+    "id",
+    "project",
+    "name",
+    "created_by",
+    "created_at",
+    "accounts",
+    "agents",
+    "strategy",
+    "hard_reserve_pct",
+    "five_hour_ceiling_pct",
+)
 
 
 def _path(project: str, pool: str | None = None) -> str:
@@ -28,6 +42,7 @@ def _path(project: str, pool: str | None = None) -> str:
 def _show(pool: dict) -> None:
     agents = ", ".join(f"@{handle}" for handle in pool["agents"]) or "none"
     print(f"{pool['name']} of project {pool['project']}: used by {agents}")
+    print(f"  strategy {_policy_text(pool)}")
     rows = [
         (
             a["name"],
@@ -43,6 +58,24 @@ def _show(pool: dict) -> None:
         print(table(["ACCOUNT", "KIND", "ENV VAR", "PROVIDER", "OWNER", "STATE"], rows))
     else:
         print("  no account yet; `hub account-pool add` puts one in.")
+
+
+def _policy_text(pool: dict) -> str:
+    strategy = pool.get("strategy", "round-robin")
+    if strategy != "quota-pacing":
+        return strategy
+    return (
+        f"{strategy} (reserve {pool.get('hard_reserve_pct')}%, five-hour ceiling {pool.get('five_hour_ceiling_pct')}%)"
+    )
+
+
+def _policy_body(args) -> dict:
+    values = {
+        "strategy": args.strategy,
+        "hard_reserve_pct": args.hard_reserve_pct,
+        "five_hour_ceiling_pct": args.five_hour_ceiling_pct,
+    }
+    return {key: value for key, value in values.items() if value is not None}
 
 
 def _done(args, pool: dict) -> int:
@@ -70,13 +103,23 @@ def cmd_list(args) -> int:
 @client_command
 def cmd_show(args) -> int:
     hub, _ = signed_in()
-    return _done(args, hub.call("GET", _path(project_of(args), args.pool)))
+    return _done(args, hub.call("GET", _path(project_of(args), args.pool)) or {})
 
 
 @client_command
 def cmd_create(args) -> int:
     hub, _ = signed_in()
-    return _done(args, hub.call("POST", _path(project_of(args)), {"name": args.pool}))
+    return _done(args, hub.call("POST", _path(project_of(args)), {"name": args.pool} | _policy_body(args)) or {})
+
+
+@client_command
+def cmd_policy(args) -> int:
+    body = _policy_body(args)
+    if not body:
+        print("error: give --strategy, --hard-reserve-pct or --five-hour-ceiling-pct", file=sys.stderr)
+        return EXIT_USAGE
+    hub, _ = signed_in()
+    return _done(args, hub.call("PATCH", _path(project_of(args), args.pool), body) or {})
 
 
 @client_command
@@ -128,6 +171,22 @@ def _pool(parser) -> None:
     parser.add_argument("--project", help=PROJECT_HELP)
 
 
+def _policy_options(parser) -> None:
+    parser.add_argument("--strategy", choices=STRATEGIES, help="how its agents pick among its accounts")
+    parser.add_argument(
+        "--hard-reserve-pct",
+        type=int,
+        metavar="PCT",
+        help="quota-pacing: the share of a weekly window kept back while another account has more (0 to 100)",
+    )
+    parser.add_argument(
+        "--five-hour-ceiling-pct",
+        type=int,
+        metavar="PCT",
+        help="quota-pacing: the five-hour use above which an account waits while a cooler one is ready (1 to 100)",
+    )
+
+
 def register_account_pools(hsub) -> None:
     """``account-pool ...``, added to the subparsers ``hsub`` of ``hub``."""
     top = hsub.add_parser("account-pool", help="the account pools of a project: the accounts its pool-mode agents use")
@@ -141,9 +200,12 @@ def register_account_pools(hsub) -> None:
     for name, helptext, func in (
         ("show", "one account pool: its accounts and the agents that use it", cmd_show),
         ("create", "make an empty account pool (admin of the project or hub)", cmd_create),
+        ("policy", "set the strategy and quota-pacing thresholds of a pool (admin)", cmd_policy),
     ):
         parser = sub.add_parser(name, help=helptext)
         _pool(parser)
+        if func is not cmd_show:
+            _policy_options(parser)
         json_option(parser, returns_object(*POOL_KEYS, schema="AccountPool"))
         parser.set_defaults(func=func)
 

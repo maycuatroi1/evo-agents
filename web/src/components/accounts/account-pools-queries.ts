@@ -5,7 +5,7 @@ import { csrfHeaders } from "@/lib/api/csrf";
 import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
 
-import { accountKeys } from "./queries";
+import { accountKeys, DEFAULT_POLICY } from "./queries";
 
 /**
  * The account pools of a project (docs/credentials.md, section "Account pools"): named sets of Claude, provider and
@@ -13,6 +13,8 @@ import { accountKeys } from "./queries";
  * leases from it alone. Only an admin of the project or of the hub reads or changes them.
  */
 export type AccountPool = components["schemas"]["AccountPool"];
+export type PoolAccount = components["schemas"]["PoolAccount"];
+export type PoolPolicy = components["schemas"]["PoolPolicy"];
 
 export const accountPoolKeys = {
   all: [...accountKeys.all, "account-pools"] as const,
@@ -28,7 +30,7 @@ export const accountPoolsQuery = (api: ApiSource, project: string) =>
 
 export async function createAccountPool(api: ApiClient, project: string, name: string) {
   const headers = await csrfHeaders(api);
-  return call(api.POST("/v1/projects/{project}/account-pools", { params: { path: { project } }, body: { name }, headers }));
+  return call(api.POST("/v1/projects/{project}/account-pools", { params: { path: { project } }, body: { name, strategy: DEFAULT_POLICY.strategy, hard_reserve_pct: DEFAULT_POLICY.hard_reserve_pct, five_hour_ceiling_pct: DEFAULT_POLICY.five_hour_ceiling_pct }, headers }));
 }
 
 export async function deleteAccountPool(api: ApiClient, project: string, pool: string): Promise<void> {
@@ -51,4 +53,10 @@ export async function removePoolAccount(api: ApiClient, project: string, pool: s
 export async function attachAccountPool(api: ApiClient, project: string, handle: string, pool: string | null) {
   const headers = await csrfHeaders(api);
   return call(api.PUT("/v1/projects/{project}/agents/{handle}/account-pool", { params: { path: { project, handle } }, body: { account_pool: pool }, headers }));
+}
+
+/** How a pool picks among its accounts: its strategy, and quota-pacing's reserve and ceiling; what `body` omits stays. */
+export async function setPoolPolicy(api: ApiClient, project: string, pool: string, body: PoolPolicy) {
+  const headers = await csrfHeaders(api);
+  return call(api.PATCH("/v1/projects/{project}/account-pools/{pool}", { params: { path: { project, pool } }, body, headers }));
 }

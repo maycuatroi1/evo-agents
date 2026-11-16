@@ -98,6 +98,8 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Tabl
         Column("oauth_sealed", LargeBinary),  # 0066: the sealed set of an OAuth account's tokens
         Column("oauth_nonce", LargeBinary),
         Column("oauth_key_id", Text),
+        Column("weekly_budget_usd", Numeric(12, 2)),  # 0258: the USD a model account without a quota API has a week
+        _when("weekly_reset_at"),  # 0258: an instant its weeks start from, every 7 days; null: Monday 00:00 UTC
         ForeignKeyConstraint(["secret_id"], ["secrets.id"], ondelete="CASCADE", name="accounts_secret_id_fkey"),
         PrimaryKeyConstraint("secret_id", name="accounts_pkey"),
     )
@@ -111,6 +113,8 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Tabl
         Column("failover", Boolean, nullable=False, server_default=true()),
         Column("max_failovers", SmallInteger, nullable=False, server_default="3"),
         _stamp("updated_at"),
+        Column("hard_reserve_pct", SmallInteger, nullable=False, server_default="10"),  # 0258: quota-pacing
+        Column("five_hour_ceiling_pct", SmallInteger, nullable=False, server_default="90"),
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="account_policies_owner_id_fkey"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="account_policies_project_id_fkey"

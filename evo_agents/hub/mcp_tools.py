@@ -212,7 +212,8 @@ HUB_TOOLS = [
             "The handoff of a plan for a new session or a subagent, built by the hub from the plan it holds: its goal, "
             "each step done with its title, commits, Decision lines verbatim and evidence cut, and the steps not done "
             "with status and depends_on, within budget_tokens. With step, the evidence of the steps it depends on "
-            "comes first. A note names what was left out; plan_show has it whole. Same revision, same budget, same "
+            "comes first, and the step's difficulty and the model the project's Token strategy recommends for it end "
+            "the text. A note names what was left out; plan_show has it whole. Same revision, same budget, same "
             "text as `evo-agents hub plan handoff`."
         ),
         "inputSchema": {

@@ -25,7 +25,7 @@ import { LazyLoginDialog, preloadLogin } from "./login-lazy";
 import { sharedVariables } from "./model";
 import type { ProviderCardData } from "./provider-cards";
 import type { ProviderStart } from "./provider-dialog";
-import { LazyProviderDeleteDialog, LazyProviderDialog, LazyProviderKeyDialog, preloadProvider } from "./provider-lazy";
+import { LazyBudgetDialog, LazyProviderDeleteDialog, LazyProviderDialog, LazyProviderKeyDialog, preloadProvider } from "./provider-lazy";
 import { catalogQuery, providerAccountsQuery } from "./provider-queries";
 import { ProvidersTab } from "./providers-tab";
 import { type Account, accountListQuery } from "./queries";
@@ -79,6 +79,7 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
   const [provider, setProvider] = useState<Dialog<ProviderStart>>(null);
   const [keyOf, setKeyOf] = useState<Dialog<Account>>(null);
   const [deleting, setDeleting] = useState<Dialog<Account>>(null);
+  const [budget, setBudget] = useState<Dialog<Account>>(null);
   const [now] = useState(() => Date.now());
   const failureOf = useFailure();
   const { mutateAsync } = useChangeAccount();
@@ -121,7 +122,8 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
   const onPause = useCallback((account: Account) => void pause(account), [pause]);
   const onKey = useCallback((account: Account) => setKeyOf(opened(account)), []);
   const onDelete = useCallback((account: Account) => setDeleting(opened(account)), []);
-  const actions = { onEdit: edit, onPause, onRenew: renew, onKey, onDelete };
+  const onBudget = useCallback((account: Account) => setBudget(opened(account)), []);
+  const actions = { onEdit: edit, onPause, onRenew: renew, onKey, onDelete, onBudget };
   const shared = useMemo(() => sharedVariables(accounts ?? []), [accounts]);
 
   return (
@@ -193,6 +195,9 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
       ) : null}
       {deleting ? (
         <LazyProviderDeleteDialog key={deleting.value.name} account={deleting.value} open={deleting.open} onOpenChange={(open) => setDeleting((current) => toggled(current, open))} />
+      ) : null}
+      {budget ? (
+        <LazyBudgetDialog key={budget.value.name} account={budget.value} open={budget.open} onOpenChange={(open) => setBudget((current) => toggled(current, open))} />
       ) : null}
       <AccountDialog account={editing.account} open={editing.open} onOpenChange={(open) => setEditing((current) => ({ ...current, open }))} />
     </>

@@ -1353,8 +1353,8 @@ whatever checkouts it has, even none. The
 oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
-from), with the run's `kind`, `model` and `routing` (the scorer and the ladder when the policy has model routing on,
-see [Model routing](#model-routing); null otherwise), or `{"run": null}` when the wait ends empty, and the daemon claims again at
+from), with the run's `kind`, `model` and `routing` (what the hub's Token strategy chose when the policy has model
+routing on, see [Model routing](#model-routing); null otherwise), or `{"run": null}` when the wait ends empty, and the daemon claims again at
 once. A plan run is claimed only by a worker with a checkout of every repo in its `repos`; its answer has no step key
 and no repo, but `repos`, the prompt of `build_plan_prompt`, `plan`, `{revision, body}` at the hub's current
 revision, which the daemon writes to `.evo-run/plan.yaml`, and `session_per_step`. A run the night shift queued has
@@ -2357,23 +2357,27 @@ hands it no run.
 A run's model is the one the dispatch named (`--model`), else the one its agent profile allows when it allows exactly
 one, else the runtime's own choice as [Runtime adapters](#runtime-adapters) says. When the project's policy has the
 section `routing` on (`routing.enabled`, false by default; `docs/hub.md`, Workers and runs), a run that is pinned
-neither way has its model chosen by its difficulty, on the worker, before its agent starts:
+neither way has its model chosen by the project's Token strategy:
 
-- The claim of a step, plan, author or task run on claude-code carries `routing`: `{"scorer": "haiku", "ladder":
-  {"easy": "haiku", "medium": "sonnet", "hard": "opus"}}` as the policy sets them; null for any other run, and for a
-  run with a model. The hub calls no model at the dispatch. The Judge of the merge queue and of the Curator keeps the
-  rules of `evo_agents/hub/judges.py`, and the Curator's other runs the model of the charter.
-- The daemon skips a run its agent profile pins to one model. For any other, once the run's account is ready and before
-  the first headless agent starts, it runs `claude --print --model <scorer> --output-format json --max-turns 1` with
-  no tool, no MCP server and no session kept, in an empty directory and the agent's environment, asking for one word,
-  easy, medium or hard, about the start of the run's prompt (12,000 characters). The turn is cut off after 120
-  seconds.
-- The run takes the ladder's model for that difficulty. When the scorer fails, times out or names no difficulty, it
-  takes the medium one. A ladder model the run's profile does not allow is not taken, and the session keeps the model
-  it would have had. Nothing here fails the run, and a run that starts in the terminal UI is not rated.
+- The hub rates the run at its claim with no model call and picks the strategy's model (`docs/hub.md`). The claim of a
+  step, plan, author, task, chat or question run on claude-code, opencode, codex or any carries `routing`: the
+  `scorer`, a `ladder` whose every rung is the chosen model, the `difficulty`, and `source`, `reason`, `strategy`,
+  `branch` and `escalated_from`. The daemon takes that model and runs no scorer. A gateway model's lease is a gateway
+  key, and the daemon drops the Claude login beside it as for any gateway run.
+- A free prompt the hub's rules cannot rate comes with `pending: true` and a ladder of the strategy's model for each
+  difficulty, the medium one leased first. The daemon then runs the scorer: once the run's account is ready and before
+  the first headless agent starts, `claude --print --model <scorer> --output-format json --max-turns 1` with no tool,
+  no MCP server and no session kept, in an empty directory and the agent's environment, asking for one word, easy,
+  medium or hard, about the start of the run's prompt (12,000 characters), cut off after 120 seconds. The run takes
+  the ladder's model for that difficulty, or the medium one when the scorer fails, times out or names no difficulty.
+  When a rung is a gateway model, the daemon reports the routing and takes the run's leases again, so the hub moves
+  the run to that model's gateway prefix, or off the gateway, before the agent starts.
+- A claim of an older hub (`{"scorer", "ladder"}` alone) is scored as before. A ladder model the run's profile does
+  not allow is not taken, and the session keeps the model it would have had. Nothing here fails the run, and a run
+  that starts in the terminal UI is not rated.
 - The run's log gets a note (`Model routing: ...`), and the reports of the run carry `routing`: `scorer`,
   `difficulty`, `scored` (false when the scorer gave none), `model` (null when it took none), `cost_usd` of the
-  scorer's turn and `error`. The hub keeps it as the run's `routing` (schema 0185).
+  scorer's turn and `error`, with what the hub decided. The hub keeps it as the run's `routing` (schema 0185).
 
 Every run, routed or not, reports `model_used`: the model the runtime said it used (the model of Claude Code's init
 message, opencode's `provider/model`), else the one the daemon asked for, else none. The hub keeps it as the run's

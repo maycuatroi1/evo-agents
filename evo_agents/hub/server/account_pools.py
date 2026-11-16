@@ -9,6 +9,11 @@ many agents. A run of an agent in pool mode leases the model accounts of that po
 and cooldown as any account is (``account_choice``): when none is usable the run waits in the queue
 (``pool_accounts.claim_gate``), and nothing of its dispatcher's or of the node's login stands in (``credentials.survey_run``).
 
+A pool has a policy of its own: the strategy its accounts are chosen by (round-robin by default; quota-pacing among
+them, ``evo_agents.hub.accounts.pick``) and the two thresholds of quota-pacing, which ``PATCH .../account-pools/{pool}``
+sets. The rest (cooldown, failover) is DEFAULT_POLICY's. Each account shows its last usage with the window of its
+weekly budget (``account_budgets``), as quota-pacing weighs it.
+
 Reading and changing a pool need the admin role on the project or on the hub: a pool names the accounts of its
 members. A pool that an agent uses cannot be deleted (409). Each change adds one audit row in the project
 (``account-pool.*``), whose target names the pool by its id and an account by its id, never a name or a value.
@@ -19,7 +24,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Path, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,8 +34,16 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.account_providers import MODEL_ENV_VARS, provider_of
+from evo_agents.hub.accounts import (
+    DEFAULT_FIVE_HOUR_CEILING_PCT,
+    DEFAULT_HARD_RESERVE_PCT,
+    DEFAULT_STRATEGY,
+    MAX_PCT,
+    Strategy,
+)
 from evo_agents.hub.credentials import PROVIDER_KIND
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.account_budgets import budget_windows, with_budgets
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.pool_accounts import NEEDS_POOL  # noqa: F401  (the text a refusal reads)
@@ -42,7 +55,7 @@ log = logging.getLogger(__name__)
 POOL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$")
 MEMBER_KINDS = ("env", PROVIDER_KIND)
 PoolName = Annotated[str, Path(pattern=POOL_NAME.pattern, description="the pool's name, 1 to 40 characters")]
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
 
 router = APIRouter(prefix="/v1/projects", tags=["account pools"], responses={401: {"model": ErrorBody}})
 
@@ -51,6 +64,29 @@ class PoolWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(pattern=POOL_NAME.pattern, description="1 to 40 characters, unique in the project in any case")
+    strategy: Strategy = Field(DEFAULT_STRATEGY, description="how a run picks among the pool's accounts")
+    hard_reserve_pct: int = Field(
+        DEFAULT_HARD_RESERVE_PCT,
+        ge=0,
+        le=MAX_PCT,
+        description="quota-pacing: the share of a weekly window kept back while another account has more",
+    )
+    five_hour_ceiling_pct: int = Field(
+        DEFAULT_FIVE_HOUR_CEILING_PCT,
+        ge=1,
+        le=MAX_PCT,
+        description="quota-pacing: the five-hour use above which an account waits while a cooler one is ready",
+    )
+
+
+class PoolPolicy(BaseModel):
+    """What PATCH .../account-pools/{pool} changes; a field left out stays as it is."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    strategy: Strategy | None = None
+    hard_reserve_pct: int | None = Field(None, ge=0, le=MAX_PCT)
+    five_hour_ceiling_pct: int | None = Field(None, ge=1, le=MAX_PCT)
 
 
 class AccountAdd(BaseModel):
@@ -76,12 +112,18 @@ class PoolAccount(BaseModel):
     expires_at: datetime | None
     added_by: str
     added_at: datetime
+    last_usage: dict | None = Field(
+        None, description="its last usage: windows five_hour and seven_day (a weekly budget's among them), 0 to 1"
+    )
 
 
 class AccountPool(BaseModel):
     id: int
     project: str
     name: str
+    strategy: str = Field(DEFAULT_STRATEGY, description="how a run picks among its accounts")
+    hard_reserve_pct: int = DEFAULT_HARD_RESERVE_PCT
+    five_hour_ceiling_pct: int = DEFAULT_FIVE_HOUR_CEILING_PCT
     created_by: str
     created_at: datetime
     accounts: list[PoolAccount]
@@ -134,6 +176,7 @@ async def _accounts(conn: AsyncConnection, pool_ids: list[int]) -> dict[int, lis
             a.c.paused_at,
             (a.c.cooldown_until > func.now()).label("cooling"),
             a.c.cooldown_until,
+            a.c.last_usage,
         )
         .select_from(
             m.join(s, s.c.id == m.c.secret_id)
@@ -147,7 +190,10 @@ async def _accounts(conn: AsyncConnection, pool_ids: list[int]) -> dict[int, lis
         .order_by(s.c.name, s.c.id)
     )
     found: dict[int, list[PoolAccount]] = {pool_id: [] for pool_id in pool_ids}
-    for row in await conn.execute(query):
+    rows = (await conn.execute(query)).all()
+    ids = {row.id for row in rows}
+    usages = with_budgets({row.id: row.last_usage for row in rows}, await budget_windows(conn, ids) if ids else {})
+    for row in rows:
         env = row.kind == "env"
         provider = provider_of(row.env_var) if env else (row.catalog or "provider")
         found[row.pool_id].append(
@@ -165,6 +211,7 @@ async def _accounts(conn: AsyncConnection, pool_ids: list[int]) -> dict[int, lis
                 expires_at=row.expires_at,
                 added_by=row.added_by,
                 added_at=row.added_at,
+                last_usage=usages.get(row.id),
             )
         )
     return found
@@ -188,6 +235,9 @@ async def _views(conn: AsyncConnection, access: ProjectAccess, rows) -> list[Acc
             id=row.id,
             project=access.name,
             name=row.name,
+            strategy=row.strategy,
+            hard_reserve_pct=row.hard_reserve_pct,
+            five_hour_ceiling_pct=row.five_hour_ceiling_pct,
             created_by=logins[row.created_by],
             created_at=row.created_at,
             accounts=accounts[row.id],
@@ -247,7 +297,7 @@ async def create_account_pool(
         pool_id = (
             await conn.execute(
                 insert(p)
-                .values(project_id=access.project_id, name=body.name, created_by=user.user_id)
+                .values(project_id=access.project_id, created_by=user.user_id, **body.model_dump())
                 .returning(p.c.id)
             )
         ).scalar_one()
@@ -262,6 +312,38 @@ async def get_account_pool(request: Request, project: ProjectName, pool: PoolNam
     async with request.app.state.engine.connect() as conn:
         access = await project_access(conn, user, project)
         _admin(access, user, "reading")
+        return await pool_view(conn, access, pool)
+
+
+def _policy_target(pool_id: int, row) -> str:
+    return (
+        f"account-pool:{pool_id} strategy={row.strategy} hard_reserve_pct={row.hard_reserve_pct}"
+        f" five_hour_ceiling_pct={row.five_hour_ceiling_pct}"
+    )
+
+
+@router.patch("/{project}/account-pools/{pool}", response_model=AccountPool, responses=REFUSALS)
+async def set_pool_policy(
+    request: Request, project: ProjectName, pool: PoolName, body: PoolPolicy, user: CurrentUser
+) -> AccountPool:
+    """Set the pool's strategy and the thresholds of quota-pacing (an admin of the project or of the hub); a field left
+    out stays. The agents of the pool pick their accounts by it from their next choice on."""
+    p = tables.account_pools
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        _admin(access, user, "changing")
+        row = await _pool_row(conn, access, pool, lock=True)
+        values = body.model_dump(exclude_none=True)
+        if values:
+            changed = (
+                await conn.execute(
+                    p.update()
+                    .where(p.c.id == row.id)
+                    .values(**values)
+                    .returning(p.c.strategy, p.c.hard_reserve_pct, p.c.five_hour_ceiling_pct)
+                )
+            ).one()
+            await _record(conn, user, access, audit.ACCOUNT_POOL_POLICY, _policy_target(row.id, changed))
         return await pool_view(conn, access, pool)
 
 

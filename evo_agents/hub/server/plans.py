@@ -430,6 +430,9 @@ async def handoff(
         access = await project_access(conn, user, project)
         _reader(access)
         held = await _visible(conn, access, plan_id, sink)
+        from evo_agents.hub.server.token_strategy import recommend  # it reads the gateway, which reaches plans
+
+        routed = await recommend(conn, access.project_id, user.user_id, held.body, step) if step else {}
     try:
         built = await asyncio.to_thread(
             build_handoff, held.body, project=project, revision=held.revision, step=step, budget_tokens=budget_tokens
@@ -445,6 +448,7 @@ async def handoff(
         tokens=built.tokens,
         cut=built.cut,
         text=built.text,
+        **routed,
     )
 
 

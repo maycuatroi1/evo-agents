@@ -90,7 +90,7 @@ def listed_models(api_format: str, body: object) -> list[str]:
     return list(dict.fromkeys(names))[:MAX_MODELS]
 
 
-def _pinned(url: str, address: str) -> str:
+def pinned_url(url: str, address: str) -> str:
     """``url`` with its host replaced by ``address``, which the hub checked; the port and path kept."""
     parts = urlsplit(url)
     netloc = f"[{address}]" if ":" in address else address
@@ -108,7 +108,7 @@ async def _read(response: httpx.Response) -> bytes:
     return body[:MAX_BODY_BYTES]
 
 
-async def _call(client: httpx.AsyncClient, method: str, url: str, headers: dict, payload, host: str):
+async def call_pinned(client: httpx.AsyncClient, method: str, url: str, headers: dict, payload, host: str):
     request = client.build_request(method, url, headers=headers, json=payload, extensions={"sni_hostname": host})
     response = await client.send(request, stream=True)
     try:
@@ -142,14 +142,14 @@ async def probe(
     host = urlsplit(url).hostname or ""
     netloc_host = urlsplit(url).netloc
     headers = _headers(api_format, key, netloc_host)
-    pinned = _pinned(url, address)
+    pinned = pinned_url(url, address)
     timeout = httpx.Timeout(TIMEOUT_S)
     try:
         async with httpx.AsyncClient(transport=transport, timeout=timeout, follow_redirects=False) as client:
-            status, body = await _call(client, "GET", pinned + "/models", headers, None, host)
+            status, body = await call_pinned(client, "GET", pinned + "/models", headers, None, host)
             if status in NO_MODELS_PATH and model:
                 path, payload = _smallest(api_format, model)
-                status, body = await _call(client, "POST", pinned + path, headers, payload, host)
+                status, body = await call_pinned(client, "POST", pinned + path, headers, payload, host)
                 return Probe(True, [model], status) if 200 <= status < 300 else _failed(status, body, key)
     except httpx.TimeoutException:
         return Probe(False, error=f"the endpoint did not answer within {TIMEOUT_S:g} seconds")

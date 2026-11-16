@@ -130,6 +130,7 @@ describe("AppSidebar", () => {
       "nav-runs",
       "nav-mergeQueue",
       "nav-releases",
+      "nav-cronJobs",
       "nav-problems",
       "nav-opportunities",
       "nav-goals",

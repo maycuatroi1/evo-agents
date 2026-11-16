@@ -9,6 +9,10 @@ principal that lend now (``share_leases.shared_secrets``, with its refusals). Th
 name (its credential axis). An account picked by hand is the only one. Before a worker holds the run, at its dispatch,
 the worker is the one it is pinned to, or any.
 
+Under quota-pacing (the policy of the run's account pool, else the dispatcher's for the project; an agent's own accounts
+follow DEFAULT_POLICY), ``paced_accounts`` narrows them to the one ``evo_agents.hub.accounts.pick`` gives, among those
+not cooling down when any is not: the run's key of the gateway reaches that account alone (``gateway_leases``).
+
 ``check_dispatch`` answers the prefix a dispatch's model goes through the gateway with, or None. On claude-code and
 codex a model whose prefix the gateway serves always does; on opencode, or with runtime any, whose own model names
 read ``<provider>/<model>`` too, it does when the dispatcher, the agent or a share has an account of that prefix at
@@ -25,9 +29,12 @@ from sqlalchemy import and_, exists, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import gateway_runs, profiles, runs, tables
+from evo_agents.hub.accounts import FIVE_HOUR, QUOTA_PACING, SEVEN_DAY, Candidate, pick, window_of
 from evo_agents.hub.credentials import PROVIDER_KIND
 from evo_agents.hub.gateway_runs import GATEWAY_RUNTIMES, PICK_PREFIX
 from evo_agents.hub.server import share_leases  # a module: it imports worker_placement, which reaches this one
+from evo_agents.hub.server.account_budgets import budget_windows, with_budgets
+from evo_agents.hub.server.account_choice import DEFAULT_POLICY, account_policy, pacing_of, pool_policy
 
 NOTHING = "nothing was dispatched"
 
@@ -161,6 +168,49 @@ async def usable_accounts(
             seen.add(row.id)
     usable.reasons += [refusal.text for refusal in refused]
     return usable
+
+
+async def _policy(conn: AsyncConnection, asker: Asker, accounts: list[Account]) -> dict:
+    pooled, pool_id = await _account_pool(conn, asker)
+    if pooled:
+        return await pool_policy(conn, pool_id)
+    if any(account.agent for account in accounts):
+        return dict(DEFAULT_POLICY)
+    return await account_policy(conn, asker.owner_id, asker.project_id)
+
+
+async def paced_accounts(conn: AsyncConnection, asker: Asker, accounts: list[Account]) -> list[Account]:
+    """``accounts`` (``usable_accounts``), narrowed to the one quota-pacing gives when the policy says it, as the
+    module says; all of them under any other strategy."""
+    if len(accounts) < 2:
+        return accounts
+    policy = await _policy(conn, asker, accounts)
+    if policy["strategy"] != QUOTA_PACING:
+        return accounts
+    a, ids = tables.accounts, [account.secret_id for account in accounts]
+    query = select(
+        a.c.secret_id,
+        a.c.weight,
+        a.c.priority,
+        a.c.rotation,
+        a.c.last_usage,
+        (a.c.cooldown_until > func.now()).label("cooling"),
+    ).where(a.c.secret_id.in_(ids))
+    rows = {row.secret_id: row for row in await conn.execute(query)}
+    usages = with_budgets({i: rows[i].last_usage for i in rows}, await budget_windows(conn, ids))
+    ready = [account for account in accounts if not (account.secret_id in rows and rows[account.secret_id].cooling)]
+    candidates = [_candidate(account, rows.get(account.secret_id), usages.get(account.secret_id)) for account in ready]
+    found = pick(
+        candidates or [_candidate(account, None, None) for account in accounts], QUOTA_PACING, pacing_of(policy)
+    )
+    return [account for account in accounts if found is not None and account.secret_id == found[0].id]
+
+
+def _candidate(account: Account, row, usage) -> Candidate:
+    if row is None:
+        return Candidate(account.secret_id, account.name)
+    windows = window_of(usage, FIVE_HOUR), window_of(usage, SEVEN_DAY)
+    return Candidate(account.secret_id, account.name, row.weight, row.priority, row.rotation, *windows)
 
 
 async def _known(conn: AsyncConnection, asker: Asker, prefix: str) -> bool:

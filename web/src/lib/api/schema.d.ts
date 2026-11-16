@@ -9260,7 +9260,7 @@ export interface paths {
         head?: never;
         /**
          * Change Account
-         * @description Change the weight or priority of the caller's account ``name``, or pause or resume it.
+         * @description Change the weight, priority or weekly budget of the caller's account ``name``, or pause or resume it.
          */
         patch: operations["change_account_v1_accounts__name__patch"];
         trace?: never;
@@ -10063,7 +10063,12 @@ export interface paths {
         delete: operations["delete_account_pool_v1_projects__project__account_pools__pool__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Set Pool Policy
+         * @description Set the pool's strategy and the thresholds of quota-pacing (an admin of the project or of the hub); a field left
+         *     out stays. The agents of the pool pick their accounts by it from their next choice on.
+         */
+        patch: operations["set_pool_policy_v1_projects__project__account_pools__pool__patch"];
         trace?: never;
     };
     "/v1/projects/{project}/account-pools/{pool}/accounts": {
@@ -10153,6 +10158,27 @@ export interface paths {
          * @description Change what ``body`` gives of the agent's provider account ``name``; the rest, the key included, stays.
          */
         patch: operations["change_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}/provider-accounts/{name}/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quota Of Agent Provider Account
+         * @description Read the quota the agent's Z.ai account ``name`` has left and keep it as the account's last usage; any member
+         *     of the project may.
+         */
+        post: operations["quota_of_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__quota_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/projects/{project}/agents/{handle}/accounts": {
@@ -13507,6 +13533,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/provider-accounts/{name}/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quota Of Provider Account
+         * @description Read the quota the caller's Z.ai account ``name`` has left and keep it as the account's last usage.
+         */
+        post: operations["quota_of_provider_account_v1_provider_accounts__name__quota_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/runnable-models": {
         parameters: {
             query?: never;
@@ -14753,6 +14799,16 @@ export interface components {
             cost_by_principal: components["schemas"]["PrincipalCost"][];
             /** @description a provider account's endpoint and what the model gateway last said of it; null for a secret */
             gateway?: components["schemas"]["GatewayAccount"] | null;
+            /**
+             * Weekly Budget Usd
+             * @description the USD its owner gives it a week, turned into its seven_day window; null for none
+             */
+            weekly_budget_usd?: number | null;
+            /**
+             * Weekly Reset At
+             * @description an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC
+             */
+            weekly_reset_at?: string | null;
         };
         /** AccountAdd */
         AccountAdd: {
@@ -14801,6 +14857,16 @@ export interface components {
              * @description true pauses it, so no new run takes it; false resumes it
              */
             paused?: boolean | null;
+            /**
+             * Weekly Budget Usd
+             * @description the USD it may spend a week, for a model account; null drops it
+             */
+            weekly_budget_usd?: number | null;
+            /**
+             * Weekly Reset At
+             * @description an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC
+             */
+            weekly_reset_at?: string | null;
         };
         /** AccountPolicy */
         AccountPolicy: {
@@ -14810,7 +14876,7 @@ export interface components {
              * @default round-robin
              * @enum {string}
              */
-            strategy: "round-robin" | "weighted-round-robin" | "fill-first";
+            strategy: "round-robin" | "weighted-round-robin" | "fill-first" | "quota-pacing";
             /**
              * Cooldown Seconds
              * @description how long an account cools down after a usage limit that gave no reset time
@@ -14829,6 +14895,18 @@ export interface components {
              * @default 3
              */
             max_failovers: number;
+            /**
+             * Hard Reserve Pct
+             * @description quota-pacing: the share of a weekly window kept back while another account has more
+             * @default 10
+             */
+            hard_reserve_pct: number;
+            /**
+             * Five Hour Ceiling Pct
+             * @description quota-pacing: the five-hour use above which an account waits while a cooler one is ready
+             * @default 90
+             */
+            five_hour_ceiling_pct: number;
             /** Project */
             project: string;
             /**
@@ -14845,7 +14923,7 @@ export interface components {
              * @default round-robin
              * @enum {string}
              */
-            strategy: "round-robin" | "weighted-round-robin" | "fill-first";
+            strategy: "round-robin" | "weighted-round-robin" | "fill-first" | "quota-pacing";
             /**
              * Cooldown Seconds
              * @description how long an account cools down after a usage limit that gave no reset time
@@ -14864,6 +14942,18 @@ export interface components {
              * @default 3
              */
             max_failovers: number;
+            /**
+             * Hard Reserve Pct
+             * @description quota-pacing: the share of a weekly window kept back while another account has more
+             * @default 10
+             */
+            hard_reserve_pct: number;
+            /**
+             * Five Hour Ceiling Pct
+             * @description quota-pacing: the five-hour use above which an account waits while a cooler one is ready
+             * @default 90
+             */
+            five_hour_ceiling_pct: number;
         };
         /** AccountPool */
         AccountPool: {
@@ -14873,6 +14963,22 @@ export interface components {
             project: string;
             /** Name */
             name: string;
+            /**
+             * Strategy
+             * @description how a run picks among its accounts
+             * @default round-robin
+             */
+            strategy: string;
+            /**
+             * Hard Reserve Pct
+             * @default 10
+             */
+            hard_reserve_pct: number;
+            /**
+             * Five Hour Ceiling Pct
+             * @default 90
+             */
+            five_hour_ceiling_pct: number;
             /** Created By */
             created_by: string;
             /**
@@ -33966,6 +34072,21 @@ export interface components {
              * @description the handoff, as evo_agents.hub.handoff builds it; markdown
              */
             text: string;
+            /**
+             * Difficulty
+             * @description the step's difficulty: its own, else as the hub's rules rate it; null without a step
+             */
+            difficulty?: ("easy" | "medium" | "hard") | null;
+            /**
+             * Recommended Model
+             * @description the model the project's Token strategy gives that difficulty now (routing.*)
+             */
+            recommended_model?: string | null;
+            /**
+             * Routing Reason
+             * @description why that difficulty and that model
+             */
+            routing_reason?: string | null;
         };
         /** PlanPatch */
         PlanPatch: {
@@ -35770,6 +35891,13 @@ export interface components {
              * Format: date-time
              */
             added_at: string;
+            /**
+             * Last Usage
+             * @description its last usage: windows five_hour and seven_day (a weekly budget's among them), 0 to 1
+             */
+            last_usage?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** PoolCandidate */
         PoolCandidate: {
@@ -35842,6 +35970,18 @@ export interface components {
             /** Last Heartbeat At */
             last_heartbeat_at: string | null;
         };
+        /**
+         * PoolPolicy
+         * @description What PATCH .../account-pools/{pool} changes; a field left out stays as it is.
+         */
+        PoolPolicy: {
+            /** Strategy */
+            strategy?: ("round-robin" | "weighted-round-robin" | "fill-first" | "quota-pacing") | null;
+            /** Hard Reserve Pct */
+            hard_reserve_pct?: number | null;
+            /** Five Hour Ceiling Pct */
+            five_hour_ceiling_pct?: number | null;
+        };
         /** PoolRequest */
         PoolRequest: {
             /**
@@ -35912,6 +36052,25 @@ export interface components {
              * @description 1 to 40 characters, unique in the project in any case
              */
             name: string;
+            /**
+             * Strategy
+             * @description how a run picks among the pool's accounts
+             * @default round-robin
+             * @enum {string}
+             */
+            strategy: "round-robin" | "weighted-round-robin" | "fill-first" | "quota-pacing";
+            /**
+             * Hard Reserve Pct
+             * @description quota-pacing: the share of a weekly window kept back while another account has more
+             * @default 10
+             */
+            hard_reserve_pct: number;
+            /**
+             * Five Hour Ceiling Pct
+             * @description quota-pacing: the five-hour use above which an account waits while a cooler one is ready
+             * @default 90
+             */
+            five_hour_ceiling_pct: number;
         };
         /**
          * PrefSet
@@ -39017,6 +39176,23 @@ export interface components {
              */
             error: string | null;
         };
+        /**
+         * ProviderQuota
+         * @description What POST .../{name}/quota answers: whether the quota was read and kept, and an error without the key.
+         */
+        ProviderQuota: {
+            /** Ok */
+            ok: boolean;
+            /** @description the usage kept as the account's last */
+            usage?: components["schemas"]["QuotaUsage"] | null;
+            /**
+             * Status
+             * @description Z.ai's HTTP status; null when no answer came
+             */
+            status?: number | null;
+            /** Error */
+            error?: string | null;
+        };
         /** PruneRequest */
         PruneRequest: {
             /**
@@ -39411,6 +39587,49 @@ export interface components {
              * @description HH:MM, 24 hours; the quiet hours run past midnight when it is not after start
              */
             end: string;
+        };
+        /** QuotaUsage */
+        QuotaUsage: {
+            /**
+             * Status
+             * @description allowed, or rejected once a window is used up
+             */
+            status: string;
+            /**
+             * Rate Limit Type
+             * @description with rejected: the window used up
+             */
+            rate_limit_type?: string | null;
+            /**
+             * Resets At
+             * @description with rejected: when that window resets
+             */
+            resets_at?: string | null;
+            /**
+             * Utilization
+             * @description the highest share used among the windows
+             */
+            utilization?: number | null;
+            /**
+             * Windows
+             * @description five_hour and seven_day, as read
+             */
+            windows?: {
+                [key: string]: components["schemas"]["QuotaWindow"];
+            };
+        };
+        /** QuotaWindow */
+        QuotaWindow: {
+            /**
+             * Utilization
+             * @description the share of the window's limit used, 0 to 1
+             */
+            utilization: number;
+            /**
+             * Resets At
+             * @description when it resets, UTC
+             */
+            resets_at?: string | null;
         };
         /** RateLimitAnswer */
         RateLimitAnswer: {
@@ -40961,6 +41180,55 @@ export interface components {
              * @description why it did not rate or choose
              */
             error?: string | null;
+            /**
+             * Source
+             * @description where the difficulty came from: plan, rule, role, scorer or fallback; absent: the scorer
+             */
+            source?: ("plan" | "rule" | "role" | "scorer" | "fallback") | null;
+            /**
+             * Reason
+             * @description why the hub gave the run its model
+             */
+            reason?: string | null;
+            /**
+             * Strategy
+             * @description the Token strategy that chose it
+             */
+            strategy?: ("surplus-first" | "cost-first" | "quota-burn") | null;
+            /**
+             * Branch
+             * @description the ladder's model, or the overflow's
+             */
+            branch?: ("ladder" | "overflow") | null;
+            /**
+             * Escalated From
+             * @description the difficulty of the failed run before this one, when this one went one level up
+             */
+            escalated_from?: ("easy" | "medium" | "hard") | null;
+            /**
+             * Gateway
+             * @description the gateway prefix of the chosen model; absent: native
+             */
+            gateway?: string | null;
+            /**
+             * Quota
+             * @description what the subscription had left when the hub chose: weekly_left and five_hour_used, 0 to 1
+             */
+            quota?: {
+                [key: string]: number;
+            } | null;
+            /**
+             * Pending
+             * @description true: the hub left the rating to the worker's scorer
+             */
+            pending?: boolean | null;
+            /**
+             * Choices
+             * @description while pending: the model of each difficulty the scorer may name
+             */
+            choices?: {
+                [key: string]: string;
+            } | null;
         };
         /** RuleCount */
         RuleCount: {
@@ -42395,7 +42663,9 @@ export interface components {
         };
         /**
          * RunRouting
-         * @description The routing a claim carries while the project's policy has it on, for a run that names no model.
+         * @description The routing a claim carries while the project's policy has it on, for a run that names no model. When the hub
+         *     rated the run, every rung of the ladder is the model it chose, and ``difficulty`` says what it rated; while the
+         *     rating waits for the scorer (``pending``), the ladder is the strategy's model of each difficulty.
          */
         RunRouting: {
             /**
@@ -42405,6 +42675,41 @@ export interface components {
             scorer: string;
             /** @description the model of each difficulty */
             ladder: components["schemas"]["RoutingLadder"];
+            /**
+             * Difficulty
+             * @description the difficulty the hub rated the run; null: the worker's scorer rates it
+             */
+            difficulty?: ("easy" | "medium" | "hard") | null;
+            /**
+             * Source
+             * @description where the difficulty came from
+             */
+            source?: ("plan" | "rule" | "role" | "scorer" | "fallback") | null;
+            /**
+             * Reason
+             * @description why that model
+             */
+            reason?: string | null;
+            /**
+             * Strategy
+             * @description the Token strategy that chose it
+             */
+            strategy?: ("surplus-first" | "cost-first" | "quota-burn") | null;
+            /**
+             * Branch
+             * @description ladder or overflow
+             */
+            branch?: ("ladder" | "overflow") | null;
+            /**
+             * Escalated From
+             * @description the difficulty of the run before it, which failed, when this one went one level up
+             */
+            escalated_from?: ("easy" | "medium" | "hard") | null;
+            /**
+             * Pending
+             * @description true: the worker's scorer rates the run among the ladder's models
+             */
+            pending?: boolean | null;
         };
         /**
          * RunSkill
@@ -44125,6 +44430,16 @@ export interface components {
             cost_by_principal: components["schemas"]["PrincipalCost"][];
             /** @description a provider account's endpoint and what the model gateway last said of it; null for a secret */
             gateway?: components["schemas"]["GatewayAccount"] | null;
+            /**
+             * Weekly Budget Usd
+             * @description the USD its owner gives it a week, turned into its seven_day window; null for none
+             */
+            weekly_budget_usd?: number | null;
+            /**
+             * Weekly Reset At
+             * @description an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC
+             */
+            weekly_reset_at?: string | null;
             /**
              * Owner
              * @description the login of the member who owns it and shares it
@@ -89988,6 +90303,79 @@ export interface operations {
             };
         };
     };
+    set_pool_policy_v1_projects__project__account_pools__pool__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the pool's name, 1 to 40 characters */
+                pool: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoolPolicy"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     add_account_v1_projects__project__account_pools__pool__accounts_put: {
         parameters: {
             query?: never;
@@ -90397,6 +90785,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    quota_of_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__quota_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderQuota"];
                 };
             };
             /** @description Unauthorized */
@@ -103306,6 +103774,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderProbe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    quota_of_provider_account_v1_provider_accounts__name__quota_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets and accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderQuota"];
                 };
             };
             /** @description Unauthorized */

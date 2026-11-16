@@ -122,3 +122,28 @@ export function resetWhen(resetsAt: string, now: number): ResetWhen {
   }
   return { kind: left < 7 * DAY ? "weekday" : "date", at };
 }
+
+const WEEK = 7 * DAY;
+/** Within this many points of its pace a week reads on pace. */
+export const PACE_SLACK = 5;
+
+export type WeeklyPace = { state: "ahead" | "behind" | "on"; points: number; expected: number };
+
+/**
+ * How a weekly window's use compares with its pace at `now`: the share of the week gone since it started (its reset
+ * less seven days) is the share an even pace would have used. Ahead: used more, so the week runs out before its reset;
+ * behind: used less, so the account has quota to spend. `points` is the gap in whole percent, `expected` the share an
+ * even pace would have used. Null for a window without a share or a reset ahead, or a reset more than a week ahead.
+ */
+export function weeklyPace(window: Pick<UsageWindowView, "percent" | "resetsAt" | "reset">, now: number): WeeklyPace | null {
+  if (window.percent === null || window.resetsAt === null || window.reset) return null;
+  const left = Date.parse(window.resetsAt) - now;
+  if (!Number.isFinite(left) || left <= 0 || left > WEEK) return null;
+  const expected = Math.round(((WEEK - left) / WEEK) * 100);
+  const gap = window.percent - expected;
+  const state = Math.abs(gap) < PACE_SLACK ? "on" : gap > 0 ? "ahead" : "behind";
+  return { state, points: Math.abs(gap), expected };
+}
+
+/** Whether a window is a weekly one, whose pace the page says. */
+export const isWeekly = (name: string) => name === "seven_day" || name.startsWith("seven_day_");

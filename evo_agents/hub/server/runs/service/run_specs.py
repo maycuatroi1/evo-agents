@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import author, autonomy_card, curator, model_router, proofs, run_prompts, runs, tables
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.hub.server import attachment_store, pool_accounts, principals
+from evo_agents.hub.server import attachment_store, pool_accounts, principals, token_strategy
 from evo_agents.hub.server.agent_packs import tickets
 from evo_agents.hub.server.loop.runs_of import item_of_run
 from evo_agents.hub.server.run_state import move_run
@@ -346,7 +346,7 @@ async def run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...]
             lost_attempt=await _lost_attempt(conn, view),
             runtime=view.runtime,
             model=view.model,
-            routing=await _routing(conn, project_id, view),
+            routing=await _routing(conn, view, plan),
             mode=view.mode,
             approval=view.approval,
             timeout_min=view.timeout_min,
@@ -378,14 +378,13 @@ async def run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...]
     )
 
 
-async def _routing(conn: AsyncConnection, project_id: int, view: Run) -> dict | None:
-    """The routing by difficulty the claim of run ``view`` carries (``model_router.claim_routing``); the project's
-    policy is read only for a run of a routed kind and runtime that names no model."""
+async def _routing(conn: AsyncConnection, view: Run, plan: dict) -> dict | None:
+    """The routing by difficulty the claim of run ``view`` of ``plan`` carries: the Token strategy's model, which the
+    hub chooses now (``token_strategy.decide``); the project's policy is read only for a run of a routed kind and
+    runtime that names no model."""
     if view.model or view.kind not in model_router.ROUTED_KINDS or view.runtime not in model_router.ROUTED_RUNTIMES:
         return None
-    from evo_agents.hub.server.autonomy_policies import effective_policy  # it imports the Loop, which reads runs
-
-    return model_router.claim_routing(await effective_policy(conn, project_id), view.kind, view.runtime, view.model)
+    return await token_strategy.decide(conn, view.id, plan)
 
 
 async def _opening_files(conn: AsyncConnection, view: Run) -> list:

@@ -13,9 +13,10 @@ failed, with the gateway's error code alone as the reason, never its text). GET 
 whose figures are those of the caller's own runs alone and whose shares are those that lend it to the caller (a share
 not revoked covers them, or a run of theirs took it). GET /v1/shared-accounts lists the env accounts other members
 share with the caller for every run, with the projects their shares lend them on, as the account picker of a dispatch
-offers them by ``<login>/<name>`` (``runs.service.accounts``). PATCH
-/v1/accounts/{name} changes its weight or priority, or pauses (``paused: true``) or resumes it; a name that is not one
-of the caller's live env secrets is 404, whoever's it is.
+offers them by ``<login>/<name>`` (``runs.service.accounts``). PATCH /v1/accounts/{name} changes its weight or
+priority, pauses (``paused: true``) or resumes it, or gives it a weekly budget (``weekly_budget_usd``, null drops it,
+with ``weekly_reset_at``, the instant its weeks start from), which the hub turns into its ``seven_day`` usage window
+(``account_budgets``); a name that is not one of the caller's live env secrets is 404, whoever's it is.
 
 A policy is the caller's for one project: GET /v1/account-policies lists the caller's own; GET
 /v1/account-policies/{project} gives the caller's policy for a project they can see, the defaults
@@ -36,7 +37,7 @@ from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy import case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -47,14 +48,18 @@ from evo_agents.hub.account_providers import Category, Provider, category_of, pr
 from evo_agents.hub.accounts import (
     ACCOUNT_STATES,
     DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_FIVE_HOUR_CEILING_PCT,
+    DEFAULT_HARD_RESERVE_PCT,
     DEFAULT_MAX_FAILOVERS,
     DEFAULT_POLICY,
     DEFAULT_STRATEGY,
     MAX_COOLDOWN_SECONDS,
     MAX_FAILOVERS,
+    MAX_PCT,
     MAX_PRIORITY,
     MAX_WEIGHT,
     MIN_COOLDOWN_SECONDS,
+    QUOTA_PACING,
     STRATEGIES,
     account_state,
 )
@@ -82,6 +87,7 @@ OwnerLogin = Annotated[
 ]
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 FAILING = ("error", "unavailable", "expired", "banned", "credits_exhausted")  # testStatus of a connection that fails
+MAX_BUDGET_USD = 1_000_000
 REASON, MAX_REASON = re.compile(r"[^A-Za-z0-9_.:-]+"), 80  # a reason as shown: a code, never the provider's text
 
 router = APIRouter(
@@ -148,6 +154,12 @@ class Account(BaseModel):
     gateway: GatewayAccount | None = Field(
         None, description="a provider account's endpoint and what the model gateway last said of it; null for a secret"
     )
+    weekly_budget_usd: float | None = Field(
+        None, description="the USD its owner gives it a week, turned into its seven_day window; null for none"
+    )
+    weekly_reset_at: datetime | None = Field(
+        None, description="an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC"
+    )
 
 
 class SharedAccount(Account):
@@ -165,6 +177,12 @@ class AccountChange(BaseModel):
     weight: int | None = Field(None, ge=0, le=MAX_WEIGHT, description="its share in a weighted pool; 0 leaves it")
     priority: int | None = Field(None, ge=0, le=MAX_PRIORITY, description="the lower, the sooner in a fill-first pool")
     paused: bool | None = Field(None, description="true pauses it, so no new run takes it; false resumes it")
+    weekly_budget_usd: float | None = Field(
+        None, gt=0, le=MAX_BUDGET_USD, description="the USD it may spend a week, for a model account; null drops it"
+    )
+    weekly_reset_at: AwareDatetime | None = Field(
+        None, description="an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC"
+    )
 
 
 class AccountPolicyWrite(BaseModel):
@@ -180,6 +198,18 @@ class AccountPolicyWrite(BaseModel):
     failover: bool = Field(True, description="whether a run that hits a usage limit goes on with another account")
     max_failovers: int = Field(
         DEFAULT_MAX_FAILOVERS, ge=0, le=MAX_FAILOVERS, description="at most how many times a run moves on"
+    )
+    hard_reserve_pct: int = Field(
+        DEFAULT_HARD_RESERVE_PCT,
+        ge=0,
+        le=MAX_PCT,
+        description="quota-pacing: the share of a weekly window kept back while another account has more",
+    )
+    five_hour_ceiling_pct: int = Field(
+        DEFAULT_FIVE_HOUR_CEILING_PCT,
+        ge=1,
+        le=MAX_PCT,
+        description="quota-pacing: the five-hour use above which an account waits while a cooler one is ready",
     )
 
 
@@ -213,6 +243,8 @@ def _accounts(owner_id: int, name: str | None = None):
             a.c.cooldown_reason,
             a.c.last_leased_at,
             s.c.expires_at,
+            a.c.weekly_budget_usd,
+            a.c.weekly_reset_at,
             func.now().label("now"),
         )
         .outerjoin_from(s, a, a.c.secret_id == s.c.id)
@@ -261,6 +293,8 @@ def _account(
     for key in ("id", "gateway_provider", "base_url", "api_format", "model_count"):
         del values[key]
     now = values.pop("now")
+    budget = values.pop("weekly_budget_usd")
+    values["weekly_budget_usd"] = None if budget is None else float(budget)
     oauth = row.auth == "oauth"
     # The end of an OAuth account is its access token's, which the hub renews when a run leases it: not an expiry.
     state = account_state(row.paused_at, row.cooldown_until, None if oauth else row.expires_at, now)
@@ -420,13 +454,14 @@ def _paused(change: AccountChange, kept):
 async def change_account(
     request: Request, name: AccountName, body: AccountChange, user: CurrentUser, response: Response
 ) -> Account:
-    """Change the weight or priority of the caller's account ``name``, or pause or resume it."""
+    """Change the weight, priority or weekly budget of the caller's account ``name``, or pause or resume it."""
     a = tables.accounts
     async with request.app.state.engine.begin() as conn:
         row = (await conn.execute(_accounts(user.user_id, name))).one_or_none()
         if row is None:
             raise HTTPException(404, NO_ACCOUNT.format(name=name))
         values = body.model_dump(include={"weight", "priority"}, exclude_none=True)
+        values |= body.model_dump(include={"weekly_budget_usd", "weekly_reset_at"} & body.model_fields_set)
         made = insert(a).values(secret_id=row.id, **values, **_paused(body, None))
         changed = {**values, **_paused(body, a.c.paused_at), "updated_at": func.now()}
         await conn.execute(made.on_conflict_do_update(index_elements=[a.c.secret_id], set_=changed))
@@ -440,6 +475,8 @@ async def change_account(
         )
         paused = "yes" if found.paused_at is not None else "no"
         target = f"{audit_target(row.id)} weight={found.weight} priority={found.priority} paused={paused}"
+        if "weekly_budget_usd" in body.model_fields_set:
+            target += f" weekly_budget_usd={found.weekly_budget_usd}"
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.ACCOUNT_SET, target=target)
     log.info("account changed", extra={"secret": name, "login": user.login, "state": found.state})
     response.headers.update(NO_STORE)
@@ -458,6 +495,8 @@ def _policies(owner_id: int):
             p.c.cooldown_seconds,
             p.c.failover,
             p.c.max_failovers,
+            p.c.hard_reserve_pct,
+            p.c.five_hour_ceiling_pct,
             p.c.updated_at,
         )
         .join_from(p, projects, projects.c.id == p.c.project_id)
@@ -492,10 +531,13 @@ async def get_account_policy(request: Request, project: ProjectName, user: Curre
 
 def _policy_target(project: str, body: AccountPolicyWrite) -> str:
     failover = "yes" if body.failover else "no"
-    return (
+    text = (
         f"{project} strategy={body.strategy} cooldown={body.cooldown_seconds} failover={failover} "
         f"max_failovers={body.max_failovers}"
     )
+    if body.strategy == QUOTA_PACING:
+        text += f" hard_reserve_pct={body.hard_reserve_pct} five_hour_ceiling_pct={body.five_hour_ceiling_pct}"
+    return text
 
 
 @router.put("/account-policies/{project}", response_model=AccountPolicy, responses=REFUSALS)
