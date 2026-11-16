@@ -50,6 +50,7 @@ from evo_agents.hub.blobs import BlobStore, blob_key
 from evo_agents.hub.client import Hub, HubError, Unreachable
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.kg_build import worker_project
+from evo_agents.hub.kg_graph_rows import MAIN
 from evo_agents.hub.kg_push import Pusher
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import HubContext, connector, queue
@@ -190,6 +191,26 @@ def run_jobs(db, s3, data_dir: Path, concurrency: int = 1) -> None:
             store.close()
 
     asyncio.run(main())
+
+
+def served(hub, project: str = PROJECT, timeout: float = 60.0) -> None:
+    """Wait until the api's snapshot of ``project`` is the one of the build at its graph's head, or it holds none,
+    whose next read loads it. A build swaps its snapshot in from a background load, and a read meanwhile answers from
+    the one before (``kg_snapshots.SnapshotCoordinator.current``): on a loaded runner the next read came first."""
+    heads, projects = tables.kg_graph_heads, tables.projects
+    ((project_id,),) = query(hub.db, select(projects.c.id).where(projects.c.name == project))
+    head = query(hub.db, select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN))
+    if not head or head[0][0] is None:
+        return
+    snapshots = hub.client.app.state.kg_snapshots
+    deadline = time.monotonic() + timeout
+    while True:
+        held = snapshots._held.get(project_id)
+        if held is None or held.build_id == head[0][0]:
+            return
+        hub.client.portal.call(snapshots.current, project_id, head[0][0])  # starts the load, if none runs
+        assert time.monotonic() < deadline, f"the api still serves build {held.build_id}, not {head[0][0]}"
+        time.sleep(0.05)
 
 
 class BackgroundWorker:
@@ -1036,6 +1057,7 @@ def test_a_forgotten_source_leaves_the_worker_cache_even_while_the_config_declar
     laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it."))
     assert push(hub, laptop).ok
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     first = latest(hub)
     assert first["status"] == "succeeded"
     assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
@@ -1044,6 +1066,7 @@ def test_a_forgotten_source_leaves_the_worker_cache_even_while_the_config_declar
     assert response.status_code == 200 and response.json()["declared"] is True
     with caplog.at_level("INFO", logger="evo_agents.hub.kg_build"):
         run_jobs(hub.db, hub.s3, hub.worker_dir)
+        served(hub)
     second = latest(hub)
     assert second["status"] == "succeeded" and second["nodes"] < first["nodes"]
     (started,) = [r for r in caplog.records if r.getMessage() == "kg cache started again: runs taken off the hub"]
@@ -1053,6 +1076,7 @@ def test_a_forgotten_source_leaves_the_worker_cache_even_while_the_config_declar
     shutil.rmtree(hub.worker_dir)  # a cache built from nothing gives the same graph
     assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     third = latest(hub)
     assert third["status"] == "succeeded" and third["content_hash"] == second["content_hash"]
 
@@ -1324,16 +1348,14 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
 
         on_the_hub = f"project {PROJECT} on the hub: build"
         assert on_the_hub in shown(served_hub[2])["text"]
+        assert shown(served_hub[3])["_meta"][READ_META]["results_read"]
         signed_out = pg.clean_env(HOME=str(tmp_path / "nobody"), EVO_KG_HOME=str(laptop.home))
         served_local = mcp(["kg", "serve", "--project", harness], signed_out, hello, tools, status, search)
-        assert on_the_hub not in shown(served_local[2])["text"]
-        hub_found, local_found = shown(served_hub[3]), shown(served_local[3])
-        assert hub_found["text"].splitlines()[1:] == local_found["text"].splitlines()[1:]  # the first names the build
-        assert hub_found["_meta"] == local_found["_meta"] and hub_found["_meta"][READ_META]["results_read"]
+        assert [t["name"] for t in served_local[1]["result"]["tools"]] == [t["name"] for t in serve.TOOLS]
+        for reply in served_local[2:]:  # the graph this machine built answers nothing: graphs are read on the hub
+            assert reply["result"]["isError"] and "not signed in to a hub" in shown(reply)["text"]
         auto = mcp(["kg", "serve", "--project", harness], env, status)  # signed in, and the hub has a graph
         assert on_the_hub in shown(auto[0])["text"]
-        auto = mcp(["kg", "serve", "--project", harness], signed_out, status)
-        assert on_the_hub not in shown(auto[0])["text"]
 
         # --all pushes what the hub takes and says why it skipped the rest
         zeta = Machine(tmp_path, "zeta", project="zeta")
@@ -1356,8 +1378,8 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
         served.proc.wait(timeout=30)
         down = mcp(["kg", "serve", "--backend", "hub", "--project", PROJECT], env, search)
         assert down[0]["result"]["isError"] and served.url in down[0]["result"]["content"][0]["text"]
-        auto = mcp(["kg", "serve", "--project", harness], env, status)  # the hub does not answer: local
-        assert on_the_hub not in shown(auto[0])["text"]
+        auto = mcp(["kg", "serve", "--project", harness], env, status)  # the hub does not answer, and nothing else does
+        assert auto[0]["result"]["isError"] and served.url in shown(auto[0])["text"]
     for secret in (s3.secret_access_key, s3.access_key_id):
         assert secret not in served.log()
 

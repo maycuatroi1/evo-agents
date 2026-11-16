@@ -19,6 +19,7 @@ from evo_agents.hub import kg_entity_graph
 from evo_agents.hub.kg_graph import BuiltGraph
 from evo_agents.hub.kg_web import NotVisible, WebSession
 from evo_agents.kg.policy import Label, Policy
+from evo_agents.kg.snapshot import Snapshot
 from evo_agents.kg.store import Graph, Store, edge_id
 from evo_agents.kg.store_filters import label_columns
 
@@ -94,12 +95,13 @@ def _graph() -> Graph:
     return graph
 
 
-@pytest.fixture
-def store(tmp_path):
+@pytest.fixture(params=["store", "snapshot"])
+def store(tmp_path, request):
     found = Store(tmp_path / "graph.sqlite")
     found.write(_graph(), state_digest="x", coverage={}, stats={}, policy=None)
     kg_entity_graph.VIEWS.clear()
-    yield found
+    # the hub reads the snapshot of its tables, the CLI a store file: both give the same graph
+    yield found if request.param == "store" else Snapshot.from_store(found, 1).view(frozenset({PROJECT}))
     found.close()
 
 

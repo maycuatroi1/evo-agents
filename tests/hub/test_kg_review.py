@@ -39,7 +39,7 @@ from evo_agents.hub.server.kg_review import Rule
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg.review import RULES
 from tests.hub.s3 import fake_s3
-from tests.hub.test_kg import InProcessHub, make_config, run_jobs
+from tests.hub.test_kg import InProcessHub, make_config, run_jobs, served
 
 PROJECT = "kgreview"
 EMPTY = "kgreview-empty"  # registered, never pushed: no graph
@@ -83,6 +83,7 @@ def hub(hub_template, tmp_path_factory):
                     harness.sync(extra)
                     harness.push(InProcessHub(client, members["wendy"]))
                     run_jobs(db, s3, base / "worker")
+                    served(SimpleNamespace(client=client, db=db), PROJECT)
                     return client.get(f"/v1/kg/{PROJECT}/builds", headers=members["wendy"]).json()["builds"][0]
 
                 builds = client.get(f"/v1/kg/{PROJECT}/builds", headers=members["wendy"]).json()["builds"]

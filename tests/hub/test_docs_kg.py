@@ -20,7 +20,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from tests.hub import live
-from tests.hub.test_kg import PROJECT, build_rows, call_tool, grant, open_hub, run_jobs, tool_ok
+from tests.hub.test_kg import PROJECT, build_rows, call_tool, grant, open_hub, run_jobs, served, tool_ok
 from tests.hub.test_srs_tasks_plugin_kg import machine, node, queued
 
 BASE = f"/v1/x/docs/{PROJECT}/documents"
@@ -69,6 +69,7 @@ def found_ids(hub, text: str, member: str = "alice") -> list[str]:
 def test_docs_graph_on_the_hub_holds_each_document_at_its_latest_version_under_its_label(hub, tmp_path):
     machine(hub, tmp_path)  # the knowledge config, and a first build
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     assert build_rows(hub)[0]["status"] == "succeeded"
     assert queued(hub) == 0
 
@@ -78,6 +79,7 @@ def test_docs_graph_on_the_hub_holds_each_document_at_its_latest_version_under_i
     save(hub, GUIDE, "Lumen guide", guide, "owner", label={"level": "public"})
     assert queued(hub) == 1  # the second save's build joined the one that waits
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     built = build_rows(hub)[0]
     assert built["status"] == "succeeded", built.get("error")
 
@@ -102,12 +104,14 @@ def test_docs_graph_on_the_hub_holds_each_document_at_its_latest_version_under_i
     assert queued(hub) == 0
     assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     same = build_rows(hub)[0]  # the documents give the same items: the content of the build before
     assert same["id"] != built["id"] and same["content_hash"] == built["content_hash"] and same["graph_kept"]
     changed = BODY.replace("three hops without progress", "five tool calls that change nothing")
     assert save(hub, RESEARCH, "Budgets and loops", changed, "dave")["version"] == 2
     assert queued(hub) == 1
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     again = node(hub, RESEARCH_ID)
     assert (again["props"]["version"], again["props"]["author"]) == (2, "dave")
     hits = found_ids(hub, "five tool calls that change nothing")
@@ -118,6 +122,7 @@ def test_docs_graph_on_the_hub_holds_each_document_at_its_latest_version_under_i
     assert off.status_code == 200, off.text
     assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     assert build_rows(hub)[0]["status"] == "succeeded"
     for gone in (RESEARCH_ID, GUIDE_ID):  # the feature's documents left the graph with it
         assert call_tool(hub, "kg_node", {"id": gone}).json()["isError"], gone

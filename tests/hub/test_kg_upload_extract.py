@@ -42,6 +42,7 @@ from tests.hub.test_kg import (
     push,
     query,
     run_jobs,
+    served,
     tool_ok,
 )
 
@@ -75,6 +76,7 @@ def configure(hub, tmp_path: Path) -> Machine:
     laptop.sync("docs", doc("guide", "How the app works."))
     assert push(hub, laptop).ok
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     assert latest(hub)["status"] == "succeeded"
     return laptop
 
@@ -160,6 +162,7 @@ def test_an_upload_is_read_into_items_built_and_kg_search_finds_the_pdf_and_docx
     assert any(item["kind"] == "table" for item in items) and any(item["kind"] == "record" for item in items)
 
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     build = latest(hub)
     assert build["status"] == "succeeded" and build["id"] == row.build_id
     assert any("docs/ferry.pdf" in node for node in found_ids(hub, FIXTURE.PDF_SENTENCE))
@@ -206,6 +209,7 @@ def test_a_reupload_is_a_new_snapshot_and_releases_the_old_archive(hub, tmp_path
     )
     assert extract(hub) == {"extracted": 1}
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     assert found_ids(hub, "Orion quay")
     old_key = upload_row(hub, old["id"]).object_key
 
@@ -221,6 +225,7 @@ def test_a_reupload_is_a_new_snapshot_and_releases_the_old_archive(hub, tmp_path
     assert hub.s3.get(upload_row(hub, new["id"]).object_key) is not None
 
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     assert latest(hub)["status"] == "succeeded"
     assert not any(GRAPH_SOURCE in node for node in found_ids(hub, "Orion quay")), "a file the new archive lacks goes"
     assert any("kept.md" in node for node in found_ids(hub, "beacon dawn"))

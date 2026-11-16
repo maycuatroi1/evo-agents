@@ -54,6 +54,7 @@ from tests.hub.test_kg import (
     put_plan,
     query,
     run_jobs,
+    served,
     tool_ok,
 )
 
@@ -113,6 +114,12 @@ def hub(hub_db, tmp_path, s3, plugins_core):
         client.__exit__(None, None, None)
 
 
+def run_and_serve(hub) -> None:
+    """Run the queued jobs, and wait until the api serves the graph the last build wrote (``test_kg.served``)."""
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
+
+
 def machine(hub, tmp_path: Path):
     """A harness of project alpha whose plans the hub holds: synced through the hub, and pushed."""
     root = tmp_path / "alpha-harness"
@@ -154,7 +161,7 @@ def node(hub, node_id: str, member: str = "alice") -> dict:
 def test_srs_tasks_plugin_graph_on_the_hub_traces_a_use_case_to_its_task_step_and_commit(hub, tmp_path):
     put_plan(hub, PLAN)
     machine(hub, tmp_path)  # the knowledge config, and a build of the plan
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert build_rows(hub)[0]["status"] == "succeeded"
     assert call_tool(hub, "kg_node", {"id": USE_CASE}).json()["isError"]  # no version approved yet
 
@@ -166,7 +173,7 @@ def test_srs_tasks_plugin_graph_on_the_hub_traces_a_use_case_to_its_task_step_an
     )
     assert made.status_code == 201, made.text
     assert queued(hub) == 1  # the task's build joined the one that waits
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     built = build_rows(hub)[0]
     assert built["status"] == "succeeded", built
 
@@ -181,7 +188,7 @@ def test_srs_tasks_plugin_graph_on_the_hub_traces_a_use_case_to_its_task_step_an
 
     again = hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice)  # nothing changed since
     assert again.status_code == 202, again.text
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     same = build_rows(hub)[0]
     assert same["id"] != built["id"] and same["content_hash"] == built["content_hash"]
     assert same["graph_kept"] and same["artifact_sha256"] is None  # its graph is in the tables; no file uploaded
@@ -191,13 +198,13 @@ def test_srs_tasks_plugin_graph_on_the_hub_traces_a_use_case_to_its_task_step_an
     edited = hub.client.patch(f"/v1/x/tasks/{PROJECT}/tasks/T-4", json={"status": "done"}, headers=hub.alice)
     assert edited.status_code == 200, edited.text
     assert queued(hub) == 1
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert node(hub, TICKET)["props"]["status"] == "done"
 
     off = hub.client.post(f"/v1/projects/{PROJECT}/plugins/tasks/disable", headers=hub.owner)
     assert off.status_code == 200, off.text
     assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert call_tool(hub, "kg_node", {"id": TICKET}).json()["isError"]  # the plugin's tickets left with it
     assert node(hub, USE_CASE)["status"] == "declared"
 
@@ -206,22 +213,22 @@ def test_srs_plugin_graph_leaves_out_an_archived_document_and_takes_it_back_once
     off = hub.client.post(f"/v1/projects/{PROJECT}/plugins/tasks/disable", headers=hub.owner)
     assert off.status_code == 200, off.text  # no frame task of the approval mentions the use case (srs.auto_tasks)
     machine(hub, tmp_path)
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     approve_sample(hub)
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert node(hub, USE_CASE)["status"] == "declared"
     doc = f"/v1/x/srs/{PROJECT}/documents/demo-shop"
     archived = hub.client.post(f"{doc}/archive", headers=hub.owner)
     assert archived.status_code == 200 and archived.json()["archived_at"] is not None, archived.text
     assert queued(hub) == 1
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert build_rows(hub)[0]["status"] == "succeeded"
     for gone in (USE_CASE, "plugin.srs:document:demo-shop"):
         assert call_tool(hub, "kg_node", {"id": gone}).json()["isError"], gone
     unarchived = hub.client.post(f"{doc}/unarchive", headers=hub.owner)
     assert unarchived.status_code == 200, unarchived.text
     assert queued(hub) == 1
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert node(hub, USE_CASE)["status"] == "declared"
 
 
@@ -240,9 +247,9 @@ def test_srs_finding_sources_are_looked_up_in_the_graph_on_the_hub_as_the_member
     assert (missing.ids, missing.paths) == ((USE_CASE,), ("docs/ordering.md",))
     put_plan(hub, PLAN)
     machine(hub, tmp_path)
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     approve_sample(hub)
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert build_rows(hub)[0]["status"] == "succeeded"
     harness = "alpha-harness"  # the repo of the harness's files, as ``machine`` names its directory
     paths = ["knowledge.yaml", f"{harness}:knowledge.yaml", "docs/ordering.md", f"{harness}:docs/ordering.md"]
