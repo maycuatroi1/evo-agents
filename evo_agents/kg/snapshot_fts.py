@@ -1,7 +1,7 @@
 """An in-RAM inverted index that scores as SQLite's FTS5 ``bm25`` does: what ``evo_agents.kg.snapshot_text`` reads
 the full-text rows of a snapshot with, in place of ``node_fts``, ``node_fts_aud``, ``node_tri`` and ``code_fts``.
 
-- Tokens are cut as the store's tokenizers cut them: ``unicode61 remove_diacritics 2`` keeps runs of letters and
+- Tokens are cut as FTS5's tokenizers cut them: ``unicode61 remove_diacritics 2`` keeps runs of letters and
   digits, lower-cased, accents removed (``words``); with ``tokenchars '_-$'`` (``code_fts``) those three join a word
   too (``code_words``); the trigram tokenizer (``node_tri``) reads every three characters of a text.
 - A query is the subset of FTS5's syntax ``evo_agents.kg.search`` writes: quoted phrases, a phrase's last word as a
@@ -71,7 +71,7 @@ class Phrase:
 
 
 class QueryError(ValueError):
-    """A query this index cannot read: FTS5 would fail on it too, and the store's read gives nothing."""
+    """A query this index cannot read: FTS5 would fail on it too, and a search of it gives nothing."""
 
 
 def parse(query: str) -> tuple[list[Phrase], tuple]:

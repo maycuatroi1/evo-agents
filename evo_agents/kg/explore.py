@@ -1,9 +1,10 @@
 """Exploration of kg_search's ranking: on a share RATE of the searches agents make on the hub, a candidate no agent read
-after a search yet (no ``node_asked`` row, ``Store.asked_nodes``), drawn from the next POOL the ranking found past the
-results, is put at rank 4 or 5, and the result's last line says which and with what chance (``MARK``). The facet that
-reads the session (``evo_agents.hub.facets``) keeps that chance with the result in the search's label, so clicks on
-such candidates measure how far down agents look whatever a node's relevance (``evo_agents.kg.asked.propensities``),
-and a node the ranking keeps below the results gets a chance to be read and learned at all.
+after a search yet (no ``node_asked`` row, ``SnapshotView.asked_nodes``), drawn from the next POOL the ranking found
+past the results, is put at rank 4 or 5, and the result's last line says which and with what chance (``MARK``). The
+facet that reads the session (``evo_agents.hub.facets``) keeps that chance with the result in the search's label, so
+clicks on such candidates measure how far down agents look whatever a node's relevance
+(``evo_agents.kg.asked.propensities``), and a node the ranking keeps below the results gets a chance to be read and
+learned at all.
 
 Only the hub's sessions of agents explore (``evo_agents.hub.server.mcp``): a local session, the eval, the tests and
 the loop's lookups have no explorer, and search as the ranking says.

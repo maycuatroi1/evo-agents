@@ -1,9 +1,10 @@
 """What the text of the kg tools calls a node, and the argument names the tools take besides their own.
 
 The stored id of a file, a section of one and a symbol repeats a word the reader does not need:
-``evo-agents:file:evo_agents/kg/store.py``, ``harness:file:docs/x.md#setup``,
-``symbol:evo-agents:evo_agents/kg/store.py::Store.search``. The text shows them as ``evo-agents:evo_agents/kg/store.py``,
-``harness:docs/x.md#setup`` and ``evo-agents:evo_agents/kg/store.py::Store.search``: source, path, then the symbol or
+``evo-agents:file:evo_agents/kg/snapshot.py``, ``harness:file:docs/x.md#setup``,
+``symbol:evo-agents:evo_agents/kg/snapshot.py::SnapshotView.search``. The text shows them as
+``evo-agents:evo_agents/kg/snapshot.py``, ``harness:docs/x.md#setup`` and
+``evo-agents:evo_agents/kg/snapshot.py::SnapshotView.search``: source, path, then the symbol or
 the section, the form ``bindings/*.yaml`` already uses. Every other id (``plan:x/step:2``, ``repo:x``, ``seam:x``,
 ``dir:x:path``) reads well and stays. Each tool takes the readable form and the stored one alike (``stored``); the
 structured result keeps the stored ids.

@@ -760,8 +760,8 @@ def graph_tables(metadata: MetaData) -> dict[str, Table]:
     """The graph a build writes to Postgres (0248, plan kg-centralized-on-hub, ``evo_agents.hub.kg_store``): the
     corpus items with their row hash, the memo of what was extracted from a row hash, the nodes, edges, text rows,
     provenance, asked rows, review rows (clusters and review items) and embeddings of each branch, the head of each branch (``kg_graph_heads``), and the branches with their
-    operations. A node or edge row holds the columns of a store file's row (``evo_agents.kg.store_schema``), props as the store's
-    JSON text, so a snapshot read from it hashes as one read from the file."""
+    operations. A node or edge row holds the columns of ``graph_model.NODE_COLUMNS`` and ``EDGE_COLUMNS``, props as JSON
+    text, so a snapshot read from it hashes as one of the graph the build assembled (``evo_agents.kg.content``)."""
     corpus = _scoped(
         "kg_corpus_items",
         metadata,

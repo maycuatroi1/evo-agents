@@ -135,7 +135,7 @@ class HubSession(Session):
         return {**summary, "coverage": {**(summary.get("coverage") or {}), "vectors": self.graph.vectors}}
 
     def within(self, summary: dict) -> dict:
-        """The build's ``summary`` (``Store.summary``) as the session's audience may read it (see the module)."""
+        """The build's ``summary`` as the session's audience may read it (see the module)."""
         b = summary.get("build_id")
         if not summary.get("ready") or self.whole(b):
             return summary

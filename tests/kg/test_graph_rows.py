@@ -43,3 +43,16 @@ def test_rows_of_the_corpus_state_and_inputs_the_project_has_skip_the_build(fake
     fake.set(items=[doc("a"), doc("b")])
     assert all(r.ok for r in sync_project(project))
     assert unchanged_rows(project, rows) is None and unchanged_rows(project, None) is None
+
+
+def test_the_content_hash_covers_the_schema(fake_project, monkeypatch):
+    from evo_agents.kg import content
+
+    project, fake = fake_project
+    fake.set(items=[doc("guide", "# Guide\n\nHow the app works.\n")])
+    assert all(r.ok for r in sync_project(project))
+    _, rows = build_rows(project)
+    monkeypatch.setattr(content, "SCHEMA_VERSION", "99")
+    _, other = build_rows(project)
+    assert rows is not None and other is not None
+    assert other.content_hash != rows.content_hash  # the hub never serves a build of one schema as another

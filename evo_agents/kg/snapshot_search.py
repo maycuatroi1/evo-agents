@@ -5,8 +5,7 @@ query's words after the first CODE_LEAD results, as ``kg serve`` gives them (``e
 
 The reader is a clearance (level, location) and an audience: a node or an edge shows when its label is at most the
 clearance and its audience within the reader's (``SessionView.visible``), and a node a decision deprecated shows only
-when asked for. Without a walk the store's search reads locate's arrangement (``evo_agents.kg.locate``), which reads
-the store's SQL; on a snapshot the ranking keeps the order the text and meaning gave."""
+when asked for. Without a walk the ranking keeps the order the text and meaning gave."""
 
 from __future__ import annotations
 

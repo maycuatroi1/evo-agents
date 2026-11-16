@@ -15,17 +15,18 @@ query is folded the same way. Rows without a body (most symbols, directories, re
 what BM25 finds them by.
 
 This module reads and writes no file of a graph: ``index`` embeds the rows a ``Graph`` gives and hands the vectors
-back to it, ``matrix`` makes one matrix of the rows a reader loads. A graph file keeps them in two tables
-(``evo_agents.kg.store_vectors``), the hub's graph in kg_embeddings and the head's vectors (``evo_agents.hub
+back to it, ``matrix`` makes one matrix of the rows a reader loads. The rows of a build keep them
+(``evo_agents.kg.graph_rows.RowsVectors``), the hub's graph in kg_embeddings and the head's vectors (``evo_agents.hub
 .kg_graph_rows``). A reader without them, or without the model, searches by words. Embedding is the slow part, so
 each vector is also kept in a ``Cache`` by model and digest of its text: a build embeds only the rows whose text
 changed since. The hub keeps that cache in its database (``evo_agents.hub.kg_semantic``).
 
-``Store.search`` fuses the two rankings by reciprocal rank fusion (Cormack et al., 2009): a node scores
-1 / (RRF_K + its rank by words) plus SEMANTIC_WEIGHT / (RRF_K + its rank by meaning), each over the nodes the list holds,
-the ranking by meaning weighed like the one by words (``search.weight``: background down, named nodes up) and holding
-the SEMANTIC_POOL nearest. The model is loaded once a process (``embedder``), through fastembed, the optional extra
-``evo-ak[semantic]``; without it ``index`` and ``on`` write nothing and search by words (docs/kg-semantic.md).
+A search (``evo_agents.kg.snapshot_text``) fuses the two rankings by reciprocal rank fusion (Cormack et al., 2009): a
+node scores 1 / (RRF_K + its rank by words) plus SEMANTIC_WEIGHT / (RRF_K + its rank by meaning), each over the nodes
+the list holds, the ranking by meaning weighed like the one by words (``search.weight``: background down, named nodes
+up) and holding the SEMANTIC_POOL nearest. The model is loaded once a process (``embedder``), through fastembed, the
+optional extra ``evo-ak[semantic]``; without it ``index`` and ``on`` write nothing and search by words
+(docs/kg-semantic.md).
 """
 
 from __future__ import annotations
@@ -345,8 +346,8 @@ def text_digest(model: str, text: str) -> str:
 
 class Cache(Protocol):
     """Vectors by (model, digest of the text), kept across builds so only the rows whose text changed are embedded
-    again: on the hub a table of its database (``evo_agents.hub.kg_semantic.HubCache``), else ``vectors.sqlite`` next
-    to a graph file (``evo_agents.kg.store_vectors.FileCache``), or ``MemoryCache`` for one process."""
+    again: on the hub a table of its database (``evo_agents.hub.kg_semantic.HubCache``), or ``MemoryCache`` for one
+    process."""
 
     def get(self, model: str, digests: list[str]) -> dict[str, bytes]: ...
 
@@ -379,7 +380,7 @@ class MemoryCache:
 
 
 class Graph(Protocol):
-    """The graph ``index`` writes the vectors into (``evo_agents.kg.store_vectors.GraphFile``)."""
+    """The graph ``index`` writes the vectors into (``evo_agents.kg.graph_rows.RowsVectors``)."""
 
     def rows(self, chars: int) -> list[tuple[str, str, str, str | None, str]]:
         """(key, node id, kind, audience, text) of every full-text row with a body, by key (``embed_text``)."""

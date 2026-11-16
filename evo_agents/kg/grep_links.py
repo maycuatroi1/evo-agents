@@ -117,7 +117,7 @@ def symbol_at(line: int, symbols: list[dict], spans: list[tuple[int, int]]) -> d
 
 
 def short_name(symbol_id: str) -> str:
-    """The last part of a symbol's qualified name: ``search`` for ``symbol:r:p.py::Store.search``."""
+    """The last part of a symbol's qualified name: ``search`` for ``symbol:r:p.py::SnapshotView.search``."""
     return symbol_id.rpartition("::")[2].rpartition(".")[2]
 
 

@@ -1,8 +1,8 @@
 """Clusters of a build: the graph's communities in two levels, named by their words (the optional extra ``clusters``).
 
 A build with ``graspologic-native`` installed (``pip install 'evo-ak[clusters]'``) groups its nodes into clusters and
-writes them with the graph (``Store.write``: tables ``clusters``, ``cluster_members``, ``cluster_links``). Without it
-the build is the same graph with no clusters, and its coverage says why (``coverage["clusters"]``).
+keeps them with the graph (``graph_model.cluster_tables``: ``clusters``, ``cluster_members``, ``cluster_links``).
+Without it the build is the same graph with no clusters, and its coverage says why (``coverage["clusters"]``).
 
 The projection clusters work on:
 

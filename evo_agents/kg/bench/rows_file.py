@@ -1,5 +1,5 @@
 """A bench graph as the bench keeps it: the rows of a build made in memory (``build.build_rows``), pickled and
-compressed into ROWS in the graph's project, no store file, and its summary into SUMMARY, which a profile reads
+compressed into ROWS in the graph's project, no graph file, and its summary into SUMMARY, which a profile reads
 without the rows. ``RowsSession`` asks the tools of ``kg serve`` over the
 snapshot of those rows, ``VectorFile`` keeps the vectors of a repo's snapshots in a file of their own, and
 ``local_snapshot`` builds a project of this machine in memory for a local question set.
@@ -55,7 +55,7 @@ def write_rows(project_dir: Path, rows: StoreRows) -> None:
 
 
 def summary_of(project_dir: Path) -> dict | None:
-    """The summary (``Store.summary``) of the graph the project in ``project_dir`` keeps; None without one."""
+    """The summary of the graph the project in ``project_dir`` keeps; None without one."""
     if not (project_dir / ROWS).is_file():
         return None
     try:

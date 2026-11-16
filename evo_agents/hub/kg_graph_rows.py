@@ -1,13 +1,13 @@
-"""A project's graph in the hub's tables (0248, plan kg-centralized-on-hub, criterion a3): what a build writes there
-instead of a graph.sqlite file, and what a snapshot of it reads back (``evo_agents.kg.snapshot.Snapshot.from_stored``).
+"""A project's graph in the hub's tables (0248, plan kg-centralized-on-hub, criterion a3): what a build writes there,
+and what a snapshot of it reads back (``evo_agents.kg.snapshot.Snapshot.from_stored``).
 
 A build writes, for one branch (0 is main):
 
 - its corpus items to kg_corpus_items (``merge_corpus``), keyed by source and item id with the item's row hash: the
   items whose row hash is new or changed are upserted, those gone are deleted, and the rest are not touched;
-- its node and edge rows, as a store file holds them, to kg_nodes and kg_edges, and its full-text and code rows to
-  kg_text_rows (``write_graph``): only a row that is new or differs is upserted, and a row the build no longer has is
-  deleted, so a build that changed ten nodes writes ten rows;
+- its node and edge rows (``graph_model.NODE_COLUMNS``, ``EDGE_COLUMNS``) to kg_nodes and kg_edges, and its full-text
+  and code rows to kg_text_rows (``write_graph``): only a row that is new or differs is upserted, and a row the build no
+  longer has is deleted, so a build that changed ten nodes writes ten rows;
 - the rows of its asked index (``evo_agents.kg.asked.Row``) to kg_asked, and its clusters and review items to
   kg_review_rows;
 - its build, content hash and weight of an asked match to kg_graph_heads, and a notice on the channel ``kg_graph`` (``CHANNEL``) naming the

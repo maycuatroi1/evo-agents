@@ -246,7 +246,7 @@ class SearchTools(SessionText):
     ) -> tuple[list[dict], dict[str, list[int]]]:
         """``results`` with the visible files whose code or markup holds the most words of ``query`` that read as a
         search of code (``search.code_words``) after its first CODE_LEAD, those already listed left in their place,
-        cut at ``limit``; and the lines of each listed file that hold the words (``Store.code_lines``)."""
+        cut at ``limit``; and the lines of each listed file that hold the words."""
         words = code_words(query)
         if not words:
             return results, {}
