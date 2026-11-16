@@ -761,13 +761,25 @@ with plan_step, at the plan's revision then; a trace that has a plan keeps it.
 
 Ops threads. For each closed batch with items left, the hub opens one thread in the chat `Ops: <slug>` of the default
 system, as the person who wrote the system, and mentions its Orchestrator with a summary of the batch: each item, its
-cause, a short diagnosis, and the `evo-agents hub inbox` command that shows it. No transcript goes in. The batch is
+cause, a short diagnosis, and the `evo-agents hub inbox` command that shows it. A `plan.stalled` item names the plan,
+its revision, its ready steps, its last trace and the `evo-agents hub plan handoff PLAN --step KEY` command that tells
+what the steps before them did; a `run.queued_long` item names the run, the node whose slot it waits for, how many
+queued runs that node takes before it, and its priority. No transcript goes in. The batch is
 then `running` until the runs of its thread end, and `done` after. A cause key that closed 3 batches in 7 days is
 `recurring`, and the summary asks the Orchestrator to fix the system (a finding for the Curator, or a task) instead of
 running the work again. In the thread the Orchestrator acts with `evo-agents worker ops ...` on a worker
 (`docs/workers.md`, Ops threads) or the tool `ops_action` on the hub runtime (Hub runtime): run a failed run again,
-hand it to a healthy worker, answer a stuck wait, resume the Curator its breaker paused, mark a notice read, or write
-a finding. It may also reassign the work to an agent of the system and ask the owner at most one decision a batch.
+hand it to a healthy worker, answer a stuck wait, resume the Curator its breaker paused, mark a notice read, write
+a finding, give a queued run of the project another priority (`evo-agents worker ops priority RUN LEVEL`, LEVEL one of
+`urgent`, `high`, `medium`, `low`: the order a worker claims its queue in; 409 for a run that is not queued), or hand
+a stalled plan of the batch again to the entry agent of the default system (`evo-agents worker ops plan-dispatch
+PLAN`). `plan-dispatch` does what `POST .../plans/{plan_id}/system-dispatch` does for a person (A plan run in a
+system), in the name of the system's owner, the person at the origin of the thread's work, with the same refusals:
+409 while a trace of the plan has a run that has not ended, while a plan run or a step run of it is active, when it
+has no pending step, and for a plan the Curator made; a plan that is no `plan.stalled` item of the batch gets 404.
+Each action posts a `Decision:` line in the thread, writes an audit row (`ops.priority`, `ops.plan_dispatch`, and
+`run.dispatch_system` for the dispatch itself) and marks the items it handled `handled_by` orchestrator. It may also
+reassign the work to an agent of the system and ask the owner at most one decision a batch.
 It never decides for the owner what is theirs: credentials, scope, spending over the cap, or what cannot be undone
 without a backup.
 
@@ -1212,7 +1224,7 @@ The tools do what the worker's commands do, through the same code:
 | `agent_forward` | `evo-agents worker agent forward` |
 | `escalate` | `evo-agents worker escalate` |
 | `orchestrator_answer`, `orchestrator_reassign`, `orchestrator_ask_owner` | `evo-agents worker triage answer`, `triage reassign`, `triage ask-owner` |
-| `ops_action` (`action`: `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read`, `finding`), in an ops thread only | `evo-agents worker ops rerun`, `redeliver`, `answer-wait`, `curator-resume`, `read`, `finding` |
+| `ops_action` (`action`: `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read`, `finding`, `priority`, `plan_dispatch`), in an ops thread only | `evo-agents worker ops rerun`, `redeliver`, `answer-wait`, `curator-resume`, `read`, `finding`, `priority`, `plan-dispatch` |
 | `memory_write` | a memory of the project, under the rules of `memory_write` |
 
 A tool that is refused answers the model with the reason, and the turn goes on. Repos, branches, pull requests and
@@ -1307,6 +1319,12 @@ thread, and the work card reads it again, so a trace whose work went on stops sh
 could hand no Orchestrator run or whose Orchestrator ended without an answer. An escalation adds no hop, the trace's
 budget does not refuse it, and the work the Orchestrator reassigns keeps its hop. An agent with no `orchestrates` edge
 keeps the triage it had; one with only an `escalates` edge escalates to that Orchestrator and has no other thread.
+
+The Orchestrator of a project's default system also gets the ops threads (Agent systems, Ops threads): the batches of
+the project's operations events, `plan.stalled`, `run.queued_long` and `mention.refused` among them. It keeps a plan
+moving with `evo-agents worker ops plan-dispatch PLAN`, which hands a stalled plan again to the system's entry agent,
+and orders the queue with `evo-agents worker ops priority RUN LEVEL`. Neither adds a node or a slot, and neither
+decides for the owner what is theirs; `limits.ops_daily_usd` still caps what its ops threads spend.
 
 Runs that still wait on each other (each open wait of an ask, `decisions.awaits_run_id`, points from the run that
 holds it to the last run of the chain of resumed runs it awaits) are found by the reaper on each pass

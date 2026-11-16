@@ -1052,10 +1052,11 @@ Answer and reassign close the thread. The hub runtime's tools `orchestrator_answ
 #### Ops threads
 
 The Orchestrator of a project's default system also gets ops threads: one thread a batch of the project's operations
-queue, in the chat `Ops: <slug>` (`docs/hub.md`, Agent systems). Its chat run there has six more commands, each for
-the items of that thread's batch only. They take `--reason TEXT` (`-` reads stdin) for the `Decision:` line, write an
-audit row, and mark the batch's items they handled as handled by the Orchestrator. A chat run in no ops thread gets
-404, another agent's 403, and a batch the hub already settled 409.
+queue, in the chat `Ops: <slug>` (`docs/hub.md`, Agent systems). Its chat run there has eight more commands, each for
+the items of that thread's batch only, but `priority`, which takes any queued run of the project. They take
+`--reason TEXT` (`-` reads stdin) for the `Decision:` line, write an audit row, and mark the batch's items they handled
+as handled by the Orchestrator. A chat run in no ops thread gets 404, another agent's 403, and a batch the hub already
+settled 409.
 
 | Command | Route | What |
 | --- | --- | --- |
@@ -1065,10 +1066,13 @@ audit row, and mark the batch's items they handled as handled by the Orchestrato
 | `evo-agents worker ops curator-resume --reason TEXT` | `POST .../ops/curator-resume` | let the Curator's schedules run again that its breaker paused, never those a person paused. Audit `ops.curator_resume` |
 | `evo-agents worker ops read NOTICE --reason TEXT` | `POST .../ops/read` | mark a notice of the project read. Audit `ops.read` |
 | `evo-agents worker ops finding --lens LENS --severity low\|medium\|high --title TEXT --body TEXT --reason TEXT` | `POST .../ops/finding` | write a finding for the Curator under the project's default label, with the batch as its evidence: the fix for a recurring cause. Audit `ops.finding` |
+| `evo-agents worker ops priority RUN LEVEL --reason TEXT` | `POST .../ops/priority` | give a queued run of the project another priority (`urgent`, `high`, `medium`, `low`), the order a worker claims its queue in: the answer to a `run.queued_long` item. 404 for a run of another project, 409 for a run that is not queued. Audit `ops.priority` |
+| `evo-agents worker ops plan-dispatch PLAN --reason TEXT` | `POST .../ops/plan-dispatch` | hand a stalled plan of the batch (a `plan.stalled` item) again to the entry agent of the default system, as `POST .../plans/{plan_id}/system-dispatch` does for a person, in the name of the system's owner and with its refusals (409 while a trace of the plan has a run that has not ended, a plan run or step run of it is active, it has no pending step, or the Curator made it). Audit `ops.plan_dispatch` and `run.dispatch_system` |
 
 In an ops thread, `triage reassign` works as above and `triage ask-owner` at most once a batch; `triage answer` is
 refused (409), since an ops thread is about a batch, not one agent. The hub runtime's tool `ops_action`, with
-`action` one of `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read` and `finding`, does the same for an
+`action` one of `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read`, `finding`, `priority` (with `run_id`
+and `level`) and `plan_dispatch` (with `plan_id`), does the same for an
 Orchestrator that runs on the hub.
 
 ### Curator proposals the agent answers
