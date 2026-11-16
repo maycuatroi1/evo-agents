@@ -31,11 +31,10 @@ from evo_agents.kg import audit, entities, entity_map, ontology_rules, strategy
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg import review as kg_review
 from evo_agents.kg import search as text_search
-from evo_agents.kg import store as kg_store
 from evo_agents.kg.assembly import Facts, assemble
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.freshness import add_reads
-from evo_agents.kg.graph_model import Clusters, Graph, label_columns
+from evo_agents.kg.graph_model import SCHEMA_VERSION, Clusters, Graph, label_columns
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.memo import Memo
 from evo_agents.kg.packed import Packed
@@ -106,7 +105,7 @@ class BuildReport:
                 " the corpus and the config have not changed since, so nothing was built"
             )
         rebuilt = (
-            f", store rebuilt from the log (schema {self.rebuilt_from} -> {kg_store.SCHEMA_VERSION})"
+            f", store rebuilt from the log (schema {self.rebuilt_from} -> {SCHEMA_VERSION})"
             if self.rebuilt_from
             else ""
         )
@@ -588,7 +587,7 @@ def build_inputs(project: Project, corpus: Corpus) -> str | None:
         return None
     sources = sorted(s["id"] for s in project.sources() if isinstance(s.get("id"), str))
     parts = {
-        "code": [__version__, kg_store.SCHEMA_VERSION, MAP_VERSION, STRUCTURE_VERSION, LINK_VERSION, BINDING_VERSION],
+        "code": [__version__, SCHEMA_VERSION, MAP_VERSION, STRUCTURE_VERSION, LINK_VERSION, BINDING_VERSION],
         "graphify": gfy.version() if gfy.available() else None,
         "knowledge": project.knowledge,
         "ontology": ontology,
@@ -782,7 +781,7 @@ def _build(
         graph, coverage, warm = found
         if store is None:
             found = Store.stored_schema(target)
-            if found not in (None, kg_store.SCHEMA_VERSION):
+            if found not in (None, SCHEMA_VERSION):
                 report.rebuilt_from = found
             store = Store.staging(target) if report.rebuilt_from else Store(target)
         b = store.write(

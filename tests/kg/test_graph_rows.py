@@ -1,9 +1,9 @@
 """The rows of a build made in memory (``evo_agents.kg.graph_rows``) are those a store file reads back."""
 
-from evo_agents.kg import health, store_vectors
+from evo_agents.kg import store_vectors
 from evo_agents.kg.asked import Nodes
 from evo_agents.kg.build import build_project, build_rows, unchanged_rows
-from evo_agents.kg.graph_rows import RowsVectors, asked_nodes, call_reach, with_asked
+from evo_agents.kg.graph_rows import RowsVectors, asked_nodes, with_asked
 from evo_agents.kg.snapshot import store_rows
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
@@ -39,7 +39,6 @@ def test_rows_built_in_memory_are_those_the_store_reads_back(fake_project):
         assert (rows.units, rows.wheres, rows.derivations) == (kept.units, kept.wheres, kept.derivations)
         assert (rows.clusters, rows.review) == (kept.clusters, kept.review)
         assert without(rows.summary) == without(kept.summary)
-        assert call_reach(rows) == health.call_reach(store, b)
         on_file, in_memory = Nodes.of_store(store, b), asked_nodes(rows)
         assert (in_memory.known, dict(in_memory.paths)) == (on_file.known, dict(on_file.paths))
         assert RowsVectors(rows).rows(200) == store_vectors.index_rows(store.db, 200)

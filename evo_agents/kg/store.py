@@ -65,7 +65,15 @@ from collections import defaultdict
 from pathlib import Path
 
 from evo_agents.kg import settings as kg_settings
-from evo_agents.kg.graph_model import EDGE_COLUMNS, NODE_COLUMNS, Clusters, Graph, graph_stats, stored_audience
+from evo_agents.kg.graph_model import (
+    EDGE_COLUMNS,
+    NODE_COLUMNS,
+    SCHEMA_VERSION,
+    Clusters,
+    Graph,
+    graph_stats,
+    stored_audience,
+)
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.store_clusters import ClusterTables
@@ -73,8 +81,6 @@ from evo_agents.kg.store_diff import diff_graph
 from evo_agents.kg.store_filters import CEILING, LIVE, SEEN, live, read_as, seen
 from evo_agents.kg.store_rank import Ranking
 from evo_agents.kg.store_schema import CLUSTER_TABLES, REVIEW_TABLES, SCHEMA, TRIGRAM_SCHEMA, schema_version
-
-SCHEMA_VERSION = "4"  # 4: units, nodes and edges gained label_aud, node_fts_aud came; 3: node_fts kind and path
 
 _NO_WARM = object()  # Store.write: no warm start to record
 # the tables whose rows carry tx_from, tx_to

@@ -61,16 +61,17 @@ class DiskFull(BenchError):
 
 def extractor() -> str:
     """Digest of what a bench graph is made with; a change of it builds the graphs again (see the module)."""
-    from evo_agents.kg import store, text
+    from evo_agents.kg import text
     from evo_agents.kg.connectors import git, gitcli
     from evo_agents.kg.extract import graphify as gfy
+    from evo_agents.kg.graph_model import SCHEMA_VERSION
     from evo_agents.kg.pipeline import curation
     from evo_agents.kg.pipeline.binding import BINDING_VERSION
     from evo_agents.kg.pipeline.link import LINK_VERSION
     from evo_agents.kg.pipeline.stages import MAP_VERSION, STRUCTURE_VERSION
 
     parts = [
-        store.SCHEMA_VERSION,
+        SCHEMA_VERSION,
         MAP_VERSION,
         STRUCTURE_VERSION,
         LINK_VERSION,

@@ -4,7 +4,7 @@ build without writing a graph.sqlite (``evo_agents.hub.kg_build``).
 ``graph_rows`` gives the rows ``snapshot.store_rows`` reads back from a store that wrote the graph, with the same
 content hash (``kg.content``). ``with_asked`` puts the asked index in them as ``Store.write_asked`` puts it in a file,
 and ``RowsVectors`` is the ``semantic.Graph`` that ``semantic.index`` writes their vectors into, as
-``store_vectors.GraphFile`` is for a file. ``call_reach`` is ``kg.health.call_reach`` of the rows.
+``store_vectors.GraphFile`` is for a file. ``call_reach`` counts how far the call edges of the rows reach.
 """
 
 from __future__ import annotations
@@ -145,7 +145,7 @@ class RowsVectors:
 
 
 def call_reach(rows: StoreRows) -> dict:
-    """``kg.health.call_reach`` of the rows: the Python symbols of kinds KINDS outside tests, by kind, how many no
+    """The call reach of the rows: the Python symbols of kinds KINDS outside tests, by kind, how many no
     ``calls`` edge leads into, and the share of them."""
     called = {row[3] for row in rows.edges if row[2] == "calls"}
     total, uncalled = Counter(), Counter()
