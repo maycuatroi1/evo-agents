@@ -171,6 +171,10 @@ class HubSession(Session):
         if not summary.get("ready"):
             return summary
         assert self.clearance is not None, ANSWERS_NOTHING
+        b = int(summary["build_id"])
+        level, location = self.graph_store.top_label(b)
+        if level > self.clearance[0] or location > self.clearance[1]:
+            return {k: v for k, v in summary.items() if k not in ("coverage", "stats")}
         coverage = summary.get("coverage") or {}
         sources = []
         for src in coverage.get("sources", []):
@@ -182,10 +186,6 @@ class HubSession(Session):
                     continue
                 self._saw(shown)
             sources.append(src)
-        b = int(summary["build_id"])
-        level, location = self.graph_store.top_label(b)
-        if level > self.clearance[0] or location > self.clearance[1]:
-            return {k: v for k, v in summary.items() if k not in ("coverage", "stats")}
         whole = self.whole(b)
         self._saw((level, location, "U", self.graph_store.top_audience(b) if whole else frozenset()))
         return {**summary, "coverage": {**coverage, "sources": sources}}

@@ -702,7 +702,7 @@ other clusters of its level, with file suffixes and common English and Vietnames
 keeps its size, its members counted by kind, and the weight of its links to the other clusters of its level.
 
 **Stability.** The seed is fixed, and the clustering starts from the clusters of the previous build (the store's last
-ready build, or the target `graph.sqlite` when the hub builds into a staging store). A new cluster takes the id of the
+ready build, or the clusters of the graph the hub keeps when the hub builds in memory). A new cluster takes the id of the
 previous cluster of its level it matches with a Jaccard index of at least 0.5, best matches first and each id once;
 any other cluster's id is a digest of its members. The same graph, previous clusters and parameters give the same
 clusters and the same content hash. The algorithm's version, its parameters and the engine's version are an input of

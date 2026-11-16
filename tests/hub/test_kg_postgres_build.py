@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import struct
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +22,7 @@ from sqlalchemy.pool import NullPool
 
 from evo_agents.hub import kg_graph_rows, tables
 from evo_agents.kg import asked
+from evo_agents.kg.build import build_project
 from evo_agents.kg.snapshot import Snapshot, StoreRows, store_rows
 from evo_agents.kg.store import Store
 from tests.hub.live import add_project
@@ -70,7 +72,20 @@ def project_id(hub) -> int:
     return query(hub.db, select(projects.c.id).where(projects.c.name == "alpha"))[0][0]
 
 
-def test_the_graph_a_build_keeps_hashes_as_the_build_and_reads_as_its_file(hub, tmp_path, caplog):
+def built_here(hub, laptop) -> Path:
+    """The graph file of the project as a machine builds it, which holds what the hub built (no file on the hub)."""
+    project = laptop.project()
+    assert build_project(project).content_hash == read_back(hub.db, project_id(hub)).summary["content_hash"]
+    return project.root / "graph.sqlite"
+
+
+def placed(summary: dict) -> dict:
+    """``summary`` without what the hub and a machine give a build each its own way: when, the file, the inputs."""
+    stats = {k: v for k, v in summary["stats"].items() if k not in ("state_digest", "inputs")}
+    return {**{k: v for k, v in summary.items() if k not in ("built_at", "file_bytes")}, "stats": stats}
+
+
+def test_the_graph_a_build_keeps_hashes_as_the_build_and_reads_as_a_file_built_here(hub, tmp_path, caplog):
     laptop = Machine(tmp_path, "laptop")
     laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it."))
     assert push(hub, laptop).ok
@@ -82,8 +97,9 @@ def test_the_graph_a_build_keeps_hashes_as_the_build_and_reads_as_its_file(hub, 
     assert query(hub.db, select(heads.c.build_id, heads.c.content_hash)) == [(first["id"], first["content_hash"])]
     rows = read_back(hub.db, project_id(hub))
     assert rows is not None and rows.content_hash == first["content_hash"]
-    path = hub.worker_dir / "kg" / "home" / "alpha" / "graph.sqlite"
-    store = Store.open_file(path, immutable=True)
+    assert not (hub.worker_dir / "kg" / "home" / "alpha" / "graph.sqlite").exists(), "the hub writes no graph file"
+    assert build_project(laptop.project()).content_hash == first["content_hash"]
+    store = Store.open_file(laptop.project().root / "graph.sqlite", immutable=True)
     try:
         own = store_rows(store, store.latest_ready())
     finally:
@@ -149,7 +165,7 @@ def test_a_snapshot_of_the_tables_reads_as_the_store_of_the_build_file(hub, tmp_
     assert push(hub, laptop).ok
     build(hub, caplog)
     view = Snapshot.from_stored(read_back(hub.db, project_id(hub))).view()
-    store = Store.open_file(hub.worker_dir / "kg" / "home" / "alpha" / "graph.sqlite", immutable=True)
+    store = Store.open_file(built_here(hub, laptop), immutable=True)
     try:
         store.reader = frozenset()
         b = store.latest_ready()
@@ -157,7 +173,7 @@ def test_a_snapshot_of_the_tables_reads_as_the_store_of_the_build_file(hub, tmp_
         elements = [*nodes, *sorted(store.alive_ids("edges", b))]
         units = sorted(store.alive_ids("units", b))
         assert units and nodes
-        assert view.summary() == store.summary() and view.latest_ready() == b
+        assert placed(view.summary()) == placed(store.summary()) and view.latest_ready() == b
         assert view.seen(b) == store.seen(b)
         assert view.top_audience(b) == store.top_audience(b)
         assert [view.unit(u) for u in units] == [store.unit(u, b) for u in units]
@@ -179,7 +195,7 @@ def test_a_snapshot_of_the_tables_searches_and_counts_as_the_store_of_the_build_
     assert push(hub, laptop).ok
     build(hub, caplog)
     view = Snapshot.from_stored(read_back(hub.db, project_id(hub))).view()
-    store = Store.open_file(hub.worker_dir / "kg" / "home" / "alpha" / "graph.sqlite", immutable=True)
+    store = Store.open_file(built_here(hub, laptop), immutable=True)
     try:
         store.reader = frozenset()
         b = store.latest_ready()
@@ -235,7 +251,7 @@ def test_a_snapshot_of_the_tables_reads_the_asked_rows_as_the_store_of_the_build
     assert push(hub, laptop).ok
     build(hub, caplog)
     path = tmp_path / "asked.sqlite"
-    shutil.copy(hub.worker_dir / "kg" / "home" / "alpha" / "graph.sqlite", path)
+    shutil.copy(built_here(hub, laptop), path)
     store = Store(path)
     try:
         b = store.latest_ready()

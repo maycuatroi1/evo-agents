@@ -1,21 +1,21 @@
 """What a hub build of a project's graph learns from its searches (``evo_agents.kg.asked``): the project's newest
 MAX_LABELS labels of kg_query_labels (``evo_agents.hub.kg_labels``), each with its sensitivity label read on the
 project's ladder, and the questions of the holdout split of its latest eval set (kg_eval_sets), whose repeats are left
-out. ``read`` reads them before the build; ``write`` puts the rows they give into the built graph.sqlite."""
+out. ``read`` reads them before the build; ``put`` puts the rows they give into the rows of a build."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import kg_sources, tables
-from evo_agents.kg import asked
+from evo_agents.kg import asked, graph_rows
 from evo_agents.kg.evaluate import HOLDOUT, split_of
 from evo_agents.kg.policy import Policy, audience_of
+from evo_agents.kg.snapshot import StoreRows
 
 MAX_LABELS = 20_000  # the newest labels a build reads
 
@@ -94,20 +94,10 @@ async def asked_weight(conn: AsyncConnection, project_id: int) -> float | None:
     ).scalar_one_or_none()
 
 
-def write(path: Path, learned: Learned, now: datetime | None = None) -> str | None:
-    """Put the asked index ``learned`` gives into the store at ``path`` (out of WAL mode again after): the digest of
-    the index, None when it holds nothing. Blocking."""
-    from evo_agents.kg.store import Store
-
-    store = Store(path)
-    try:
-        b = store.latest_ready()
-        rows = []
-        if b is not None and learned.labels:
-            nodes = asked.Nodes.of_store(store, b)
-            rows = asked.rows(learned.labels, nodes, now or datetime.now(UTC), learned.holdout)
-        digest = store.write_asked(rows, learned.weight)
-        store.leave_wal()
-    finally:
-        store.close()
-    return digest
+def put(rows: StoreRows, learned: Learned, now: datetime | None = None) -> tuple[StoreRows, str | None]:
+    """``rows`` with the asked index ``learned`` gives (``evo_agents.kg.graph_rows.with_asked``), and the digest of the
+    index, None when it holds nothing."""
+    found = []
+    if learned.labels:
+        found = asked.rows(learned.labels, graph_rows.asked_nodes(rows), now or datetime.now(UTC), learned.holdout)
+    return graph_rows.with_asked(rows, found, learned.weight)

@@ -891,7 +891,7 @@ def hub(hub_db, tmp_path, monkeypatch):
 
 
 def build_graph_on_a_machine(root: Path, monkeypatch) -> SimpleNamespace:
-    from evo_agents.hub.kg_build import build_graph
+    from evo_agents.kg.build import build_project
     from evo_agents.kg.project import load_project_at
     from evo_agents.kg.sync import sync_project
 
@@ -905,7 +905,8 @@ def build_graph_on_a_machine(root: Path, monkeypatch) -> SimpleNamespace:
     monkeypatch.setenv("EVO_KG_HOME", str(home))
     project = load_project_at(harness, home)
     assert all(result.ok for result in sync_project(project, ["docs", "deals"]))
-    path, report = build_graph(project)
+    report = build_project(project)
+    path = project.root / "graph.sqlite"
     data = path.read_bytes()
     return SimpleNamespace(
         project=project, path=path, data=data, sha256=hashlib.sha256(data).hexdigest(), report=report

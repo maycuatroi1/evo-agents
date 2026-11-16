@@ -290,6 +290,37 @@ def test_a_branch_is_read_apart_from_main_then_merged_and_outlives_the_next_buil
 
 
 @needs_db
+def test_a_branch_merged_while_a_build_of_nothing_new_runs_stays_on_main(hub, tmp_path, caplog, monkeypatch):
+    from evo_agents.hub import kg_build
+    from tests.hub.test_kg import latest, run_jobs
+
+    _built(hub, tmp_path, caplog, doc("guide", "How the kiwi app works."))
+    guide = _guide(hub)
+    assert _post(hub, _base(), {"name": "late"}).status_code == 201
+    ops = [
+        {"op": "node.put", "id": "concept:mango", "kind": "Concept", "name": "Mango pipeline"},
+        {"op": "edge.put", "src": guide, "rel": "mentions", "dst": "concept:mango"},
+    ]
+    assert _post(hub, f"{_base('late')}/ops", {"ops": ops}).status_code == 200
+    original, merged = kg_build.build_in_cache, []
+
+    def merging(*args, **kwargs):
+        built = original(*args, **kwargs)
+        merged.append(_post(hub, f"{_base('late')}/merge"))  # after the build read main, before it keeps its graph
+        return built
+
+    monkeypatch.setattr(kg_build, "build_in_cache", merging)
+    assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
+    caplog.clear()
+    with caplog.at_level("INFO", logger="evo_agents.hub.kg_build"):
+        run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert latest(hub)["status"] == "succeeded"
+    assert [m.status_code for m in merged] == [200], [m.text for m in merged]
+    assert "concept:mango" in {r[0] for r in read_back(hub.db, project_id(hub)).nodes}, "the merge stays on main"
+    assert "kg graph left as a merge wrote it" in caplog.messages
+
+
+@needs_db
 def test_a_merge_is_refused_when_main_changed_what_the_branch_changes(hub, tmp_path, caplog):
     laptop, _ = _built(hub, tmp_path, caplog, doc("guide", "How the kiwi app works."))
     guide = _guide(hub)

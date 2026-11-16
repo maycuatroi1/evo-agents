@@ -1296,7 +1296,8 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
         env = pg.clean_env(HOME=str(home), EVO_KG_HOME=str(laptop.home))
         harness = str(laptop.harness)
 
-        assert build_project(load_project_at(laptop.harness, laptop.home)).ok  # a graph built here, to compare below
+        built_here = build_project(load_project_at(laptop.harness, laptop.home))  # to compare with the hub's below
+        assert built_here.ok
         pushed = ok(pg.cli(["hub", "kg", "push", "--project", harness], env=env))
         assert pushed.stdout.startswith("project alpha: pushed 1 run(s)")
         again = ok(pg.cli(["hub", "kg", "push", "--project", harness], env=env))
@@ -1326,6 +1327,7 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
             local["edges"],
         )
         assert remote["graph"]["content_hash"] == local["content_hash"] == answer["build"]["content_hash"]
+        assert answer["build"]["content_hash"] == built_here.content_hash, "the hub builds what this machine builds"
 
         # kg serve: the same seven tools whichever backend answers
         hello = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}}

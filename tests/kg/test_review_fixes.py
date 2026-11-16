@@ -235,7 +235,7 @@ def test_status_clearance_withholds_and_raises_the_label(fake_project, kg_env):
     status = hub_status(project, "test-session")  # the build holds the secret items: its counts alone
     data = status["structuredContent"]
     assert "coverage" not in data["graph"] and data["graph"]["nodes"] > 0 and not data["reads"]
-    assert data["label"]["level"] == "internal" and "secret" not in status["content"][0]["text"]
+    assert "label" not in data and "secret" not in status["content"][0]["text"], "its counts raise no label"
 
 
 def run_stdio(monkeypatch, capsys, session, lines):

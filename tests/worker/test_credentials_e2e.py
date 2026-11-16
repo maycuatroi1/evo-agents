@@ -173,7 +173,7 @@ def install_graph(db: pg.Database, cache: Path, root: Path, monkeypatch) -> None
     tables as the head of its main."""
     import hashlib
 
-    from evo_agents.hub.kg_build import build_graph
+    from evo_agents.kg.build import build_project
     from evo_agents.kg.project import load_project_at
     from evo_agents.kg.sync import sync_project
 
@@ -190,7 +190,8 @@ def install_graph(db: pg.Database, cache: Path, root: Path, monkeypatch) -> None
     monkeypatch.setenv("EVO_KG_HOME", str(home))
     project = load_project_at(harness, home)
     assert all(result.ok for result in sync_project(project, ["docs"]))
-    path, report = build_graph(project)
+    report = build_project(project)
+    path = project.root / "graph.sqlite"
     data = path.read_bytes()
     sha256 = hashlib.sha256(data).hexdigest()
     target = cache / "kg" / "graphs" / PROJECT / f"{sha256}.sqlite"

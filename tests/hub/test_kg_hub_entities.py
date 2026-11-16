@@ -25,7 +25,7 @@ from evo_agents.kg import entities, strategy
 from evo_agents.kg import settings as kg_settings
 from tests.hub import pg
 from tests.hub.live import sql
-from tests.kg.test_extract_entities import entity_nodes, setup
+from tests.kg.test_extract_entities import setup
 
 KEY = "sk-or-v1-test-0123456789abcdef"  # not a real key: what the tests look for everywhere
 ENV = "OPENROUTER_API_KEY"
@@ -94,13 +94,16 @@ def test_a_hub_build_calls_the_endpoint_with_the_key_in_memory_and_writes_it_now
     endpoint = Endpoint()
     monkeypatch.setattr(entities, "CLIENT_FACTORY", endpoint.client)
     project = url_project(tmp_path, kg_env)
-    path, report = kg_build.build_graph(project, entity_keys={ENV: KEY})
+    rows, report = kg_build.build_graph(project, entity_keys={ENV: KEY})
     assert report.ok, report.errors
     cov = report.coverage["entities"]
     assert cov["calls"] == 3 == len(endpoint.prompts) and endpoint.keys == [KEY] * 3
     assert cov["sink"] == "llm" and cov["local"] is False and cov["skipped"] == 0
     assert cov["tokens_in"] == 3000 and cov["cost"] == pytest.approx(3 * (1000 * 0.1 + 200 * 0.5) / 1e6)
-    assert {r[0] for r in entity_nodes(project)} >= {"entity:Concept:search", "entity:Concept:server"}
+    assert {r[0] for r in rows.nodes if r[0].startswith("entity:")} >= {
+        "entity:Concept:search",
+        "entity:Concept:server",
+    }
     assert ENV not in os.environ, "the key never reaches the environment of the build"
     assert KEY not in json.dumps(report.coverage) and KEY not in caplog.text
     assert not any(KEY in p for p in endpoint.prompts)
