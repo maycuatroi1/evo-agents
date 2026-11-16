@@ -235,6 +235,47 @@ def test_the_coordinator_holds_the_most_recently_read_projects_and_no_finished_l
     assert list(coordinator._held) == [3, 1] and coordinator._loading == {}
 
 
+def test_a_read_right_after_a_build_waits_for_its_snapshot_and_not_past_fresh_wait(monkeypatch):
+    """A tool call right after a build answers from the snapshot of that build, which the notification began to load
+    (an archived node is gone at once); a load slower than FRESH_WAIT leaves the older snapshot answering, and a
+    plugin read (``held``) never waits."""
+    newest, gate = [1], {}
+
+    async def load(engine, project_id):
+        build = newest[0]
+        if build in gate:
+            await gate[build].wait()
+        else:
+            await asyncio.sleep(0.2)  # a load of a small graph, still running as the next request comes
+        return kg_snapshots.Held(build, None)
+
+    monkeypatch.setattr(kg_snapshots, "load", load)
+    monkeypatch.setattr(kg_snapshots, "FRESH_WAIT", 1.0, raising=False)
+
+    async def run():
+        coordinator = kg_snapshots.SnapshotCoordinator(object())
+        try:
+            first = (await coordinator.get(7)).build_id
+            newest[0] = 2
+            coordinator.notified(json.dumps({"project_id": 7}))  # the build of 2 notified
+            fresh = (await coordinator.current(7, 2)).build_id
+            newest[0], gate[3] = 3, asyncio.Event()  # the load of 3 hangs past FRESH_WAIT
+            coordinator.notified(json.dumps({"project_id": 7}))
+            plugin = (await asyncio.wait_for(coordinator.held(7, 3), 0.1)).build_id
+            started = asyncio.get_running_loop().time()
+            slow = (await coordinator.current(7, 3)).build_id
+            waited = asyncio.get_running_loop().time() - started
+            gate[3].set()
+            await asyncio.gather(*coordinator._tasks, *coordinator._loading.values())
+            return first, fresh, plugin, slow, waited, (await coordinator.current(7, 3)).build_id
+        finally:
+            await coordinator.close()
+
+    first, fresh, plugin, slow, waited, caught_up = asyncio.run(run())
+    assert (first, fresh) == (1, 2)  # the old code answered 1 here: the archived node still read
+    assert (plugin, slow, caught_up) == (2, 2, 3) and 0.9 <= waited < 3
+
+
 def test_loads_making_snapshots_leave_the_pool_to_the_workers_heartbeats(hub, tmp_path, caplog, monkeypatch):
     """A snapshot is made with no connection held: loads of a large graph, which take minutes to make it, left the
     workers' heartbeats and claims without a connection of the pool, and runs lost their lease."""

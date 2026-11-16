@@ -4,7 +4,8 @@
 A project's snapshot is loaded on its first read and kept. A build that writes the tables notifies ``kg_graph``
 (``kg_graph_rows.notify``); the coordinator, subscribed on the process's listener (``evo_agents.hub.server.listen``),
 then builds the project's new snapshot in a background task and swaps it in with one assignment: a reader holds the
-snapshot it was given until it is done and never waits for a build. After the listener (re)connects, every project
+snapshot it was given until it is done. A reader that found a build newer than the snapshot held waits up to
+FRESH_WAIT for that load, so a graph read right after a build answers from it, and is given the older one after. After the listener (re)connects, every project
 held is read again, since a notification sent while nobody listened is lost. A snapshot is the whole graph: each
 reader sees it through its own clearance and audience (``evo_agents.kg.snapshot_search.SnapshotSearch``)."""
 
@@ -153,6 +154,7 @@ async def held_for(conn: AsyncConnection, project_id: int, build_id: int) -> Hel
 
 HELD_PROJECTS = 16  # projects whose snapshot the api keeps in memory, the most recently read; another is loaded again
 HELD_BRANCHES = 8  # draft branches whose snapshot the api keeps, the most recently read
+FRESH_WAIT = 5.0  # seconds a read that found a newer build waits for its snapshot before the older one answers
 
 
 async def _branch_key(conn: AsyncConnection, project_id: int, name: str) -> tuple:
@@ -195,23 +197,33 @@ class SnapshotCoordinator:
         held = await self.get(project_id)
         return None if held is None else held.view(reader, ceiling)
 
-    async def current(self, project_id: int, build_id: int) -> Held | None:
+    async def current(self, project_id: int, build_id: int, wait: float | None = None) -> Held | None:
         """The project's snapshot, None before its first build kept a graph. One older than build ``build_id``, the
-        newest the caller found, is still given, and a load starts, once per build, unless one runs: a caller that
-        missed the notification, or reads without a listener, catches up without waiting for it."""
+        newest the caller found, starts a load, once per build, unless one runs (a caller that missed the
+        notification, or reads without a listener, catches up), and the caller waits up to ``wait`` seconds
+        (FRESH_WAIT) for the load running: a read right after a build answers from it, as its writer expects. Past
+        that, or when the load fails, the older snapshot answers; the load goes on."""
         held = await self.get(project_id)
-        if held is not None and held.build_id != build_id and self._asked.get(project_id) != build_id:
+        if held is None or held.build_id == build_id:
+            return held
+        if self._asked.get(project_id) != build_id:
             self._asked[project_id] = build_id
             task = self._load(project_id)
             self._tasks.add(task)
             task.add_done_callback(self._done)
-        return held
+        task = self._loading.get(project_id)
+        wait = FRESH_WAIT if wait is None else wait
+        if task is None or wait <= 0:
+            return held
+        with contextlib.suppress(Exception):  # a slow load times out, a failed one is logged by ``_done``
+            await asyncio.wait_for(asyncio.shield(task), wait)
+        return self._held.get(project_id, held)
 
     async def held(self, project_id: int, build_id: int) -> Held | None:
         """``current`` for a caller that must not wait for a load: None while the project has no snapshot in memory,
         whose load this starts in the background (``kg_graph.reading`` then answers "try again shortly")."""
         if project_id in self._held:
-            return await self.current(project_id, build_id)
+            return await self.current(project_id, build_id, wait=0)
         if self._listener is not None:
             self._listener.start()
         task = self._load(project_id)
