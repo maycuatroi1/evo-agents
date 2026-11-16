@@ -4592,12 +4592,13 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   unless the project's last 3 builds in a row (`DIED_IN_A_ROW`, back to the newest a member queued by hand) ended with
   their worker gone: then it queues none, records why on the build and tells the project's admins and creator (notice
   `kg_build_halted`), once a row. A build that kills its worker, as one over the memory limit of `worker-kg` does, so
-  dies three times, not for ever; a build that succeeds, or one a member queues (`evo-agents hub kg build`), starts a
-  new row. It also fails builds still queued or running whose job ended (failed, cancelled, aborted, or pruned)
-  without recording them, and queues a new build of the project unless a later build already took their place or the
-  same count of three stops it. Then it fails every other job a worker left running when it stopped sending heartbeats
-  for 2 minutes (killed, out of memory): procrastinate leaves such a job `doing` for ever, and one with a lock, such
-  as `hub.release_schedules`, would hold back every later job of that lock.
+  dies three times, not for ever; a build that succeeds, one a member queues (`evo-agents hub kg build`), or one its
+  worker stopped cleanly (a deploy) starts a new row. It also fails builds still queued or running whose job ended
+  (failed, cancelled, aborted, or pruned) without recording them, and queues a new build of the project unless a later
+  build already took their place or the same count of three stops it. Then it fails every other job a worker left
+  running when it stopped sending heartbeats for 2 minutes (killed, out of memory): procrastinate leaves such a job
+  `doing` for ever, and one with a lock, such as `hub.release_schedules`, would hold back every later job of that
+  lock.
 - `hub.prune_kg_artifacts`, hourly at minute 31: deletes the graph files older builds uploaded, past each project's
   `EVO_HUB_KG_KEEP_ARTIFACTS` newest.
 - `hub.recover_runs`, every minute: runs whose worker stopped extending the lease become lost and their step is
