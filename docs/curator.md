@@ -433,7 +433,10 @@ why) while the night shift is paused, past its caps, or the change is not ready;
 agent holds no push credential: the daemon alone pushes, only the branch `curator/...`, and never a default branch
 whatever the plan says. On GitLab the push opens the merge request. An accepted proposal of a tier the charter plans
 that has no change yet, such as one of tier 2 accepted while that tier still recorded the answer alone, becomes its plan
-with `evo-agents hub curator proposal plan ID`, which only an admin of the project may. A proposal's page on the web has
+with `evo-agents hub curator proposal plan ID`, which only an admin of the project may. The same command plans a
+proposal whose change is stuck, `open` or `closed` with no plan, branch or pull request (such as a draft in several
+repos left open before a plan could work in them): that change becomes `planned`, and its ledger says which state it
+replaced. A proposal's page on the web has
 a Change card once accepting it made one: the change's state, the Curator's plan as a link to its page, the branch (a
 link to it on GitHub or GitLab), the pull request once the hub opened it, and the reason the change keeps while it waits
 or stays open, and the tier it merges at; under it a Replays card says whether its replays won and why, sets arm b

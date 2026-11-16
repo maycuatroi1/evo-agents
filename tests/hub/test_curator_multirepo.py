@@ -9,14 +9,14 @@ from evo_agents.hub import judge
 from tests.hub import pg
 
 if pg.DSN:  # the world of the Curator's changes, on Postgres alone
-    from sqlalchemy import insert, select
+    from sqlalchemy import insert, select, update
 
     from evo_agents.hub import tables
     from evo_agents.hub.kg_graph_rows import MAIN
     from tests.hub.fake_github import Account
     from tests.hub.live import sql
     from tests.hub.test_credentials_api import OWNER, OWNER_ID, THEIRS
-    from tests.hub.test_curator import NIGHT, PROJECT, fire
+    from tests.hub.test_curator import NIGHT, PROJECT, fire, written
     from tests.hub.test_curator_changes import (  # noqa: F401 (app_key and world are fixtures)
         GREEN,
         HEAD,
@@ -28,12 +28,15 @@ if pg.DSN:  # the world of the Curator's changes, on Postgres alone
         app_key,
         calls,
         changes,
+        curator_charter,
         inputs,
         judge_key,
         moved_on,
+        path,
         verdict,
         world,
     )
+    from tests.hub.test_curator_ledger import acts, ledger_of
     from tests.hub.test_plan_runs import reported
     from tests.hub.test_review_runs import DRAFT as ONE_DRAFT
     from tests.hub.test_runs import claim, moved
@@ -295,3 +298,47 @@ def test_hub_one_pull_request_and_judge_run_per_repo_and_the_consumer_merges_aft
         ("evo-agents", 1, True),
     ]
     assert moved_on(seamed) == {}
+
+
+STUCK_WHY = "it cannot become the Curator's plan: a Curator's plan works in one repo, and the proposal names two"
+
+
+@on_postgres
+@pytest.mark.parametrize("stuck_state", ["open", "closed"])
+def test_hub_a_stuck_change_in_two_repos_is_planned_again_in_place_and_a_live_one_refuses(seamed, stuck_state):
+    """A proposal in two repos accepted when a plan could not work in them kept a change with no plan, repo or branch:
+    POST .../proposals/{id}/plan makes that same change planned in both repos; a live change, or a closed one that
+    had a plan, is still 409."""
+    owner = seamed.headers["owner"]
+    written(seamed.client, owner, curator_charter(planned_tiers=[0, 1]))  # accepting tier 2 records the answer alone
+    proposal = accepted(seamed, kind="feature", paths=TWO_PATHS, plan=TWO_DRAFT)
+    written(seamed.client, owner, curator_charter())
+    assert changes(seamed) == []
+    c = tables.curator_changes
+    ((project_id,),) = sql(seamed.db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))
+    stuck = {"project_id": project_id, "proposal_id": proposal["id"], "tier": 2, "state": stuck_state}
+    ((change_id,),) = sql(seamed.db, insert(c).values(**stuck, reason=STUCK_WHY).returning(c.c.id))
+
+    made = seamed.client.post(path("proposals", str(proposal["id"]), "plan"), headers=owner)
+    assert made.status_code == 201, made.text
+    change = made.json()
+    assert (change["id"], change["state"], change["plan_id"], change["repo"], change["branch"], change["reason"]) == (
+        change_id,
+        "planned",
+        TWO_PLAN,
+        "lumen-identity",
+        TWO_BRANCH,
+        None,
+    )
+    assert [item["repo"] for item in change["repos"]] == ["lumen-identity", "evo-agents"]
+    assert len(changes(seamed)) == 1
+    last = ledger_of(seamed, proposal["id"])["lines"][-1]
+    assert (last["action"], last["actor"]) == ("planned", "curator")
+    assert last["details"]["replaced"] == {"state": stuck_state, "reason": STUCK_WHY}
+    assert acts(ledger_of(seamed, proposal["id"]))[-2:] == [("accepted", "user"), ("planned", "curator")]
+
+    again = seamed.client.post(path("proposals", str(proposal["id"]), "plan"), headers=owner)
+    assert again.status_code == 409 and f"has change #{change_id} already, planned" in again.text, again.text
+    sql(seamed.db, update(c).where(c.c.id == change_id).values(state="closed"))  # its pull request closed, say
+    again = seamed.client.post(path("proposals", str(proposal["id"]), "plan"), headers=owner)
+    assert again.status_code == 409 and f"has change #{change_id} already, closed" in again.text, again.text
