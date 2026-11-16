@@ -65,6 +65,7 @@ FEATURES = (
                 "curator_figures",
                 "curator_replay",
                 "curator_probe_report",
+                "curator_evolve",
                 "curator_findings",
                 "curator_playbook",
                 "history_sessions",

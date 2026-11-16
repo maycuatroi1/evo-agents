@@ -118,6 +118,7 @@ class JudgeRun:
         self.conversation = Conversation(run, self.directory)
         self.head: str | None = None
         self.merge_base: str | None = None
+        self.evolvable: list[str] = []  # the charter's evolve.evolvable_paths: no protected_path sign for these
         self.merge_result = bool(change.get("merge_result"))  # a merge check's: the checks run on head and base merged
         # A merge request of the queue whose gate 3 an admin passed at the head judged (``merge_pass.covers``).
         self.signs_passed = self.merge and bool(change.get("signs_passed"))
@@ -162,6 +163,7 @@ class JudgeRun:
         hidden = [item for item in inputs.get("hidden_checks") or [] if isinstance(item, str)]
         verify_commands = [item for item in inputs.get("verify") or [] if isinstance(item, str)]
         protected = [item for item in inputs.get("protected_paths") or [] if isinstance(item, str)]
+        self.evolvable = [item for item in inputs.get("evolvable_paths") or [] if isinstance(item, str)]
         knowledge = judge_knowledge.wanted(inputs)
         needed = verify_commands + ([knowledge_diff.JUDGE_VALIDATE] if knowledge is not None else [])
         try:  # a program missing fails the run, not the change: it is judged again elsewhere (JUDGE_ATTEMPTS)
@@ -356,7 +358,13 @@ class JudgeRun:
             workspace.worktree, self.merge_base, self.head, env=gitops.without_hooks(run.daemon.env)
         )
         files = diff_signs.parse_diff(diff)
-        signs = diff_signs.hack_signs(files, repo=name, protected=protected, verify_commands=verify_commands)
+        signs = diff_signs.hack_signs(
+            files,
+            repo=name,
+            protected=protected,
+            verify_commands=verify_commands,
+            evolvable=self.evolvable,
+        )
         if too_long:  # first, so the cap on signs never drops it
             cut_sign = {
                 "kind": "diff_unreadable",

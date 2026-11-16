@@ -321,11 +321,12 @@ def test_curator_plan_an_accepted_tier_0_proposal_becomes_a_plan_on_a_branch_of_
 
 
 def test_curator_plan_a_draft_that_cannot_become_a_plan_is_left_open_with_why(world):
-    two = [{"repo": "evo-agents", "path": "tests/test_wait.py"}, {"repo": "lumen-identity", "path": "tests/test_x.py"}]
+    two = [{"repo": "evo-agents", "path": "tests/test_wait.py"}, {"repo": "lumen-kb-docs", "path": "docs/x.md"}]
     accepted(world, paths=two)
     change = one_change(world)
     assert change["state"] == "open" and change["plan_id"] is None and change["branch"] is None
-    assert "works in one repo, and the proposal names evo-agents, lumen-identity" in change["reason"]
+    assert "works in one repo, and the proposal names evo-agents, lumen-kb-docs" in change["reason"]
+    assert "works on GitHub alone, and lumen-kb-docs is not there" in change["reason"]
     assert fire(world.client, NIGHT).get("builder") is None  # nothing of it runs
 
 
@@ -670,6 +671,8 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
         "history_key": None,
         "probe": None,  # a probe run's alone
         "probe_key": None,
+        "evolve": None,  # an evolve run's alone
+        "evolve_key": None,
         "merge_result": False,  # a merge check's alone
         "signs_passed": False,  # a merge queue Judge's alone
     }
@@ -1422,7 +1425,7 @@ def test_curator_plan_changes_and_protection_on_the_command_line(world, tmp_path
 
 
 def test_close_an_admin_closes_a_change_left_open_with_no_pull_request(world, tmp_path, monkeypatch, capsys):
-    two = [{"repo": "evo-agents", "path": "tests/test_wait.py"}, {"repo": "lumen-identity", "path": "tests/test_x.py"}]
+    two = [{"repo": "evo-agents", "path": "tests/test_wait.py"}, {"repo": "lumen-kb-docs", "path": "docs/x.md"}]
     accepted(world, paths=two)  # it cannot become the Curator's plan: its change is open, with no plan, no branch
     change = one_change(world)
     assert (change["state"], change["plan_id"], change["branch"], change["pr_number"]) == ("open", None, None, None)

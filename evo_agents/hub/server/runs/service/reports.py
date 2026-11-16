@@ -497,6 +497,7 @@ def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> 
         "release",
         "question",
         "browser",
+        "evolve",
     ):
         if body.state == "review":
             article = "an" if kind[:1] in "aeiou" else "a"

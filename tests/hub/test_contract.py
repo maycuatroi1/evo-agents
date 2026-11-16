@@ -334,7 +334,12 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker wait",
     ]
     added = printed["worker playbook add"]
-    assert [o["flags"] for o in added["options"]] == [["--text"], ["--evidence"], ["--lens"]]
+    assert [o["flags"] for o in added["options"]] == [
+        ["--text"],
+        ["--evidence"],
+        ["--lens"],
+        ["--until-proposal"],
+    ]
     assert [(p["name"], p.get("choices")) for p in printed["worker playbook retire"]["positionals"]] == [
         ("entry", None)
     ]

@@ -293,7 +293,7 @@ def _eligible(f, r):
         t.c.parts > 0,
     )
     session = and_(f.c.kind == "session", f.c.source == "transcript", live)
-    run = and_(f.c.kind == "run", r.c.kind.not_in(("local", "history", "probe")))
+    run = and_(f.c.kind == "run", r.c.kind.not_in(("local", "history", "probe", "evolve")))
     return and_(f.c.body.is_not(None), or_(session, run))
 
 

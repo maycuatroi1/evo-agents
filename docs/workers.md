@@ -3200,6 +3200,39 @@ a later run reads a run's events. The run ends `done` with every session's usage
 (`gitops.check_push` refuses every push of a probe run); its directory goes with the cleanup of runs older than 7
 days. A run that ends before every session posted is queued again by the hub, two runs in all.
 
+### An evolve run on the machine
+
+An evolve run (kind `evolve`) is the Curator's evolution of a harness's files in a repo (target `git`) or of an
+agent's instructions and skill (target `agent_config`), measured on light tasks (`docs/curator.md`, Evolving a harness;
+`docs/hub.md`, "The Curator's evolutions"). Only a daemon with `evolve` in its heartbeat's `run_kinds` gets one. Its
+claim names the evolution and its target, and hands the daemon the run's own key, which only the run's object holds and
+which it sends with `GET /v1/worker/runs/{id}/evolve` and `POST .../evolve/arm`, `.../candidate` and `.../report`
+(`X-Evo-Evolve-Key`). The inputs name the baseline (for `git`, each path read at the base commit of the checkout when
+the hub sends none, a skill's directory whole), the light tasks of the select split and the active probes, each with
+its prompt, base commit and verify, the baseline arms the project's cache holds, the budget, the runtime and the model.
+The preflight looks for the program of each verify on the PATH those commands run with, and for `git` checks that it
+can push to the repo.
+
+The evolution works in the run's directory. Its tree, `evolution/`, is what the proposer agent reads: `iterations/<n>/`
+with the parent's whole files under `candidate/` (and the conflicts of a merge under `merge/`), `frontier.json`,
+`evolution_summary.jsonl` and `eval_traces/<candidate>/<task>.json`, each task's prompt, score, verify exit codes and
+output, failed tool calls, turns and cost. It holds no verify command and no holdout task. Each task of each candidate
+runs in a directory of its own under `evals/`: a new repository of the task's repo at its base commit with the
+candidate's files placed (a skill also under `.claude/skills/`; an agent's instructions as CLAUDE.md and AGENTS.md),
+a new agent session on the task's prompt with what is left of the run's caps, none of the hub's tools and no remote;
+then the worker runs the verify itself as code it does not trust, as a judge run runs its checks. A candidate's score
+on a task is the share of its verify commands that exited 0.
+
+The loop measures the baseline first, taking from the cache each arm the hub holds and posting the others
+(`evolve.arm_key`). Each round then either merges two candidates of the front (every third round, over their nearest
+common ancestor, the files both changed apart resolved by the agent) or mutates one: a parent drawn by how often it is
+best on a task, its files rewritten by the proposer. It posts each new candidate, unique by its digest, prunes the
+front, and stops when the iterations, candidates or cost of the budget run out. For `git` the best candidate, when it
+differs from the baseline, is committed on top of the base commit in a worktree of the checkout and pushed to the
+run's `curator/...` branch, never forced and never a default branch; the report names the best candidate, the commit
+and the branch, and the run ends `done`. A run that fails reports so. The watchdog of the Curator's runs compares no
+protected path for it, only its caps: its repositories are its own.
+
 ### A history run on the machine
 
 A history run (kind `history`) is the night's reading of the project's sessions and runs with a cheap model, which

@@ -46,6 +46,29 @@ function renderEn(ui: ReactElement) {
 }
 
 describe("ChangeFacts", () => {
+  it("lists the repos of a change in several, in merge order, each with its pull request", () => {
+    const repo = { reason: null, passed: null, merged_at: null, pr_url: null, pr_number: null, state: "pr_pending" };
+    const several: Change = {
+      ...PLANNED,
+      repo: "lumen-identity",
+      repos: [
+        { ...repo, repo: "lumen-identity", position: 1, depends_on: [], state: "judged", pr_number: 3, pr_url: "https://github.com/example-org/lumen-identity/pull/3" },
+        { ...repo, repo: "api", position: 2, depends_on: ["lumen-identity"] },
+      ],
+    };
+    renderEn(<ChangeFacts project="demo" change={several} repos={REPOS} />);
+    const rows = within(screen.getByTestId("proposal-change-repos")).getAllByTestId("proposal-change-repo-row");
+    expect(rows.map((row) => row.getAttribute("data-state"))).toEqual(["judged", "pr_pending"]);
+    expect(within(rows[0]).getByTestId("proposal-change-repo-pr")).toHaveAccessibleName("Pull request #3 (opens in a new tab)");
+    expect(within(rows[1]).queryByTestId("proposal-change-repo-pr")).toBeNull();
+    expect(within(rows[1]).getByTestId("proposal-change-repo-after")).toHaveTextContent("Merges after lumen-identity");
+  });
+
+  it("shows no repo list for a change in one repo", () => {
+    renderEn(<ChangeFacts project="demo" change={{ ...PLANNED, repos: [] }} repos={REPOS} />);
+    expect(screen.queryByTestId("proposal-change-repos")).toBeNull();
+  });
+
   it("links a planned change's plan and branch, and says why it waits", () => {
     renderEn(<ChangeFacts project="demo" change={PLANNED} repos={REPOS} />);
     expect(screen.getByTestId("proposal-change-plan-link")).toHaveAttribute("href", "/p/demo/plans/curator-12-wait-helper");

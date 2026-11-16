@@ -16,7 +16,11 @@ and the owner alone makes the change. ``tier_of`` computes it from these:
   HARD_PATHS (CI, lint and test configuration, plan copies), makes it tier 3; a migration or schema path makes it at
   least tier 2 (SCHEMA_PATHS); any path that is neither documentation nor a test makes it at least tier 1;
 - the paths those reach in the project's knowledge graph (``kg_impact``), when the project has one: a reached path
-  that is protected or one of HARD_PATHS makes it tier 3 too;
+  that is protected or one of HARD_PATHS makes it tier 3 only when the pull request's diff removes a module-level name
+  that file imports or calls, or changes its signature (``api``: of each such path, the names it uses that the diff
+  breaks, ``evo_agents.hub.api_surface.reached_api``; one the hub could not read makes it tier 3 too); before the
+  diff is known (``api`` None) it makes it at least tier 2 and no more, so the Builder still builds the branch whose
+  diff the tier is computed again from;
 - what that raise cannot know (``unknown``): a path the graph has no file for, one whose file the graph holds older
   than the default branch's (the latest measure of the graph's health says so), or every path while the graph of a
   project that has one cannot be read, makes it at least tier 1, the reason saying which;
@@ -35,7 +39,10 @@ One rule lowers the tier a change merges with, never its proposal's (``replay_ti
 REPLAY_KINDS whose pull request edits a harness alone (the files of one skill, AGENTS.md and CLAUDE.md files:
 ``evo_agents.hub.replay.harness_only``) and whose replays on the project's holdout tasks won (``replay.verdict``) is
 tier 0, whatever its kind, its code paths or the graph gave it, unless a rule made it tier 3 or it is a fix proposal.
-Without replays that won, or with any other file in its diff, it keeps the tier these rules give.
+Without replays that won, or with any other file in its diff, it keeps the tier these rules give. A harness file the
+charter lists in ``evolve.evolvable_paths`` (``evolvable``) that is also protected or one of HARD_PATHS still makes the
+change tier 3 (``Tier.evolvable`` says no other rule did), and ``replay_tier`` lowers such a change to 0 too, when its
+diff edits a harness alone, the Judge passed it (``judged``) and its replays on the holdout tasks won.
 
 A protected glob is matched against the path within its repo (``.github/workflows/**`` protects that directory of every
 repo of the project); a glob written ``repo:glob`` protects that repo's paths alone. ``*`` matches within one
@@ -165,10 +172,12 @@ PATH = re.compile(r"^[^\x00-\x1f\x7f\\]+$")
 
 @dataclass(frozen=True)
 class Tier:
-    """The tier ``tier_of`` gave, and why: one line per rule that raised it, the first naming the kind."""
+    """The tier ``tier_of`` gave, and why: one line per rule that raised it, the first naming the kind;
+    ``evolvable``, whether tier 3 came from evolvable harness paths alone (``replay_tier`` may lower it)."""
 
     tier: int
     reasons: list[str] = field(default_factory=list)
+    evolvable: bool = False
 
 
 # Paths
@@ -224,6 +233,19 @@ def matches(glob: str, repo: str, path: str) -> bool:
 
 def _first(globs, repo: str, path: str) -> str | None:
     return next((glob for glob in globs if matches(glob, repo, path)), None)
+
+
+def reach_glob(protected, repo: str, path: str) -> str | None:
+    """The glob that makes ``repo:path`` a file whose reach raises a change (``tier_of``'s ``impacted``): a protected
+    glob of the charter, or one of HARD_PATHS; None for any other file."""
+    return _first(protected, repo, path) or _first(HARD_PATHS, repo, path)
+
+
+def evolvable_paths(charter: Mapping) -> list[str]:
+    """The charter's ``evolve.evolvable_paths``, ``tier_of``'s ``evolvable``: its strings, none when it names none."""
+    evolve = charter.get("evolve") if isinstance(charter, Mapping) else None
+    found = evolve.get("evolvable_paths") if isinstance(evolve, Mapping) else None
+    return [item for item in found if isinstance(item, str)] if isinstance(found, (list, tuple)) else []
 
 
 def split_target(text: str) -> tuple[str, str] | None:
@@ -298,6 +320,30 @@ def path_raises(repo: str, path: str, protected=()) -> list[tuple[int, str]]:
     return _path_raises("", repo, path, protected, {}, None)
 
 
+def _reach_raises(repo: str, path: str, found: str, api) -> list[tuple[int, str]]:
+    """The raise of a protected path ``repo:path`` (glob ``found``) a change reaches in the knowledge graph: tier 3 when
+    the diff breaks names it uses (``api``) or the hub could not read them (its entry None), at least tier 2 before the
+    diff is known (``api`` None), a note else."""
+    where = f"the change reaches {repo}:{path} in the knowledge graph, which is protected ({found})"
+    if api is None:
+        return [(2, f"{where}; until the pull request's diff shows which names it breaks there: at least tier 2")]
+    if (repo, path) in api and api[(repo, path)] is None:
+        return [
+            (
+                3,
+                f"{where}, and the hub could not read it or the diff's Python files to tell which names the diff "
+                "breaks there: tier 3",
+            )
+        ]
+    hits = list(api.get((repo, path)) or ())
+    if not hits:
+        return [(0, f"{where}, but the diff breaks no module-level name it imports or calls: no raise")]
+    shown = ", ".join(hits[:SHOWN_CHANGES]) + (
+        f" and {len(hits) - SHOWN_CHANGES} more" if len(hits) > SHOWN_CHANGES else ""
+    )
+    return [(3, f"{where}, and the diff removes or changes the signature of {shown}, which it uses: tier 3")]
+
+
 def tier_of(
     kind: str,
     paths: list[tuple[str, str]],
@@ -307,19 +353,26 @@ def tier_of(
     unknown: Mapping[tuple[str, str], str] | None = None,
     knowledge: Mapping[tuple[str, str], Sequence[str] | None] | None = None,
     fix_of: int | None = None,
+    api: Mapping[tuple[str, str], Sequence[str]] | None = None,
+    evolvable: Sequence[str] = (),
 ) -> Tier:
     """The tier of a change of ``kind`` to ``paths`` ((repo, path) each), under the charter's ``protected`` globs,
     whose edits reach ``impacted`` ((repo, path) each, from the knowledge graph); ``unknown`` says, of a path, why the
     graph cannot tell what it reaches, and ``knowledge``, of a knowledge.yaml the pull request changes, what it changes
     besides SOURCE_KEYS (None: it could not be read), None before the diff is known; ``fix_of``, the change a fix
-    proposal fixes. See the module's docstring. ValueError for a kind not in CHANGE_KINDS."""
+    proposal fixes; ``api``, of a protected path reached, the module-level names it uses that the diff removes or
+    changes (an entry None: they could not be read, tier 3; ``api`` None before the diff is known); ``evolvable``, the
+    charter's ``evolve.evolvable_paths``. See the module's docstring. ValueError for a kind not in CHANGE_KINDS."""
     if kind not in CHANGE_KINDS:
         raise ValueError(f"{kind!r} is not a kind of change; the kinds are {', '.join(CHANGE_KINDS)}")
     tier, what = CHANGE_KINDS[kind]
     reasons = [f"kind {kind} ({what}) is tier {tier}"]
+    fixed = tier == 3  # tier 3 by a rule other than an evolvable path's
+    held = False
 
-    def raise_to(level: int, why: str) -> None:
-        nonlocal tier
+    def raise_to(level: int, why: str, lowerable: bool = False) -> None:
+        nonlocal tier, fixed
+        fixed = fixed or (level == 3 and not lowerable)
         if level > tier:
             tier = level
             reasons.append(why)
@@ -327,31 +380,37 @@ def tier_of(
             reasons.append(why)
 
     for repo, path in paths:
+        lowerable = _first(evolvable, repo, path) is not None
         for level, why in _path_raises(kind, repo, path, protected, unknown or {}, knowledge):
-            raise_to(level, why)
+            held = held or (level == 3 and lowerable)
+            raise_to(level, why, lowerable)
     named = set(paths)
     for repo, path in impacted:
-        if (repo, path) in named:
-            continue
-        found = _first(protected, repo, path) or _first(HARD_PATHS, repo, path)
-        if found is not None:
-            raise_to(
-                3, f"the change reaches {repo}:{path} in the knowledge graph, which is protected ({found}): tier 3"
-            )
+        found = None if (repo, path) in named else reach_glob(protected, repo, path)
+        for level, why in _reach_raises(repo, path, found, api) if found is not None else []:
+            raise_to(level, why)
     if fix_of is not None:
         raise_to(
             FIX_TIER,
             f"it fixes the rule of change #{fix_of}, whose probe recurred two weeks in a row: at least tier {FIX_TIER}",
         )
-    return Tier(tier, reasons)
+    return Tier(tier, reasons, evolvable=tier == 3 and held and not fixed)
 
 
-def replay_tier(kind: str, found: Tier, *, harness: str | None, won: str | None, fix: bool = False) -> Tier:
+def replay_tier(
+    kind: str, found: Tier, *, harness: str | None, won: str | None, fix: bool = False, judged: bool = False
+) -> Tier:
     """The tier a change of ``kind`` merges with, the rules having given it ``found``: tier 0 when its pull request
     edits ``harness`` alone (what it edits, ``replay.harness_only``; None when it edits more) and its replays won
     (``won``, why; None when they did not), its kind is one of REPLAY_KINDS, no rule made it tier 3 and it is no fix
-    proposal (``fix``); ``found`` otherwise."""
-    if fix or found.tier in (0, 3) or kind not in REPLAY_KINDS or not harness or not won:
+    proposal (``fix``); tier 0 too when tier 3 came from evolvable harness paths alone (``found.evolvable``) and the
+    Judge passed it (``judged``); ``found`` otherwise."""
+    if fix or kind not in REPLAY_KINDS or not harness or not won:
+        return found
+    if found.tier == 3 and found.evolvable and judged:
+        why = f"it edits {harness} alone, evolvable by the charter, the Judge passed it and its replays on the holdout"
+        return Tier(0, [*found.reasons, f"{why} tasks won ({won}): tier 0"])
+    if found.tier in (0, 3):
         return found
     return Tier(
         0, [*found.reasons, f"it edits {harness} alone and its replays on the holdout tasks won ({won}): tier 0"]

@@ -2719,7 +2719,10 @@ its kind (`evo_agents/hub/tiers.py`); a protected path of the charter, CI, lint 
 that loosen a test, change a plan's verify or change CI are tier 3, always. In a project with a graph on the hub, a
 path the graph has no file for, one the latest measure of its health found missing, stale or deleted (each source's
 `off`, below), or any path while the graph cannot be read, makes it at least tier 1, the reason saying which
-(`evo_agents/hub/server/change_tiers.py`). A proposal like one the owner rejected in
+(`evo_agents/hub/server/change_tiers.py`). A protected file the graph says a path reaches (`kg_impact`) makes a
+proposal at least tier 2; once its pull request is open, tier 3 only when the diff removes or changes the signature of
+a module-level name that file uses (`evo_agents/hub/api_surface.py`, at most 40 files read a pull request), or the hub
+could not read it. A proposal like one the owner rejected in
 the last 30 days is dropped unless its evidence doubled. When the review run ends, its tier 2 proposals with the most
 evidence become Inbox items of the owner (notifications of kind `proposal`), up to the charter's
 `max_decisions_per_day` a day; the others wait in the list. The project's admins answer:
@@ -2827,7 +2830,8 @@ branch changes nothing" (audit row `curator.empty`, ledger line `closed` by the 
 GitHub with the workers' App (on GitLab the push opened the merge request) and reads its files for the signs of score
 hacking (`diff_signs.hack_signs`): an assertion removed, a skip or xfail added, a threshold of a test changed, a plan's
 verify or a file it runs changed, CI or the configuration of lint and tests changed, a lint warning silenced, `__eq__`
-overloaded, an exit in a test, a protected path of the charter touched, and the gaps a security review found: an
+overloaded, an exit in a test, a protected path of the charter touched (a harness file the charter's
+`evolve.evolvable_paths` names raises no such sign, its added lines still read for the others), and the gaps a security review found: an
 assertion compared with its own file's lines alone (moved to another file, or under a guard that never runs, it is
 removed), an expected value changed on a line of its own, a golden, snapshot or data file of the tests changed, an
 assertion's failure caught, a skip aliased or imported on its own, an exit through `getattr(os, "_exit")` and the like,
@@ -2886,6 +2890,17 @@ run reads, and posts its verdict with `POST /v1/worker/runs/{id}/verdict`, both 
 keeps its SHA-256 (`curator_changes.judge_key`, schema 0019) and forgets it with the verdict, so the worker token alone,
 which code on the worker's machine can read, gets 403 there. A worker token gets 403 on the charter's routes, as on
 every route of a project.
+
+**A change in several repos** (schema 0256, `evo_agents/hub/server/change_repos.py`). An accepted proposal whose paths
+and draft name several repos of the project, each on GitHub, becomes one plan in them all (`judge.curator_repos_plan`),
+the repos ordered owner before consumer by the seams of the project's graph, and a row of `curator_change_repos` for
+each, with the repos merged before it. The change itself keeps the first repo. The Builder waits until the ruleset of
+each repo was checked; after it the hub opens a pull request in each repo, queues the judge runs one repo at a time (each
+judge run's inputs and verdict are of its own repo), and merges a repo's pull request only once each repo it depends on
+merged (`merge_waits`). The change is judged when every repo's Judge passed and merged when every pull request merged.
+A write of the plan that drops or adds a repo, or a step in a repo the plan does not name, is refused (409). The
+change's view lists its repos (`repos`: each with its position, `depends_on`, state, pull request and verdict; empty for
+a change in one repo).
 
 ## The Curator's replays
 
@@ -3065,6 +3080,28 @@ evo-agents hub curator probe retire 3 --note "replaced by a hook"
 evo-agents hub curator probe report --weeks 2 --json    # keys weeks, unprobed, fixes, replacements
 ```
 
+## The Curator's evolutions
+
+What `docs/curator.md`, Evolving a harness, describes (schemas 0256 and 0257, `evo_agents/hub/evolve.py`,
+`evo_agents/hub/server/evolve.py`, `evolve_runs.py`, `evolve_report.py`). A writer of the project starts an evolution
+with `POST /v1/projects/{p}/curator/evolve` (`target` `git` with `repo` and `paths`, each one of the charter's
+`evolve.evolvable_paths`, or `agent_config` with `system_id` and `agent`; `proposal_id` names the accepted proposal
+whose planned change takes the branch), 409 while `evolve.enabled` is false; any reader lists them with `GET
+.../curator/evolve` (newest first, by `state`) and reads one with its candidates with `GET .../curator/evolve/{id}`.
+The CLI is `evo-agents hub curator evolve run|status|show`, and the Curator's page shows them.
+
+The hub picks the tasks once: `evolve.tasks` light replay tasks of the select split and `evolve.probes` active probes
+of its paths, never a holdout task; an owner's view never holds a verify. Its run, of kind `evolve`, is queued as the
+night shift's runs are, with the cost cap of `evolve.budget.max_cost_usd`, at most one active a project
+(`runs_active_evolve_key`); while the night shift's gate is shut the evolution stays `queued` with why. The worker
+reads its inputs and posts with the run's own key alone (`X-Evo-Evolve-Key`, kept as a SHA-256): a baseline arm goes
+into `curator_evolve_arm_cache` under `evolve.arm_key` and is read again by the next evolution; a candidate into
+`curator_evolve_candidates`, unique by its digest, after which the hub recomputes the front; the report ends it. A
+`git` evolution's branch becomes the planned change of its proposal, which goes on as a Builder's would; an
+`agent_config` evolution's best candidate becomes the profile's next version only when its holdout results hold
+(`system_curation.holdout_verdict`), and the worker, which reads no holdout task, sends none yet, so such an evolution
+ends done with nothing pinned and says why. A run that ends before its report fails its evolution.
+
 ## The Curator's history run
 
 Each night, after its review run, the night shift reads the project's sessions and runs with a cheap model, which
@@ -3214,8 +3251,16 @@ them). The prompt of a review run shows the live entries of its lenses and those
 harmful first, 40 at most; `GET .../curator/playbook` (reader), the MCP tool `curator_playbook` and `evo-agents hub
 curator playbook` list them.
 
+The hub keeps the playbook itself too (schema 0256). An entry added with `until_proposal_id` (`--until-proposal ID`),
+or whose text says `until proposal #12 lands`, holds only until that proposal's change merges: the merge retires it.
+The prompt of a review run records the entries it showed (a run event `playbook_shown`), and when the run ends done
+each of them counts one more `prompt_exposures`; an entry shown in the charter's `evolve.exposure_limit` review runs
+(30 by default, 0 for never) that no run found helpful is retired. Both retires are deltas `retire` of actor `curator`
+with no run.
+
 ```sh
 evo-agents worker playbook add --lens cost --text "Count cache reads before tokens" --evidence transcript:ID:40
+evo-agents worker playbook add --text "Pin the runner" --until-proposal 12 --evidence run:41:7
 evo-agents worker playbook helpful pb-3 --evidence run:41:7      # once a run
 evo-agents worker playbook retire pb-2 --note "the figures count it now"
 evo-agents hub curator playbook --project demo                   # the live entries, the most helpful first

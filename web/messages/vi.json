@@ -8371,7 +8371,9 @@
         "moved": "Cập nhật lần cuối",
         "reasonTitle": "{state, select, planned {Vì sao còn chờ} open {Vì sao để mở} closed {Vì sao đã đóng} other {Vì sao còn chờ}}",
         "tier": "Merge ở",
-        "tierValue": "Tầng {tier}"
+        "tierValue": "Tầng {tier}",
+        "repos": "Các repo, theo thứ tự merge",
+        "repoAfter": "Merge sau {repos}"
       },
       "dropped": "Bị bỏ vì lặp lại <link>đề xuất #{id}</link>.",
       "droppedPlain": "Bị bỏ vì lặp lại một đề xuất đã bị từ chối.",
@@ -9240,6 +9242,33 @@
     "periods": {
       "day": "ngày",
       "week": "tuần"
+    },
+    "evolve": {
+      "title": "Tiến hoá",
+      "sub": "Các lần chạy viết lại file của harness hoặc cấu hình của agent, giữ các ứng viên trên mặt Pareto",
+      "unreadable": "Không đọc được các lần tiến hoá.",
+      "retry": "Thử lại",
+      "caption": "Các lần tiến hoá của Curator, mới nhất trước",
+      "noProposal": "Không có đề xuất",
+      "target": {
+        "git": "File của harness",
+        "agent": "Cấu hình agent"
+      },
+      "state": {
+        "queued": "Đang chờ",
+        "running": "Đang chạy",
+        "done": "Xong",
+        "failed": "Thất bại"
+      },
+      "head": {
+        "id": "Tiến hoá",
+        "subject": "Viết lại gì",
+        "state": "Trạng thái",
+        "iterations": "Vòng lặp",
+        "front": "Trên mặt Pareto",
+        "proposal": "Đề xuất",
+        "moved": "Cập nhật lần cuối"
+      }
     }
   },
   "releases": {

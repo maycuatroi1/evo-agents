@@ -93,7 +93,7 @@ from functools import partial
 from sqlalchemy import exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import approval_heads, diff_signs, guard, judge, tables
+from evo_agents.hub import approval_heads, diff_signs, guard, judge, tables, tiers
 from evo_agents.hub.server import audit, autonomy_gates, change_tiers, merge_gate, skill_release
 from evo_agents.hub.server.change_views import change_of_plan, charter_of, raise_tier, set_change
 from evo_agents.hub.server.change_watch import settle_by_branch, watch_pass
@@ -124,10 +124,11 @@ EMPTY = "curator.empty"  # the hub closed a change whose branch changes nothing:
 
 
 async def _due_changes(engine: AsyncEngine) -> list:
-    c, pr = tables.curator_changes, tables.project_repos
+    c, pr, cr = tables.curator_changes, tables.project_repos, tables.curator_change_repos
+    several = exists().where(cr.c.change_id == c.c.id).label("several")  # a change in several repos (change_repos)
     async with engine.begin() as conn:
         query = (
-            select(c, pr.c.origin)
+            select(c, pr.c.origin, several)
             .join_from(c, pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == c.c.repo), isouter=True)
             .where(c.c.state.in_(("pr_pending", "judged")))
             .order_by(c.c.id)
@@ -159,6 +160,7 @@ def _signs_of(diff, change, charter: dict, body: dict, cut: str | None) -> list[
         repo=change.repo,
         protected=[item for item in charter.get("protected_paths") or [] if isinstance(item, str)],
         verify_commands=judge.verify_commands(body),
+        evolvable=tiers.evolvable_paths(charter),
     )
     if cut is not None:
         signs.insert(0, {"kind": "diff_unreadable", "path": "(the pull request's files)", "line": None, "text": cut})
@@ -226,15 +228,11 @@ async def _pull_opened(engine: AsyncEngine, change, project: str, made: dict, ba
     return "signs" if signs else "opened"
 
 
-async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change_tiers.GraphReader) -> str:
+def opener(engine: AsyncEngine, app: GitHubApp, target: Target, change, title: str, project: str, signed: str):
+    """What opens the pull request of ``change``'s branch on ``target`` with a token: {"pull": the pull request as
+    GitHub answers it, "base": the default branch}, the pull request None for a branch with commits of its own that
+    change no file."""
     from evo_agents.hub.server import pulls
-
-    target = github_target(change.origin)
-    if target is None:
-        async with engine.begin() as conn:
-            await set_change(conn, change.id, state="open", reason="its repo has no origin on GitHub")
-        return "open"
-    title, project, charter, signed, body = await _pull_inputs(engine, change)
 
     async def opened(token: str) -> dict:
         async with engine.connect() as conn:  # the names of the guard leave the title and body on a published repo
@@ -263,6 +261,19 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
         )
         return {"pull": made, "base": base}
 
+    return opened
+
+
+async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change_tiers.GraphReader) -> str:
+    from evo_agents.hub.server import pulls
+
+    target = github_target(change.origin)
+    if target is None:
+        async with engine.begin() as conn:
+            await set_change(conn, change.id, state="open", reason="its repo has no origin on GitHub")
+        return "open"
+    title, project, charter, signed, body = await _pull_inputs(engine, change)
+    opened = opener(engine, app, target, change, title, project, signed)
     try:
         found = await pulls.with_token(app, target.owner, target.name, "open", opened)
     except GitHubRefused as exc:
@@ -357,7 +368,7 @@ async def _unchanged(conn: AsyncConnection, change) -> bool:
     return row is not None and (row.state, row.head_sha) == (change.state, change.head_sha)
 
 
-async def _reopen(engine: AsyncEngine, change, why: str, kept: str | None = None) -> str:
+async def _reopen(engine: AsyncEngine, change, why: str | None, kept: str | None = None) -> str:
     """Leave a judged change open for a person, saying ``why``; with ``kept``, the outcome of a change left as it is for
     a later pass (its night shift paused, its principal asked). MOVED, and nothing written, for a change that moved on
     since the pass read it."""
@@ -373,15 +384,13 @@ async def _reopen(engine: AsyncEngine, change, why: str, kept: str | None = None
     return kept or "open"
 
 
-async def _write_check(engine: AsyncEngine, app: GitHubApp, change) -> str:
+async def check_run(app: GitHubApp, target: Target, sha: str, passed: bool, verdict: dict, external_id: str) -> int:
+    """Write the Judge's verdict as its check run on commit ``sha`` of ``target`` with the workers' App; its id."""
     from evo_agents.hub.server import pulls
 
-    target = github_target(change.origin)
-    verdict = change.verdict or {}
-    reasons = list(verdict.get("failures") or [])
     conclusion, title, summary = judge.check_run_output(
-        bool(change.passed),
-        reasons,
+        passed,
+        list(verdict.get("failures") or []),
         verdict.get("verify") or [],
         verdict.get("hidden") or [],
         verdict.get("signs") or [],
@@ -393,14 +402,22 @@ async def _write_check(engine: AsyncEngine, app: GitHubApp, change) -> str:
             token,
             target.owner,
             target.name,
-            sha=change.head_sha,
+            sha=sha,
             conclusion=conclusion,
             title=title,
             summary=summary,
-            external_id=f"curator-change:{change.id}",
+            external_id=external_id,
         )
 
-    check_id = await pulls.with_token(app, target.owner, target.name, "check", write)
+    return await pulls.with_token(app, target.owner, target.name, "check", write)
+
+
+async def _write_check(engine: AsyncEngine, app: GitHubApp, change) -> str:
+    target = github_target(change.origin)
+    assert target is not None  # a change has a check run only once its pull request is open on GitHub
+    check_id = await check_run(
+        app, target, change.head_sha, bool(change.passed), change.verdict or {}, f"curator-change:{change.id}"
+    )
     async with engine.begin() as conn:
         await set_change(conn, change.id, check_run_id=check_id)
     return "checked"
@@ -729,6 +746,11 @@ async def _move_on(
         return
     if github_app is None:
         outcomes["no_app"] += 1
+        return
+    if change.several:
+        from evo_agents.hub.server import change_repos  # it reads the pull requests and merges of this module
+
+        outcomes[await change_repos.move_on(engine, github_app, curator_app, change, reader)] += 1
         return
     if change.state == "pr_pending":
         outcomes[await _open_pull(engine, github_app, change, reader)] += 1

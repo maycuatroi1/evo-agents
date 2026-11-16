@@ -8371,7 +8371,9 @@
         "moved": "Last moved",
         "reasonTitle": "{state, select, planned {Why it waits} open {Why it stays open} closed {Why it closed} other {Why it waits}}",
         "tier": "Merges at",
-        "tierValue": "Tier {tier}"
+        "tierValue": "Tier {tier}",
+        "repos": "Repos, in merge order",
+        "repoAfter": "Merges after {repos}"
       },
       "dropped": "Dropped as a repeat of <link>proposal #{id}</link>.",
       "droppedPlain": "Dropped as a repeat of a rejected proposal.",
@@ -9240,6 +9242,33 @@
     "periods": {
       "day": "day",
       "week": "week"
+    },
+    "evolve": {
+      "title": "Evolutions",
+      "sub": "Runs that rewrite a harness's files or an agent's configuration and keep the candidates on their Pareto front",
+      "unreadable": "The evolutions could not be read.",
+      "retry": "Try again",
+      "caption": "The Curator's evolutions, newest first",
+      "noProposal": "No proposal",
+      "target": {
+        "git": "Harness files",
+        "agent": "Agent configuration"
+      },
+      "state": {
+        "queued": "Queued",
+        "running": "Running",
+        "done": "Done",
+        "failed": "Failed"
+      },
+      "head": {
+        "id": "Evolution",
+        "subject": "What it rewrites",
+        "state": "State",
+        "iterations": "Iterations",
+        "front": "On the front",
+        "proposal": "Proposal",
+        "moved": "Last moved"
+      }
     }
   },
   "releases": {
