@@ -13,7 +13,8 @@ import pytest
 
 from evo_agents.kg import claude_code, entities
 from evo_agents.kg import settings as kg_settings
-from evo_agents.kg.build import build_project, unchanged
+from evo_agents.kg.build import unchanged_rows
+from tests.kg import built
 from tests.kg.test_extract_entities import entity_nodes, setup
 
 MODEL_ID = "claude-haiku-5-5"
@@ -152,7 +153,7 @@ def test_a_build_through_claude_code_states_entities_and_prices_the_tokens_witho
     calls, set_mode = fake_claude
     set_mode("nocost")
     project, _ = setup(tmp_path, kg_env, extra=mapping(price={"input": 1.0, "output": 5.0}))
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     cov = report.coverage["entities"]
     assert cov["local"] is False and cov["sink"] == "llm" and cov["model"] == MODEL_ID
@@ -166,13 +167,13 @@ def test_a_build_through_claude_code_states_entities_and_prices_the_tokens_witho
 
 def test_a_reported_cost_is_the_cost(tmp_path, kg_env, fake_claude):
     project, _ = setup(tmp_path, kg_env, extra=mapping(price={"input": 100.0, "output": 100.0}))
-    assert build_project(project).coverage["entities"]["cost"] == pytest.approx(0.75)
+    assert built.build(project).coverage["entities"]["cost"] == pytest.approx(0.75)
 
 
 def test_a_sink_that_does_not_clear_the_label_sends_no_text_to_claude(tmp_path, kg_env, fake_claude):
     calls, _ = fake_claude
     project, _ = setup(tmp_path, kg_env, extra=mapping(sink="llm-low"))
-    cov = build_project(project).coverage["entities"]
+    cov = built.build(project).coverage["entities"]
     assert calls() == [] and cov["calls"] == 0 and cov["refused_count"] >= 2
     assert "above the clearance of sink 'llm-low'" in cov["refused"][0]["reason"]
     assert entity_nodes(project) == []
@@ -185,7 +186,7 @@ def test_a_refused_login_or_a_limit_stops_at_the_item_and_the_next_build_goes_on
     calls, set_mode = fake_claude
     set_mode(mode)
     project, _ = setup(tmp_path, kg_env, extra=mapping())
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     cov = report.coverage["entities"]
     answered = 1 if mode.startswith("limit") else 0
@@ -193,9 +194,9 @@ def test_a_refused_login_or_a_limit_stops_at_the_item_and_the_next_build_goes_on
     assert cov["calls"] == answered and cov["skipped"] == 3 - answered and cov["failed"] == 0
     assert "the model stopped the step" in cov["stopped"] and kind in cov["stopped"].lower()
     assert OAUTH not in json.dumps(report.coverage) and API_KEY not in json.dumps(report.coverage)
-    assert unchanged(project) is None, "a build that stopped is not the build to skip"
+    assert unchanged_rows(project, built.rows_of(project)) is None, "a build that stopped is not the build to skip"
     set_mode("ok")
-    after = build_project(project).coverage["entities"]
+    after = built.build(project).coverage["entities"]
     assert after["calls"] == 3 - answered and after["cache_hits"] == answered and after["skipped"] == 0
     assert entity_nodes(project)
     audit = (project.root / "audit.jsonl").read_text() if (project.root / "audit.jsonl").exists() else ""
@@ -210,7 +211,7 @@ def test_without_claude_the_build_defers_its_items_and_takes_the_answers_of_a_ru
     project, _ = setup(tmp_path, kg_env, extra=mapping())
     monkeypatch.setenv(claude_code.BINARY_ENV, str(tmp_path / "no-claude-here"))
     outbox: list[dict] = []
-    report = build_project(project, entity_outbox=outbox)
+    report = built.build(project, entity_outbox=outbox)
     cov = report.coverage["entities"]
     assert report.ok and calls() == [] and cov["deferred"] == 3 and cov["skipped"] == 3
     assert "claude is not installed" in cov["stopped"] and entity_nodes(project) == []
@@ -221,17 +222,17 @@ def test_without_claude_the_build_defers_its_items_and_takes_the_answers_of_a_ru
     inbox = {r["key"]: claude_code.answer(r) for r in outbox}
     assert len(calls()) == 3
     monkeypatch.setenv(claude_code.BINARY_ENV, str(tmp_path / "no-claude-here"))
-    after = build_project(project, entity_inbox=inbox).coverage["entities"]
+    after = built.build(project, entity_inbox=inbox).coverage["entities"]
     assert after["answered_elsewhere"] == 3 and after["calls"] == 0 and after["deferred"] == 0
     assert {"entity:Concept:search", "entity:Concept:server"} <= {r[0] for r in entity_nodes(project)}
-    again = build_project(project, force=True, entity_outbox=[]).coverage["entities"]
+    again = built.build(project, force=True, entity_outbox=[]).coverage["entities"]
     assert again["cache_hits"] == 3 and again["deferred"] == 0, "the answers are the build's memo now"
 
 
 def test_a_command_that_asks_to_stop_halts_the_step(tmp_path, kg_env):
     stop = f'import sys; print(\'{{"stop": "login", "error": "no login"}}\'); sys.exit({entities.STOP_EXIT})'
     project, log = setup(tmp_path, kg_env, extra={"command": [sys.executable, "-c", stop]})
-    cov = build_project(project).coverage["entities"]
+    cov = built.build(project).coverage["entities"]
     assert cov["calls"] == 0 and cov["skipped"] == 3 and cov["failed"] == 0 and "no login" in cov["stopped"]
 
 

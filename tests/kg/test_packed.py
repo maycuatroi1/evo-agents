@@ -5,7 +5,7 @@ past a kg worker's memory cap."""
 from dataclasses import replace
 
 from evo_agents.hub import kg_semantic
-from evo_agents.kg import build, semantic, store_vectors
+from evo_agents.kg import build, semantic
 from evo_agents.kg.packed import Packed
 from evo_agents.kg.snapshot import StoreRows, store_rows
 from evo_agents.kg.store import Store
@@ -59,7 +59,7 @@ def test_a_hub_build_drops_the_model_it_loaded_and_keeps_one_already_loaded(tmp_
     monkeypatch.setitem(semantic.FACTORIES, FAKE, Words)
     project = with_garage(tmp_path, kg_env)
     sync_build(project)
-    cache = tmp_path / "cache" / store_vectors.CACHE_FILE
+    cache = semantic.MemoryCache()
     try:
         _, done = kg_semantic.index(rows_of(project), semantic.Settings("index", FAKE), cache)
         assert done.rows > 0 and done.embedded == done.rows and not done.error

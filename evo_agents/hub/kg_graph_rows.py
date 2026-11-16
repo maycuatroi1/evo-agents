@@ -22,9 +22,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import Text, cast, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -193,6 +194,50 @@ async def _read(conn: AsyncConnection, name: str, project_id: int, branch_id: in
     return found
 
 
+def _read_columns(name: str) -> list:
+    """What ``_read_rows`` selects of table ``name``: the key, then the columns of a row as ``_stored`` gives it."""
+    table = getattr(tables, name)
+    key = table.primary_key.columns.values()[-1]
+    if name == "kg_nodes":
+        return [key, *(table.c[k] for k in (*NODE_KEYS, "label_aud"))]
+    if name == "kg_edges":
+        return [key, *(table.c[k] for k in (*EDGE_KEYS, "label_aud"))]
+    if name == "kg_embeddings":
+        return [key, table.c.node_id, table.c.kind, table.c.aud, table.c.vector]
+    return [key, table.c[ROW_TABLES[name]], cast(table.c.row, Text)]
+
+
+async def _read_rows(conn: AsyncConnection, name: str, project_id: int, branch_id: int) -> dict[str, tuple]:
+    """The rows of table ``name`` of a branch, by key, as ``_assembled`` reads them, fetched as ``_read`` does. A
+    JSON row comes as the text Postgres keeps it in, parsed once in ``_assembled``'s thread: ``_read`` parses it, and
+    writes it again with its keys sorted for ``diff``, on the event loop, which was half the minute or two the rows of
+    a large graph held the api's loop for."""
+    table = getattr(tables, name)
+    columns = _read_columns(name)
+    query = (
+        select(*columns).where(table.c.project_id == project_id, table.c.branch_id == branch_id).order_by(columns[0])
+    )
+    found: dict[str, tuple] = {}
+    async for part in (await conn.stream(query.execution_options(yield_per=READ_BATCH))).partitions():
+        found.update(_row_pairs(name, part))
+    return found
+
+
+def _row_pairs(name: str, part) -> Iterator[tuple[str, tuple]]:
+    """(key, row) of each row of a batch ``_read_rows`` fetched of table ``name``."""
+    if name == "kg_embeddings":
+        return ((r[0], (r[1], r[2], r[3], bytes(r[4]))) for r in part)
+    return ((r[0], tuple(r[1:])) for r in part)
+
+
+def _sorted_object(pairs: list[tuple[str, object]]) -> dict:
+    return dict(sorted(pairs))
+
+
+# a JSON row parsed with every object's keys sorted, as ``_json`` writes it: the same row however it was read
+_ROW_JSON = json.JSONDecoder(object_pairs_hook=_sorted_object)
+
+
 async def _apply(conn: AsyncConnection, name: str, project_id: int, branch_id: int, fresh: dict, changes: Changes):
     table = getattr(tables, name)
     key = table.primary_key.columns.values()[-1]
@@ -273,18 +318,18 @@ async def read_head(conn: AsyncConnection, project_id: int, branch_id: int = MAI
     if head is None:
         return None
     read = {name: {} for name in GRAPH_TABLES}
-    read["kg_review_rows"] = await _read(conn, "kg_review_rows", project_id, branch_id)
+    read["kg_review_rows"] = await _read_rows(conn, "kg_review_rows", project_id, branch_id)
     return await asyncio.to_thread(_assembled, head, read)
 
 
 async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MAIN) -> StoreRows | None:
     """The rows a snapshot of a branch is made of, as ``write_graph`` kept them; None before its first build. The
-    rows are fetched a batch at a time (``_read``) and put together in a thread (``_assembled``), so a large graph
-    does not hold the event loop."""
+    rows are fetched a batch at a time (``_read_rows``) and parsed and put together in a thread (``_assembled``), so a
+    large graph does not hold the event loop."""
     head = await _head(conn, project_id, branch_id)
     if head is None:
         return None
-    read = {name: await _read(conn, name, project_id, branch_id) for name in GRAPH_TABLES}
+    read = {name: await _read_rows(conn, name, project_id, branch_id) for name in GRAPH_TABLES}
     return await asyncio.to_thread(_assembled, head, read)
 
 
@@ -313,7 +358,7 @@ def _assembled(head, read: dict[str, dict[str, tuple]]) -> StoreRows:
     """The ``StoreRows`` of the head of a branch and the rows of its tables (``GRAPH_TABLES``) by key."""
     keyed, code = [], {}
     for _, row in paced(read["kg_text_rows"].items()):
-        kind, key, value = json.loads(row[1])
+        kind, key, value = _ROW_JSON.decode(row[1])
         if kind == TEXT:
             keyed.append((key, tuple(value)))
         else:
@@ -321,11 +366,11 @@ def _assembled(head, read: dict[str, dict[str, tuple]]) -> StoreRows:
     top = ((head.top_label[0], head.top_label[1]), frozenset(head.top_audience))
     units, wheres, derived = [], [], []
     for _, row in paced(sorted(read["kg_provenance"].items())):
-        kind, *values = json.loads(row[1])
+        kind, *values = _ROW_JSON.decode(row[1])
         {UNIT: units, WHERE: wheres, DERIVED: derived}[kind].append(tuple(values))
     clusters, review = [], []
     for _, row in paced(read["kg_review_rows"].items()):
-        kind, key, value = json.loads(row[1])
+        kind, key, value = _ROW_JSON.decode(row[1])
         if kind == REVIEW:
             review.append(value)
         else:
@@ -343,7 +388,7 @@ def _assembled(head, read: dict[str, dict[str, tuple]]) -> StoreRows:
         head.summary,
         tuple((key, *row) for key, row in sorted(read["kg_embeddings"].items())),
         head.vectors,
-        asked_order(tuple(json.loads(row[1])) for row in read["kg_asked"].values()),
+        asked_order(tuple(_ROW_JSON.decode(row[1])) for row in read["kg_asked"].values()),
         head.asked_weight,
         cluster_order(clusters),
         tuple(sorted(review, key=lambda item: item["fingerprint"])),

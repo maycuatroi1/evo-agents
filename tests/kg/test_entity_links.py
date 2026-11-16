@@ -12,10 +12,10 @@ import yaml
 
 from evo_agents.kg import entity_links as links
 from evo_agents.kg import semantic, strategy
-from evo_agents.kg.build import build_project, verify_build
+from evo_agents.kg.build import verify_rows
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import commit, make_project, write
 
 # The answer of the fake model to each markdown item, by a word only that item holds.
@@ -101,27 +101,13 @@ def setup(tmp_path, kg_env, answers, *, extra=None, level="internal", app_level=
 
 def graph(project):
     """(entity nodes: id -> (name, status), edges touching an entity: (src, rel, dst) -> (status, conf, props))."""
-    store = Store.open_file(project.root / "graph.sqlite")
-    try:
-        b = store.latest_ready()
-        live = "tx_from <= ? AND (tx_to IS NULL OR tx_to > ?)"
-        nodes = {
-            r[0]: (r[1], r[2])
-            for r in store.db.execute(
-                f"SELECT node_id, name, status FROM nodes WHERE node_id LIKE 'entity:%' AND {live}", (b, b)
-            )
-        }
-        edges = {
-            (r[0], r[1], r[2]): (r[3], r[4], json.loads(r[5]))
-            for r in store.db.execute(
-                "SELECT src, rel, dst, status, conf, props FROM edges"
-                f" WHERE (src LIKE 'entity:%' OR dst LIKE 'entity:%') AND {live}",
-                (b, b),
-            )
-        }
-        return nodes, edges
-    finally:
-        store.close()
+    nodes = {n["id"]: (n["name"], n["status"]) for n in built.nodes_of(project) if n["id"].startswith("entity:")}
+    edges = {
+        (e["src"], e["rel"], e["dst"]): (e["status"], e["conf"], e["props"])
+        for e in built.edges_of(project)
+        if e["src"].startswith("entity:") or e["dst"].startswith("entity:")
+    }
+    return nodes, edges
 
 
 # -- folding ------------------------------------------------------------------------------------------------------
@@ -190,7 +176,7 @@ def test_a_build_folds_the_names_and_coverage_counts_them(tmp_path, kg_env):
         "Repos: app": {"nodes": [node_of("Concept", "Finder")], "edges": []},
     }
     project = setup(tmp_path, kg_env, answers)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     nodes, edges = graph(project)
     one = "entity:Concept:finder"  # of the names stated once each, the first by order
@@ -202,10 +188,10 @@ def test_a_build_folds_the_names_and_coverage_counts_them(tmp_path, kg_env):
     assert cov["merged"] == 2 and cov["distinct"] == 2
     assert cov["synonyms"] == 0 and cov["synonym_status"].startswith("off")
     first = report.content_hash
-    again = build_project(project)
+    again = built.build(project)
     assert again.content_hash == first or again.skipped
     for cold in (False, True):
-        assert verify_build(project, first, cold=cold)["match"]
+        assert verify_rows(project, first, cold=cold)["match"]
 
 
 def test_an_edge_may_name_its_node_by_an_alias(tmp_path, kg_env):
@@ -216,7 +202,7 @@ def test_an_edge_may_name_its_node_by_an_alias(tmp_path, kg_env):
         }
     }
     project = setup(tmp_path, kg_env, answers)
-    assert build_project(project).ok
+    assert built.build(project).ok
     _, edges = graph(project)
     assert ("entity:Concept:continuous-integration", "depends_on", "entity:Concept:tests") in edges
 
@@ -230,7 +216,7 @@ def test_the_label_of_the_items_decides_the_name_a_reader_sees(tmp_path, kg_env,
         "Repos: app": {"nodes": [node_of("Concept", "Finder")]},
     }
     project = setup(tmp_path, kg_env, answers, level=level, app_level=app_level)
-    assert build_project(project).ok
+    assert built.build(project).ok
     nodes, _ = graph(project)
     assert [n for n, _ in nodes.values()] == [name]
 
@@ -250,7 +236,7 @@ def test_an_entity_that_names_one_symbol_or_file_is_linked_to_it_and_extracted(t
         }
     }
     project = setup(tmp_path, kg_env, answers)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     _, edges = graph(project)
     server = edges[("entity:Concept:server", "refers_to", "symbol:app:app/server.py::Server")]
@@ -265,7 +251,7 @@ def test_an_entity_that_names_one_symbol_or_file_is_linked_to_it_and_extracted(t
 def test_a_name_that_names_more_than_one_node_is_not_linked(tmp_path, kg_env):
     answers = {"Intro": {"nodes": [node_of("Concept", "search"), node_of("Concept", "Server.handle")]}}
     project = setup(tmp_path, kg_env, answers, wider=True)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     _, edges = graph(project)
     assert not [k for k in edges if k[0] == "entity:Concept:search" and k[1] == "refers_to"]
@@ -283,12 +269,12 @@ def test_a_case_folded_match_weighs_less_than_an_exact_one():
 
 
 def test_impact_does_not_follow_the_edges_to_code(tmp_path, kg_env):
-    from evo_agents.kg.store_session import StoreSession
+    from tests.kg.hub_graph import hub_session
 
     answers = {"Intro": {"nodes": [node_of("Concept", "Server")]}}
     project = setup(tmp_path, kg_env, answers)
-    assert build_project(project).ok
-    result = StoreSession(project, "agent").call("kg_impact", {"id": "symbol:app:app/server.py::Server", "depth": 3})
+    assert built.build(project).ok
+    result = hub_session(project, "agent").call("kg_impact", {"id": "symbol:app:app/server.py::Server", "depth": 3})
     found = {r["node"]["id"] for r in result["structuredContent"]["impacted"]}
     assert not [n for n in found if n.startswith("entity:")]
 
@@ -306,7 +292,7 @@ CARS = {
 def test_near_entities_get_a_synonym_edge_when_the_graph_has_vectors(tmp_path, kg_env, words):
     project = setup(tmp_path, kg_env, CARS)
     semantic.write_settings(project.root, semantic.Settings("index", FAKE))
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     _, edges = graph(project)
     got = edges[("entity:Concept:automobile", "synonym_of", "entity:Concept:car")]
@@ -318,14 +304,14 @@ def test_near_entities_get_a_synonym_edge_when_the_graph_has_vectors(tmp_path, k
     assert cov["synonyms"] == 1 and cov["synonym_status"] == "ok"
     embedded = words.texts
     for cold in (False, True):
-        assert verify_build(project, report.content_hash, cold=cold)["match"]
+        assert verify_rows(project, report.content_hash, cold=cold)["match"]
     assert words.texts == embedded, "a verification reads the pairs from the memo"
 
 
 def test_the_threshold_of_the_mapping_decides(tmp_path, kg_env, words):
     project = setup(tmp_path, kg_env, CARS, extra={"synonym_threshold": 0.7})
     semantic.write_settings(project.root, semantic.Settings("on", FAKE))
-    report = build_project(project)
+    report = built.build(project)
     assert report.coverage["entities"]["synonyms"] == 3
     _, edges = graph(project)
     assert edges[("entity:Concept:car", "synonym_of", "entity:Concept:red-car")][1] == pytest.approx(0.7071)
@@ -337,7 +323,7 @@ def test_the_threshold_of_the_mapping_decides(tmp_path, kg_env, words):
 
 def test_without_vectors_or_without_the_model_no_synonym_is_stated(tmp_path, kg_env, monkeypatch):
     project = setup(tmp_path, kg_env, CARS)
-    report = build_project(project)
+    report = built.build(project)
     assert report.coverage["entities"]["synonyms"] == 0
     assert report.coverage["entities"]["synonym_status"].startswith("off")
     semantic.forget_models()
@@ -347,7 +333,7 @@ def test_without_vectors_or_without_the_model_no_synonym_is_stated(tmp_path, kg_
         raise semantic.SemanticUnavailable("no such model here")
 
     monkeypatch.setitem(semantic.FACTORIES, "fake/absent-model", missing)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     assert report.coverage["entities"]["synonym_status"].startswith("unavailable")
     _, edges = graph(project)

@@ -42,7 +42,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import Text, cast, column, create_engine, delete, func, insert, select, table, update
+from sqlalchemy import Text, cast, column, delete, func, insert, select, table, update
 
 from evo_agents.hub import kg_build as hub_kg_build
 from evo_agents.hub import kg_push, tables
@@ -430,10 +430,8 @@ def test_pushing_the_same_run_twice_ingests_it_once(hub, tmp_path):
     assert first.ok and first.pushed == [run_id]
     corpus = laptop.project().corpus()
     assert corpus.runs_on_hub() == {run_id}  # the hub holds the run
-    local = create_engine(f"sqlite:///{corpus.db_path}")  # the laptop's corpus, not a hub table: Core on table()
-    with local.begin() as conn:
-        conn.execute(delete(table("hub_runs")))
-    local.dispose()
+    with corpus.transaction():  # the laptop forgets what the hub holds
+        corpus.state["hub_runs"].clear()
     before = jobs(hub.db)
 
     again = push(hub, laptop)  # the hub lists the run: nothing is sent
@@ -619,7 +617,6 @@ def test_two_machines_pushing_in_either_order_give_the_same_content_hash(hub, tm
         shutil.copy(log, corpus.log_dir / log.name)
         run_id, records = corpus.run_records(log)
         corpus.merge(records, run_id)
-    corpus.db.commit()
     for machine in (laptop, desktop):
         shutil.copytree(machine.home / PROJECT / "blobs", corpus.root / "blobs", dirs_exist_ok=True)
     corpus.close()

@@ -5,11 +5,11 @@ A build of project P (job ``hub.kg_build``, under the lock ``kg:P``) runs in the
 - ``harness/P/``: a harness.yaml, and the knowledge.yaml and ontology.yaml of P's config (``kg_configs``), so the
   build loads P like any project, and ``evo_agents.kg.build.build_project`` with ``verify=True`` on that harness,
   with ``EVO_KG_HOME=<data dir>/kg/home``, checks the worker's store by hand.
-- ``home/P/``: P's corpus as ``evo_agents.kg.corpus`` lays it out (log/, blobs/, corpus.sqlite) and its memo.
+- ``home/P/``: P's corpus as ``evo_agents.kg.corpus`` lays it out (log/, blobs/, state.json) and its memo.
 
 The sources of the core plugins the project enables (``evo_agents.hub.kg_sources``) are read from the hub's database
 first: the config written into the cache names them and their identifiers, and their items and cursors in the corpus
-become those they give now, written only when something changed. Each run in ``kg_ingests`` that corpus.sqlite does not list yet
+become those they give now, written only when something changed. Each run in ``kg_ingests`` that the corpus does not list yet
 is fetched (its log, checked against its SHA-256), merged with the corpus's own merge, and listed; the merge is
 order-independent, so the runs of several machines in any order give one state; the cursor a run ended with is kept
 unless a later run's is, so a git source's coverage names the commit its newest run read (``evo_agents.kg.freshness``).
@@ -252,7 +252,7 @@ def _merge(corpus: Corpus, ingest: Ingest) -> None:
     header = records[0]
     end = next((r for r in reversed(records) if r.get("type") == "run_end"), {})
     state = next((r for r in reversed(records) if r.get("type") == "state"), None)
-    with corpus.db:
+    with corpus.transaction():
         corpus.merge(records, run_id)
         if state is not None and header.get("source"):  # the commit a git source read, for the build's coverage
             corpus.record_cursor(header["source"], state.get("cursor"), run_id)
@@ -278,8 +278,7 @@ def drop_forgotten(project: Project, ingests: list[Ingest]) -> int:
         corpus.close()
     forgotten = merged - {ingest.run_id for ingest in ingests}
     if forgotten:
-        for suffix in ("", "-wal", "-shm"):
-            Path(f"{corpus.db_path}{suffix}").unlink(missing_ok=True)
+        corpus.state_path.unlink(missing_ok=True)
         for path in corpus.log_dir.iterdir():
             path.unlink(missing_ok=True)
         log.info(
@@ -301,8 +300,9 @@ def prepare_corpus(store: BlobStore, project: Project, ingests: list[Ingest]) ->
 
         with ThreadPoolExecutor(max_workers=PARALLEL, thread_name_prefix="kg-fetch") as pool:
             list(pool.map(fetch_log, new))
-            for ingest in new:
-                _merge(corpus, ingest)
+            with corpus.transaction():  # the state file written once, not once a run
+                for ingest in new:
+                    _merge(corpus, ingest)
             needed = {ref for record in corpus.items() for ref in blob_refs(record.record)}
             missing = sorted(ref for ref in needed if not corpus.blob_path(f"sha256:{ref}").exists())
 
@@ -386,7 +386,8 @@ def build_in_cache(
     asked index of the project's searches (``kg_asked``), and its content hash folds in the index's digest, so a
     build whose graph is the same but whose index is not is a new graph. With ``semantic`` settings that ask for
     them, the graph gets the vectors of its rows (``kg_semantic``), embedded only when ``vector_cache``, the project's
-    in the hub's database (seeded once from its vectors.sqlite and graph.sqlite), else its vectors.sqlite, lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
+    in the hub's database (seeded once from its vectors.sqlite and graph.sqlite), else a cache of this build only,
+    lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
     overrides are put in its settings.json first, so the build reads them as a local one does. ``answers``, the hashes
     of the project's kg-entity-answers blobs, are the entities step's inbox, and the requests it defers are written
     for ``record`` to keep (``kg_entity_relay``). ``uploads``: the newest upload read of each upload source, whose
@@ -427,7 +428,7 @@ def build_in_cache(
         if semantic.indexes:  # the model loads: what it does not read is held packed under it
             rows, aside = kg_semantic.set_aside(rows)
             give_back()
-        rows, vectors = kg_semantic.index(rows, semantic, vector_cache or project.root / kg_semantic.SEED_FILES[0])
+        rows, vectors = kg_semantic.index(rows, semantic, vector_cache)
         if aside is not None:
             rows = kg_semantic.taken_back(rows, aside)
             del aside

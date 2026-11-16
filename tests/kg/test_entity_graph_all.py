@@ -9,13 +9,12 @@ import sys
 import yaml
 
 from evo_agents.kg import entity_map, strategy
-from evo_agents.kg.build import build_project
 from evo_agents.kg.entities import config_digest
 from evo_agents.kg.entity_mapping import CEILING, goes_on
 from evo_agents.kg.profile import class_of
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import make_project, write
 
 GUIDE = "app:file:docs/guide.md"
@@ -91,18 +90,8 @@ def test_one_build_holds_the_model_entities_and_the_map_entities(tmp_path, kg_en
             }
         )
     )
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     assert report.coverage["entities"]["calls"] > 0 and report.coverage["entity_map"]["nodes"] == 1
-    store = Store.open_file(project.root / "graph.sqlite")
-    try:
-        b = store.latest_ready()
-        ids = {
-            r[0]
-            for r in store.db.execute(
-                "SELECT node_id FROM nodes WHERE tx_from <= ? AND (tx_to IS NULL OR tx_to > ?)", (b, b)
-            )
-        }
-    finally:
-        store.close()
+    ids = {n["id"] for n in built.nodes_of(project)}
     assert {"entity:Concept:search", "entity:Component:server"} <= ids

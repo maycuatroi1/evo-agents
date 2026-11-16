@@ -2,7 +2,9 @@ import os
 import random
 import stat
 
-from evo_agents.kg.corpus import replayed_digest
+import pytest
+
+from evo_agents.kg.corpus import Corpus, replayed_digest
 from evo_agents.kg.sync import accept_removals, sync_source
 from tests.kg.conftest import doc
 
@@ -160,10 +162,12 @@ def test_record_run_writes_in_the_callers_transaction_and_run_ids_lists_it(fake_
     synced = sync_source(project, "docs")
     corpus = project.corpus()
     assert corpus.run_ids() == {synced.run_id}
-    corpus.record_run("run-2", source="docs", connector="fake", status="ok", detail={"hub": True})
-    corpus.db.rollback()
-    assert corpus.run_ids() == {synced.run_id}  # nothing was committed
-    with corpus.db:
+    with pytest.raises(RuntimeError), corpus.transaction():
+        corpus.record_run("run-2", source="docs", connector="fake", status="ok", detail={"hub": True})
+        raise RuntimeError
+    assert corpus.run_ids() == {synced.run_id}  # nothing was kept
+    assert project.corpus().run_ids() == {synced.run_id}
+    with corpus.transaction():
         corpus.record_run("run-2", source="docs", connector="fake", status="ok", detail={"hub": True})
     assert corpus.run_ids() == {synced.run_id, "run-2"}
     (row,) = corpus.runs(source="docs", status="ok", limit=1)  # newest first: run-2 sorts after the uuid
@@ -174,13 +178,33 @@ def test_record_cursor_keeps_the_newest_run_s_whatever_the_order(fake_project):
     project, _ = fake_project
     corpus = project.corpus()
     older, newer = "0190a000-0000-7000-8000-000000000001", "0190a000-0000-7000-8000-000000000002"
-    with corpus.db:
+    with corpus.transaction():
         corpus.record_cursor("docs", {"commit": "b" * 40}, newer)
         corpus.record_cursor("docs", {"commit": "a" * 40}, older)  # merged later, read earlier
     assert corpus.cursor("docs") == {"commit": "b" * 40}
-    with corpus.db:
+    with corpus.transaction():
         corpus.record_cursor("docs", {"commit": "c" * 40}, "0190a000-0000-7000-8000-000000000003")
     assert corpus.cursor("docs") == {"commit": "c" * 40}
-    corpus.record_cursor("docs", {"commit": "d" * 40}, "0190a000-0000-7000-8000-000000000004")
-    corpus.db.rollback()
-    assert corpus.cursor("docs") == {"commit": "c" * 40}  # nothing was committed
+    with pytest.raises(RuntimeError), corpus.transaction():
+        corpus.record_cursor("docs", {"commit": "d" * 40}, "0190a000-0000-7000-8000-000000000004")
+        raise RuntimeError
+    assert corpus.cursor("docs") == {"commit": "c" * 40}  # nothing was kept
+    corpus.record_cursor("docs", {"commit": "d" * 40}, "0190a000-0000-7000-8000-000000000004")  # its own transaction
+    assert project.corpus().cursor("docs") == {"commit": "d" * 40}
+
+
+def test_a_source_named_corpus_commits_its_run_under_its_own_lock(tmp_path):
+    corpus = Corpus("alpha", tmp_path)
+    with corpus.lock("corpus"), corpus.transaction():  # a sync of the bench's source "corpus" commits its run
+        corpus.record_cursor("corpus", "c1", "run-1")
+    assert corpus.cursor("corpus") == "c1"
+
+
+def test_two_corpora_alternating_writes_of_one_size_lose_none(tmp_path):
+    a, b = Corpus("alpha", tmp_path), Corpus("alpha", tmp_path)
+    for i in range(50):  # within one clock tick, a write of the same size can leave the stat the same
+        b.set_cursor("one", f"b{i % 10}", f"run-b{i:03}")
+        a.set_cursor("two", f"a{i % 10}", f"run-a{i:03}")
+        assert b.cursor("two") == f"a{i % 10}" and a.cursor("one") == f"b{i % 10}"
+    b.set_cursor("one", "end", "run-b999")
+    assert Corpus("alpha", tmp_path).cursor("two") == "a9"

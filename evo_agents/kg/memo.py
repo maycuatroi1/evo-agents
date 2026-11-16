@@ -168,14 +168,20 @@ def _import_sqlite(root: Path) -> None:
     marker = root / IMPORTED
     if marker.exists() or not legacy.is_file():
         return
-    from evo_agents.sqlite_legacy import memo_rows
+    from evo_agents.sqlite_legacy import errors, memo_rows
 
-    for key, stage, output, output_hash in memo_rows(legacy):
-        path = _entry_path(root, stage, key)
-        if path.exists():
-            continue
-        entry = {"output": json.loads(gzip.decompress(output)), "output_hash": output_hash}
-        _write_entry(path, json.dumps(entry, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    try:
+        for key, stage, output, output_hash in memo_rows(legacy):
+            path = _entry_path(root, stage, key)
+            if path.exists():
+                continue
+            try:
+                entry = {"output": json.loads(gzip.decompress(output)), "output_hash": output_hash}
+            except (OSError, EOFError, ValueError):  # a row a crash cut: computed again when a build needs it
+                continue
+            _write_entry(path, json.dumps(entry, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    except errors():  # not read whole: no marker, so the next open tries again; the rows taken stay
+        return
     marker.write_text(f"{legacy.name}\n", encoding="utf-8")
 
 

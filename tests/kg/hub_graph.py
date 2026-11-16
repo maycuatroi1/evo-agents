@@ -1,7 +1,7 @@
 """A hub that answers the reads of the kg CLI over graphs built in the test: ``kg serve``, ``kg query`` and ``kg eval``
 through its /mcp, ``kg status``, ``kg profile`` and ``kg semantic`` through POST tools/kg_status, and ``kg settings``
 through its settings routes. The hub answers with its own engine, ``evo_agents.hub.kg_graph.HubSession``, over a
-snapshot of the graph the test built (``Snapshot.from_store``), as the hub reads one of its tables; the settings live
+snapshot of the graph the test built in memory (``tests.kg.built``), or of its graph file (``Snapshot.from_store``), as the hub reads one of its tables; the settings live
 where the graph file reads them (``evo_agents.kg.settings``)."""
 
 from __future__ import annotations
@@ -15,8 +15,9 @@ from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.policy import Label
 from evo_agents.kg.project import Project, load_project_at
 from evo_agents.kg.serve import Session
-from evo_agents.kg.snapshot import Snapshot
+from evo_agents.kg.snapshot import Snapshot, SnapshotView
 from evo_agents.kg.store import Store
+from tests.kg.built import snapshot_of
 
 URL = "https://hub.lumenops.example"
 
@@ -55,18 +56,11 @@ class GraphHub:
         project = self.project(name)
         sinks = (project.knowledge.get("policy") or {}).get("sinks") or []
         sink = sink or next((s["id"] for s in sinks if s.get("kind") == "agent-session"), "agent")
-        store = Store.open_readonly(project)
-        b = store.latest_ready() if store else None
-        if store is None or b is None:
-            if store is not None:
-                store.close()
+        found = graph_of(project)
+        if found is None:
             return NoGraph(project.name)
-        try:
-            snap = Snapshot.from_store(store, b)
-            view = snap.view(tuning=store.tuning)
-            summary = store.summary()
-        finally:
-            store.close()
+        snap, view, summary = found
+        b = snap.build
         policy = project.policy
         ceiling = None  # a sink knowledge.yaml does not declare sees nothing, as on the hub
         if sink in policy.sinks:
@@ -115,6 +109,38 @@ class GraphHub:
             "needs_rebuild": kg_settings.rebuild_keys(before, after),
             "changes": changes,
         }
+
+
+def search_tuning(project: Project) -> kg_settings.Tuning:
+    """What the project's settings tune search by, as a graph file reads them: the override a test asked for, else
+    its settings.json, else the defaults."""
+    asked = kg_settings.override_of()
+    if asked is not None:
+        return asked
+    try:
+        return kg_settings.read(project.root)
+    except kg_settings.SettingsError:
+        return kg_settings.DEFAULT
+
+
+def graph_of(project: Project) -> tuple[Snapshot, SnapshotView, dict] | None:
+    """The snapshot of the project's latest build, its view as the project's settings tune search, and its summary:
+    the build ``tests.kg.built`` keeps, else the latest ready build of the project's graph file (tests not yet moved
+    to builds in memory); None without either."""
+    snap = snapshot_of(project)
+    if snap is not None:
+        return snap, snap.view(tuning=search_tuning(project)), dict(snap.summary)
+    store = Store.open_readonly(project)
+    b = store.latest_ready() if store else None
+    if store is None or b is None:
+        if store is not None:
+            store.close()
+        return None
+    try:
+        snap = Snapshot.from_store(store, b)
+        return snap, snap.view(tuning=store.tuning), store.summary()
+    finally:
+        store.close()
 
 
 def sign_in(monkeypatch, *projects: Project) -> GraphHub:

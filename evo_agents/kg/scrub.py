@@ -4,7 +4,7 @@ rows of a graph with. It never returns, prints or logs a value: a finding counts
 ``secrets_in`` and ``blob_secrets`` read text with the git connector's own patterns (``evo_agents.kg.redact``), a blob
 as the file the items of the run logs say it is (``run_summary``): its path decides whether a bare value after ``=``
 is an expression or a literal. ``might_hold_secret`` tells text that holds none cheaply. ``row_secrets`` reads a row
-of a graph, a text and a JSON document; ``evo_agents.kg.store_secrets`` reads a graph file with it.
+of a graph, a text and a JSON document; ``evo_agents.hub.server.kg_scrub.graph_secrets`` reads a graph file with it.
 
 Old copies of secrets are found and deleted on the hub only (``evo-agents hub kg scrub``, or ``kg scrub`` for the
 project of the current directory): no kg home on a machine holds a corpus, a memo or a graph any more.
