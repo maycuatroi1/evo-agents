@@ -115,7 +115,8 @@ def test_the_vectors_sit_outside_the_content_hash(tmp_path, kg_env, words):
     assert len(keys) >= bodies > 0 and CAR in keys
     assert any("\x1f" in k for k in keys)  # the passages of the long section have theirs
     semantic.write_settings(project.root, semantic.Settings("off", FAKE))
-    sync_build(project, force=True)  # the same graph again; off drops the vectors
+    # a current build keeps its vectors until the next real build; a forced build of the same graph drops them
+    sync_build(project, force=True)
     assert view_of(project).vector_info() is None and rows_of(project).vectors == ()
 
 
