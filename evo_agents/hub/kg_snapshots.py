@@ -340,10 +340,12 @@ class SnapshotCoordinator:
                         select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
                     )
                     _, _, rows = await kg_branches.graph(conn, project_id, name)
+                if found is not None:
+                    self._watch(found[1].snapshot)
                 found = key, await _made(build_id, rows)
         self._branches[(project_id, name)] = found
         while len(self._branches) > HELD_BRANCHES:
-            del self._branches[next(iter(self._branches))]
+            self._watch(self._branches.pop(next(iter(self._branches)))[1].snapshot)
         return found[1]
 
     def _load(self, project_id: int, fresh: bool = False) -> asyncio.Task:
