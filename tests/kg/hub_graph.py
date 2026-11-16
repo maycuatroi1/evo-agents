@@ -1,8 +1,8 @@
 """A hub that answers the reads of the kg CLI over graphs built in the test: ``kg serve``, ``kg query`` and ``kg eval``
 through its /mcp, ``kg status``, ``kg profile`` and ``kg semantic`` through POST tools/kg_status, and ``kg settings``
 through its settings routes. The hub answers with its own engine, ``evo_agents.hub.kg_graph.HubSession``, over a
-snapshot of the graph the test built in memory (``tests.kg.built``), or of its graph file (``Snapshot.from_store``), as the hub reads one of its tables; the settings live
-where the graph file reads them (``evo_agents.kg.settings``)."""
+snapshot of the graph the test built in memory (``tests.kg.built``), as the hub reads one of its tables; the settings
+live in the project's directory (``evo_agents.kg.settings``)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from evo_agents.kg.policy import Label
 from evo_agents.kg.project import Project, load_project_at
 from evo_agents.kg.serve import Session
 from evo_agents.kg.snapshot import Snapshot, SnapshotView
-from evo_agents.kg.store import Store
 from tests.kg.built import snapshot_of
 
 URL = "https://hub.lumenops.example"
@@ -67,7 +66,7 @@ class GraphHub:
         if sink in policy.sinks:
             clearance = policy.clearance(sink)
             ceiling = Label(clearance.level, clearance.location, "U", frozenset({project.name}))
-        elif sink == "cli":  # the tests' operator, who holds the corpus, as a graph file reads it (``SessionView``)
+        elif sink == "cli":  # the tests' operator, who holds the corpus, who reads every label
             ceiling = Label(len(policy.levels) - 1, len(policy.locations) - 1, "U", frozenset({project.name}))
         vectors = (summary.get("coverage") or {}).get("vectors")
         built = BuiltGraph(b, None, None, snap.content_hash, 0, 0, datetime.now(UTC), vectors=vectors)
@@ -126,8 +125,8 @@ class GraphHub:
 
 
 def search_tuning(project: Project) -> kg_settings.Tuning:
-    """What the project's settings tune search by, as a graph file reads them: the override a test asked for, else
-    its settings.json, else the defaults."""
+    """What the project's settings tune search by: the override a test asked for, else its settings.json, else the
+    defaults."""
     asked = kg_settings.override_of()
     if asked is not None:
         return asked
@@ -139,22 +138,11 @@ def search_tuning(project: Project) -> kg_settings.Tuning:
 
 def graph_of(project: Project) -> tuple[Snapshot, SnapshotView, dict] | None:
     """The snapshot of the project's latest build, its view as the project's settings tune search, and its summary:
-    the build ``tests.kg.built`` keeps, else the latest ready build of the project's graph file (tests not yet moved
-    to builds in memory); None without either."""
+    the build ``tests.kg.built`` keeps; None before one."""
     snap = snapshot_of(project)
-    if snap is not None:
-        return snap, snap.view(tuning=search_tuning(project)), dict(snap.summary)
-    store = Store.open_readonly(project)
-    b = store.latest_ready() if store else None
-    if store is None or b is None:
-        if store is not None:
-            store.close()
+    if snap is None:
         return None
-    try:
-        snap = Snapshot.from_store(store, b)
-        return snap, snap.view(tuning=store.tuning), store.summary()
-    finally:
-        store.close()
+    return snap, snap.view(tuning=search_tuning(project)), dict(snap.summary)
 
 
 def sign_in(monkeypatch, *projects: Project) -> GraphHub:

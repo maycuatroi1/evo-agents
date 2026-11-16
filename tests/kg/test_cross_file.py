@@ -5,14 +5,13 @@ marks ``no`` must get no cross-file edge, and its row must say why."""
 
 import pytest
 
-from evo_agents.kg.build import build_project
 from evo_agents.kg.connectors._files import LANGUAGE_BY_SUFFIX
 from evo_agents.kg.extract import graphify as gfy
 from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, coverage_of, language_of
 from evo_agents.kg.impact import coverage_line
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg.built import build, rows_of
 from tests.kg.projects import commit, git, write
 
 # language -> (files, calls that must be edges, calls that must not). A call is (caller, callee) as
@@ -528,22 +527,11 @@ def poly(tmp_path_factory):
         )
         project = load_project_at(root, base / "kg-home")
         assert all(r.ok for r in sync_project(project))
-        report = build_project(project, verify=True, cold=True)
+        report = build(project, verify=True, cold=True)
         assert report.ok, report.errors
-        store = Store.for_project(project)
-        live = "tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)"
-        rows = store.db.execute(
-            f"SELECT src, dst, status FROM edges WHERE rel = 'calls' AND {live}", {"b": report.build_id}
-        ).fetchall()
-        symbols = {
-            r[0]
-            for r in store.db.execute(
-                f"SELECT node_id FROM nodes WHERE kind = 'Symbol' AND {live}",
-                {"b": report.build_id},
-            )
-        }
-        store.close()
-    return {(src, dst): status for src, dst, status in rows}, symbols
+        built = rows_of(project)
+    calls = {(r[1], r[3]): r[5] for r in built.edges if r[2] == "calls"}
+    return calls, {r[0] for r in built.nodes if r[1] == "Symbol"}
 
 
 def test_every_code_language_has_a_cross_file_row():
@@ -628,7 +616,7 @@ def test_python_calls_are_counted_in_coverage_when_they_name_the_project(tmp_pat
     )
     commit(app, "calls")
     assert all(r.ok for r in sync_project(project))
-    report = build_project(project)
+    report = build(project)
     assert report.ok, report.errors
     (source,) = [s for s in report.coverage["sources"] if s.get("calls")]
     # rank_results and search() of app/server.py resolve; s.missing names a module of the project that has no

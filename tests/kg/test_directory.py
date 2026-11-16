@@ -1,10 +1,11 @@
-from evo_agents.kg.build import build_project
+import json
+
 from evo_agents.kg.pipeline.link import Linker
 from evo_agents.kg.pipeline.link_forms import is_placeholder, looks_like_symbol
 from evo_agents.kg.pipeline.link_index import build_index
 from evo_agents.kg.pipeline.stages import map_item
-from evo_agents.kg.store import Store
-from evo_agents.kg.sync import sync_project
+from evo_agents.kg.snapshot import StoreRows
+from tests.kg.built import rows_of, snapshot_of, sync_build
 from tests.kg.projects import commit, make_project, write
 
 INDEX = """# Index
@@ -14,28 +15,33 @@ See [the extras](extra/) and [the acme tenant](tenants/acme/), the [app package]
 """
 
 
-def sync_build(project, **kw):
-    results = sync_project(project)
-    assert all(r.ok for r in results), [r.issues for r in results]
-    report = build_project(project, **kw)
-    assert report.ok, report.errors
-    return report
+def live_edges(rows: StoreRows) -> dict[str, tuple]:
+    """The edges of a build by id: (src, rel, dst, status)."""
+    return {r[0]: (r[1], r[2], r[3], r[5]) for r in rows.edges}
 
 
-def live_edges(store: Store, b: int) -> dict[str, tuple]:
-    rows = store.db.execute(
-        "SELECT edge_id, src, rel, dst, status FROM edges WHERE tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)",
-        {"b": b},
-    )
-    return {r[0]: tuple(r[1:]) for r in rows}
+def item_units(rows: StoreRows, item_id: str) -> set[str]:
+    return {r[0] for r in rows.units if r[1] == item_id}
 
 
-def item_units(store: Store, item_id: str, b: int) -> set[str]:
-    rows = store.db.execute(
-        "SELECT unit_id FROM units WHERE item_id = :i AND tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)",
-        {"i": item_id, "b": b},
-    )
-    return {r[0] for r in rows}
+def node_ids(rows: StoreRows) -> set[str]:
+    return {r[0] for r in rows.nodes}
+
+
+def predict_retraction(rows: StoreRows, removed_units: set[str]) -> set[str]:
+    """Evaluate the build's provenance circuit with ``removed_units`` set to false: the elements that would die."""
+    derivs: dict[str, list[tuple[list, list]]] = {}
+    for elem, units, needs in rows.derivations:
+        derivs.setdefault(elem, []).append((json.loads(units), json.loads(needs)))
+    alive = set(derivs)
+    changed = True
+    while changed:
+        changed = False
+        for elem in list(alive):
+            if not any(not (set(u) & removed_units) and all(n in alive for n in needs) for u, needs in derivs[elem]):
+                alive.discard(elem)
+                changed = True
+    return set(derivs) - alive
 
 
 def tree_project(tmp_path, kg_env):
@@ -51,11 +57,11 @@ def tree_project(tmp_path, kg_env):
 
 def test_directory_nodes_chain_up_to_the_repo_root(tmp_path, kg_env):
     project, _ = tree_project(tmp_path, kg_env)
-    b = sync_build(project).build_id
-    store = Store.for_project(project)
-    edges = {(s, r, d) for s, r, d, _ in live_edges(store, b).values()}
+    sync_build(project)
+    view = snapshot_of(project).view()
+    edges = {(s, r, d) for s, r, d, _ in live_edges(rows_of(project)).values()}
 
-    acme = store.node("dir:app:docs/tenants/acme", b)
+    acme = view.node("dir:app:docs/tenants/acme")
     assert acme["kind"] == "Directory"
     assert acme["name"] == "docs/tenants/acme/"
     assert acme["props"] == {"path": "docs/tenants/acme", "repo": "app"}
@@ -68,7 +74,7 @@ def test_directory_nodes_chain_up_to_the_repo_root(tmp_path, kg_env):
     assert ("dir:demo-harness:plans/active", "child_of", "dir:demo-harness:plans") in edges
 
     # One node per directory however many items sit under it, derived once per item: an OR.
-    docs = store.derivations("dir:app:docs", b)
+    docs = view.derivations("dir:app:docs")
     assert len(docs) == 6
     assert all(len(d["units"]) == 1 and d["units"][0].startswith("app:file:docs/") for d in docs)
 
@@ -76,8 +82,7 @@ def test_directory_nodes_chain_up_to_the_repo_root(tmp_path, kg_env):
 def test_directory_mentions_resolve_as_parsed(tmp_path, kg_env):
     project, _ = tree_project(tmp_path, kg_env)
     report = sync_build(project)
-    store = Store.for_project(project)
-    mentions = {(s, d): status for s, r, d, status in live_edges(store, report.build_id).values() if r == "mentions"}
+    mentions = {(s, d): status for s, r, d, status in live_edges(rows_of(project)).values() if r == "mentions"}
     index = "app:file:docs/index.md#index"
     assert mentions[(index, "dir:app:docs/extra")] == "parsed"  # trailing slash, relative to the document
     assert mentions[(index, "dir:app:docs/tenants/acme")] == "parsed"
@@ -113,36 +118,36 @@ def test_directory_nodes_only_for_repo_tree_connectors():
 
 def test_directory_retracts_with_the_last_item_under_it(tmp_path, kg_env):
     project, app = tree_project(tmp_path, kg_env)
-    store = Store.for_project(project)
-    b1 = sync_build(project).build_id
+    sync_build(project)
+    rows1 = rows_of(project)
     one, two = "app:file:docs/extra/one.md", "app:file:docs/extra/two.md"
     extra = "dir:app:docs/extra"
 
     # One item left under the directory keeps it alive.
-    predicted = store.predict_retraction(item_units(store, one, b1), b1)
+    predicted = predict_retraction(rows1, item_units(rows1, one))
     assert extra not in predicted
     (app / "docs/extra/one.md").unlink()
     commit(app)
     second = sync_build(project, verify=True, cold=True)
     assert second.verify["match"], second.verify
     assert second.memo["map"]["misses"] == 1  # the other items' map entries stay valid; the new commit is new
-    b2 = second.build_id
-    assert store.node(extra, b2) is not None
-    assert store.node(one, b2) is None
+    rows2 = rows_of(project)
+    assert extra in node_ids(rows2)
+    assert one not in node_ids(rows2)
 
     # Removing the last one retracts the directory, its own child_of edge and the link to it, nothing more.
-    predicted = store.predict_retraction(item_units(store, two, b2), b2)
+    predicted = predict_retraction(rows2, item_units(rows2, two))
     assert extra in predicted and "dir:app:docs" not in predicted
-    before_nodes, before_edges = store.alive_ids("nodes", b2), live_edges(store, b2)
+    before_nodes, before_edges = node_ids(rows2), live_edges(rows2)
     (app / "docs/extra/two.md").unlink()
     commit(app)
     third = sync_build(project, verify=True)
     assert third.verify["match"], third.verify
-    b3 = third.build_id
-    assert store.node(extra, b3) is None
-    assert store.node("dir:app:docs", b3) is not None
-    assert before_nodes - store.alive_ids("nodes", b3) == {e for e in predicted if e in before_nodes}
-    retracted = {before_edges[e][:3] for e in set(before_edges) - store.alive_ids("edges", b3)}
+    rows3 = rows_of(project)
+    assert extra not in node_ids(rows3)
+    assert "dir:app:docs" in node_ids(rows3)
+    assert before_nodes - node_ids(rows3) == {e for e in predicted if e in before_nodes}
+    retracted = {before_edges[e][:3] for e in set(before_edges) - set(live_edges(rows3))}
     assert retracted == {before_edges[e][:3] for e in predicted if e in before_edges}
     assert (extra, "child_of", "dir:app:docs") in retracted
     assert ("app:file:docs/index.md#index", "mentions", extra) in retracted

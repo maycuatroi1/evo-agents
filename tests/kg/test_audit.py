@@ -2,16 +2,14 @@
 
 import json
 import os
-import sqlite3
 import stat
 
 import pytest
 
 from evo_agents import __version__
-from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project, sync_source
+from tests.kg.built import build, rows_of
 from tests.kg.conftest import doc
 from tests.kg.projects import make_project, write
 
@@ -167,7 +165,7 @@ def test_audit_trigger_is_schedule_under_the_launch_agent(fake_project, monkeypa
     fake.set(items=[doc("a")])
     monkeypatch.setenv("EVO_KG_TRIGGER", "schedule")
     sync_source(project, "docs")
-    assert build_project(project).ok
+    assert build(project).ok
     monkeypatch.setenv("EVO_KG_TRIGGER", "something-else")
     sync_source(project, "docs")
     assert [(line["event"], line["trigger"]) for line in audit_lines(project)] == [
@@ -180,7 +178,7 @@ def test_audit_trigger_is_schedule_under_the_launch_agent(fake_project, monkeypa
 def test_audit_build_line_matches_the_report(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
     results = sync_project(project)
-    report = build_project(project)
+    report = build(project)
     assert report.ok, report.errors
 
     syncs = audit_lines(project, "sync")
@@ -188,37 +186,38 @@ def test_audit_build_line_matches_the_report(tmp_path, kg_env):
     [line] = audit_lines(project, "build")
     assert list(line) == BUILD_KEYS
     assert line["status"] == "ok"
-    assert (line["build_id"], line["content_hash"]) == (report.build_id, report.content_hash)
+    assert line["build_id"] is None  # a build in memory has no number until the hub keeps it
+    assert line["content_hash"] == report.content_hash
     assert (line["units"], line["nodes"], line["edges"]) == (report.units, report.nodes, report.edges)
     assert line["items"] == sum(r.items for r in results) > 0
     assert (line["errors"], line["verified"], line["rebuilt_from"], line["exception"]) == (0, None, None, None)
     assert line["started_at"] <= line["finished_at"]
-    assert Store.for_project(project).build_row(report.build_id)["content_hash"] == line["content_hash"]
+    assert rows_of(project).content_hash == line["content_hash"]
 
 
 def test_audit_verify_adds_no_line_of_its_own(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
     sync_project(project)
-    report = build_project(project, verify=True, cold=True)
+    report = build(project, verify=True, cold=True)
     assert report.ok and report.verify["match"]
     [line] = audit_lines(project, "build")
-    assert line["verified"] is True and line["build_id"] == report.build_id
+    assert line["status"] == "ok" and line["content_hash"] == report.content_hash
 
 
 def test_audit_failed_build_on_a_symbol_key_conflict(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
     sync_project(project)
-    good = build_project(project)
+    good = build(project)
     source = "  - id: app\n    connector: git\n    repo: app\n"
     text = project.knowledge_path.read_text(encoding="utf-8")
     write(project.knowledge_path, text.replace(source, source + source.replace("id: app", "id: app-copy")))
     project = load_project_at(project.harness.root, project.home)
     sync_project(project)
-    bad = build_project(project)
+    bad = build(project)
     assert not bad.ok
 
     first, second = audit_lines(project, "build")
-    assert first["build_id"] == good.build_id and first["status"] == "ok"
+    assert first["content_hash"] == good.content_hash and first["status"] == "ok"
     assert second["status"] == "failed"
     assert (second["build_id"], second["content_hash"], second["exception"]) == (None, None, None)
     assert second["errors"] == len(bad.errors) > 0
@@ -230,7 +229,7 @@ def test_audit_failed_build_on_an_ontology_error(tmp_path, kg_env):
     sync_project(project)
     write(project.knowledge_path, project.knowledge_path.read_text(encoding="utf-8") + "ontology: missing.yaml\n")
     project = load_project_at(project.harness.root, project.home)
-    report = build_project(project)
+    report = build(project)
     assert not report.ok
 
     [line] = audit_lines(project, "build")
@@ -241,14 +240,14 @@ def test_audit_build_that_raises_leaves_a_failed_line(tmp_path, kg_env, monkeypa
     project = make_project(tmp_path, kg_env)
     sync_project(project)
 
-    def broken_write(self, graph, **kwargs):
-        raise sqlite3.OperationalError("disk I/O error")
+    def broken_rows(graph, **kwargs):
+        raise OSError("disk I/O error")
 
-    monkeypatch.setattr(Store, "write", broken_write)
-    with pytest.raises(sqlite3.OperationalError):
-        build_project(project)
+    monkeypatch.setattr("evo_agents.kg.graph_rows.graph_rows", broken_rows)
+    with pytest.raises(OSError):
+        build(project)
     [line] = audit_lines(project, "build")
-    assert (line["status"], line["build_id"], line["exception"]) == ("failed", None, "OperationalError")
+    assert (line["status"], line["build_id"], line["exception"]) == ("failed", None, "OSError")
 
 
 def test_audit_write_failure_warns_and_never_fails_the_run(fake_project, capsys):
@@ -256,7 +255,7 @@ def test_audit_write_failure_warns_and_never_fails_the_run(fake_project, capsys)
     fake.set(items=[doc("a")])
     (project.root / "audit.jsonl").mkdir(parents=True)  # a directory where the file should be
     result = sync_source(project, "docs")
-    report = build_project(project)
+    report = build(project)
     assert result.ok, result.issues
     assert report.ok, report.errors
     err = capsys.readouterr().err

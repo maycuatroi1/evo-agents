@@ -7,18 +7,15 @@ from dataclasses import replace
 from evo_agents.hub import kg_semantic
 from evo_agents.kg import build, semantic
 from evo_agents.kg.packed import Packed
-from evo_agents.kg.snapshot import StoreRows, store_rows
-from evo_agents.kg.store import Store
+from evo_agents.kg.snapshot import StoreRows
+from tests.kg import built
+from tests.kg.built import sync_build
 from tests.kg.test_hybrid import FAKE, Words, with_garage
-from tests.kg.test_store import sync_build
 
 
 def rows_of(project) -> StoreRows:
-    store = Store.open_file(project.root / "graph.sqlite", immutable=True)
-    try:
-        return replace(store_rows(store, store.latest_ready()), vectors=(), vector_info=None)
-    finally:
-        store.close()
+    """The rows of the project's latest build, without vectors."""
+    return replace(built.rows_of(project), vectors=(), vector_info=None)
 
 
 def test_a_packed_value_reads_back_equal_and_a_fresh_copy_each_time():

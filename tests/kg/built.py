@@ -95,13 +95,13 @@ def snapshot_of(project: Project) -> Snapshot | None:
 
 
 def nodes_of(project: Project) -> list[dict]:
-    """The nodes of the project's latest build as ``Store.nodes`` reads them, by id; [] before a build."""
+    """The nodes of the project's latest build as a reader of the graph reads them (``node_dict``), by id; [] before a build."""
     rows = rows_of(project)
     return sorted((node_dict(r) for r in rows.nodes), key=lambda n: n["id"]) if rows is not None else []
 
 
 def edges_of(project: Project) -> list[dict]:
-    """The edges of the project's latest build as ``Store.edges_of`` reads them, an edge to no node included, by
+    """The edges of the project's latest build as a reader of the graph reads them (``edge_dict``), an edge to no node included, by
     (src, rel, dst); [] before a build."""
     rows = rows_of(project)
     return (
@@ -112,7 +112,7 @@ def edges_of(project: Project) -> list[dict]:
 
 
 def view_of(project: Project) -> SnapshotView | None:
-    """The latest build as a reader with no audience reads it, through the reads of a ``Store`` (``b`` ignored); None
+    """The latest build as a reader with no audience reads it, through the reads of a ``SnapshotView`` (``b`` ignored); None
     before a build."""
     snap = snapshot_of(project)
     return snap.view() if snap is not None else None

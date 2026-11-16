@@ -1,32 +1,24 @@
+"""The graph a build makes of the demo project, read in memory (``tests.kg.built``): the keys of its symbols, its
+counts, size and highest label, its full-text search (``evo_agents.kg.search``, ``evo_agents.kg.snapshot_text``) and
+the asked index search reads (``evo_agents.kg.asked``). Helpers other test files import live here too."""
+
 import datetime as dt
-import gc
-import sqlite3
-import weakref
-from pathlib import Path
 
 import pytest
 
 from evo_agents.kg import asked
 from evo_agents.kg import search as text_search
-from evo_agents.kg import store as store_module
-from evo_agents.kg.build import build_project
+from evo_agents.kg.graph_rows import with_asked
 from evo_agents.kg.pipeline.stages import leading_comment
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import SCHEMA_VERSION, StaleSchema, Store
-from evo_agents.kg.store_session import StoreSession
+from evo_agents.kg.snapshot import Snapshot, SnapshotView
 from evo_agents.kg.sync import sync_project
 from evo_agents.kg.text import split_passages
-from tests.kg.projects import commit, git, make_project, write
+from tests.kg import built
+from tests.kg.hub_graph import hub_session
+from tests.kg.projects import commit, make_project, write
 
 APP_SOURCE = "  - id: app\n    connector: git\n    repo: app\n"
-
-
-def sync_build(project, **kw):
-    results = sync_project(project)
-    assert all(r.ok for r in results), [r.issues for r in results]
-    report = build_project(project, **kw)
-    assert report.ok, report.errors
-    return report
 
 
 def edit_sources(project, old: str, new: str):
@@ -36,175 +28,68 @@ def edit_sources(project, old: str, new: str):
     return load_project_at(project.harness.root, project.home)
 
 
-def live_keys(store: Store, b: int) -> dict[str, str]:
-    rows = store.db.execute(
-        "SELECT node_id, json_extract(props, '$.key') FROM nodes WHERE kind = 'Symbol'"
-        " AND tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)",
-        {"b": b},
-    )
-    return dict(rows.fetchall())
-
-
-def make_schema_1(path) -> None:
-    """Turn a store file into what schema 1 wrote: the same tables without the key index."""
-    db = sqlite3.connect(path)
-    db.execute("DROP INDEX nodes_key")
-    db.execute("UPDATE meta SET value = '1' WHERE key = 'schema_version'")
-    db.commit()
-    db.close()
+def live_keys(project) -> dict[str, list]:
+    """node id -> pg_key of each Symbol of the project's latest build."""
+    return {n["id"]: n["props"].get("key") for n in built.nodes_of(project) if n["kind"] == "Symbol"}
 
 
 def test_pg_key_names_every_symbol_by_repo_path_and_qualname(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
-    report = sync_build(project)
-    store = Store.for_project(project)
-    node = store.node("symbol:app:app/server.py::Server.handle", report.build_id)
+    built.sync_build(project)
+    node = built.view_of(project).node("symbol:app:app/server.py::Server.handle")
     assert node["props"]["key"] == ["app", "app/server.py", "Server.handle"]
-    keys = live_keys(store, report.build_id)
+    keys = live_keys(project)
     assert keys and all(k is not None for k in keys.values())
-    assert len(set(keys.values())) == len(keys)
-
-
-def test_pg_key_index_refuses_a_second_live_holder(tmp_path, kg_env):
-    project = make_project(tmp_path, kg_env)
-    report = sync_build(project)
-    store = Store.for_project(project)
-    b = report.build_id
-    columns = "node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases, content, tx_from"
-    original = store.db.execute(
-        f"SELECT {columns} FROM nodes WHERE node_id = 'symbol:app:app/search.py::search' AND tx_to IS NULL"
-    ).fetchone()
-    twin = ("symbol:other:app/search.py::search", *original[1:])
-    with pytest.raises(sqlite3.IntegrityError, match="nodes_key"):
-        store.db.execute(f"INSERT INTO nodes ({columns}) VALUES ({', '.join('?' * 12)})", twin)
-    store.db.rollback()
-    # A proposed node or a closed row may share the key: the index covers live, non-proposed rows only.
-    proposed = (*twin[:4], "proposed", *twin[5:])
-    store.db.execute(f"INSERT INTO nodes ({columns}) VALUES ({', '.join('?' * 12)})", proposed)
-    store.db.execute(
-        f"INSERT INTO nodes ({columns}, tx_to) VALUES ({', '.join('?' * 13)})",
-        ("symbol:old:app/search.py::search", *original[1:], b),
-    )
-    store.db.rollback()
+    assert len({tuple(k) for k in keys.values()}) == len(keys)
 
 
 def test_pg_key_duplicate_fails_the_build_and_names_the_sources(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
-    good = sync_build(project)
+    good = built.sync_build(project)
     # A second source over the same repo: every symbol it reads already has a holder.
     project = edit_sources(project, APP_SOURCE, APP_SOURCE + "  - id: app-copy\n    connector: git\n    repo: app\n")
     assert all(r.ok for r in sync_project(project))
-    bad = build_project(project)
+    bad = built.build(project)
     assert not bad.ok
     line = next(e for e in bad.errors if '["app", "app/search.py", "search"]' in e)
     assert line.startswith("duplicate Symbol key")
     assert "symbol:app:app/search.py::search (source app)" in line
     assert "symbol:app-copy:app/search.py::search (source app-copy)" in line
     assert "duplicate Symbol key" in bad.summary_line()
-    assert Store.for_project(project).latest_ready() == good.build_id
+    assert built.snapshot_of(project).build == good.build_id  # the build before stays the latest
 
 
 def test_pg_key_holder_can_change_between_builds(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
     app = tmp_path / "demo-app"
-    first = sync_build(project)
-    store = Store.for_project(project)
-    before = live_keys(store, first.build_id)
+    built.sync_build(project)
+    before = live_keys(project)
 
-    # Same key, new content: the old row closes before the new one opens.
+    # Same key, new content.
     text = (app / "app/search.py").read_text(encoding="utf-8")
     write(app / "app/search.py", "# moved down a line\n" + text)
     commit(app)
-    edited = sync_build(project, verify=True)
+    edited = built.sync_build(project, verify=True)
     assert edited.verify["match"], edited.verify
-    assert store.node("symbol:app:app/search.py::search", edited.build_id)["props"]["line"] == 6
+    assert built.view_of(project).node("symbol:app:app/search.py::search")["props"]["line"] == 6
 
     # Same key, new node id: the source is renamed but still reads repo app.
     project = edit_sources(project, APP_SOURCE, APP_SOURCE.replace("id: app", "id: app2"))
-    renamed = sync_build(project, verify=True, cold=True)
+    renamed = built.sync_build(project, verify=True, cold=True)
     assert renamed.verify["match"], renamed.verify
-    after = live_keys(store, renamed.build_id)
+    after = live_keys(project)
     assert sorted(after.values()) == sorted(before.values())
     assert all(nid.startswith("symbol:app2:") for nid in after)
 
 
-def test_schema_upgrade_rebuilds_from_the_log_and_replaces_the_file(tmp_path, kg_env):
-    project = make_project(tmp_path, kg_env)
-    first = sync_build(project)
-    second = sync_build(project, force=True)  # two builds, so the old file has history the rebuild drops
-    path = project.root / "graph.sqlite"
-    make_schema_1(path)
-
-    report = build_project(project, verify=True)
-    assert report.ok, report.errors
-    assert report.rebuilt_from == "1"
-    assert f"store rebuilt from the log (schema 1 -> {SCHEMA_VERSION})" in report.summary_line()
-    assert report.verify["match"], report.verify
-    assert report.content_hash == first.content_hash == second.content_hash
-    assert Store.stored_schema(path) == SCHEMA_VERSION
-    store = Store.for_project(project)
-    assert store.latest_ready() == report.build_id == 1
-    assert store.db.execute("SELECT 1 FROM sqlite_master WHERE name = 'nodes_key'").fetchone()
-    assert sorted(p.name for p in path.parent.glob("graph.sqlite*") if not p.name.endswith(("-wal", "-shm"))) == [
-        "graph.sqlite"
-    ]
-
-    again = sync_build(project, force=True)
-    assert again.rebuilt_from is None
-    assert again.build_id == 2 and again.content_hash == report.content_hash
-
-
-def test_schema_upgrade_is_refused_by_readers_and_keeps_the_file_on_failure(tmp_path, kg_env):
-    project = make_project(tmp_path, kg_env)
-    sync_build(project)
-    path = project.root / "graph.sqlite"
-    make_schema_1(path)
-
-    with pytest.raises(StaleSchema, match=f"schema 1, this code reads {SCHEMA_VERSION}"):
-        Store.open_existing(project)
-    answer = StoreSession(project, "agent").call("kg_search", {"query": "search"})
-    assert answer["isError"] and "evo-agents kg build" in answer["content"][0]["text"]
-
-    # A build that fails leaves the old file as it was: nothing is migrated in place.
-    write(
-        project.harness.root / "bindings/core.yaml",
-        "bindings:\n  - from: app:app/search.py::missing\n    rel: implements\n    to: usecase:KB-01\n",
-    )
-    sync_project(project)
-    bad = build_project(project)
-    assert not bad.ok and bad.rebuilt_from is None
-    assert Store.stored_schema(path) == "1"
-    db = sqlite3.connect(path)
-    assert db.execute("SELECT 1 FROM sqlite_master WHERE name = 'nodes_key'").fetchone() is None
-    db.close()
-    assert not (path.parent / "graph.sqlite.rebuild").exists()
-
-
 def test_kind_counts_split_the_live_nodes_by_kind_and_label(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
-    report = sync_build(project)
-    store = Store.for_project(project)
-    rows = store.kind_counts(report.build_id)
-    store.close()
+    report = built.sync_build(project)
+    rows = built.view_of(project).kind_counts()
     assert sum(count for *_, count in rows) == report.nodes
     assert len({tuple(row[:4]) for row in rows}) == len(rows)
     symbols = [row for row in rows if row[0] == "Symbol"]
     assert symbols and all(isinstance(count, int) and count > 0 for *_, count in symbols)
-
-
-def test_leave_wal_leaves_the_whole_store_in_its_file(tmp_path):
-    path = tmp_path / "graph.sqlite"
-    store = Store(path)
-    store.db.execute("INSERT INTO meta VALUES ('note', 'kept')")
-    store.db.commit()
-    assert Path(f"{path}-wal").exists()
-    store.leave_wal()
-    assert store.db.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
-    store.close()
-    assert not Path(f"{path}-wal").exists()
-    reopened = sqlite3.connect(path)
-    assert reopened.execute("SELECT value FROM meta WHERE key = 'note'").fetchone() == ("kept",)
-    reopened.close()
 
 
 # Search: the full-text index and the lookups by id and name (evo_agents.kg.search)
@@ -237,38 +122,40 @@ def make_searchable(tmp_path, kg_env, **kw):
     return project
 
 
-def found(store: Store, query: str, **kw) -> list[str]:
-    return store.search(query, store.latest_ready(), **kw)
+def searched(project) -> SnapshotView:
+    """Sync and build ``project`` in memory; its latest build as a reader with no audience reads it."""
+    built.sync_build(project)
+    return built.view_of(project)
+
+
+def found(view: SnapshotView, query: str, **kw) -> list[str]:
+    return view.search(query, **kw)
 
 
 def test_search_ranks_any_word_when_no_node_holds_them_all(tmp_path, kg_env):
-    project = make_searchable(tmp_path, kg_env)
-    sync_build(project)
-    store = Store.for_project(project)
+    view = searched(make_searchable(tmp_path, kg_env))
     question = "where does the hub build the knowledge graph on tuesdays"
-    assert found(store, question, any_word=False) == []  # no node holds every word: AND alone finds nothing
-    hits = found(store, question, limit=5)
+    assert found(view, question, any_word=False) == []  # no node holds every word: AND alone finds nothing
+    hits = found(view, question, limit=5)
     assert hits[0] in ("app:file:app/hub_build.py", "symbol:app:app/hub_build.py::GraphBuilder")
     assert "app:file:app/hub_build.py" in hits[:5]
 
 
 def test_search_splits_camel_case_reads_d_for_dj_and_indexes_docstrings(tmp_path, kg_env):
-    project = make_searchable(tmp_path, kg_env)
-    sync_build(project)
-    store = Store.for_project(project)
+    view = searched(make_searchable(tmp_path, kg_env))
     builder, method = (
         "symbol:app:app/hub_build.py::GraphBuilder",
         "symbol:app:app/hub_build.py::GraphBuilder.buildGraph",
     )
-    assert found(store, "GraphBuilder")[0] == builder  # its name: through the index, first
-    assert builder in found(store, "graph builder")[:3]  # the parts of a camelCase name
-    assert method in found(store, "buildgraph")[:3]  # the whole word too
-    assert "symbol:app:app/hub_build.py::load_corpus" in found(store, "load corpus")[:3]  # snake_case
-    assert "app:file:app/hub_build.py" in found(store, "hub_build")[:3]  # a path
-    assert found(store, "corpus into nodes and edges")[0] == builder  # its docstring
-    assert "app:file:docs/do-thi.md#đồ-thị-tri-thức" in found(store, "do thi tri thuc")[:3]  # đ reads as d
-    assert "app:file:docs/plain.md#ghi-chu" in found(store, "đường ống dữ liệu")[:3]  # both ways
-    assert any(h.startswith("app:file:docs/long.md") for h in found(store, NEEDLE))  # past 4,000 characters
+    assert found(view, "GraphBuilder")[0] == builder  # its name: through the index, first
+    assert builder in found(view, "graph builder")[:3]  # the parts of a camelCase name
+    assert method in found(view, "buildgraph")[:3]  # the whole word too
+    assert "symbol:app:app/hub_build.py::load_corpus" in found(view, "load corpus")[:3]  # snake_case
+    assert "app:file:app/hub_build.py" in found(view, "hub_build")[:3]  # a path
+    assert found(view, "corpus into nodes and edges")[0] == builder  # its docstring
+    assert "app:file:docs/do-thi.md#đồ-thị-tri-thức" in found(view, "do thi tri thuc")[:3]  # đ reads as d
+    assert "app:file:docs/plain.md#ghi-chu" in found(view, "đường ống dữ liệu")[:3]  # both ways
+    assert any(h.startswith("app:file:docs/long.md") for h in found(view, NEEDLE))  # past 4,000 characters
 
 
 def test_search_ranks_the_three_ways_together_by_score(tmp_path, kg_env):
@@ -278,42 +165,39 @@ def test_search_ranks_the_three_ways_together_by_score(tmp_path, kg_env):
     write(app / "docs/tour.md", f"# Tour\n\n{filler}kiwi {filler}rollout {filler}search {filler}outage\n")
     write(app / "docs/kiwi.md", "# Kiwi rollout outage\n\nThe kiwi rollout outage of last week.\n")
     commit(app, "a page holding every word once, and one about them")
-    sync_build(project)
-    store = Store.for_project(project)
+    view = searched(project)
     question = "kiwi rollout search outage"
-    assert found(store, question, any_word=False)[0].startswith("app:file:docs/tour.md")  # all words: only there
-    hits = found(store, question)
+    assert found(view, question, any_word=False)[0].startswith("app:file:docs/tour.md")  # all words: only there
+    hits = found(view, question)
     assert hits[0].startswith("app:file:docs/kiwi.md")  # three of the words, in its title, before all four once
     assert any(h.startswith("app:file:docs/tour.md") for h in hits)  # still found, ranked by its own score
 
 
-def with_quarry_note(tmp_path, kg_env):
-    """The searchable project plus a note with no heading, whose text is its document's body."""
+def with_quarry_note(tmp_path, kg_env) -> SnapshotView:
+    """The searchable project plus a note with no heading, whose text is its document's body, built."""
     project = make_searchable(tmp_path, kg_env)
     write(tmp_path / "demo-app" / "docs/quarry.md", "The zephyr quarry closed after the flood of March.\n")
     commit(tmp_path / "demo-app", "a note without a heading")
-    sync_build(project)
-    return project
+    return searched(project)
 
 
 def test_a_long_question_is_read_past_its_twelfth_word(tmp_path, kg_env):
     # A question names its subject late: its first twelve words hold nothing the graph has.
-    store = Store.for_project(with_quarry_note(tmp_path, kg_env))
+    view = with_quarry_note(tmp_path, kg_env)
     question = " ".join(f"qq{i}" for i in range(14)) + " zephyr quarry"
     assert len(text_search.query_words(question)) == 16
-    assert found(store, question)[0] == "app:file:docs/quarry.md"
+    assert found(view, question)[0] == "app:file:docs/quarry.md"
     assert len(text_search.query_words(" ".join(f"w{i}" for i in range(100)))) == text_search.MAX_TERMS
 
 
-def test_matched_counts_the_query_words_a_node_holds_and_quotes_the_nodes_asked(tmp_path, kg_env):
-    store = Store.for_project(with_quarry_note(tmp_path, kg_env))
+def test_matched_counts_the_query_words_a_node_holds(tmp_path, kg_env):
+    view = with_quarry_note(tmp_path, kg_env)
     doc, builder = "app:file:docs/quarry.md", "symbol:app:app/hub_build.py::GraphBuilder"
-    matched = store.matched([doc, builder, "app:file:nowhere.md"], "zephyr quarry flood tuesday", {doc})
+    matched = view.matched([doc, builder, "app:file:nowhere.md"], "zephyr quarry flood tuesday", {doc})
     assert matched[doc]["words"] == 3 and matched[doc]["of"] == 4
-    assert "zephyr quarry closed after the flood" in matched[doc]["snippet"]
-    assert matched[builder] == {"words": 0, "of": 4}  # held by the index, not quoted: it was not asked for
+    assert matched[builder] == {"words": 0, "of": 4}  # held by the index, no word of the query
     assert "app:file:nowhere.md" not in matched  # no row in the index
-    assert store.matched([doc], "") == {} and store.matched([], "zephyr") == {}
+    assert view.matched([doc], "") == {} and view.matched([], "zephyr") == {}
 
 
 LONG = "app:file:docs/long.md#long"
@@ -335,33 +219,19 @@ def test_split_passages_cuts_at_paragraphs_keeps_a_fence_whole_and_covers_every_
 
 def test_a_long_section_is_searched_by_passages_under_its_own_id(tmp_path, kg_env):
     project = make_searchable(tmp_path, kg_env)
-    sync_build(project)
-    store = Store.for_project(project)
-    b = store.latest_ready()
-    keys = [k for (k,) in store.db.execute("SELECT node_id FROM node_fts_rows")]
-    passages = sorted(text_search.passage_lines(k)[1] or "" for k in keys if text_search.passage_lines(k)[0] == LONG)
+    view = searched(project)
+    keyed = built.rows_of(project).keyed
+    passages = sorted(
+        text_search.passage_lines(k)[1] or "" for k, _ in keyed if text_search.passage_lines(k)[0] == LONG
+    )
     assert passages == ["", "lines 1-2", "lines 3-3", "lines 4-5"]  # its own row, then its passages
-    bodies = [
-        body for (body,) in store.db.execute("SELECT body FROM node_fts WHERE node_id = ? ORDER BY rowid", (LONG,))
-    ]
+    bodies = [row[4] for k, row in sorted(keyed) if text_search.passage_lines(k)[0] == LONG]
     prefixed = [body for body in bodies if body.startswith("docs/long.md > Long\n")]  # its document, its headings
     assert len(bodies) == 4 and len(prefixed) == 3 and NEEDLE in prefixed[-1]
-    ids = {nid for (nid,) in store.db.execute("SELECT node_id FROM node_fts")}
-    assert ids <= set(store.nodes(ids, b))  # a reader that knows no passage still finds a node for each row
-    assert found(store, NEEDLE)[0] == LONG  # one result for the section, not one per passage
-    hit = store.matched([LONG], NEEDLE, {LONG})[LONG]
-    assert hit["lines"] == "lines 4-5" and NEEDLE in hit["snippet"]  # the passage that holds the word
-    plain = store.matched(["app:file:docs/plain.md#ghi-chu"], "duong", set())
-    assert "lines" not in plain["app:file:docs/plain.md#ghi-chu"]  # a short section has no passage
-
-    # A graph an older build wrote holds no passage: it is searched and quoted as before.
-    store.db.execute(
-        "DELETE FROM node_fts WHERE rowid IN (SELECT fts_rowid FROM node_fts_rows WHERE instr(node_id, char(31)))"
-    )
-    store.db.execute("DELETE FROM node_fts_rows WHERE instr(node_id, char(31))")
-    assert found(store, "filler sentence")[0] == LONG
-    old = store.matched([LONG], NEEDLE, {LONG})[LONG]
-    assert "lines" not in old and old["words"] == 1
+    ids = {text_search.passage_lines(k)[0] for k, _ in keyed}
+    assert ids <= set(view.nodes(ids))  # a reader that knows no passage still finds a node for each row
+    assert found(view, NEEDLE)[0] == LONG  # one result for the section, not one per passage
+    assert view.matched([LONG], NEEDLE)[LONG]["words"] == 1
 
 
 def test_the_any_word_query_leaves_out_a_word_the_index_reads_as_a_stop_word():
@@ -420,15 +290,14 @@ def test_search_ranks_a_test_down_unless_the_query_asks_for_tests_and_a_named_no
     write(app / "app/zephyr.py", "def zephyr_quarry_floods():\n    return 1\n")
     write(app / "app/quarry.py", "def zephyrDrain():\n    return 2\n")
     commit(app, "a test and the code it covers")
-    sync_build(project)
-    store = Store.for_project(project)
+    view = searched(project)
     test_file, code = "app:file:tests/test_zephyr.py", "symbol:app:app/zephyr.py::zephyr_quarry_floods"
-    hits = found(store, "zephyr quarry floods")
+    hits = found(view, "zephyr quarry floods")
     assert test_file in hits and hits.index(code) < hits.index(test_file)  # still returned, below the code
-    asked, plain = found(store, "zephyr quarry floods test"), found(store, "zephyr quarry floods")
-    assert asked.index(test_file) <= plain.index(test_file)  # the query asks for tests: no weight down
+    asked_for, plain = found(view, "zephyr quarry floods test"), found(view, "zephyr quarry floods")
+    assert asked_for.index(test_file) <= plain.index(test_file)  # the query asks for tests: no weight down
     drain = "symbol:app:app/quarry.py::zephyrDrain"
-    assert found(store, "how does zephyrDrain empty it")[0] == drain  # a word names it: first
+    assert found(view, "how does zephyrDrain empty it")[0] == drain  # a word names it: first
 
 
 def test_a_file_name_names_the_file_not_its_symbols_and_an_image_is_background():
@@ -462,214 +331,58 @@ def test_search_finds_a_file_by_its_bare_name_and_weighs_an_image_down(tmp_path,
     write(app / "docs/zephyr.md", "# Rollout\n\nThe zephyr rollout moves the quarry one change at a time.\n")
     write(app / "app/rollout.py", "def zephyr_rollout(change):\n    return change\n")
     commit(app, "a module of constants, a report's image and a page")
-    sync_build(project)
-    store = Store.for_project(project)
+    view = searched(project)
     file = "app:file:app/quarry_audit.py"
-    assert found(store, "quarry_audit.py")[0] == file  # not one of its four constants
-    assert found(store, "quarry_audit")[0] == file  # its stem
-    assert found(store, "audit_quarry")[0] == "symbol:app:app/quarry_audit.py::audit_quarry"
+    assert found(view, "quarry_audit.py")[0] == file  # not one of its four constants
+    assert found(view, "quarry_audit")[0] == file  # its stem
+    assert found(view, "audit_quarry")[0] == "symbol:app:app/quarry_audit.py::audit_quarry"
     png = "app:file:reports/assets/zephyr-rollout-change.png"
-    hits = found(store, "zephyr rollout change")  # before ASSET_WEIGHT the image, words in its path only, was first
+    hits = found(view, "zephyr rollout change")  # before ASSET_WEIGHT the image, words in its path only, was first
     assert hits.index("app:file:docs/zephyr.md#rollout") < hits.index(png)
     assert hits.index("symbol:app:app/rollout.py::zephyr_rollout") < hits.index(png)
-    assert found(store, "zephyr rollout change screenshot")[0] == png  # the query asks for an image
+    assert found(view, "zephyr rollout change screenshot")[0] == png  # the query asks for an image
 
 
 def test_search_keeps_uris_out_and_filters_kinds_in_the_query(tmp_path, kg_env):
     project = make_searchable(tmp_path, kg_env)
-    sync_build(project)
-    store = Store.for_project(project)
-    assert found(store, "blob") == []  # every node's URI has /blob/main/: none of it is indexed
-    sections = found(store, "search", limit=2, kinds=["Section"])
+    view = searched(project)
+    assert found(view, "blob") == []  # every node's URI has /blob/main/: none of it is indexed
+    sections = found(view, "search", limit=2, kinds=["Section"])
     assert sections and all(":file:docs/" in h and "#" in h for h in sections)
-    assert found(store, "rank_results", kinds=["Section"]) == ["app:file:docs/guide.md#details"]
-    answer = StoreSession(project, "agent").call("kg_search", {"query": "search", "kinds": ["Section"], "limit": 1})
+    assert found(view, "rank_results", kinds=["Section"]) == ["app:file:docs/guide.md#details"]
+    answer = hub_session(project, "agent").call("kg_search", {"query": "search", "kinds": ["Section"], "limit": 1})
     assert [r["kind"] for r in answer["structuredContent"]["results"]] == ["Section"]
 
 
 def test_a_text_past_the_cap_is_cut_and_counted_in_coverage(tmp_path, kg_env, monkeypatch):
     monkeypatch.setattr(text_search, "MAX_TEXT_CHARS", 3000)
     project = make_searchable(tmp_path, kg_env)
-    report = sync_build(project)
+    report = built.sync_build(project)
     cut = report.coverage["search"]
     assert cut["cut"] == 1 and cut["samples"] == ["app:file:docs/long.md#long"] and cut["max_chars"] == 3000
-    assert found(Store.for_project(project), NEEDLE) == []
+    assert found(built.view_of(project), NEEDLE) == []
 
 
-def test_lookups_by_id_name_and_alias_go_through_an_index(tmp_path, kg_env):
+def test_lookups_by_id_name_and_alias(tmp_path, kg_env):
+    view = searched(make_searchable(tmp_path, kg_env))
+    search = "symbol:app:app/search.py::search"
+    assert view.exact(search, 0, 10) == [search]  # by id
+    assert view.exact("search", 0, 10, ["Symbol"]) == [search]  # by name, of a kind
+    assert view.exact("search", 0, 10, ["Section"]) == []
+    assert view.alias_of("usecase:KB-99") is None  # an alias nothing holds
+    assert view.node("app:file:app/search.py")["kind"] == "File"
+
+
+def test_a_rebuild_after_an_edit_searches_the_new_text(tmp_path, kg_env):
     project = make_searchable(tmp_path, kg_env)
-    sync_build(project)
-    store = Store.for_project(project)
-    b = store.latest_ready()
-    statements: list[str] = []
-    store.db.set_trace_callback(statements.append)
-    store.exact("symbol:app:app/search.py::search", b, 10)
-    store.exact("search", b, 10, ["Symbol"])
-    store.alias_of("usecase:KB-99", b)
-    store.node("app:file:app/search.py", b)
-    store.db.set_trace_callback(None)
-    assert len(statements) == 4
-    for sql in statements:
-        plan = [row[3] for row in store.db.execute(f"EXPLAIN QUERY PLAN {sql}")]
-        assert any("USING INDEX nodes_" in step for step in plan), (sql, plan)
-        assert not any(step.startswith("SCAN") for step in plan), (sql, plan)
-
-
-def make_schema_2(path) -> None:
-    """Turn a store file into what schema 2 wrote: node_fts without kind and path, no name index, no aliases."""
-    db = sqlite3.connect(path)
-    db.execute("DROP INDEX nodes_name")
-    db.execute("DROP TABLE node_alias")
-    db.execute("DROP TABLE node_fts")
-    db.execute("CREATE VIRTUAL TABLE node_fts USING fts5(node_id UNINDEXED, name, body)")
-    db.execute("UPDATE meta SET value = '2' WHERE key = 'schema_version'")
-    db.commit()
-    db.close()
-
-
-def test_a_build_leaves_no_connection_to_its_store_open(tmp_path, kg_env):
-    # Since Python 3.11 a connection left open waits for the cycle collector, and Windows cannot replace a file a
-    # connection holds: a rebuild then failed on graph.sqlite-wal (WinError 32).
-    project = make_project(tmp_path, kg_env)
-    store = (project.root / "graph.sqlite").resolve()
-    gc.collect()
-    gc.disable()
-    try:
-        sync_build(project)
-        sync_build(project, force=True)
-        held = []
-        for conn in (o for o in gc.get_objects() if isinstance(o, sqlite3.Connection)):
-            try:
-                path = conn.execute("PRAGMA database_list").fetchone()[2]
-            except sqlite3.ProgrammingError:  # closed
-                continue
-            if Path(path).resolve() == store:
-                held.append(path)
-        assert held == []
-    finally:
-        gc.enable()
-
-
-def test_a_read_only_store_lets_its_file_go_once_dropped(tmp_path, kg_env):
-    # A search opens the store for each call; Windows cannot delete a graph whose file a dropped store still holds.
-    project = make_project(tmp_path, kg_env)
-    sync_build(project)
-    gc.collect()
-    gc.disable()
-    try:
-        store = Store.open_readonly(project)
-        assert store is not None and store.db.execute("SELECT aud_seen(NULL)").fetchone() is not None
-        dropped = weakref.ref(store)
-        del store
-        assert dropped() is None
-    finally:
-        gc.enable()
-
-
-def test_a_search_leaves_no_connection_to_its_store_open(tmp_path, kg_env):
-    # A connection's statement cache refers back to it, so one left open waits for the cycle collector; Windows
-    # cannot delete a graph a connection holds (kg bench run --prune left it behind).
-    project = make_project(tmp_path, kg_env)
-    sync_build(project)
-    store = (project.root / "graph.sqlite").resolve()
-    gc.collect()
-    gc.disable()
-    try:
-        for plain in (False, True):
-            session = StoreSession(project, "cli")
-            session.plain = plain
-            assert "isError" not in session.call("kg_search", {"query": "widget", "limit": 5})
-            held = []
-            for conn in (o for o in gc.get_objects() if isinstance(o, sqlite3.Connection)):
-                try:
-                    path = conn.execute("PRAGMA database_list").fetchone()[2]
-                except sqlite3.ProgrammingError:  # closed
-                    continue
-                if Path(path).resolve() == store:
-                    held.append(path)
-            assert held == [], plain
-    finally:
-        gc.enable()
-
-
-def test_a_store_of_schema_2_is_rebuilt_by_the_next_build_and_refused_by_readers(tmp_path, kg_env):
-    project = make_searchable(tmp_path, kg_env)
-    first = sync_build(project)
-    path = project.root / "graph.sqlite"
-    make_schema_2(path)
-    with pytest.raises(StaleSchema, match=f"schema 2, this code reads {SCHEMA_VERSION}"):
-        Store.open_file(path)
-    answer = StoreSession(project, "agent").call("kg_search", {"query": "graph builder"})
-    assert answer["isError"] and "evo-agents kg build" in answer["content"][0]["text"]
-
-    report = sync_build(project)
-    assert report.rebuilt_from == "2" and report.content_hash == first.content_hash
-    assert "symbol:app:app/hub_build.py::GraphBuilder" in found(Store.for_project(project), "graph builder")
-
-
-def test_the_content_hash_covers_the_schema_and_what_search_reads(tmp_path, kg_env, monkeypatch):
-    project = make_searchable(tmp_path, kg_env)
-    report = sync_build(project)
-    store = Store.for_project(project)
-    b = report.build_id
-    before = store.content_hash(b, "a")
-    assert before != store.content_hash(b, "b")
-    monkeypatch.setattr(store_module, "SCHEMA_VERSION", "99")
-    assert store.content_hash(b, "a") != before  # the hub never serves a file of one schema for another
-
-
-def fts_rows(store: Store) -> dict[int, str]:
-    """rowid -> node id of each row of the full-text index; a node's passages are rows of its own under its id."""
-    return dict(store.db.execute("SELECT rowid, node_id FROM node_fts").fetchall())
-
-
-def fts_content(store: Store) -> list[tuple]:
-    return store.db.execute("SELECT node_id, kind, name, path, body FROM node_fts ORDER BY node_id").fetchall()
-
-
-def tri_rows(store: Store) -> dict[int, str]:
-    """rowid -> node id of each row of the trigram index."""
-    return dict(store.db.execute("SELECT rowid, node_id FROM node_tri").fetchall())
-
-
-def own_rows(store: Store) -> dict[int, str]:
-    """rowid -> node id of each node's own row of node_fts: no passage, no audience; what node_tri holds."""
-    rows = store.db.execute("SELECT node_id, fts_rowid FROM node_fts_rows WHERE aud = 0").fetchall()
-    return {rowid: key for key, rowid in rows if text_search.PASSAGE_MARK not in key}
-
-
-def test_a_build_rewrites_only_the_rows_of_the_full_text_index_that_changed(tmp_path, kg_env):
-    project = make_searchable(tmp_path, kg_env)
-    sync_build(project)
-    store = Store.for_project(project)
-    before = fts_rows(store)
+    view = searched(project)
+    assert found(view, "zebracorn") == []
     app = tmp_path / "demo-app"
     write(app / "docs/plain.md", "# Ghi chu\n\nDuong ong du lieu chay moi zebracorn.\n")
     commit(app, "plain")
-    report = sync_build(project, verify=True, cold=True)
+    report = built.sync_build(project, verify=True, cold=True)
     assert report.verify["match"], report.verify
-
-    after = fts_rows(store)
-    moved = {nid for rowid, nid in after.items() if before.get(rowid) != nid}
-    new_commit = f"app:commit:{git(app, 'rev-parse', 'HEAD').strip()}"  # the commit that added the file
-    assert new_commit in moved and all(nid.startswith("app:file:docs/plain.md") for nid in moved - {new_commit})
-    keys = store.db.execute("SELECT node_id, fts_rowid FROM node_fts_rows").fetchall()
-    assert {rowid: text_search.passage_lines(key)[0] for key, rowid in keys} == after
-    assert any(text_search.passage_lines(key)[1] for key, _ in keys)  # docs/long.md is indexed as passages too
-    assert any(nid.startswith("app:file:docs/plain.md") for nid in found(store, "zebracorn"))
-    assert tri_rows(store) == own_rows(store)  # the trigram rows follow the index's own rows, under their rowids
-    fresh = Store(tmp_path / "fresh.sqlite")
-    assert build_project(project, store=fresh).content_hash == report.content_hash
-    assert fts_content(store) == fts_content(fresh)  # the index holds what a store written whole holds
-
-    # An index written before node_fts_rows existed is written again whole by the next build.
-    with store.db:
-        store.db.execute("DELETE FROM node_fts_rows")
-    forced = build_project(project, force=True)
-    assert forced.content_hash == report.content_hash
-    assert fts_content(store) == fts_content(fresh)
-    assert len(fts_rows(store)) == store.db.execute("SELECT count(*) FROM node_fts_rows").fetchone()[0]
-    assert tri_rows(store) == own_rows(store)
+    assert any(nid.startswith("app:file:docs/plain.md") for nid in found(built.view_of(project), "zebracorn"))
 
 
 def test_search_finds_a_word_inside_a_name_or_a_path_through_trigrams(tmp_path, kg_env):
@@ -680,41 +393,17 @@ def test_search_finds_a_word_inside_a_name_or_a_path_through_trigrams(tmp_path, 
     write(app / "docs/lumenops-dashboard.md", "Panels of the team.\n")
     write(app / "docs/dashboard.md", "# Dashboard\n\nThe dashboard of the dashboard team.\n")
     commit(app, "two dashboards")
-    sync_build(project)
-    store = Store.for_project(project)
-    ops = "app:file:docs/lumenops-dashboard.md"
-    assert tri_rows(store) == own_rows(store)
-    assert found(store, "ops dashboard")[0] == ops  # "ops" is no word of the index, only part of one
-
-    # A graph built before node_tri came searches by words alone, and the next build fills it whole.
-    with store.db:
-        store.db.execute("DROP TABLE node_tri")
-    old = Store.open_file(store.path)
-    assert not old.has_trigram()
-    hits = found(old, "ops dashboard")
-    assert hits[0] != ops and ops in hits  # found by "dashboard" alone, after the page that holds it most
-    old.close()
-    store.close()
-    build_project(project, force=True)
-    store = Store.for_project(project)
-    assert tri_rows(store) == own_rows(store)
-    assert found(store, "ops dashboard")[0] == ops
-
-    # A version without node_tri built the graph again: as many rows, not the same ones. The next build mends it.
-    with store.db:
-        store.db.execute("DELETE FROM node_tri WHERE rowid = ?", (min(tri_rows(store)),))
-        store.db.execute("INSERT INTO node_tri (rowid, node_id, kind, name, path) VALUES (1000000, 'gone', '', '', '')")
-    build_project(project, force=True)
-    assert tri_rows(store) == own_rows(store)
+    view = searched(project)
+    assert found(view, "ops dashboard")[0] == "app:file:docs/lumenops-dashboard.md"  # "ops" is only part of a word
 
 
 def test_a_build_records_its_size_and_its_highest_label(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env, level="internal", app_level="customer")
-    report = sync_build(project)
-    store = Store.for_project(project)
-    stats = store.build_row(report.build_id)["stats"]
+    report = built.sync_build(project)
+    view = built.view_of(project)
+    stats = view.build_row()["stats"]
     assert stats["size"] == {"nodes": report.nodes, "edges": report.edges, "units": report.units}
-    assert store.top_label(report.build_id) == (2, 0)  # customer, any location
+    assert view.top_label() == (2, 0)  # customer, any location
     assert stats["inputs"].startswith("sha256:")
 
 
@@ -748,67 +437,65 @@ def asked_row(node_id: str, words: str, level: int = 0, location: int = 0, audie
     return asked.Row(node_id, level, location, audience, prior, words)
 
 
-def test_without_the_asked_index_or_a_clearance_search_ranks_as_before(tmp_path, kg_env):
+def asked_view(project, found_rows, *, clearance=None, reader=frozenset()) -> SnapshotView:
+    """The project's latest build with the asked index ``found_rows``, as the hub keeps it (``with_asked``), read by
+    ``reader`` within the asked ``clearance``."""
+    rows, _ = with_asked(built.rows_of(project), found_rows, None)
+    view = Snapshot.from_stored(rows, 1).view(reader)
+    view.asked_clearance = clearance
+    return view
+
+
+def test_without_asked_rows_or_a_clearance_search_ranks_as_before(tmp_path, kg_env):
     project = make_searchable(tmp_path, kg_env)
-    sync_build(project)
-    store = Store.for_project(project)
+    view = searched(project)
     queries = ("graph builder", "do thi tri thuc", "tuesday rollout", "load corpus")
-    before = {q: found(store, q) for q in queries}
-    store.asked_clearance = EVERYTHING  # a hub reader of a file without the index
-    assert not store.has_asked()
-    assert {q: found(store, q) for q in queries} == before
-    assert store.write_asked([asked_row(PLAIN, "tuesday tuesday rollout")]) is not None
-    assert store.has_asked()
-    store.asked_clearance = None  # a reader that reads no asked rows (a local session): as before
-    assert {q: found(store, q) for q in queries} == before
-    assert store.write_asked([]) is None and not store.has_asked()  # no labels: the tables go
-    store.asked_clearance = EVERYTHING
-    assert {q: found(store, q) for q in queries} == before
-    assert store.db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0] == SCHEMA_VERSION
+    before = {q: found(view, q) for q in queries}
+    view.asked_clearance = EVERYTHING  # a reader of a build without asked rows
+    assert {q: found(view, q) for q in queries} == before
+    rows = [asked_row(PLAIN, "tuesday tuesday rollout")]
+    assert with_asked(built.rows_of(project), rows, None)[1] is not None  # rows: a digest names them
+    plain = asked_view(project, rows)  # a reader that reads no asked rows: as before
+    assert {q: found(plain, q) for q in queries} == before
+    assert with_asked(built.rows_of(project), [], None)[1] is None  # no rows: nothing to name
+    empty = asked_view(project, [], clearance=EVERYTHING)
+    assert {q: found(empty, q) for q in queries} == before
 
 
 def test_asked_words_find_a_node_only_for_a_reader_their_label_allows(tmp_path, kg_env):
     project = make_searchable(tmp_path, kg_env)
-    sync_build(project)
-    store = Store.for_project(project)
-    assert PLAIN not in found(store, "tuesday rollout")
-    store.write_asked(
-        [
-            asked_row(PLAIN, "tuesday tuesday rollout"),
-            asked_row("app:file:docs/do-thi.md#đồ-thị-tri-thức", "zebrafish", level=3),
-            asked_row("app:file:app/hub_build.py", "okapi", audience='["chat:7"]'),
-        ]
-    )
-    store.leave_wal()
-    store.close()
-    store = Store.open_file(project.root / "graph.sqlite", immutable=True)  # as the hub reads a graph it built
-    store.asked_clearance = (1, 0)
-    assert found(store, "tuesday rollout")[0] == PLAIN  # only the words agents asked find it
-    assert found(store, "zebrafish") == []  # a row above the clearance: never read
-    assert found(store, "okapi") == []  # a row of an audience the reader is not in
-    store.reader = frozenset({"chat:7"})
-    assert found(store, "okapi") == ["app:file:app/hub_build.py"]
-    assert found(store, "okapi", kinds=["Symbol"]) == []
-    store.asked_clearance = (3, 0)
-    assert found(store, "zebrafish") == ["app:file:docs/do-thi.md#đồ-thị-tri-thức"]
+    assert PLAIN not in found(searched(project), "tuesday rollout")
+    rows = [
+        asked_row(PLAIN, "tuesday tuesday rollout"),
+        asked_row("app:file:docs/do-thi.md#đồ-thị-tri-thức", "zebrafish", level=3),
+        asked_row("app:file:app/hub_build.py", "okapi", audience='["chat:7"]'),
+    ]
+    view = asked_view(project, rows, clearance=(1, 0))
+    assert found(view, "tuesday rollout")[0] == PLAIN  # only the words agents asked find it
+    assert found(view, "zebrafish") == []  # a row above the clearance: never read
+    assert found(view, "okapi") == []  # a row of an audience the reader is not in
+    chat = asked_view(project, rows, clearance=(1, 0), reader=frozenset({"chat:7"}))
+    assert found(chat, "okapi") == ["app:file:app/hub_build.py"]
+    assert found(chat, "okapi", kinds=["Symbol"]) == []
+    assert found(asked_view(project, rows, clearance=(3, 0)), "zebrafish") == [
+        "app:file:docs/do-thi.md#đồ-thị-tri-thức"
+    ]
 
 
 def test_a_clicked_node_is_weighed_up_by_its_prior_at_most_prior_max(tmp_path, kg_env, monkeypatch):
     project = make_searchable(tmp_path, kg_env)
-    sync_build(project)
-    store = Store.for_project(project)
-    store.asked_clearance = EVERYTHING
-    hits = found(store, "graph builder")
+    built.sync_build(project)
+    hits = found(asked_view(project, [], clearance=EVERYTHING), "graph builder")
     second = hits[1]
-    store.write_asked([asked_row(second, "unrelated", prior=9.0)])
-    assert store._asked_priors([second, hits[0]]) == {second: asked.PRIOR_MAX}  # stored above it: capped
+    capped = asked_view(project, [asked_row(second, "unrelated", prior=9.0)], clearance=EVERYTHING)
+    assert capped.ranker._asked_priors([second, hits[0]]) == {second: asked.PRIOR_MAX}  # stored above it: capped
     monkeypatch.setattr(text_search, "ASKED_WEIGHT", 0.0)  # the words weigh nothing, the prior still counts
     moved = []
     for node in hits[1:8]:
-        store.write_asked([asked_row(node, "unrelated", prior=1.0)])
-        assert found(store, "graph builder") == hits  # a prior of 1 changes nothing
-        store.write_asked([asked_row(node, "unrelated", prior=asked.PRIOR_MAX)])
-        now = found(store, "graph builder")
+        one = asked_view(project, [asked_row(node, "unrelated", prior=1.0)], clearance=EVERYTHING)
+        assert found(one, "graph builder") == hits  # a prior of 1 changes nothing
+        most = asked_view(project, [asked_row(node, "unrelated", prior=asked.PRIOR_MAX)], clearance=EVERYTHING)
+        now = found(most, "graph builder")
         assert now.index(node) <= hits.index(node) and set(now) == set(hits)
         moved.append(now.index(node) < hits.index(node))
     assert any(moved)

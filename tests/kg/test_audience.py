@@ -2,7 +2,7 @@
 
 The lattice rules, the kg/1 key and how it is read (fail closed), and the four cases of the graph tier: a reader not
 in the chat, a reader in the chat without the grant an older message names, a reader who leaves between two calls of
-the same store, and elements derived from several items.
+the same session, and elements derived from several items.
 """
 
 import json
@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-from evo_agents.kg.build import build_project
 from evo_agents.kg.policy import (
     TOP_AUDIENCE,
     Label,
@@ -22,12 +21,12 @@ from evo_agents.kg.policy import (
 )
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol import SCHEMAS, finalize_item, hello, item_hash, validate_message
-from evo_agents.kg.serve import READ_META
+from evo_agents.kg.serve import READ_META, Session
 from evo_agents.kg.sessions import describe, read_session, record_read
-from evo_agents.kg.store import SCHEMA_VERSION, StaleSchema, Store
-from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from evo_agents.schema import Validator
+from tests.kg import built
+from tests.kg.hub_graph import hub_session
 
 C5, C6, GA, GB = "chat:5", "chat:6", "grant:a:internal", "grant:b:internal"
 PLAN, M1, M2, M3, CODE = "chat:text:plan", "chat:text:m1", "chat:text:m2", "chat:text:m3", "code:K-7"
@@ -191,7 +190,7 @@ sources:
     )
     project = load_project_at(root, home)
     sync_project(project)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     return project
 
@@ -201,13 +200,14 @@ def chats(tmp_path, kg_env):
     return make(tmp_path, kg_env, json.loads(json.dumps(ITEMS)))
 
 
-def reading(project, audience) -> StoreSession:
-    session = StoreSession(project, "agent")
+def reading(project, audience) -> Session:
+    """The hub's engine over the project's latest build, as the sink agent asks with the audience ``audience``."""
+    session = hub_session(project, "agent")
     session.audience = frozenset(audience)
     return session
 
 
-def data(session: StoreSession, tool: str, **args) -> dict:
+def data(session: Session, tool: str, **args) -> dict:
     found = session.call(tool, args)
     assert not found.get("isError"), found
     return found["structuredContent"]
@@ -217,32 +217,22 @@ def ids(found: dict, key: str = "results") -> set[str]:
     return {n["id"] for n in found[key]}
 
 
-def seen(session: StoreSession, node_id: str) -> bool:
+def seen(session: Session, node_id: str) -> bool:
     return not session.call("kg_node", {"id": node_id}).get("isError")
 
 
-def test_the_store_keeps_the_audience_of_nodes_and_edges_and_reads_as_its_reader(chats):
-    store = Store.open_readonly(chats)
-    b = store.latest_ready()
-    assert store.node(M2, b) is None and store.edges_of(PLAN, b, "in") == []  # no reader set: no audience seen
-    assert {e["src"] for e in store.edges_of("source:chat", b, "in")} == {PLAN}
-    store.reader = frozenset({C5})
-    assert store.node(M2, b)["label"][3] == {C5} and store.node(M1, b) is None
-    assert [(e["src"], e["label"][3]) for e in store.edges_of(PLAN, b, "in") if e["rel"] == "mentions"] == [(M2, {C5})]
-    assert store.top_audience(b) == {C5, C6, GB}
-    raw = store.db.execute("SELECT label_aud FROM nodes WHERE node_id = ? AND tx_to IS NULL", (M1,)).fetchone()[0]
+def test_the_build_keeps_the_audience_of_nodes_and_edges_and_reads_as_its_reader(chats):
+    view = built.view_of(chats)
+    b = view.latest_ready()
+    assert view.node(M2, b) is None and view.edges_of(PLAN, b, "in") == []  # no reader set: no audience seen
+    assert {e["src"] for e in view.edges_of("source:chat", b, "in")} == {PLAN}
+    view.reader = frozenset({C5})
+    assert view.node(M2, b)["label"][3] == {C5} and view.node(M1, b) is None
+    assert [(e["src"], e["label"][3]) for e in view.edges_of(PLAN, b, "in") if e["rel"] == "mentions"] == [(M2, {C5})]
+    assert view.top_audience(b) == {C5, C6, GB}
+    raw = next(row[10] for row in built.rows_of(chats).nodes if row[0] == M1)  # the label_aud of its row
     assert json.loads(raw) == [C5, GB]
-    store.close()
-
-
-def test_a_store_of_the_schema_before_audiences_is_stale(tmp_path):
-    assert SCHEMA_VERSION == "4"
-    old = Store(tmp_path / "graph.sqlite")
-    with old.db:
-        old.db.execute("UPDATE meta SET value = '3' WHERE key = 'schema_version'")
-    old.close()
-    with pytest.raises(StaleSchema):
-        Store(tmp_path / "graph.sqlite")
+    view.close()
 
 
 def test_a_reader_not_in_the_chat_sees_no_node_edge_or_count_of_it(chats):
@@ -281,7 +271,7 @@ def test_a_search_matching_hidden_items_answers_as_the_graph_without_them(tmp_pa
 
 def test_a_message_ranks_with_the_idf_the_rows_without_an_audience_give_its_words(tmp_path, kg_env):
     """``node_fts_aud`` holds a few rows: there a word that most of them hold gets next to no IDF, and a short message
-    naming it would rank below a long public page that holds it once (``Store._as_public``)."""
+    naming it would rank below a long public page that holds it once."""
     pages = [{"key": f"p{i}", "title": f"Release note {i}", "text": f"Notes of release {i}."} for i in range(12)]
     handbook = {"key": "handbook", "title": "Handbook", "text": "The kiwi " + "handbook " * 200}
     said = [{"key": f"m{i}", "title": f"#{i} alice", "text": f"kiwi {i}", "audience": [C5]} for i in range(3)]
@@ -293,14 +283,15 @@ def test_a_message_ranks_with_the_idf_the_rows_without_an_audience_give_its_word
     ]
 
 
-def test_kg_search_quotes_a_message_only_to_a_reader_in_its_chat(tmp_path, kg_env):
+def test_kg_search_matches_a_message_only_for_a_reader_in_its_chat(tmp_path, kg_env):
     said = {"key": "m0", "title": "#0 alice", "text": "the kiwi rollout slipped a week", "audience": [C5]}
     handbook = {"key": "handbook", "title": "Handbook", "text": "The kiwi handbook."}
     project = make(tmp_path, kg_env, [handbook, said])
-    inside = data(reading(project, [C5]), "kg_search", query="kiwi rollout")["matched"]
-    assert "kiwi rollout slipped" in inside["chat:text:m0"]["snippet"]
-    outside = data(reading(project, [C6]), "kg_search", query="kiwi rollout")["matched"]
-    assert set(outside) == {"chat:text:handbook"}
+    inside = reading(project, [C5]).call("kg_search", {"query": "kiwi rollout"})
+    assert "chat:text:m0" in inside["structuredContent"]["matched"]
+    outside = reading(project, [C6]).call("kg_search", {"query": "kiwi rollout"})
+    assert set(outside["structuredContent"]["matched"]) == {"chat:text:handbook"}
+    assert "slipped" not in json.dumps(outside) and "#0 alice" not in json.dumps(outside)
 
 
 def test_a_reader_who_joined_after_project_b_left_sees_later_messages_only(chats):

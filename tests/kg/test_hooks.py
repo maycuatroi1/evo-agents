@@ -768,7 +768,7 @@ def test_post_search_from_the_cache_imports_neither_the_harness_nor_yaml(linked,
         "client.load_credentials = lambda: client.Credentials('https://hub.lumenops.example', 'alice', 'evo_test')\n"
         "client.Hub = Hub\n"
         "main(['kg', 'hook', 'post-search', '--only', 'grep'])\n"
-        "held = ('yaml', 'evo_agents.harness', 'evo_agents.kg.project', 'sqlite3', 'evo_agents.kg.store')\n"
+        "held = ('yaml', 'evo_agents.harness', 'evo_agents.kg.project', 'sqlite3')\n"
         "print(json.dumps([[m for m in held if m in sys.modules], asked]), file=sys.stderr)\n"
     )
     env = {**os.environ, "EVO_KG_HOME": str(kg_env), "CLAUDE_PROJECT_DIR": str(project.harness.root)}

@@ -80,7 +80,7 @@ def old_graph_file(
 
 def test_graph_secrets_counts_the_rows_of_a_graph_file_holding_one(tmp_path):
     path = old_graph_file(
-        tmp_path / "graph.sqlite",
+        tmp_path / "old-graph.db",
         [("settings", f"export JWT_SECRET={LITERAL}\n"), ("readme", "Install.")],
         [("db", json.dumps({"password": LITERAL})), ("a", "{}")],
         edges=False,  # a store of another schema

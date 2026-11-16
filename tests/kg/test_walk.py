@@ -4,6 +4,7 @@ not see, and a key every settings surface takes and every bench shard tells apar
 
 import json
 import sys
+from dataclasses import replace
 
 import pytest
 import yaml
@@ -12,11 +13,9 @@ from evo_agents.cli import main
 from evo_agents.kg import ppr, strategy
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.bench import run as bench_run
-from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_session import StoreSession
-from evo_agents.kg.sync import sync_project
+from tests.kg import built
+from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, make_project, write
 
 ALPHA = "app:file:docs/alpha/launch.md"
@@ -65,9 +64,7 @@ def entity_project(tmp_path, kg_env):
     write(chosen, yaml.safe_dump(data))
     strategy.apply(strategy.load_file(chosen), project)
     project = load_project_at(project.harness.root, kg_env)
-    assert all(r.ok for r in sync_project(project))
-    report = build_project(project)
-    assert report.ok, report.errors
+    built.sync_build(project)
     return project
 
 
@@ -76,29 +73,41 @@ def walk_on(project, **keys):
     kg_settings.write(project.root, kg_settings.of({"walk": keys or True}, tuning))
 
 
+def ask(project, tool: str, args: dict, sink: str = "agent") -> dict:
+    """``tool`` called through the hub's engine over the project's latest build, as ``sink`` asks."""
+    return hub_session(project, sink).call(tool, args)
+
+
 def search_ids(project, query, sink="agent"):
     """The documents of kg_search's results: a section counts as its document."""
-    found = StoreSession(project, sink).call("kg_search", {"query": query})
+    found = ask(project, "kg_search", {"query": query}, sink)
     assert not found.get("isError"), found
     return list(dict.fromkeys(r["id"].split("#", 1)[0] for r in found["structuredContent"]["results"]))
 
 
-def hide(project, sql: str, *args, top=(2, 0), audience=None):
-    """Change labels straight in the latest build, and its highest label, as a build of such sources would."""
-    store = Store.for_project(project)
-    b = store.latest_ready()
-    with store.db:
-        store.db.execute(sql, args)
-        store.db.execute(
-            "UPDATE builds SET stats = json_set(stats, '$.top_label', json(?)) WHERE build_id = ?",
-            (json.dumps(list(top)), b),
-        )
-        if audience:
-            store.db.execute(
-                "UPDATE builds SET stats = json_set(stats, '$.top_audience', json(?)) WHERE build_id = ?",
-                (json.dumps(audience), b),
-            )
-    store.close()
+NODE_LABEL, EDGE_LABEL = (6, 10), (7, 10)  # where the level and the audience sit in a node and in an edge row
+
+
+def hide(project, *, nodes=(), edges=(), top=(2, 0), audience=None):
+    """Raise labels straight in the latest build, and its highest label, as a build of such sources would: of the nodes
+    of ids ``nodes`` and the edges ``edges`` ((src, rel, dst)), the level to 2, or the audience to ``audience``."""
+    held = built.HELD[project.root]
+    rows = held.rows
+
+    def raised(row, at):
+        row = list(row)
+        if audience is None:
+            row[at[0]] = 2
+        else:
+            row[at[1]] = json.dumps(audience)
+        return tuple(row)
+
+    held.rows = replace(
+        rows,
+        nodes=tuple(raised(r, NODE_LABEL) if r[0] in nodes else r for r in rows.nodes),
+        edges=tuple(raised(r, EDGE_LABEL) if tuple(r[1:4]) in edges else r for r in rows.edges),
+        top=(tuple(top), frozenset(audience) if audience else rows.top[1]),
+    )
 
 
 # -- the setting ----------------------------------------------------------------------------------------------------
@@ -234,7 +243,7 @@ def test_a_project_without_walk_ranks_as_before(tmp_path, kg_env):
     queries = ("zephyr launcher", "search", "glowing tail")
 
     def answers():
-        session = StoreSession(project, "agent")
+        session = hub_session(project, "agent")
         return [session.call("kg_search", {"query": q}) for q in queries], session.call(
             "kg_context", {"query": "zephyr"}
         )
@@ -248,9 +257,9 @@ def test_a_project_without_walk_ranks_as_before(tmp_path, kg_env):
 
 def test_kg_context_fills_its_budget_by_the_walk_in_the_same_format(tmp_path, kg_env):
     project = entity_project(tmp_path, kg_env)
-    plain = StoreSession(project, "agent").call("kg_context", {"query": "zephyr launcher"})["structuredContent"]
+    plain = ask(project, "kg_context", {"query": "zephyr launcher"})["structuredContent"]
     walk_on(project)
-    walked = StoreSession(project, "agent").call("kg_context", {"query": "zephyr launcher"})["structuredContent"]
+    walked = ask(project, "kg_context", {"query": "zephyr launcher"})["structuredContent"]
     assert set(walked) == set(plain)
     assert {"build", "seeds", "nodes", "edges", "left_out", "summary"} <= set(walked)
     nodes = {n["id"] for n in walked["nodes"]}
@@ -262,11 +271,11 @@ def test_kg_context_fills_its_budget_by_the_walk_in_the_same_format(tmp_path, kg
 def test_the_walk_never_passes_a_hidden_node(tmp_path, kg_env):
     project = entity_project(tmp_path, kg_env)
     walk_on(project)
-    hide(project, "UPDATE nodes SET label_lvl = 2 WHERE node_id = ?", QUASAR)
+    hide(project, nodes={QUASAR})
     assert BETA in search_ids(project, "zephyr launcher", "wide")
     for found in (
-        StoreSession(project, "agent").call("kg_search", {"query": "zephyr launcher"}),
-        StoreSession(project, "agent").call("kg_context", {"query": "zephyr launcher"}),
+        ask(project, "kg_search", {"query": "zephyr launcher"}),
+        ask(project, "kg_context", {"query": "zephyr launcher"}),
     ):
         text = json.dumps(found)
         assert "tail.md" not in text and "quasar" not in text.lower()
@@ -275,36 +284,29 @@ def test_the_walk_never_passes_a_hidden_node(tmp_path, kg_env):
 def test_the_walk_never_passes_a_hidden_edge(tmp_path, kg_env):
     project = entity_project(tmp_path, kg_env)
     walk_on(project)
-    hide(project, "UPDATE edges SET label_lvl = 2 WHERE dst = ? AND rel = 'mentions' AND src = ?", QUASAR, BETA)
+    hide(project, edges={(BETA, "mentions", QUASAR)})
     assert BETA in search_ids(project, "zephyr launcher", "wide")
     assert BETA not in search_ids(project, "zephyr launcher", "agent")
-    context = StoreSession(project, "agent").call("kg_context", {"query": "zephyr launcher"})
+    context = ask(project, "kg_context", {"query": "zephyr launcher"})
     assert "tail.md" not in json.dumps(context)
 
 
 def test_the_walk_never_passes_a_node_hidden_by_its_audience(tmp_path, kg_env):
     project = entity_project(tmp_path, kg_env)
     walk_on(project)
-    hide(
-        project,
-        "UPDATE nodes SET label_aud = ? WHERE node_id = ?",
-        json.dumps(["group:lumen-core"]),
-        QUASAR,
-        top=(1, 0),
-        audience=["group:lumen-core"],
-    )
+    hide(project, nodes={QUASAR}, top=(1, 0), audience=["group:lumen-core"])
     assert BETA not in search_ids(project, "zephyr launcher", "agent")
-    assert "tail.md" not in json.dumps(StoreSession(project, "agent").call("kg_context", {"query": "zephyr launcher"}))
+    assert "tail.md" not in json.dumps(ask(project, "kg_context", {"query": "zephyr launcher"}))
 
 
 def test_a_graph_without_entities_walks_from_its_text_matches(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
-    assert all(r.ok for r in sync_project(project)) and build_project(project).ok
+    built.sync_build(project)
     plain = search_ids(project, "rank_results")
     walk_on(project)
     walked = search_ids(project, "rank_results")
     assert walked and walked[0] == plain[0] == "symbol:app:app/search.py::rank_results"
-    context = StoreSession(project, "agent").call("kg_context", {"query": "rank_results"})
+    context = ask(project, "kg_context", {"query": "rank_results"})
     assert not context.get("isError") and context["structuredContent"]["nodes"]
 
 

@@ -9,7 +9,6 @@ touches ~/.evo/kg."""
 from __future__ import annotations
 
 import hashlib
-import sqlite3
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,15 +22,12 @@ from evo_agents.hub.kg_graph import BuiltGraph
 from evo_agents.hub.kg_snapshots import Held
 from evo_agents.hub.server import kg_health
 from evo_agents.kg import graph_rows
-from evo_agents.kg.build import build_project
 from evo_agents.kg.health import is_test_path
 from evo_agents.kg.policy import Label
 from evo_agents.kg.review import ONTOLOGY_RULES, RULES
-from evo_agents.kg.snapshot import Snapshot, store_rows
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_session import StoreSession
-from evo_agents.kg.sync import sync_project
+from evo_agents.kg.snapshot import Snapshot
 from tests.kg import built
+from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, git, make_project, write
 from tests.kg.test_clusters import needs_engine
 
@@ -123,20 +119,15 @@ def test_a_test_path_is_one_of_tests(path, test):
 @pytest.fixture
 def demo(tmp_path, monkeypatch):
     """The demo project of tests.kg.projects (a harness and a git repo app of Python and markdown), synced and built
-    in a kg home of the test's own."""
+    in memory as the hub builds it (``tests.kg.built``), in a kg home of the test's own."""
     monkeypatch.setenv("EVO_KG_HOME", str(tmp_path / "home"))
     project = make_project(tmp_path, tmp_path / "home")
-    assert all(result.ok for result in sync_project(project))
-    report = build_project(project)
-    assert report.ok, report.errors
-    return SimpleNamespace(
-        project=project, report=report, app=tmp_path / "demo-app", graph=project.root / "graph.sqlite"
-    )
+    report = built.sync_build(project)
+    return SimpleNamespace(project=project, report=report, app=tmp_path / "demo-app")
 
 
 def test_a_built_graph_says_which_python_methods_no_call_reaches_and_which_files_each_git_source_holds(demo):
-    report = built.build(demo.project)  # in memory, as the hub builds (``kg_build``)
-    assert report.ok, report.errors
+    report = demo.report  # in memory, as the hub builds (``kg_build``)
     reach = graph_rows.call_reach(built.rows_of(demo.project))
     assert reach == {  # rank_results is called by search, search by Server.handle; nothing calls handle
         "functions": 2,
@@ -439,32 +430,27 @@ def plan(sha: str, **step) -> dict:
 
 def test_the_eval_asks_the_done_steps_whose_commits_the_graph_read(demo):
     head = git(demo.app, "rev-parse", "HEAD").strip()
-    store = Store.open_file(demo.graph)
-    try:
-        b = store.latest_ready()
-        commits = kg_health_eval.GraphCommits(store, b)
-        assert commits.changed(head[:10], "app")[1] == 5 and commits.changed(head, "other") is None
-        bodies = [
-            ("demo", plan(head[:10])),
-            ("pending", plan(head, status="pending")),
-            ("unread", plan("a1b2c3d4e5")),
-            ("no-repo", {"id": "no-repo", "repos": [], "steps": [{"id": 2, "status": "done", "evidence": head}]}),
-        ]
-        questions, skipped, available, sources = kg_health_eval.plan_questions("demo", bodies, commits)
-        assert available == 1 and [q.id for q in questions] == ["demo#1"] and sources == {"commits": 1}
-        assert questions[0].files == tuple(
-            ("app", path) for path in sorted(kg_coverage.source_files(demo.project)["app"]["files"])
-        )
-        assert [str(s) for s in skipped] == [
-            "unread#1: none of its 1 commit(s) is in the graph of app, and no pull request or path of its evidence "
-            "gives a file",
-            "no-repo#2: no repo named",
-        ]
-        session = StoreSession(demo.project, "agent")
-        scored = kg_health_eval.score(questions, skipped, available, session, sources=sources)
-        left_out = kg_health_eval.plan_questions("demo", bodies, commits, leave_out={"demo#1"})
-    finally:
-        store.close()
+    commits = kg_health_eval.GraphCommits(built.view_of(demo.project), 0)
+    assert commits.changed(head[:10], "app")[1] == 5 and commits.changed(head, "other") is None
+    bodies = [
+        ("demo", plan(head[:10])),
+        ("pending", plan(head, status="pending")),
+        ("unread", plan("a1b2c3d4e5")),
+        ("no-repo", {"id": "no-repo", "repos": [], "steps": [{"id": 2, "status": "done", "evidence": head}]}),
+    ]
+    questions, skipped, available, sources = kg_health_eval.plan_questions("demo", bodies, commits)
+    assert available == 1 and [q.id for q in questions] == ["demo#1"] and sources == {"commits": 1}
+    assert questions[0].files == tuple(
+        ("app", path) for path in sorted(kg_coverage.source_files(demo.project)["app"]["files"])
+    )
+    assert [str(s) for s in skipped] == [
+        "unread#1: none of its 1 commit(s) is in the graph of app, and no pull request or path of its evidence "
+        "gives a file",
+        "no-repo#2: no repo named",
+    ]
+    session = hub_session(demo.project, "agent")
+    scored = kg_health_eval.score(questions, skipped, available, session, sources=sources)
+    left_out = kg_health_eval.plan_questions("demo", bodies, commits, leave_out={"demo#1"})
     assert left_out[0] == [] and left_out[2] == 0  # a step the question set holds is asked as the set asks it
     assert scored["types"] == ["plan-step"] and scored["questions"] == 1 and scored["plan_steps"] == 1
     assert scored["skipped"] == 2 and scored["skipped_by"] == {"no_repo": 1, "not_in_graph": 1}
@@ -482,16 +468,11 @@ def test_a_step_whose_commits_change_more_than_twenty_files_is_still_asked(demo)
     for index in range(21):  # more than kg eval-questions takes by default (DEFAULT_MAX_FILES, 20)
         write(demo.app / f"many/f{index}.py", f"X = {index}\n")
     commit(demo.app, "many files")
-    assert all(result.ok for result in sync_project(demo.project))
-    assert build_project(demo.project).ok
+    built.sync_build(demo.project)
     head = git(demo.app, "rev-parse", "HEAD").strip()
-    store = Store.open_file(demo.graph)
-    try:
-        commits = kg_health_eval.GraphCommits(store, store.latest_ready())
-        questions, skipped, available, _ = kg_health_eval.plan_questions("demo", [("demo", plan(head))], commits)
-        scored = kg_health_eval.score(questions, skipped, available, StoreSession(demo.project, "agent"))
-    finally:
-        store.close()
+    commits = kg_health_eval.GraphCommits(built.view_of(demo.project), 0)
+    questions, skipped, available, _ = kg_health_eval.plan_questions("demo", [("demo", plan(head))], commits)
+    scored = kg_health_eval.score(questions, skipped, available, hub_session(demo.project, "agent"))
     assert available == 1 and skipped == [] and len(questions[0].files) == 21
     row = scored["methods"]["kg_search"]
     # 21 answers: Recall@5 is at most 5/21, the capped Recall@5 reads the 5 it could find
@@ -609,16 +590,9 @@ class FileBlobs:
 def test_the_eval_reads_the_hubs_artifact_as_the_owner_through_the_hub_sink_and_keeps_a_score_it_had(
     demo, tmp_path, monkeypatch
 ):
-    staged = tmp_path / "artifact.sqlite"  # one file, out of WAL mode, as the hub's build leaves an artifact
-    source, target = sqlite3.connect(f"{demo.graph.resolve().as_uri()}?mode=ro", uri=True), sqlite3.connect(staged)
-    source.backup(target)
-    source.close()
-    target.close()
-    copy = Store(staged)
-    copy.leave_wal()
-    copy.close()
+    staged = artifact(demo, tmp_path)
     blobs = FileBlobs(staged)
-    built = BuiltGraph(7, blobs.sha256, len(blobs.data), demo.report.content_hash, 1, 1, NOW)
+    graph = BuiltGraph(7, blobs.sha256, len(blobs.data), demo.report.content_hash, 1, 1, NOW)
     level = demo.project.policy.levels.index("internal")
     access = SimpleNamespace(
         max_level="internal",
@@ -628,50 +602,46 @@ def test_the_eval_reads_the_hubs_artifact_as_the_owner_through_the_hub_sink_and_
         ),
     )
     head = git(demo.app, "rev-parse", "HEAD").strip()
-    loaded = held(staged, 7)
+    loaded = held(demo, 7)
     plans = [("demo", plan(head))]
-    first = kg_health._evaluate("demo", access, "agent", [built], plans, None, loaded=loaded)
+    first = kg_health._evaluate("demo", access, "agent", [graph], plans, None, loaded=loaded)
     assert first["sink"] == "agent" and first["set"] is None
-    assert first["build_id"] == 7 and first["content_hash"] == built.content_hash and first["questions"] == 1
+    assert first["build_id"] == 7 and first["content_hash"] == graph.content_hash and first["questions"] == 1
     assert first["methods"]["kg_search"]["n"] == 1 and blobs.fetched == 0  # the snapshot, no artifact
 
     def no_score(*args):
         raise AssertionError("the same questions of the same graph are not asked again")
 
     monkeypatch.setattr(kg_health_eval, "score", no_score)
-    again = kg_health._evaluate("demo", access, "agent", [built], plans, first, loaded=loaded)
+    again = kg_health._evaluate("demo", access, "agent", [graph], plans, first, loaded=loaded)
     assert again == first  # the score it had
     assert first["audience"] == kg_health.audience_digest(frozenset())
 
     monkeypatch.undo()
     heard = frozenset({"chat:7"})  # the owner's audience: a chat they are cleared for
-    read = kg_health._evaluate("demo", access, "agent", [built], plans, first, None, heard, loaded)
+    read = kg_health._evaluate("demo", access, "agent", [graph], plans, first, None, heard, loaded)
     assert read["audience"] == kg_health.audience_digest(heard) != first["audience"]  # asked again with it
 
 
-def held(path, build_id: int) -> Held:
-    """The snapshot the hub holds of the graph file at ``path``, as if build ``build_id`` wrote its rows."""
-    store = Store.open_file(path, immutable=True)
-    try:
-        return Held(build_id, Snapshot.from_stored(store_rows(store, store.latest_ready())))
-    finally:
-        store.close()
+def artifact(demo, tmp_path: Path) -> Path:
+    """A file in place of the artifact the build uploaded: the snapshot is read, so it is never fetched."""
+    staged = tmp_path / "artifact.bin"
+    staged.write_bytes(demo.report.content_hash.encode())
+    return staged
+
+
+def held(demo, build_id: int) -> Held:
+    """The snapshot the hub holds of the demo's build, as if build ``build_id`` wrote its rows."""
+    return Held(build_id, Snapshot.from_stored(built.rows_of(demo.project)))
 
 
 @needs_engine
 def test_the_review_counts_read_the_hubs_artifact_as_the_owner_and_leave_the_dismissed_aside(demo, tmp_path):
-    staged = tmp_path / "artifact.sqlite"
-    source, target = sqlite3.connect(f"{demo.graph.resolve().as_uri()}?mode=ro", uri=True), sqlite3.connect(staged)
-    source.backup(target)
-    source.close()
-    target.close()
-    copy = Store(staged)
-    copy.leave_wal()
-    stored = copy.review_items(demo.report.build_id)
-    copy.close()
+    staged = artifact(demo, tmp_path)
+    stored = built.view_of(demo.project).review_items()
     assert stored, "the demo project's build has a review queue"
     blobs = FileBlobs(staged)
-    built = BuiltGraph(7, blobs.sha256, len(blobs.data), demo.report.content_hash, 1, 1, NOW)
+    graph = BuiltGraph(7, blobs.sha256, len(blobs.data), demo.report.content_hash, 1, 1, NOW)
     level = demo.project.policy.levels.index("internal")
     access = SimpleNamespace(
         max_level="internal",
@@ -679,12 +649,12 @@ def test_the_review_counts_read_the_hubs_artifact_as_the_owner_and_leave_the_dis
             policy=demo.project.policy, ceiling=lambda max_level, sink: Label(level, 0, "U", frozenset())
         ),
     )
-    loaded = held(staged, 7)
-    found = kg_health._review("demo", access, "agent", [built], set(), loaded)
+    loaded = held(demo, 7)
+    found = kg_health._review("demo", access, "agent", [graph], set(), loaded)
     assert found["build_id"] == 7 and set(found["open"]) == set(RULES)
     assert 0 < sum(found["open"].values()) <= len(stored) == sum(demo.report.coverage["review"].values())
     one = stored[0]
-    fewer = kg_health._review("demo", access, "agent", [built], {one["fingerprint"]}, loaded)
+    fewer = kg_health._review("demo", access, "agent", [graph], {one["fingerprint"]}, loaded)
     assert fewer["open"][one["rule"]] == found["open"][one["rule"]] - 1
     assert kg_coverage.review_open({"review": fewer}, one["rule"]) == fewer["open"][one["rule"]]
 
