@@ -14,7 +14,7 @@ from evo_agents.kg import semantic
 from evo_agents.kg.build import BuildReport, build_rows, tuning_of, unchanged_rows, verify_rows
 from evo_agents.kg.clusters import Clusters
 from evo_agents.kg.project import Project, ProjectError
-from evo_agents.kg.snapshot import Snapshot, StoreRows, edge_dict, node_dict, rows_clusters
+from evo_agents.kg.snapshot import Snapshot, SnapshotView, StoreRows, edge_dict, node_dict, rows_clusters
 from evo_agents.kg.sync import sync_project
 
 
@@ -109,3 +109,10 @@ def edges_of(project: Project) -> list[dict]:
         if rows is not None
         else []
     )
+
+
+def view_of(project: Project) -> SnapshotView | None:
+    """The latest build as a reader with no audience reads it, through the reads of a ``Store`` (``b`` ignored); None
+    before a build."""
+    snap = snapshot_of(project)
+    return snap.view() if snap is not None else None
