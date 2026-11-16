@@ -423,7 +423,14 @@ def build_in_cache(
     content_hash = graph_hash if asked is None else sha256_of(f"{graph_hash}\n{asked}")
     vector_coverage = None
     if semantic is not None:
+        aside = None
+        if semantic.indexes:  # the model loads: what it does not read is held packed under it
+            rows, aside = kg_semantic.set_aside(rows)
+            give_back()
         rows, vectors = kg_semantic.index(rows, semantic, vector_cache or project.root / kg_semantic.SEED_FILES[0])
+        if aside is not None:
+            rows = kg_semantic.taken_back(rows, aside)
+            del aside
         if vectors.error:
             log.warning("kg build without vectors", extra={"project": name, "error": vectors.error})
         if vectors.digest is not None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterable
+from dataclasses import replace
 from pathlib import Path
 
 from sqlalchemy import delete, func, select
@@ -17,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.kg import graph_rows, semantic, store_vectors
+from evo_agents.kg.packed import Packed
 from evo_agents.kg.snapshot import StoreRows
 
 DEFAULT_NEW_MODE = "index"  # a project registered now: vectors written, search by words until the holdout says on
@@ -73,6 +75,24 @@ def index(
     finally:
         if not loaded:
             semantic.forget_model(settings.model)
+
+
+UNREAD = ("nodes", "edges", "code", "units", "wheres", "derivations", "asked", "clusters", "review")  # by ``index``
+
+
+def set_aside(rows: StoreRows) -> tuple[StoreRows, Packed]:
+    """``rows`` without the parts ``index`` does not read, and those parts packed (``Packed``), for ``taken_back``.
+    Held as they are under the model of the vectors, they made a build's peak: on a corpus of some 25,000 items, about
+    1.6 GB of rows next to the model's 1.3 GB, against some 0.2 GB packed. The caller drops the ``rows`` it gave."""
+    aside = Packed()
+    for name in UNREAD:
+        aside[name] = getattr(rows, name)
+    return replace(rows, **{name: type(getattr(rows, name))() for name in UNREAD}), aside
+
+
+def taken_back(rows: StoreRows, aside: Packed) -> StoreRows:
+    """``rows`` with the parts ``set_aside`` packed in ``aside`` again."""
+    return replace(rows, **{name: aside[name] for name in UNREAD})
 
 
 def _indexed(graph: graph_rows.RowsVectors, settings: semantic.Settings, cache: semantic.Cache) -> semantic.Indexed:

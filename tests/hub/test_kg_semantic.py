@@ -78,6 +78,22 @@ def test_a_hub_build_writes_the_vectors_into_its_rows_and_off_drops_them(tmp_pat
     semantic.forget_models()
 
 
+def test_the_rows_set_aside_under_the_model_come_back_as_they_were(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVO_KG_HOME", str(tmp_path / "kg-home"))
+    semantic.forget_models()
+    monkeypatch.setitem(semantic.FACTORIES, FAKE, Words)
+    project = with_garage(tmp_path, tmp_path / "kg-home")
+    sync_build(project)
+    settings = semantic.Settings("index", FAKE)
+    held, done = kg_semantic.index(rows_of(project), settings, tmp_path / "held" / store_vectors.CACHE_FILE)
+    light, aside = kg_semantic.set_aside(rows_of(project))
+    assert light.nodes == () and light.wheres == () and light.code == {} and light.keyed
+    light, found = kg_semantic.index(light, settings, tmp_path / "aside" / store_vectors.CACHE_FILE)
+    assert (found.digest, found.rows) == (done.digest, done.rows)
+    assert kg_semantic.taken_back(light, aside) == held
+    semantic.forget_models()
+
+
 def test_the_hub_cache_seeds_from_the_files_then_embeds_only_what_changed(hub_db, tmp_path, monkeypatch):
     with live.engine(hub_db).begin() as conn:
         project_id = seed(conn)["project"]
