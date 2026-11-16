@@ -104,4 +104,8 @@ def edges_of(project: Project) -> list[dict]:
     """The edges of the project's latest build as ``Store.edges_of`` reads them, an edge to no node included, by
     (src, rel, dst); [] before a build."""
     rows = rows_of(project)
-    return sorted((edge_dict(r) for r in rows.edges), key=lambda e: (e["src"], e["rel"], e["dst"])) if rows else []
+    return (
+        sorted((edge_dict(r) for r in rows.edges), key=lambda e: (e["src"], e["rel"], e["dst"]))
+        if rows is not None
+        else []
+    )
