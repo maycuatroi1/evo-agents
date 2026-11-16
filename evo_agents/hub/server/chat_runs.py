@@ -5,7 +5,8 @@ it goes to, the session it goes on in, the agent's messages in the thread and th
 the run of the profile's agent for the person at the origin of the chain. Refused, with why, when that person is not a
 writer on the profile's project (in a settle chat, any grant on it wakes the chat's own agent: ``chats.SETTLE``), when
 their primary seat in the org chart ended, or when no worker of the person can take it now (an operations event of the
-agent's project, ``mention.refused``, tells its Orchestrator). When the ready nodes of the
+agent's project, ``mention.refused``, tells its Orchestrator, unless the mention is an ops thread's run's own: that
+event would come back to it as a batch of its own, ``ops_queue.ops_run``). When the ready nodes of the
 agent's pool only lack a free slot, the run queues for the first of them instead, by its priority (``Hand.priority``),
 and the thread says how many runs it waits behind. Each (thread, agent, person) is one session: a run of it that is queued or held takes the message in its inbox; one that
 ended done, or failed because the remote declined its push (``rules.goes_on``), is gone on from by a new run, pinned to
@@ -37,7 +38,7 @@ from dataclasses import dataclass, replace
 from sqlalchemy import func, insert, literal, null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_bridge_events, chats, ops_events, profiles, runs, system_context, tables
+from evo_agents.hub import chat_bridge_events, chats, ops_events, ops_queue, profiles, runs, system_context, tables
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
@@ -94,7 +95,8 @@ class Hand:
     whose agent type sends its chat runs under the name of its run_as. ``on_worker`` is the worker a new session goes to
     when that worker can take it: the machine the work is about (a program to install, ``triage``). ``answers`` is the
     agent's message the message answers, when it answers one. ``priority`` is the run's (runs.PRIORITIES): an agent's
-    ask sets it, a person's mention has the default."""
+    ask sets it, a person's mention has the default. ``asker_run_id`` is the run whose agent's mention this is, when an
+    agent's."""
 
     chat: ChatAccess
     message_id: int
@@ -110,6 +112,7 @@ class Hand:
     on_worker: int | None = None
     answers: Answered | None = None
     priority: str = runs.DEFAULT_PRIORITY
+    asker_run_id: int | None = None
 
     @property
     def owner_id(self) -> int:
@@ -613,10 +616,12 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
             return None, exc.detail
     worker, why = await pick_worker(conn, hand)
     if worker is None and why is not None:  # no node can take it, for a reason a free slot would not end
-        project_id, chat_id = hand.profile.project_id, hand.chat.chat_id
-        await ops_events.mention_refused(
-            conn, project_id=project_id, profile_id=hand.profile.id, chat_id=chat_id, message_id=hand.message_id
-        )
+        asker = hand.asker_run_id if hand.asker_run_id is not None else run_access_rules.ACTING_RUN.get()
+        if not await ops_queue.ops_run(conn, asker):  # an ops run's own refusal would wake it again, and again
+            project_id, chat_id = hand.profile.project_id, hand.chat.chat_id
+            await ops_events.mention_refused(
+                conn, project_id=project_id, profile_id=hand.profile.id, chat_id=chat_id, message_id=hand.message_id
+            )
         return None, why
     try:
         run_id = await _start(conn, hand, worker)
@@ -815,7 +820,7 @@ async def _hand_on(
             conn, found, system_context.TOOL_MENTION, to_handle=target.handle, status="refused", reason=over
         )
         return None, over
-    child, why = await hand_work(conn, replace(hand, profile=target))
+    child, why = await hand_work(conn, replace(hand, profile=target, asker_run_id=run_id))
     await system_traces.record_mention(conn, found, target.handle, child, why, hand.message_id)
     return child, why
 

@@ -322,6 +322,29 @@ def test_the_events_of_an_ops_run_are_no_item_of_the_queue(client, hub, hub_db):
     assert run_pass(client)["queued"] == 1, "the Orchestrator's own decision comes back to it as no batch"
 
 
+def test_a_mention_an_ops_run_makes_that_no_node_takes_writes_no_mention_refused(client, hub, hub_db):
+    _, fixer, lead, parent = led_desk(client, hub)
+    ops_on(hub_db)
+    failed(hub_db, parent, "the retry test fails")
+    batch(hub_db, parent)
+    threads_pass(client)
+    (thread,) = ops_threads_of(hub_db)
+    run_id = thread["orchestrator_run_id"]
+    lead_claims(client, lead, run_id)
+    joined = client.put(f"/v1/chats/{thread['chat_id']}/agents/fixer", headers=hub["owner"])
+    assert joined.status_code == 200, joined.text
+    w, e = tables.workers, tables.hub_events
+    sql(hub_db, update(w).values(dispatch_from="web").where(w.c.id == fixer["id"]))  # no node takes @fixer
+    refused = select(func.count()).select_from(e).where(e.c.kind == hub_events.MENTION_REFUSED)
+
+    handed = in_chats(client, lead, run_id, "chat/mentions", {"handle": "fixer", "body": "run the retry test again"})
+    assert handed.status_code == 201 and handed.json()["refusal"], handed.text
+    assert sql(hub_db, refused)[0][0] == 0, "the ops run's own refusal would come back to it as a batch, and again"
+    said = sent(client, hub["owner"], thread["chat_id"], "@fixer run it again")
+    assert said["mentions"][0]["refusal"]
+    assert sql(hub_db, refused)[0][0] == 1, "a person's mention no node takes still tells the Orchestrator"
+
+
 def test_the_orchestrator_dispatches_a_stalled_plan_again(client, hub, hub_db):
     _, _, lead, _ = led_desk(client, hub)
     ops_on(hub_db)

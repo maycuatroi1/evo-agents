@@ -755,9 +755,10 @@ in_progress, every depends_on done), no plan run or step run active, no trace of
 review or parked, and neither a new revision nor a move of one of its traces for `plan_stall_minutes`; once a stall,
 again after a new revision or a new run. A plan of the Curator never stalls here. `run.queued_long` says a chat run
 still waits for a slot `plan_stall_minutes` after it was queued, once a run. `mention.refused` says a mention or an
-ask found no node that can take its run. Each payload holds ids and states only, and tier 0 handles none of them. A
-trace with no plan takes the plan a brief of an ask in it refs (`plan:<id>`), or the plan of a step a run of it marks
-with plan_step, at the plan's revision then; a trace that has a plan keeps it.
+ask found no node that can take its run; one an ops thread's run made writes none, or its refusal would wake it
+again. Each payload holds ids and states only, and tier 0 handles none of them. A trace with no plan takes the plan
+a brief of an ask in it refs (`plan:<id>`), or the plan of a step a run of it marks with plan_step, at the plan's
+revision then; a trace that has a plan keeps it.
 
 Ops threads. For each closed batch with items left, the hub opens one thread in the chat `Ops: <slug>` of the default
 system, as the person who wrote the system, and mentions its Orchestrator with a summary of the batch: each item, its
