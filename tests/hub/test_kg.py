@@ -1348,16 +1348,14 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
 
         on_the_hub = f"project {PROJECT} on the hub: build"
         assert on_the_hub in shown(served_hub[2])["text"]
+        assert shown(served_hub[3])["_meta"][READ_META]["results_read"]
         signed_out = pg.clean_env(HOME=str(tmp_path / "nobody"), EVO_KG_HOME=str(laptop.home))
         served_local = mcp(["kg", "serve", "--project", harness], signed_out, hello, tools, status, search)
-        assert on_the_hub not in shown(served_local[2])["text"]
-        hub_found, local_found = shown(served_hub[3]), shown(served_local[3])
-        assert hub_found["text"].splitlines()[1:] == local_found["text"].splitlines()[1:]  # the first names the build
-        assert hub_found["_meta"] == local_found["_meta"] and hub_found["_meta"][READ_META]["results_read"]
+        assert [t["name"] for t in served_local[1]["result"]["tools"]] == [t["name"] for t in serve.TOOLS]
+        for reply in served_local[2:]:  # the graph this machine built answers nothing: graphs are read on the hub
+            assert reply["result"]["isError"] and "not signed in to a hub" in shown(reply)["text"]
         auto = mcp(["kg", "serve", "--project", harness], env, status)  # signed in, and the hub has a graph
         assert on_the_hub in shown(auto[0])["text"]
-        auto = mcp(["kg", "serve", "--project", harness], signed_out, status)
-        assert on_the_hub not in shown(auto[0])["text"]
 
         # --all pushes what the hub takes and says why it skipped the rest
         zeta = Machine(tmp_path, "zeta", project="zeta")
@@ -1380,8 +1378,8 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
         served.proc.wait(timeout=30)
         down = mcp(["kg", "serve", "--backend", "hub", "--project", PROJECT], env, search)
         assert down[0]["result"]["isError"] and served.url in down[0]["result"]["content"][0]["text"]
-        auto = mcp(["kg", "serve", "--project", harness], env, status)  # the hub does not answer: local
-        assert on_the_hub not in shown(auto[0])["text"]
+        auto = mcp(["kg", "serve", "--project", harness], env, status)  # the hub does not answer, and nothing else does
+        assert auto[0]["result"]["isError"] and served.url in shown(auto[0])["text"]
     for secret in (s3.secret_access_key, s3.access_key_id):
         assert secret not in served.log()
 

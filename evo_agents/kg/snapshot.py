@@ -30,7 +30,7 @@ from types import MappingProxyType
 
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg import snapshot_text
-from evo_agents.kg.pacing import paced, paced_sorted
+from evo_agents.kg.pacing import let_go, paced, paced_sorted
 from evo_agents.kg.policy import audience_below, audience_join
 from evo_agents.kg.store_clusters import Clusters
 from evo_agents.kg.store_filters import LIVE, label_columns, stored_audience, within
@@ -195,6 +195,9 @@ class Snapshot:
     found: Clusters | None = None  # the build's clusters (``Store.clusters``)
     review: tuple[dict, ...] = ()  # the build's review items (``Store.review_items``)
 
+    def __del__(self) -> None:
+        let_go(self)  # in the api, freed a part at a time in a thread of its own (``pacing.free_aside``)
+
     @classmethod
     def from_rows(
         cls,
@@ -344,6 +347,9 @@ class StoreRows:
     # (``Store.review_items``) by fingerprint; empty without them
     clusters: tuple[tuple, ...] = ()
     review: tuple[dict, ...] = ()
+
+    def __del__(self) -> None:
+        let_go(self)  # as a snapshot's parts (``Snapshot.__del__``)
 
 
 UNIT_KEYS = ("unit", "item", "anchor", "rev", "hash", "source", "span")
@@ -725,6 +731,30 @@ class SnapshotView:
 
         ids = self.snap.ids
         return [(ids[i], self.snap.nodes[i]["props"]) for i in range(bisect_left(ids, low), bisect_left(ids, high))]
+
+    def _prefixed(self, prefix: str) -> range:
+        """The node numbers whose id starts with ``prefix``: ids are sorted, so one run of them."""
+        from bisect import bisect_left
+
+        ids = self.snap.ids
+        return range(bisect_left(ids, prefix), bisect_left(ids, prefix[:-1] + chr(ord(prefix[-1]) + 1)))
+
+    def entity_graph(self, b: int = 0, prefix: str = "entity:") -> tuple[list[dict], list[dict]]:
+        """The nodes the reader sees whose id starts with ``prefix`` and the edges it sees into one of them, by id
+        (``Store.entity_graph``)."""
+        held = self._prefixed(prefix)
+        nodes = [dict(self.snap.nodes[i]) for i in held if self.sees(self.snap.nodes[i])]
+        found = {e for p in self.snap.partitions.values() for i in held for e in p.into(i)}
+        edges = sorted((self.snap.edges[e] for e in found if self.sees(self.snap.edges[e])), key=lambda e: e["id"])
+        return nodes, [dict(e) for e in edges]
+
+    def entity_code(self, b: int, rels, prefix: str = "entity:") -> list[dict]:
+        """The edges the reader sees with one of ``rels`` out of a node whose id starts with ``prefix``, by id
+        (``Store.entity_code``)."""
+        held, rels = self._prefixed(prefix), set(rels)
+        found = {e for (rel, _), p in self.snap.partitions.items() if rel in rels for i in held for e in p.out_of(i)}
+        edges = sorted((self.snap.edges[e] for e in found if self.sees(self.snap.edges[e])), key=lambda e: e["id"])
+        return [dict(e) for e in edges]
 
     def changed_by(self, file_id: str, limit: int) -> list[str]:
         i = self.snap.index.get(file_id)

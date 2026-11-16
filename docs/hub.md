@@ -4175,13 +4175,17 @@ takes a third longer: a thread that kept the GIL until the interpreter forced a 
 left the event loop one step every 5 ms for the minute or two a large graph takes, every pooled connection sat idle in a
 transaction the loop could not finish, and the heartbeats and claims timed out on the pool. A sort of the hundreds of
 thousands of edges is made in runs merged as they go (`paced_sorted`), as one sort keeps the GIL from start to end.
-While a load runs, Python's cyclic garbage collector makes no full collection, and the snapshot it made is frozen out
-of later collections (`gc.freeze`): a large graph is millions of tracked objects, and each full collection walked
-them all holding the GIL, stalling the loop for seconds, dozens of times per load. The collections of the young
-generations go on, so the cyclic garbage the requests served meanwhile leave is freed; as the last load running ends,
-one full collection frees what reached the old generation before it died, and the rest is frozen. That one
-collection walks the new snapshot, not those frozen before: one stall of a second or two per load. A snapshot has no reference cycle, so one
-replaced is freed though frozen.
+While a load runs, Python's cyclic garbage collector makes no full collection its thresholds reach, and the snapshot
+it made is frozen out of later collections (`gc.freeze`): a large graph is millions of tracked objects, and each full
+collection walked them all holding the GIL, stalling the loop for seconds, dozens of times per load. The collections of
+the young generations go on, so the cyclic garbage the requests served meanwhile leave is freed. The thread making the
+snapshot, each time about `SETTLE` (100,000) objects were made, collects everything and freezes what is left
+(`kg_snapshots.settle`), and the last load running does it once more as it ends: what reached the old generation
+before it died is collected, not frozen, and no collection walks more than what was made since the one before. One
+collection at the end walked the whole new snapshot instead, 9 seconds of a stalled loop for the largest graph. A
+snapshot has no reference cycle, so one replaced is freed though frozen; in the api it is freed by a thread of its own,
+a part at a time with the GIL given up in between (`evo_agents.kg.pacing.free_aside`, from `Snapshot.__del__`), as
+freeing it in one go where it was dropped held the loop for seconds too.
 
 What holds the pool is in the api's log. The pool times each connection it gives out (`evo_agents.hub.db.TimedPool`):
 one held 2 seconds or more is logged as `pool connection held` with its `holder`, the method and path of the request
@@ -4193,8 +4197,9 @@ but stalls beside it is the loop starved, not the pool too small.
 
 Each load of the api also logs `kg snapshot load timed`, with the seconds of its phases (`slot`: waiting for a read
 slot, `rows`: reading the tables, `made`: making the snapshot) and, per phase, the longest time the event loop ran
-nothing else (`stall_s`), and `kg snapshot frozen` the seconds of the full collection before the freeze (`collect_s`),
-which runs on the loop.
+nothing else (`stall_s`), and `kg snapshot frozen` the seconds of the full collection before the last freeze
+(`collect_s`), which runs on the loop, and how many collections the loads made as they went (`settled`), the longest of
+them in seconds (`settle_max_s`).
 
 A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
 the build at the head or one before it: the graph it wrote is the one the tables hold or an older one they replaced.

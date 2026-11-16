@@ -440,6 +440,51 @@ def test_the_garbage_made_during_a_load_is_collected_not_frozen():
         gc.unfreeze()
 
 
+def test_a_load_collects_and_freezes_as_it_goes_so_no_collection_walks_the_whole_snapshot(monkeypatch):
+    """The thread making a snapshot collects everything and freezes what is left each time about SETTLE objects were
+    made (``kg_snapshots.settle``), so no collection walks more than about that many: one at the end walked the whole
+    snapshot, 9 seconds of a stalled event loop for the hub's largest graph. The cyclic garbage that died before one
+    of them is collected, not frozen."""
+    import gc
+    import weakref
+
+    from evo_agents.kg import pacing
+
+    class Node:
+        pass
+
+    walked: list[int] = []
+    collect = gc.collect
+
+    def counted(*args):
+        walked.append(len(gc.get_objects()))  # the objects a full collection walks: all but the frozen ones
+        return collect(*args)
+
+    monkeypatch.setattr(kg_snapshots.gc, "collect", counted)
+    made = 6 * kg_snapshots.SETTLE
+
+    def build():
+        cycle = Node()
+        cycle.me = cycle  # garbage only a collection frees, dead before the next one
+        dead = weakref.ref(cycle)
+        del cycle
+        return dead, [[] for _ in pacing.paced(range(made))]  # the snapshot: objects the collector tracks
+
+    async def load():
+        with kg_snapshots.uncollected(), pacing.pacing(kg_snapshots.settle):
+            return await asyncio.to_thread(build)
+
+    collect()
+    gc.freeze()
+    try:
+        dead, kept = asyncio.run(load())
+        assert dead() is None
+    finally:
+        gc.unfreeze()
+    assert len(kept) == made and len(walked) > 3  # collected as it went, and once more at the end
+    assert max(walked) < 3 * kg_snapshots.SETTLE  # none walked the whole of it
+
+
 def test_a_load_logs_how_long_each_phase_took_and_stalled_the_event_loop(hub, tmp_path, caplog, monkeypatch):
     """A load logs the seconds of each phase and the longest time the event loop ran nothing else meanwhile, and the
     collection before the freeze its own: on the hub, which phase holds up the heartbeats and claims is read there."""

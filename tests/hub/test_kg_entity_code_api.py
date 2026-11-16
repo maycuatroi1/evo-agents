@@ -15,9 +15,10 @@ import pytest
 pytest.importorskip("sqlalchemy", reason="the hub's graph needs the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub import kg_entity_graph
+from evo_agents.kg.snapshot import Snapshot
 from evo_agents.kg.store import Store
 from evo_agents.kg.store_filters import label_columns
-from tests.hub.test_kg_entity_graph_api import PUBLIC, SECRET, _edge, _graph, _ids, _node, _session
+from tests.hub.test_kg_entity_graph_api import PROJECT, PUBLIC, SECRET, _edge, _graph, _ids, _node, _session
 
 REPO = "r"
 BRANCH = "https://github.com/o/r/blob/main/"
@@ -76,13 +77,14 @@ def _with_code():
     return graph
 
 
-@pytest.fixture
-def store(tmp_path):
+@pytest.fixture(params=["store", "snapshot"])
+def store(tmp_path, request):
     found = Store(tmp_path / "graph.sqlite")
     coverage = {"sources": [{"id": "code", "read": {"blob": {"branch": BRANCH, "commit": COMMIT}}}]}
     found.write(_with_code(), state_digest="x", coverage=coverage, stats={}, policy=None)
     kg_entity_graph.VIEWS.clear()
-    yield found
+    # the hub reads the snapshot of its tables, the CLI a store file: both give the same graph
+    yield found if request.param == "store" else Snapshot.from_store(found, 1).view(frozenset({PROJECT}))
     found.close()
 
 

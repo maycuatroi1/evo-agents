@@ -81,26 +81,32 @@ async def load_on(conn: AsyncConnection, project_id: int) -> Held | None:
 
 _loads = 0  # loads of the process running now, in ``uncollected``
 ONLY_YOUNG = 2**31 - 1  # the last threshold of ``gc.set_threshold`` while loads run: no full collection is reached
+# objects made since the last full collection after which a load's thread collects everything and freezes it
+# (``settle``), as the collections of the middle generation count them: a collection then walks about as many
+SETTLE = 100_000
+_settled: list[float] = []  # the seconds of each ``settle`` that collected since the first of the loads running now
 
 
 @contextlib.contextmanager
 def uncollected():
-    """No full collection of Python's cyclic garbage collector while a snapshot is read and made, and what it made
-    frozen out of the later ones (``gc.freeze``). A snapshot is millions of objects the collector tracks: each full
-    collection walked them all, holding the GIL, the loop of the api with it, for seconds, dozens of times while a
-    large graph loaded and again now and then once it was held, and the heartbeats and claims waiting meanwhile timed
-    out on the pool. A snapshot has no reference cycle, so one dropped is freed though frozen. Loads share the
-    process's collector: while one runs, the collections of the young generations go on, each walking the few
-    thousand objects made since the one before, so the cyclic garbage the requests served meanwhile leave is freed as
-    it would be. The last load to end collects everything once, so a cycle that lived long enough to reach the old
-    generation before it died is not frozen with the snapshot, never to be freed; then it freezes the rest and gives
-    the collector its thresholds back. That one collection walks the new snapshot, not those frozen before: one stall
-    of a second or two per load, where full collections during it stalled the loop dozens of times. An object of a
-    request still running then is frozen with the snapshot, and a cycle it is in later is not collected."""
+    """No full collection of Python's cyclic garbage collector reached by its thresholds while a snapshot is read and
+    made, and what it made frozen out of the later ones (``gc.freeze``). A snapshot is millions of objects the collector
+    tracks: each full collection walked them all, holding the GIL, the loop of the api with it, for seconds, dozens of
+    times while a large graph loaded and again now and then once it was held, and the heartbeats and claims waiting
+    meanwhile timed out on the pool. A snapshot has no reference cycle, so one dropped is freed though frozen. Loads
+    share the process's collector: while one runs, the collections of the young generations go on, each walking the few
+    thousand objects made since the one before, so the cyclic garbage the requests served meanwhile leave is freed as it
+    would be. The thread making a snapshot, each time about SETTLE objects were made, collects everything and freezes
+    what is left (``settle``), and the last load to end does it once more: a cycle that lived long enough to reach the
+    old generation before it died is collected, not frozen with the snapshot, never to be freed, and each collection
+    walks what was made since the one before, not the whole snapshot. One collection at the end walked the whole new
+    snapshot instead, 9 seconds of a stalled loop on the hub's largest graph. An object of a request running at one of
+    them is frozen with the snapshot, and a cycle it is in later is not collected."""
     global _loads, _thresholds
     if _loads == 0:
         _thresholds = gc.get_threshold()
         gc.set_threshold(_thresholds[0], _thresholds[1], ONLY_YOUNG)
+        _settled.clear()
     _loads += 1
     try:
         yield
@@ -112,9 +118,25 @@ def uncollected():
             gc.freeze()
             log.info(
                 "kg snapshot frozen",
-                extra={"collect_s": round(time.perf_counter() - start, 3), "frozen": gc.get_freeze_count()},
+                extra={
+                    "collect_s": round(time.perf_counter() - start, 3),
+                    "frozen": gc.get_freeze_count(),
+                    "settled": len(_settled),
+                    "settle_max_s": round(max(_settled, default=0.0), 3),
+                },
             )
             gc.set_threshold(*_thresholds)
+
+
+def settle() -> None:
+    """While loads run, once about SETTLE objects were made since the last full collection: collect everything and
+    freeze what is left (``uncollected``). Called by a load's paced thread (``pacing``). Each collection of the middle
+    generation is one after ``threshold1`` of the youngest, each after ``threshold0`` objects made."""
+    if _loads and gc.get_count()[2] * _thresholds[0] * _thresholds[1] >= SETTLE:
+        start = time.perf_counter()
+        gc.collect()
+        gc.freeze()
+        _settled.append(time.perf_counter() - start)
 
 
 _thresholds = gc.get_threshold()  # the collector's thresholds before the first of the loads running now
@@ -167,7 +189,7 @@ async def _rows(conn: AsyncConnection, project_id: int) -> tuple[int | None, Sto
     build_id = await conn.scalar(
         select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
     )
-    with pacing():
+    with pacing(settle):
         rows = await read_graph(conn, project_id)
     return None if rows is None else (build_id, rows)
 
@@ -178,7 +200,7 @@ async def _made(build_id: int | None, rows: StoreRows) -> Held:
     thread that kept the GIL until forced to switch left the event loop one step every 5 ms meanwhile, every pooled
     connection held in a transaction the loop could not finish, and the workers' heartbeats and claims timed out
     waiting for one."""
-    with pacing():
+    with pacing(settle):
         return Held(build_id, await asyncio.to_thread(Snapshot.from_stored, *hub_build(rows, build_id)))
 
 
@@ -311,7 +333,7 @@ class SnapshotCoordinator:
         found = self._branches.pop((project_id, name), None)
         if found is None or found[0] != key:
             heads = tables.kg_graph_heads
-            with uncollected(), pacing():
+            with uncollected(), pacing(settle):
                 async with read_slot(), self.engine.connect() as conn:
                     build_id = await conn.scalar(
                         select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
