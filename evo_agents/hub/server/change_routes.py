@@ -163,8 +163,18 @@ async def record_verdict(
     request: Request, run_id: RunId, body: VerdictIn, user: CurrentUser, judge_key: JudgeKey = None
 ) -> Change:
     """The verdict of the judge run this worker holds, with the run's own key: the hub passes the change only as
-    ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again."""
-    async with request.app.state.engine.begin() as conn:
+    ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again. The graph read
+    for that tier can wait minutes for the project's snapshot to load, so it is read before the transaction that locks
+    the run and its change: a request holding those locks makes the worker's heartbeat, claim and events wait on
+    them, each holding a pool connection, until the pool is out."""
+    state = request.app.state
+    facts = None
+    if body.paths and not body.signs:
+        async with state.engine.begin() as conn:
+            _, held = await _held_judge(conn, user, run_id, judge_key)
+        reader = change_tiers.GraphReader(state.blobs, state.config.data_dir)
+        facts = await change_tiers.verdict_facts(state.engine, held, body.paths, reader)
+    async with state.engine.begin() as conn:
         row, change = await _held_judge(conn, user, run_id, judge_key)
         expected = await _plan_verify(conn, row, change) + change_tiers.judge_checks(change)
         hidden_count = change.hidden_count
@@ -226,11 +236,8 @@ async def record_verdict(
         if signs:
             await raise_tier(conn, change, signs)
             values["tier"] = 3
-        elif body.paths:
+        elif facts is not None:
             charter = await charter_of(conn, row.project_id)
-            state = request.app.state
-            reader = change_tiers.GraphReader(state.blobs, state.config.data_dir)
-            facts = await change_tiers.verdict_facts(state.engine, change, body.paths, reader)
             values["tier"] = await change_tiers.retier(conn, change, facts, charter)
         if getattr(change, "repo_row_id", None) is not None:  # on its repo's row; the change judged once each is
             await change_repos.judged_repo(conn, change, values)
