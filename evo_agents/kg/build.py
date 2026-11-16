@@ -922,10 +922,32 @@ def verify_build(
     if warm is _FIND:
         warm = warm_start_of(project, expected)
     tmp = Path(tempfile.mkdtemp(prefix="evo-kg-verify-"))
+    store = Store(tmp / "graph.sqlite")
+    try:
+
+        def written(graph, coverage, corpus) -> str:
+            b = store.write(graph, state_digest=corpus.read_digest, coverage=coverage, stats={}, policy=project.policy)
+            return store.build_row(b)["content_hash"]
+
+        return _rebuilt(project, expected, cold, warm, written)
+    finally:
+        store.close()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def verify_rows(project: Project, expected: str, *, cold: bool = False, warm: Clusters | None = None) -> dict:
+    """``verify_build`` without a store: rebuild in memory and compare the graph's content hash, the one
+    ``build_rows`` gives its rows, with ``expected``. ``warm`` is the clusters the checked build started from."""
+    from evo_agents.kg import content
+
+    return _rebuilt(project, expected, cold, warm, lambda graph, coverage, corpus: content.content_hash(graph))
+
+
+def _rebuilt(project: Project, expected: str, cold: bool, warm: Clusters | None, hashed) -> dict:
+    """Rebuild the project's graph offline from the corpus, starting the clustering from ``warm``, and compare
+    ``hashed(graph, coverage, corpus)`` with ``expected``; with ``cold`` the memo starts empty."""
     opened: list = []  # closed whatever happens: an open memo holds its lock, an open corpus its file
     try:
-        store = Store(tmp / "graph.sqlite")
-        opened.append(store)
         memo = Memo(None) if cold else Memo(memo_path(project))
         opened.append(memo)
         entity_memo = Memo(memo_path(project)) if cold else None
@@ -939,10 +961,8 @@ def verify_build(
         add_curation(graph, coverage)
         add_clusters(project, graph, coverage, warm)
         add_review(graph, coverage, project.ontology)
-        b = store.write(graph, state_digest=corpus.read_digest, coverage=coverage, stats={}, policy=project.policy)
-        got = store.build_row(b)["content_hash"]
+        got = hashed(graph, coverage, corpus)
         return {"match": got == expected, "expected": expected, "rebuilt": got, "cold": cold}
     finally:
         for opener in reversed(opened):
             opener.close()
-        shutil.rmtree(tmp, ignore_errors=True)
