@@ -8,7 +8,6 @@ import pytest
 
 from evo_agents.kg import asked
 from evo_agents.kg import search as text_search
-from evo_agents.kg.build import build_project
 from evo_agents.kg.graph_rows import with_asked
 from evo_agents.kg.pipeline.stages import leading_comment
 from evo_agents.kg.project import load_project_at
@@ -20,15 +19,6 @@ from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, make_project, write
 
 APP_SOURCE = "  - id: app\n    connector: git\n    repo: app\n"
-
-
-# Stays for the tests not yet moved to builds in memory (``tests.kg.built.sync_build`` is the new one).
-def sync_build(project, **kw):
-    results = sync_project(project)
-    assert all(r.ok for r in results), [r.issues for r in results]
-    report = build_project(project, **kw)
-    assert report.ok, report.errors
-    return report
 
 
 def edit_sources(project, old: str, new: str):

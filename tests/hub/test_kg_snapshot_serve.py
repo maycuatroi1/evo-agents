@@ -18,9 +18,8 @@ if not pg.DSN:
 
 from evo_agents.hub import kg_graph_rows, kg_snapshots
 from evo_agents.hub.kg_graph_rows import MAIN
-from evo_agents.kg.snapshot import Snapshot, store_rows
+from evo_agents.kg.snapshot import Snapshot
 from evo_agents.kg.snapshot_search import SnapshotSearch
-from evo_agents.kg.store import Store
 from tests.hub.live import add_project
 from tests.hub.test_kg import Machine, doc, hub, push  # noqa: F401 (hub is a fixture)
 from tests.hub.test_kg_postgres_build import build, make_engine, project_id
@@ -100,23 +99,23 @@ def test_a_private_chat_item_is_invisible_to_a_member_outside_its_audience(hub_d
     from tests.hub import test_kg_audience as aud
 
     graph = aud.build(tmp_path, monkeypatch, 1, 2)  # chat items, each with the audience of its chat
-    path = tmp_path / "graph.sqlite"
-    path.write_bytes(graph.data)
+    rows = graph.rows
     pid = add_project(hub_db, "aud")
-    store = Store.open_file(path, immutable=True)
-    try:
-        b = store.latest_ready()
-        rows = store_rows(store, b)
-        nodes, units = sorted(store.alive_ids("nodes", b)), sorted(store.alive_ids("units", b))
-        for reader in (frozenset(), frozenset({"chat:1"}), frozenset({"chat:1", aud.GB})):
-            store.reader = reader  # a reader within some chats reads the snapshot as it reads the file
-            view = Snapshot.from_stored(rows).view(reader)
-            assert view.seen(b) == store.seen(b)
-            assert [view.unit(u) for u in units] == [store.unit(u, b) for u in units]
-            assert [view.body(n) for n in nodes] == [store.body(n) for n in nodes]
-            assert [view.degree(n) for n in nodes] == [store.degree(n, b) for n in nodes]
-    finally:
-        store.close()
+    items = ("chat:text:m1", "chat:text:m2", "chat:text:m3", "chat:text:plan")
+    # what a reader within some chats reads of the items: the ones it may read, and the counts of what it sees
+    reads = {
+        frozenset(): ({"chat:text:plan"}, (2, 1, 1)),
+        frozenset({"chat:1"}): ({"chat:text:m2", "chat:text:plan"}, (3, 3, 2)),
+        frozenset({"chat:1", aud.GB}): ({"chat:text:m1", "chat:text:m2", "chat:text:plan"}, (5, 5, 3)),
+    }
+    for reader, (readable, counts) in reads.items():
+        view = Snapshot.from_stored(rows).view(reader)
+        seen = view.seen()
+        assert (seen["nodes"], seen["edges"], seen["units"]) == counts, reader
+        assert {n for n in items if view.unit(f"{n}#") is not None} == readable, reader
+        assert {n for n in items if view.body(n) is not None} == readable, reader
+        assert {n for n in items if view.node(n) is not None} == readable, reader
+        assert all(view.degree(n) == 0 for n in items if n not in readable), reader
 
     async def keep():
         engine = make_engine(hub_db)
