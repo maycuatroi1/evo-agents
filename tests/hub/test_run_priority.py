@@ -12,7 +12,7 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from evo_agents.hub import tables
 from tests.hub.live import sql
@@ -76,6 +76,6 @@ def test_the_writer_sets_a_queued_runs_priority(client, hub, hub_db):
     targets = sql(hub_db, select(a.c.target).where(a.c.action == "run.priority"))
     assert targets == [(f"{PROJECT} run:{run_id} priority=medium->high",)]
     r = tables.runs
-    sql(hub_db, r.update().values(state="cancelled").where(r.c.id == run_id))
+    sql(hub_db, r.update().values(state="cancelled", finished_at=func.now()).where(r.c.id == run_id))
     gone = client.post(route, json={"priority": "low"}, headers=hub["owner"])
     assert gone.status_code == 409, gone.text
