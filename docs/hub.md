@@ -4174,7 +4174,10 @@ collector is off, and the snapshot it made is frozen out of later collections (`
 millions of tracked objects, and each full collection walked them all holding the GIL, stalling the loop for seconds,
 dozens of times per load. As the last load running ends, one collection frees the cyclic garbage the requests served
 meanwhile left, before the rest is frozen, so it is not frozen with the snapshot. A snapshot has no reference cycle,
-so one replaced is freed though frozen. A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
+so one replaced is freed though frozen. Each load of the api logs `kg snapshot load timed`, with the seconds of its
+phases (`slot`: waiting for a read slot, `rows`: reading the tables, `made`: making the snapshot) and, per phase, the
+longest time the event loop ran nothing else (`stall_s`), and `kg snapshot frozen` the seconds of the collection before
+the freeze (`collect_s`), which runs on the loop. A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
 the build at the head or one before it: the graph it wrote is the one the tables hold or an older one they replaced.
 
 **Graph files of older builds.** Builds before 0248 uploaded the graph's SQLite file to the bucket as a blob of kind

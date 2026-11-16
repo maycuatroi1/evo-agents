@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
 
 import pytest
@@ -384,6 +385,40 @@ def test_the_garbage_made_during_a_load_is_collected_not_frozen():
         assert gc.isenabled()
     finally:
         gc.unfreeze()
+
+
+def test_a_load_logs_how_long_each_phase_took_and_stalled_the_event_loop(hub, tmp_path, caplog, monkeypatch):
+    """A load logs the seconds of each phase and the longest time the event loop ran nothing else meanwhile, and the
+    collection before the freeze its own: on the hub, which phase holds up the heartbeats and claims is read there."""
+    import gc
+    import time
+
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the kiwi app works."))
+    assert push(hub, laptop).ok
+    build(hub, caplog)
+    pid = project_id(hub)
+    hub_build = kg_snapshots.hub_build
+
+    def blocking(*args):
+        time.sleep(0.4)  # on the loop, as the made phase starts
+        return hub_build(*args)
+
+    monkeypatch.setattr(kg_snapshots, "hub_build", blocking)
+    caplog.clear()
+    try:
+        with caplog.at_level(logging.INFO, logger="evo_agents.hub.kg_snapshots"):
+            asyncio.run(held_on_engine(hub.db, pid))
+    finally:
+        gc.unfreeze()
+    timed = [r for r in caplog.records if r.getMessage() == "kg snapshot load timed"]
+    frozen = [r for r in caplog.records if r.getMessage() == "kg snapshot frozen"]
+    assert [r.project_id for r in timed] == [pid]
+    phases = timed[0].phases
+    assert list(phases) == ["slot", "rows", "made"]
+    assert phases["made"]["s"] >= 0.4 and phases["made"]["stall_s"] >= 0.3
+    assert phases["rows"]["stall_s"] < 0.3
+    assert len(frozen) == 1 and frozen[0].collect_s >= 0
 
 
 async def held_on_engine(db, pid: int):
