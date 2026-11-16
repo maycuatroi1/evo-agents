@@ -35,6 +35,7 @@ from evo_agents.hub.server.change_views import (
     security_dimension,
     security_findings,
     set_change,
+    with_repos,
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
@@ -265,12 +266,13 @@ async def list_changes(request: Request, project: ProjectName, user: CurrentUser
         from evo_agents.hub.server.runs.service.views import visible_plans
 
         readable = set(await visible_plans(conn, access, None))
-    through = plan_routes._sink(access, None) or ""  # no hub sink: no sink lets it through
-    shown = [
-        Change(**{key: value for key, value in row._mapping.items() if key != "proposal_label"})
-        for row in rows
-        if access.visible(row.proposal_label, through) and (row.plan_id is None or row.plan_id in readable)
-    ]
+        through = plan_routes._sink(access, None) or ""  # no hub sink: no sink lets it through
+        shown = [
+            Change(**{key: value for key, value in row._mapping.items() if key != "proposal_label"})
+            for row in rows
+            if access.visible(row.proposal_label, through) and (row.plan_id is None or row.plan_id in readable)
+        ]
+        shown = await with_repos(conn, shown)
     return ChangeList(project=access.name, changes=shown)
 
 

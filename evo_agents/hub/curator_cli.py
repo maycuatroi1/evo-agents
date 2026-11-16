@@ -168,6 +168,7 @@ CHANGE_KEYS = (
     "merge_sha",
     "created_at",
     "updated_at",
+    "repos",
 )
 REPO_CHECK_KEYS = (
     "repo",

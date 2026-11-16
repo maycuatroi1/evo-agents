@@ -225,6 +225,8 @@ def test_hub_a_proposal_in_two_repos_is_one_plan_owner_first_with_a_change_row_p
         ("lumen-identity", 1, [], "pr_pending", None),
         ("evo-agents", 2, ["lumen-identity"], "pr_pending", None),
     ]
+    shown = [(item["repo"], item["position"], item["depends_on"], item["state"]) for item in change["repos"]]
+    assert shown == [("lumen-identity", 1, [], "pr_pending"), ("evo-agents", 2, ["lumen-identity"], "pr_pending")]
     blocked = {**plan["body"], "steps": [{**step, "status": "blocked"} for step in plan["body"]["steps"]]}
     put = {"body": blocked, "if_revision": plan["revision"]}
     assert seamed.client.put(url, json=put, headers=owner).status_code == 200  # its progress is written
@@ -237,7 +239,7 @@ def test_hub_a_proposal_in_two_repos_is_one_plan_owner_first_with_a_change_row_p
 def test_hub_a_proposal_in_one_repo_keeps_its_plain_plan_and_no_repo_row(seamed):
     accepted(seamed, plan=ONE_DRAFT)
     (change,) = changes(seamed)
-    assert change["state"] == "planned" and change["repo"] == "evo-agents"
+    assert change["state"] == "planned" and change["repo"] == "evo-agents" and change["repos"] == []
     assert repo_rows(seamed) == []
 
 
@@ -288,4 +290,8 @@ def test_hub_one_pull_request_and_judge_run_per_repo_and_the_consumer_merges_aft
     (change,) = changes(seamed)
     assert change["state"] == "merged" and change["merge_sha"]
     assert [row[3] for row in repo_rows(seamed)] == ["merged", "merged"]
+    assert [(item["repo"], item["pr_number"], item["passed"]) for item in change["repos"]] == [
+        ("lumen-identity", 1, True),
+        ("evo-agents", 1, True),
+    ]
     assert moved_on(seamed) == {}

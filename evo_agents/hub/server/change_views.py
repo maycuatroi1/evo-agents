@@ -35,6 +35,20 @@ JudgeKey = Annotated[
 # Models
 
 
+class ChangeRepo(BaseModel):
+    """One repo of a change that works in several (``evo_agents.hub.server.change_repos``), in plan order."""
+
+    repo: str
+    position: int = Field(description="its order in the plan, from 1: an owner before the repos that consume it")
+    depends_on: list[str] = Field(description="the repos merged before it")
+    state: str
+    reason: str | None
+    pr_number: int | None
+    pr_url: str | None
+    passed: bool | None = Field(description="its Judge's verdict; null before it")
+    merged_at: datetime | None
+
+
 class Change(BaseModel):
     """What an accepted proposal of tier 0 to 2 became, and where it stands."""
 
@@ -60,6 +74,9 @@ class Change(BaseModel):
     merge_sha: str | None
     created_at: datetime
     updated_at: datetime
+    repos: list[ChangeRepo] = Field(
+        default_factory=list, description="a change in several repos: each, in plan order; empty for one in one repo"
+    )
 
 
 class ChangeList(BaseModel):
@@ -234,7 +251,21 @@ async def change_with_origin(conn: AsyncConnection, project_id: int, change_id: 
 
 async def change_view(conn: AsyncConnection, change_id: int) -> Change:
     row = (await conn.execute(changes_query().where(tables.curator_changes.c.id == change_id))).one()
-    return Change(**row._mapping)
+    return (await with_repos(conn, [Change(**row._mapping)]))[0]
+
+
+async def with_repos(conn: AsyncConnection, changes: list[Change]) -> list[Change]:
+    """``changes`` with the repos of each that works in several, read at once."""
+    cr = tables.curator_change_repos
+    if not changes:
+        return changes
+    query = select(cr).where(cr.c.change_id.in_([change.id for change in changes])).order_by(cr.c.position)
+    found: dict[int, list[ChangeRepo]] = {}
+    for row in (await conn.execute(query)).all():
+        found.setdefault(row.change_id, []).append(ChangeRepo.model_validate(row, from_attributes=True))
+    for change in changes:
+        change.repos = found.get(change.id, [])
+    return changes
 
 
 async def set_change(conn: AsyncConnection, change_id: int, *, ledger_extra: dict | None = None, **values) -> None:
