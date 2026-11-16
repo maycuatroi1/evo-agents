@@ -4203,7 +4203,7 @@ full-text rows), and counts the rows holding a secret by kind; that graph is in 
 also reads each graph file older builds uploaded and each source blob a project holds in the bucket, page by page (`POST /v1/admin/kg/scrub`, at most 1000
 objects and 256 MiB a page), with the connector's patterns, and lists those holding a secret by hash, kind, size and the kinds of secret,
 never a value. A source blob is read as the file the items of
-the project's run logs say it is (their `props.path`), as `evo-agents kg scrub` reads it on a machine: in code a bare
+the project's run logs say it is (their `props.path`), as the git connector reads it: in code a bare
 value after `=` is an expression, in a config file or a document a literal. A blob no item names with a path is read
 as a document. The first page that meets a source blob that may hold a secret reads every run log of the project for
 those paths, so it takes longer; the api keeps them, and reads only the logs of new runs after that. Run logs hold
@@ -4229,9 +4229,8 @@ evo-agents hub kg scrub --purge                # delete the old copies, after a 
 Which blob is live is a guess from the newest full run of each source. When the merge kept an older record (a removal
 the deletion guard held back, or an older checkout pushed after a newer one), a blob in use may count as old. Deleting
 it makes the project's next build fail, naming the blob, and pushing a new run of that source mends it. The worker's
-cache under `<data dir>/kg/home` holds the corpus as a machine's kg home does, old blobs included:
-`EVO_KG_HOME=<data dir>/kg/home evo-agents kg scrub --all --purge --yes` in the worker's container cleans it the same
-way, or delete the cache, and the next build fetches what it needs again.
+cache under `<data dir>/kg/home` holds the corpus a build reads, old blobs included: delete the cache, and the next
+build fetches what it needs again.
 
 ## Plugins
 

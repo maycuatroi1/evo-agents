@@ -514,8 +514,8 @@ class Corpus:
         )
 
     def record_on_hub(self, run_ids: Iterable[str], hub: str) -> None:
-        """Remember that the hub at ``hub`` holds the runs ``run_ids`` (``hub kg push`` saw it say so): retention may
-        delete their logs (``evo_agents.kg.retention``). Commits."""
+        """Remember that the hub at ``hub`` holds the runs ``run_ids`` (``hub kg push`` saw it say so): a kg home's
+        retention deleted only such logs, before the hub held the corpus. Commits."""
         now = utc_now()
         with self.db:
             self.db.executemany("INSERT OR IGNORE INTO hub_runs VALUES (?, ?, ?)", [(r, hub, now) for r in run_ids])

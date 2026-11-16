@@ -9,7 +9,7 @@ after the last. The first page (no ``after``) also reads the graph of the projec
 (``kg_graph_rows``: the names and properties of its nodes, the properties of its edges and its full-text rows) and
 answers, as ``graph``, how many of those rows hold a secret and the secrets by kind. A graph file is read from the
 bucket. A source blob is read
-as the file the items of the project's run logs say it is (``props.path``), as ``evo-agents kg scrub`` reads it on a
+as the file the items of the project's run logs say it is (``props.path``), as the git connector reads it on a
 machine: the path decides whether a bare value after ``=`` is an expression (code) or a literal (config files,
 documents). A blob no item names with a path is read as a document. The paths come from every run log of the project,
 ingested or pending, read once when a page first finds a source blob that may hold a secret and remembered until new
@@ -66,7 +66,8 @@ from evo_agents.hub.kg_build import ARTIFACT_KIND
 from evo_agents.hub.kg_graph_rows import MAIN
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.security import Principal
-from evo_agents.kg.scrub import blob_secrets, graph_secrets, might_hold_secret, row_secrets, run_summary
+from evo_agents.kg.scrub import blob_secrets, might_hold_secret, row_secrets, run_summary
+from evo_agents.kg.store_secrets import graph_secrets
 
 log = logging.getLogger(__name__)
 
@@ -205,7 +206,7 @@ async def _graphs(conn: AsyncConnection, project_id: int) -> dict[str, list[int]
 
 def _graph_rows(project_id: int):
     """The rows of the project's main graph in the hub's tables that hold text, as pairs (text, JSON text), as
-    ``evo_agents.kg.scrub.GRAPH_QUERIES`` reads them from a graph file."""
+    ``evo_agents.kg.store_secrets.GRAPH_QUERIES`` reads them from a graph file."""
     nodes, edges, text = tables.kg_nodes, tables.kg_edges, tables.kg_text_rows
     scope = lambda t: (t.c.project_id == project_id, t.c.branch_id == MAIN)  # noqa: E731
     return (
