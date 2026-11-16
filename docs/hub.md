@@ -4315,6 +4315,11 @@ other graphs read beside it, a build of the largest can still drop its old snaps
 load, two to three minutes, after each build. With a limit of twice the largest snapshot and some, a build swaps that
 graph without its readers waiting.
 
+A load gives its connection back as soon as the rows are read (`kg_graph_rows.fetch_graph`): the rows are put
+together (`assemble_graph`, minutes on a large graph, in a paced thread) and the snapshot made with none held. Before,
+the connection that read the rows stayed out, idle in its transaction, while they were put together, so the loads that
+follow an api start (`READS` of them at once) held the pool's connections from the heartbeats and claims.
+
 What holds the pool is in the api's log. The pool times each connection it gives out (`evo_agents.hub.db.TimedPool`):
 one held 2 seconds or more is logged as `pool connection held` with its `holder`, the method and path of the request
 that took it (and the name of the task, when a named task such as `kg-snapshot-<project>` took it) and `held_ms`; a

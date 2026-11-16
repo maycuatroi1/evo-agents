@@ -342,6 +342,54 @@ def test_loads_making_snapshots_leave_the_pool_to_the_workers_heartbeats(hub, tm
     assert len({held.snapshot.content_hash for held in done}) == 1 and "guide" in found(done[0].snapshot, "kiwi")
 
 
+def test_loads_putting_the_rows_together_leave_the_pool_to_the_workers_heartbeats(hub, tmp_path, caplog, monkeypatch):
+    """The rows of a large graph are put together for minutes (``kg_graph_rows.assemble_graph``) after they are read:
+    the connection that read them was still held, idle in its transaction, so the loads that follow an api start
+    took the pool from the heartbeats and claims, which timed out on it."""
+    from psycopg_pool import AsyncConnectionPool
+    from sqlalchemy import literal, select
+
+    from evo_agents.hub.db import make_engine as pooled_engine
+
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the kiwi app works."))
+    assert push(hub, laptop).ok
+    build(hub, caplog)
+    pid = project_id(hub)
+    release, assembling = threading.Event(), threading.Semaphore(0)
+    assembled = kg_graph_rows._assembled
+
+    def slow(*args, **kwargs):
+        assembling.release()
+        assert release.wait(30)
+        return assembled(*args, **kwargs)
+
+    monkeypatch.setattr(kg_graph_rows, "_assembled", slow)
+
+    async def run():
+        pool = AsyncConnectionPool(
+            hub.db.dsn, min_size=0, max_size=kg_snapshots.READS, timeout=2, close_returns=True, open=False
+        )
+        await pool.open()
+        engine = pooled_engine(pool)
+        loads = [asyncio.create_task(kg_snapshots.load(engine, pid)) for _ in range(kg_snapshots.READS)]
+        try:
+            for _ in range(kg_snapshots.READS):
+                assert await asyncio.to_thread(assembling.acquire, True, 30)
+            async with engine.begin() as conn:  # a heartbeat, while the rows are put together
+                beat = await conn.scalar(select(literal(1)))
+            release.set()
+            await asyncio.gather(*loads)
+        finally:
+            release.set()
+            await asyncio.gather(*loads, return_exceptions=True)
+            await engine.dispose()
+            await pool.close()
+        return beat
+
+    assert asyncio.run(run()) == 1
+
+
 def test_reading_a_graph_gives_the_event_loop_back_between_its_rows(hub, tmp_path, caplog, monkeypatch):
     """The rows of a graph are fetched a batch at a time, the loop running other requests between two batches, and
     their JSON is decoded in a thread: the api read and decoded a large graph's hundreds of thousands of rows in one
