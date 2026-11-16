@@ -94,6 +94,24 @@ async def _held_judge(conn: AsyncConnection, user: Principal, run_id: int, key: 
     return row, await change_repos.in_focus(conn, change)  # a change in several repos: the repo it judges now
 
 
+async def _judged_by(conn: AsyncConnection, user: Principal, run_id: int) -> Change | None:
+    """The change judge run ``run_id``, held by the worker of ``user``, already judged, for a verdict ``_held_judge``
+    refuses with 409: the post that recorded it answered after the worker stopped waiting, and the worker's retry gets
+    that verdict again instead of a 409 that fails the run. None for any other run or change."""
+    worker_id = (await worker_of(conn, user))[0]
+    r = tables.runs
+    query = select(r.c.worker_id, r.c.state, r.c.kind, r.c.project_id, r.c.plan_id).where(r.c.id == run_id)
+    row = (await conn.execute(query)).one_or_none()
+    if row is None or row.worker_id != worker_id or row.state not in runs.HELD_STATES or row.kind != "judge":
+        return None
+    change = await change_of_plan(conn, row.project_id, row.plan_id)
+    verdict = getattr(change, "verdict", None)
+    if change is None or change.state != "judged" or not isinstance(verdict, dict) or verdict.get("run_id") != run_id:
+        return None
+    log.info("verdict posted again", extra={"run_id": run_id, "change_id": change.id})
+    return await change_view(conn, change.id)
+
+
 async def _plan_verify(conn: AsyncConnection, row, change) -> list[str]:
     """The verify commands of the plan revision judge run ``row`` judges: of the steps of the repo it judges alone, for
     a change in several repos."""
@@ -171,11 +189,23 @@ async def record_verdict(
     facts = None
     if body.paths and not body.signs:
         async with state.engine.begin() as conn:
-            _, held = await _held_judge(conn, user, run_id, judge_key)
+            try:
+                _, held = await _held_judge(conn, user, run_id, judge_key)
+            except HTTPException as exc:
+                judged = await _judged_by(conn, user, run_id) if exc.status_code == 409 else None
+                if judged is None:
+                    raise
+                return judged
         reader = change_tiers.GraphReader(state.blobs, state.config.data_dir)
         facts = await change_tiers.verdict_facts(state.engine, held, body.paths, reader)
     async with state.engine.begin() as conn:
-        row, change = await _held_judge(conn, user, run_id, judge_key)
+        try:
+            row, change = await _held_judge(conn, user, run_id, judge_key)
+        except HTTPException as exc:
+            judged = await _judged_by(conn, user, run_id) if exc.status_code == 409 else None
+            if judged is None:
+                raise
+            return judged
         expected = await _plan_verify(conn, row, change) + change_tiers.judge_checks(change)
         hidden_count = change.hidden_count
         if hidden_count is None:

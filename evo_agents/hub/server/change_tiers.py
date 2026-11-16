@@ -67,6 +67,7 @@ GRAPH_DEPTH = 2  # hops of kg_impact a change's paths are followed
 CACHE = "tiers"  # the directory of the hub's kg data (``kg_root``) the job's graphs are fetched into
 NIGHT_SHIFT = "night_shift"
 UNREADABLE = "of the project could not be read now"
+VERDICT_GRAPH_WAIT = 15.0  # seconds a judge's verdict waits for the graph, well inside the worker's 30 s timeout
 API_READS = 40  # Python files of a diff read at both ends for the API rule; with more, the reached files count unread
 
 
@@ -147,12 +148,19 @@ def _member(project_id: int, user_id: int):
 
 
 async def impact_as_owner(
-    engine: AsyncEngine, project_id: int, targets: list[str], reader: GraphReader, *, owner_id: int | None = None
+    engine: AsyncEngine,
+    project_id: int,
+    targets: list[str],
+    reader: GraphReader,
+    *,
+    owner_id: int | None = None,
+    wait: float | None = None,
 ) -> GraphView | None:
     """``kg_impact`` of ``targets`` in the project's latest graph, read as the owner of its night shift (or as member
     ``owner_id``, as the merge queue reads it) through its hub sink, from the snapshot of the hub's tables; None without
     a target, a night shift, a graph or a data directory (``reader``), or when the graph cannot be read. In the api the
-    snapshot is the one its coordinator keeps (``kg_snapshots.shared``)."""
+    snapshot is the one its coordinator keeps (``kg_snapshots.shared``). With ``wait``, a snapshot still loading after
+    that many seconds makes it None too; its load goes on, for the next read."""
     if not targets or reader.data_dir is None:
         return None
     from evo_agents.hub import kg_snapshots
@@ -171,13 +179,19 @@ async def impact_as_owner(
     arguments = {"paths": targets, "depth": GRAPH_DEPTH}
     owner = (row.owner_id, row.project)
     try:
-        snapshot = _snapshotted(await kg_snapshots.shared(engine, project_id, graphs[0].build_id), graphs, ceiling)
+        loading = kg_snapshots.shared(engine, project_id, graphs[0].build_id)
+        if wait is not None:
+            loading = asyncio.wait_for(asyncio.shield(asyncio.ensure_future(loading)), wait)
+        snapshot = _snapshotted(await loading, graphs, ceiling)
         result = await asyncio.to_thread(
             answer, Handles(), owner, row.project, access.rules.policy, ceiling, sink,
             graphs, "kg_impact", arguments, snapshot=snapshot,
         )  # fmt: skip
     except GraphUnavailable as exc:
         log.info("the knowledge graph cannot be read for a tier", extra={"project": row.project, "why": str(exc)})
+        return None
+    except TimeoutError:
+        log.warning("the knowledge graph still loads past a tier's wait", extra={"project": row.project, "wait": wait})
         return None
     return _view(result)
 
@@ -275,10 +289,13 @@ def _charter(project_id: int):
     return select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1)
 
 
-async def _graph_facts(engine: AsyncEngine, change, named: list[tuple[str, str]], reader: GraphReader) -> tuple:
+async def _graph_facts(
+    engine: AsyncEngine, change, named: list[tuple[str, str]], reader: GraphReader, wait: float | None = None
+) -> tuple:
     """(the files the graph says ``named`` reach, why it cannot tell for some, the proposal's kind, the charter's
-    protected globs)."""
-    graph = await impact_as_owner(engine, change.project_id, [f"{repo}:{path}" for repo, path in named], reader)
+    protected globs); ``wait``, as ``impact_as_owner`` takes it."""
+    targets = [f"{repo}:{path}" for repo, path in named]
+    graph = await impact_as_owner(engine, change.project_id, targets, reader, wait=wait)
     async with engine.begin() as conn:
         unknown = await unknown_paths(conn, change.project_id, named, graph)
         kind = await _kind(conn, change.proposal_id)
@@ -407,8 +424,12 @@ async def pull_facts(
 
 async def verdict_facts(engine: AsyncEngine, change, paths: list[str], reader: GraphReader) -> PullFacts:
     """``pull_facts`` of the paths a judge run's diff touches: knowledge.yaml as the pull request showed it when it
-    opened (the change's ``knowledge``), nothing of it on GitLab; no file read for the API rule (``api`` None)."""
-    impacted, unknown, kind, _ = await _graph_facts(engine, change, named_paths(change.repo, paths), reader)
+    opened (the change's ``knowledge``), nothing of it on GitLab; no file read for the API rule (``api`` None). The
+    graph is waited for VERDICT_GRAPH_WAIT seconds at most: a snapshot loading for minutes (after the api restarts,
+    or a new build of a large graph) timed the worker's post out at 30 s five times, and the verdict was lost. Past
+    that the graph counts unreadable, which raises the tier (``tiers.tier_of``), never lowers it."""
+    named = named_paths(change.repo, paths)
+    impacted, unknown, kind, _ = await _graph_facts(engine, change, named, reader, wait=VERDICT_GRAPH_WAIT)
     stored = change.knowledge if isinstance(change.knowledge, dict) else {}
     return PullFacts(tuple(paths), impacted, unknown, stored if kind == tiers.KNOWLEDGE_KIND else None)
 

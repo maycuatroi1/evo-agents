@@ -99,7 +99,7 @@ CODE_FILES = [{"filename": REPLAY_PY, "status": "modified", "patch": "@@ -4,1 +4
 
 
 def reaching(monkeypatch, reached) -> None:
-    async def impact(engine, project_id, targets, reader):
+    async def impact(engine, project_id, targets, reader, **_):
         return change_tiers.GraphView(frozenset(), frozenset(reached))
 
     monkeypatch.setattr(change_tiers, "impact_as_owner", impact)

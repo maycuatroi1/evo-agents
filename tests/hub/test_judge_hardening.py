@@ -86,10 +86,13 @@ def test_judge_routes_refuse_the_worker_token_without_the_runs_key(world):  # no
         assert world.client.post(f"{route}/verdict", json=body, headers=headers).status_code == 403
     assert one_change(world)["state"] == "judging"  # nothing was judged by the worker token alone
     assert inputs(world, spec["id"]).status_code == 200
-    assert verdict(world, spec["id"]).status_code == 200
+    first = verdict(world, spec["id"])
+    assert first.status_code == 200
     (stored,) = sql(world.db, select(tables.curator_changes.c.judge_key))
     assert stored[0] is None  # the key goes with the verdict
-    assert verdict(world, spec["id"]).status_code == 409
+    # the worker posts again when the answer came too late: it gets the verdict recorded, and records no other
+    again = verdict(world, spec["id"], verdict="fail")
+    assert again.status_code == 200 and again.json() == first.json()
 
 
 # H1: the tier again from the files, and the plan the hub's
