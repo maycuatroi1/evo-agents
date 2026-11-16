@@ -1493,8 +1493,10 @@ runs), at most three agents a message, the fourth and on refused in the thread. 
 project, dispatched by the person who mentioned it, and pinned to a worker of that person, or one another member
 shares with them in the project (their own first), that the profile allows,
 online, with a free slot (its held runs and the runs queued for it count) and a daemon that runs chat runs, the one with
-a checkout of more of the project's repos first; the person must be a writer on the profile's project. No such worker,
-and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that declares
+a checkout of more of the project's repos first; the person must be a writer on the profile's project. When the ready
+nodes of the agent's pool only lack a free slot, the run queues for the one it would have picked, the hub says in the
+thread how many runs are ahead of it, and it starts when that node has a slot (`docs/workers.md`, Handing work to
+another agent). Any other lack, and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that declares
 `chat_runs: run_as`, such as @ba of the core plugin srs, goes instead to a worker of the member the project enabled the
 type under, whoever mentioned it, and the session stays the mentioner's (`docs/plugins.md`, Agent types). The mention
 keeps the run it made (`run_id`) or why it made none. Each (thread, agent, person) is one session: a message to the

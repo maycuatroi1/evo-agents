@@ -46,8 +46,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
+from evo_agents.hub.runs import PRIORITIES as PRIORITIES  # tasks_items.priority, a run's levels too
+
 SPRINT_STATES = ("planned", "active", "closed")  # tasks_sprints.state
-PRIORITIES = ("urgent", "high", "medium", "low")  # tasks_items.priority
 PEOPLE_ROLES = ("assignee", "ba", "qa", "dev")  # tasks_people.role
 LINK_KINDS = ("srs_item", "plan_step", "run", "pull")  # tasks_links.kind
 BLOCKER_WAITING = ("waiting_user_id", "waiting_task_id", "waiting_text")  # tasks_blockers: exactly one is set

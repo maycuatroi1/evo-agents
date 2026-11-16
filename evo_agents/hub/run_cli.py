@@ -2,25 +2,24 @@
 
 ``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none, ``plan`` queues a plan
 run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs), in one agent session or
-with ``--session-per-step`` in a new session for each step, or with ``--system SLUG`` hands the plan to an agent
-system of the project instead (POST /v1/projects/{p}/plans/{id}/system-dispatch, ``run_cli_options``), and
-``author`` queues an author run, a plan written from your request with the create-exec-plan skill on the pool of its
-agent (POST /v1/projects/{p}/author-runs, ``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of
-the project. ``list`` and ``show`` read runs
-of every kind, the chat runs of group chats among them. ``logs`` prints a run's events page by page (GET
-.../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's server-sent events (GET .../runs/{id}/stream)
-until the hub sends ``end``; ``watch`` waits until a run's state, an open decision or a plan's step changes
-(``run_cli_watch``). ``send`` leaves a message for the run's agent, files too with ``--attach``
+with ``--session-per-step`` in a new session for each step, or with ``--system SLUG`` hands the plan to an agent system
+of the project instead (POST /v1/projects/{p}/plans/{id}/system-dispatch, ``run_cli_options``), and ``author`` queues an
+author run, a plan written from your request with the create-exec-plan skill on the pool of its agent (POST
+/v1/projects/{p}/author-runs, ``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of the project.
+``list`` and ``show`` read runs of every kind, the chat runs of group chats among them. ``logs`` prints a run's events
+page by page (GET .../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's server-sent events (GET
+.../runs/{id}/stream) until the hub sends ``end``; ``watch`` waits until a run's state, an open decision or a plan's
+step changes (``run_cli_watch``). ``send`` leaves a message for the run's agent, files too with ``--attach``
 (``run_cli_send``), and ``cancel``, ``approve``, ``takeover``, ``handback``, ``rerun`` and ``access`` are the owner's
-controls (``access`` in ``run_cli_access``); ``outputs`` lists the files its agent made (``run_cli_outputs``).
-``credentials`` lists the run's leases of its owner's secrets and the hub's GitHub App, the owner only, never a
-value. Every command after
-``dispatch``, ``plan``, ``author`` and ``list`` takes the id of a run, as ``list`` shows it. None of them picks the
-machine: an agent in pool mode runs on its own pool, and the hub refuses a worker, pool, label or taint for it. A refusal is the hub's
-message on stderr, such as why a worker whose owner set it to take runs dispatched from the web only refuses a run
-dispatched with a token. ``dispatch``, ``plan``, ``author`` and ``rerun`` take ``--account``, an account picked by hand,
-and all but ``rerun`` ``--agent``, an agent profile (``evo_agents.hub.run_cli_options``). ``docs/workers.md`` describes
-the protocol behind them; ``--json`` prints what the hub answered, with the keys declared next to the flag.
+controls (``access`` in ``run_cli_access``), ``priority`` a writer's (``run_cli_priority``); ``outputs`` lists the files
+its agent made (``run_cli_outputs``). ``credentials`` lists the run's leases of its owner's secrets and the hub's GitHub
+App, the owner only, never a value. Every command after ``dispatch``, ``plan``, ``author`` and ``list`` takes the id of
+a run, as ``list`` shows it. None of them picks the machine: an agent in pool mode runs on its own pool, and the hub
+refuses a worker, pool, label or taint for it. A refusal is the hub's message on stderr, such as why a worker whose
+owner set it to take runs dispatched from the web only refuses a run dispatched with a token. ``dispatch``, ``plan``,
+``author`` and ``rerun`` take ``--account``, an account picked by hand, and all but ``rerun`` ``--agent``, an agent
+profile (``evo_agents.hub.run_cli_options``). ``docs/workers.md`` describes the protocol behind them; ``--json`` prints
+what the hub answered, with the keys declared next to the flag.
 
 ``--model`` names a model as one runtime names it (opencode: provider/model), so ``dispatch`` and ``plan`` take it
 only with ``--runtime`` naming that runtime: with ``any`` the claiming worker picks the runtime, and the model might
@@ -74,6 +73,7 @@ from evo_agents.hub.run_cli_options import (
     usage_error,
 )
 from evo_agents.hub.run_cli_outputs import register_outputs
+from evo_agents.hub.run_cli_priority import register_priority
 from evo_agents.hub.run_cli_send import register_send
 from evo_agents.hub.run_cli_spend import spend_lines, usd
 from evo_agents.hub.run_cli_watch import register_watch
@@ -475,9 +475,7 @@ def cmd_author(args) -> int:
     if not text.strip():
         return usage_error("the request is empty: say what the plan should achieve")
     if len(text.encode()) > MAX_REQUEST_BYTES:
-        return usage_error(
-            f"the request is {len(text.encode())} bytes of UTF-8, over the {MAX_REQUEST_BYTES} it takes",
-        )
+        return usage_error(f"the request is {len(text.encode())} bytes of UTF-8, over the {MAX_REQUEST_BYTES} it takes")
     hub, _ = signed_in()
     project = project_of_args(args)
     body = {"request": text}
@@ -1035,4 +1033,5 @@ def register_runs(hsub) -> None:
     register_candidates(rsub, _run_argument, project_of_args)
     register_outputs(rsub, _run_argument, project_of_args)
     register_access(rsub, _run_argument, project_of_args, RUN)
+    register_priority(rsub, _run_argument, project_of_args, RUN)
     _register_controls(rsub)

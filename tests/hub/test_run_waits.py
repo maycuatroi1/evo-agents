@@ -4,7 +4,8 @@ open on an option that says not yet (``evo_agents.hub.server.run_waits``, ``deci
 The checks: a wait is an open decision of category wait that notifies nobody and lets the run wait; the reaper wakes it
 when its time comes, or sooner on an event of its project of its kind whose payload contains what it names, written
 after it was asked, and never on another; a run that waits only for a wait that wakes later than the minutes a run keeps
-its slot is parked at once, so it holds no worker, and one that wakes sooner keeps the slot; a parked run resumes, by
+its slot is parked at once, so it holds no worker, and one that wakes sooner keeps the slot, unless a run queued for its
+full node waits for that slot; a parked run resumes, by
 the reaper, when its wait wakes, and is not cancelled while its wait has not come; the owner may wake it sooner; the
 route refuses a wait it cannot keep; and an option that waits leaves the decision open, tells the agent nothing and
 takes no words."""
@@ -19,7 +20,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import hub_events, run_prompts, runs, tables
 from evo_agents.hub.server.app import create_app
@@ -300,6 +301,24 @@ def test_a_run_with_a_question_open_beside_its_wait_keeps_its_slot_the_minutes_a
     park(hub_db, run["id"])
     recover(client)
     assert last_reason(hub_db, run["id"]) == [("nobody answered its decision within 10 minutes",)]
+
+
+def test_a_waiting_run_parks_at_once_when_a_run_queues_for_its_slot(client, hub, hub_db):
+    worker, run = started(client, hub)  # its worker has one slot
+    moved(client, worker, run["id"], "running", session_id=SESSION)
+    asked(client, worker, run["id"])
+    moved(client, worker, run["id"], "waiting")
+    recover(client)
+    assert run_view(client, hub["owner"], run["id"])["state"] == "waiting"  # nothing waits for its slot: it keeps it
+    r = tables.runs
+    (project, owner) = sql(hub_db, select(r.c.project_id, r.c.dispatched_by).where(r.c.id == run["id"]))[0]
+    pinned = {"project_id": project, "dispatched_by": owner, "kind": "author", "pinned_worker_id": worker["id"]}
+    pinned |= {"requested_runtime": "any", "runtime": "any", "mode": "headless", "approval": "auto", "timeout_s": 3600}
+    pinned |= {"repos": [{"repo": "evo-agents", "base": "main"}], "request": "Write the plan of the wait fix."}
+    sql(hub_db, insert(r).values(pinned))  # a run queued for that worker alone, as a chat run of a busy pool is
+    recover(client)
+    assert run_view(client, hub["owner"], run["id"])["state"] == "parked"
+    assert last_reason(hub_db, run["id"]) == [("a run queued for its node waits for the slot it holds",)]
 
 
 def test_a_parked_run_whose_wait_came_is_cancelled_a_week_on_as_any(client, hub, hub_db):

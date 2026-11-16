@@ -113,6 +113,7 @@ WORKER_UNSHARE = "worker.unshare"
 RUN_CAUSE = (
     "run.cause"  # a plugin classified the cause of a failed run, or a writer restored it: "<project> run:<id> ..."
 )
+RUN_PRIORITY = "run.priority"  # a writer changed a queued run's priority: "<project> run:<id> priority=<was>-><new>"
 RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step
 RUN_DISPATCH_PLAN = "run.dispatch_plan"  # a member queued a plan run: "<project>/<plan> run:<id>", no step
 # a member handed a plan to a system's entry agent (``plan_systems``): "<project>/<plan> run:<id> system:<slug>

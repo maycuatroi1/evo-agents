@@ -8,7 +8,8 @@ cancelled when its cancel was asked for, and is not tried again. Of the runs who
 asked for is cancelled, the last attempt fails, and any other run is lost, with its next attempt queued for the same
 step (``parent_run_id`` pointing back, the attempt one higher, the runtime the dispatch asked for) and the channel
 RUNS_CHANNEL notified with the new run's id. A run ``waiting`` for DECISION_WAIT is ``parked`` (cancelled instead
-when its cancel was asked for), and one whose open decisions are all waits for a time or an event of the hub that
+when its cancel was asked for), at the first pass when a run queued for its full node waits for a slot, and one whose
+open decisions are all waits for a time or an event of the hub that
 wake later than that at the first pass, so no wait holds a worker: the worker's next heartbeat says park, and the
 slot is free; an author run waiting for its owner's reply in its chat is parked the same way. A run ``parked`` for
 PARKED_FOR is cancelled and its open decisions expire. A revoked worker also fails the runs pinned to it, held or
@@ -153,6 +154,7 @@ async def end_timed_out(engine: AsyncEngine, batch: int, ended: Counter) -> None
 async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: Counter) -> None:
     """Park every run that has waited ``wait`` for its owner's answer, or whose open decisions are all waits for a
     time or an event of the hub none of which wakes within ``wait`` (nobody answers those, so it parks at once), or
+    whose node is full while a queued run waits for a slot of it (``_slot_wanted``: it gives its slot up at once), or
     cancel it when its cancel was asked for, each in a transaction of its own; count them in ``ended``."""
     r, d = tables.runs, tables.decisions
     open_of_run = (d.c.run_id == r.c.id, d.c.state == "open")
@@ -164,7 +166,7 @@ async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: 
     waited_long = (
         r.c.state == "waiting",
         r.c.kind != "local",
-        or_(r.c.waiting_since < func.now() - wait, only_waits),
+        or_(r.c.waiting_since < func.now() - wait, only_waits, _slot_wanted()),
     )
     async with engine.begin() as conn:
         query = select(r.c.id).where(*waited_long).order_by(r.c.waiting_since).limit(batch)
@@ -173,13 +175,16 @@ async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: 
         async with engine.begin() as conn:
             lock = (
                 select(r.c.cancel_requested_at.is_not(None).label("cancel"), r.c.kind, only_waits.label("waits"))
+                .add_columns(_slot_wanted().label("wanted"))
                 .where(r.c.id == run_id, *waited_long)
                 .with_for_update(of=r, skip_locked=True)
             )
             row = (await conn.execute(lock)).one_or_none()
             if row is None:  # answered, ended or taken by another pass meanwhile
                 continue
-            if row.kind == "author":  # it waits for a reply in its chat, not for an answer to a decision
+            if row.wanted:  # a run queued for its node waits for the slot it holds
+                reason = "a run queued for its node waits for the slot it holds"
+            elif row.kind == "author":  # it waits for a reply in its chat, not for an answer to a decision
                 reason = f"nobody replied in its chat within {_hours(wait)}"
             elif row.waits:  # it waits for a time or an event of the hub (``run_waits``), which resumes it
                 reason = "it waits for a time or an event of the hub, which resumes it"
@@ -188,6 +193,18 @@ async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: 
             new = "cancelled" if row.cancel else "parked"
             await move_run(conn, run_id, "waiting", new, "reaper", reason=reason)
             ended[new] += 1
+
+
+def _slot_wanted():
+    """Whether a run of tables.runs, waiting, holds a slot a queued run waits for: a run is queued pinned to its node
+    (a chat run of a pool whose nodes were all busy, ``chat_runs._pool_worker``), and the node holds as many runs as it
+    has slots."""
+    r, w = tables.runs, tables.workers
+    queued, held = tables.runs.alias("queued"), tables.runs.alias("held")
+    pinned = exists().where(queued.c.state == "queued", queued.c.pinned_worker_id == r.c.worker_id)
+    holds = select(func.count()).where(held.c.worker_id == r.c.worker_id, held.c.state.in_(runs.HELD_STATES))
+    slots = select(w.c.slots).where(w.c.id == r.c.worker_id)
+    return and_(pinned, holds.scalar_subquery() >= slots.scalar_subquery())
 
 
 async def expire_parked(engine: AsyncEngine, batch: int, parked_for: timedelta, ended: Counter) -> None:

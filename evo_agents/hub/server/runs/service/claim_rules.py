@@ -19,6 +19,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import agent_placement, gateway_accounts, kg_shared_pool, pool_accounts, worker_placement
 from evo_agents.hub.server.runs.models import available
 from evo_agents.hub.server.runs.service import browsers, plugin_environments, plugin_runtimes
+from evo_agents.hub.server.runs.service.priority import claim_order
 from evo_agents.hub.server.runs.service.profiles import claim_clause, run_packs, runtime_rule
 from evo_agents.hub.server.runs.service.views import lost_here, steady
 from evo_agents.hub.server.runs.service.worker_fit import unit_admits, writes
@@ -39,14 +40,14 @@ def _served(worker_id: int, owner_id: int):
 
 
 def _claimable(conditions: list[Condition]):
-    """The oldest queued run that meets every one of ``conditions`` (``_claim_conditions``, ``Claimer.conditions``),
-    locked, passing over one another claim holds locked. Each row is the run's id, the runtime it asked for, its kind,
-    its profile's runtime axis, its project's id, its profile's environment axis and the agent packs its profile
-    attaches."""
+    """The first queued run by priority, then the oldest (``priority.claim_order``), that meets every one of
+    ``conditions`` (``_claim_conditions``, ``Claimer.conditions``), locked, passing over one another claim holds
+    locked. Each row is the run's id, the runtime it asked for, its kind, its profile's runtime axis, its project's id,
+    its profile's environment axis and the agent packs its profile attaches."""
     r = tables.runs
     rules = (runtime_rule(), r.c.project_id, runtime_rule("environment"), run_packs())
     query = select(r.c.id, r.c.runtime, r.c.kind, *rules).where(*(clause for _, clause in conditions))
-    return query.order_by(r.c.id).limit(1).with_for_update(of=r, skip_locked=True)
+    return query.order_by(*claim_order(r)).limit(1).with_for_update(of=r, skip_locked=True)
 
 
 def _claim_conditions(

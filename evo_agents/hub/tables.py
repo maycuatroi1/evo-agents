@@ -514,6 +514,7 @@ runs = Table(
     Column("proofs", JSONB(none_as_null=True)),
     _when("spend_at"),  # when run_spend last took in its usage reports; NULL: never yet (0210)
     Column("spend_transcripts", Text),  # a local run's: the transcripts its run_spend was read from (0211)
+    Column("priority", Text, nullable=False, server_default="medium"),  # runs.PRIORITIES: the claim's order (0255)
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),
