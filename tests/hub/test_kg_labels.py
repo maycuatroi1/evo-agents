@@ -22,17 +22,15 @@ from sqlalchemy import func, insert, select
 from evo_agents.hub import facets, kg_asked, kg_labels, tables
 from evo_agents.hub.server.curator_shift import owner_access
 from evo_agents.hub.server.kg_labels import visible_labels
-from evo_agents.kg.build import build_project
 from evo_agents.kg.evaluate import HOLDOUT, split_of
 from evo_agents.kg.policy import Policy
-from evo_agents.kg.snapshot import store_rows
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from tests.hub.live import sql
 from tests.hub.test_digest import answered, result, session_lines, tool_use
 from tests.hub.test_facet_job import SESSION, analyzed, later, session_facet_of, user_of
 from tests.hub.test_runs import OWNER, PROJECT
 from tests.hub.test_session_transcripts import hub, parts_of, send, statuses, transcript  # noqa: F401 (hub: a fixture)
+from tests.kg import built as memory
 from tests.kg.projects import make_project
 
 KG = "mcp__plugin_evo-hub_evo-hub__kg_search"
@@ -215,12 +213,8 @@ def test_a_build_learns_the_searches_under_their_labels_and_keeps_the_chance_an_
     monkeypatch.setenv("EVO_KG_HOME", str(tmp_path / "kg-home"))
     demo = make_project(tmp_path, tmp_path / "kg-home")
     sync_project(demo)
-    assert build_project(demo).ok
-    store = Store.open_file(demo.root / "graph.sqlite", immutable=True)
-    try:
-        built = store_rows(store, store.latest_ready())
-    finally:
-        store.close()
+    assert memory.build(demo).ok
+    built = memory.rows_of(demo)
     held, digest = kg_asked.put(built, learned)
     assert digest is not None
     assert sorted((row[0], row[1]) for row in held.asked) == [
