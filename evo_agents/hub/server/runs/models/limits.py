@@ -47,7 +47,12 @@ RUNTIME_HELP = (
 ModelName = Annotated[str, Field(min_length=1, max_length=runs.MAX_MODEL_CHARS, pattern=LINE)]
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 409: {"model": ErrorBody}}
 StepKey = Annotated[str, Path(min_length=1, max_length=STEP_KEY_CHARS, description="the step's id, or its order")]
-AccountName = Annotated[str, Field(max_length=MAX_SECRET_NAME_CHARS, pattern=f"^{SECRET_NAME.pattern}$")]
+# One of the caller's env secrets by name, or <login>/<name>: the one that member shared with the caller (a secret's
+# name holds no "/", a login is admin.LOGIN_NAME's)
+SHARED_OWNER = r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}"
+AccountName = Annotated[
+    str, Field(max_length=MAX_SECRET_NAME_CHARS + 101, pattern=f"^(?:{SHARED_OWNER}/)?{SECRET_NAME.pattern}$")
+]
 ProfileHandle = Annotated[str, Field(pattern=profiles.HANDLE_PATTERN)]
 PROFILE_HELP = (
     "the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub "
@@ -59,9 +64,10 @@ PLUGIN_CONFIG_HELP = (
     "the plain values it sets, checked against the plugin's schema; no secret (422). Null: none"
 )
 ACCOUNT_HELP = (
-    "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its "
-    "variable and keeps it, with no failover to another account; null: the account is picked by the rules of the "
-    "caller's policy for the project"
+    "one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account "
+    "that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable "
+    "and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is "
+    "picked by the rules of the caller's policy for the project"
 )
 AS_ME_HELP = (
     "true: the run's agent calls the hub's API as you, with your grants on every project and hub admin if you are "

@@ -183,8 +183,9 @@ class Rerun(HubPlaced):
 
     account: AccountName | None = Field(
         None,
-        description="one of the caller's env secrets bound to the project, by name: the rerun takes it, with no "
-        "failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick",
+        description="one of the caller's env secrets bound to the project, by name, or <login>/<name> for one that "
+        "member shares with the caller: the rerun takes it, with no failover; null keeps the account picked by hand "
+        "for the run rerun, if one was, else the rules pick",
     )
     account_by_rule: bool = Field(
         False, description="true: the rules of the caller's policy pick the account, not the one picked for the run"
