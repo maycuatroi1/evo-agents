@@ -282,8 +282,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_fifty_six_tables(hub_db):
-    assert len(TABLES) == 256  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_fifty_seven_tables(hub_db):
+    assert len(TABLES) == 257  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -306,6 +306,7 @@ def test_a_fresh_database_gets_the_two_hundred_and_fifty_six_tables(hub_db):
         ("credential_leases", "sealed_value"),
         ("credential_leases", "token_hash"),
         ("kg_embeddings", "vector"),  # a float16 vector, as the store file's node_vec holds it
+        ("kg_vector_cache", "vector"),  # the same, kept by digest of its text for the next build (0254)
         ("marketing_posts", "screenshot"),
         ("secrets", "nonce"),
         ("secrets", "sealed"),
