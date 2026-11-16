@@ -32,8 +32,8 @@ from sqlalchemy import select
 from evo_agents.hub import tables
 from evo_agents.hub.blobs import blob_key
 from evo_agents.hub.client import Hub
-from evo_agents.hub.kg_build import worker_project
 from evo_agents.hub.kg_push import Pusher
+from evo_agents.kg.build import build_project
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.scrub import blob_refs, blob_secrets, secrets_in
 from tests.hub.test_kg import (
@@ -80,8 +80,10 @@ def built(hub, laptop: Machine, guide_line: str, rev: str) -> dict:
     run_worker(hub)
     build = build_rows(hub)[0]
     assert build["status"] == "succeeded", build
-    # the graph file an older build uploaded: the one the worker built into its cache
-    graph = (worker_project(hub.worker_dir, PROJECT).root / "graph.sqlite").read_bytes()
+    # the graph file an older build uploaded: the hub writes none now, so the one the machine builds of the same docs
+    project = laptop.project()
+    assert build_project(project).ok
+    graph = (project.root / "graph.sqlite").read_bytes()
     seed_artifact(hub, build, data=graph)
     return build_rows(hub)[0]
 

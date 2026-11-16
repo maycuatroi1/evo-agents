@@ -12,7 +12,7 @@ pytest.importorskip("sqlalchemy")
 
 from evo_agents.hub import kg_questions as model
 from evo_agents.hub import review as review_model
-from evo_agents.kg.store import Store
+from evo_agents.kg.snapshot import Snapshot
 from tests.hub import pg
 from tests.hub.test_kg_eval_bootstrap import graph_of, kg_env  # noqa: F401 (kg_env is a fixture)
 
@@ -35,7 +35,8 @@ def test_a_project_needs_questions_without_a_set_or_with_few_commit_questions_on
 
 @pytest.fixture
 def store(tmp_path, kg_env):  # noqa: F811
-    opened = Store.open_file(graph_of(tmp_path, kg_env))
+    """The graph as the hub reads it: a view of the snapshot of its rows (``kg_questions._read_graph``)."""
+    opened = Snapshot.from_stored(graph_of(tmp_path, kg_env)).view()
     yield opened
     opened.close()
 

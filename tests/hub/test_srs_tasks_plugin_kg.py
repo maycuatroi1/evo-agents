@@ -6,7 +6,8 @@ Checked here, end to end on the hub: approving a version and creating a task eac
 that waits; the build holds the use cases of the approved version and the task, and kg_path goes from a use case code
 to the task, the plan step it links and the commit the step's evidence names; the plugins' data carries the project's
 label and a member whose grant is below it sees none of it; a build of unchanged data points at the artifact of the
-build before, and a verifying build (``build_project(verify=True)``) on the worker's store gives its hash; a changed task is built again, and a
+build before, and a rebuild of the worker's corpus (``verify_build``), its clustering started where the hub's build
+started it, gives its hash; a changed task is built again, and a
 plugin the project turns off leaves the graph. Archiving a document and unarchiving it each queue a build, and an
 archived document is out of the graph (criterion a1 of plan srs-document-lifecycle). The sources of a finding are
 looked up in that graph as the member reads it: node ids, and paths a file or document node carries (criterion a4 of
@@ -35,8 +36,9 @@ from evo_agents.hub import kg_plans, plugin_calls, plugin_events, tables
 from evo_agents.hub.kg_build import worker_project
 from evo_agents.hub.server import kg
 from evo_agents.hub.server.security import MACHINE, Principal
-from evo_agents.kg.build import build_project
+from evo_agents.kg.build import verify_build
 from evo_agents.kg.project import load_project_at
+from evo_agents.kg.snapshot import rows_clusters
 from evo_agents.kg.sync import sync_project
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
@@ -57,6 +59,7 @@ from tests.hub.test_kg import (
     served,
     tool_ok,
 )
+from tests.hub.test_kg_postgres_build import project_id, read_back
 
 CORE = {
     "srs": EntryPoint("srs", "evo_agents.hub.server.srs:MANIFEST", ENTRY_POINT_GROUP),
@@ -164,6 +167,7 @@ def test_srs_tasks_plugin_graph_on_the_hub_traces_a_use_case_to_its_task_step_an
     run_and_serve(hub)
     assert build_rows(hub)[0]["status"] == "succeeded"
     assert call_tool(hub, "kg_node", {"id": USE_CASE}).json()["isError"]  # no version approved yet
+    before = read_back(hub.db, project_id(hub))  # the graph the next build starts its clustering from
 
     approve_sample(hub)
     assert queued(hub) == 1  # the approval queued a build
@@ -192,8 +196,11 @@ def test_srs_tasks_plugin_graph_on_the_hub_traces_a_use_case_to_its_task_step_an
     same = build_rows(hub)[0]
     assert same["id"] != built["id"] and same["content_hash"] == built["content_hash"]
     assert same["graph_kept"] and same["artifact_sha256"] is None  # its graph is in the tables; no file uploaded
-    checked = build_project(worker_project(hub.worker_dir, PROJECT), verify=True)
-    assert checked.ok and checked.verify["match"] and checked.content_hash == built["content_hash"]
+    # the worker keeps no graph file to take the warm start from: give it the clusters of the graph the hub kept before
+    checked = verify_build(
+        worker_project(hub.worker_dir, PROJECT), built["content_hash"], warm=rows_clusters(before.clusters)
+    )
+    assert checked["match"], checked
 
     edited = hub.client.patch(f"/v1/x/tasks/{PROJECT}/tasks/T-4", json={"status": "done"}, headers=hub.alice)
     assert edited.status_code == 200, edited.text
