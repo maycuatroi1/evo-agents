@@ -11,10 +11,10 @@ import yaml
 
 from evo_agents.kg import entities, strategy
 from evo_agents.kg import settings as kg_settings
-from evo_agents.kg.build import build_project, unchanged, verify_build
+from evo_agents.kg.build import unchanged_rows, verify_rows
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import make_project, write
 
 MODEL = """import json, pathlib, sys, uuid
@@ -75,22 +75,15 @@ def setup(tmp_path, kg_env, *, sink=None, extra=None, enable=True, level="intern
 
 
 def entity_nodes(project):
-    store = Store.open_file(project.root / "graph.sqlite")
-    try:
-        b = store.latest_ready()
-        rows = store.db.execute(
-            "SELECT node_id, kind, status, props FROM nodes WHERE node_id LIKE 'entity:%'"
-            " AND tx_from <= ? AND (tx_to IS NULL OR tx_to > ?)",
-            (b, b),
-        )
-        return [tuple(r) for r in rows.fetchall()]
-    finally:
-        store.close()
+    """(id, kind, status, props as JSON) of the entity nodes of the project's latest build."""
+    snap = built.snapshot_of(project)
+    found = [n for n in snap.nodes if n["id"].startswith("entity:")] if snap is not None else []
+    return [(n["id"], n["kind"], n["status"], json.dumps(n["props"])) for n in found]
 
 
 def test_without_a_strategy_that_enables_it_no_model_is_called(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env, enable=False)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     assert calls(log) == 0 and entity_nodes(project) == []
     assert report.coverage["entities"]["enabled"] is False
@@ -99,13 +92,13 @@ def test_without_a_strategy_that_enables_it_no_model_is_called(tmp_path, kg_env)
 
 def test_a_project_with_no_entities_mapping_says_nothing_of_the_step(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok and "entities" not in report.coverage
 
 
 def test_a_local_model_states_entities_cut_to_the_ontology_and_cached(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     found = entity_nodes(project)
     assert {r[0] for r in found} >= {"entity:Concept:search", "entity:Concept:server", "entity:Concept:obsolete"}
@@ -116,14 +109,14 @@ def test_a_local_model_states_entities_cut_to_the_ontology_and_cached(tmp_path, 
     assert cov["tokens_in"] == 300 and cov["tokens_out"] == 60 and cov["cost"] == 1.5
     assert cov["rejected"] >= 4, "Banana is not in the ontology and eats is not a relation"
     assert "Banana" in cov["rejected_config"]
-    again = build_project(project)
+    again = built.build(project)
     assert calls(log) == 3, "an unchanged item costs no second call"
     assert again.ok
 
 
 def test_a_sink_that_does_not_clear_the_label_gets_nothing_and_coverage_says_why(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env, sink="llm-low")
-    report = build_project(project)
+    report = built.build(project)
     cov = report.coverage["entities"]
     assert calls(log) == 0 and cov["calls"] == 0 and cov["refused_count"] >= 2
     assert "above the clearance of sink 'llm-low'" in cov["refused"][0]["reason"]
@@ -132,64 +125,64 @@ def test_a_sink_that_does_not_clear_the_label_gets_nothing_and_coverage_says_why
 
 def test_a_sink_that_clears_the_label_is_used_and_a_wrong_sink_is_refused(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env, sink="llm")
-    assert build_project(project).coverage["entities"]["calls"] == 3
+    assert built.build(project).coverage["entities"]["calls"] == 3
     project, log = setup(tmp_path / "b", kg_env, sink="agent")
-    cov = build_project(project).coverage["entities"]
+    cov = built.build(project).coverage["entities"]
     assert cov["calls"] == 0 and "not llm-backend" in cov["refused"][0]["reason"]
 
 
 def test_the_ceiling_of_a_build_leaves_the_rest_for_the_next(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env, extra={"max_calls": 1})
-    report = build_project(project)
+    report = built.build(project)
     cov = report.coverage["entities"]
     assert cov["calls"] == 1 and cov["skipped"] == 2 and "max_calls 1" in cov["stopped"]
-    assert unchanged(project) is None, "a build that left items is not the build to skip"
+    assert unchanged_rows(project, built.rows_of(project)) is None, "a build that left items is not the build to skip"
     path = project.root / "settings.json"
     data = json.loads(path.read_text())
     data["entities"]["max_calls"] = 5
     path.write_text(json.dumps(data))
-    after = build_project(project).coverage["entities"]
+    after = built.build(project).coverage["entities"]
     assert after["calls"] == 2 and after["cache_hits"] == 1 and after["skipped"] == 0
     assert calls(log) == 3
 
 
 def test_the_cost_ceiling_stops_too(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env, extra={"max_cost": 0.4})
-    cov = build_project(project).coverage["entities"]
+    cov = built.build(project).coverage["entities"]
     assert cov["calls"] == 1 and "max_cost" in cov["stopped"]
 
 
 def test_calls_at_once_give_the_answers_of_calls_one_by_one_and_are_memoized(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env, extra={"jobs": 3})
-    report = build_project(project)
+    report = built.build(project)
     cov = report.coverage["entities"]
     assert report.ok and cov["calls"] == calls(log) == 3 and cov["cache_hits"] == 0 and cov["skipped"] == 0
     assert cov["cost"] == 1.5
     found = entity_nodes(project)
     assert {r[0] for r in found} >= {"entity:Concept:search", "entity:Concept:server", "entity:Concept:obsolete"}
-    assert build_project(project).ok
+    assert built.build(project).ok
     assert calls(log) == 3, "the answers of calls at once are in the memo"
 
 
 def test_calls_at_once_stop_at_the_ceiling_and_leave_the_rest(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env, extra={"jobs": 2, "max_calls": 1})
-    cov = build_project(project).coverage["entities"]
+    cov = built.build(project).coverage["entities"]
     assert cov["calls"] == 1 == calls(log) and cov["skipped"] == 2 and "max_calls 1" in cov["stopped"]
 
 
 def test_verifying_a_build_never_calls_the_model(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env)
-    report = build_project(project)
+    report = built.build(project)
     before = calls(log)
     for cold in (False, True):
-        got = verify_build(project, report.content_hash, cold=cold)
+        got = verify_rows(project, report.content_hash, cold=cold)
         assert got["match"], got
     assert calls(log) == before
 
 
 def test_a_failing_model_is_counted_and_the_build_still_succeeds(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env, extra={"command": [sys.executable, "-c", "import sys; sys.exit(3)"]})
-    report = build_project(project)
+    report = built.build(project)
     cov = report.coverage["entities"]
     assert report.ok and cov["failed"] == 3 and cov["errors"][0]["error"].startswith("the model command exited 3")
 
