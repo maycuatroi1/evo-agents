@@ -18,7 +18,6 @@ the blob store is moto's server (``tests.hub.s3``)."""
 from __future__ import annotations
 
 import json
-import sqlite3
 
 import pytest
 
@@ -51,6 +50,7 @@ from tests.hub.test_kg import (
 )
 from tests.hub.test_kg_retention import kg_graphs, objects, run_worker, seed_artifact
 from tests.kg.test_redact import GITHUB, LITERAL
+from tests.kg.test_scrub import old_graph_file
 
 PASSWORD_LINE = f"Connect with DB_PASSWORD: {LITERAL}"
 CODE_LINE = "client_secret = os_value_q8"  # in code, an expression; a document would take it for a literal
@@ -76,17 +76,9 @@ def leaked(text: str) -> list[str]:
 def old_graph(scratch, guide_line: str) -> bytes:
     """A graph file as builds uploaded before the hub kept graphs in its tables: the guide and the notes in its
     full-text index and its nodes."""
-    path = scratch / "old-graph.sqlite"
-    path.unlink(missing_ok=True)
-    db = sqlite3.connect(path)
-    db.execute("CREATE TABLE node_fts (name TEXT, body TEXT)")
-    db.execute("CREATE TABLE nodes (name TEXT, props TEXT)")
-    db.execute("CREATE TABLE edges (props TEXT)")
     docs = [("guide", guide_line), ("notes", DEPLOY_LINE), ("setup", "Install it.")]
-    db.executemany("INSERT INTO node_fts VALUES (?, ?)", docs)
-    db.executemany("INSERT INTO nodes VALUES (?, ?)", [(name, json.dumps({"title": name})) for name, _ in docs])
-    db.commit()
-    db.close()
+    props = [(name, json.dumps({"title": name})) for name, _ in docs]
+    path = old_graph_file(scratch / "old-graph.sqlite", docs, props)
     return path.read_bytes()
 
 

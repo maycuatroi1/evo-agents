@@ -59,17 +59,32 @@ def test_secrets_in_json_reads_keys_and_the_text_in_strings():
     assert secrets_in_json(json.dumps({"password": "${DB_PASSWORD}", "name": "token"})) == {}
 
 
-def test_graph_secrets_counts_the_rows_of_a_graph_file_holding_one(tmp_path):
-    path = tmp_path / "graph.sqlite"
+def old_graph_file(
+    path: Path, texts: list[tuple[str, str]], props: list[tuple[str, str]], *, edges: bool = True
+) -> Path:
+    """A graph file as builds wrote before the hub kept graphs in its tables: ``texts`` in its full-text index,
+    ``props`` in its nodes, and an empty edges table unless ``edges`` is false. The hub's tests build theirs here,
+    where the raw SQL guard of the hub does not look."""
+    path.unlink(missing_ok=True)
     db = sqlite3.connect(path)
     db.execute("CREATE TABLE node_fts (name TEXT, body TEXT)")
-    db.execute("CREATE TABLE nodes (name TEXT, props TEXT)")  # no edges table: a store of another schema
-    db.executemany(
-        "INSERT INTO node_fts VALUES (?, ?)", [("settings", f"export JWT_SECRET={LITERAL}\n"), ("readme", "Install.")]
-    )
-    db.executemany("INSERT INTO nodes VALUES (?, ?)", [("db", json.dumps({"password": LITERAL})), ("a", "{}")])
+    db.execute("CREATE TABLE nodes (name TEXT, props TEXT)")
+    if edges:
+        db.execute("CREATE TABLE edges (props TEXT)")
+    db.executemany("INSERT INTO node_fts VALUES (?, ?)", texts)
+    db.executemany("INSERT INTO nodes VALUES (?, ?)", props)
     db.commit()
     db.close()
+    return path
+
+
+def test_graph_secrets_counts_the_rows_of_a_graph_file_holding_one(tmp_path):
+    path = old_graph_file(
+        tmp_path / "graph.sqlite",
+        [("settings", f"export JWT_SECRET={LITERAL}\n"), ("readme", "Install.")],
+        [("db", json.dumps({"password": LITERAL})), ("a", "{}")],
+        edges=False,  # a store of another schema
+    )
     assert graph_secrets(path) == (2, {"password": 1, "secret": 1})
 
 
