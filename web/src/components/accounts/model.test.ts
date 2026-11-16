@@ -50,6 +50,8 @@ const POLICY: AccountPolicy = {
   cooldown_seconds: 1800,
   failover: false,
   max_failovers: 5,
+  hard_reserve_pct: 15,
+  five_hour_ceiling_pct: 80,
   updated_at: "2026-10-12T08:00:00Z",
 };
 
@@ -76,13 +78,30 @@ describe("the forms", () => {
 
   it("sends a policy's cooldown in seconds, and its failovers only as a valid number", () => {
     const form = policyFormOf(POLICY);
-    expect(form).toEqual({ strategy: "fill-first", cooldownMinutes: "30", failover: false, maxFailovers: "5" });
-    expect(policyBody(form)).toEqual({ strategy: "fill-first", cooldown_seconds: 1800, failover: false, max_failovers: 5 });
+    expect(form).toEqual({ strategy: "fill-first", cooldownMinutes: "30", failover: false, maxFailovers: "5", reservePct: "15", ceilingPct: "80" });
+    expect(policyBody(form)).toEqual({
+      strategy: "fill-first",
+      cooldown_seconds: 1800,
+      failover: false,
+      max_failovers: 5,
+      hard_reserve_pct: 15,
+      five_hour_ceiling_pct: 80,
+    });
     const off: PolicyForm = { ...form, maxFailovers: "x" };
     expect(policyProblems(off)).toEqual({});
     expect(policyBody(off).max_failovers).toBe(3);
     expect(policyProblems({ ...off, failover: true, cooldownMinutes: "0" })).toEqual({ cooldownMinutes: "range", maxFailovers: "whole" });
     expect(policyProblems({ ...form, cooldownMinutes: "10081" })).toEqual({ cooldownMinutes: "range" });
+  });
+
+  it("checks quota-pacing's reserve and ceiling only under that strategy, and keeps a valid one under another", () => {
+    const form = { ...policyFormOf(POLICY), reservePct: "101", ceilingPct: "0" };
+    expect(policyProblems(form)).toEqual({});
+    expect(policyBody(form)).toMatchObject({ hard_reserve_pct: 10, five_hour_ceiling_pct: 90 });
+    expect(policyProblems({ ...form, strategy: "quota-pacing" })).toEqual({ reservePct: "range", ceilingPct: "range" });
+    const pacing: PolicyForm = { ...form, strategy: "quota-pacing", reservePct: "0", ceilingPct: "100" };
+    expect(policyProblems(pacing)).toEqual({});
+    expect(policyBody(pacing)).toMatchObject({ strategy: "quota-pacing", hard_reserve_pct: 0, five_hour_ceiling_pct: 100 });
   });
 });
 

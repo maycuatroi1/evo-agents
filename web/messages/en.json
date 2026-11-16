@@ -4898,6 +4898,12 @@
         "session": "Session, {model}",
         "weekly": "Weekly, {model}",
         "unnamed": "Usage limit"
+      },
+      "pace": {
+        "ahead": "Ahead of its weekly pace by {points} points: the week runs out early",
+        "behind": "Behind its weekly pace by {points} points: quota to spend",
+        "on": "On its weekly pace",
+        "expected": "An even pace would have used {percent}% by now"
       }
     },
     "runsTitle": "{day, plural, one {# run} other {# runs}} in 24 hours, {week, plural, one {# run} other {# runs}} in 7 days",
@@ -5079,12 +5085,14 @@
       "strategy": {
         "round-robin": "Round robin",
         "weighted-round-robin": "Weighted round robin",
-        "fill-first": "Fill first"
+        "fill-first": "Fill first",
+        "quota-pacing": "Quota pacing"
       },
       "strategyHint": {
         "round-robin": "Each account in turn.",
         "weighted-round-robin": "In turn, each as often as its weight says.",
-        "fill-first": "The lowest priority until it hits its limit, then the next."
+        "fill-first": "The lowest priority until it hits its limit, then the next.",
+        "quota-pacing": "The account with the most of its week left, keeping a reserve and resting one near its five-hour limit."
       },
       "defaults": "Defaults",
       "custom": "Yours",
@@ -5099,7 +5107,8 @@
       "resetText": "The defaults hold again.",
       "resetFailed": "Couldn't reset the policy for {project}",
       "empty": "Bind an account to a project to set how its runs pick one.",
-      "loadFailed": "Could not read your policies."
+      "loadFailed": "Could not read your policies.",
+      "pacingSummary": "Reserve {reserve}%, five-hour ceiling {ceiling}%"
     },
     "policyForm": {
       "title": "Policy for {project}",
@@ -5174,7 +5183,16 @@
         "cancel": "Cancel",
         "newPool": "New pool",
         "poolCount": "{count, plural, one {# pool} other {# pools}}",
-        "loadFailed": "Could not read the pools of this project."
+        "loadFailed": "Could not read the pools of this project.",
+        "policy": {
+          "strategyOf": "Strategy of {pool}",
+          "reserve": "Reserve",
+          "ceiling": "5-hour ceiling",
+          "save": "Save",
+          "saved": "Policy of {pool} saved",
+          "failed": "Couldn't save the policy of {pool}",
+          "problem": "Enter whole percents: a reserve of {reserve}, a ceiling of {ceiling}."
+        }
       }
     },
     "variables": "{provider}, {count, plural, one {# variable} other {# variables}}",
@@ -5451,6 +5469,39 @@
         "invalid": "The hub refused a value: check the base URL, the models and the projects.",
         "unavailable": "The hub could not reach the endpoint. Check the base URL and try again."
       }
+    },
+    "pacing": {
+      "reserve": "Weekly reserve, in percent",
+      "reserveHint": "The share of an account's week kept back while another has more: {min} to {max}.",
+      "ceiling": "Five-hour ceiling, in percent",
+      "ceilingHint": "Above this five-hour use an account waits while a cooler one is ready: {min} to {max}."
+    },
+    "budget": {
+      "action": "Budget",
+      "actionLabel": "Weekly budget of {name}",
+      "title": "Weekly budget of {name}",
+      "description": "The hub draws what this account's runs cost this week over its budget as its weekly window, which quota pacing and the Token strategy read.",
+      "label": "Weekly budget, in US dollars",
+      "placeholder": "e.g. 50",
+      "hint": "Its weeks run 7 days from the instant set for it, Monday 00:00 UTC unless one was. Leave it empty to drop the budget.",
+      "problems": {
+        "number": "Enter an amount in dollars, with cents at most.",
+        "range": "Enter an amount above 0, up to {max}."
+      },
+      "save": "Save",
+      "saving": "Saving",
+      "cancel": "Cancel",
+      "saved": "Weekly budget of {name} saved",
+      "dropped": "Weekly budget of {name} dropped",
+      "savedText": "Its weekly window shows on the next read."
+    },
+    "zai": {
+      "refresh": "Refresh",
+      "refreshLabel": "Read the quota of {name} from Z.ai again",
+      "refreshed": "Quota of {name} read from Z.ai",
+      "noQuota": "Z.ai gave no quota for {name}",
+      "noQuotaText": "Its bars keep the last quota read.",
+      "failed": "Couldn't read the quota of {name}"
     }
   },
   "runs": {
@@ -6668,6 +6719,40 @@
         "cancel": "Cancel",
         "revoked": "Run #{id} no longer acts as you",
         "revokedText": "Its token has ended; the agent's next call to the hub gets a 401."
+      },
+      "routing": {
+        "title": "Token strategy",
+        "escalated": "Stepped up",
+        "difficulty": "Difficulty",
+        "levels": {
+          "easy": "Easy",
+          "medium": "Medium",
+          "hard": "Hard"
+        },
+        "source": {
+          "rules": "Rated by the hub's rules",
+          "scorer": "Rated by the scorer {scorer}",
+          "fallback": "Not rated: medium by default",
+          "pending": "Left to the worker's scorer"
+        },
+        "escalatedFrom": "One level up after a failed run: {from} to {to}",
+        "model": "Model",
+        "noModel": "None: the agent's profile does not allow the ladder's model",
+        "why": "Why this model",
+        "branch": {
+          "ladder": "The subscription's model: the weekly quota has a surplus to spend",
+          "overflow": "Cost step-down: the overflow's cheaper model"
+        },
+        "strategies": {
+          "surplus-first": "Strategy: surplus first",
+          "cost-first": "Strategy: cost first",
+          "quota-burn": "Strategy: quota burn"
+        },
+        "reason": "Hub's reason",
+        "quota": "Quota when chosen",
+        "weeklyLeft": "{percent}% of the week left",
+        "fiveHourUsed": "{percent}% of the five-hour window used",
+        "error": "Problem"
       }
     },
     "diff": {
@@ -7484,6 +7569,67 @@
       "forbidden": "Writing the policy needs the admin role on the project.",
       "conflict": "Someone saved a revision meanwhile. Reload the page to edit the newest.",
       "refused": "The hub refused this policy."
+    },
+    "routing": {
+      "title": "Token strategy",
+      "on": "On",
+      "off": "Off",
+      "offText": "Off: a run that names no model takes its agent's or the runtime's default.",
+      "edit": "Edit",
+      "editTitle": "Token strategy",
+      "description": "How the hub picks the model of a run that names none: it rates the run easy, medium or hard and gives it the ladder's model, or the overflow's once the subscription is down to its reserve.",
+      "enabled": "Pick the model of each run",
+      "enabledHint": "Off, a run that names no model takes its default. A run that names one keeps it.",
+      "strategy": "Strategy",
+      "strategies": {
+        "surplus-first": "Surplus first",
+        "cost-first": "Cost first",
+        "quota-burn": "Quota burn"
+      },
+      "strategyHints": {
+        "surplus-first": "The ladder's model while the subscription has more than its reserve of the week left; past that, easy and medium runs take the overflow.",
+        "cost-first": "Easy and medium runs take the overflow's cheaper model; hard runs take the ladder's.",
+        "quota-burn": "While the subscription has more than its reserve left, every run takes the ladder's hard model, to spend the week's surplus."
+      },
+      "reserve": "Weekly reserve, in percent",
+      "reserveHint": "The share of the subscription's week kept for hard runs: 0 to 100.",
+      "ceiling": "Five-hour ceiling, in percent",
+      "ceilingHint": "Past this use of the five-hour window, easy and medium runs take the overflow: 1 to 100.",
+      "thresholds": "Reserve and ceiling",
+      "thresholdsValue": "Reserve {reserve}% of the week, five-hour ceiling {ceiling}%",
+      "scorer": "Scorer",
+      "scorerHint": "The model of the short turn that rates a prompt the rules cannot; off: such a run is medium.",
+      "scorerOff": "Off: a run the rules cannot rate is medium",
+      "difficulty": "Difficulty",
+      "modelsCaption": "The model of each difficulty, on the ladder and in the overflow",
+      "levels": {
+        "easy": "Easy",
+        "medium": "Medium",
+        "hard": "Hard"
+      },
+      "ladder": {
+        "title": "Ladder",
+        "hint": "The subscription's model of each difficulty: a runtime's own, such as sonnet, or a gateway model as prefix/model."
+      },
+      "overflow": {
+        "title": "Overflow",
+        "hint": "The cheaper model a run takes past the reserve; empty: it keeps the ladder's."
+      },
+      "problems": {
+        "whole": "Enter a whole number from {min} to {max}.",
+        "range": "Enter a number from {min} to {max}.",
+        "required": "Enter a model.",
+        "model": "A runtime's model such as sonnet, or a gateway model as prefix/model, up to {max} characters."
+      },
+      "note": "Token strategy changed",
+      "save": "Save",
+      "saving": "Saving",
+      "cancel": "Cancel",
+      "saved": "Token strategy saved as revision {revision}",
+      "unchanged": "Nothing changed",
+      "forbidden": "Only an admin of the project changes its policy.",
+      "conflict": "Someone changed the policy meanwhile: close, read it again and choose again.",
+      "refused": "The hub refused the Token strategy."
     }
   },
   "inbox": {

@@ -39,11 +39,19 @@ function PolicyTable({ rows, onEdit, onReset }: { rows: PolicyRow[]; onEdit: (ro
       helper.accessor("strategy", {
         header: () => t("columns.strategy"),
         sortFn: "text",
-        cell: (info) => (
-          <span title={t(`strategyHint.${info.getValue()}`)} data-testid="policy-strategy-text">
-            {t(`strategy.${info.getValue()}`)}
-          </span>
-        ),
+        cell: (info) => {
+          const row = info.row.original;
+          return (
+            <span title={t(`strategyHint.${info.getValue()}`)} data-testid="policy-strategy-text">
+              {t(`strategy.${info.getValue()}`)}
+              {row.strategy === "quota-pacing" ? (
+                <span className="block text-xs text-fg-subtle" data-testid="policy-pacing-text">
+                  {t("pacingSummary", { reserve: row.hard_reserve_pct, ceiling: row.five_hour_ceiling_pct })}
+                </span>
+              ) : null}
+            </span>
+          );
+        },
       }),
       helper.accessor("cooldown_seconds", {
         id: "cooldown",

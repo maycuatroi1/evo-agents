@@ -12,6 +12,7 @@ import { RunCredentials } from "./run-credentials";
 import { RunDetails, RunResult } from "./run-facts";
 import type { RunViewer } from "./run-model";
 import { RunPlanSteps } from "./run-plan-steps";
+import { RunRouting } from "./run-routing";
 import { RunSessions } from "./run-sessions";
 import { RunSpend } from "./run-spend";
 import { UsageMeter } from "./usage-meter";
@@ -59,6 +60,7 @@ export function RunSide({
       <RunAccess run={run} owner={owner} />
       {plan ? <RunPlanSteps run={run} /> : null}
       {run.autonomy ? <RunAutonomy run={run} /> : null}
+      {run.routing ? <RunRouting run={run} /> : null}
       <RunDetails
         run={run}
         viewer={viewer}

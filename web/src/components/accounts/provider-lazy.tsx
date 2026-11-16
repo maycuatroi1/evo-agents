@@ -10,3 +10,6 @@ export const LazyProviderDialog = dynamic(() => loadDialog().then((module) => mo
 export const LazyProviderKeyDialog = dynamic(() => loadKey().then((module) => module.ProviderKeyDialog), { ssr: false });
 export const LazyProviderDeleteDialog = dynamic(() => loadKey().then((module) => module.ProviderDeleteDialog), { ssr: false });
 export const preloadProvider = () => void loadDialog();
+
+// The weekly budget of a model account, which few open.
+export const LazyBudgetDialog = dynamic(() => import("./budget-dialog").then((module) => module.BudgetDialog), { ssr: false });

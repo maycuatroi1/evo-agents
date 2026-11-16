@@ -138,7 +138,7 @@ export class HubAdmin {
     const held = await api.GET("/v1/projects/{project}/account-pools/{pool}", { params: { path: pool } });
     if (held.response.status === 404) {
       const account = await this.poolAccount();
-      await call(api.POST("/v1/projects/{project}/account-pools", { params: { path: { project } }, body: { name: ACCOUNT_POOL } }));
+      await call(api.POST("/v1/projects/{project}/account-pools", { params: { path: { project } }, body: { name: ACCOUNT_POOL, strategy: "round-robin", hard_reserve_pct: 10, five_hour_ceiling_pct: 90 } }));
       await call(api.PUT("/v1/projects/{project}/account-pools/{pool}/accounts", { params: { path: pool }, body: { name: account } }));
     } else if (!held.response.ok) {
       throw new Error(`GET the account pool ${ACCOUNT_POOL} of ${project}: ${held.response.status}`);
@@ -190,6 +190,6 @@ export class HubAdmin {
   /** The retention of built graphs on one project, keeping the artifacts of its `keep` newest graphs. */
   async pruneKg(project: string, keep: number) {
     const api = await this.api();
-    return call(api.POST("/v1/admin/kg/prune", { body: { project, keep, dry_run: false } }));
+    return call(api.POST("/v1/admin/kg/prune", { body: { project, keep, dry_run: false, graph_files: false } }));
   }
 }
