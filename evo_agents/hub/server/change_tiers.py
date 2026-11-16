@@ -151,7 +151,8 @@ async def impact_as_owner(
 ) -> GraphView | None:
     """``kg_impact`` of ``targets`` in the project's latest graph, read as the owner of its night shift (or as member
     ``owner_id``, as the merge queue reads it) through its hub sink, from the snapshot of the hub's tables; None without
-    a target, a night shift, a graph or a data directory (``reader``), or when the graph cannot be read."""
+    a target, a night shift, a graph or a data directory (``reader``), or when the graph cannot be read. In the api the
+    snapshot is the one its coordinator keeps (``kg_snapshots.shared``)."""
     if not targets or reader.data_dir is None:
         return None
     from evo_agents.hub import kg_snapshots
@@ -170,7 +171,7 @@ async def impact_as_owner(
     arguments = {"paths": targets, "depth": GRAPH_DEPTH}
     owner = (row.owner_id, row.project)
     try:
-        snapshot = _snapshotted(await kg_snapshots.load(engine, project_id), graphs, ceiling)
+        snapshot = _snapshotted(await kg_snapshots.shared(engine, project_id, graphs[0].build_id), graphs, ceiling)
         result = await asyncio.to_thread(
             answer, Handles(), owner, row.project, access.rules.policy, ceiling, sink,
             graphs, "kg_impact", arguments, snapshot=snapshot,

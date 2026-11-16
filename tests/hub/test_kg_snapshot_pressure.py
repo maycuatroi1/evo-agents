@@ -140,3 +140,40 @@ def test_the_thread_freeing_aside_counts_what_it_holds_and_gives_the_memory_back
 
 def test_give_back_trims_where_glibc_is_and_does_nothing_elsewhere():
     pacing.give_back()
+
+
+def test_requests_reading_a_snapshot_at_once_share_one_load_per_build_and_free_the_old_ones(memory, monkeypatch):
+    """A judge's verdict read the graph with a load of its own, and the worker posting it again after 30 seconds had
+    the api make a copy of its largest graph for each post, gigabytes each, at every build, until it was restarted."""
+    import gc
+    import weakref
+
+    loads = []
+
+    async def load(engine, project_id):
+        loads.append(head["build"])
+        await asyncio.sleep(0.05)  # the minutes a large graph takes
+        return Held(head["build"], snapshot())
+
+    head = {"build": 1}
+    monkeypatch.setattr(kg_snapshots, "load", load)
+    co = SnapshotCoordinator(engine=object())
+    monkeypatch.setattr(kg_snapshots, "serving", co)
+
+    async def builds():
+        reader, old = None, []
+        for build in (1, 2, 3):
+            head["build"] = build
+            got = await asyncio.gather(*(kg_snapshots.shared(None, 7, build) for _ in range(4)))
+            assert {held.build_id for held in got} == {build}
+            if reader is not None:
+                old.append(weakref.ref(reader.snapshot))
+            reader = got[0]  # a reader still reading the snapshot of the build before while the next one loads
+            del got
+        del reader
+        gc.collect()
+        return old
+
+    old = asyncio.run(builds())
+    assert loads == [1, 2, 3], "one load per build, however many requests asked at once"
+    assert [ref() for ref in old] == [None, None] and co.lingering() == 0
