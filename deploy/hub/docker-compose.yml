@@ -141,6 +141,9 @@ services:
       interval: 30s
       timeout: 5s
       start_period: 60s
+      # Traefik routes to a container only once it is healthy, so the first check after a recreate decides how long
+      # agents.omelet.tech answers "404 page not found": probe every 2 s while starting, then every 30 s.
+      start_interval: 2s
       retries: 3
     stop_grace_period: 15s
     # The api holds the graph of each project read in memory and makes a new one beside it at each build: the hub's
@@ -314,6 +317,9 @@ services:
       interval: 30s
       timeout: 5s
       start_period: 30s
+      # Traefik routes to a container only once it is healthy, so the first check after a recreate decides how long
+      # agents.omelet.tech answers "404 page not found": probe every 2 s while starting, then every 30 s.
+      start_interval: 2s
       retries: 3
     stop_grace_period: 15s
     depends_on:
