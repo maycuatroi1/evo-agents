@@ -44,7 +44,8 @@ class Conn:
         return SimpleNamespace(first=lambda: None if self.version is None else (self.version,))
 
 
-def graph_of(tmp_path, kg_env):
+def graph_file(tmp_path, kg_env):
+    """The graph.sqlite a machine builds of a project with one commit."""
     project = make_project(tmp_path, kg_env)
     app = tmp_path / "demo-app"
     write(
@@ -53,7 +54,11 @@ def graph_of(tmp_path, kg_env):
     )
     commit(app, "Make search return a constant while the ranker is rebuilt")
     assert all(r.ok for r in sync_project(project)) and build_project(project).ok
-    store = Store.open_file(project.root / "graph.sqlite", immutable=True)
+    return project.root / "graph.sqlite"
+
+
+def graph_of(tmp_path, kg_env):
+    store = Store.open_file(graph_file(tmp_path, kg_env), immutable=True)
     try:
         return store_rows(store, store.latest_ready())
     finally:
