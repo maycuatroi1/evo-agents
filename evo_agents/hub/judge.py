@@ -9,7 +9,10 @@ Curator's, in one repo on the branch ``curator/<proposal>-<slug>`` (``curator_br
 night shift runs it as a plan run (the Builder); once that run ends done with every step of the plan done, the hub
 opens a pull request on GitHub (a merge request on GitLab opens with the push, ``GITLAB_PUSH_OPTIONS``), and queues a
 judge run on the worker on duty. The Judge reads the proposal, the diff, the plan's verify and the project's hidden
-checks; it never reads the Builder's transcript.
+checks; it never reads the Builder's transcript. A draft that works in several repos of the project becomes one plan in
+them all (``curator_repos_plan``), the owner of each registered seam before its consumers (``repo_order``), each repo
+with its own pull request on that branch and its own judge run; the pull request of a consumer merges only once those
+of its owners are merged (``merge_waits``).
 
 ``evo_agents.hub.diff_signs`` holds the deterministic detector (``hack_signs``) and what it reads: the signs of score
 hacking in a diff. One sign is enough: the proposal goes to tier 3 and the Judge fails it.
@@ -219,18 +222,112 @@ def curator_plan(draft: dict, *, plan_id: str, repo: str, branch: str, proposal_
     body["repos"] = [{"repo": repo, "branch": branch}]
     if "acceptance" in body:
         body["acceptance"] = _criteria(body["acceptance"])
-    steps = []
-    for step in body.get("steps") if isinstance(body.get("steps"), list) else []:
-        if isinstance(step, dict):
-            step = {key: value for key, value in step.items() if key not in STEP_PROGRESS}
-            step["repo"], step["status"] = repo, "pending"
-            if "verify" in step:
-                step["verify"] = repo_verify(step["verify"], repo)
-            if isinstance(step.get("acceptance"), list):
-                step["acceptance"] = [criterion_id(item) for item in step["acceptance"]]
-        steps.append(step)
-    body["steps"] = steps
+    steps = body.get("steps") if isinstance(body.get("steps"), list) else []
+    body["steps"] = [_plan_step(step, repo) if isinstance(step, dict) else step for step in steps]
     return body
+
+
+def _plan_step(step: dict, repo: str) -> dict:
+    """A draft's step as a Curator's plan has it: in ``repo``, pending, without progress, its criteria ids and its
+    verify as ``curator_plan`` says."""
+    step = {key: value for key, value in step.items() if key not in STEP_PROGRESS}
+    step["repo"], step["status"] = repo, "pending"
+    if "verify" in step:
+        step["verify"] = repo_verify(step["verify"], repo)
+    if isinstance(step.get("acceptance"), list):
+        step["acceptance"] = [criterion_id(item) for item in step["acceptance"]]
+    return step
+
+
+# A plan in several repos
+
+
+def owners_of(repo: str, seams, repos) -> list[str]:
+    """The repos among ``repos`` that own a seam ``repo`` consumes (``seams``: (owner, consumer) pairs), in the order
+    of ``repos``."""
+    named = {owner for owner, consumer in seams if consumer == repo and owner != repo}
+    return [item for item in repos if item in named]
+
+
+def repo_order(repos, seams=()) -> list[str]:
+    """``repos`` (each once, in the draft's order) with every owner of a seam before its consumers (``seams``: (owner,
+    consumer) pairs of the project's registered seams), the draft's order kept where no seam says otherwise; a cycle of
+    seams leaves its repos in the draft's order."""
+    left = list(dict.fromkeys(repos))
+    placed: list[str] = []
+    while left:
+        ready = next((repo for repo in left if not owners_of(repo, seams, left)), left[0])
+        placed.append(ready)
+        left.remove(ready)
+    return placed
+
+
+def _steps_repo(step: dict, default: str) -> str:
+    return step["repo"] if isinstance(step.get("repo"), str) and step["repo"] else default
+
+
+def curator_repos_plan(
+    draft: dict, *, plan_id: str, repos, branch: str, proposal_id: int, project: str, seams=()
+) -> dict:
+    """The plan the draft of proposal ``proposal_id`` becomes when it works in several ``repos``: ``curator_plan``,
+    each repo on ``branch`` with its ``order`` (``repo_order``: an owner of a seam first), each step in its own repo (the
+    first repo for one that names none; ValueError for one of no repo of ``repos``), the steps of a repo in the draft's
+    order after those of the repos before it, each with its ``order``, and ``depends_on`` the last step of each owner
+    of its repo (of the repo before it when no seam names one) besides the steps of its own the draft named."""
+    ordered = repo_order(repos, seams)
+    if len(ordered) == 1:
+        return curator_plan(
+            draft, plan_id=plan_id, repo=ordered[0], branch=branch, proposal_id=proposal_id, project=project
+        )
+    if not ordered:
+        raise ValueError("a Curator's plan works in at least one repo")
+    body = curator_plan(
+        draft, plan_id=plan_id, repo=ordered[0], branch=branch, proposal_id=proposal_id, project=project
+    )
+    body["context"] = body["context"].replace(
+        f"of {ordered[0]} alone", f"of the repos {', '.join(ordered)}, in that order"
+    )
+    body["repos"] = [{"repo": repo, "branch": branch, "order": index + 1} for index, repo in enumerate(ordered)]
+    steps = draft.get("steps") if isinstance(draft, dict) else None
+    drafted = json.loads(json.dumps(steps)) if isinstance(steps, list) else []
+    placed = []
+    for index, original in enumerate(item for item in drafted if isinstance(item, dict)):
+        repo = _steps_repo(original, ordered[0])
+        if repo not in ordered:
+            raise ValueError(f"step {original.get('id', index + 1)} works in {repo}, not one of {', '.join(ordered)}")
+        placed.append((ordered.index(repo), index, _plan_step(original, repo)))
+    placed.sort(key=lambda item: (item[0], item[1]))
+    body["steps"] = _ordered_steps([(ordered[rank], step) for rank, _, step in placed], ordered, seams)
+    return body
+
+
+def _ordered_steps(steps: list[tuple[str, dict]], ordered: list[str], seams) -> list[dict]:
+    """``steps`` ((repo, step) each, in the order they run) with ids, ``order`` and ``depends_on`` (see
+    ``curator_repos_plan``)."""
+    ids = [step.get("id", index + 1) for index, (_, step) in enumerate(steps)]
+    if len({str(found) for found in ids}) != len(ids):
+        ids = list(range(1, len(steps) + 1))
+    last: dict[str, object] = {}
+    found = []
+    for index, ((repo, step), step_id) in enumerate(zip(steps, ids, strict=True)):
+        named = [item for item in step.get("depends_on") or [] if str(item) in {str(i) for i in ids[:index]}]
+        owners = owners_of(repo, seams, ordered[: ordered.index(repo)])
+        if not owners and ordered.index(repo) > 0:
+            owners = [ordered[ordered.index(repo) - 1]]
+        named += [last[owner] for owner in owners if owner in last and last[owner] not in named]
+        found.append({**step, "id": step_id, "order": index + 1, "depends_on": named})
+        last[repo] = step_id
+    return found
+
+
+def merge_waits(repo: str, states, ordered, seams=()) -> list[str]:
+    """The repos whose pull request of a Curator's change in several repos must be merged before ``repo``'s may: the
+    owners of the seams ``repo`` consumes (the repo before it in ``ordered`` when no seam names one) whose state in
+    ``states`` (repo -> the state of its pull request) is not merged."""
+    ordered = list(ordered)
+    before = ordered[: ordered.index(repo)] if repo in ordered else []
+    owners = owners_of(repo, seams, before) or before[-1:]
+    return [owner for owner in owners if states.get(owner) != "merged"]
 
 
 def plan_checks(body: dict) -> dict[str, tuple]:

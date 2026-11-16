@@ -192,6 +192,12 @@ TABLES |= {
     "kg_branch_ops",
 }  # migration 0248
 TABLES |= {"kg_vector_cache"}  # migration 0254
+TABLES |= {
+    "curator_change_repos",
+    "curator_evolve_runs",
+    "curator_evolve_candidates",
+    "curator_evolve_arm_cache",
+}  # migration 0255
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -282,8 +288,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_fifty_seven_tables(hub_db):
-    assert len(TABLES) == 257  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_sixty_one_tables(hub_db):
+    assert len(TABLES) == 261  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -6374,3 +6380,18 @@ def test_0254_keeps_a_projects_vectors_by_text_and_going_back_drops_them(hub_db)
     move_to(hub_db, "0253", down=True)
     assert not columns(hub_db, "kg_vector_cache")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0254") :]
+
+
+def test_0255_adds_the_curators_evolutions_and_its_playbooks_retires_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0254")
+    new = {"curator_change_repos", "curator_evolve_runs", "curator_evolve_candidates", "curator_evolve_arm_cache"}
+    assert not new & tables(hub_db)
+    move_to(hub_db, "0255")
+    assert new <= tables(hub_db)
+    assert {"until_proposal_id", "prompt_exposures"} <= columns(hub_db, "curator_playbook")
+    assert "actor" in columns(hub_db, "curator_playbook_deltas")
+    move_to(hub_db, "0254", down=True)
+    assert not new & tables(hub_db)
+    assert not {"until_proposal_id", "prompt_exposures"} & columns(hub_db, "curator_playbook")
+    assert "actor" not in columns(hub_db, "curator_playbook_deltas")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0255") :]

@@ -834,6 +834,10 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
 curator_probes = tables_curator.probe_tables(metadata)  # the probes of proposals and changes (0130)
+curator_change_repos = tables_curator.change_repos_table(metadata)  # each repo of a change in several (0255)
+curator_evolve_runs, curator_evolve_candidates, curator_evolve_arm_cache = tables_curator.evolve_tables(
+    metadata
+)  # 0255
 curator_probe_runs = tables_curator.probe_run_tables(metadata, runs, RUN_ACTIVE)  # 0131, and runs_active_probe_key
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 merge_checks = tables_merge.check_table(metadata)  # a run's pull request on github.com judged (0187)
