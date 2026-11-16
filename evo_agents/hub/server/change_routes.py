@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import findings, judge, runs, security_pass, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, change_tiers
+from evo_agents.hub.server import audit, change_repos, change_tiers
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
@@ -65,7 +65,8 @@ ChangeId = Annotated[int, Path(ge=1, le=MAX_ID)]
 async def _held_judge(conn: AsyncConnection, user: Principal, run_id: int, key: str | None):
     """(run row, change row) of the judge run ``run_id`` the worker of ``user`` holds, whose change waits for its
     verdict, asked with the key the run's claim handed its daemon; 404 for any other run, 409 for a change that waits
-    for no verdict of it, 403 without the key."""
+    for no verdict of it, 403 without the key. The change of a run judging one repo of a change in several is as that
+    repo has it (``change_repos.in_focus``)."""
     worker_id = (await worker_of(conn, user))[0]
     r = tables.runs
     row = (
@@ -89,10 +90,12 @@ async def _held_judge(conn: AsyncConnection, user: Principal, run_id: int, key: 
             f"({judge.JUDGE_KEY_HEADER}), which its claim handed the daemon; the worker token alone reads no hidden "
             "check and writes no verdict",
         )
-    return row, change
+    return row, await change_repos.in_focus(conn, change)  # a change in several repos: the repo it judges now
 
 
-async def _plan_verify(conn: AsyncConnection, row) -> list[str]:
+async def _plan_verify(conn: AsyncConnection, row, change) -> list[str]:
+    """The verify commands of the plan revision judge run ``row`` judges: of the steps of the repo it judges alone, for
+    a change in several repos."""
     rev = tables.plan_revisions
     body = (
         await conn.execute(
@@ -101,6 +104,8 @@ async def _plan_verify(conn: AsyncConnection, row) -> list[str]:
             )
         )
     ).scalar_one_or_none()
+    if getattr(change, "repo_row_id", None) is not None:
+        body = change_repos.repo_body(body, change.repo)
     return judge.verify_commands(body or {})
 
 
@@ -123,7 +128,7 @@ async def judge_inputs(
                 )
             )
         ).one()
-        verify = await _plan_verify(conn, row)
+        verify = await _plan_verify(conn, row, change)
         knowledge = change_tiers.judge_knowledge(change)
         checks = f", {len(knowledge['checks'])} check(s) of knowledge.yaml" if knowledge else ""
         await write_event(
@@ -159,7 +164,7 @@ async def record_verdict(
     ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again."""
     async with request.app.state.engine.begin() as conn:
         row, change = await _held_judge(conn, user, run_id, judge_key)
-        expected = await _plan_verify(conn, row) + change_tiers.judge_checks(change)
+        expected = await _plan_verify(conn, row, change) + change_tiers.judge_checks(change)
         hidden_count = change.hidden_count
         if hidden_count is None:
             charter = await charter_of(conn, row.project_id)
@@ -225,7 +230,10 @@ async def record_verdict(
             reader = change_tiers.GraphReader(state.blobs, state.config.data_dir)
             facts = await change_tiers.verdict_facts(state.engine, change, body.paths, reader)
             values["tier"] = await change_tiers.retier(conn, change, facts, charter)
-        await set_change(conn, change.id, **values)
+        if getattr(change, "repo_row_id", None) is not None:  # on its repo's row; the change judged once each is
+            await change_repos.judged_repo(conn, change, values)
+        else:
+            await set_change(conn, change.id, **values)
         text = f"The Judge {'passed' if passed else 'failed'} the Curator's change #{change.id}"
         text += "." if passed else f": {'; '.join(failures)}."
         await write_event(conn, run_id, {"text": text, "change_id": change.id, "passed": passed})

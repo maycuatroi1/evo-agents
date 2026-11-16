@@ -977,7 +977,11 @@ class FakeGitHub:
                 return queued
             if branch not in repo.heads:
                 return 422, _invalid({"resource": "PullRequest", "field": "head", "code": "invalid"})
-            if any(item.head == branch and item.base == base and item.state == "open" for item in self.pulls.values()):
+            if any(
+                (item.owner, item.name, item.head, item.base, item.state)
+                == (repo.owner, repo.name, branch, base, "open")
+                for item in self.pulls.values()
+            ):  # a pull request of the same branch in this repo; another repo's of a branch of that name is its own
                 return 422, _invalid(
                     {"resource": "PullRequest", "code": "custom", "message": "A pull request already exists"}
                 )
