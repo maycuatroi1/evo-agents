@@ -4198,7 +4198,7 @@ The api keeps its snapshots within that limit (`SnapshotCoordinator._ease`). A l
 and a build's new snapshot is made beside the old one: on a hub whose largest graph's snapshot took about 4.4 GB, two
 large graphs held, or the largest loaded again beside itself, went over a 7 GB limit; the kernel killed the api, and
 the first load after each restart climbed by a gigabyte a minute, as a leak would. So while a load runs, its thread looks
-at the api's resident memory once a second (`kg_snapshots.tend`, `PRESS_EVERY`), and past 60% of the cgroup's limit
+at the api's resident memory once a second (`kg_snapshots.tend`, `PRESS_EVERY`), and past 75% of the cgroup's limit
 (`PRESSURE`) the loop drops one snapshot: a draft branch's first, then the projects read least recently, and only then
 the old snapshot of a project being loaded again, whose readers then wait for the new one; the project read last keeps
 its snapshot otherwise. It drops the next only once the one before is freed (`lingering`, `pacing.freeing`), and each
@@ -4977,7 +4977,7 @@ environment, never in a committed file.
 | `EVO_HUB_REDIS_URL` | api, worker, deliver | optional: the Redis the cache and the shared rate limits use, `redis://`, `rediss://` or `unix://`, such as `redis://:<password>@evo-agents-hub-redis:6379/0` with the profile `bus`; unset, each process caches in its memory (section Cache) |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_KG_EMBEDDINGS`, `OPENROUTER_API_KEY` | api, worker | where graph rows and `kg_search` queries are embedded: `openrouter` calls OpenRouter's embeddings API (`baai/bge-m3`, batches of 64, four requests at once) with the key and loads no model; empty uses the local `BAAI/bge-m3` on the worker's CPUs (docs/kg-semantic.md) |
-| `EVO_HUB_API_MEMORY` | compose | memory of the `api` service, default `7g`: it holds the graph of each project read and makes a new one beside it at each build, and past 60% of it drops the graphs read least recently; over it the kernel kills the api and it restarts |
+| `EVO_HUB_API_MEMORY` | compose | memory of the `api` service, default `7g`: it holds the graph of each project read and makes a new one beside it at each build, and past 75% of it drops the graphs read least recently; over it the kernel kills the api and it restarts |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | limits of `worker`, default `2` and `4g`; the CPUs are also each `worker-kg`'s |
 | `EVO_HUB_WORKER_KG_MEMORY` | compose | memory of each of the two `worker-kg`, which run the graph builds, default `6g` (a large project's build peaked at about 4.7 GB) |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |

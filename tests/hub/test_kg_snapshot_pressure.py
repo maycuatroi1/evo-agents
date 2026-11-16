@@ -59,14 +59,14 @@ def dropping(co: SnapshotCoordinator) -> list:
 
 
 def test_under_pressure_the_branches_then_the_projects_read_least_recently_are_dropped(memory):
-    memory["bytes"] = 7 * GB
+    memory["bytes"] = 8 * GB
     co = coordinator(projects=(1, 2, 3), branches=[(2, "draft")])
     assert dropping(co) == [(2, "draft"), 1, 2]
     assert list(co._held) == [3], "the project read last stays: dropped, it would be loaded again at its next read"
 
 
 def test_the_old_snapshot_of_a_project_loading_again_goes_once_the_resting_ones_did(memory):
-    memory["bytes"] = 7 * GB
+    memory["bytes"] = 8 * GB
     co = coordinator(projects=(1, 2, 3), loading=(1,))
     co._asked[1] = 9
     assert dropping(co) == [2, 1]
@@ -87,7 +87,7 @@ def test_without_a_limit_nothing_is_dropped(memory, monkeypatch):
 
 
 def test_one_at_a_time_the_next_once_the_one_before_is_freed(memory, monkeypatch):
-    memory["bytes"] = 7 * GB
+    memory["bytes"] = 8 * GB
     co = coordinator(projects=(1, 2, 3))
     read = co._held[1].snapshot  # a reader holds it: not freed yet
     co._ease()
@@ -104,7 +104,7 @@ def test_one_at_a_time_the_next_once_the_one_before_is_freed(memory, monkeypatch
 
 
 def test_a_load_thread_under_pressure_has_the_loop_drop_a_snapshot(memory):
-    memory["bytes"] = 7 * GB
+    memory["bytes"] = 8 * GB
 
     async def run():
         co = coordinator(projects=(1, 2))

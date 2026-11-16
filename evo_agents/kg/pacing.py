@@ -150,7 +150,9 @@ def give_back() -> None:
     if it still held the graph."""
     trim = _malloc_trim()
     if trim is not None:
+        start = time.perf_counter()
         trim(0)
+        log.info("kg memory given back", extra={"trim_ms": round((time.perf_counter() - start) * 1000, 1)})
 
 
 _trim: list = []  # glibc's ``malloc_trim``, or None, once looked up

@@ -153,7 +153,7 @@ def tend() -> None:
         serving.pressed()
 
 
-PRESSURE = 0.6  # share of the api's memory limit past which it drops the snapshots it holds (``SnapshotCoordinator``)
+PRESSURE = 0.75  # share of the api's memory limit past which it drops the snapshots it holds (``SnapshotCoordinator``)
 PRESS_EVERY = 1.0  # seconds between two looks at the api's memory while a load runs
 
 
