@@ -1,7 +1,10 @@
 """Whether the hub's graph of a project is searched by meaning too (``evo_agents.hub.kg_semantic``, schema 0181): off
-without a row, set by the KG optimize loop, and the vectors a hub build puts into the graph it keeps out of WAL mode."""
+without a row, set by the KG optimize loop, the vectors a hub build puts into the graph it keeps out of WAL mode, and
+the project's cache of them in kg_vector_cache (0254)."""
 
 import asyncio
+import sqlite3
+import threading
 
 import pytest
 
@@ -15,7 +18,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 from evo_agents.hub import kg_semantic
-from evo_agents.kg import semantic
+from evo_agents.kg import semantic, store_vectors
 from evo_agents.kg.store import Store
 from tests.hub import live
 from tests.hub.test_migrate import seed
@@ -59,15 +62,58 @@ def test_a_hub_build_writes_the_vectors_out_of_wal_and_off_drops_them(tmp_path, 
     store = Store(graph)
     store.leave_wal()
     store.close()
-    done = kg_semantic.index(graph, semantic.Settings("index", FAKE), tmp_path / "cache" / semantic.CACHE_FILE)
+    done = kg_semantic.index(graph, semantic.Settings("index", FAKE), tmp_path / "cache" / store_vectors.CACHE_FILE)
     assert done.digest and done.rows > 0 and done.embedded == done.rows and not done.error
     assert not graph.with_name("graph.sqlite-wal").exists()
     assert Store.open_file(graph, immutable=True).vector_info().digest == done.digest
-    again = kg_semantic.index(graph, semantic.Settings("on", FAKE), tmp_path / "cache" / semantic.CACHE_FILE)
+    again = kg_semantic.index(graph, semantic.Settings("on", FAKE), tmp_path / "cache" / store_vectors.CACHE_FILE)
     assert (again.digest, again.embedded) == (done.digest, 0)
     assert (
-        kg_semantic.index(graph, semantic.Settings("off", FAKE), tmp_path / "cache" / semantic.CACHE_FILE).digest
+        kg_semantic.index(graph, semantic.Settings("off", FAKE), tmp_path / "cache" / store_vectors.CACHE_FILE).digest
         is None
     )
     assert Store.open_file(graph).vector_info() is None
     semantic.forget_models()
+
+
+def test_the_hub_cache_seeds_from_the_files_then_embeds_only_what_changed(hub_db, tmp_path, monkeypatch):
+    with live.engine(hub_db).begin() as conn:
+        project_id = seed(conn)["project"]
+    monkeypatch.setenv("EVO_KG_HOME", str(tmp_path / "kg-home"))
+    semantic.forget_models()
+    monkeypatch.setitem(semantic.FACTORIES, FAKE, Words)
+    project = with_garage(tmp_path, tmp_path / "kg-home")
+    sync_build(project)
+    graph = project.root / "graph.sqlite"
+    settings = semantic.Settings("index", FAKE)
+    local = store_vectors.index_file(graph, settings)  # what a build before kg_vector_cache left in the directory
+    held = store_vectors.cache_file_vectors(project.root / store_vectors.CACHE_FILE, FAKE)
+    assert local.embedded > 0 and len(held) > 0
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    engine = create_async_engine(
+        "postgresql+psycopg://", poolclass=NullPool, async_creator=lambda: psycopg.AsyncConnection.connect(hub_db.dsn)
+    )
+    try:
+        cache = kg_semantic.HubCache(engine, loop, project_id)
+        assert not cache.held(FAKE)
+        assert cache.seed(project.root, FAKE) == len(held)
+        assert cache.seed(project.root, FAKE) == 0  # seeded once: the files are not read again
+        assert (project.root / store_vectors.CACHE_FILE).exists() and graph.exists()  # and they stay
+        first = kg_semantic.index(graph, settings, cache)
+        assert (first.digest, first.embedded) == (local.digest, 0)
+        assert cache.get(FAKE, sorted(held)) == held
+        cache.put(FAKE, [("gone", b"\x00\x00")])
+        db = sqlite3.connect(graph)
+        store_vectors.drop(db)  # a graph without them, as a new build's is
+        db.close()
+        again = kg_semantic.index(graph, settings, cache)
+        assert again.embedded == 0 and cache.get(FAKE, ["gone"]) == {}  # a build forgets what no row has
+        assert not kg_semantic.HubCache(engine, loop, project_id + 1000).held(FAKE)
+    finally:
+        asyncio.run_coroutine_threadsafe(engine.dispose(), loop).result()
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join()
+        loop.close()
+        semantic.forget_models()

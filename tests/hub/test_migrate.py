@@ -191,6 +191,7 @@ TABLES |= {
     "kg_branches",
     "kg_branch_ops",
 }  # migration 0248
+TABLES |= {"kg_vector_cache"}  # migration 0254
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -281,8 +282,8 @@ def plugin_tables(db, *names: str) -> SimpleNamespace:
     return SimpleNamespace(**metadata.tables)
 
 
-def test_a_fresh_database_gets_the_two_hundred_and_fifty_six_tables(hub_db):
-    assert len(TABLES) == 256  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_two_hundred_and_fifty_seven_tables(hub_db):
+    assert len(TABLES) == 257  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -305,6 +306,7 @@ def test_a_fresh_database_gets_the_two_hundred_and_fifty_six_tables(hub_db):
         ("credential_leases", "sealed_value"),
         ("credential_leases", "token_hash"),
         ("kg_embeddings", "vector"),  # a float16 vector, as the store file's node_vec holds it
+        ("kg_vector_cache", "vector"),  # the same, kept by digest of its text for the next build (0254)
         ("marketing_posts", "screenshot"),
         ("secrets", "nonce"),
         ("secrets", "sealed"),
@@ -6362,3 +6364,13 @@ def test_0253_keeps_the_removals_a_run_held_back_and_the_scopes_it_listed_and_go
     move_to(hub_db, "0252", down=True)
     assert not added & columns(hub_db, "kg_ingests") and not added & columns(hub_db, "kg_pending_runs")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0253") :]
+
+
+def test_0254_keeps_a_projects_vectors_by_text_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0253")
+    assert not columns(hub_db, "kg_vector_cache")
+    move_to(hub_db, "0254")
+    assert columns(hub_db, "kg_vector_cache") == {"project_id", "model", "digest", "vector"}
+    move_to(hub_db, "0253", down=True)
+    assert not columns(hub_db, "kg_vector_cache")
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0254") :]

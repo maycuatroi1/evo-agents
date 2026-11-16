@@ -444,9 +444,9 @@ def _vector_rows(store) -> tuple[tuple[tuple, ...], dict | None]:
     """The rows of a store file's node_vec by key and what they are (``semantic.Info``), or nothing."""
     from dataclasses import asdict
 
-    from evo_agents.kg import semantic
+    from evo_agents.kg import store_vectors
 
-    found = semantic.info(store.db)
+    found = store_vectors.info(store.db)
     if found is None:
         return (), None
     rows = store.db.execute("SELECT key, node_id, kind, aud, vec FROM node_vec ORDER BY key").fetchall()
@@ -472,12 +472,12 @@ def rows_vectors(rows: StoreRows) -> snapshot_text.Vectors | None:
 
 def _vectors_of(store) -> snapshot_text.Vectors | None:
     """The vectors of a store file (``evo_agents.kg.semantic``), None when it has none."""
-    from evo_agents.kg import semantic
+    from evo_agents.kg import store_vectors
 
-    found = semantic.info(store.db)
+    found = store_vectors.info(store.db)
     if found is None:
         return None
-    rows = store.db.execute("SELECT node_id, kind, aud, vec FROM node_vec ORDER BY key").fetchall()
+    rows = store_vectors.vector_rows(store.db)
     unpack = struct.Struct(f"<{found.dim}e").unpack
     return snapshot_text.Vectors(
         found,
