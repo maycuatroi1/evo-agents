@@ -4191,6 +4191,11 @@ out at that moment, longest held first, each with its holder and `held_ms`. A tu
 second or more is logged as `event loop stalled` with `stalled_ms`: a burst of timeouts with no long hold in `out`
 but stalls beside it is the loop starved, not the pool too small.
 
+Each load of the api also logs `kg snapshot load timed`, with the seconds of its phases (`slot`: waiting for a read
+slot, `rows`: reading the tables, `made`: making the snapshot) and, per phase, the longest time the event loop ran
+nothing else (`stall_s`), and `kg snapshot frozen` the seconds of the full collection before the freeze (`collect_s`),
+which runs on the loop.
+
 A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
 the build at the head or one before it: the graph it wrote is the one the tables hold or an older one they replaced.
 

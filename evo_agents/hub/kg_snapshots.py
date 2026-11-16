@@ -16,6 +16,7 @@ import dataclasses
 import gc
 import json
 import logging
+import time
 import weakref
 from dataclasses import dataclass
 
@@ -56,9 +57,17 @@ async def load(engine: AsyncEngine, project_id: int) -> Held | None:
     is made of them: making it takes minutes on a large graph, and a connection held meanwhile, idle in its
     transaction, is one the workers' heartbeats and claims wait for."""
     with uncollected():
-        async with read_slot(), engine.connect() as conn:
-            found = await _rows(conn, project_id)
-        return None if found is None else await _made(*found)
+        async with timed(project_id) as timing:
+            async with read_slot():
+                timing.phase("slot")
+                async with engine.connect() as conn:
+                    found = await _rows(conn, project_id)
+            timing.phase("rows")
+            if found is None:
+                return None
+            held = await _made(*found)
+            timing.phase("made")
+            return held
 
 
 async def load_on(conn: AsyncConnection, project_id: int) -> Held | None:
@@ -97,12 +106,58 @@ def uncollected():
     finally:
         _loads -= 1
         if _loads == 0:
+            start = time.perf_counter()
             gc.collect()
             gc.freeze()
+            log.info(
+                "kg snapshot frozen",
+                extra={"collect_s": round(time.perf_counter() - start, 3), "frozen": gc.get_freeze_count()},
+            )
             gc.set_threshold(*_thresholds)
 
 
 _thresholds = gc.get_threshold()  # the collector's thresholds before the first of the loads running now
+
+
+STALL = 0.1  # seconds the loop's watch sleeps between two looks at the clock
+
+
+class Timing:
+    """The seconds each phase of a load took and, meanwhile, the longest time the event loop ran nothing else: what a
+    heartbeat or a claim arriving then waited before its handler started."""
+
+    def __init__(self) -> None:
+        self.phases: dict[str, dict[str, float]] = {}
+        self._start = self._slept = time.perf_counter()
+        self._stall = 0.0
+
+    def phase(self, name: str) -> None:
+        """End the phase running now as ``name``; the next one starts. A stall still running, which the watch has not
+        woken up from yet, is the phase's too."""
+        now = time.perf_counter()
+        stall = max(self._stall, now - self._slept - STALL)
+        self.phases[name] = {"s": round(now - self._start, 3), "stall_s": round(stall, 3)}
+        self._start = self._slept = now
+        self._stall = 0.0
+
+    async def watch(self) -> None:
+        """Sleep STALL at a time and keep the longest overrun: a loop that ran nothing else for a while wakes late."""
+        while True:
+            self._slept = time.perf_counter()
+            await asyncio.sleep(STALL)
+            self._stall = max(self._stall, time.perf_counter() - self._slept - STALL)
+
+
+@contextlib.asynccontextmanager
+async def timed(project_id: int):
+    """A ``Timing`` of a load of the project's snapshot, logged as it ends."""
+    timing = Timing()
+    watch = asyncio.get_running_loop().create_task(timing.watch(), name=f"kg-snapshot-watch-{project_id}")
+    try:
+        yield timing
+    finally:
+        watch.cancel()
+        log.info("kg snapshot load timed", extra={"project_id": project_id, "phases": timing.phases})
 
 
 async def _rows(conn: AsyncConnection, project_id: int) -> tuple[int | None, StoreRows] | None:
