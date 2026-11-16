@@ -10,7 +10,7 @@ from evo_agents.cli import main
 from evo_agents.kg.build import build_project
 from evo_agents.kg.extract import graphify as gfy
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.status import project_status, render_status
+from evo_agents.kg.status import render_brief
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from tests.kg.hub_graph import sign_in
@@ -109,7 +109,7 @@ def test_auto_without_graphify_warns_in_build_and_status(tmp_path, kg_env, no_gr
     out = capsys.readouterr().out
     assert "code backend auto: 2 item(s); python-ast 1, no symbols 1" in out
     assert f"warning: {WARNING}" in out.splitlines()
-    assert f"warning: {WARNING}" in render_status(project_status(project), brief=True).splitlines()
+    assert f"warning: {WARNING}" in render_brief(status).splitlines()
 
 
 def test_explicit_graphify_backend_without_graphify_fails_the_build(tmp_path, kg_env, no_graphify, capsys):

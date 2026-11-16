@@ -170,6 +170,11 @@ class Policy:
     def location_name(self, location: int) -> str:
         return self.locations[location]
 
+    def declares(self, source_id: str) -> bool:
+        """Whether knowledge.yaml lists source ``source_id``; a source the hub keeps (a core plugin's, an upload's) is
+        not listed there."""
+        return source_id in self._sources
+
     def source_label(self, source_id: str, raised: dict | None = None) -> Label:
         """Label of everything a source says, raised (never lowered) by the item's own label."""
         source = self._sources.get(source_id)

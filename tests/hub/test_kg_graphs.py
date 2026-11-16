@@ -22,7 +22,7 @@ pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server ext
 
 from evo_agents.hub import kg_graphs_cli, kg_named_graphs
 from evo_agents.hub.mcp_tools import KG_TOOLS
-from evo_agents.kg.serve import Session
+from evo_agents.kg.store_session import StoreSession
 from tests.hub import live, pg
 from tests.hub.kg_fixture import (
     AGENT,
@@ -49,8 +49,8 @@ def project(tmp_path_factory):
     return harness.project()
 
 
-def session(project, sink: str = AGENT) -> Session:
-    found = Session(project, sink=sink)
+def session(project, sink: str = AGENT) -> StoreSession:
+    found = StoreSession(project, sink=sink)
     found.named_graphs = dict(NAMED)
     return found
 

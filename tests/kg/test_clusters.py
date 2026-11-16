@@ -8,9 +8,9 @@ import pytest
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg.build import build_project
 from evo_agents.kg.policy import Label, Policy
-from evo_agents.kg.status import project_status, render_status
 from evo_agents.kg.store import Graph, Store, edge_id
 from evo_agents.kg.sync import sync_project
+from tests.kg.hub_graph import hub_status
 from tests.kg.projects import commit, make_project, write
 
 needs_engine = pytest.mark.skipif(not kg_clusters.available(), reason="graspologic-native is not installed")
@@ -234,7 +234,7 @@ def test_cluster_build_writes_clusters_with_a_stable_content_hash(tmp_path, kg_e
     old = {cid for cid, c in found.clusters.items() if c["level"] == 1}
     now = store.clusters(changed.build_id)
     assert len(old & set(now.clusters)) >= 0.9 * len(old)
-    text = render_status(project_status(project))
+    text = hub_status(project)["content"][0]["text"]
     assert f"clusters: {changed.coverage['clusters']['clusters']} clusters" in text
 
 
@@ -246,7 +246,7 @@ def test_cluster_build_without_the_extra_has_none_and_status_says_so(tmp_path, k
     store = Store.for_project(project)
     assert store.clusters(report.build_id) is None
     store.close()
-    text = render_status(project_status(project))
+    text = hub_status(project)["content"][0]["text"]
     assert "clusters: none, graspologic-native is not installed: pip install 'evo-ak[clusters]'" in text
 
 
@@ -266,7 +266,7 @@ def test_cluster_store_written_before_clusters_still_opens(tmp_path, kg_env, mon
     assert old.summary()["content_hash"] == report.content_hash
     assert set(old.history(report.build_id)) == {"units", "nodes", "edges", "derivations", "where_prov", "builds"}
     old.close()
-    text = render_status(project_status(project))
+    text = hub_status(project)["content"][0]["text"]
     assert "clusters: none" in text
 
     monkeypatch.undo()

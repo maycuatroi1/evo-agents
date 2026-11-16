@@ -14,8 +14,8 @@ from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.bench import run as bench_run
 from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, make_project, write
 
@@ -78,7 +78,7 @@ def walk_on(project, **keys):
 
 def search_ids(project, query, sink="agent"):
     """The documents of kg_search's results: a section counts as its document."""
-    found = Session(project, sink).call("kg_search", {"query": query})
+    found = StoreSession(project, sink).call("kg_search", {"query": query})
     assert not found.get("isError"), found
     return list(dict.fromkeys(r["id"].split("#", 1)[0] for r in found["structuredContent"]["results"]))
 
@@ -234,7 +234,7 @@ def test_a_project_without_walk_ranks_as_before(tmp_path, kg_env):
     queries = ("zephyr launcher", "search", "glowing tail")
 
     def answers():
-        session = Session(project, "agent")
+        session = StoreSession(project, "agent")
         return [session.call("kg_search", {"query": q}) for q in queries], session.call(
             "kg_context", {"query": "zephyr"}
         )
@@ -248,9 +248,9 @@ def test_a_project_without_walk_ranks_as_before(tmp_path, kg_env):
 
 def test_kg_context_fills_its_budget_by_the_walk_in_the_same_format(tmp_path, kg_env):
     project = entity_project(tmp_path, kg_env)
-    plain = Session(project, "agent").call("kg_context", {"query": "zephyr launcher"})["structuredContent"]
+    plain = StoreSession(project, "agent").call("kg_context", {"query": "zephyr launcher"})["structuredContent"]
     walk_on(project)
-    walked = Session(project, "agent").call("kg_context", {"query": "zephyr launcher"})["structuredContent"]
+    walked = StoreSession(project, "agent").call("kg_context", {"query": "zephyr launcher"})["structuredContent"]
     assert set(walked) == set(plain)
     assert {"build", "seeds", "nodes", "edges", "left_out", "summary"} <= set(walked)
     nodes = {n["id"] for n in walked["nodes"]}
@@ -265,8 +265,8 @@ def test_the_walk_never_passes_a_hidden_node(tmp_path, kg_env):
     hide(project, "UPDATE nodes SET label_lvl = 2 WHERE node_id = ?", QUASAR)
     assert BETA in search_ids(project, "zephyr launcher", "wide")
     for found in (
-        Session(project, "agent").call("kg_search", {"query": "zephyr launcher"}),
-        Session(project, "agent").call("kg_context", {"query": "zephyr launcher"}),
+        StoreSession(project, "agent").call("kg_search", {"query": "zephyr launcher"}),
+        StoreSession(project, "agent").call("kg_context", {"query": "zephyr launcher"}),
     ):
         text = json.dumps(found)
         assert "tail.md" not in text and "quasar" not in text.lower()
@@ -278,7 +278,7 @@ def test_the_walk_never_passes_a_hidden_edge(tmp_path, kg_env):
     hide(project, "UPDATE edges SET label_lvl = 2 WHERE dst = ? AND rel = 'mentions' AND src = ?", QUASAR, BETA)
     assert BETA in search_ids(project, "zephyr launcher", "wide")
     assert BETA not in search_ids(project, "zephyr launcher", "agent")
-    context = Session(project, "agent").call("kg_context", {"query": "zephyr launcher"})
+    context = StoreSession(project, "agent").call("kg_context", {"query": "zephyr launcher"})
     assert "tail.md" not in json.dumps(context)
 
 
@@ -294,7 +294,7 @@ def test_the_walk_never_passes_a_node_hidden_by_its_audience(tmp_path, kg_env):
         audience=["group:lumen-core"],
     )
     assert BETA not in search_ids(project, "zephyr launcher", "agent")
-    assert "tail.md" not in json.dumps(Session(project, "agent").call("kg_context", {"query": "zephyr launcher"}))
+    assert "tail.md" not in json.dumps(StoreSession(project, "agent").call("kg_context", {"query": "zephyr launcher"}))
 
 
 def test_a_graph_without_entities_walks_from_its_text_matches(tmp_path, kg_env):
@@ -304,7 +304,7 @@ def test_a_graph_without_entities_walks_from_its_text_matches(tmp_path, kg_env):
     walk_on(project)
     walked = search_ids(project, "rank_results")
     assert walked and walked[0] == plain[0] == "symbol:app:app/search.py::rank_results"
-    context = Session(project, "agent").call("kg_context", {"query": "rank_results"})
+    context = StoreSession(project, "agent").call("kg_context", {"query": "rank_results"})
     assert not context.get("isError") and context["structuredContent"]["nodes"]
 
 

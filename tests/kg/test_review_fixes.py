@@ -16,11 +16,12 @@ from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.memo import Memo
 from evo_agents.kg.policy import Label
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Graph, Store, edge_id
 from evo_agents.kg.store_filters import label_columns
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from tests.kg.conftest import doc
+from tests.kg.hub_graph import hub_status
 from tests.kg.projects import write
 from tests.kg.test_extract_entities import setup
 
@@ -211,21 +212,30 @@ def test_status_clearance_withholds_and_raises_the_label(fake_project, kg_env):
     project, fake = fake_project
     path = project.knowledge_path
     data = yaml.safe_load(path.read_text())
-    secret = {**data["sources"][0], "id": "secret", "label": {"level": "customer", "integrity": "U"}}
+    secret = {**data["sources"][0], "id": "secret"}
     data["sources"].append(secret)
     path.write_text(yaml.safe_dump(data, sort_keys=False))
     project = load_project_at(project.harness.root, kg_env)
     fake.set(items=[doc("a", "# A\n\nnamed only in the secret source\n")])
     assert all(r.ok for r in sync_project(project))
     assert build_project(project).ok
+    secret["label"] = {"level": "customer", "integrity": "U"}  # labelled above the sink since the build
+    path.write_text(yaml.safe_dump(data, sort_keys=False))
+    project = load_project_at(project.harness.root, kg_env)
 
-    status = Session(project, "test-session").call("kg_status", {})
+    status = hub_status(project, "test-session")
     data = status["structuredContent"]
-    shown = {s["id"]: s for s in data["sources"]}
+    shown = {s["id"]: s for s in data["graph"]["coverage"]["sources"]}
     assert shown["secret"] == {"id": "secret", "withheld": True} and "items" in shown["docs"]
     assert data["label"]["level"] == "internal", "what it showed raises the session's label"
-    assert "coverage" not in data["graph"] and data["graph"]["nodes"] > 0
-    assert "withheld: above the clearance of this sink" in status["content"][0]["text"]
+    assert "secret                 withheld: above the clearance of this sink" in status["content"][0]["text"]
+
+    assert all(r.ok for r in sync_project(project))
+    assert build_project(project).ok
+    status = hub_status(project, "test-session")  # the build holds the secret items: its counts alone
+    data = status["structuredContent"]
+    assert "coverage" not in data["graph"] and data["graph"]["nodes"] > 0 and not data["reads"]
+    assert data["label"]["level"] == "internal" and "secret" not in status["content"][0]["text"]
 
 
 def run_stdio(monkeypatch, capsys, session, lines):
@@ -243,7 +253,7 @@ def test_mcp_malformed_messages_get_errors_and_the_server_goes_on(fake_project, 
     def broken(*args, **kwargs):
         raise sqlite3.DatabaseError("database disk image is malformed")
 
-    session = Session(project, "test-session")
+    session = StoreSession(project, "test-session")
     call = '{"jsonrpc": "2.0", "id": %d, "method": "tools/call", "params": %s}'
     replies = run_stdio(
         monkeypatch,
@@ -290,7 +300,7 @@ def test_filter_before_limit_in_search(fake_project, kg_env):
     assert all(r.ok for r in sync_project(project))
     assert build_project(project).ok
     for args in ({"query": "zebra", "limit": 3}, {"query": "zebra", "limit": 3, "kinds": ["Section"]}):
-        found = Session(project, "test-session").call("kg_search", args)["structuredContent"]["results"]
+        found = StoreSession(project, "test-session").call("kg_search", args)["structuredContent"]["results"]
         assert sorted(n["id"] for n in found) == [f"docs:doc:s{i}#s{i}" for i in range(3)], args
 
 

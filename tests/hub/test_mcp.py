@@ -1119,9 +1119,9 @@ def plain(result: dict) -> dict:
 
 @needs_pg
 def test_kg_tools_answer_as_kg_serve_does_on_the_same_store(hub):
-    from evo_agents.kg.serve import Session
+    from evo_agents.kg.store_session import StoreSession
 
-    local = Session(hub.laptop.project, AGENT)  # the machine's store: the file the hub answers from
+    local = StoreSession(hub.laptop.project, AGENT)  # the machine's store: the file the hub answers from
 
     def same(name: str, arguments: dict) -> dict:
         here = plain(local.call(name, dict(arguments)))
@@ -1192,10 +1192,10 @@ def test_kg_tools_read_through_the_grant_and_the_session_sink(hub):
 
 @needs_pg
 def test_results_over_cap_chars_are_cut_and_kg_more_continues_them_for_their_owner(hub, monkeypatch):
-    from evo_agents.kg.serve import Session
+    from evo_agents.kg.store_session import StoreSession
 
     monkeypatch.setattr(serve, "CAP_CHARS", 300)
-    local = Session(hub.laptop.project, AGENT)
+    local = StoreSession(hub.laptop.project, AGENT)
     here = local.call("kg_context", {"query": "guide", "budget_tokens": 4000})
     there = ok(hub, "dora", "kg_context", {"query": "guide", "budget_tokens": 4000})
     handle = there["structuredContent"]["handle"]

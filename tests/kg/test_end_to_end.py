@@ -5,8 +5,8 @@ import pytest
 
 from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import GUIDE, commit, git, make_project, write
 
@@ -205,7 +205,7 @@ def test_serve_reads_the_store_read_only_and_compares_labels_only_when_some_are_
 ):
     project = make_project(tmp_path, kg_env, level="internal", app_level="customer")
     sync_build(project)
-    wide, narrow = Session(project, "wide"), Session(project, "agent")
+    wide, narrow = StoreSession(project, "wide"), StoreSession(project, "agent")
     store, _ = wide._store()
     with pytest.raises(sqlite3.OperationalError, match="readonly"):
         store.db.execute("CREATE TABLE probe (x)")
@@ -222,7 +222,9 @@ def test_serve_reads_the_store_read_only_and_compares_labels_only_when_some_are_
     ]
 
     def answers() -> dict:
-        return {sink: [Session(project, sink).call(name, args) for name, args in calls] for sink in ("wide", "agent")}
+        return {
+            sink: [StoreSession(project, sink).call(name, args) for name, args in calls] for sink in ("wide", "agent")
+        }
 
     skipping = answers()
     monkeypatch.setattr(Store, "top_label", lambda self, b: None)  # every label compared, as before
@@ -271,7 +273,7 @@ def test_a_done_step_reaches_the_files_its_evidence_commit_changed(tmp_path, kg_
     assert (step, "mentions", "commit:app@1a2b3c4d") in edges  # a SHA no source read keeps a node of its own
     assert store.node(found, report.build_id)["kind"] == "Commit"
 
-    path = Session(project, "wide").call("kg_path", {"from": step, "to": "app:file:app/suggest.py"})
+    path = StoreSession(project, "wide").call("kg_path", {"from": step, "to": "app:file:app/suggest.py"})
     data = path["structuredContent"]
     assert data["found"] and data["hops"] == 2
     assert [n["id"] for n in data["nodes"]] == [step, found, "app:file:app/suggest.py"]

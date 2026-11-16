@@ -18,7 +18,7 @@ from evo_agents.kg.refs import readable
 from evo_agents.kg.search import through_entities
 from evo_agents.kg.serve_text import SessionText
 from evo_agents.kg.serve_view import ToolError
-from evo_agents.kg.store import Store
+from evo_agents.kg.snapshot import SnapshotView
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "extracted": 1.5, "proposed": 1}
 HUB_DEGREE = 150
@@ -90,7 +90,7 @@ class WalkTools(SessionText):
         }
         return "\n".join(lines), data
 
-    def _context_seeds(self, store: Store, b: int, query, ids) -> tuple[dict[str, dict], dict[str, list[str]]]:
+    def _context_seeds(self, store: SnapshotView, b: int, query, ids) -> tuple[dict[str, dict], dict[str, list[str]]]:
         """The visible seeds of kg_context: the nodes ``ids`` name (stored or readable ids), else the first five
         that match ``query``, a matched entity seeding the documents that mention it in its place; and for each seed
         so reached, the entities it stands for."""
@@ -116,7 +116,7 @@ class WalkTools(SessionText):
             raise ToolError("nothing visible matches; try kg_search")
         return seeds, stood
 
-    def _context_walk(self, store: Store, b: int, query, room: Room, walk) -> None:
+    def _context_walk(self, store: SnapshotView, b: int, query, room: Room, walk) -> None:
         """Fill ``room`` past its seeds with the visible nodes a walk settles on most (``evo_agents.kg.ppr``), best
         first, each with up to two visible edges to the nodes already in. The walk restarts at the query's text matches
         and at the seeds."""
@@ -148,7 +148,7 @@ class WalkTools(SessionText):
             else:
                 room.left_nodes.add(nid)
 
-    def _context_from(self, store: Store, b: int, current: str, depth: int, room: Room, frontier: deque) -> None:
+    def _context_from(self, store: SnapshotView, b: int, current: str, depth: int, room: Room, frontier: deque) -> None:
         """Put the visible edges of ``current`` into ``room``, strongest first, each with the neighbour it brings
         when that one is new; what does not fit is counted as left out, and a new neighbour joins the frontier."""
         edges = [e for e in store.edges_of(current, b, limit=300) if self.seen(e)]
@@ -181,7 +181,7 @@ class WalkTools(SessionText):
                 room.left_edges.add(e["id"])
 
     def _walk(
-        self, store: Store, b: int, start: dict, max_hops: int, rels: tuple | None, goal: str | None
+        self, store: SnapshotView, b: int, start: dict, max_hops: int, rels: tuple | None, goal: str | None
     ) -> dict[str, dict]:
         """Breadth-first over visible nodes and edges in both directions, as a tree of parents. A node keeps,
         among the parents one hop closer to the start, the one whose path has the highest total STATUS_RANK

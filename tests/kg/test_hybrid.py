@@ -12,8 +12,8 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.kg import semantic, store_vectors
-from evo_agents.kg.serve import Session
 from evo_agents.kg.store import SCHEMA_VERSION, Store
+from evo_agents.kg.store_session import StoreSession
 from tests.kg.projects import commit, write
 from tests.kg.test_store import found, make_searchable, sync_build
 
@@ -64,7 +64,7 @@ def with_garage(tmp_path, kg_env):
     return project
 
 
-def kg_search(session: Session, query: str) -> list[str]:
+def kg_search(session: StoreSession, query: str) -> list[str]:
     answer = session.call("kg_search", {"query": query, "limit": 5})
     assert not answer.get("isError"), answer
     return [r["id"] for r in answer["structuredContent"]["results"]]
@@ -79,9 +79,9 @@ def test_a_project_searches_by_words_alone_until_it_turns_meaning_on(tmp_path, k
     assert semantic.query_vector(store, "automobile", True) is None  # no vectors: by words, whatever is asked
     before = {q: found(store, q) for q in ("automobile", "graph builder", "do thi tri thuc")}
     assert CAR not in before["automobile"]
-    session = Session(project, "cli")
+    session = StoreSession(project, "cli")
     session.semantic = True
-    assert kg_search(session, "graph builder") == kg_search(Session(project, "cli"), "graph builder")
+    assert kg_search(session, "graph builder") == kg_search(StoreSession(project, "cli"), "graph builder")
     assert words.calls == 0  # nothing was embedded
 
 
@@ -113,7 +113,7 @@ def test_mode_index_ranks_by_words_unless_asked_and_on_fuses_both(tmp_path, kg_e
     semantic.write_settings(project.root, semantic.Settings("index", FAKE))
     sync_build(project)
     words.calls = 0
-    plain = Session(project, "cli")
+    plain = StoreSession(project, "cli")
     by_words = kg_search(plain, "automobile")
     assert CAR not in by_words and words.calls == 0  # index: the query is not even embedded
     plain.semantic = True
@@ -123,8 +123,8 @@ def test_mode_index_ranks_by_words_unless_asked_and_on_fuses_both(tmp_path, kg_e
 
     semantic.write_settings(project.root, semantic.Settings("on", FAKE))
     sync_build(project)
-    assert kg_search(Session(project, "cli"), "automobile")[0] == CAR
-    hybrid = kg_search(Session(project, "cli"), "graph builder")
+    assert kg_search(StoreSession(project, "cli"), "automobile")[0] == CAR
+    hybrid = kg_search(StoreSession(project, "cli"), "graph builder")
     module = ("app:file:app/hub_build.py", "symbol:app:app/hub_build.py::GraphBuilder")
     assert hybrid[0] in (*module, "symbol:app:app/hub_build.py::GraphBuilder.buildGraph")  # words still lead
 
@@ -183,7 +183,7 @@ def test_without_the_model_the_build_warns_and_search_stays_by_words(tmp_path, k
 
     semantic.write_settings(project.root, semantic.Settings("on", FAKE))
     sync_build(project)
-    by_words = Session(project, "cli")
+    by_words = StoreSession(project, "cli")
     by_words.semantic = False
     before = kg_search(by_words, "graph builder")
     db = sqlite3.connect(project.root / "graph.sqlite")
@@ -193,8 +193,8 @@ def test_without_the_model_the_build_warns_and_search_stays_by_words(tmp_path, k
     finally:
         db.close()
     assert semantic.query_vector(Store.for_project(project), "automobile", True) is None
-    assert CAR not in kg_search(Session(project, "cli"), "automobile")
-    assert kg_search(Session(project, "cli"), "graph builder") == before
+    assert CAR not in kg_search(StoreSession(project, "cli"), "automobile")
+    assert kg_search(StoreSession(project, "cli"), "graph builder") == before
 
 
 def test_nearest_keeps_a_node_at_its_best_row_and_rows_of_an_audience_to_its_readers():
@@ -233,7 +233,7 @@ def test_kg_semantic_sets_the_mode_on_the_hub_whose_next_build_embeds(tmp_path, 
     hub = sign_in(monkeypatch, project)
     root = str(project.harness.root)
     assert main(["kg", "semantic", "--project", root, "--mode", "index", "--model", FAKE, "--json"]) == 1
-    assert "no ready graph" in capsys.readouterr().out  # set, but nothing built yet
+    assert "has no graph on the hub yet" in capsys.readouterr().out  # set, but nothing built yet
     assert ("PUT", "/v1/kg/demo/settings") in hub.asked
     tuning = kg_settings.read(project.root)  # where the hub of the test keeps the project's settings
     assert (tuning.semantic_mode, tuning.semantic_model) == ("index", FAKE)

@@ -283,12 +283,12 @@ def test_a_case_folded_match_weighs_less_than_an_exact_one():
 
 
 def test_impact_does_not_follow_the_edges_to_code(tmp_path, kg_env):
-    from evo_agents.kg.serve import Session
+    from evo_agents.kg.store_session import StoreSession
 
     answers = {"Intro": {"nodes": [node_of("Concept", "Server")]}}
     project = setup(tmp_path, kg_env, answers)
     assert build_project(project).ok
-    result = Session(project, "agent").call("kg_impact", {"id": "symbol:app:app/server.py::Server", "depth": 3})
+    result = StoreSession(project, "agent").call("kg_impact", {"id": "symbol:app:app/server.py::Server", "depth": 3})
     found = {r["node"]["id"] for r in result["structuredContent"]["impacted"]}
     assert not [n for n in found if n.startswith("entity:")]
 

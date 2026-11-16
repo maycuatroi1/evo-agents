@@ -12,9 +12,8 @@ wherever it is read. That includes the hub, which merges the run logs of every m
 cursor of the newest run counts (``Corpus.record_cursor``). ``behind`` is counted when the source syncs, from the
 clone's remote-tracking branch, without fetching; ``at`` says when, so a tool says the count is of then
 (``describe``): a sync that finds the ref still at the commit read keeps no log, and the hub has no newer count to
-show. ``kg status`` and the SessionStart note count it again from the checkout when this machine has one
-(``count_again``), still without the network. A source whose clone has no such branch has no ``base`` and no
-``behind``; a cursor written before ``at`` existed has none either.
+show; ``kg status`` and the SessionStart note show the hub's. A source whose clone has no such branch has no ``base``
+and no ``behind``; a cursor written before ``at`` existed has none either.
 
 An item links to its file by branch (its ``uri``), because a link by commit would change every item's hash on every
 commit. The tools show the link at the commit read instead (``Links``), so the lines of a span match what it opens.
@@ -105,26 +104,6 @@ def reads(coverage: dict | None) -> list[dict]:
     return out
 
 
-def count_again(project, found: list[dict]) -> list[dict]:
-    """``found`` with ``behind`` counted again from each source's checkout on this machine as it is now, marked
-    ``recounted``; a source without a ``base`` or a checkout keeps the count of its sync. Never fetches."""
-    from evo_agents.kg.connectors.git import behind_now
-    from evo_agents.kg.project import ProjectError
-    from evo_agents.kg.protocol.runner import ConnectorContext
-
-    out = []
-    for read in found:
-        count = None
-        if read.get("base"):
-            try:
-                ctx = ConnectorContext(project.name, project.source(read["source"]), project.harness)
-            except ProjectError:
-                ctx = None
-            count = behind_now(ctx, read["commit"], read["base"]) if ctx is not None else None
-        out.append(read if count is None else {**read, "behind": count, "recounted": True})
-    return out
-
-
 def _behind(read: dict) -> str | None:
     if read.get("base") and read.get("behind") is not None:
         return f"{read['behind']} behind {read['base']}"
@@ -132,15 +111,15 @@ def _behind(read: dict) -> str | None:
 
 
 def describe(read: dict) -> str:
-    """One read in words: ``1550c7a of HEAD at <time>, 3 behind origin/main then`` when the count is the sync's,
-    without ``then`` when this machine counted it again, without the time for a read older than ``at``; or
+    """One read in words: ``1550c7a of HEAD at <time>, 3 behind origin/main then``, the sync's count, without the time
+    for a read older than ``at``; or
     ``plugin.chats:message:812 at <time>``, and ``upload.docs:upload:7 at <time>, label internal`` for an upload."""
     if "commit" not in read:
         label = f", label {read['label']}" if read.get("label") else ""
         return f"{read.get('item')} at {read.get('at')}{label}"
     at = read.get("at")
     behind = _behind(read)
-    if behind and at and not read.get("recounted"):
+    if behind and at:
         behind += " then"
     return (
         f"{read['commit'][:SHORT]} of {read.get('ref') or 'HEAD'}"

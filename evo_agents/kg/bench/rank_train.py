@@ -358,7 +358,7 @@ def collect(cache: Path, labels: list[Label], out: Path, *, progress=None) -> Co
     """Ask each label and append its group to ``out`` (JSON lines); the labels of a graph are asked together."""
     from evo_agents.kg.bench import run
     from evo_agents.kg.project import resolve_project
-    from evo_agents.kg.serve import Session
+    from evo_agents.kg.store_session import StoreSession
 
     lay = graphs.layout(cache)
     stats: Counter = Counter()
@@ -375,7 +375,7 @@ def collect(cache: Path, labels: list[Label], out: Path, *, progress=None) -> Co
                     with graphs.bench_home(lay.home):
                         store, b = run.session_of(graphs.project_of(lay, task), "graph")._store()
                 else:
-                    store, b = Session(resolve_project(name), "cli")._store()
+                    store, b = StoreSession(resolve_project(name), "cli")._store()
             except Exception as exc:  # noqa: BLE001 - one graph that cannot be read leaves its labels out
                 stats["graph_error"] += len(group)
                 if progress:
@@ -401,7 +401,7 @@ def collect(cache: Path, labels: list[Label], out: Path, *, progress=None) -> Co
                 stats[f"{label.source}:asked"] += 1
                 stats[f"{label.source}:with_answer"] += any(found.labels)
                 fh.write(json.dumps({**found.to_json(), "query_len": len(label.query)}) + "\n")
-            store.db.close()
+            store.close()
             if progress:
                 progress(f"{name}: {len(group)} label(s)")
     return stats

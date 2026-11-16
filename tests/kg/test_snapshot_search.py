@@ -8,13 +8,13 @@ from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg import content
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.ontology_rules import Violation, review_items
-from evo_agents.kg.serve import Session
 from evo_agents.kg.snapshot import Snapshot
 from evo_agents.kg.snapshot_fts import QueryError, Table, code_words, parse, words
 from evo_agents.kg.snapshot_search import SnapshotSearch, SnapshotSession
 from evo_agents.kg.snapshot_text import Ranker
 from evo_agents.kg.store import Store
 from evo_agents.kg.store_clusters import Clusters
+from evo_agents.kg.store_session import StoreSession
 from tests.kg.test_store import make_searchable, sync_build
 from tests.kg.test_walk import entity_project, walk_on
 
@@ -93,12 +93,12 @@ def test_kg_search_answers_as_a_session_does_for_each_clearance(tmp_path, kg_env
     by the arrangement locate gives a store's search (``evo_agents.kg.locate``), which a snapshot does not read."""
     project, _, _, snap = built(tmp_path, kg_env, app_level="customer")
     for sink in ("agent", "wide"):
-        session = Session(project, sink)
+        session = StoreSession(project, sink)
         mine = SnapshotSession(SnapshotSearch(snap, session.clearance, session.audience))
         for query in QUERIES[:3] + QUERIES[4:]:
             args = {"query": query, "limit": 10}
             assert results(mine.call("kg_search", args)) == results(session.call("kg_search", args)), (sink, query)
-    agent = Session(project, "agent")
+    agent = StoreSession(project, "agent")
     shown = results(
         SnapshotSession(SnapshotSearch(snap, agent.clearance, agent.audience)).call("kg_search", {"query": "search"})
     )
@@ -112,7 +112,7 @@ def test_a_bench_snapshot_walks_with_the_projects_settings(tmp_path, kg_env):
     project = entity_project(tmp_path, kg_env)
     walk_on(project)
     kg_settings.write(project.root, kg_settings.of({"entity_code": True}, kg_settings.read(project.root)))
-    session = Session(project, "agent")
+    session = StoreSession(project, "agent")
     mine = snapshot_session(session)
     for query in ("zephyr launcher", "Quasar", "comet tail", "engine"):
         args = {"query": query, "limit": 10}
@@ -121,7 +121,7 @@ def test_a_bench_snapshot_walks_with_the_projects_settings(tmp_path, kg_env):
 
 def test_kg_search_reads_the_documents_an_entity_stands_for_and_the_code(tmp_path, kg_env):
     project, _, _, snap = built(tmp_path, kg_env)
-    session = Session(project, "agent")
+    session = StoreSession(project, "agent")
     mine = SnapshotSession(SnapshotSearch(snap, session.clearance, session.audience))
     for query in ("search", "GraphBuilder", "KB-01"):
         theirs = session.call("kg_search", {"query": query})["structuredContent"]

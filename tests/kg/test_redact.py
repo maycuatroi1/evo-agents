@@ -17,7 +17,7 @@ from evo_agents.kg.build import build_project
 from evo_agents.kg.connectors import git as git_connector
 from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorRun
 from evo_agents.kg.redact import MIN_LENGTH, PEM_MIN_BODY, is_literal_secret, name_kind, redact_file
-from evo_agents.kg.serve import Session
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import SyncResult, count_item, sync_project
 from tests.kg.projects import commit, make_project, write
 
@@ -271,7 +271,7 @@ def test_sync_audit_counts_redactions_by_item_and_kind_and_no_value_is_kept(secr
 
     report = build_project(secret_project)
     assert report.ok, report.errors
-    session = Session(secret_project, "agent")
+    session = StoreSession(secret_project, "agent")
     for secret in SECRETS:
         found = session.call("kg_search", {"query": secret})["structuredContent"]["results"]
         assert found == [], secret
@@ -291,7 +291,9 @@ def test_without_redaction_kg_search_would_find_the_secret(tmp_path, kg_env, mon
     add_secrets(tmp_path / "demo-app")
     sync_project(project)
     assert build_project(project).ok
-    found = Session(project, "agent").call("kg_search", {"query": COMPOSE_PASSWORD})["structuredContent"]["results"]
+    found = StoreSession(project, "agent").call("kg_search", {"query": COMPOSE_PASSWORD})["structuredContent"][
+        "results"
+    ]
     assert "app:file:docker-compose.yml" in {r["id"] for r in found}
     assert any(COMPOSE_PASSWORD.encode() in path.read_bytes() for path in project.root.rglob("*") if path.is_file())
 

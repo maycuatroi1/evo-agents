@@ -256,9 +256,9 @@ class Asked:
 
 def session_of(project, search: str, files: tuple | None = None):
     """A CLI session on ``project`` that ranks the way ``search`` says (``kg bench --search``), or by plain BM25."""
-    from evo_agents.kg.serve import Session
+    from evo_agents.kg.store_session import StoreSession
 
-    session = Session(project, "cli")
+    session = StoreSession(project, "cli")
     if search == "snapshot":
         return snapshot_session(session)
     if search != "graph":

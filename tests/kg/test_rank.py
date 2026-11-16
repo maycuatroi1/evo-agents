@@ -11,8 +11,8 @@ from evo_agents.kg.bench import rank_train
 from evo_agents.kg.bench.rank_train import Group, Label
 from evo_agents.kg.build import build_project
 from evo_agents.kg.locate import Cand, Pool
-from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, make_project, write
 
@@ -171,7 +171,7 @@ def test_kg_search_orders_results_by_the_model_only_when_the_setting_is_on(tmp_p
     monkeypatch.setattr(rank, "load", lambda path: rank.Ranker(model, "test"))
 
     def ids_of(on):
-        session = Session(project, "agent")
+        session = StoreSession(project, "agent")
         session.rank = on
         found = session.call("kg_search", {"query": "parse_config load_config", "limit": 10})["structuredContent"]
         return [r["id"] for r in found["results"]]

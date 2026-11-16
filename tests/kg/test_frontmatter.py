@@ -5,10 +5,11 @@ import pytest
 from evo_agents.kg.build import build_project, multiple_definitions
 from evo_agents.kg.pipeline.stages import frontmatter, structure_item
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.status import project_status, render_status
+from evo_agents.kg.status import multiple_lines
 from evo_agents.kg.store import Graph, Store
 from evo_agents.kg.sync import sync_project
 from evo_agents.kg.text import split_markdown
+from tests.kg.hub_graph import hub_status
 from tests.kg.projects import make_project, write
 
 USECASE = [{"kind": "UseCase", "pattern": "\\bKB-\\d{2}\\b"}]
@@ -148,29 +149,21 @@ def test_frontmatter_status_lists_codes_defined_twice(tmp_path, kg_env):
     assert (doc("export-old"), "defines", "usecase:KB-06") in edges
     assert f"{doc('broken')}: frontmatter is not valid YAML; its id is ignored" in report.issues
 
-    status = project_status(project)
+    answer = hub_status(project)
+    status = answer["structuredContent"]
     assert status["multiple_definitions"]["codes"] == 1
     assert status["multiple_definitions"]["samples"] == [
         {"code": "usecase:KB-06", "places": [doc("export-old"), doc("export")]}
     ]
     assert "derived_from" in status["multiple_definitions"]["hint"]
-    text = render_status(status)
+    text = answer["content"][0]["text"]
     assert "codes defined in two or more places: 1; keep one definition per code" in text
     assert f"        usecase:KB-06: {doc('export-old')}, {doc('export')}" in text
 
 
 def test_frontmatter_status_caps_the_samples():
     samples = [{"code": f"usecase:KB-{i:02}", "places": ["doc:a", "doc:b"]} for i in range(15)]
-    status = {
-        "project": "p",
-        "harness": "h",
-        "home": "k",
-        "ok": True,
-        "sources": [],
-        "graph": {"ready": False},
-        "multiple_definitions": {"codes": 17, "samples": samples, "hint": "use derived_from"},
-    }
-    text = render_status(status)
+    text = "\n".join(multiple_lines({"codes": 17, "samples": samples, "hint": "use derived_from"}))
     assert "codes defined in two or more places: 17; use derived_from" in text
     assert text.count("doc:a, doc:b") == 15
     assert "        and 2 more" in text

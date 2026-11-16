@@ -16,8 +16,8 @@ from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol.conformance import run_conformance
 from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorRun
-from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import accept_removals, sync_project
 from tests.kg.projects import commit, git, make_project, write
 
@@ -247,7 +247,7 @@ def test_kg_node_links_to_the_commit_read_while_items_keep_their_branch_link(tmp
     item = corpus.get("app:file:app/search.py")
     assert item.record["uri"] == f"{blob}/main/app/search.py"  # by branch: the hash moves only with the file
 
-    session = Session(project, "wide")
+    session = StoreSession(project, "wide")
     for node_id in ("app:file:app/search.py", "app:app/search.py::search"):
         found = session.call("kg_node", {"id": node_id})
         evidence = found["structuredContent"]["evidence"]
@@ -264,7 +264,7 @@ def test_kg_node_links_to_the_commit_read_while_items_keep_their_branch_link(tmp
     assert build_project(project).ok
     second = git(app, "rev-parse", "HEAD").strip()
     assert project.corpus().get("app:file:app/search.py").hash == item.hash  # a new commit alone changes no item
-    found = Session(project, "wide").call("kg_node", {"id": "app:file:app/search.py"})
+    found = StoreSession(project, "wide").call("kg_node", {"id": "app:file:app/search.py"})
     assert found["structuredContent"]["node"]["props"]["uri"] == f"{blob}/{second}/app/search.py"
 
 
@@ -478,9 +478,9 @@ def test_commit_author_email_is_read_from_the_history_and_kept_on_the_commit_nod
     # Labelled as its source, like every other prop: the level of the git source, the label of its files.
     assert node["label"] == store.node("app:file:docs/notes.md", report.build_id)["label"]
     assert node["label"][0] == 2  # customer, the third of the policy's levels
-    wide = Session(project, "wide").call("kg_node", {"id": f"app:commit:{lumen}"})
+    wide = StoreSession(project, "wide").call("kg_node", {"id": f"app:commit:{lumen}"})
     assert wide["structuredContent"]["node"]["props"]["author_email"] == "Lumen.Writer@Northwind.test"
-    narrow = Session(project, "agent").call("kg_node", {"id": f"app:commit:{lumen}"})
+    narrow = StoreSession(project, "agent").call("kg_node", {"id": f"app:commit:{lumen}"})
     assert narrow.get("isError") and "Northwind" not in json.dumps(narrow)
 
 
@@ -713,7 +713,7 @@ def test_git_reads_the_pull_requests_of_a_repo_on_github_with_their_body_but_no_
     }
     edges = {(e["src"], e["rel"], e["dst"]) for e in store.edges_of("app:pr:7", report.build_id)}
     assert ("app:pr:7", "merged_as", f"app:commit:{head}") in edges
-    text = Session(project, "wide").call("kg_node", {"id": "app:pr:7"})["content"][0]["text"]
+    text = StoreSession(project, "wide").call("kg_node", {"id": "app:pr:7"})["content"][0]["text"]
     assert "Free text" not in text and "(parsed, internal,U)" in text.splitlines()[0]
 
 

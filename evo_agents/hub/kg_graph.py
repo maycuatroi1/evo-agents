@@ -8,18 +8,22 @@ of an older build than the newest, that one answers, and kg_status says which bu
 source of it read, with how far behind its remote's default branch the machine that read it counted (the hub has no
 checkout to count again).
 
-``HubSession`` is ``evo_agents.kg.serve.Session`` over such a file, with the hub's read rule as its clearance: the
+``HubSession`` is ``evo_agents.kg.serve.Session`` over such a snapshot, with the hub's read rule as its clearance: the
 meet of the caller's grant and the sink's clearance (``ProjectRules.ceiling``), whose audience is the caller's, as the
 hub computed it for this call (``evo_agents.hub.server.kg_audience``). The tools, their schemas, CAP_CHARS and kg_more
 are the local server's; the handles kg_more continues live in this process for HANDLE_TTL, per user and project, and
 continue only for a caller whose audience still holds what the result revealed.
 
 kg_status names the build's totals and the coverage of each source when the caller's audience holds every audience of
-the build. Otherwise it counts what that audience holds (``Store.seen``); of a source with items that have an audience
-it says only how many of them the caller sees; and it leaves out what the build says of all items at once: the samples,
-issues and errors of its coverage, its size and its audiences; of its vectors it keeps the mode, the model and the
-error, not their counts. The vectors are the hub's record of the build (``kg_builds.coverage``): the graph file's own
-coverage is written before the build embeds. The web's graph pages count the same way (``evo_agents.hub.kg_web``).
+the build: per source its mentions, the commit it read and its code backend, then the clusters and the codes defined in
+two or more places (``evo_agents.kg.status``). Otherwise it counts what that audience holds (``SnapshotView.seen``); of
+a source with items that have an audience it says only how many of them the caller sees; and it leaves out what the
+build says of all items at once: the samples, issues and errors of its coverage, its size and its audiences; of its
+vectors it keeps the mode, the model and the error, not their counts. The vectors are the hub's record of the build
+(``kg_builds.coverage``): the graph file's own coverage is written before the build embeds. The web's graph pages count
+the same way (``evo_agents.hub.kg_web``). A source knowledge.yaml labels above the sink's clearance shows its id alone,
+and a build whose highest label is above it shows its counts alone (``HubSession.cleared``); what it shows raises the
+session's label, as the other tools' results do.
 
 ``unknown`` looks node ids and paths up in the same graph, as a session of the caller reads it, for a check that only
 needs to know which of them it lacks: the sources of a finding of the core plugin srs
@@ -44,13 +48,13 @@ from datetime import datetime
 from evo_agents.hub.srs_baseline import CODE_COMMENT, COMMIT, PLAN_COMPLETED, PULL_REQUEST, STEP_DONE, Evidence
 from evo_agents.kg import freshness
 from evo_agents.kg import settings as kg_settings
+from evo_agents.kg import status as status_text
 from evo_agents.kg.explore import Explorer
 from evo_agents.kg.policy import Label, Policy, audience_below
 from evo_agents.kg.serve import HANDLE_TTL, TOOLS, Session
 from evo_agents.kg.serve_impact import IMPACT_STATUSES
-from evo_agents.kg.serve_view import ToolError
+from evo_agents.kg.serve_view import ANSWERS_NOTHING, ToolError
 from evo_agents.kg.snapshot import SnapshotView
-from evo_agents.kg.store import Store
 
 TOOL_NAMES = tuple(tool["name"] for tool in TOOLS)
 MAX_HANDLES = 100  # kg_more handles kept per user and project
@@ -95,7 +99,7 @@ class HubSession(Session):
         policy: Policy,
         ceiling: Label | None,
         sink: str,
-        store: Store,
+        store: SnapshotView,
         graph: BuiltGraph,
         latest: BuiltGraph,
     ):
@@ -114,7 +118,7 @@ class HubSession(Session):
             self.clearance = (ceiling.level, ceiling.location)
             self.audience = ceiling.audience
 
-    def _graph(self) -> tuple[Store, int]:
+    def _graph(self) -> tuple[SnapshotView, int]:
         b = self.graph_store.latest_ready()
         if b is None:
             raise ToolError(f"build {self.graph.build_id} of project {self.project.name} holds no ready graph")
@@ -160,9 +164,35 @@ class HubSession(Session):
         seen = self.graph_store.seen(b)
         return replace(graph, nodes=seen["nodes"], edges=seen["edges"])
 
+    def cleared(self, summary: dict) -> dict:
+        """``summary`` as the sink's clearance reads it, the session's label raised by what it shows: a source
+        knowledge.yaml labels above the clearance shows its id alone; a build whose highest label is above it shows
+        its counts, not its coverage or stats, which name items."""
+        if not summary.get("ready"):
+            return summary
+        assert self.clearance is not None, ANSWERS_NOTHING
+        coverage = summary.get("coverage") or {}
+        sources = []
+        for src in coverage.get("sources", []):
+            if self.policy.declares(src["id"]):
+                label = self.policy.source_label(src["id"])
+                shown = (label.level, label.location, label.integrity)
+                if not self.visible(shown):
+                    sources.append({"id": src["id"], "withheld": True})
+                    continue
+                self._saw(shown)
+            sources.append(src)
+        b = int(summary["build_id"])
+        level, location = self.graph_store.top_label(b)
+        if level > self.clearance[0] or location > self.clearance[1]:
+            return {k: v for k, v in summary.items() if k not in ("coverage", "stats")}
+        whole = self.whole(b)
+        self._saw((level, location, "U", self.graph_store.top_audience(b) if whole else frozenset()))
+        return {**summary, "coverage": {**coverage, "sources": sources}}
+
     def tool_kg_status(self) -> tuple[str, dict]:
         clr = (self.policy.level_name(self.clearance[0]), self.policy.location_name(self.clearance[1]))
-        summary = self.within(self.recorded(self.graph_store.summary()))
+        summary = self.cleared(self.within(self.recorded(self.graph_store.summary())))
         coverage = summary.get("coverage") or {}
         hub_build = {
             "build_id": self.graph.build_id,
@@ -181,6 +211,9 @@ class HubSession(Session):
             behind = "its graph is not loaded yet; this is the newest graph loaded"
             lines.append(f"note: build {self.latest.build_id} is newer, but {behind}")
         for src in coverage.get("sources", []):
+            if src.get("withheld"):  # above the clearance of the sink (``cleared``)
+                lines.append(f"  {src['id']:<22} withheld: above the clearance of this sink")
+                continue
             if "mentions" not in src:  # items with an audience (``within``)
                 lines.append(f"  {src['id']:<22} {src['items']:>6} items you can read")
                 continue
@@ -189,6 +222,14 @@ class HubSession(Session):
                 f"  {src['id']:<22} {src['items']:>6} items, mentions {src['resolved']}/{src['mentions']}"
                 f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling{read}"
             )
+            if src.get("code"):
+                lines.append(f"    {status_text.code_line(src['code'])}")
+        if "clusters" in coverage:
+            lines.append(status_text.cluster_line(coverage["clusters"]))
+        multiple = coverage.get("multiple_definitions")
+        if multiple is not None:  # a convention warning, not a failure: ``ok`` stays as it is
+            multiple = {**multiple, "hint": status_text.DERIVED_FROM_HINT if multiple["codes"] else None}
+            lines += status_text.multiple_lines(multiple)
         lines += [f"warning: {w}" for w in coverage.get("warnings", [])]
         status = {
             "project": self.project.name,
@@ -197,6 +238,7 @@ class HubSession(Session):
             "hub_build": hub_build,
             "graph": summary,
             "warnings": coverage.get("warnings", []),
+            "multiple_definitions": multiple,
             "reads": freshness.reads(coverage),
             "sink": {"id": self.sink, "clearance": {"level": clr[0], "location": clr[1]}},
             "summary": self.project.name,
@@ -272,7 +314,7 @@ class HubSession(Session):
             )
         return found
 
-    def _authors(self, store: Store, b: int, file_ids: list[str]) -> list[str]:
+    def _authors(self, store: SnapshotView, b: int, file_ids: list[str]) -> list[str]:
         """The author emails of the LATEST_COMMITS newest commits visible to the session that changed each of
         ``file_ids``, each address once, in the order found."""
         found: list[str] = []
@@ -386,10 +428,10 @@ def answer(
     snapshot: Snapshotted | None = None,
 ) -> dict:
     """One kg_* call on the newest graph of ``project`` that can be read; ``explore``: a kg_search of an agent's, which
-    may explore the ranking (``evo_agents.kg.explore``). Blocking: run it in a thread, which also keeps the SQLite
-    connection in the thread that made it. ``tuning`` is what the project's search is tuned by (its kg_settings);
-    ``whole``: the data alone, uncut (``WholeSession``); ``named_graphs``: the named graph the call's ``graph`` names,
-    to its sources, as the database holds it (``evo_agents.kg.graph_scope``); ``snapshot``: as ``reading``."""
+    may explore the ranking (``evo_agents.kg.explore``). Blocking: run it in a thread. ``tuning`` is what the
+    project's search is tuned by (its kg_settings); ``whole``: the data alone, uncut (``WholeSession``);
+    ``named_graphs``: the named graph the call's ``graph`` names, to its sources, as the database holds it
+    (``evo_agents.kg.graph_scope``); ``snapshot``: as ``reading``."""
     with reading(project, snapshot) as (opened, graph):
         if tuning is not None:
             opened.tuning = tuning

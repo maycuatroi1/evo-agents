@@ -6,7 +6,7 @@ import json
 
 from evo_agents.kg import search
 from evo_agents.kg.build import build_project
-from evo_agents.kg.serve import Session
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, make_project, write
 from tests.kg.test_walk import ALPHA, BETA, QUASAR, ZEPHYR, entity_project, hide
@@ -15,7 +15,7 @@ QUERIES = ("quasar", "zephyr launcher", "glowing tail comet", "quasar zephyr eng
 
 
 def search_of(project, query, limit=10, sink="agent"):
-    found = Session(project, sink).call("kg_search", {"query": query, "limit": limit})
+    found = StoreSession(project, sink).call("kg_search", {"query": query, "limit": limit})
     assert not found.get("isError"), found
     return found
 
@@ -76,7 +76,7 @@ def test_a_graph_without_entities_ranks_as_before(tmp_path, kg_env):
 
 def test_kg_context_seeds_the_documents_of_a_matched_entity(tmp_path, kg_env):
     project = entity_project(tmp_path, kg_env)
-    found = Session(project, "agent").call("kg_context", {"query": "quasar"})
+    found = StoreSession(project, "agent").call("kg_context", {"query": "quasar"})
     assert not found.get("isError"), found
     data = found["structuredContent"]
     assert set(data["seeds"][:2]) == {ALPHA, BETA}  # the entity seeds after its documents, in a slot left over
@@ -88,7 +88,7 @@ def test_an_entity_never_brings_a_document_the_reader_does_not_see(tmp_path, kg_
     project = entity_project(tmp_path, kg_env)
     hide(project, "UPDATE nodes SET label_lvl = 2 WHERE node_id = ?", BETA)
     assert BETA in [r["id"] for r in search_of(project, "quasar", sink="wide")["structuredContent"]["results"]]
-    for found in (search_of(project, "quasar"), Session(project, "agent").call("kg_context", {"query": "quasar"})):
+    for found in (search_of(project, "quasar"), StoreSession(project, "agent").call("kg_context", {"query": "quasar"})):
         assert "tail.md" not in json.dumps(found)
     hide(project, "UPDATE edges SET label_lvl = 2 WHERE dst = ? AND rel = 'mentions' AND src = ?", ZEPHYR, ALPHA)
     found = search_of(project, "zephyr")["structuredContent"]

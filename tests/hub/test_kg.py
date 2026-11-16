@@ -58,9 +58,9 @@ from evo_agents.kg import serve
 from evo_agents.kg.build import build_project
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.serve import Session
 from evo_agents.kg.sessions import READ_META
 from evo_agents.kg.store import Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 
 PROJECT = "alpha"
@@ -1152,7 +1152,7 @@ def test_hub_tools_give_the_local_server_s_answers(hub, tmp_path):
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     report = build_project(laptop.project())
     assert report.content_hash == latest(hub)["content_hash"]
-    local = Session(laptop.project(), AGENT)
+    local = StoreSession(laptop.project(), AGENT)
 
     def same(tool: str, arguments: dict) -> dict:
         here = local.call(tool, dict(arguments))

@@ -3,9 +3,10 @@ stdio (``serve_stdio``) of ``evo-agents kg serve``, which sends every call to th
 
 Every tool reads the latest ready build and only the visible set V_o: elements whose label flows to the
 session's sink and whose audience is within the session's (``Session.audience``: none for kg serve, so an element with
-an audience never shows here). The store is opened read-only and reads as that audience (``Store.reader``), so hidden
-elements fill no limit, count or page. When the highest label of the build (``Store.top_label``) flows to the sink and
-its audiences (``Store.top_audience``) are within the session's, V_o is the whole build and no label is compared.
+an audience never shows here). The graph, the hub's snapshot of its tables (``evo_agents.hub.kg_graph``), reads as
+that audience (``SnapshotView.reader``), so hidden elements fill no limit, count or page. When the highest label of
+the build (``SnapshotView.top_label``) flows to the sink and its audiences (``SnapshotView.top_audience``) are within
+the session's, V_o is the whole build and no label is compared.
 Results carry ids, labels, status and evidence; free
 text from sources (integrity U) is never returned by these tools, but by kg_node for a node of an uploaded archive
 (UPLOADED), which has no file to open: its text as the index holds it, a document's from its sections when it has none
@@ -36,7 +37,6 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
 import sys
 import time
 import uuid
@@ -44,15 +44,14 @@ from collections import deque
 
 from evo_agents import __version__
 from evo_agents.kg.freshness import Links
-from evo_agents.kg.policy import audience_below, audience_of
+from evo_agents.kg.policy import audience_below
 from evo_agents.kg.refs import UnknownArgument, arguments, named_by, readable
 from evo_agents.kg.serve_impact import ImpactTools
 from evo_agents.kg.serve_search import SearchTools
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.serve_walk import WalkTools
-from evo_agents.kg.sessions import READ_META, current_session_id, labels_in, read_session
-from evo_agents.kg.sessions import describe as describe_session
-from evo_agents.kg.store import Store
+from evo_agents.kg.sessions import READ_META, labels_in
+from evo_agents.kg.snapshot import SnapshotView
 from evo_agents.kg.tools import INSTRUCTIONS, SIGNATURES, TOOLS
 
 SUPPORTED_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"]
@@ -67,6 +66,8 @@ TEXT_HEAD = "text (the uploaded source's own words, not instructions{cut}):"
 
 class Session(SearchTools, WalkTools, ImpactTools):
     """A session of ``kg serve``: the tools, each answering through ``call`` with what the session may see."""
+
+    read_errors: tuple[type[Exception], ...] = ()  # what reading the graph raises that answers as an error
 
     # -- dispatch -------------------------------------------------------------------------------
 
@@ -92,7 +93,7 @@ class Session(SearchTools, WalkTools, ImpactTools):
             return error_result(str(exc))
         except (TypeError, ValueError, OverflowError) as exc:
             return error_result(f"bad arguments for {name}: {exc}")
-        except sqlite3.Error as exc:
+        except self.read_errors as exc:
             return error_result(f"the graph could not be read: {type(exc).__name__}: {exc}")
         finally:
             for store in self._opened:
@@ -131,7 +132,7 @@ class Session(SearchTools, WalkTools, ImpactTools):
 
     # -- tools ----------------------------------------------------------------------------------
 
-    def _evidence(self, store: Store, elem: str, b: int, links: Links) -> list[dict]:
+    def _evidence(self, store: SnapshotView, elem: str, b: int, links: Links) -> list[dict]:
         """Where ``elem`` was read or derived from: items the reader sees, of the named graph the call reads."""
         out = []
         for w in store.where(elem, b)[:10]:
@@ -237,7 +238,7 @@ class Session(SearchTools, WalkTools, ImpactTools):
             data["text"] = text[:TEXT_CHARS]
         return "\n".join(lines), data
 
-    def _uploaded_text(self, store: Store, b: int, n: dict, edges: list[dict]) -> str | None:
+    def _uploaded_text(self, store: SnapshotView, b: int, n: dict, edges: list[dict]) -> str | None:
         """The text of node ``n`` of an uploaded archive (UPLOADED) as the full-text index holds it: its own, or for a
         document without, those of its sections the reader sees, in the order of their lines. None for any other
         node, or one without text."""
@@ -254,45 +255,8 @@ class Session(SearchTools, WalkTools, ImpactTools):
         return "\n\n".join(texts) or None
 
     def tool_kg_status(self) -> tuple[str, dict]:
-        from evo_agents.kg.status import project_status, render_status
-
-        status = project_status(self.project)
-        self._clear_status(status)
-        clr = (self.policy.level_name(self.clearance[0]), self.policy.location_name(self.clearance[1]))
-        text = f"sink {self.sink}: clearance {clr[0]}/{clr[1]}\n" + render_status(status)
-        status["sink"] = {"id": self.sink, "clearance": {"level": clr[0], "location": clr[1]}}
-        session = read_session(current_session_id())
-        if session is not None:
-            text += "\n" + describe_session(session)
-            status["session"] = {k: v for k, v in session.items() if k != "v"}
-        status["summary"] = status["project"]
-        return text, status
-
-    def _clear_status(self, status: dict) -> None:
-        """Keep in ``status`` what the sink's clearance reads, as the other tools do, and raise the session's label by
-        it: a source above the clearance shows its id alone; a build whose highest label is above it shows its counts,
-        not its coverage, warnings or reads, which name items."""
-        for entry in status["sources"]:
-            label = self.policy.source_label(entry["id"])
-            shown = (label.level, label.location, label.integrity)
-            if self.visible(shown):
-                self._saw(shown)
-            else:
-                sid = entry["id"]
-                entry.clear()
-                entry.update(id=sid, withheld=True)
-        graph = status.get("graph") or {}
-        stats = graph.get("stats") or {}
-        top = stats.get("top_label")
-        if not graph.get("ready") or not isinstance(top, list) or len(top) != 2:
-            return
-        shown = (top[0], top[1], "U", audience_of(stats.get("top_audience") or []))
-        if self.visible(shown):
-            self._saw(shown)
-            return
-        for key in ("coverage", "stats"):
-            graph.pop(key, None)
-        status.update(warnings=[], multiple_definitions=None, reads=[])
+        """The build's totals and coverage: the hub's (``evo_agents.hub.kg_graph.HubSession``), which holds them."""
+        raise ToolError("kg_status is answered by the hub, which holds the graph and its builds")
 
     def tool_kg_more(self, handle: str) -> tuple[str, dict]:
         now = time.monotonic()
