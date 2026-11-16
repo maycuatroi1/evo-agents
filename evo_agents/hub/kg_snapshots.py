@@ -76,6 +76,21 @@ async def load(engine: AsyncEngine, project_id: int) -> Held | None:
             return held
 
 
+async def shared(engine: AsyncEngine, project_id: int, build_id: int | None = None) -> Held | None:
+    """The project's snapshot for a request that reads it once: in the api, the one its coordinator keeps
+    (``serving``), loaded once however many requests ask for it at once, or newer than build ``build_id`` once its
+    load ends (``SnapshotCoordinator.current``); elsewhere, as in a job's process, one read now (``load``). A
+    request that loaded a snapshot of its own made one copy of the graph each: a worker posting a judge's verdict
+    again after 30 seconds had the api make four copies of its largest graph at once, gigabytes each, until it was
+    restarted."""
+    coordinator = serving
+    if coordinator is None or coordinator.engine is None:
+        return await load(engine, project_id)
+    if build_id is None:
+        return await coordinator.get(project_id)
+    return await coordinator.current(project_id, build_id)
+
+
 async def load_on(conn: AsyncConnection, project_id: int) -> Held | None:
     """``load`` on the caller's connection, which it holds while the snapshot is made: a caller that can give its
     connection back first uses ``load``."""
