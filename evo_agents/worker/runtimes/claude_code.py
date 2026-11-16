@@ -409,6 +409,11 @@ class ClaudeCodeAdapter(QueueAdapter):
         return claude_transcript(env, session_id) is not None
 
     @classmethod
+    def tells_sessions(cls, env: Mapping[str, str]) -> bool:
+        """Claude Code keeps its transcripts in the config dir of ``env``, which ``has_session`` reads."""
+        return True
+
+    @classmethod
     def environment_notes(cls, context: RunContext) -> list[str]:
         return auth_notes(context) + profiles.claude_notes(profiles.profile_of(context))
 

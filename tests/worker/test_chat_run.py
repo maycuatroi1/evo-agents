@@ -29,6 +29,7 @@ directory. The socket's side, and that a guarded run's agent gets no credential 
 from __future__ import annotations
 
 import shlex
+import shutil
 
 import pytest
 
@@ -193,6 +194,31 @@ def test_the_next_chat_run_goes_on_in_the_worktrees_and_session_of_the_run_befor
     old = machine.home.load_run(first)
     assert old["resumed_by"] == later and old["dir"] is None, "the cleanup of the first run leaves them alone"
     assert any(f"Goes on from run #{first} in {directory}" in text for text in hub.texts(later))
+
+
+def test_a_chat_run_whose_session_went_with_the_worktrees_of_the_run_before_starts_a_new_one(machine):  # noqa: F811
+    machine.env["EVO_FAKE_SESSIONS"] = str(machine.tmp / "sessions")
+    machine.scenarios({"chat": [{"say": "Done."}], "chat/resume": [{"say": "Resumed."}]})
+    found = {}
+
+    async def body(hub, daemon):
+        first = hub.queue_chat_run(["alpha"])
+        assert await hub.wait_state(first, "done", "failed", timeout=WAIT) == "done", hub.texts(first)
+        await wait_for(lambda: not daemon.runs, "the first run to let go of its slot")
+        session = machine.home.load_run(first)["session_id"]
+        shutil.rmtree(machine.directory(first))  # the cleanup took its worktrees and the session's record with them
+        (machine.tmp / "sessions" / session).unlink()
+        later = hub.queue_chat_run(["alpha"], resume_of=first, session_id=session, branch=f"chat/{first}")
+        hub.thread_reply(later, "owner wrote in the thread (message #13):\nreview it, please")
+        assert await hub.wait_state(later, "done", "failed", timeout=WAIT) == "done", hub.texts(later)
+        found.update(hub=hub, later=later, session=session)
+
+    with_daemon(machine, body)
+    hub, later = found["hub"], found["later"]
+    _, two = machine.starts()
+    assert two["run"] == later and two["resume"] is None and two["session"] != found["session"]
+    assert two["prompt"].endswith("review it, please")
+    assert any(f"no record of session {found['session']}" in text for text in hub.texts(later))
 
 
 def test_a_push_origin_refuses_fails_the_chat_run_and_the_next_run_of_its_session_pushes_the_commit(machine):  # noqa: F811
