@@ -384,14 +384,15 @@ async def _measuring(engine: AsyncEngine, ctx, blobs, data_dir, measure: Measure
 
 
 def _shim(engine: AsyncEngine, blobs, data_dir: Path):
-    """What the routes of the review queue read of ``request.app.state``, for the job."""
+    """What the routes of the review queue read of the request, ``app.state`` and an empty query (no ``branch``: the
+    main graph), for the job."""
     state = SimpleNamespace(
         engine=engine,
         blobs=blobs,
         jobs=JobQueue.in_transaction(),
         kg_snapshots=kg_snapshots.SnapshotCoordinator(engine),
     )
-    return SimpleNamespace(app=SimpleNamespace(state=state))
+    return SimpleNamespace(app=SimpleNamespace(state=state), query_params={})
 
 
 def _owner(ctx) -> Principal:
