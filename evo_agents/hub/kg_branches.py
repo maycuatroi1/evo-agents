@@ -345,26 +345,49 @@ async def drop(conn: AsyncConnection, project_id: int, name: str) -> dict:
     return {"branch": name, "dropped": True, "ops": branch.ops}
 
 
-async def overlay(conn: AsyncConnection, project_id: int, rows: StoreRows) -> StoreRows:
-    """``rows`` a build made with the operations of the project's merged branches applied, in the order they merged;
-    an operation that no longer applies (its node went from the sources) is left out. ``rows`` when none merged."""
+async def merged(conn: AsyncConnection, project_id: int) -> list[list[dict]]:
+    """The operations of the project's merged branches, each with its ``before``: a list a branch, in the order they
+    merged."""
     b, o = tables.kg_branches, tables.kg_branch_ops
     merged_at = select(o.c.branch_id, o.c.id.label("at")).where(o.c.op == MERGED_OP).subquery()
     query = (
-        select(o.c.payload)
+        select(o.c.branch_id, o.c.payload)
         .join(b, b.c.id == o.c.branch_id)
         .join(merged_at, merged_at.c.branch_id == b.c.id)
         .where(b.c.project_id == project_id, b.c.status == "merged", o.c.op != MERGED_OP)
         .order_by(merged_at.c.at, o.c.id)
     )
-    ops = [_replayed(row.payload) for row in await conn.execute(query)]
-    if not ops:
+    groups: dict[int, list[dict]] = {}
+    for row in await conn.execute(query):
+        groups.setdefault(row.branch_id, []).append(row.payload)
+    return list(groups.values())
+
+
+def merged_hash(content_hash: str, groups: list[list[dict]]) -> str:
+    """The content hash main gets from a graph of hash ``content_hash`` once ``groups`` (``merged``) merged into it,
+    one branch after the other, as ``merge`` hashed them."""
+    for ops in groups:
+        content_hash = branch_ops.ops_hash(content_hash, [_plain(op) for op in ops])
+    return content_hash
+
+
+async def overlay(conn: AsyncConnection, project_id: int, rows: StoreRows, groups: list[list[dict]]) -> StoreRows:
+    """``rows`` a build made with ``groups``, the operations of the project's merged branches (``merged``), applied in
+    the order they merged and hashed as ``merge`` hashed them (``merged_hash``); an operation that no longer applies
+    (its node went from the sources) is left out. ``rows`` when none merged."""
+    if not groups:
         return rows
     skipped: list[str] = []
-    out = await asyncio.to_thread(branch_ops.apply, rows, ops, skipped)
+    out = await asyncio.to_thread(_overlaid, rows, groups, skipped)
     if skipped:
         log.warning(
             "merged graph branch operations no longer apply",
             extra={"project_id": project_id, "why": skipped[:5], "skipped": len(skipped)},
         )
     return out
+
+
+def _overlaid(rows: StoreRows, groups: list[list[dict]], skipped: list[str]) -> StoreRows:
+    for ops in groups:
+        rows = branch_ops.apply(rows, [_replayed(op) for op in ops], skipped, [_plain(op) for op in ops])
+    return rows

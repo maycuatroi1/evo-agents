@@ -293,6 +293,26 @@ def test_a_branch_is_read_apart_from_main_then_merged_and_outlives_the_next_buil
 
 
 @needs_db
+def test_a_build_of_nothing_new_after_merges_keeps_main_and_its_hash(hub, tmp_path, caplog):
+    _built(hub, tmp_path, caplog, doc("guide", "How the kiwi app works."))
+    guide = _guide(hub)
+    for name, node in (("mango", "concept:mango"), ("papaya", "concept:papaya")):  # two merges: their hashes chain
+        assert _post(hub, _base(), {"name": name}).status_code == 201
+        ops = [
+            {"op": "node.put", "id": node, "kind": "Concept", "name": f"{name.title()} pipeline"},
+            {"op": "edge.put", "src": guide, "rel": "mentions", "dst": node},
+        ]
+        assert _post(hub, f"{_base(name)}/ops", {"ops": ops}).status_code == 200
+        assert _post(hub, f"{_base(name)}/merge").status_code == 200
+    _, merged = _row_and_head(hub)
+    assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
+    build(hub, caplog)
+    built, head = _row_and_head(hub)
+    assert head == merged, "a build of nothing new leaves main and its hash as the merges wrote them"
+    assert built == head, "the build's row names main's head"
+
+
+@needs_db
 def test_a_branch_merged_while_a_build_of_nothing_new_runs_stays_on_main(hub, tmp_path, caplog, monkeypatch):
     from evo_agents.hub import kg_build
     from tests.hub.test_kg import latest, run_jobs
