@@ -66,10 +66,12 @@ async def load(engine: AsyncEngine, project_id: int) -> Held | None:
                 timing.phase("slot")
                 async with engine.connect() as conn:
                     fetched = await _rows(conn, project_id)
+                if fetched is not None:  # still in the slot, so the raw rows of at most READS loads wait in memory
+                    fetched = fetched[0], await _assembled(fetched[1])
             timing.phase("rows")
             if fetched is None:
                 return None
-            held = await _made(fetched[0], await _assembled(fetched[1]))
+            held = await _made(*fetched)
             timing.phase("made")
             return held
 
