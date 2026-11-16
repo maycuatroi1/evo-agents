@@ -32,10 +32,10 @@ request, a chat message, a plan or document under ``completed/`` or an archive d
 was then: a path some commit read changed there is ``past``, not a missing file.
 
 
-A SHA names a commit a git source read from its history when exactly one such commit starts with it: ``repo@sha``
-among the commits of that repo, a bare SHA in a plan step's evidence among those of the step's repo first, then of
-every repo; such a mention links to the commit's item, and one that names no commit read gets a Commit node of its own
-as before. A pull request is named by its URL, ``owner/repo#57``, ``repo#57`` with a repo name of harness.yaml, or
+A SHA names a commit a git source, or a harness source with ``history: true``, read from its history when exactly
+one such commit starts with it: ``repo@sha`` among the commits of that repo, a bare SHA in a plan step's evidence
+among those of the step's repo first, then of every repo; such a mention links to the commit's item, and one that
+names no commit read gets a Commit node of its own as before. A pull request is named by its URL, ``owner/repo#57``, ``repo#57`` with a repo name of harness.yaml, or
 "PR #57" in the text of a step of that repo.
 
 The index these mentions are looked up in is built by ``pipeline.link_index``; the written forms are in
