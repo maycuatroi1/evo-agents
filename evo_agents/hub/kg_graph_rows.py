@@ -326,11 +326,23 @@ async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MA
     """The rows a snapshot of a branch is made of, as ``write_graph`` kept them; None before its first build. The
     rows are fetched a batch at a time (``_read_rows``) and parsed and put together in a thread (``_assembled``), so a
     large graph does not hold the event loop."""
+    fetched = await fetch_graph(conn, project_id, branch_id)
+    return None if fetched is None else await assemble_graph(fetched)
+
+
+async def fetch_graph(conn: AsyncConnection, project_id: int, branch_id: int = MAIN) -> tuple | None:
+    """The head and the raw rows of a branch's tables, for ``assemble_graph``; None before its first build. Only this
+    reads: a caller that can give its connection back before the rows are put together (``assemble_graph`` takes
+    minutes on a large graph) does so between the two."""
     head = await _head(conn, project_id, branch_id)
     if head is None:
         return None
-    read = {name: await _read_rows(conn, name, project_id, branch_id) for name in GRAPH_TABLES}
-    return await asyncio.to_thread(_assembled, head, read)
+    return head, {name: await _read_rows(conn, name, project_id, branch_id) for name in GRAPH_TABLES}
+
+
+async def assemble_graph(fetched: tuple) -> StoreRows:
+    """The ``StoreRows`` of what ``fetch_graph`` read, put together in a thread; it needs no connection."""
+    return await asyncio.to_thread(_assembled, *fetched)
 
 
 GRAPH_TABLES = (

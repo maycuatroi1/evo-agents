@@ -27,7 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import kg_branches, tables
-from evo_agents.hub.kg_graph_rows import CHANNEL, MAIN, read_graph
+from evo_agents.hub.kg_graph_rows import CHANNEL, MAIN, assemble_graph, fetch_graph
 from evo_agents.kg import pacing as kg_pacing
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.pacing import pacing
@@ -65,11 +65,13 @@ async def load(engine: AsyncEngine, project_id: int) -> Held | None:
             async with read_slot():
                 timing.phase("slot")
                 async with engine.connect() as conn:
-                    found = await _rows(conn, project_id)
+                    fetched = await _rows(conn, project_id)
+                if fetched is not None:  # still in the slot, so the raw rows of at most READS loads wait in memory
+                    fetched = fetched[0], await _assembled(fetched[1])
             timing.phase("rows")
-            if found is None:
+            if fetched is None:
                 return None
-            held = await _made(*found)
+            held = await _made(*fetched)
             timing.phase("made")
             return held
 
@@ -79,7 +81,7 @@ async def load_on(conn: AsyncConnection, project_id: int) -> Held | None:
     connection back first uses ``load``."""
     with uncollected():
         found = await _rows(conn, project_id)
-        return None if found is None else await _made(*found)
+        return None if found is None else await _made(found[0], await _assembled(found[1]))
 
 
 _loads = 0  # loads of the process running now, in ``uncollected``
@@ -217,15 +219,23 @@ async def timed(project_id: int):
         log.info("kg snapshot load timed", extra={"project_id": project_id, "phases": timing.phases})
 
 
-async def _rows(conn: AsyncConnection, project_id: int) -> tuple[int | None, StoreRows] | None:
-    """(the build that wrote the rows of the project's main branch, those rows); None before its first build."""
+async def _rows(conn: AsyncConnection, project_id: int) -> tuple[int | None, tuple] | None:
+    """(the build that wrote the rows of the project's main branch, those rows as ``fetch_graph`` read them, still to
+    be put together by ``assemble_graph``, which needs no connection); None before its first build."""
     heads = tables.kg_graph_heads
     build_id = await conn.scalar(
         select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
     )
     with pacing(tend):
-        rows = await read_graph(conn, project_id)
+        rows = await fetch_graph(conn, project_id)
     return None if rows is None else (build_id, rows)
+
+
+async def _assembled(fetched: tuple) -> StoreRows:
+    """The rows ``_rows`` fetched, put together in a paced thread, with no connection held: it takes minutes on a large
+    graph, and a connection held meanwhile, idle in its transaction, is one the heartbeats and claims wait for."""
+    with pacing(tend):
+        return await assemble_graph(fetched)
 
 
 async def _made(build_id: int | None, rows: StoreRows) -> Held:
