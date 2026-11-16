@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import kg_branches, tables
 from evo_agents.hub.kg_graph_rows import CHANNEL, MAIN, read_graph
 from evo_agents.kg import settings as kg_settings
+from evo_agents.kg.pacing import pacing
 from evo_agents.kg.snapshot import Snapshot, SnapshotView, StoreRows
 
 log = logging.getLogger(__name__)
@@ -81,10 +82,11 @@ def uncollected():
     out on the pool. A snapshot has no reference cycle, so one dropped is freed though frozen. Loads share the
     process's collector: while one runs, the collections of the young generations go on, each walking the few
     thousand objects made since the one before, so the cyclic garbage the requests served meanwhile leave is freed as
-    it would be; the last load to end collects the young generations once more, freezes the rest and gives the
-    collector its thresholds back. Collecting everything there, as it once did, walked the whole new snapshot, the
-    loop stalled for seconds at the end of every load; an object of a request still running then is frozen with the
-    snapshot, and a cycle it is in later is not collected."""
+    it would be. The last load to end collects everything once, so a cycle that lived long enough to reach the old
+    generation before it died is not frozen with the snapshot, never to be freed; then it freezes the rest and gives
+    the collector its thresholds back. That one collection walks the new snapshot, not those frozen before: one stall
+    of a second or two per load, where full collections during it stalled the loop dozens of times. An object of a
+    request still running then is frozen with the snapshot, and a cycle it is in later is not collected."""
     global _loads, _thresholds
     if _loads == 0:
         _thresholds = gc.get_threshold()
@@ -95,7 +97,7 @@ def uncollected():
     finally:
         _loads -= 1
         if _loads == 0:
-            gc.collect(1)
+            gc.collect()
             gc.freeze()
             gc.set_threshold(*_thresholds)
 
@@ -109,7 +111,8 @@ async def _rows(conn: AsyncConnection, project_id: int) -> tuple[int | None, Sto
     build_id = await conn.scalar(
         select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
     )
-    rows = await read_graph(conn, project_id)
+    with pacing():
+        rows = await read_graph(conn, project_id)
     return None if rows is None else (build_id, rows)
 
 
@@ -119,7 +122,8 @@ async def _made(build_id: int | None, rows: StoreRows) -> Held:
     thread that kept the GIL until forced to switch left the event loop one step every 5 ms meanwhile, every pooled
     connection held in a transaction the loop could not finish, and the workers' heartbeats and claims timed out
     waiting for one."""
-    return Held(build_id, await asyncio.to_thread(Snapshot.from_stored, *hub_build(rows, build_id)))
+    with pacing():
+        return Held(build_id, await asyncio.to_thread(Snapshot.from_stored, *hub_build(rows, build_id)))
 
 
 READS = 2  # graph reads a process runs at once, each on a connection of the pool; the next waits for a slot
@@ -236,7 +240,7 @@ class SnapshotCoordinator:
         found = self._branches.pop((project_id, name), None)
         if found is None or found[0] != key:
             heads = tables.kg_graph_heads
-            with uncollected():
+            with uncollected(), pacing():
                 async with read_slot(), self.engine.connect() as conn:
                     build_id = await conn.scalar(
                         select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)

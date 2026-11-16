@@ -4170,16 +4170,17 @@ fetches the rows of each table 2000 at a time on a server-side cursor (`kg_graph
 requests between two fetches, and decodes their JSON and makes the snapshot in a thread. Fetching and decoding a large
 graph's hundreds of thousands of rows in one go stalled every request for seconds after each build, and the
 heartbeats and claims waiting meanwhile timed out on the pool all at once. The thread that makes the snapshot sleeps
-1 ms every 2 ms (`evo_agents.kg.pacing.paced`), so the build takes a third longer: a thread that kept it until the interpreter forced a switch left
-the event loop one step every 5 ms for the minute or two a large graph takes, every pooled connection sat idle in a
+1 ms every 2 ms (`evo_agents.kg.pacing.paced`, within `pacing()`, which only the api's loads enter), so the build
+takes a third longer: a thread that kept the GIL until the interpreter forced a switch
+left the event loop one step every 5 ms for the minute or two a large graph takes, every pooled connection sat idle in a
 transaction the loop could not finish, and the heartbeats and claims timed out on the pool. A sort of the hundreds of
 thousands of edges is made in runs merged as they go (`paced_sorted`), as one sort keeps the GIL from start to end.
 While a load runs, Python's cyclic garbage collector makes no full collection, and the snapshot it made is frozen out
 of later collections (`gc.freeze`): a large graph is millions of tracked objects, and each full collection walked
 them all holding the GIL, stalling the loop for seconds, dozens of times per load. The collections of the young
 generations go on, so the cyclic garbage the requests served meanwhile leave is freed; as the last load running ends,
-the young generations are collected once more and the rest is frozen. Collecting everything there walked the whole
-new snapshot and stalled the loop for seconds at the end of every load. A snapshot has no reference cycle, so one
+one full collection frees what reached the old generation before it died, and the rest is frozen. That one
+collection walks the new snapshot, not those frozen before: one stall of a second or two per load. A snapshot has no reference cycle, so one
 replaced is freed though frozen.
 
 What holds the pool is in the api's log. The pool times each connection it gives out (`evo_agents.hub.db.TimedPool`):

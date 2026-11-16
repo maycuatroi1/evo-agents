@@ -367,7 +367,8 @@ def test_a_load_runs_no_garbage_collection_and_leaves_the_snapshot_out_of_later_
 def test_the_garbage_made_during_a_load_is_collected_not_frozen():
     """The cyclic garbage the requests leave while a load runs is collected, by the young collections that go on or
     as the load ends, before what is left is frozen: frozen, it would never be, and the api would grow by what each
-    load's requests left."""
+    load's requests left. A cycle that outlived a few young collections, in the old generation when it died, is
+    collected too."""
     import gc
     import weakref
 
@@ -381,7 +382,13 @@ def test_the_garbage_made_during_a_load_is_collected_not_frozen():
             node.me = node  # garbage only a collection frees
             gone = weakref.ref(node)
             del node
-        assert gone() is None
+            old = Node()
+            old.me = old
+            aged = weakref.ref(old)
+            churn = [[] for _ in range(50_000)]  # the build allocating meanwhile: young collections age the cycle
+            del old, churn
+        gc.collect()  # a frozen object is out of its reach
+        assert gone() is None and aged() is None
         assert gc.isenabled()
     finally:
         gc.unfreeze()

@@ -71,14 +71,31 @@ def test_paced_gives_every_item_and_the_gil_up_as_time_goes_by(monkeypatch):
     monkeypatch.setattr(pacing, "YIELD_SECONDS", 3)
     monkeypatch.setattr(pacing.time, "perf_counter", lambda: next(clock))
     monkeypatch.setattr(pacing.time, "sleep", slept.append)
-    assert list(pacing.paced(range(10))) == list(range(10))
+    with pacing.pacing():
+        assert list(pacing.paced(range(10))) == list(range(10))
     assert slept == [pacing.PAUSE_SECONDS] * 3
 
 
 def test_paced_sorted_sorts_as_sorted_does_equal_items_in_their_order(monkeypatch):
     monkeypatch.setattr(pacing, "RUN", 4)
     items = [(i * 7 % 5, i) for i in range(23)]
-    assert pacing.paced_sorted(items) == sorted(items)
-    by_first = pacing.paced_sorted(items, key=lambda x: x[0])
-    assert by_first == sorted(items, key=lambda x: x[0])  # sorted is stable: the seconds of equal firsts stay in order
-    assert pacing.paced_sorted([]) == []
+    with pacing.pacing():
+        assert pacing.paced_sorted(items) == sorted(items)
+        by_first = pacing.paced_sorted(items, key=lambda x: x[0])
+        assert by_first == sorted(items, key=lambda x: x[0])  # stable as sorted: equal firsts keep their order
+        assert pacing.paced_sorted([]) == []
+
+
+def test_a_build_paces_only_within_pacing(monkeypatch):
+    slept = []
+    monkeypatch.setattr(pacing, "YIELD_SECONDS", 0)
+    monkeypatch.setattr(pacing.time, "sleep", slept.append)
+    assert list(pacing.paced(range(3))) == [0, 1, 2] and pacing.paced_sorted([2, 1]) == [1, 2]
+    assert slept == []  # ``kg build`` and the bench, with no event loop beside them, run at full speed
+
+    async def made():
+        with pacing.pacing():
+            return await asyncio.to_thread(lambda: list(pacing.paced(range(3))))
+
+    assert asyncio.run(made()) == [0, 1, 2]
+    assert slept == [pacing.PAUSE_SECONDS] * 3  # the thread of the api's load got it
