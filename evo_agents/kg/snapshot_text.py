@@ -1,7 +1,7 @@
 """The text index of a snapshot (``evo_agents.kg.snapshot``) and the ranking of a query on it: ``Store.search_scored``
 (``evo_agents.kg.store_rank``) over in-RAM tables (``evo_agents.kg.snapshot_fts``) in place of the store's FTS5 ones.
 
-``TextIndex`` holds the rows the store writes to its full-text tables (``store_fts.search_rows``): those without an
+``TextIndex`` holds the rows the store writes to its full-text tables (``graph_model.search_rows``): those without an
 audience (``node_fts``), those with one (``node_fts_aud``), the trigrams of the name and path of each node's own row
 without one (``node_tri``), and the text of code files (``code_fts``). ``search_scored`` reads a query against them
 the way the store does, in the same order of ways:
@@ -30,10 +30,10 @@ from pathlib import PurePosixPath
 from evo_agents.kg import asked as asked_words
 from evo_agents.kg import search as text_search
 from evo_agents.kg import semantic
+from evo_agents.kg.graph_model import stored_audience
 from evo_agents.kg.pacing import paced
 from evo_agents.kg.policy import audience_below
 from evo_agents.kg.snapshot_fts import Table, code_words, trigrams, words
-from evo_agents.kg.store_filters import stored_audience
 
 IndexRow = tuple[str, str, str]  # (kind, name, path) of a node's own row, as ``Store._index_row`` reads it
 
@@ -123,7 +123,7 @@ class TextIndex:
 
     @classmethod
     def build(cls, keyed: list[tuple[str, tuple]], code: dict[str, str], folded: bool = False) -> TextIndex:
-        """The index of ``keyed`` (key, (node id, kind, name, path, body[, audience])), as ``store_fts.search_rows``
+        """The index of ``keyed`` (key, (node id, kind, name, path, body[, audience])), as ``graph_model.search_rows``
         gives them, and of ``code`` (file node id: text; already folded when ``folded``)."""
         rows, public, audience = [], [], []
         for key, row in paced(keyed):

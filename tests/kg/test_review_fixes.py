@@ -13,11 +13,11 @@ import yaml
 from evo_agents.kg import entities, memo, serve, strategy
 from evo_agents.kg.build import build_project, verify_build
 from evo_agents.kg.corpus import Corpus
+from evo_agents.kg.graph_model import Graph, edge_id, label_columns
 from evo_agents.kg.memo import Memo
 from evo_agents.kg.policy import Label
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Graph, Store, edge_id
-from evo_agents.kg.store_filters import label_columns
+from evo_agents.kg.store import Store
 from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from tests.kg.conftest import doc

@@ -35,6 +35,7 @@ from evo_agents.kg import store as kg_store
 from evo_agents.kg.assembly import Facts, assemble
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.freshness import add_reads
+from evo_agents.kg.graph_model import Clusters, Graph, label_columns
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.memo import Memo
 from evo_agents.kg.packed import Packed
@@ -65,9 +66,7 @@ from evo_agents.kg.settings import DEFAULT as DEFAULT_TUNING
 from evo_agents.kg.settings import SettingsError, Tuning
 from evo_agents.kg.settings import read as read_tuning
 from evo_agents.kg.snapshot import Snapshot, StoreRows
-from evo_agents.kg.store import Graph, StaleSchema, Store
-from evo_agents.kg.store_clusters import Clusters
-from evo_agents.kg.store_filters import label_columns
+from evo_agents.kg.store import StaleSchema, Store
 from evo_agents.kg.text import split_passages
 
 # config: the aliases of tsconfig.json; commit and pr: the files a commit changed, the commit a pull request merged as

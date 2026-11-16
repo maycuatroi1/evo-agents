@@ -18,7 +18,7 @@ import pytest
 pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub import kg_branches_cli
-from evo_agents.kg import branch_ops, store
+from evo_agents.kg import branch_ops, graph_model
 from evo_agents.kg.policy import Label
 from evo_agents.kg.snapshot import StoreRows, edge_dict, edge_row, node_dict, node_row
 from tests.hub import pg
@@ -47,7 +47,7 @@ def rows_of(*node_ids: str) -> StoreRows:
 
 
 def test_the_edge_id_of_a_branch_is_the_store_s():
-    assert branch_ops.edge_id("a", "mentions", "b") == store.edge_id("a", "mentions", "b")
+    assert branch_ops.edge_id("a", "mentions", "b") == graph_model.edge_id("a", "mentions", "b")
 
 
 @pytest.mark.parametrize(

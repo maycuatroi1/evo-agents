@@ -64,10 +64,9 @@ from collections import Counter, defaultdict
 from collections.abc import Callable
 
 from evo_agents.kg.clusters import IMAGE_SUFFIXES, STRUCTURAL
+from evo_agents.kg.graph_model import Clusters, Graph
 from evo_agents.kg.pipeline.link import DATED_DIR
 from evo_agents.kg.protocol import sha256
-from evo_agents.kg.store import Graph
-from evo_agents.kg.store_clusters import Clusters
 
 # the rules an ontology states (``evo_agents.kg.ontology_rules``); a graph whose ontology states none has no item of them
 ONTOLOGY_RULES = ("wrong_endpoint", "cardinality", "cycle", "duplicate_key", "missing_prop")

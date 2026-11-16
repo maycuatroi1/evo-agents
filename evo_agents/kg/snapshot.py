@@ -30,11 +30,10 @@ from types import MappingProxyType
 
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg import snapshot_text
+from evo_agents.kg.graph_model import EDGE_COLUMNS, NODE_COLUMNS, Clusters, label_columns, stored_audience, within
 from evo_agents.kg.pacing import let_go, paced, paced_sorted
 from evo_agents.kg.policy import audience_below, audience_join
-from evo_agents.kg.store_clusters import Clusters
-from evo_agents.kg.store_filters import LIVE, label_columns, stored_audience, within
-from evo_agents.kg.store_schema import EDGE_COLUMNS, NODE_COLUMNS
+from evo_agents.kg.store_filters import LIVE
 
 
 def _node_dict(row) -> dict:
@@ -261,8 +260,7 @@ class Snapshot:
     def from_graph(cls, graph, build: int = 0) -> Snapshot:
         """The snapshot of an assembled ``Graph``, with the content hash a store gives the build of it."""
         from evo_agents.kg import content
-        from evo_agents.kg.store_diff import top_audience_of, top_label_of
-        from evo_agents.kg.store_fts import search_rows
+        from evo_agents.kg.graph_model import search_rows, top_audience_of, top_label_of
 
         _, keyed = search_rows(graph)
         text = snapshot_text.TextIndex.build(keyed, graph.code)

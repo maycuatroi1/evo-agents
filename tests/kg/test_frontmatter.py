@@ -3,10 +3,11 @@
 import pytest
 
 from evo_agents.kg.build import build_project, multiple_definitions
+from evo_agents.kg.graph_model import Graph
 from evo_agents.kg.pipeline.stages import frontmatter, structure_item
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.status import multiple_lines
-from evo_agents.kg.store import Graph, Store
+from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from evo_agents.kg.text import split_markdown
 from tests.kg.hub_graph import hub_status

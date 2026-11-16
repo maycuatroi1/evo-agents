@@ -18,10 +18,10 @@ pytest.importorskip("sqlalchemy", reason="the hub's graph needs the hub-server e
 from evo_agents.hub import kg_entity_graph
 from evo_agents.hub.kg_graph import BuiltGraph
 from evo_agents.hub.kg_web import NotVisible, WebSession
+from evo_agents.kg.graph_model import Graph, edge_id, label_columns
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.snapshot import Snapshot
-from evo_agents.kg.store import Graph, Store, edge_id
-from evo_agents.kg.store_filters import label_columns
+from evo_agents.kg.store import Store
 
 PROJECT = "ents"
 PUBLIC = Label(0, 0, "U", frozenset({PROJECT}))

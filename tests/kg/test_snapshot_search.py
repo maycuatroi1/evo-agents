@@ -7,13 +7,13 @@ from evo_agents.kg import build as kg_build
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg import content
 from evo_agents.kg import settings as kg_settings
+from evo_agents.kg.graph_model import Clusters
 from evo_agents.kg.ontology_rules import Violation, review_items
 from evo_agents.kg.snapshot import Snapshot
 from evo_agents.kg.snapshot_fts import QueryError, Table, code_words, parse, words
 from evo_agents.kg.snapshot_search import SnapshotSearch, SnapshotSession
 from evo_agents.kg.snapshot_text import Ranker
 from evo_agents.kg.store import Store
-from evo_agents.kg.store_clusters import Clusters
 from evo_agents.kg.store_session import StoreSession
 from tests.kg.test_store import make_searchable, sync_build
 from tests.kg.test_walk import entity_project, walk_on

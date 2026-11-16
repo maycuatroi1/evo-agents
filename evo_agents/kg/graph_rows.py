@@ -15,6 +15,15 @@ from dataclasses import asdict, replace
 
 from evo_agents.kg import asked, content, semantic
 from evo_agents.kg import search as text_search
+from evo_agents.kg.graph_model import (
+    Graph,
+    graph_stats,
+    graph_tables,
+    review_table,
+    search_rows,
+    top_audience_of,
+    top_label_of,
+)
 from evo_agents.kg.health import KINDS, is_test_path
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.snapshot import (
@@ -25,10 +34,6 @@ from evo_agents.kg.snapshot import (
     label_pair,
     node_row,
 )
-from evo_agents.kg.store import Graph
-from evo_agents.kg.store_clusters import review_table
-from evo_agents.kg.store_diff import graph_stats, graph_tables, top_audience_of, top_label_of
-from evo_agents.kg.store_fts import search_rows
 
 UNIT_COLUMNS = ("unit_id", "item_id", "anchor", "rev", "hash", "source", "span", "label_aud", "label_lvl", "label_loc")
 

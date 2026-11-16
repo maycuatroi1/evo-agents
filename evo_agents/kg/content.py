@@ -2,17 +2,25 @@
 the build it writes of the same graph (``Store.content_hash``), so an in-RAM snapshot (``evo_agents.kg.snapshot``)
 names the build it holds the way the hub does.
 
-Each row is the one a store table holds for the graph (``store_diff.graph_tables``, ``store_clusters.cluster_tables``,
-``store_clusters.review_table``), hashed by ``store_diff.row_content``, and the rows of a table come in the order
+Each row is the one a store table holds for the graph (``graph_model.graph_tables``, ``graph_model.cluster_tables``,
+``graph_model.review_table``), hashed by ``graph_model.row_content``, and the rows of a table come in the order
 of its key, as the store reads them. A span-less where-provenance row sorts first, as SQL puts NULL first."""
 
 from __future__ import annotations
 
+from evo_agents.kg.graph_model import (
+    Clusters,
+    Graph,
+    cluster_tables,
+    code_digest,
+    graph_tables,
+    review_table,
+    row_content,
+    search_rows,
+    searched_digest,
+)
 from evo_agents.kg.protocol import canonical_json, sha256
-from evo_agents.kg.store import SCHEMA_VERSION, Graph
-from evo_agents.kg.store_clusters import Clusters, cluster_tables, review_table
-from evo_agents.kg.store_diff import graph_tables, row_content
-from evo_agents.kg.store_fts import code_digest, search_rows, searched_digest
+from evo_agents.kg.store import SCHEMA_VERSION
 
 
 def _contents(rows: dict[str, dict], order) -> list[str]:
