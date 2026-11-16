@@ -9,7 +9,11 @@ from __future__ import annotations
 import asyncio
 import time
 
-from evo_agents.hub import kg_snapshots
+import pytest
+
+pytest.importorskip("sqlalchemy", reason="the api's snapshots need the hub-server extra, evo-ak[hub-server]")
+
+from evo_agents.hub import kg_snapshots  # noqa: E402
 from evo_agents.kg import pacing
 from evo_agents.kg.snapshot import StoreRows
 
