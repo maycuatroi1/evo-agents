@@ -4285,9 +4285,13 @@ drop is logged as `kg snapshot dropped for memory` with `resident_mb` and `limit
 has nothing left to free (`pacing.give_back`, glibc's `malloc_trim`): the allocator kept a gigabyte of a freed graph,
 counted in the api's memory as if it were still held. A snapshot holds one object for each value its rows repeat
 (`snapshot.Shared`): an edge's ends are the node ids, its relation, status and label one object each. With it and the
-full-text index's flat postings the same graph's snapshot takes about 2.9 GB, and under a 7 GB limit each of its loads again peaked at 4.4 GB, the old
-snapshot dropped at 4.3 GB and its readers waiting the two minutes of the load. With a limit of twice the largest
-snapshot and some, a build swaps that graph without its readers waiting.
+full-text index's flat postings the same graph's snapshot takes about 2.9 GB. Loaded again eight times in a row under a
+7 GB limit, each load peaked at about 5.0 GB, under the 5.4 GB of 75%, so the old snapshot was kept and its readers did
+not wait; between loads the api went back to 3.4 to 4.2 GB, not growing, and `malloc_trim` took 0.1 to 0.6 seconds
+(`kg memory given back`, `trim_ms`). At 7g that holds only while the largest graph is about all the api holds: with
+other graphs read beside it, a build of the largest can still drop its old snapshot, and its readers then wait the whole
+load, two to three minutes, after each build. With a limit of twice the largest snapshot and some, a build swaps that
+graph without its readers waiting.
 
 What holds the pool is in the api's log. The pool times each connection it gives out (`evo_agents.hub.db.TimedPool`):
 one held 2 seconds or more is logged as `pool connection held` with its `holder`, the method and path of the request
