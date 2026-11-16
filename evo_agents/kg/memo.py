@@ -16,6 +16,10 @@ A memo is a directory, one gzipped file an entry: ``<stage>/<first two hex digit
 output and its hash. An entry is written to a temporary file and moved into place, so another build sharing the memo
 reads a whole entry or none, and a build that crashes keeps every entry it wrote. Two builds that write one key write
 the same output, a task being a function of its key. ``Memo(None)`` keeps its entries in memory.
+
+A memo opened where a ``memo.sqlite`` of an earlier version sits beside it (``<path>.sqlite``) first takes its rows
+into entry files, once (``IMPORTED`` marks it done): those rows hold answers a model was paid for, by a key the hub
+holds, that no blob gives again (``evo_agents.sqlite_legacy``).
 """
 
 from __future__ import annotations
@@ -23,11 +27,14 @@ from __future__ import annotations
 import gzip
 import json
 import os
+import threading
 from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 
 from evo_agents.kg.protocol import canonical_json, sha256
+
+IMPORTED = ".imported-sqlite"  # the marker of a memo that took the rows of the memo.sqlite beside it
 
 
 def _enc(part) -> bytes:
@@ -67,6 +74,7 @@ class Memo:
         self.root = path
         if path is not None:
             path.mkdir(parents=True, exist_ok=True)
+            _import_sqlite(path)
         self.held: dict[tuple[str, str], tuple[object, str]] = {}  # the entries of a memo kept in memory
         self.hits: Counter[str] = Counter()
         self.misses: Counter[str] = Counter()
@@ -118,9 +126,7 @@ class Memo:
         path = _entry_path(self.root, stage, key)
         path.parent.mkdir(parents=True, exist_ok=True)
         entry = json.dumps({"output": json.loads(data), "output_hash": digest}, ensure_ascii=False, sort_keys=True)
-        tmp = path.with_name(f"{path.name}.tmp{os.getpid()}")
-        tmp.write_bytes(gzip.compress(entry.encode("utf-8"), compresslevel=5))
-        os.replace(tmp, path)
+        _write_entry(path, entry.encode("utf-8"))
         return digest
 
     def keys(self, stage: str) -> set[str]:
@@ -147,6 +153,30 @@ class Memo:
     def stats(self) -> dict:
         stages = sorted(set(self.hits) | set(self.misses))
         return {s: {"hits": self.hits[s], "misses": self.misses[s]} for s in stages}
+
+
+def _write_entry(path: Path, entry: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.tmp{os.getpid()}-{threading.get_ident()}")
+    tmp.write_bytes(gzip.compress(entry, compresslevel=5))
+    os.replace(tmp, path)
+
+
+def _import_sqlite(root: Path) -> None:
+    """Take the rows of the memo.sqlite beside ``root`` into its entry files, unless done already (see the module)."""
+    legacy = root.with_name(f"{root.name}.sqlite")
+    marker = root / IMPORTED
+    if marker.exists() or not legacy.is_file():
+        return
+    from evo_agents.sqlite_legacy import memo_rows
+
+    for key, stage, output, output_hash in memo_rows(legacy):
+        path = _entry_path(root, stage, key)
+        if path.exists():
+            continue
+        entry = {"output": json.loads(gzip.decompress(output)), "output_hash": output_hash}
+        _write_entry(path, json.dumps(entry, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    marker.write_text(f"{legacy.name}\n", encoding="utf-8")
 
 
 def usages(path: Path, stage: str) -> Iterator[dict]:

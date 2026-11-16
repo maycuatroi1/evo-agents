@@ -171,6 +171,29 @@ def test_memo_keeps_each_entry_once_written_and_skips_one_a_crash_cut(tmp_path):
     assert other.stats()["stage"] == {"hits": 2, "misses": 1}
 
 
+def test_memo_takes_the_rows_of_the_memo_sqlite_beside_it_once(tmp_path):
+    import gzip
+
+    inputs = {"item": "a"}
+    key = memo.memo_key("entities", "1", inputs)
+    answer = {"nodes": [{"kind": "Actor", "name": "Ada"}], "usage": {"input_tokens": 7}}
+    old = sqlite3.connect(tmp_path / "memo.sqlite")  # as a version before entry files wrote it
+    old.execute("CREATE TABLE memo (key TEXT PRIMARY KEY, stage TEXT NOT NULL, output BLOB NOT NULL, output_hash TEXT)")
+    data = memo.canonical_json(answer)
+    old.execute("INSERT INTO memo VALUES (?, 'entities', ?, ?)", (key, gzip.compress(data), memo.sha256(data)))
+    old.commit()
+    old.close()
+
+    def paid():
+        raise AssertionError("the model was called again")
+
+    m = Memo(tmp_path / "memo")
+    assert m.run("entities", "1", inputs, paid) == (answer, memo.sha256(data))
+    assert m.keys("entities") == {key} and (tmp_path / "memo" / memo.IMPORTED).exists()
+    (tmp_path / "memo.sqlite").unlink()
+    assert Memo(tmp_path / "memo").run("entities", "1", inputs, paid)[0] == answer
+
+
 def test_memo_traced_entries_and_usages(tmp_path):
     m = Memo(tmp_path / "memo")
     out = m.run_traced("link", "1", {"i": "a"}, lambda: ({"to": "b"}, ["k"]), lambda keys: "held-1")
