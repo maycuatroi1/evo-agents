@@ -71,7 +71,9 @@ period under pacing, and the steps below go the same way through it.
 6. **The pull request and the Judge.** The hub opens the pull request (on GitLab the push opens the merge request),
    reads its diff for signs of score hacking, and queues a judge run that runs the plan's verify and the project's
    hidden checks and never reads the Builder's transcript. A branch whose commits change no file gets neither: the
-   hub closes its change, "its branch changes nothing".
+   hub closes its change, "its branch changes nothing". Nor does a branch with no commit of its own, such as the
+   Builder of a memory proposal leaves (the change is on the hub's data): unless a pull request of the branch merged or
+   closed by hand settles it, the hub closes the change, "its branch has no commit of its own".
 7. **The replays.** A change of a skill, an AGENTS.md or a CLAUDE.md is replayed on tasks of the project's own history:
    an agent does a past step again from the code before it, once with the default branch's harness and once with the
    change's, and the step's verify says which did it (Replays, below). The Judge reads none of it.
@@ -1073,7 +1075,7 @@ A change ends `merged` or `closed`. Four hands close one, each on its own kind o
 | --- | --- | --- |
 | an admin of the project | one left `open` with no pull request (its proposal named no repo, say) | `evo-agents hub curator change close ID --reason TEXT` (POST `.../curator/changes/{id}/close`) |
 | whoever closes its pull request | one with a pull request | closing the pull request on GitHub without a merge; the hub reads it again within the hour and closes the change |
-| the hub | one waiting for its pull request whose branch has commits of its own that change no file | at the pass of `curator.changes` that would open the pull request: GitHub's comparison of the default branch with the branch lists no file, so the hub opens no pull request, queues no Judge and closes the change, "its branch changes nothing" |
+| the hub | one waiting for its pull request whose branch changes no file, with commits of its own or none | at the pass of `curator.changes` that would open the pull request: GitHub's comparison of the default branch with the branch lists no file, so the hub opens no pull request, queues no Judge and closes the change, "its branch changes nothing", or, for a branch with no commit that no pull request merged or closed by hand settles, "its branch has no commit of its own" |
 | its Builder | its own, while `planned` or `pr_pending` with no pull request, for the member who dispatched the run, an admin of the project | `evo-agents worker curator drop --reason TEXT [--note TEXT]` inside the plan run (POST `/v1/worker/runs/{id}/curator/drop`) |
 
 The Builder's drop is how a decision answered "drop" ends a change: the agent runs it, ends its run as it would, and

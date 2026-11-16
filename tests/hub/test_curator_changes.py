@@ -1575,6 +1575,18 @@ def test_changes_a_branch_that_changes_nothing_gets_no_pull_request_nor_judge_an
     )
 
 
+def test_changes_a_branch_with_no_commit_of_its_own_closes_its_change_instead_of_asking_github_again(world):
+    accepted(world)
+    builder(world, files=[])
+    world.github.push(MINE, "evo-agents", BRANCH, "0" * 40, files=[])  # a change made on the hub: 0 commits pushed
+    assert moved_on(world) == {"nothing": 1}
+    change = one_change(world)
+    assert (change["state"], change["pr_number"]) == ("closed", None)
+    assert change["reason"].startswith(f"its branch has no commit of its own: {BRANCH} adds nothing to main")
+    assert calls(world.github, "POST", "/pulls") == []
+    assert moved_on(world) == {}
+
+
 def test_changes_a_comparison_that_says_nothing_of_the_files_still_opens_the_pull_request(world, monkeypatch):
     from evo_agents.hub.server import pulls
 
