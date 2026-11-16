@@ -418,6 +418,9 @@ async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str
             details = {"agent": extra["agent"], "chat_run": extra.get("chat_run")}
         if actor == "curator":
             details, what = await _replayed_merge(conn, row, details, what)
+        from evo_agents.hub.server import playbook  # it reads the proposals of the routes that import this module
+
+        await playbook.retire_due(conn, row.project_id)  # the entries that held until this proposal landed
         await append(
             conn,
             **line,

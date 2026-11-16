@@ -45,13 +45,15 @@ def cmd_playbook(args) -> int:
             entry["lens"] or "every lens",
             str(entry["helpful"]),
             str(entry["harmful"]),
+            str(entry.get("prompt_exposures") or 0),
+            f"#{entry['until_proposal_id']}" if entry.get("until_proposal_id") else "-",
             "retired" if entry["retired"] else "live",
             entry["text"],
         )
         for entry in found["entries"]
     ]
     if rows:
-        table(("ENTRY", "LENS", "HELPFUL", "HARMFUL", "STATE", "TEXT"), rows)
+        table(("ENTRY", "LENS", "HELPFUL", "HARMFUL", "SHOWN", "UNTIL", "STATE", "TEXT"), rows)
     print(f"The playbook of {project}: {found['live']} live entries, {found['retired']} retired")
     return 0
 
