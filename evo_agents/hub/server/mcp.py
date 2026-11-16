@@ -52,7 +52,7 @@ from evo_agents.hub import problems as problem_model
 from evo_agents.hub import runs
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS
+from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, routing_line
 from evo_agents.hub.mcp_tools import (
     CHAT_TOOL_NAMES,
     INSTRUCTIONS,
@@ -477,7 +477,8 @@ class HubMcp(MCPServer):
             sink=caller.sink,
         )
         data = found.model_dump(mode="json", exclude={"text"})
-        return found.text, {**data, "summary": f"handoff of plan {found.plan_id}, {found.tokens} tokens"}
+        text = found.text + routing_line(data)
+        return text, {**data, "summary": f"handoff of plan {found.plan_id}, {found.tokens} tokens"}
 
     async def _plan_step(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         project = self._project(caller, arguments)

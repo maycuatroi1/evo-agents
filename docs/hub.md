@@ -1966,7 +1966,10 @@ UTF-8 bytes / 3, which is more than a tokenizer counts for English or Vietnamese
 goal, the steps it depends on and the steps not done go first, then the other steps done with their Decision lines,
 then the rest of the evidence; a part is left out whole, never cut in the middle of a Decision line, and a note at the
 end names what was left out and points to `plan_show`. The same revision and budget give the same text, and reading
-it needs what reading the plan needs: a grant on the project and a sink that clears the plan's label.
+it needs what reading the plan needs: a grant on the project and a sink that clears the plan's label. With `--step`,
+the answer also has the step's `difficulty`, the model the project's Token strategy would give it now
+(`recommended_model`, from the policy's `routing` whether it is on or not, and the reader's own model accounts) and
+`routing_reason`; the CLI and the MCP tool add a line `Difficulty: ...; recommended model: ...` after the text.
 
 A copy looks like this:
 
@@ -2211,14 +2214,32 @@ evo-agents hub run finish 42                                  # end the chat: th
 ```
 
 A run dispatched without `--model` (and without a profile that allows exactly one model) runs on the model its runtime
-picks, unless the project's policy has the section `routing` on (`evo-agents hub policy`, off by default). Then the
-claim of a step, plan, author or task run on claude-code carries the policy's scorer and ladder, and the worker rates
-the run easy, medium or hard before its agent starts, with one short turn of the scorer model on the run's prompt, and
-runs it on the ladder's model for that difficulty (`docs/workers.md`, Model routing). The hub calls no model at the
-dispatch. A model `--model` names that the profile's allowlist leaves out is refused (422) as before, and the Judge of
-the merge queue and of the Curator keeps the model `evo_agents/hub/judges.py` gives it. `run show --json` has the
-run's `routing`, what the routing did (the difficulty, whether the scorer rated it, its cost and the model it chose),
-and for every run `model_used`, the model its runtime used, also with routing off.
+picks, unless the project's policy has the section `routing` on (`evo-agents hub policy`, off by default). Then the hub
+applies the project's Token strategy to a step, plan, author, task, chat or question run on claude-code, opencode,
+codex or any, at its claim and before its credentials are leased (`evo_agents/hub/server/token_strategy.py`):
+
+- It rates the run easy, medium or hard with no model call. A step with `difficulty` in the plan has it. A step about a
+  migration or security, the plan's last step when it merges or deploys, and a prescribed step (no `acceptance`) are
+  hard. A step that changes documents alone, or exports, is easy, and any other step medium. A plan run is hard, an
+  author run medium, a short question easy. A free prompt is rated by its words, then by the name of its agent; one
+  that says neither is left to the worker's scorer (`routing.scorer`), or is medium when the scorer is `off`.
+- A run of a step whose last run failed on easy or medium, or a retry of such a run, goes one level up.
+- `routing.strategy` takes the model: `surplus-first` (the default) runs the `ladder` while the subscription has more
+  than `hard_reserve_pct` (10) of its week left and its five-hour window is under `five_hour_ceiling_pct` (90), and
+  past that gives easy and medium runs the `overflow` model; `cost-first` always gives easy and medium runs the
+  overflow; `quota-burn` gives every run the ladder's hard model while the subscription is out of its reserve. The
+  quota is the run's account pool's, or its dispatcher's env model accounts, as `hub accounts` reads them.
+- A model is the runtime's own name (`haiku`, `sonnet`, `opus`) or a gateway model, `<prefix>/<model>`. A gateway model
+  gives the run a gateway key (`runs.gateway_provider`) when the gateway serves its prefix, the worker's daemon runs
+  gateway runs and the run may use an account of it; else the run takes the ladder's model. A pool with native and
+  provider accounts so leases each run what its model needs. A runtime's own name is Claude Code's, so a run on
+  opencode or codex keeps its own model, and a model the profile's allowlist leaves out is not taken.
+
+The hub keeps what it decided as the run's `routing` (the difficulty, `source`, `reason`, `strategy`, `branch`,
+`escalated_from`, `gateway` and `quota`); the worker's reports keep it and add what the scorer did. A model `--model`
+names that the profile's allowlist leaves out is refused (422) as before, and the Judge of the merge queue and of the
+Curator keeps the model `evo_agents/hub/judges.py` gives it. `run show --json` has the run's `routing`, and for every
+run `model_used`, the model its runtime used, also with routing off.
 
 `run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on a node of the pool of its
 agent that has the project's harness checked out, whose agent writes an execution plan from REQUEST

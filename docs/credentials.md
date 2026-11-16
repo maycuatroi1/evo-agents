@@ -742,6 +742,13 @@ revoked, and forwards the call with the run's key in its place. On Claude Code, 
 token from `EVO_GATEWAY_TOKEN` (`evo_agents/worker/runtimes/gateway.py`). When the run ends, the sweep reads the key's
 usage into the run's figures, cost included, and revokes the key.
 
+A run that names no model can become a gateway run at its claim, when the project's Token strategy (the policy's
+`routing`, `docs/hub.md`) gives it an overflow model `<prefix>/<model>`: the hub sets the run's gateway prefix only when
+the gateway serves it, the worker's daemon runs gateway runs and the run may use an account of it, so an account pool
+that holds both native and provider accounts leases each run what its model needs: a gateway key, beside which the
+worker drops the Claude login, or the native accounts. The strategy reads the native accounts' quota as `hub accounts`
+shows it, and no model's key leaves the hub.
+
 ### Compared with a proxy
 
 CLIProxyAPIPlus (github.com/kaitranntt/CLIProxyAPIPlus) solves a near problem another way: a process on the machine

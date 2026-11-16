@@ -18236,7 +18236,10 @@
           "budget_tokens",
           "tokens",
           "cut",
-          "text"
+          "text",
+          "difficulty",
+          "recommended_model",
+          "routing_reason"
         ],
         "schema": "PlanHandoff"
       }
@@ -30106,7 +30109,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.67.2"
+      "version": "0.70.3"
     },
     "paths": {
       "/v1/health": {
@@ -156611,6 +156614,47 @@
               "type": "string",
               "title": "Text",
               "description": "the handoff, as evo_agents.hub.handoff builds it; markdown"
+            },
+            "difficulty": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "easy",
+                    "medium",
+                    "hard"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Difficulty",
+              "description": "the step's difficulty: its own, else as the hub's rules rate it; null without a step"
+            },
+            "recommended_model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Model",
+              "description": "the model the project's Token strategy gives that difficulty now (routing.*)"
+            },
+            "routing_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Routing Reason",
+              "description": "why that difficulty and that model"
             }
           },
           "type": "object",
@@ -172460,6 +172504,152 @@
               ],
               "title": "Error",
               "description": "why it did not rate or choose"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "plan",
+                    "rule",
+                    "role",
+                    "scorer",
+                    "fallback"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source",
+              "description": "where the difficulty came from: plan, rule, role, scorer or fallback; absent: the scorer"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why the hub gave the run its model"
+            },
+            "strategy": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "surplus-first",
+                    "cost-first",
+                    "quota-burn"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Strategy",
+              "description": "the Token strategy that chose it"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "ladder",
+                    "overflow"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "the ladder's model, or the overflow's"
+            },
+            "escalated_from": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "easy",
+                    "medium",
+                    "hard"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Escalated From",
+              "description": "the difficulty of the failed run before this one, when this one went one level up"
+            },
+            "gateway": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gateway",
+              "description": "the gateway prefix of the chosen model; absent: native"
+            },
+            "quota": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Quota",
+              "description": "what the subscription had left when the hub chose: weekly_left and five_hour_used, 0 to 1"
+            },
+            "pending": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pending",
+              "description": "true: the hub left the rating to the worker's scorer"
+            },
+            "choices": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 1
+                  },
+                  "propertyNames": {
+                    "enum": [
+                      "easy",
+                      "medium",
+                      "hard"
+                    ]
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Choices",
+              "description": "while pending: the model of each difficulty the scorer may name"
             }
           },
           "type": "object",
@@ -175438,6 +175628,117 @@
             "ladder": {
               "$ref": "#/components/schemas/RoutingLadder",
               "description": "the model of each difficulty"
+            },
+            "difficulty": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "easy",
+                    "medium",
+                    "hard"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Difficulty",
+              "description": "the difficulty the hub rated the run; null: the worker's scorer rates it"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "plan",
+                    "rule",
+                    "role",
+                    "scorer",
+                    "fallback"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source",
+              "description": "where the difficulty came from"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why that model"
+            },
+            "strategy": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "surplus-first",
+                    "cost-first",
+                    "quota-burn"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Strategy",
+              "description": "the Token strategy that chose it"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "ladder",
+                    "overflow"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "ladder or overflow"
+            },
+            "escalated_from": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "easy",
+                    "medium",
+                    "hard"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Escalated From",
+              "description": "the difficulty of the run before it, which failed, when this one went one level up"
+            },
+            "pending": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pending",
+              "description": "true: the worker's scorer rates the run among the ladder's models"
             }
           },
           "type": "object",
@@ -175446,7 +175747,7 @@
             "ladder"
           ],
           "title": "RunRouting",
-          "description": "The routing a claim carries while the project's policy has it on, for a run that names no model."
+          "description": "The routing a claim carries while the project's policy has it on, for a run that names no model. When the hub\nrated the run, every rung of the ladder is the model it chose, and ``difficulty`` says what it rated; while the\nrating waits for the scorer (``pending``), the ladder is the strategy's model of each difficulty."
         },
         "RunSkill": {
           "properties": {

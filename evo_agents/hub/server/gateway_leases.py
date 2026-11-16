@@ -39,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from evo_agents.hub import runs, tables
 from evo_agents.hub.credentials import Lease
 from evo_agents.hub.gateway_runs import GATEWAY, PICK_PREFIX, ROUTE, RUNTIME_FORMATS
+from evo_agents.hub.model_router import routed_model
 from evo_agents.hub.server import gateway_accounts, gateway_sync
 from evo_agents.hub.server.gateway_client import GatewayClient, GatewayError, GatewayOff
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, lease_aad
@@ -138,13 +139,14 @@ async def prepare(app, engine: AsyncEngine, run, worker_id: int, base_url: str) 
     async with engine.connect() as conn:
         row = (
             await conn.execute(
-                select(r.c.gateway_provider, r.c.model, r.c.runtime, r.c.timeout_s).where(r.c.id == run.id)
+                select(r.c.gateway_provider, r.c.model, r.c.routing, r.c.runtime, r.c.timeout_s).where(r.c.id == run.id)
             )
         ).one()
         if row.gateway_provider is None:
             return None
         prefix = row.gateway_provider
-        found = Prepared(run.id, prefix, row.model or "", RUNTIME_FORMATS.get(row.runtime, ""), base_url + ROUTE)
+        model = row.model or routed_model(row.routing)  # a run the Token strategy put on a gateway model
+        found = Prepared(run.id, prefix, model, RUNTIME_FORMATS.get(row.runtime, ""), base_url + ROUTE)
         picked = await _picked(conn, run.id, prefix)
         usable = await gateway_accounts.usable_accounts(conn, _asker(run), worker_id, prefix, picked)
         if not usable.accounts:

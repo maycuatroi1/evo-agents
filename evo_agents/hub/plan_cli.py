@@ -27,7 +27,7 @@ from urllib.parse import urlencode
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import JsonOutput, json_option, returns_array, returns_object
-from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS
+from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS, routing_line
 from evo_agents.hub.mirror import (
     PLAN_ID,
     export,
@@ -71,7 +71,19 @@ SUMMARY_KEYS = (
     "updated_by",
     "problems",
 )
-HANDOFF_KEYS = ("project", "plan_id", "revision", "step", "budget_tokens", "tokens", "cut", "text")
+HANDOFF_KEYS = (
+    "project",
+    "plan_id",
+    "revision",
+    "step",
+    "budget_tokens",
+    "tokens",
+    "cut",
+    "text",
+    "difficulty",
+    "recommended_model",
+    "routing_reason",
+)
 WRITTEN = returns_object(*WRITTEN_KEYS, schema="evo_agents__hub__server__plans__Written")
 PROJECT_HELP = "hub project (default: hub.project in the harness.yaml around the current directory)"
 
@@ -389,7 +401,7 @@ def cmd_handoff(args) -> int:
     if args.json:
         print_json(handoff)
         return 0
-    sys.stdout.write(handoff["text"])
+    sys.stdout.write(handoff["text"] + routing_line(handoff))
     return 0
 
 
