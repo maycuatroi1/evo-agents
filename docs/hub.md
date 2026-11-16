@@ -4292,7 +4292,28 @@ nothing a reader holds forms a cycle with a snapshot or its view: a view makes a
 each build until the host ran out of memory. Each `kg snapshot loaded` line counts the snapshots the api replaced or
 dropped that are still in memory (`lingering`): a reader holds one until it is done, so it is 0 or a few, and a count
 that grows with the builds is a snapshot held for good. The compose file caps the api's memory with
-`EVO_HUB_API_MEMORY`, default `12g`.
+`EVO_HUB_API_MEMORY`, default `7g`.
+
+The api keeps its snapshots within that limit (`SnapshotCoordinator._ease`). A large graph's snapshot is gigabytes,
+and a build's new snapshot is made beside the old one: on a hub whose largest graph's snapshot took about 4.4 GB, two
+large graphs held, or the largest loaded again beside itself, went over a 7 GB limit; the kernel killed the api, and
+the first load after each restart climbed by a gigabyte a minute, as a leak would. So while a load runs, its thread looks
+at the api's resident memory once a second (`kg_snapshots.tend`, `PRESS_EVERY`), and past 75% of the cgroup's limit
+(`PRESSURE`) the loop drops one snapshot: a draft branch's first, then the projects read least recently, and only then
+the old snapshot of a project being loaded again, whose readers then wait for the new one; the project read last keeps
+its snapshot otherwise. It drops the next only once the one before is freed (`lingering`, `pacing.freeing`), and each
+drop is logged as `kg snapshot dropped for memory` with `resident_mb` and `limit_mb`; `kg snapshot loaded` gives
+`resident_mb` too. The thread that frees snapshots aside hands what the C allocator kept back to the system once it
+has nothing left to free (`pacing.give_back`, glibc's `malloc_trim`): the allocator kept a gigabyte of a freed graph,
+counted in the api's memory as if it were still held. A snapshot holds one object for each value its rows repeat
+(`snapshot.Shared`): an edge's ends are the node ids, its relation, status and label one object each. With it and the
+full-text index's flat postings the same graph's snapshot takes about 2.9 GB. Loaded again eight times in a row under a
+7 GB limit, each load peaked at about 5.0 GB, under the 5.4 GB of 75%, so the old snapshot was kept and its readers did
+not wait; between loads the api went back to 3.4 to 4.2 GB, not growing, and `malloc_trim` took 0.1 to 0.6 seconds
+(`kg memory given back`, `trim_ms`). At 7g that holds only while the largest graph is about all the api holds: with
+other graphs read beside it, a build of the largest can still drop its old snapshot, and its readers then wait the whole
+load, two to three minutes, after each build. With a limit of twice the largest snapshot and some, a build swaps that
+graph without its readers waiting.
 
 What holds the pool is in the api's log. The pool times each connection it gives out (`evo_agents.hub.db.TimedPool`):
 one held 2 seconds or more is logged as `pool connection held` with its `holder`, the method and path of the request
@@ -5060,7 +5081,7 @@ environment, never in a committed file.
 | `EVO_HUB_REDIS_URL` | api, worker, deliver | optional: the Redis the cache and the shared rate limits use, `redis://`, `rediss://` or `unix://`, such as `redis://:<password>@evo-agents-hub-redis:6379/0` with the profile `bus`; unset, each process caches in its memory (section Cache) |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_KG_EMBEDDINGS`, `OPENROUTER_API_KEY` | api, worker | where graph rows and `kg_search` queries are embedded: `openrouter` calls OpenRouter's embeddings API (`baai/bge-m3`, batches of 64, four requests at once) with the key and loads no model; empty uses the local `BAAI/bge-m3` on the worker's CPUs (docs/kg-semantic.md) |
-| `EVO_HUB_API_MEMORY` | compose | memory of the `api` service, default `12g`: it holds the graph of each project read and makes a new one beside it at each build (the largest graph took about 5 GB); over it the kernel kills the api and it restarts |
+| `EVO_HUB_API_MEMORY` | compose | memory of the `api` service, default `7g`: it holds the graph of each project read and makes a new one beside it at each build, and past 75% of it drops the graphs read least recently; over it the kernel kills the api and it restarts |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | limits of `worker`, default `2` and `4g`; the CPUs are also each `worker-kg`'s |
 | `EVO_HUB_WORKER_KG_MEMORY` | compose | memory of each of the two `worker-kg`, which run the graph builds, default `6g` (a large project's build peaked at about 4.7 GB) |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |

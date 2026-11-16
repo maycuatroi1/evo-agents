@@ -143,10 +143,11 @@ services:
       start_period: 60s
       retries: 3
     stop_grace_period: 15s
-    # The api holds the graph of each project read in memory and makes a new one beside it at each build: the hub's
-    # largest graph took about 5 GB, so the default leaves room for two of it while one is swapped for the other.
-    # Over the limit the kernel kills the api and the restart policy brings it back, rather than the host swapping.
-    mem_limit: ${EVO_HUB_API_MEMORY:-12g}
+    # The api holds the graph of each project read in memory and makes a new one beside it at each build. Past 75%
+    # of this limit it drops the graphs read least recently, the one being replaced last (kg_snapshots.PRESSURE in
+    # docs/hub.md). Over the limit the kernel kills the api and the restart policy brings it back, rather than the
+    # host swapping.
+    mem_limit: ${EVO_HUB_API_MEMORY:-7g}
 
   worker:
     <<: *hardening
