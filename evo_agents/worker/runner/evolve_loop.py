@@ -10,7 +10,8 @@ merge brings something) or mutates one: a parent drawn by how often it is on the
 ``pick_parent``), its whole files laid out in the tree (``evolve_workspace``) and rewritten by the proposer agent, which
 reads the tree's reflection data. A merge takes ``lca_merge`` over the pair's nearest common ancestor; the files both
 changed apart go to the agent (``synthesis_request``, ``apply_synthesis``). Each new candidate is measured on every task
-(``evolve_eval.evaluate``), posted to the hub, its traces written, and the front pruned (``prune_all``). A candidate the
+(``evolve_eval.evaluate``), posted to the hub with each task's ASI (``short_trace``), its traces written, and the front
+pruned (``prune_all``). A mutation's prompt holds its parent's ASI of each task it did not pass. A candidate the
 same as one measured already, or one the proposer left unchanged, is not measured again. The loop ends with the best
 candidate (``evolve.best``).
 """
@@ -19,7 +20,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from evo_agents.hub import evolve
@@ -33,7 +34,8 @@ MERGE_EVERY = 3  # every third iteration tries a merge of two front candidates b
 
 @dataclass
 class Candidate:
-    """A candidate measured: its hub id, whole components, parents, origin, iteration, scores, cost and turns."""
+    """A candidate measured: its hub id, whole components, parents, origin, iteration, scores, cost and turns, and the
+    ASI of each task (``short_trace``)."""
 
     id: str
     components: dict[str, str]
@@ -43,6 +45,7 @@ class Candidate:
     scores: dict[str, float]
     cost_usd: float | None
     turns: int | None
+    asi: dict[str, dict] = field(default_factory=dict)
 
 
 class Hub(Protocol):
@@ -202,7 +205,17 @@ class Evolution:
             "traces": {item.ref: short_trace(item.trace) for item in measured},
         }
         answer = await self.hub.candidate(body)
-        found = Candidate(str(answer["candidate_id"]), components, parents, origin, number, scores, cost, body["turns"])
+        found = Candidate(
+            str(answer["candidate_id"]),
+            components,
+            parents,
+            origin,
+            number,
+            scores,
+            cost,
+            body["turns"],
+            body["traces"],
+        )
         self.pool[found.id] = found
         self.digests.add(evolve.baseline_digest(components))
         for item in measured:
@@ -273,7 +286,10 @@ class Evolution:
         parent = self.pool[evolve.pick_parent(self.freq(), self.rng)]
         folder = self.tree.candidate_folder(number, self.target, parent.id, parent.scores, parent.components)
         files = workspace.component_files(self.target, parent.components).values()
-        prompt = workspace.proposer_prompt(target=self.target, iteration=number, parent=parent.id, files=files)
+        failed = {ref: asi for ref, asi in parent.asi.items() if parent.scores.get(ref, 0.0) < 1.0}
+        prompt = workspace.proposer_prompt(
+            target=self.target, iteration=number, parent=parent.id, files=files, asi=failed
+        )
         session = await self.seams.agent(self.tree.root, prompt)
         self.spend(session.cost_usd)
         child = workspace.read_components(folder, self.target, parent.components)

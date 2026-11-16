@@ -6,6 +6,9 @@ repository of its own, not a worktree of the checkout: ``standalone`` makes a ne
 commit into it from the checkout, so it holds the history up to that commit and nothing after it (protocol v2 fetches a
 commit by its name). The files of the change come out of the checkout's objects (``write_at``), as the arm's commit
 has them; a path that commit lacks is removed, and a file is never written through a symbolic link.
+
+A step's verify was written where the step ran, a developer's machine whose repos sit side by side in a workspace such
+as ``~/github``: ``localized`` writes each path of it into a repo of the project as where that repo is for the replay.
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
@@ -21,6 +25,20 @@ from evo_agents.worker import gitops
 
 GIT_TIMEOUT = 600.0  # a fetch of the whole history of a repository into the arm's
 AUTHOR = ("-c", "user.name=evo-agents replay", "-c", "user.email=replay@evo-agents.invalid")
+_HOME = r"(?<![A-Za-z0-9._/-])(?:~|\$HOME|\$\{HOME\}|/(?:home|Users)/[A-Za-z0-9._-]+)"  # a developer's home
+_FOLDER = r"/[A-Za-z0-9_-][A-Za-z0-9._-]*"  # a folder of the workspace under it, never a hidden one
+_SHELL_SAFE = re.compile(r"[A-Za-z0-9._/@%+=:,-]+")  # a path the shell takes as one word, quoted or not
+
+
+def localized(command: str, places: Mapping[str, Path]) -> str:
+    """``command`` with each path into a developer's checkout of a repo of ``places`` (``~/github/<repo>``, under
+    ``$HOME`` or a home directory, at most three folders deep) written as where that repo is here, ``places[repo]``, so
+    a step's verify runs on what it ran on for the step. A place the shell would split into words is left out."""
+    names = sorted((name for name, path in places.items() if _SHELL_SAFE.fullmatch(str(path))), key=len, reverse=True)
+    if not names:
+        return command
+    pattern = re.compile(rf"{_HOME}(?:{_FOLDER}){{0,3}}?/({'|'.join(map(re.escape, names))})(?![A-Za-z0-9._-])")
+    return pattern.sub(lambda found: str(places[found.group(1)]), command)
 
 
 async def _git(cwd: Path, *args: str, env: Mapping[str, str], check: bool = True) -> tuple[int, bytes]:

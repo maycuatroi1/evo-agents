@@ -6,7 +6,8 @@ commit and the candidate's files placed (``Seams.lay_out``), runs the agent on t
 (``Seams.agent``), then the worker runs each verify command itself in the repository (``Seams.verify``): the score is
 the share of them that exited 0 (1 or 0 for a single command). What the task showed is its trace, the proposer's
 reflection data: the prompt, the score, each command's exit code and whole output, the agent's failed tool calls, turns,
-cost and error, never the command's text.
+cost, error and last message, never the command's text. Its actionable side information (ASI, ``short_trace``) is what
+the hub keeps of it with the candidate and the next mutation's prompt reads: the same, each text cut to its end.
 
 ``Seams`` is what the evolution does through the run: the agent, the verify and the directory of a task. The run's own
 (``evolve.RunSeams``) drives the runtime and git; the tests hand fakes.
@@ -25,17 +26,21 @@ from evo_agents.worker.runner import replay_files
 
 COMMIT_AUTHOR = ("-c", "user.name=evo-agents curator", "-c", "user.email=curator@evo-agents.invalid")
 SELECT = evolve.SELECT  # the split of the replay tasks an evolution measures on; a task of another is left out
-TRACE_TAIL = 4000  # characters of a verify's output in the trace the hub keeps of a candidate (the tree keeps all)
+TRACE_TAIL = 4000  # characters of a verify's output or the agent's last message in a task's ASI (the tree keeps all)
+ASI_TOOL_ERRORS = 5  # the agent's last failed tool calls a task's ASI names
+ASI_TOOL_ERROR_CHARS = 1000
 
 
 @dataclass
 class Session:
-    """What one agent session did: its cost, turns, failed tool calls (each as text) and the error that stopped it."""
+    """What one agent session did: its cost, turns, failed tool calls (each as text), the error that stopped it and
+    its last message."""
 
     cost_usd: float | None = None
     turns: int | None = None
     tool_errors: list[str] = field(default_factory=list)
     error: str | None = None
+    summary: str | None = None
 
 
 @dataclass
@@ -125,12 +130,19 @@ async def evaluate(seams: Seams, task: Mapping, components: Mapping[str, str | N
         "turns": session.turns,
         "cost_usd": session.cost_usd,
         "agent_error": session.error,
+        "summary": session.summary,
     }
     return Measured(ref_of(task), score, session.cost_usd, session.turns, trace)
 
 
+def _tail(text, size: int) -> str | None:
+    return str(text)[-size:] if text else None
+
+
 def short_trace(trace: Mapping) -> dict:
-    """What the hub keeps of a trace with a candidate: the figures, and the end of each failed check's output."""
+    """A task's actionable side information (ASI), what the hub keeps of its trace with a candidate and the next
+    mutation's prompt reads: the figures, the end of each failed check's output with its exit code, the agent's last
+    failed tool calls, its error and the end of its last message."""
     checks = [
         {
             "exit_code": item.get("exit_code"),
@@ -142,9 +154,13 @@ def short_trace(trace: Mapping) -> dict:
         "score": trace.get("score"),
         "checks": checks,
         "tool_errors": len(trace.get("tool_errors") or []),
+        "failed_tools": [
+            str(item)[:ASI_TOOL_ERROR_CHARS] for item in (trace.get("tool_errors") or [])[-ASI_TOOL_ERRORS:]
+        ],
         "turns": trace.get("turns"),
         "cost_usd": trace.get("cost_usd"),
         "agent_error": trace.get("agent_error"),
+        "summary": _tail(trace.get("summary"), TRACE_TAIL),
     }
 
 

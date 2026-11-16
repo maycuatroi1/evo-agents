@@ -18,7 +18,8 @@ change touches, whole, under ``.claude/skills/`` of the directory, where the age
 the runtime and model of the charter's Builder, starts in a new session there on the step's prompt
 (``replay.replay_prompt``), with half the run's cost and agent time, and none of the hub's tools. When its turn is over
 (or stopped short, which the arm notes), the worker runs the step's verify in the repository as code it does not trust
-(``verify.run_untrusted``, as a judge run runs its checks), and posts the arm: passed when every command exited 0, the
+(``verify.run_untrusted``, as a judge run runs its checks), each path of the command into a developer's checkout of
+a repo of the project written as where that repo is here (``localized``), and posts the arm: passed when every command exited 0, the
 cost, turns, tool calls and failed ones, the largest context and the agent's time
 (POST /v1/worker/runs/{id}/replay, with the run's key). The run ends done with both arms' usage, pushing nothing.
 """
@@ -94,6 +95,7 @@ class ReplayRun:
         self.total = curator.budget_of(run.spec) or {}  # the run's caps, which the two arms share
         self.env = gitops.without_hooks(run.daemon.env)
         self.usages: list = []
+        self.siblings: set[str] = set()  # the other repos of the project a verify read, fetched once
 
     async def no_more(self) -> list[dict]:
         return []  # an arm's agent has one turn: nobody answers it
@@ -145,6 +147,29 @@ class ReplayRun:
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from")
             await origin.fetch(run, checkout)
         return checkout
+
+    async def localized(self, command: str, repo: str | None, repository: Path) -> str:
+        """``command`` as it runs here (``files.localized``): a path into a developer's checkout of ``repo`` as
+        ``repository``, into one of another repo of the project as this worker's checkout of it, fetched once first
+        when it can be (else read as last fetched)."""
+        prefix = f"{self.run.project}/"
+        places = {
+            key[len(prefix) :]: Path(item["path"])
+            for key, item in self.run.daemon.checkouts.items()
+            if key.startswith(prefix) and isinstance(item, dict) and item.get("path")
+        }
+        if repo:
+            places[repo] = repository
+        found = files.localized(command, places)
+        for name, path in places.items():
+            if name == repo or name in self.siblings or str(path) not in found or str(path) in command:
+                continue
+            self.siblings.add(name)
+            try:
+                await self.fetched(name)
+            except RunFailed as exc:
+                self.run.note(f"A verify reads {name} as this worker last fetched it: {exc.error}")
+        return found
 
     async def prepare(self) -> dict:
         """What both arms start from: the base commit, the default branch's tip and the change's head, and the files of
@@ -296,6 +321,7 @@ class ReplayRun:
         results = []
         for command in self.task.get("verify") or []:
             run.check()
+            command = await self.localized(command, self.task.get("repo"), repository)
             started = run.loop.time()
             code, output = await verify.run_untrusted(run, command, repository)
             duration_ms = int((run.loop.time() - started) * 1000)

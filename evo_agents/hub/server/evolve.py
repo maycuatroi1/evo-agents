@@ -96,6 +96,7 @@ async def candidates_of(conn: AsyncConnection, evolve_id: int, *, components: bo
             turns=row.turns,
             on_front=row.on_front,
             components=dict(row.components) if components else None,
+            asi=evolve.asi_of(row.traces),
             created_at=row.created_at,
         )
         for row in rows
@@ -275,7 +276,7 @@ async def list_evolutions(
 async def show_evolution(
     request: Request, project: ProjectName, evolve_id: EvolveId, user: CurrentUser, sink: Sink = None
 ) -> EvolveView:
-    """One evolution, with each candidate (its components, scores and cost) and its front."""
+    """One evolution, with each candidate (its components, scores, cost and ASI of each task) and its front."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         need_reader(access)
@@ -432,6 +433,7 @@ async def evolve_candidate(
         digest = await _checked_candidate(conn, row, body)
         ec, e = tables.curator_evolve_candidates, tables.curator_evolve_runs
         values = body.model_dump() | {"project_id": row.project_id, "evolve_id": row.id, "digest": digest}
+        values["traces"] = evolve.asi_of(body.traces, body.scores)
         measured = {key: values[key] for key in ("scores", "cost_usd", "turns", "traces", "iteration")}
         query = pg_insert(ec).values(**values)
         query = query.on_conflict_do_update(

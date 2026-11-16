@@ -789,7 +789,7 @@ writer role starts one when `evolve.enabled` holds:
 evo-agents hub curator evolve run --project demo --repo lumen-kb-docs --path skills/review/SKILL.md --proposal 12
 evo-agents hub curator evolve run --project demo --system-id 2 --agent reviewer   # an agent's configuration
 evo-agents hub curator evolve status --project demo     # the evolutions, newest first
-evo-agents hub curator evolve show 7 --project demo     # one, with its candidates and its front
+evo-agents hub curator evolve show 7 --project demo     # one, its candidates with their ASI, and its front
 ```
 
 Of target `git` it rewrites files of a repo that `evolve.evolvable_paths` names; of target `agent_config` the

@@ -90,7 +90,9 @@ class FakeSeams:
         elif "This is iteration" in prompt:
             number = int(prompt.split("This is iteration ", 1)[1].split(".", 1)[0])
             self.propose(directory / workspace.ITERATIONS / str(number) / workspace.CANDIDATE, number)
-        return Session(cost_usd=0.5, turns=3, tool_errors=["Bash: command not found: frob"])
+        return Session(
+            cost_usd=0.5, turns=3, tool_errors=["Bash: command not found: frob"], summary="I looked at the task."
+        )
 
     async def verify(self, command, cwd):
         self.verified.append(command)
@@ -373,3 +375,63 @@ def test_the_hub_client_sends_the_evolve_key_and_the_kind_is_registered():
     curator = {"evolve_key": "secret", "evolve": {}}
     spec = {"curator": curator}
     assert _evolve_key(spec, curator) == "secret" and "evolve_key" not in curator
+
+
+def test_each_candidate_keeps_the_asi_of_each_task_and_the_next_mutation_reads_its_parents(tmp_path):
+    given = inputs()
+    seams = FakeSeams(tmp_path, {VERIFY_PROBE: (SKILL, "GOOD"), VERIFY_REPLAY: (SKILL, "rules")})
+    hub = FakeHub()
+    evolution = Evolution(given, hub, seams, workspace.Tree(tmp_path / "evolution"), merge_every=0)
+    asyncio.run(evolution.run())
+
+    seed = hub.candidates[0]
+    asi = seed["traces"]["probe:1"]
+    assert asi["checks"] == [
+        {"exit_code": 1, "output_tail": "stdout: checking skills/demo/SKILL.md\nstderr: expected the word GOOD\n"}
+    ]
+    assert asi["failed_tools"] == ["Bash: command not found: frob"] and asi["summary"] == "I looked at the task."
+    assert seed["traces"]["replay:2"]["checks"] == [{"exit_code": 0}]
+    # the mutation's prompt holds what its parent showed on the task it failed, and not on the one it passed
+    proposer = [prompt for _, prompt in seams.prompts if "This is iteration 1." in prompt]
+    assert proposer and "probe:1" in proposer[0] and "stderr: expected the word GOOD" in proposer[0]
+    assert "I looked at the task." in proposer[0] and "replay:2" not in proposer[0]
+    assert "answer-key" not in proposer[0] and "check-probe.sh" not in proposer[0]
+
+
+def test_a_task_verify_runs_with_its_paths_into_a_developers_checkout_written_as_where_each_repo_is(
+    tmp_path, monkeypatch
+):
+    """Replay tasks 105 and 115 of evolution #1 (run #8864) failed on every arm in 0.4 s: their verify reads
+    ``git -C ~/github/evo-agents``, a checkout of the developer's machine the worker has not."""
+    from types import SimpleNamespace
+
+    from evo_agents.worker.runner import evolve as runner
+
+    ran, fetched = [], []
+
+    async def run_untrusted(run, command, cwd, keep):
+        ran.append((command, cwd))
+        return 0, ""
+
+    async def fetch(name):
+        fetched.append(name)
+
+    monkeypatch.setattr(runner.verify, "run_untrusted", run_untrusted)
+    sibling = tmp_path / "checkouts" / "evo-agents"
+    run = SimpleNamespace(
+        project="evo-agents",
+        daemon=SimpleNamespace(checkouts={"evo-agents/evo-agents": {"path": str(sibling)}}),
+        check=lambda: None,
+        loop=SimpleNamespace(time=lambda: 0.0),
+        event=lambda *args: None,
+        note=lambda *args, **kw: None,
+    )
+    owner = EvolveRun.__new__(EvolveRun)
+    owner.run, owner.inputs, owner.siblings, owner.fetched = run, {"repo": "evo-agents-harness"}, set(), fetch
+    seams = runner.RunSeams(owner)
+    repository = tmp_path / "evals" / "0-baseline-replay_105" / "evo-agents-harness"
+    command = "git -C ~/github/evo-agents show origin/main:x && cd ~/github/evo-agents-harness && ls"
+    for _ in range(2):
+        asyncio.run(seams.verify(command, repository))
+    assert ran[0] == (f"git -C {sibling} show origin/main:x && cd {repository} && ls", repository)
+    assert fetched == ["evo-agents"]  # the other repo's checkout is fetched once, before its first verify
