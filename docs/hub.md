@@ -737,15 +737,27 @@ hub once (`projects.systems_seeded_at`): `orchestrator`, named "Orchestrator", a
 on a profile the hub creates for it, `@<project>-orchestrator`, with its ops off.
 
 `ops` of the spec says how the Orchestrator of the default system handles the project's operations events (plan
-hub-steward): `enabled` (false), `debounce_minutes` (5, from 0 to 1440) and `max_items` (20, from 1 to 1000). A spec
-with no `ops` reads as ops off and is stored as it is. With ops on, the hub reads the project's operations events
-(`run.ended`, `decision.opened`, `curator.paused`, `worker.health`) after a cursor of its own, and puts each that no
+hub-steward): `enabled` (false), `debounce_minutes` (5, from 0 to 1440), `max_items` (20, from 1 to 1000) and
+`plan_stall_minutes` (30, from 1 to 1440; a spec without it reads 30). A spec with no `ops` reads as ops off and is
+stored as it is. With ops on, the hub reads the project's operations events (`run.ended`, `decision.opened`,
+`curator.paused`, `worker.health`, `plan.stalled`, `run.queued_long`, `mention.refused`) after a cursor of its own,
+and puts each that no
 rule of tier 0 handled in the open batch of its cause key (kind, cause, then the worker for a cause of the
 environment, else the plan; a worker's `disk_low` alone keys by its machine, `host:<hostname>`, since the workers of
 one machine share its drive); a batch closes `debounce_minutes` after it opened or once it holds `max_items`, and one
 whose items tier 0 all handled closes empty, with no run. `evo-agents hub system ops show|pause|resume|batches SLUG
 --project P` reads the ops of a system and its batches; pausing (admin) holds closed batches, and the queue still
 gathers.
+
+The same pass every minute writes two of those events, with no model (plan orchestrator-keeps-plans-moving):
+`plan.stalled` for an active plan a trace names (`system_traces.plan_id`) that has a ready step (pending or
+in_progress, every depends_on done), no plan run or step run active, no trace of it with a run queued, held, in
+review or parked, and neither a new revision nor a move of one of its traces for `plan_stall_minutes`; once a stall,
+again after a new revision or a new run. A plan of the Curator never stalls here. `run.queued_long` says a chat run
+still waits for a slot `plan_stall_minutes` after it was queued, once a run. `mention.refused` says a mention or an
+ask found no node that can take its run. Each payload holds ids and states only, and tier 0 handles none of them. A
+trace with no plan takes the plan a brief of an ask in it refs (`plan:<id>`), or the plan of a step a run of it marks
+with plan_step, at the plan's revision then; a trace that has a plan keeps it.
 
 Ops threads. For each closed batch with items left, the hub opens one thread in the chat `Ops: <slug>` of the default
 system, as the person who wrote the system, and mentions its Orchestrator with a summary of the batch: each item, its

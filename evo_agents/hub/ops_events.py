@@ -1,7 +1,9 @@
 """The operations events of a project (plan hub-steward, criterion a1): what the hub writes into hub_events when a run
 of the project fails or is lost (``run.ended``), is parked (``run.parked``), asks a person a decision
-(``decision.opened``), when the circuit breaker pauses its night shift (``curator.paused``), and when the health of a
-worker that serves it changes (``worker.health``).
+(``decision.opened``), when the circuit breaker pauses its night shift (``curator.paused``), when the health of a
+worker that serves it changes (``worker.health``), when a plan a system ran stalls (``plan.stalled``) or a chat run
+waits for a slot too long (``run.queued_long``), both found by the pass of ``ops_stalls``, and when a mention or an ask
+of one of its agents is refused for want of a node that can take the run (``mention.refused``).
 
 Each one is written in the transaction that made what it tells of, through ``hub_events.record``, so it exists exactly
 when that was committed. Its payload carries ids and states alone, never a text: no error, no question, no reason. No
@@ -90,6 +92,46 @@ async def decision_opened(
         "asked_of": asked_of,
     }
     return await hub_events.record(conn, hub_events.DECISION_OPENED, project_id, payload)
+
+
+async def plan_stalled(
+    conn: AsyncConnection, *, project_id: int, plan_id: str, revision: int, run_id: int | None, steps: list[str]
+) -> int:
+    """Write ``plan.stalled`` for plan ``plan_id`` at ``revision``, whose newest run is ``run_id`` (None for none) and
+    whose ready steps are ``steps`` (their keys): nothing works on it (``ops_stalls``)."""
+    payload = {
+        "v": VERSION,
+        "plan_id": plan_id,
+        "revision": revision,
+        "run_id": run_id,
+        "steps": steps,
+        "state": "stalled",
+    }
+    return await hub_events.record(conn, "plan.stalled", project_id, payload)
+
+
+async def run_queued_long(
+    conn: AsyncConnection, *, project_id: int, run_id: int, worker_id: int | None, priority: str
+) -> int:
+    """Write ``run.queued_long`` for chat run ``run_id``, still queued for a slot of worker ``worker_id`` (None: for
+    any node of its pool) past ``ops.plan_stall_minutes``, at ``priority``."""
+    payload = {"v": VERSION, "run_id": run_id, "run_kind": "chat", "state": "queued", "worker_id": worker_id}
+    return await hub_events.record(conn, "run.queued_long", project_id, {**payload, "priority": priority})
+
+
+async def mention_refused(
+    conn: AsyncConnection, *, project_id: int, profile_id: int, chat_id: int | None, message_id: int | None
+) -> int:
+    """Write ``mention.refused`` for the mention or ask of agent ``profile_id`` that message ``message_id`` of chat
+    ``chat_id`` made, which no node of the agent's pool can take a run of, for a reason a free slot would not end."""
+    payload = {
+        "v": VERSION,
+        "profile_id": profile_id,
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "state": "refused",
+    }
+    return await hub_events.record(conn, "mention.refused", project_id, payload)
 
 
 def pause_class(causes: list[str | None], reverts: int) -> str:
@@ -225,8 +267,11 @@ __all__ = [
     "disk_headroom",
     "disk_reserve",
     "health_state",
+    "mention_refused",
     "pause_class",
+    "plan_stalled",
     "run_moved",
+    "run_queued_long",
     "with_band",
     "worker_health",
 ]

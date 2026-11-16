@@ -4,7 +4,8 @@ it goes to, the session it goes on in, the agent's messages in the thread and th
 ``hand_work`` is what a mention asks, of a person (``hand_mentions``, from ``chats``) or of an agent (``chat_agents``):
 the run of the profile's agent for the person at the origin of the chain. Refused, with why, when that person is not a
 writer on the profile's project (in a settle chat, any grant on it wakes the chat's own agent: ``chats.SETTLE``), when
-their primary seat in the org chart ended, or when no worker of the person can take it now. When the ready nodes of the
+their primary seat in the org chart ended, or when no worker of the person can take it now (an operations event of the
+agent's project, ``mention.refused``, tells its Orchestrator). When the ready nodes of the
 agent's pool only lack a free slot, the run queues for the first of them instead, by its priority (``Hand.priority``),
 and the thread says how many runs it waits behind. Each (thread, agent, person) is one session: a run of it that is queued or held takes the message in its inbox; one that
 ended done, or failed because the remote declined its push (``rules.goes_on``), is gone on from by a new run, pinned to
@@ -36,7 +37,7 @@ from dataclasses import dataclass, replace
 from sqlalchemy import func, insert, literal, null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_bridge_events, chats, profiles, runs, system_context, tables
+from evo_agents.hub import chat_bridge_events, chats, ops_events, profiles, runs, system_context, tables
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
@@ -611,7 +612,11 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
         except autonomy_hold.Stopped as exc:
             return None, exc.detail
     worker, why = await pick_worker(conn, hand)
-    if worker is None and why is not None:
+    if worker is None and why is not None:  # no node can take it, for a reason a free slot would not end
+        project_id, chat_id = hand.profile.project_id, hand.chat.chat_id
+        await ops_events.mention_refused(
+            conn, project_id=project_id, profile_id=hand.profile.id, chat_id=chat_id, message_id=hand.message_id
+        )
         return None, why
     try:
         run_id = await _start(conn, hand, worker)

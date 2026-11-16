@@ -169,6 +169,7 @@ def _items(batch_id: int):
             i.c.id,
             i.c.kind,
             i.c.cause,
+            i.c.subject,
             i.c.run_id,
             i.c.decision_id,
             i.c.worker_id,
@@ -209,8 +210,8 @@ def item_line(row) -> str:
     elif row.worker_id is not None:
         what = f"worker #{row.worker_id} ({row.worker or 'gone'}) reported its health: {row.cause}"
         shown = "evo-agents hub inbox"
-    else:
-        what = f"{row.kind}: {row.cause}"
+    else:  # plan.stalled names its plan, mention.refused its agent, in the subject alone
+        what = f"{row.kind} of {row.subject}: {row.cause}"
         shown = "evo-agents hub inbox"
     return f"- {row.kind}, cause {row.cause}: {what}. Next: `{shown}`"
 

@@ -267,6 +267,19 @@ def test_a_chat_mention_without_a_fit_worker_says_why_in_the_thread_and_makes_no
     assert busy["mentions"][0]["refusal"] is None and busy["mentions"][0]["run_id"] is not None
 
 
+def test_a_refused_mention_writes_mention_refused(client, hub, hub_db):
+    chat_worker(client, hub["owner"], "old-daemon", kinds=["step", "plan", "review", "judge", "author"])
+    chat = created(client, hub["owner"])
+    mention = sent(client, hub["owner"], chat["id"], "@reviewer look at the diff")
+    assert mention["mentions"][0]["refusal"] is not None
+    e, a = tables.hub_events, tables.agent_profiles
+    (profile_id,) = sql(hub_db, select(a.c.id).where(a.c.handle == "reviewer"))[0]
+    refused = sql(hub_db, select(e.c.payload).where(e.c.kind == "mention.refused"))
+    assert [payload for (payload,) in refused] == [
+        {"v": 1, "profile_id": profile_id, "chat_id": chat["id"], "message_id": mention["id"], "state": "refused"}
+    ], "ids and states only: no body, no reason text"
+
+
 def queued_lines(db) -> list[str]:
     """The hub's lines that say a run waits for a free slot of a node, in every chat, oldest first."""
     m = tables.chat_messages

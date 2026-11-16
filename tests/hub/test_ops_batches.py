@@ -55,7 +55,7 @@ def failed(client, db, run_id: int, cause: str, worker_id: int = 7) -> int:
     return record(client, db, hub_events.RUN_ENDED, **payload)
 
 
-NO_TIER0 = {"redelivered": 0, "orchestrated": 0, "read": 0}  # what tier 0 did (ops_rules), nothing here
+NO_TIER0 = {"redelivered": 0, "orchestrated": 0, "read": 0, "stalled": 0, "queued_long": 0}  # tier 0 did nothing
 
 
 def run_pass(client, rules=None) -> dict:
