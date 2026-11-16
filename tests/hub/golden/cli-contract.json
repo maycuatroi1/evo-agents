@@ -83354,6 +83354,42 @@
           }
         }
       },
+      "/v1/shared-accounts": {
+        "get": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "List Shared Accounts",
+          "description": "The env accounts other members share with the caller through a live share for every run, by variable, owner\nand name, as ``_shared_account`` gives each one, with the projects of those shares its owner binds it to; one bound\nto none of them is left out.",
+          "operationId": "list_shared_accounts_v1_shared_accounts_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/SharedAccount"
+                    },
+                    "type": "array",
+                    "title": "Response List Shared Accounts V1 Shared Accounts Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/account-policies": {
         "get": {
           "tags": [
@@ -116897,15 +116933,15 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Account",
-              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
+              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project"
             },
             "profile": {
               "anyOf": [
@@ -130776,15 +130812,15 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Account",
-              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
+              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project"
             },
             "profile": {
               "anyOf": [
@@ -157075,15 +157111,15 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Account",
-              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
+              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project"
             },
             "profile": {
               "anyOf": [
@@ -171203,15 +171239,15 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Account",
-              "description": "one of the caller's env secrets bound to the project, by name: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick"
+              "description": "one of the caller's env secrets bound to the project, by name, or <login>/<name> for one that member shares with the caller: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick"
             },
             "account_by_rule": {
               "type": "boolean",
@@ -178914,6 +178950,297 @@
             "projects"
           ],
           "title": "ShareWrite"
+        },
+        "SharedAccount": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "env_var": {
+              "type": "string",
+              "title": "Env Var",
+              "description": "the variable it sets"
+            },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "claude",
+                "anthropic",
+                "openai",
+                "gitlab",
+                "github",
+                "notion",
+                "lark",
+                "ssh",
+                "other"
+              ],
+              "title": "Provider",
+              "description": "who it signs in to, read from its variable (``account_providers``)"
+            },
+            "category": {
+              "type": "string",
+              "enum": [
+                "model",
+                "service"
+              ],
+              "title": "Category",
+              "description": "model: the runtime's own sign-in, whose runs cost; service: any other"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects whose runs may take it"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it is bound to; empty for any worker of its owner"
+            },
+            "pools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Pools",
+              "description": "the worker pools it is bound to, each node of each",
+              "default": []
+            },
+            "auth": {
+              "type": "string",
+              "enum": [
+                "token",
+                "oauth"
+              ],
+              "title": "Auth",
+              "description": "oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight",
+              "description": "0 to 1000: its share in a weighted-round-robin pool; 0 leaves it"
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priority",
+              "description": "0 to 1000: the lower, the sooner a fill-first pool takes it"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At",
+              "description": "when its owner paused it; null while it may be taken"
+            },
+            "cooldown_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Until",
+              "description": "until when it cools down after a usage limit"
+            },
+            "cooldown_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Reason",
+              "description": "why it cools down"
+            },
+            "last_leased_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Leased At",
+              "description": "when a run last took it"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "cooling",
+                "paused",
+                "expired",
+                "needs-relogin"
+              ],
+              "title": "State",
+              "description": "ready, cooling, paused, expired or needs-relogin (an OAuth account whose refresh token was refused: run oauth-login again), now"
+            },
+            "last_usage": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AccountUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what a run's CLI last said of its usage; null before any"
+            },
+            "last_usage_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Usage At",
+              "description": "when a run reported that usage"
+            },
+            "runs_24h": {
+              "type": "integer",
+              "title": "Runs 24H",
+              "description": "the runs that took it in the last 24 hours"
+            },
+            "runs_7d": {
+              "type": "integer",
+              "title": "Runs 7D",
+              "description": "the runs that took it in the last 7 days"
+            },
+            "cost_24h_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost 24H Usd",
+              "description": "what those runs cost in the last 24 hours, in USD, from their usage; null for a service account"
+            },
+            "cost_7d_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost 7D Usd",
+              "description": "what those runs cost in the last 7 days, in USD, an estimate; null for a service account"
+            },
+            "held_by": {
+              "items": {
+                "$ref": "#/components/schemas/HeldBy"
+              },
+              "type": "array",
+              "title": "Held By",
+              "description": "the runs a worker holds now with it"
+            },
+            "shares": {
+              "items": {
+                "$ref": "#/components/schemas/CredentialShare"
+              },
+              "type": "array",
+              "title": "Shares",
+              "description": "its shares not revoked, newest first"
+            },
+            "cost_by_principal": {
+              "items": {
+                "$ref": "#/components/schemas/PrincipalCost"
+              },
+              "type": "array",
+              "title": "Cost By Principal",
+              "description": "its runs and their cost by the member each was made for; for a member it was shared with, theirs"
+            },
+            "gateway": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GatewayAccount"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a provider account's endpoint and what the model gateway last said of it; null for a secret"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the member who owns it and shares it"
+            },
+            "pick": {
+              "type": "string",
+              "title": "Pick",
+              "description": "how ``account`` of a dispatch names it: <owner>/<name>"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "env_var",
+            "provider",
+            "category",
+            "projects",
+            "workers",
+            "auth",
+            "weight",
+            "priority",
+            "paused_at",
+            "cooldown_until",
+            "cooldown_reason",
+            "last_leased_at",
+            "expires_at",
+            "state",
+            "last_usage",
+            "last_usage_at",
+            "runs_24h",
+            "runs_7d",
+            "cost_24h_usd",
+            "cost_7d_usd",
+            "held_by",
+            "shares",
+            "cost_by_principal",
+            "owner",
+            "pick"
+          ],
+          "title": "SharedAccount",
+          "description": "An env account another member shares with the caller, as GET /v1/accounts/{name}?owner= gives it: its figures\nare the caller's own runs alone, its shares those that lend it to the caller, and its projects those of these\nshares its owner binds it to."
         },
         "Sign": {
           "properties": {
@@ -191247,8 +191574,8 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
@@ -191366,8 +191693,8 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"

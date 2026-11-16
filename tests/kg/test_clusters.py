@@ -11,6 +11,7 @@ from evo_agents.kg.graph_model import Graph, edge_id
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.hub_graph import hub_status
 from tests.kg.projects import commit, make_project, write
 
@@ -203,7 +204,7 @@ def test_cluster_hubs_join_the_cluster_they_reach_most(monkeypatch):
 def sync_build(project, **kw):
     results = sync_project(project)
     assert all(r.ok for r in results), [r.issues for r in results]
-    report = build_project(project, **kw)
+    report = built.build(project, **kw)
     assert report.ok, report.errors
     return report
 
@@ -215,14 +216,14 @@ def test_cluster_build_writes_clusters_with_a_stable_content_hash(tmp_path, kg_e
     assert report.verify["match"], report.verify
     clusters = report.coverage["clusters"]
     assert clusters["computed"] and clusters["clusters"] >= 1 and clusters["warm"] is False
-    store = Store.for_project(project)
+    store = built.view_of(project)
     found = store.clusters(report.build_id)
     assert found is not None and found.members
     assert set(found.members) <= set(store.alive_ids("nodes", report.build_id))
     first = report.content_hash
     store.close()
 
-    again = build_project(project, force=True, verify=True)  # the same corpus, started from its own clusters
+    again = built.build(project, force=True, verify=True)  # the same corpus, started from its own clusters
     assert again.ok and again.verify["match"] and again.coverage["clusters"]["warm"] is True
     assert again.content_hash == first
 
@@ -231,7 +232,7 @@ def test_cluster_build_writes_clusters_with_a_stable_content_hash(tmp_path, kg_e
     commit(app, "extra")
     changed = sync_build(project, verify=True)
     assert changed.verify["match"] and changed.content_hash != first
-    store = Store.for_project(project)
+    store = built.view_of(project)
     old = {cid for cid, c in found.clusters.items() if c["level"] == 1}
     now = store.clusters(changed.build_id)
     assert len(old & set(now.clusters)) >= 0.9 * len(old)
@@ -244,7 +245,7 @@ def test_cluster_build_without_the_extra_has_none_and_status_says_so(tmp_path, k
     project = make_project(tmp_path, kg_env)
     report = sync_build(project, verify=True)
     assert report.verify["match"] and report.coverage["clusters"]["computed"] is False
-    store = Store.for_project(project)
+    store = built.view_of(project)
     assert store.clusters(report.build_id) is None
     store.close()
     text = hub_status(project)["content"][0]["text"]
@@ -254,7 +255,9 @@ def test_cluster_build_without_the_extra_has_none_and_status_says_so(tmp_path, k
 def test_cluster_store_written_before_clusters_still_opens(tmp_path, kg_env, monkeypatch):
     monkeypatch.setattr(kg_clusters, "available", lambda: False)
     project = make_project(tmp_path, kg_env)
-    report = sync_build(project)
+    assert all(r.ok for r in sync_project(project))
+    report = build_project(project)  # a graph file, as builds wrote them before the hub
+    assert report.ok, report.errors
     path = project.root / "graph.sqlite"
     db = sqlite3.connect(path)
     for table in ("clusters", "cluster_members", "cluster_links", "review_items"):  # neither came yet

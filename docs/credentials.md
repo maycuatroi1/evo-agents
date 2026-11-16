@@ -353,6 +353,15 @@ workers, or bound to some workers while the run is not pinned to one of them, is
 rules (`account_by_rule`). A body without `account` dispatches as before. Audit rows of the dispatch end with
 `account=secret:<id>`.
 
+`account` may also name an account another member shares with the dispatcher, as `<login>/<name>`
+(`--account someone-else/claude-a`; the web lists them apart in the Account select, from `GET /v1/shared-accounts`,
+which gives each env account shared with the caller under a live share for every run, with the projects its shares
+lend it on that its owner binds it to). The hub checks that such a share covers the dispatcher on the run's project
+(404 when none does), and that its owner has not paused it, it has not ended and its owner still binds it to the
+project (422 saying which). It goes on any worker, as a share lends on any. The share still decides every lease (see
+"Leasing under a share"): while it lends nothing, the run takes an account by the rules, its own first, instead of
+waiting for it. A rerun keeps it the same way, checked again.
+
 When the agent of a headless run (a step run, a plan run or an author run of Claude Code) hits its account's usage
 limit, the worker says so: the CLI's `rate_limit_event` with status `rejected`, or a result whose error reads as a
 usage limit. It calls `POST /v1/worker/runs/{id}/rate-limit` with the lease of the account (`lease_id`), the

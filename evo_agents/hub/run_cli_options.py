@@ -3,8 +3,8 @@ how long a step run, a plan run or an author run runs, the account a run takes a
 and the filters of ``run list``; and how a command refuses options that do not go together (``usage_error``).
 
 ``--account NAME`` on ``dispatch``, ``plan``, ``author`` and ``rerun`` picks one of your env secrets bound to the
-project, by name (``evo-agents hub account list``): the run takes it for its variable and keeps it, with no failover
-to another account; without it the rules of your policy for the project pick (``docs/credentials.md``, section
+project, by name (``evo-agents hub account list``), or ``LOGIN/NAME`` one that member shares with you: the run takes it
+for its variable and keeps it, with no failover to another account; without it the rules of your policy for the project pick (``docs/credentials.md``, section
 "Accounts"). A rerun keeps the account picked by hand for the run it reruns, unless ``--account`` names another one or
 ``--account-by-rule`` asks the rules.
 
@@ -58,8 +58,9 @@ RUNTIME_HELP = (
 )
 EXIT_USAGE = 2
 ACCOUNT_HELP = (
-    "one of your env secrets bound to the project, by name, as `hub account list` shows it: the run takes it and "
-    "keeps it, with no failover (default: the rules of your policy for the project pick)"
+    "one of your env secrets bound to the project, by name, as `hub account list` shows it, or LOGIN/NAME for one "
+    "that member shares with you: the run takes it and keeps it, with no failover (default: the rules of your policy "
+    "for the project pick)"
 )
 
 

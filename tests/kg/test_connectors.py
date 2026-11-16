@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from evo_agents.harness import Harness, plan_digest
-from evo_agents.kg.build import build_project
 from evo_agents.kg.connectors import _files, gitcli
 from evo_agents.kg.connectors import git as git_connector
 from evo_agents.kg.connectors import github as github_api
@@ -16,9 +15,9 @@ from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol.conformance import run_conformance
 from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorRun
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import accept_removals, sync_project
+from tests.kg import built
+from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, git, make_project, write
 
 GOLDEN = Path(__file__).parent / "golden"
@@ -234,7 +233,7 @@ def test_kg_node_links_to_the_commit_read_while_items_keep_their_branch_link(tmp
     project = make_project(tmp_path, kg_env)
     app = tmp_path / "demo-app"
     sync_project(project)
-    assert build_project(project).ok
+    assert built.build(project).ok
     first = git(app, "rev-parse", "HEAD").strip()
     blob = "https://github.com/acme/demo-app/blob"
     corpus = project.corpus()
@@ -247,7 +246,7 @@ def test_kg_node_links_to_the_commit_read_while_items_keep_their_branch_link(tmp
     item = corpus.get("app:file:app/search.py")
     assert item.record["uri"] == f"{blob}/main/app/search.py"  # by branch: the hash moves only with the file
 
-    session = StoreSession(project, "wide")
+    session = hub_session(project, "wide")
     for node_id in ("app:file:app/search.py", "app:app/search.py::search"):
         found = session.call("kg_node", {"id": node_id})
         evidence = found["structuredContent"]["evidence"]
@@ -261,10 +260,10 @@ def test_kg_node_links_to_the_commit_read_while_items_keep_their_branch_link(tmp
     write(app / "docs/guide.md", "# Guide\n\nRewritten.\n")
     commit(app, "guide only")
     sync_project(project)
-    assert build_project(project).ok
+    assert built.build(project).ok
     second = git(app, "rev-parse", "HEAD").strip()
     assert project.corpus().get("app:file:app/search.py").hash == item.hash  # a new commit alone changes no item
-    found = StoreSession(project, "wide").call("kg_node", {"id": "app:file:app/search.py"})
+    found = hub_session(project, "wide").call("kg_node", {"id": "app:file:app/search.py"})
     assert found["structuredContent"]["node"]["props"]["uri"] == f"{blob}/{second}/app/search.py"
 
 
@@ -469,18 +468,18 @@ def test_commit_author_email_is_read_from_the_history_and_kept_on_the_commit_nod
     assert emails == {init: "t@example.test", lumen: "Lumen.Writer@Northwind.test", nobody: None}
 
     assert sync_project(project, ["app"])[0].ok
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
-    store = Store.for_project(project)
+    store = built.view_of(project)
     node = store.node(f"app:commit:{lumen}", report.build_id)
     assert node["kind"] == "Commit" and node["props"]["author_email"] == "Lumen.Writer@Northwind.test"
     assert "author_email" not in store.node(f"app:commit:{nobody}", report.build_id)["props"]
     # Labelled as its source, like every other prop: the level of the git source, the label of its files.
     assert node["label"] == store.node("app:file:docs/notes.md", report.build_id)["label"]
     assert node["label"][0] == 2  # customer, the third of the policy's levels
-    wide = StoreSession(project, "wide").call("kg_node", {"id": f"app:commit:{lumen}"})
+    wide = hub_session(project, "wide").call("kg_node", {"id": f"app:commit:{lumen}"})
     assert wide["structuredContent"]["node"]["props"]["author_email"] == "Lumen.Writer@Northwind.test"
-    narrow = StoreSession(project, "agent").call("kg_node", {"id": f"app:commit:{lumen}"})
+    narrow = hub_session(project, "agent").call("kg_node", {"id": f"app:commit:{lumen}"})
     assert narrow.get("isError") and "Northwind" not in json.dumps(narrow)
 
 
@@ -500,25 +499,25 @@ def test_commit_author_email_reaches_the_commits_in_the_corpus_at_the_first_sync
         before.setattr(gitcli, "history", history_before)
         before.setattr(git_connector, "_code", lambda: "sha256:the build before")
         assert sync_project(project, ["app"])[0].ok
-        old = build_project(project)
+        old = built.build(project)
     assert old.ok, old.errors
     commits = [r for r in project.corpus().items("app") if ":commit:" in r.item_id]
     assert len(commits) == 2 and all("author_email" not in r.record["props"] for r in commits)
-    assert "author_email" not in Store.for_project(project).node(f"app:commit:{lumen}", old.build_id)["props"]
+    assert "author_email" not in built.view_of(project).node(f"app:commit:{lumen}", old.build_id)["props"]
 
     (result,) = sync_project(project, ["app"])  # the new build's code digest: the whole history again
     assert result.ok and not result.unchanged and result.removals == 0 and result.held == [], result.issues
     corpus = project.corpus()
     emails = {sha: corpus.get(f"app:commit:{sha}").record["props"].get("author_email") for sha in (init, lumen)}
     assert emails == {init: "t@example.test", lumen: "lumen@northwind.test"}
-    new = build_project(project, verify=True, cold=True)  # a cold rebuild of the same corpus gives the same hash
+    new = built.build(project, verify=True, cold=True)  # a cold rebuild of the same corpus gives the same hash
     assert new.ok and new.verify["match"], new.verify
-    assert Store.for_project(project).node(f"app:commit:{lumen}", new.build_id)["props"]["author_email"] == (
+    assert built.view_of(project).node(f"app:commit:{lumen}", new.build_id)["props"]["author_email"] == (
         "lumen@northwind.test"
     )
 
     assert sync_project(project, ["app"])[0].unchanged  # the cursor holds the new input: nothing read again
-    again = build_project(project, force=True)
+    again = built.build(project, force=True)
     assert again.ok and again.content_hash == new.content_hash
 
 
@@ -700,9 +699,9 @@ def test_git_reads_the_pull_requests_of_a_repo_on_github_with_their_body_but_no_
     assert "Free text" not in written and TOKEN not in written  # neither the body nor the token reach the log
     assert TOKEN not in json.dumps(corpus.cursor("app"))
 
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
-    store = Store.for_project(project)
+    store = built.view_of(project)
     node = store.node("app:pr:7", report.build_id)
     assert node["kind"] == "PullRequest" and node["name"] == "Change 7"
     assert {k: node["props"][k] for k in ("number", "status", "head", "base")} == {
@@ -713,7 +712,7 @@ def test_git_reads_the_pull_requests_of_a_repo_on_github_with_their_body_but_no_
     }
     edges = {(e["src"], e["rel"], e["dst"]) for e in store.edges_of("app:pr:7", report.build_id)}
     assert ("app:pr:7", "merged_as", f"app:commit:{head}") in edges
-    text = StoreSession(project, "wide").call("kg_node", {"id": "app:pr:7"})["content"][0]["text"]
+    text = hub_session(project, "wide").call("kg_node", {"id": "app:pr:7"})["content"][0]["text"]
     assert "Free text" not in text and "(parsed, internal,U)" in text.splitlines()[0]
 
 
@@ -797,7 +796,7 @@ def test_a_later_run_reads_on_from_the_commits_and_pull_requests_of_the_runs_bef
     assert {m["id"] for m in read if m.get("type") == "item" and m["kind"] == "pr"} == {"app:pr:8"}
     corpus = project.corpus()
     assert history_of(corpus) == history | {f"app:commit:{head}", "app:pr:8"}  # nothing read before was lost
-    report = build_project(project, verify=True, cold=True)
+    report = built.build(project, verify=True, cold=True)
     assert report.ok and report.verify["match"], report.verify
 
 

@@ -3,7 +3,11 @@ of a dispatch of steps, a plan run or an author run, and on a rerun, where none 
 
 A name is one of the dispatcher's own live env secrets, or provider accounts (``provider_accounts``), bound to the
 run's project: a name that is neither of theirs is 404, whoever's it is; one past its end, paused, not bound to the project, or bound there only to workers
-the run might not go to, is 422 saying why. The pick is written to run_accounts with how ``manual`` in the
+the run might not go to, is 422 saying why. ``<login>/<name>`` names the env secret ``name`` of member ``login`` that a
+share for every run lends to the dispatcher on the run's project (``share_leases``: theirs, a unit of their primary
+seat or above, or all): 404 when no such share covers them, 422 when its owner paused it, it ended or its owner bound
+it to the project no more. It goes on any worker, as a share lends on any. Its share still decides each ask for the
+run's leases: while it lends nothing (``share_leases._refusal``), the run takes an account by the rules, its own first. The pick is written to run_accounts with how ``manual`` in the
 transaction that queues the run, and ``account_choice.choose_accounts`` keeps it on every ask for the run's leases;
 an account picked by hand never fails over to another one. A provider account picked is written for the variable
 ``gateway:<prefix>`` (``gateway_runs.PICK_PREFIX``): the run's model must be one of its prefix, and its gateway key
@@ -15,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from fastapi import HTTPException
-from sqlalchemy import func, insert, select
+from sqlalchemy import exists, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import gateway_runs, tables
@@ -143,9 +147,14 @@ async def pick_account(
     HTTPException that says why not. An account bound to a pool goes with a run pinned to a node of it, or one whose
     selector asks pool=<name>."""
     s = tables.secrets
+    owner, bare = split_account(name)
+    if secret_id is None and owner is not None and owner.lower() != user.login.lower():
+        return await _pick_shared(conn, user, access, name=bare, owner=owner)
     query = _secret_query(user.user_id)
-    query = query.where(s.c.id == secret_id) if secret_id is not None else query.where(s.c.name == name)
+    query = query.where(s.c.id == secret_id) if secret_id is not None else query.where(s.c.name == bare)
     row = (await conn.execute(query)).one_or_none()
+    if row is None and secret_id is not None:  # a rerun of a run that took a shared account by hand
+        return await _pick_shared(conn, user, access, secret_id=secret_id)
     if row is None or row.kind not in ("env", PROVIDER_KIND) or row.deleted_at is not None:
         label = name if row is None else row.name
         raise HTTPException(
@@ -170,6 +179,76 @@ async def pick_account(
             raise HTTPException(422, f"account {row.name} serves no model through the gateway; nothing was dispatched")
         return Picked(row.id, gateway_runs.PICK_PREFIX + prefix, row.name)
     return Picked(row.id, row.env_var, row.name)
+
+
+def split_account(name: str) -> tuple[str | None, str]:
+    """(the login of ``<login>/<name>``, else None; the secret's name)."""
+    owner, sep, bare = name.rpartition("/")
+    return (owner, bare) if sep else (None, name)
+
+
+async def _pick_shared(
+    conn: AsyncConnection, user: Principal, access: ProjectAccess, *, name=None, owner=None, secret_id=None
+) -> Picked:
+    """The env secret ``name`` of member ``owner`` (or, with ``secret_id``, the secret of that id) that a live share
+    for every run lends the caller on the project, or the HTTPException that says why not."""
+    # share_leases reaches the routes of runs, which import this module
+    from evo_agents.hub.server.share_leases import grantee_clause, live_share
+
+    s, cs, csp, a, u = (
+        tables.secrets,
+        tables.credential_shares,
+        tables.credential_share_projects,
+        tables.accounts,
+        tables.users,
+    )
+    query = (
+        select(
+            s.c.id,
+            s.c.name,
+            s.c.env_var,
+            s.c.expires_at,
+            ((s.c.expires_at <= func.now()) & a.c.oauth_sealed.is_(None)).label("ended"),
+            a.c.paused_at,
+            u.c.login,
+        )
+        .join_from(cs, s, s.c.id == cs.c.secret_id)
+        .join(u, u.c.id == s.c.owner_id)
+        .outerjoin(a, a.c.secret_id == s.c.id)
+        .where(
+            live_share(),
+            cs.c.run_id.is_(None),  # one for a single run is an admin's answer to that run's request
+            exists().where(csp.c.share_id == cs.c.id, csp.c.project_id == access.project_id),
+            await grantee_clause(conn, user.user_id),
+            s.c.owner_id != user.user_id,
+            s.c.kind == "env",
+            s.c.deleted_at.is_(None),
+        )
+        .limit(1)
+    )
+    if secret_id is not None:
+        query = query.where(s.c.id == secret_id)
+    else:
+        query = query.where(s.c.name == name, func.lower(u.c.login) == owner.lower())
+    row = (await conn.execute(query)).one_or_none()
+    if row is None:
+        whose = "that account" if secret_id is not None else f"account {owner}/{name}"
+        raise HTTPException(
+            404,
+            f"no share lends {whose} to you on project {access.name}: see GET /v1/shared-accounts; nothing was "
+            "dispatched",
+        )
+    label = f"{row.login}/{row.name}"
+    problem = None
+    if row.ended:
+        problem = f"account {label} ended at {row.expires_at.isoformat()}"
+    elif row.paused_at is not None:
+        problem = f"its owner paused account {label}"
+    elif not await _bindings(conn, row.id, access.project_id):
+        problem = f"its owner no longer binds account {label} to project {access.name}"
+    if problem is not None:
+        raise HTTPException(422, f"{problem}: pick another account; nothing was dispatched")
+    return Picked(row.id, row.env_var, label)
 
 
 async def record_pick(conn: AsyncConnection, run_id: int, picked: Picked | None) -> None:
