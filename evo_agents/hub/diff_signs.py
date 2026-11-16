@@ -558,15 +558,10 @@ def _where(
     )
 
 
-def _path_signs(
-    sign, diff: FileDiff, paths: list[str], where: _Where, *, repo: str, protected: list[str], evolvable=()
-) -> None:
-    """The signs of where a file of a diff lives, whatever its lines say. A harness file the charter lets the Curator
-    evolve (``evolvable``, its ``evolve.evolvable_paths``) is no protected_path sign; its lines are still read."""
+def _path_signs(sign, diff: FileDiff, paths: list[str], where: _Where, *, repo: str, protected: list[str]) -> None:
+    """The signs of where a file of a diff lives, whatever its lines say."""
     for path in paths:
         glob = _matches(protected, repo, path)
-        if glob is not None and harness_path(path) and _matches(evolvable, repo, path) is not None:
-            continue
         if glob is not None:
             sign("protected_path", path, None, f"protected by the charter ({glob})")
     path = diff.path
@@ -613,16 +608,10 @@ def _line_signs(sign, diff: FileDiff, where: _Where, *, repo: str, script_key: r
 
 
 def hack_signs(
-    files: list[FileDiff],
-    *,
-    repo: str,
-    protected: list[str],
-    verify_commands: Sequence[str] = (),
-    evolvable: Sequence[str] = (),
+    files: list[FileDiff], *, repo: str, protected: list[str], verify_commands: Sequence[str] = ()
 ) -> list[dict]:
     """The signs of score hacking in the diff ``files`` of ``repo`` (see the module's docstring), each ``{kind,
-    path, line, text}``, at most MAX_SIGNS, in the order the files come; a protected harness file that matches a glob
-    of ``evolvable`` (the charter's ``evolve.evolvable_paths``) is no protected_path sign, every other sign stays."""
+    path, line, text}``, at most MAX_SIGNS, in the order the files come."""
     signs: list[dict] = []
 
     def sign(kind: str, path: str, line: int | None = None, text: str = "") -> None:
@@ -638,7 +627,7 @@ def hack_signs(
     for diff in files:
         paths = [diff.path] + ([diff.old_path] if diff.old_path and diff.old_path != diff.path else [])
         where = _where(diff, paths, repo=repo, protected=protected, named=named, runner_globs=runner_globs)
-        _path_signs(sign, diff, paths, where, repo=repo, protected=protected, evolvable=evolvable)
+        _path_signs(sign, diff, paths, where, repo=repo, protected=protected)
         if not diff.readable:
             if where.guarded or not (where.doc or diff.path.lower().endswith(ASSET_SUFFIXES)):
                 sign("diff_unreadable", diff.path)

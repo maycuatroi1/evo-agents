@@ -93,7 +93,7 @@ from functools import partial
 from sqlalchemy import exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import approval_heads, diff_signs, guard, judge, tables, tiers
+from evo_agents.hub import approval_heads, diff_signs, guard, judge, tables
 from evo_agents.hub.server import audit, autonomy_gates, change_tiers, merge_gate, skill_release
 from evo_agents.hub.server.change_views import change_of_plan, charter_of, raise_tier, set_change
 from evo_agents.hub.server.change_watch import settle_by_branch, watch_pass
@@ -160,7 +160,6 @@ def _signs_of(diff, change, charter: dict, body: dict, cut: str | None) -> list[
         repo=change.repo,
         protected=[item for item in charter.get("protected_paths") or [] if isinstance(item, str)],
         verify_commands=judge.verify_commands(body),
-        evolvable=tiers.evolvable_paths(charter),
     )
     if cut is not None:
         signs.insert(0, {"kind": "diff_unreadable", "path": "(the pull request's files)", "line": None, "text": cut})

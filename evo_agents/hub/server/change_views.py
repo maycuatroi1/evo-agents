@@ -97,10 +97,6 @@ class JudgeInputs(BaseModel):
     proposal: dict = Field(description="id, title, kind, tier, summary, paths")
     verify: list[str] = Field(description="the verify of each step of the plan, as the Builder had them")
     protected_paths: list[str]
-    evolvable_paths: list[str] = Field(
-        default_factory=list,
-        description="the charter's evolve.evolvable_paths: a harness file of these is no protected_path sign",
-    )
     hidden_checks: list[str] = Field(description="commands run in the worktree; never logged, never shown")
     knowledge: dict | None = Field(
         None,

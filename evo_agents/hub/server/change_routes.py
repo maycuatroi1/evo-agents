@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Path, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import findings, judge, runs, security_pass, tables, tiers
+from evo_agents.hub import findings, judge, runs, security_pass, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.server import audit, change_repos, change_tiers
 from evo_agents.hub.server import plans as plan_routes
@@ -151,7 +151,6 @@ async def judge_inputs(
         proposal=dict(proposal._mapping),
         verify=verify,
         protected_paths=[item for item in charter.get("protected_paths") or [] if isinstance(item, str)],
-        evolvable_paths=tiers.evolvable_paths(charter),
         hidden_checks=hidden,
         knowledge=knowledge,
     )

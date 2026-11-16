@@ -172,8 +172,7 @@ def evolving(world, listed: bool) -> None:
 def test_a_protected_harness_file_the_charter_lists_evolvable_merges_at_tier_0_once_judged_with_replays_won(
     world, monkeypatch, listed
 ):
-    if not listed:  # the sign of a protected path is a gate of its own; an evolvable harness file raises none
-        monkeypatch.setattr(changes, "_signs_of", lambda *args: [])
+    monkeypatch.setattr(changes, "_signs_of", lambda *args: [])  # the sign of a protected path is a gate of its own
     tasks = suite(world)
     evolving(world, listed)
     proposal = accepted(world, kind="skill", paths=SKILL_PATHS)
