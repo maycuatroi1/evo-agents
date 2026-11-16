@@ -116,3 +116,20 @@ def view_of(project: Project) -> SnapshotView | None:
     before a build."""
     snap = snapshot_of(project)
     return snap.view() if snap is not None else None
+
+
+def old_vector_cache(path: Path, model: str, rows: dict[str, bytes]) -> Path:
+    """A ``vectors.sqlite`` as builds kept next to their graph file before the hub's kg_vector_cache: the vectors
+    ``rows`` of ``model`` by digest of their text, which ``sqlite_legacy.vector_cache_rows`` reads. The hub's tests
+    write theirs here, where the raw SQL guard of the hub does not look."""
+    import sqlite3
+
+    path.unlink(missing_ok=True)
+    db = sqlite3.connect(path)
+    try:
+        db.execute("CREATE TABLE vec (model TEXT, digest TEXT, vec BLOB, PRIMARY KEY (model, digest))")
+        db.executemany("INSERT INTO vec VALUES (?, ?, ?)", [(model, d, v) for d, v in sorted(rows.items())])
+        db.commit()
+    finally:
+        db.close()
+    return path
