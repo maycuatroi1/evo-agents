@@ -1,21 +1,23 @@
-"""Search by meaning next to BM25 (``evo_agents.kg.semantic``): the vectors a build writes, the fusion of the two
+"""Search by meaning next to BM25 (``evo_agents.kg.semantic``): the vectors a build puts into its rows, the fusion of the two
 rankings, and every way it falls back to the search by words. The model is a stand-in that reads words through a
 table of synonyms, so a query can match a text by meaning and by no word."""
 
 import json
-import sqlite3
 import zlib
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.kg import semantic, store_vectors
-from evo_agents.kg.store import SCHEMA_VERSION, Store
-from evo_agents.kg.store_session import StoreSession
+from evo_agents.hub import kg_semantic
+from evo_agents.kg import graph_rows, semantic
+from tests.kg import built
+from tests.kg.built import rows_of, sync_build, view_of
+from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, write
-from tests.kg.test_store import found, make_searchable, sync_build
+from tests.kg.test_store import make_searchable
 
 FIXTURE = Path(__file__).parent / "fixtures" / "eval" / "demo.jsonl"
 FAKE = "fake/words"
@@ -64,48 +66,57 @@ def with_garage(tmp_path, kg_env):
     return project
 
 
-def kg_search(session: StoreSession, query: str) -> list[str]:
+def kg_search(session, query: str) -> list[str]:
     answer = session.call("kg_search", {"query": query, "limit": 5})
     assert not answer.get("isError"), answer
     return [r["id"] for r in answer["structuredContent"]["results"]]
+
+
+def found(view, query: str, **kw) -> list[str]:
+    return view.search(query, view.latest_ready(), **kw)
+
+
+def cli(project, on: bool | None = None):
+    """The hub's engine for the tests' operator, searching by meaning as ``on`` asks (None: as the graph's mode)."""
+    session = hub_session(project, "cli")
+    session.semantic = on
+    return session
+
+
+def bare(rows):
+    """``rows`` without their vectors."""
+    return replace(rows, vectors=(), vector_info=None)
 
 
 def test_a_project_searches_by_words_alone_until_it_turns_meaning_on(tmp_path, kg_env, words):
     project = with_garage(tmp_path, kg_env)
     assert semantic.read_settings(project.root) == semantic.Settings("off", semantic.DEFAULT_MODEL)
     sync_build(project)
-    store = Store.for_project(project)
-    assert store.vector_info() is None and not store_vectors.has_vectors(store.db)
-    assert semantic.query_vector(store, "automobile", True) is None  # no vectors: by words, whatever is asked
-    before = {q: found(store, q) for q in ("automobile", "graph builder", "do thi tri thuc")}
+    view = view_of(project)
+    assert view.vector_info() is None and rows_of(project).vectors == ()
+    assert semantic.query_vector(view, "automobile", True) is None  # no vectors: by words, whatever is asked
+    before = {q: found(view, q) for q in ("automobile", "graph builder", "do thi tri thuc")}
     assert CAR not in before["automobile"]
-    session = StoreSession(project, "cli")
-    session.semantic = True
-    assert kg_search(session, "graph builder") == kg_search(StoreSession(project, "cli"), "graph builder")
+    assert kg_search(cli(project, True), "graph builder") == kg_search(cli(project), "graph builder")
     assert words.calls == 0  # nothing was embedded
 
 
-def test_the_vectors_sit_outside_the_schema_and_the_content_hash(tmp_path, kg_env, words):
+def test_the_vectors_sit_outside_the_content_hash(tmp_path, kg_env, words):
     project = with_garage(tmp_path, kg_env)
     off = sync_build(project)
     semantic.write_settings(project.root, semantic.Settings("index", FAKE))
     again = sync_build(project, force=True)
     assert again.content_hash == off.content_hash  # kg/1 and the build's hash do not see the vectors
-    path = project.root / "graph.sqlite"
-    reader = Store.open_file(path)  # a reader of before opens the file as it did
-    assert Store.stored_schema(path) == SCHEMA_VERSION
-    held = reader.vector_info()
+    rows = rows_of(project)
+    held = view_of(project).vector_info()
     assert (held.model, held.dim, held.mode) == (FAKE, DIM, "index")
-    keys = {k for (k,) in reader.db.execute("SELECT key FROM node_vec")}
-    bodies = reader.db.execute(
-        "SELECT count(*) FROM node_fts_rows r JOIN node_fts f ON f.rowid = r.fts_rowid"
-        " WHERE r.aud = 0 AND length(trim(f.body)) > 0"
-    ).fetchone()[0]
+    keys = {r[0] for r in rows.vectors}
+    bodies = sum(1 for _, (_, _, _, _, body, *aud) in rows.keyed if (body or "").strip() and not (aud and aud[0]))
     assert len(keys) >= bodies > 0 and CAR in keys
     assert any("\x1f" in k for k in keys)  # the passages of the long section have theirs
     semantic.write_settings(project.root, semantic.Settings("off", FAKE))
-    sync_build(project)  # the build is current; off drops the vectors all the same
-    assert Store.open_file(path).vector_info() is None
+    sync_build(project, force=True)  # the same graph again; off drops the vectors
+    assert view_of(project).vector_info() is None and rows_of(project).vectors == ()
 
 
 def test_mode_index_ranks_by_words_unless_asked_and_on_fuses_both(tmp_path, kg_env, words):
@@ -113,7 +124,7 @@ def test_mode_index_ranks_by_words_unless_asked_and_on_fuses_both(tmp_path, kg_e
     semantic.write_settings(project.root, semantic.Settings("index", FAKE))
     sync_build(project)
     words.calls = 0
-    plain = StoreSession(project, "cli")
+    plain = cli(project)
     by_words = kg_search(plain, "automobile")
     assert CAR not in by_words and words.calls == 0  # index: the query is not even embedded
     plain.semantic = True
@@ -122,9 +133,9 @@ def test_mode_index_ranks_by_words_unless_asked_and_on_fuses_both(tmp_path, kg_e
     assert kg_search(plain, "automobile") == by_words
 
     semantic.write_settings(project.root, semantic.Settings("on", FAKE))
-    sync_build(project)
-    assert kg_search(StoreSession(project, "cli"), "automobile")[0] == CAR
-    hybrid = kg_search(StoreSession(project, "cli"), "graph builder")
+    sync_build(project, force=True)
+    assert kg_search(cli(project), "automobile")[0] == CAR
+    hybrid = kg_search(cli(project), "graph builder")
     module = ("app:file:app/hub_build.py", "symbol:app:app/hub_build.py::GraphBuilder")
     assert hybrid[0] in (*module, "symbol:app:app/hub_build.py::GraphBuilder.buildGraph")  # words still lead
 
@@ -133,14 +144,13 @@ def test_exact_hits_stay_first_and_deprecated_kinds_filters_apply(tmp_path, kg_e
     project = with_garage(tmp_path, kg_env)
     semantic.write_settings(project.root, semantic.Settings("on", FAKE))
     sync_build(project)
-    store = Store.for_project(project)
-    vector = semantic.query_vector(store, CAR, None)
-    assert found(store, CAR, vector=vector)[0] == CAR
-    vector = semantic.query_vector(store, "automobile parked", None)
-    sections = found(store, "automobile parked", kinds=["Section"], vector=vector)
+    view = view_of(project)
+    vector = semantic.query_vector(view, CAR, None)
+    assert found(view, CAR, vector=vector)[0] == CAR
+    vector = semantic.query_vector(view, "automobile parked", None)
+    sections = found(view, "automobile parked", kinds=["Section"], vector=vector)
     assert sections[0] == CAR
-    kinds = dict(store.db.execute("SELECT node_id, kind FROM node_fts"))
-    assert {kinds[i] for i in sections} == {"Section"}
+    assert {view.node(i, view.latest_ready())["kind"] for i in sections} == {"Section"}
 
 
 def test_a_build_embeds_only_the_rows_whose_text_changed(tmp_path, kg_env, words):
@@ -148,18 +158,13 @@ def test_a_build_embeds_only_the_rows_whose_text_changed(tmp_path, kg_env, words
     semantic.write_settings(project.root, semantic.Settings("index", FAKE))
     sync_build(project)
     first = words.texts
-    assert first > 0 and (project.root / store_vectors.CACHE_FILE).exists()
-    path = project.root / "graph.sqlite"
+    assert first > 0
     words.texts = 0
-    assert store_vectors.index_file(path, semantic.Settings("on", FAKE)).embedded == 0  # same rows: the mode alone
-    assert Store.open_file(path).vector_info().mode == "on" and words.texts == 0
-    db = sqlite3.connect(path)
-    try:
-        with db:
-            store_vectors.drop(db)
-    finally:
-        db.close()
-    again = store_vectors.index_file(path, semantic.Settings("on", FAKE))
+    semantic.write_settings(project.root, semantic.Settings("on", FAKE))
+    sync_build(project, force=True)  # same rows: the mode alone
+    assert view_of(project).vector_info().mode == "on" and words.texts == 0
+    cache = built.HELD[project.root].cache
+    _, again = kg_semantic.index(bare(rows_of(project)), semantic.Settings("on", FAKE), cache)
     assert again.embedded == 0 and again.rows > 0 and words.texts == 0  # every vector from the cache
     app = tmp_path / "demo-app"
     write(app / "docs/garage.md", "# Garage\n\nThe motorcar sleeps here.\n")
@@ -178,23 +183,16 @@ def test_without_the_model_the_build_warns_and_search_stays_by_words(tmp_path, k
     semantic.write_settings(project.root, semantic.Settings("on", "fake/missing"))
     report = sync_build(project)
     assert report.ok and any("no vectors written" in w and "fastembed" in w for w in report.warnings)
-    store = Store.for_project(project)
-    assert store.vector_info() is None
+    assert view_of(project).vector_info() is None
 
     semantic.write_settings(project.root, semantic.Settings("on", FAKE))
-    sync_build(project)
-    by_words = StoreSession(project, "cli")
-    by_words.semantic = False
-    before = kg_search(by_words, "graph builder")
-    db = sqlite3.connect(project.root / "graph.sqlite")
-    try:
-        with db:  # a graph whose model this reader lacks
-            db.execute("UPDATE node_vec_meta SET value = 'fake/missing' WHERE key = 'model'")
-    finally:
-        db.close()
-    assert semantic.query_vector(Store.for_project(project), "automobile", True) is None
-    assert CAR not in kg_search(StoreSession(project, "cli"), "automobile")
-    assert kg_search(StoreSession(project, "cli"), "graph builder") == before
+    sync_build(project, force=True)
+    before = kg_search(cli(project, False), "graph builder")
+    held = built.HELD[project.root]  # a graph whose model this reader lacks
+    held.rows = replace(held.rows, vector_info={**held.rows.vector_info, "model": "fake/missing"})
+    assert semantic.query_vector(view_of(project), "automobile", True) is None
+    assert CAR not in kg_search(cli(project), "automobile")
+    assert kg_search(cli(project), "graph builder") == before
 
 
 def test_nearest_keeps_a_node_at_its_best_row_and_rows_of_an_audience_to_its_readers():
@@ -286,16 +284,17 @@ def test_each_embed_call_gets_the_models_chunk_so_the_api_backend_fills_its_requ
     project = with_garage(tmp_path, kg_env)
     sync_build(project)
     words.chunk, words.calls, words.texts = 2, 0, 0
-    found = store_vectors.index_file(project.root / "graph.sqlite", semantic.Settings("index", FAKE))
-    assert found.embedded == words.texts > 2 and words.calls == -(-words.texts // 2)
+    _, done = kg_semantic.index(rows_of(project), semantic.Settings("index", FAKE), semantic.MemoryCache())
+    assert done.embedded == words.texts > 2 and words.calls == -(-words.texts // 2)
 
 
 def test_a_spent_budget_leaves_the_rest_for_the_next_build(tmp_path, kg_env, words):
     project = with_garage(tmp_path, kg_env)
     sync_build(project)
-    path = project.root / "graph.sqlite"
     settings = semantic.Settings("index", FAKE)
-    none = store_vectors.index_file(path, settings, budget=0.0)
+    cache = semantic.MemoryCache()
+    graph = graph_rows.RowsVectors(rows_of(project))
+    none = semantic.index(graph, settings, cache, budget=0.0)
     assert none.total > 0 and none.rows == 0 and none.embedded == 0 and none.partial
     assert none.coverage(FAKE) == {
         "model": FAKE,
@@ -304,9 +303,9 @@ def test_a_spent_budget_leaves_the_rest_for_the_next_build(tmp_path, kg_env, wor
         "vectors": 0,
         "partial": True,
     }
-    full = store_vectors.index_file(path, settings)  # no budget: the same graph, every row
+    full = semantic.index(graph, settings, cache)  # no budget: the same graph, every row
     assert full.rows == full.total == none.total and not full.partial and full.embedded > 0
     assert full.digest != none.digest
     words.texts = 0
-    again = store_vectors.index_file(path, settings, budget=0.0)  # everything held: nothing left to stop
+    again = semantic.index(graph, settings, cache, budget=0.0)  # everything held: nothing left to stop
     assert again.rows == again.total and again.embedded == 0 and words.texts == 0

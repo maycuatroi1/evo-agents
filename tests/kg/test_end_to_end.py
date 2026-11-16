@@ -1,37 +1,43 @@
 import json
-import sqlite3
 
-import pytest
-
-from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_session import StoreSession
+from evo_agents.kg.snapshot import SnapshotView
 from evo_agents.kg.sync import sync_project
+from tests.kg.built import build, edges_of, nodes_of, rows_of, snapshot_of, sync_build
+from tests.kg.hub_graph import hub_session
 from tests.kg.projects import GUIDE, commit, git, make_project, write
 
 
-def sync_build(project, **kw):
-    results = sync_project(project)
-    assert all(r.ok for r in results), [r.issues for r in results]
-    report = build_project(project, **kw)
-    assert report.ok, report.errors
-    return report
+def edge_keys(project) -> set[tuple]:
+    """(src, rel, dst) of every edge of the project's latest build."""
+    return {(e["src"], e["rel"], e["dst"]) for e in edges_of(project)}
 
 
-def edge_keys(store: Store, b: int) -> set[tuple]:
-    rows = store.db.execute(
-        "SELECT src, rel, dst FROM edges WHERE tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)", {"b": b}
-    )
-    return {tuple(r) for r in rows}
+def node_of(project, node_id: str) -> dict | None:
+    return next((n for n in nodes_of(project) if n["id"] == node_id), None)
+
+
+def predict_retraction(rows, removed_units: set[str]) -> set[str]:
+    """The provenance circuit of the build's derivations evaluated with ``removed_units`` false: the elements that
+    would die."""
+    derivs: dict[str, list[tuple[list, list]]] = {}
+    for elem, units, needs in rows.derivations:
+        derivs.setdefault(elem, []).append((json.loads(units), json.loads(needs)))
+    alive = set(derivs)
+    changed = True
+    while changed:
+        changed = False
+        for elem in list(alive):
+            if not any(not (set(u) & removed_units) and all(n in alive for n in needs) for u, needs in derivs[elem]):
+                alive.discard(elem)
+                changed = True
+    return set(derivs) - alive
 
 
 def test_graph_has_the_expected_links(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
-    report = sync_build(project)
-    store = Store.for_project(project)
-    b = report.build_id
-    edges = edge_keys(store, b)
+    sync_build(project)
+    edges = edge_keys(project)
     guide = "app:file:docs/guide.md"
     assert (f"{guide}#guide", "mentions", "symbol:app:app/search.py::search") in edges
     assert (f"{guide}#guide", "mentions", "usecase:KB-01") in edges
@@ -45,8 +51,7 @@ def test_graph_has_the_expected_links(tmp_path, kg_env):
     assert ("symbol:app:app/search.py::search", "calls", "symbol:app:app/search.py::rank_results") in edges
     assert ("app:file:app/server.py", "imports", "app:file:app/search.py") in edges
     assert ("plan:demo/step:1", "mentions", "commit:app@1a2b3c4d") in edges
-    declared = store.db.execute("SELECT status FROM edges WHERE rel = 'implements'").fetchone()[0]
-    assert declared == "declared"
+    assert {e["status"] for e in edges_of(project) if e["rel"] == "implements"} == {"declared"}
 
 
 def test_three_syncs_keep_incremental_equal_to_full_rebuild(tmp_path, kg_env):
@@ -69,38 +74,27 @@ def test_three_syncs_keep_incremental_equal_to_full_rebuild(tmp_path, kg_env):
     commit(app)
     report = sync_build(project, verify=True, cold=True)
     assert report.verify["match"], report.verify
-    store = Store.for_project(project)
-    assert store.node("app:file:docs/old.md", report.build_id) is None
-    assert store.node("usecase:KB-03", report.build_id) is not None
+    assert node_of(project, "app:file:docs/old.md") is None
+    assert node_of(project, "usecase:KB-03") is not None
     assert report.memo["map"]["hits"] > 0  # unchanged items were not recomputed
 
 
 def test_section_removal_retracts_exactly_what_provenance_predicts(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
     app = tmp_path / "demo-app"
-    first = sync_build(project)
-    store = Store.for_project(project)
-    b1 = first.build_id
+    sync_build(project)
     unit = "app:file:docs/guide.md#setup"
-    predicted = store.predict_retraction({unit}, b1)
-    before_edges = {
-        e: k
-        for e, k in store.db.execute(
-            "SELECT edge_id, src || ' ' || rel || ' ' || dst FROM edges WHERE tx_from <= :b AND (tx_to IS NULL OR"
-            " tx_to > :b)",
-            {"b": b1},
-        )
-    }
-    before_nodes = store.alive_ids("nodes", b1)
+    predicted = predict_retraction(rows_of(project), {unit})
+    before_edges = {e["id"]: f"{e['src']} {e['rel']} {e['dst']}" for e in edges_of(project)}
+    before_nodes = {n["id"] for n in nodes_of(project)}
 
     # Remove the Setup section's own lines only; its child Details stays and is re-parented.
     without_setup = GUIDE.split("## Setup")[0] + "### Details" + GUIDE.split("### Details")[1]
     write(app / "docs/guide.md", without_setup)
     commit(app)
-    second = sync_build(project)
-    b2 = second.build_id
-    after_edges = store.alive_ids("edges", b2)
-    after_nodes = store.alive_ids("nodes", b2)
+    sync_build(project)
+    after_edges = {e["id"] for e in edges_of(project)}
+    after_nodes = {n["id"] for n in nodes_of(project)}
 
     retracted_edges = {before_edges[e] for e in set(before_edges) - after_edges}
     predicted_edges = {before_edges[e] for e in predicted if e in before_edges}
@@ -118,24 +112,21 @@ def test_unresolved_binding_fails_the_build_and_keeps_the_last_snapshot(tmp_path
         "bindings:\n  - from: app:app/search.py::missing\n    rel: implements\n    to: usecase:KB-01\n",
     )
     sync_project(project)
-    bad = build_project(project)
+    bad = build(project)
     assert not bad.ok
     assert any("does not resolve" in e for e in bad.errors)
-    assert Store.for_project(project).latest_ready() == good.build_id
+    kept = snapshot_of(project)
+    assert (kept.build, kept.content_hash) == (good.build_id, good.content_hash)
 
 
 def test_labels_join_over_inputs(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env, level="internal", app_level="customer")
-    report = sync_build(project)
-    store = Store.for_project(project)
-    b = report.build_id
-    plan = store.node("plan:demo", b)
+    sync_build(project)
+    plan = node_of(project, "plan:demo")
     assert plan["label"][0] == 1  # internal: comes only from the harness
-    e = store.db.execute(
-        "SELECT label_lvl FROM edges WHERE src = 'plan:demo/step:2' AND rel = 'mentions'"
-        " AND dst = 'app:file:app/server.py'"
-    ).fetchone()
-    assert e[0] == 2  # the edge reveals a customer-level file: it is customer-level too
+    key = ("plan:demo/step:2", "mentions", "app:file:app/server.py")
+    e = next(e for e in edges_of(project) if (e["src"], e["rel"], e["dst"]) == key)
+    assert e["label"][0] == 2  # the edge reveals a customer-level file: it is customer-level too
 
 
 def audit_builds(project) -> int:
@@ -155,7 +146,7 @@ def test_a_build_of_an_unchanged_corpus_is_skipped_until_something_it_reads_chan
     assert again.coverage["sources"] == first.coverage["sources"]
     assert "is current" in again.summary_line() and audit_builds(project) == 1  # nothing was built
 
-    forced = build_project(project, force=True)
+    forced = build(project, force=True)
     assert not forced.skipped and forced.build_id == first.build_id + 1
     assert forced.content_hash == first.content_hash and audit_builds(project) == 2
 
@@ -164,7 +155,7 @@ def test_a_build_of_an_unchanged_corpus_is_skipped_until_something_it_reads_chan
         knowledge.read_text().replace("      clearance: {level: customer}", "      clearance: {level: public}")
     )
     project = load_project_at(project.harness.root, kg_env)
-    config = build_project(project)
+    config = build(project)
     assert not config.skipped and config.build_id == forced.build_id + 1  # the config is an input
 
     write(tmp_path / "demo-app/docs/guide.md", GUIDE.replace("Intro to the app.", "Intro, edited."))
@@ -179,8 +170,7 @@ def test_link_runs_again_only_for_the_items_whose_reads_changed(tmp_path, kg_env
     write(app / "docs/later.md", "# Later\n\nWill call `fresh_helper` once it exists.\n")
     commit(app)
     first = sync_build(project)
-    store = Store.for_project(project)
-    assert not any(e[2].endswith("::fresh_helper") for e in edge_keys(store, first.build_id))
+    assert not any(e[2].endswith("::fresh_helper") for e in edge_keys(project))
 
     # A body changes, no name does: only that file links again, besides the item of the new commit.
     search = (app / "app/search.py").read_text()
@@ -197,18 +187,14 @@ def test_link_runs_again_only_for_the_items_whose_reads_changed(tmp_path, kg_env
     assert named.verify["match"], named.verify
     assert named.memo["link"]["misses"] == 3  # app/search.py, docs/later.md and the new commit
     later = ("app:file:docs/later.md#later", "mentions", "symbol:app:app/search.py::fresh_helper")
-    assert later in edge_keys(Store.for_project(project), named.build_id)
+    assert later in edge_keys(project)
 
 
-def test_serve_reads_the_store_read_only_and_compares_labels_only_when_some_are_above_the_sink(
-    tmp_path, kg_env, monkeypatch
-):
+def test_serve_compares_labels_only_when_some_are_above_the_sink(tmp_path, kg_env, monkeypatch):
     project = make_project(tmp_path, kg_env, level="internal", app_level="customer")
     sync_build(project)
-    wide, narrow = StoreSession(project, "wide"), StoreSession(project, "agent")
-    store, _ = wide._store()
-    with pytest.raises(sqlite3.OperationalError, match="readonly"):
-        store.db.execute("CREATE TABLE probe (x)")
+    wide, narrow = hub_session(project, "wide"), hub_session(project, "agent")
+    wide._store()
     assert wide.sees_all  # a customer clearance covers the highest label of the build
     narrow._store()
     assert not narrow.sees_all  # an internal one does not: customer-level files stay hidden
@@ -223,11 +209,11 @@ def test_serve_reads_the_store_read_only_and_compares_labels_only_when_some_are_
 
     def answers() -> dict:
         return {
-            sink: [StoreSession(project, sink).call(name, args) for name, args in calls] for sink in ("wide", "agent")
+            sink: [hub_session(project, sink).call(name, args) for name, args in calls] for sink in ("wide", "agent")
         }
 
     skipping = answers()
-    monkeypatch.setattr(Store, "top_label", lambda self, b: None)  # every label compared, as before
+    monkeypatch.setattr(SnapshotView, "top_label", lambda self, b=0: None)  # every label compared, as before
     assert answers() == skipping
     assert skipping["wide"][2]["structuredContent"]["node"]["id"] == "app:file:app/search.py"
     assert skipping["agent"][2].get("isError")
@@ -264,16 +250,15 @@ def test_a_done_step_reaches_the_files_its_evidence_commit_changed(tmp_path, kg_
     monkeypatch.setattr(github, "_page", lambda project, page, secret: [pull] if page == 1 else [])
     report = sync_build(project, verify=True, cold=True)
     assert report.verify["match"], report.verify
-    store = Store.for_project(project)
-    edges = edge_keys(store, report.build_id)
+    edges = edge_keys(project)
     step, found, pr = "plan:demo/step:1", f"app:commit:{sha}", "app:pr:12"
     assert (step, "mentions", found) in edges  # the bare SHA of the evidence, among the commits of the step's repo
     assert (found, "changes", "app:file:app/suggest.py") in edges
     assert (step, "mentions", pr) in edges and (pr, "merged_as", found) in edges
     assert (step, "mentions", "commit:app@1a2b3c4d") in edges  # a SHA no source read keeps a node of its own
-    assert store.node(found, report.build_id)["kind"] == "Commit"
+    assert node_of(project, found)["kind"] == "Commit"
 
-    path = StoreSession(project, "wide").call("kg_path", {"from": step, "to": "app:file:app/suggest.py"})
+    path = hub_session(project, "wide").call("kg_path", {"from": step, "to": "app:file:app/suggest.py"})
     data = path["structuredContent"]
     assert data["found"] and data["hops"] == 2
     assert [n["id"] for n in data["nodes"]] == [step, found, "app:file:app/suggest.py"]

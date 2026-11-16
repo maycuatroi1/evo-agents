@@ -1,13 +1,13 @@
 import json
 import random
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from evo_agents.hub.kg_cli import open_session
 from evo_agents.kg import explore, serve, serve_impact, serve_walk
-from evo_agents.kg.build import build_project
 from evo_agents.kg.explore import Explorer
 from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, TABLES, coverage_of
 from evo_agents.kg.graph_model import edge_id
@@ -17,10 +17,9 @@ from evo_agents.kg.serve import handle
 from evo_agents.kg.serve_search import FULL_LINES, in_repo
 from evo_agents.kg.serve_walk import CHAIN_RELS
 from evo_agents.kg.sessions import READ_META, labels_in
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_session import StoreSession
-from evo_agents.kg.sync import sync_project
 from evo_agents.kg.tools import IMPACT_LIMIT, IMPACT_MAX_LIMIT
+from tests.kg import built as kept
+from tests.kg.built import sync_build
 from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, make_project, write
 
@@ -58,9 +57,7 @@ QUERIES = [
 
 def built(tmp_path, home, **kw):
     project = make_project(tmp_path, home, **kw)
-    sync_project(project)
-    report = build_project(project)
-    assert report.ok, report.errors
+    sync_build(project)
     return project
 
 
@@ -79,9 +76,7 @@ def built_wider(tmp_path, home, **kw):
         + "  - from: app:tests/test_search.py::test_search\n    rel: verifies\n    to: app:app/search.py::search\n"
         + "  - from: demo#2\n    rel: schedules\n    to: usecase:KB-02\n",
     )
-    sync_project(project)
-    report = build_project(project)
-    assert report.ok, report.errors
+    sync_build(project)
     return project
 
 
@@ -98,22 +93,16 @@ def built_kin(tmp_path, home):
     )
     write(app / "app/Shape.swift", "class Shape {\n    func area() -> Int {\n        return 1\n    }\n}\n")
     commit(app, "kin")
-    sync_project(project)
-    report = build_project(project)
-    assert report.ok, report.errors
+    sync_build(project)
     return project
 
 
 def add_edge(project, src, rel, dst, status, level=1):
-    """Put an edge straight into the latest build: statuses and labels no stage produces here."""
-    store = Store.for_project(project)
-    with store.db:
-        store.db.execute(
-            "INSERT INTO edges (edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int,"
-            " content, tx_from) VALUES (?, ?, ?, ?, '{}', ?, 0.5, ?, 0, 'U', 'test', ?)",
-            (edge_id(src, rel, dst), src, rel, dst, status, level, store.latest_ready()),
-        )
-    store.close()
+    """Put an edge straight into the latest build: statuses and labels no stage produces here. A session asked
+    before reads the graph it was given: ask a new one."""
+    held = kept.HELD[project.root]
+    row = (edge_id(src, rel, dst), src, rel, dst, "{}", status, 0.5, level, 0, "U", None)
+    held.rows = replace(held.rows, edges=(*held.rows.edges, row))
 
 
 def impacted(result) -> dict[str, tuple]:
@@ -121,13 +110,13 @@ def impacted(result) -> dict[str, tuple]:
 
 
 def answers(project, sink="agent"):
-    session = StoreSession(project, sink)
+    session = hub_session(project, sink)
     return [json.dumps(session.call(name, args), ensure_ascii=False, sort_keys=True) for name, args in QUERIES]
 
 
 def test_tools_answer(tmp_path, kg_env):
     project = built(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     found = session.call("kg_search", {"query": "rank_results"})
     assert not found.get("isError")
     assert any(r["id"] == "symbol:app:app/search.py::rank_results" for r in found["structuredContent"]["results"])
@@ -142,19 +131,11 @@ def test_tools_answer(tmp_path, kg_env):
 def test_no_result_names_an_element_outside_the_visible_set(tmp_path, kg_env):
     # The app repo is customer-level; the agent sink is cleared for internal only.
     project = built(tmp_path, kg_env, app_level="customer")
-    store = Store.for_project(project)
-    b = store.latest_ready()
-    hidden = {
-        r[0]
-        for r in store.db.execute(
-            "SELECT node_id FROM nodes WHERE label_lvl > 1 AND tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)",
-            {"b": b},
-        )
-    }
+    hidden = {n["id"] for n in kept.nodes_of(project) if n["label"][0] > 1}
     assert "symbol:app:app/search.py::search" in hidden
     outputs = answers(project, "agent")
     outputs.append(
-        json.dumps(StoreSession(project, "agent").call("kg_node", {"id": "plan:demo/step:2"}), ensure_ascii=False)
+        json.dumps(hub_session(project, "agent").call("kg_node", {"id": "plan:demo/step:2"}), ensure_ascii=False)
     )
     for out in outputs:
         for node_id in hidden:
@@ -173,17 +154,15 @@ def test_noninterference_between_projects(tmp_path, kg_env):
     # World A: project demo alone. World B: demo built next to another project in the same home.
     alone = built(world_a, home_a)
     other = make_project(world_b, home_b, name="other")
-    sync_project(other)
     together = make_project(world_b, home_b)
-    sync_project(together)
-    build_project(other)
-    assert build_project(together).ok
+    sync_build(other)
+    sync_build(together)
     assert answers(alone) == answers(together)
 
 
 def test_mcp_protocol_and_truncation(tmp_path, kg_env, monkeypatch):
     project = built(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     init = handle(
         session, {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}}
     )
@@ -217,7 +196,7 @@ def test_a_client_gets_the_text_alone_unless_it_asks_for_the_data(tmp_path, kg_e
     # Claude Code 2.1.296 shows the model a result's structuredContent instead of its text when it has one: the model
     # would read JSON 2.7 to 3.3 times longer than the text, which CAP_CHARS and the budgets bound.
     project = built(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
 
     def tool(id_: int, name: str, arguments: dict, meta: dict | None = None) -> dict:
         params = {"name": name, "arguments": arguments, **({"_meta": meta} if meta else {})}
@@ -265,7 +244,7 @@ def test_unbound_server_explains_how_to_bind(tmp_path, kg_env, monkeypatch):
 
 def test_impact_by_id_walks_back_to_dependents_and_groups_documents(tmp_path, kg_env):
     project = built_wider(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     result = session.call("kg_impact", {"id": RANK})
     got = impacted(result)
     assert got == {
@@ -291,7 +270,7 @@ def test_impact_by_id_walks_back_to_dependents_and_groups_documents(tmp_path, kg
 
 def test_impact_by_paths_and_by_diff(tmp_path, kg_env):
     project = built_wider(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     by_path = session.call("kg_impact", {"paths": ["app:app/search.py"]})
     assert [s["id"] for s in by_path["structuredContent"]["seeds"]] == [SEARCH_PY]
     assert set(impacted(by_path)) == {SERVER_PY, "app:file:tests/test_search.py"}
@@ -329,7 +308,7 @@ def test_impact_follows_no_proposed_edge(tmp_path, kg_env):
     add_edge(project, RANK, "calls", SEARCH, "proposed")
     add_edge(project, "symbol:app:app/server.py::Server", "calls", SEARCH, "introspected")
     add_edge(project, "harness:file:CLUSTER.md#demo", "mentions", SEARCH, "proposed")
-    result = StoreSession(project, "agent").call("kg_impact", {"id": SEARCH, "depth": 1})
+    result = hub_session(project, "agent").call("kg_impact", {"id": SEARCH, "depth": 1})
     got = impacted(result)
     assert got["symbol:app:app/server.py::Server"] == (1, "calls", "introspected")
     assert got[HANDLE] == (1, "calls", "resolved")
@@ -343,14 +322,14 @@ def test_impact_follows_no_extracted_edge(tmp_path, kg_env):
     # What the entities step states (kg.entity_links): an entity a model named, linked to the code its name names.
     add_edge(project, "entity:Concept:search", "refers_to", SEARCH, "extracted")
     add_edge(project, RANK, "calls", SEARCH, "extracted")
-    got = impacted(StoreSession(project, "agent").call("kg_impact", {"id": SEARCH, "depth": 2}))
+    got = impacted(hub_session(project, "agent").call("kg_impact", {"id": SEARCH, "depth": 2}))
     assert got[HANDLE] == (1, "calls", "resolved")
     assert RANK not in got and "entity:Concept:search" not in got
 
 
 def test_impact_and_path_do_not_expand_hubs(tmp_path, kg_env, monkeypatch):
     project = built(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     assert SERVER_PY in impacted(session.call("kg_impact", {"id": RANK}))
     monkeypatch.setattr(serve_impact, "HUB_DEGREE", 5)  # app/search.py has six edges, its symbols fewer
     monkeypatch.setattr(serve_walk, "HUB_DEGREE", 5)
@@ -368,7 +347,7 @@ def test_impact_and_path_hide_what_the_sink_cannot_see(tmp_path, kg_env):
     add_edge(project, "harness:file:knowledge.yaml", "mentions", SEARCH_PY, "parsed")
     add_edge(project, "harness:file:harness.yaml", "mentions", SEARCH_PY, "parsed")
     add_edge(project, "harness:file:knowledge.yaml", "depends_on", "harness:file:contracts.yaml", "parsed", level=2)
-    agent, wide = StoreSession(project, "agent"), StoreSession(project, "wide")
+    agent, wide = hub_session(project, "agent"), hub_session(project, "wide")
 
     assert SEARCH in impacted(wide.call("kg_impact", {"id": "usecase:KB-01"}))
     assert SEARCH not in json.dumps(agent.call("kg_impact", {"id": "usecase:KB-01"}))
@@ -391,13 +370,14 @@ def test_path_takes_the_shortest_then_the_strongest(tmp_path, kg_env):
     # An equally short path through proposed edges, via a parent that sorts first.
     add_edge(project, "app:file:app/__init__.py", "mentions", RANK, "proposed")
     add_edge(project, SERVER_PY, "imports", "app:file:app/__init__.py", "proposed")
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     result = session.call("kg_path", {"from": RANK, "to": SERVER_PY})
     data = result["structuredContent"]
     assert [n["id"] for n in data["nodes"]] == [RANK, SEARCH_PY, SERVER_PY]
     assert [(e["rel"], e["status"]) for e in data["edges"]] == [("defines", "parsed"), ("imports", "parsed")]
     assert "<-defines- (parsed) [app:app/search.py] File (parsed)" in result["content"][0]["text"]
     add_edge(project, RANK, "mentions", SERVER_PY, "proposed")
+    session = hub_session(project, "agent")
     assert session.call("kg_path", {"from": RANK, "to": SERVER_PY})["structuredContent"]["hops"] == 1
     assert session.call("kg_path", {"from": RANK, "to": RANK})["structuredContent"]["hops"] == 0
     assert session.call("kg_path", {"from": RANK, "bogus": 1})["isError"]
@@ -405,7 +385,7 @@ def test_path_takes_the_shortest_then_the_strongest(tmp_path, kg_env):
 
 def test_path_without_to_traces_chains(tmp_path, kg_env):
     project = built_wider(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     chains = session.call("kg_path", {"from": "usecase:KB-01"})["structuredContent"]
     assert {n["id"]: n["hop"] for n in chains["nodes"]} == {"usecase:KB-01": 0, SEARCH: 1, TEST_SEARCH: 2}
     result = session.call("kg_path", {"from": "plan:demo"})
@@ -420,7 +400,7 @@ def test_path_without_to_traces_chains(tmp_path, kg_env):
 
 def test_impact_and_path_truncate_behind_a_handle(tmp_path, kg_env, monkeypatch):
     project = built_wider(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     for name, args in (("kg_impact", {"id": RANK}), ("kg_path", {"from": "plan:demo"})):
         full = session.call(name, args)["content"][0]["text"]
         monkeypatch.setattr(serve, "CAP_CHARS", 300)
@@ -445,7 +425,7 @@ def kin(name: str) -> str:
 
 def test_impact_follows_inherits_and_overrides_and_names_every_relation(tmp_path, kg_env):
     project = built_kin(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     result = session.call("kg_impact", {"id": kin("shapes.py::Base.run"), "depth": 1})
     rows = {r["node"]["id"]: (r["rel"], r["rels"], r["to"]) for r in result["structuredContent"]["impacted"]}
     base_run = kin("shapes.py::Base.run")
@@ -464,7 +444,7 @@ def test_impact_follows_inherits_and_overrides_and_names_every_relation(tmp_path
 
 def test_impact_notes_the_coverage_of_its_seeds_languages(tmp_path, kg_env):
     project = built_kin(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     result = session.call("kg_impact", {"id": RANK, "paths": ["app:app/Shape.swift"]})
     coverage = {row["language"]: row for row in result["structuredContent"]["coverage"]}
     assert sorted(coverage) == ["python", "swift"]
@@ -486,7 +466,7 @@ def test_impact_reads_every_edge_into_a_seed_and_says_when_it_cuts(tmp_path, kg_
     project = built(tmp_path, kg_env)
     add_edge(project, "harness:file:knowledge.yaml", "depends_on", RANK, "parsed", level=2)  # hidden from agent
     add_edge(project, SERVER_PY, "calls", RANK, "proposed")  # never followed, never counted
-    agent, wide = StoreSession(project, "agent"), StoreSession(project, "wide")
+    agent, wide = hub_session(project, "agent"), hub_session(project, "wide")
     whole = agent.call("kg_impact", {"id": RANK})
     assert whole["structuredContent"]["cut"] == [] and "cut:" not in whole["content"][0]["text"]
 
@@ -563,7 +543,7 @@ def test_readable_ids_name_files_sections_and_symbols_and_map_back():
 
 def test_every_tool_takes_readable_and_stored_ids_alike(tmp_path, kg_env):
     project = built_wider(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     pairs = [
         ("kg_node", {"id": SEARCH}, {"id": "app:app/search.py::search"}),
         ("kg_node", {"id": "app:file:docs/guide.md#setup"}, {"id": "app:docs/guide.md#setup"}),
@@ -586,7 +566,7 @@ def test_every_tool_takes_readable_and_stored_ids_alike(tmp_path, kg_env):
 
 def test_text_lines_carry_no_uri_and_print_a_shared_label_once(tmp_path, kg_env):
     project = built_wider(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     for name, args in QUERIES:
         result = session.call(name, args)
         text = result["content"][0]["text"]
@@ -602,7 +582,7 @@ def test_text_lines_carry_no_uri_and_print_a_shared_label_once(tmp_path, kg_env)
 
     # The app is customer-level: through the wide sink a result mixes labels; the common one is printed once and a
     # line names its node's own label only when it is another.
-    wide = StoreSession(built_wider(tmp_path / "mixed", kg_env, app_level="customer"), "wide")
+    wide = hub_session(built_wider(tmp_path / "mixed", kg_env, app_level="customer"), "wide")
     text = wide.call("kg_context", {"ids": ["usecase:KB-01"], "hops": 2})["content"][0]["text"]
     head, *lines = text.splitlines()
     common = lines[0].rsplit(": ", 1)[1]
@@ -613,7 +593,7 @@ def test_text_lines_carry_no_uri_and_print_a_shared_label_once(tmp_path, kg_env)
 
 
 def test_a_chat_message_line_names_its_chat_and_thread_and_never_its_text(tmp_path, kg_env):
-    session = StoreSession(built(tmp_path, kg_env), "agent")
+    session = hub_session(built(tmp_path, kg_env), "agent")
     said = {
         "id": "plugin.chats:message:41",
         "kind": "ChatMessage",
@@ -633,7 +613,7 @@ def test_a_chat_message_line_names_its_chat_and_thread_and_never_its_text(tmp_pa
 
 
 def test_search_follows_a_step_or_a_section_to_the_code_it_mentions(tmp_path, kg_env):
-    session = StoreSession(built(tmp_path, kg_env), "agent")
+    session = hub_session(built(tmp_path, kg_env), "agent")
     result = session.call("kg_search", {"query": "Wire the server to search", "limit": 5})
     lines = result["content"][0]["text"].splitlines()
     assert lines[2].startswith("[plan:demo/step:2] PlanStep 'Server'")  # its words: the step first
@@ -647,16 +627,16 @@ def test_search_follows_a_step_or_a_section_to_the_code_it_mentions(tmp_path, kg
     assert only_steps["structuredContent"]["mentioned_by"] == {}
 
     # The app is customer-level and the agent sink clears internal: the step shows, the file it mentions does not.
-    narrow = StoreSession(built(tmp_path / "narrow", kg_env, app_level="customer"), "agent")
+    narrow = hub_session(built(tmp_path / "narrow", kg_env, app_level="customer"), "agent")
     hidden = narrow.call("kg_search", {"query": "Wire the server to search"})["structuredContent"]
     assert [r["id"] for r in hidden["results"]][:1] == ["plan:demo/step:2"]
     assert hidden["mentioned_by"] == {} and all(not r["id"].startswith("app:") for r in hidden["results"])
 
 
 def test_search_lines_say_once_what_every_result_shares_and_when_none_holds_the_query(tmp_path, kg_env):
-    session = StoreSession(built(tmp_path, kg_env), "agent")
+    session = hub_session(built(tmp_path, kg_env), "agent")
     text = session.call("kg_search", {"query": "Wire the server to search"})["content"][0]["text"].splitlines()
-    assert text[0] == "10 result(s) in project demo (build 1), status parsed"  # the status every result shares
+    assert re.fullmatch(r"10 result\(s\) in project demo \(build \d+\), status parsed", text[0])  # one status shared
     assert text[2] == "[plan:demo/step:2] PlanStep 'Server' status=pending"  # its number is in its id
     assert "[app:app/server.py::Server] Symbol lines 4-6 words=1/3" in text  # no status, no label: both shared
     shown = [line.removeprefix("  mentions ") for line in text[2:] if line.lstrip().startswith(("[", "mentions ["))]
@@ -692,30 +672,29 @@ def test_search_lines_say_once_what_every_result_shares_and_when_none_holds_the_
     assert session._line(section, "internal,U", status="resolved") == "[app:docs/a.md#set-up] Section"
 
 
-def test_search_says_how_many_words_each_result_holds_and_quotes_a_document(tmp_path, kg_env):
+def test_search_says_how_many_words_each_result_holds(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
     write(tmp_path / "demo-app" / "docs/quarry.md", "The zephyr quarry closed after the flood of March.\n")
     commit(tmp_path / "demo-app", "a note without a heading")
-    sync_project(project)
-    assert build_project(project).ok
-    session = StoreSession(project, "agent")
+    sync_build(project)
+    session = hub_session(project, "agent")
     result = session.call("kg_search", {"query": "zephyr quarry tuesday", "limit": 3})
     lines = result["content"][0]["text"].splitlines()
     assert "no result holds all 3 words of the query" in lines
     first = lines.index(next(line for line in lines if line.startswith("[app:docs/quarry.md] Document")))
     assert lines[first].endswith(" words=2/3")
-    assert lines[first + 1] == "    > The zephyr quarry closed after the flood of March."
+    # The hub quotes no passage under a result: its snapshot gives the word counts of a match, not its snippet.
     assert result["structuredContent"]["matched"]["app:file:docs/quarry.md"]["words"] == 2
-    # every word held: no note; one word: no count, the document still quoted
+    # every word held: no note; one word: no count
     both = session.call("kg_search", {"query": "zephyr quarry"})["content"][0]["text"]
     assert "no result holds" not in both and " words=" not in both  # a count only for a result short of words
     one = session.call("kg_search", {"query": "zephyr"})["content"][0]["text"].splitlines()
-    assert not any("words=" in line for line in one) and "    > The zephyr quarry closed" in "\n".join(one)
+    assert not any("words=" in line for line in one) and any(line.startswith("[app:docs/quarry.md]") for line in one)
 
 
 def test_context_keeps_nodes_and_edges_within_its_budget_and_counts_the_rest(tmp_path, kg_env):
     project = built_wider(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     roomy = session.call("kg_context", {"query": "search", "budget_tokens": 8000, "hops": 3})["structuredContent"]
     assert roomy["left_out"] == {"nodes": 0, "edges": 0, "beyond": False}
     for budget in (500, 700, 1000, 3000):
@@ -734,7 +713,7 @@ def test_context_keeps_nodes_and_edges_within_its_budget_and_counts_the_rest(tmp
 
 def test_impact_lists_the_first_dependents_of_each_hop_and_counts_the_rest(tmp_path, kg_env):
     project = built_wider(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
     whole = session.call("kg_impact", {"id": RANK})["structuredContent"]
     assert whole["limit"] == IMPACT_LIMIT and whole["left_out"]["hops"] == {}
     # Documents are listed a quarter as many: 5 of the 6 that mention what RANK reaches.
@@ -761,9 +740,8 @@ def test_impact_of_store_py_on_a_real_sized_graph_stays_short(tmp_path, kg_env):
             app / f"app/user_{i:02d}.py", f"from app.search import search\n\n\ndef use_{i}(q):\n    return search(q)\n"
         )
     commit(app, "users")
-    sync_project(project)
-    assert build_project(project).ok
-    result = StoreSession(project, "agent").call("kg_impact", {"paths": ["app:app/search.py"]})
+    sync_build(project)
+    result = hub_session(project, "agent").call("kg_impact", {"paths": ["app:app/search.py"]})
     text, data = result["content"][0]["text"], result["structuredContent"]
     assert len(data["impacted"]) > IMPACT_LIMIT
     assert sum(line.startswith("  [") for line in text.splitlines()) <= 2 * IMPACT_LIMIT + 1 + 5
@@ -772,7 +750,7 @@ def test_impact_of_store_py_on_a_real_sized_graph_stays_short(tmp_path, kg_env):
 
 def test_tools_take_the_argument_names_agents_guess(tmp_path, kg_env):
     project = built_wider(tmp_path, kg_env)
-    session = StoreSession(project, "agent")
+    session = hub_session(project, "agent")
 
     def same(name: str, guessed: dict, own: dict) -> None:
         got, want = session.call(name, guessed), session.call(name, own)
@@ -814,19 +792,18 @@ def test_instructions_descriptions_and_skill_name_only_statuses_the_graph_has():
         assert "'resolved'" in text or "`resolved`" in text
 
 
-def test_results_print_the_lines_of_a_section_a_symbol_and_the_passage_a_long_section_matched(tmp_path, kg_env):
+def test_results_print_the_lines_of_a_section_and_a_symbol(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
     filler = "Filler sentence about nothing. " * 200
     write(tmp_path / "demo-app" / "docs/long.md", f"# Long\n\n{filler}\n\nzanzibarquokka at the end.\n")
     commit(tmp_path / "demo-app", "a long section")
-    sync_project(project)
-    assert build_project(project).ok
-    session = StoreSession(project, "agent")
+    sync_build(project)
+    session = hub_session(project, "agent")
     found = session.call("kg_search", {"query": "zanzibarquokka", "limit": 3})
     lines = found["content"][0]["text"].splitlines()
     hit = next(line for line in lines if line.startswith("[app:docs/long.md#long] Section"))
-    assert hit.endswith(" lines 4-5 of 1-5"), hit  # the passage that holds the word, within the section
-    assert found["structuredContent"]["matched"]["app:file:docs/long.md#long"]["lines"] == "lines 4-5"
+    # The hub names a long section's own lines, not the passage that holds the word: its snapshot keeps no passages.
+    assert hit.endswith(" lines 1-5"), hit
 
     guide = session.call("kg_search", {"query": "rank_results internally"})["content"][0]["text"]
     assert "[app:docs/guide.md#details] Section lines 9-12" in guide  # a short one: its own lines; its anchor names it
@@ -853,7 +830,7 @@ class Always(random.Random):
 
 def test_a_search_explores_only_with_an_explorer_and_says_where_and_with_what_chance(tmp_path, kg_env):
     project = built(tmp_path, kg_env)
-    plain = StoreSession(project, "agent")
+    plain = hub_session(project, "agent")
     query = {"query": "search", "limit": 5}
     before = plain.call("kg_search", query)
     assert all("explored:" not in plain.call("kg_search", query)["content"][0]["text"] for _ in range(20))
@@ -862,7 +839,7 @@ def test_a_search_explores_only_with_an_explorer_and_says_where_and_with_what_ch
     past = [i for i in everything if i not in shown]
     assert len(shown) == 5 and past
 
-    exploring = StoreSession(project, "agent")
+    exploring = hub_session(project, "agent")
     exploring.explorer = Explorer(rate=0.05, rng=Always())
     result = exploring.call("kg_search", query)
     text = result["content"][0]["text"]
@@ -873,7 +850,7 @@ def test_a_search_explores_only_with_an_explorer_and_says_where_and_with_what_ch
     assert 0 < chance <= 0.05 / 2
     assert text.splitlines()[-1].startswith("explored: rank 5, p=")
 
-    never = StoreSession(project, "agent")
+    never = hub_session(project, "agent")
     never.explorer = Explorer(rate=0.0, rng=Always())
     assert [r["id"] for r in never.call("kg_search", query)["structuredContent"]["results"]] == shown
 
@@ -902,14 +879,13 @@ def built_with_code_text(tmp_path, home):
     write(app / "app/templates/card.html", '<div class="course-card">\n  <app-course-card></app-course-card>\n</div>\n')
     write(app / "app/styles/card.scss", ".course-card {\n  color: red;\n}\n")
     commit(app, "cards")
-    sync_project(project)
-    report = build_project(project)
-    assert report.ok, report.errors
+    sync_build(project)
     return project
 
 
 def test_search_finds_where_a_name_is_written_in_code_templates_and_stylesheets(tmp_path, kg_env):
-    session = StoreSession(built_with_code_text(tmp_path, kg_env), "agent")
+    project = built_with_code_text(tmp_path, kg_env)
+    session = hub_session(project, "agent")
     flag = session.call("kg_search", {"query": "LUMEN_CARDS_ENABLED"})
     data = flag["structuredContent"]
     ids = [r["id"] for r in data["results"]]
@@ -930,19 +906,18 @@ def test_search_finds_where_a_name_is_written_in_code_templates_and_stylesheets(
     assert "app:file:app/views.py" in asked["code"]
 
     # Template text is not in the index of prose: a document still answers a question in prose first.
-    store = Store.for_project(session.project)
-    assert store.db.execute("SELECT count(*) FROM node_fts WHERE body LIKE '%app-course-card%'").fetchone()[0] == 0
+    assert not any("app-course-card" in (row[4] or "") for _, row in kept.rows_of(project).keyed)
+    store = session.graph_store
     # A word more files hold than are read per word names a kind of file, not one: it is left out.
     assert {nid for nid, _ in store.code_files(["course-card"], limit=2)} == {
         "app:file:app/templates/card.html",
         "app:file:app/styles/card.scss",
     }
     assert store.code_files(["course-card"], limit=1) == []
-    store.close()
 
 
 def test_search_keeps_to_the_repo_it_is_given(tmp_path, kg_env):
-    session = StoreSession(built(tmp_path, kg_env), "agent")
+    session = hub_session(built(tmp_path, kg_env), "agent")
     wide = session.call("kg_search", {"query": "search"})["structuredContent"]["results"]
     assert any(readable(r["id"]).partition(":")[0] != "app" for r in wide)  # steps, seams and the harness too
     for repo in ("app", "APP"):

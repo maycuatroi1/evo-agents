@@ -1,8 +1,8 @@
 """The thin client of the knowledge graph. Its sync half: ``kg sync`` and its --build, --accept-removals and --due work
 from what the hub holds of each source (GET .../sources/{s}/state) and keep no corpus on the machine
 (``evo_agents.hub.kg_hub_sync``); ``kg build`` and ``kg init`` ask the hub, which alone builds. Its read half:
-``kg query``, ``kg serve``, ``kg status``, ``kg profile``, ``kg settings`` and ``kg semantic`` ask the hub, and a graph
-store left on the machine answers none of them."""
+``kg query``, ``kg serve``, ``kg status``, ``kg profile``, ``kg settings`` and ``kg semantic`` ask the hub, and a corpus
+left on the machine answers none of them."""
 
 import datetime as dt
 import json
@@ -213,15 +213,14 @@ def test_runs_no_build_read_yet_get_a_build_first_from_a_member_and_none_from_th
 
 
 def hub_graph(tmp_path, kg_env, monkeypatch):
-    """The demo project with its graph on the hub (built under a home of the hub's own), and this machine's home empty."""
-    from evo_agents.kg.build import build_project
-    from evo_agents.kg.sync import sync_project
+    """The demo project with its graph on the hub (synced under a home of the hub's own and built in memory), and
+    this machine's home empty."""
+    from tests.kg.built import sync_build
     from tests.kg.hub_graph import sign_in
     from tests.kg.projects import make_project
 
     on_hub = make_project(tmp_path, tmp_path / "hub-home")
-    sync_project(on_hub)
-    assert build_project(on_hub).ok
+    sync_build(on_hub)
     return str(on_hub.harness.root), sign_in(monkeypatch, on_hub)
 
 
@@ -263,14 +262,12 @@ def test_the_reads_of_the_kg_cli_ask_the_hub_and_open_nothing_here(tmp_path, kg_
     assert machine_files(kg_env) == []  # no corpus, no graph, no vectors on this machine
 
 
-def test_a_graph_store_left_on_this_machine_answers_no_read(tmp_path, kg_env, monkeypatch, capsys):
-    from evo_agents.kg.build import build_project
+def test_a_corpus_left_on_this_machine_answers_no_read(tmp_path, kg_env, monkeypatch, capsys):
     from evo_agents.kg.sync import sync_project
     from tests.kg.projects import make_project
 
-    left = make_project(tmp_path, kg_env)  # a store from before graphs were built on the hub only
-    sync_project(left)
-    assert build_project(left).ok and "graph.sqlite" in machine_files(kg_env)
+    left = make_project(tmp_path, kg_env)  # a corpus synced here from before graphs were built on the hub only
+    assert all(r.ok for r in sync_project(left))
     root = str(left.harness.root)
     monkeypatch.setattr("evo_agents.hub.mcp_proxy.session_credentials", lambda: (_ for _ in ()).throw(not_signed_in()))
     monkeypatch.setattr("evo_agents.hub.client.load_credentials", lambda: (_ for _ in ()).throw(not_signed_in()))
