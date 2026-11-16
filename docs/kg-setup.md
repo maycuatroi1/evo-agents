@@ -124,20 +124,12 @@ source sync and every build appends one line to `audit.jsonl` there: ids, times,
 never item content. A sync's line also counts the secrets the git connector redacted, by item id and kind,
 never their values. A build that finds nothing changed builds nothing and adds no line (see below).
 
-A corpus synced before its git connector redacted keeps the old copies: in the blobs of earlier runs, in memo rows,
-and in free pages of the graph. `evo-agents kg scrub` (`--all` for every project directory of the kg home) reads
-them with the connector's patterns and lists each blob that holds a secret by hash, path, item id and kind of
-secret, never the value. A blob is old when nothing uses it, live when an item of the corpus refers to it now (a
-sync of its source replaces it with a redacted copy, so sync and build first), and kept when only records the corpus
-no longer holds name it, in the log of a run still in use (an item or a tombstone of that run still wins). Counting
-changes nothing. `--purge` says what it is about to delete and asks first (`--yes` when no terminal can answer). It
-then rewrites each run log in use that names a kept blob, keeping of its item and tombstone records only those the
-corpus holds (the log keeps its name and format, and replays to the same state), deletes the old and kept blobs, the
-run logs of old runs that name them and the memo rows holding a secret, compacts the memo and the graph so no free
-page keeps the text, and appends a `scrub` line with the counts to `audit.jsonl`. It never deletes what the corpus
-uses, and it holds every source's lock meanwhile, so a sync started then stops at once instead of writing.
-`hub kg push` never sends a run the hub already holds, so a rewritten log leaves the machine only for a run the hub
-lacks. In order:
+Runs synced before the git connector redacted keep the old copies, in the source blobs the hub holds and the graph
+files older builds uploaded. `evo-agents kg scrub` has the hub scrub the project of the current directory (`--project`
+names one, `--all` takes every project; a hub admin, as `evo-agents hub kg scrub`): it lists each object holding a
+secret by hash, kind and kind of secret, never the value, and changes nothing. `--purge` says what it is about to
+delete, asks first (`--yes` when no terminal can answer), and has the hub delete the old ones. Sync and build first,
+so the live copies become old ones (`docs/hub.md`, Secrets in old copies):
 
 ```sh
 evo-agents kg sync --build                   # live copies become old ones
@@ -170,23 +162,13 @@ read-only.
 
 ## Retention
 
-Old data on the machine goes by retention periods (`evo-agents kg prune`): `logs` (default 1d) for run logs, blobs
-and rows of the runs table, `history` (1d) for the builds of the graph, and `memo` (14d) for memo rows after their
-last use. An old run log is deleted once no record of it is the one the corpus holds, and one still in use is
-rewritten without the records the corpus no longer holds, as `kg scrub --purge` does. A log the hub has not received
-is never touched: `hub kg push` records which runs the hub holds, and a run of a source above the hub sink never goes
-there. A blob goes once no log left and no item refers to it, the graph keeps its latest two builds and the builds of
-the period, and a memo row goes when neither the period nor the latest build used it. None of it changes what a build
-makes: a build from scratch gives the same hash before and after. `kg prune` counts and changes nothing,
-`--delete` deletes after a yes (`--yes` when no terminal can answer), and `--logs`, `--history` and `--memo` set the
-periods of one pass. `kg prune --schedule on` counts, asks, and saves the periods in `~/.evo/kg/retention.json`: from
-then on every `kg sync --due --all`, the LaunchAgent's command, prunes each project once a day and appends a `prune`
-line with the counts to its `audit.jsonl`. The schedule is off until the owner turns it on.
+The machine keeps no corpus, memo or graph, so nothing on it ages. The hub keeps the artifacts of each project's
+newest graphs; `evo-agents kg prune` counts, on the hub, the artifacts of the older ones of the project of the current
+directory (`--project`, or `--all`), and `--delete` deletes them (a hub admin, as `evo-agents hub kg prune`).
 
 ```sh
 evo-agents kg prune --all                    # count, change nothing
-evo-agents kg prune --all --delete           # delete what the periods make old, after a yes
-evo-agents kg prune --schedule on            # count, ask, then prune with every scheduled sync
+evo-agents kg prune --all --delete           # delete the artifacts of the older graphs
 ```
 
 ## Trace a schema change across repos

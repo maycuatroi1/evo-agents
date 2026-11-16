@@ -8,9 +8,8 @@ which the tools read, the deploy key and not the redacted password, and never an
 is refused to anyone but a hub admin. A purge deletes the old objects from the bucket and the ``blobs`` rows, marks the
 builds of a deleted graph pruned, writes one audit row counting what went, keeps what is in use, and leaves a project
 the worker still builds and the tools still read. A run log missing from the bucket stops a scan and a purge rather than let a blob in use count as
-old. A source blob is read as the file the items of the run logs name, as on a machine: code is not taken for a
-secret, and a config value only a config file makes a password is found. Runs whose logs a local purge rewrote are
-not pushed again, and a rewritten log of a run the hub lacks pushes and builds. The CLI's ``hub kg scrub`` runs
+old. A source blob is read as the file the items of the run logs name, as the git connector reads it: code is not
+taken for a secret, and a config value only a config file makes a password is found. The CLI's ``hub kg scrub`` runs
 against ``hub serve``, and ``--purge`` needs ``--yes`` there.
 
 The api and the worker run in this process, as in ``tests.hub.test_kg_retention``, whose helpers these tests use;
@@ -18,7 +17,6 @@ the blob store is moto's server (``tests.hub.s3``)."""
 
 from __future__ import annotations
 
-import hashlib
 import json
 
 import pytest
@@ -35,11 +33,9 @@ from evo_agents.hub import tables
 from evo_agents.hub.blobs import blob_key
 from evo_agents.hub.client import Hub
 from evo_agents.hub.kg_build import worker_project
-from evo_agents.hub.kg_ingest import read_run_log
 from evo_agents.hub.kg_push import Pusher
 from evo_agents.kg.corpus import Corpus
-from evo_agents.kg.scrub import KEPT, blob_refs, blob_secrets, holding_sources, purge, scan_project, secrets_in
-from evo_agents.kg.sync import sync_project
+from evo_agents.kg.scrub import blob_refs, blob_secrets, secrets_in
 from tests.hub.test_kg import (
     PROJECT,
     REGISTRATION,
@@ -278,7 +274,7 @@ def test_the_cli_scrubs_as_a_hub_admin_and_purges_with_yes_only(hub_db, tmp_path
         assert denied.returncode == 1 and "admin" in denied.stderr
 
 
-# Reading a source blob as its file, and pushing logs a purge rewrote
+# Reading a source blob as its file
 
 
 def item_blobs(machine: Machine, item_id: str) -> set[str]:
@@ -288,30 +284,6 @@ def item_blobs(machine: Machine, item_id: str) -> set[str]:
         return set(blob_refs(corpus.get(item_id).record))
     finally:
         corpus.close()
-
-
-def leaky_blobs(machine: Machine, item_id: str) -> set[str]:
-    """The blobs of ``item_id`` in the machine's corpus that hold a value."""
-    corpus = Corpus(PROJECT, machine.home)
-    try:
-        return {sha for sha in item_blobs(machine, item_id) if leaked(corpus.get_blob(f"sha256:{sha}"))}
-    finally:
-        corpus.close()
-
-
-def sync_unlisted(machine: Machine, *items: dict) -> None:
-    """Sync the docs with ``items`` and no listing, so no other item is removed."""
-    machine.files["docs"].write_text(json.dumps({"items": list(items), "listing": False}), encoding="utf-8")
-    assert all(result.ok for result in sync_project(machine.project(), ["docs"]))
-
-
-def purge_here(machine: Machine):
-    """``kg scrub --purge`` on the machine; the scan it purged."""
-    project = machine.project()
-    with holding_sources(project.root):
-        found = scan_project(PROJECT, project.root)
-        purge(found)
-    return found
 
 
 def test_scrub_reads_a_source_blob_as_the_file_its_run_logs_name(hub, tmp_path):
@@ -342,59 +314,6 @@ def test_scrub_reads_a_source_blob_as_the_file_its_run_logs_name(hub, tmp_path):
     assert push(hub, laptop).ok  # a new run: the hub reads its log too, and the old blobs keep their path
     found, _ = scan_all(hub, limit=1000)
     assert {(item["sha256"], item["state"]) for item in found} == {(sha, "old") for sha in holding}
-
-
-def test_push_sends_no_run_again_after_a_purge_rewrote_its_log(hub, tmp_path):
-    laptop = Machine(tmp_path, "laptop")
-    (first,) = laptop.sync("docs", doc("guide", PASSWORD_LINE), doc("setup", "Install it."))
-    assert push(hub, laptop).ok
-    log = laptop.home / PROJECT / "log" / f"{first}.jsonl.gz"
-    pushed_log = hashlib.sha256(log.read_bytes()).hexdigest()
-    leaky = leaky_blobs(laptop, "docs:doc:guide")
-    sync_unlisted(laptop, doc("guide", REDACTED_LINE, rev="2"))  # the first run still holds setup's record
-
-    found = purge_here(laptop)
-    assert found.rewrite == [log.name] and {f.state for f in found.blobs} == {KEPT}
-    assert {f.sha256 for f in found.blobs} == leaky
-    assert found.deleted["rewritten"] == 1 and found.deleted["blobs"] == len(found.blobs)
-    assert hashlib.sha256(log.read_bytes()).hexdigest() != pushed_log
-    logs = len(held(hub, ("kg-log",)))
-
-    report = push(hub, laptop)
-    assert report.ok, report.errors
-    assert report.present == 1 and len(report.pushed) == 1 and first not in report.pushed
-    assert len(held(hub, ("kg-log",))) == logs + 1  # the rewritten log was not sent
-    ingests = tables.kg_ingests
-    assert query(hub.db, select(ingests.c.log_sha256).where(ingests.c.run_id == first)) == [(pushed_log,)]
-    run_worker(hub)
-    assert build_rows(hub)[0]["status"] == "succeeded"
-    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
-    assert leaky <= held(hub, ("kg-blob",))  # pushed before the purge: the hub's scrub deletes them
-
-
-def test_a_log_a_purge_rewrote_pushes_and_builds_without_its_old_blobs(hub, tmp_path):
-    desk = Machine(tmp_path, "desk")
-    (first,) = desk.sync("docs", doc("guide", PASSWORD_LINE), doc("setup", "Install it."))
-    leaky = leaky_blobs(desk, "docs:doc:guide")
-    sync_unlisted(desk, doc("guide", REDACTED_LINE, rev="2"))
-    found = purge_here(desk)
-    assert found.rewrite == [f"{first}.jsonl.gz"] and {f.sha256 for f in found.blobs} == leaky
-    assert found.deleted["blobs"] == len(leaky) > 0
-
-    log = desk.home / PROJECT / "log" / f"{first}.jsonl.gz"
-    project = desk.project()
-    checked = read_run_log(log, PROJECT, first, project.policy, lambda label: True)  # the hub's strict reader
-    assert checked.items == 1 and not checked.blobs & leaky
-    report = push(hub, desk)
-    assert report.ok and len(report.pushed) == 2, report.errors
-    assert not leaky & held(hub, ("kg-blob",)) and not leaky & set(objects(hub))
-    run_worker(hub)
-    build = build_rows(hub)[0]
-    assert build["status"] == "succeeded", build
-    results = tool_ok(hub, "kg_search", {"query": "setup"})["structuredContent"]["results"]
-    assert results and not leaked(json.dumps(results))
-    found, _ = scan_all(hub, limit=1000)
-    assert found == []  # nothing on the hub holds the password
 
 
 def test_the_scan_of_the_graph_tables_reads_its_rows_in_batches_off_the_event_loop(hub_db, monkeypatch):
