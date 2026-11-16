@@ -12,6 +12,7 @@ event loop beside it (``kg build``, the bench) runs at full speed."""
 
 from __future__ import annotations
 
+import ctypes
 import heapq
 import logging
 import queue
@@ -91,6 +92,8 @@ ALONE = 2  # ``sys.getrefcount`` of an object only a local variable holds: it an
 log = logging.getLogger(__name__)
 
 _aside: queue.SimpleQueue | None = None  # what ``let_go`` was given, for the thread ``free_aside`` started
+_pending = 0  # what ``let_go`` gave the thread that it has not taken apart yet
+_counting = threading.Lock()
 
 
 def free_aside() -> None:
@@ -110,7 +113,19 @@ def let_go(dying: Any) -> None:
         held = vars(dying)
         parts = list(held.values())
         held.clear()  # the thread is the only holder of what nothing else holds, once this returns
+        _count(1)
         _aside.put(parts)
+
+
+def freeing() -> bool:
+    """Whether the thread ``free_aside`` started has something given to it still to free."""
+    return _pending > 0
+
+
+def _count(step: int) -> None:
+    global _pending
+    with _counting:
+        _pending += step
 
 
 def _freeing(given: queue.SimpleQueue) -> None:
@@ -123,6 +138,31 @@ def _freeing(given: queue.SimpleQueue) -> None:
             except Exception:  # the thread goes on: ended, every snapshot dropped after it would stay in memory
                 log.exception("kg free aside failed")
             del parts
+            _count(-1)
+            if given.empty():
+                give_back()
+
+
+def give_back() -> None:
+    """Hand the memory the C allocator keeps free back to the system (glibc's ``malloc_trim``; nothing elsewhere).
+    The allocator keeps what a snapshot freed for the next one, a gigabyte and more after a large graph: the api's
+    resident memory, which its limit and its pressure (``evo_agents.hub.kg_snapshots``) count, would stay as high as
+    if it still held the graph."""
+    trim = _malloc_trim()
+    if trim is not None:
+        trim(0)
+
+
+_trim: list = []  # glibc's ``malloc_trim``, or None, once looked up
+
+
+def _malloc_trim():
+    if not _trim:
+        try:
+            _trim.append(ctypes.CDLL("libc.so.6").malloc_trim)
+        except (OSError, AttributeError):
+            _trim.append(None)
+    return _trim[0]
 
 
 def _take_apart(objs: list) -> None:
