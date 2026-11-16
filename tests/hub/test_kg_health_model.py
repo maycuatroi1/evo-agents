@@ -31,6 +31,7 @@ from evo_agents.kg.snapshot import Snapshot, store_rows
 from evo_agents.kg.store import Store
 from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import commit, git, make_project, write
 from tests.kg.test_clusters import needs_engine
 
@@ -134,11 +135,9 @@ def demo(tmp_path, monkeypatch):
 
 
 def test_a_built_graph_says_which_python_methods_no_call_reaches_and_which_files_each_git_source_holds(demo):
-    store = Store.open_file(demo.graph, immutable=True)
-    try:
-        reach = graph_rows.call_reach(store_rows(store, store.latest_ready()))
-    finally:
-        store.close()
+    report = built.build(demo.project)  # in memory, as the hub builds (``kg_build``)
+    assert report.ok, report.errors
+    reach = graph_rows.call_reach(built.rows_of(demo.project))
     assert reach == {  # rank_results is called by search, search by Server.handle; nothing calls handle
         "functions": 2,
         "uncalled_functions": 0,
@@ -150,10 +149,10 @@ def test_a_built_graph_says_which_python_methods_no_call_reaches_and_which_files
     head = git(demo.app, "rev-parse", "HEAD").strip()
     tree = dict((line.split("\t")[1], line.split()[2]) for line in git(demo.app, "ls-tree", "-r", "HEAD").splitlines())
     assert kg_coverage.source_files(demo.project) == {"app": {"commit": head, "files": tree, "truncated": False}}
-    built = kg_coverage.build_coverage(demo.report.coverage, reach, skipped=demo.report.skipped)
-    app = next(source for source in built["sources"] if source["id"] == "app")
-    assert app["read"]["commit"] == head and app["items"] >= len(tree) and built["python"] == reach
-    assert built["resolved_ratio"] == kg_coverage.ratio(built["resolved"], built["mentions"])
+    kept = kg_coverage.build_coverage(report.coverage, reach, skipped=report.skipped)
+    app = next(source for source in kept["sources"] if source["id"] == "app")
+    assert app["read"]["commit"] == head and app["items"] >= len(tree) and kept["python"] == reach
+    assert kept["resolved_ratio"] == kg_coverage.ratio(kept["resolved"], kept["mentions"])
 
 
 def test_a_git_source_of_more_files_than_a_build_keeps_says_its_list_is_cut(demo, monkeypatch):

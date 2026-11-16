@@ -12,6 +12,9 @@ from evo_agents.kg import search as text_search
 from evo_agents.kg.policy import TOP_AUDIENCE, audience_below, audience_join, audience_of
 from evo_agents.kg.protocol import canonical_json, sha256
 
+# the version of the tables a build's rows fill, part of every content hash: 4: units, nodes and edges gained
+# label_aud, node_fts_aud came; 3: node_fts kind and path
+SCHEMA_VERSION = "4"
 KEYED_KINDS = ("Symbol",)  # kinds whose props.key is unique; keep in step with the nodes_key index
 NODE_COLUMNS = "node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases, label_aud"
 EDGE_COLUMNS = "edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"

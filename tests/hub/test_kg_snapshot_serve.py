@@ -168,51 +168,66 @@ def test_each_reader_gets_a_view_of_its_own_over_the_one_snapshot(hub, tmp_path,
     assert second.reader == frozenset({"chat:1"})
 
 
-def test_the_labelled_nodes_of_a_view_are_those_of_the_file(tmp_path, monkeypatch):
+def aud_view_of(tmp_path, monkeypatch):
+    """The graph of aud with the items of chats 1 and 2 (``tests.hub.test_kg_audience``), built in memory, and the
+    ids of what each reader below sees of it: the plan and the source have no audience, #1 is in chat 1 and the grant
+    of aud-b, #2 in chat 1 alone, #3 in chat 2 and the grant, K-9 is mentioned by #1 alone."""
+    from tests.hub import test_kg_audience as aud
+    from tests.kg import built
+
+    project = aud.synced(tmp_path, monkeypatch, 1, 2)
+    assert built.build(project).ok
+    public = {aud.PLAN, "source:chat"}
+    sees = {
+        frozenset(): public,
+        frozenset({"chat:1"}): public | {aud.M2},
+        frozenset({"chat:1", aud.GB}): public | {aud.M1, aud.M2, aud.K9},
+    }
+    return built.snapshot_of(project), sees
+
+
+def test_the_labelled_nodes_of_a_view_say_which_its_reader_sees(tmp_path, monkeypatch):
     from evo_agents.kg.labelled import labelled_nodes
     from tests.hub import test_kg_audience as aud
 
-    graph = aud.build(tmp_path, monkeypatch, 1, 2)
-    path = tmp_path / "graph.sqlite"
-    path.write_bytes(graph.data)
-    store = Store.open_file(path, immutable=True)
-    try:
-        rows = store_rows(store, store.latest_ready())
-        for reader in (frozenset(), frozenset({"chat:1"})):
-            store.reader = reader
-            view = Snapshot.from_stored(rows).view(reader)
-            assert sorted(labelled_nodes(view), key=repr) == sorted(labelled_nodes(store), key=repr)
-            some = next(iter(labelled_nodes(store))).node_id
-            assert list(labelled_nodes(view, node_id=some)) == list(labelled_nodes(store, node_id=some))
-    finally:
-        store.close()
+    snap, sees = aud_view_of(tmp_path, monkeypatch)
+    every = {n["id"] for n in snap.nodes}
+    assert {aud.M1, aud.M2, aud.M3, aud.K7, aud.K9} < every
+    for reader, seen in sees.items():
+        view = snap.view(reader)
+        found = list(labelled_nodes(view))
+        assert {n.node_id for n in found} == every
+        assert {n.node_id for n in found if n.seen} == seen
+        assert all((n.level, n.location) == INTERNAL for n in found)  # the label of the chat source
+        assert [n.within(INTERNAL) for n in found] == [n.seen for n in found]
+        assert not any(n.within(PUBLIC) or n.within(None) for n in found)
+        (one,) = labelled_nodes(view, node_id=aud.M2)
+        assert (one.node_id, one.seen) == (aud.M2, aud.M2 in seen)
+        assert {n.node_id for n in labelled_nodes(view, ("Code",))} == {aud.K7, aud.K9}
 
 
-def test_the_entity_map_reads_of_a_view_are_those_of_the_file(tmp_path, monkeypatch):
+def test_the_entity_map_reads_of_a_view_hold_what_its_reader_sees_under_the_ceiling(tmp_path, monkeypatch):
     from evo_agents.kg import entity_map_reads as reads
     from tests.hub import test_kg_audience as aud
 
-    graph = aud.build(tmp_path, monkeypatch, 1, 2)
-    path = tmp_path / "graph.sqlite"
-    path.write_bytes(graph.data)
-    store = Store.open_file(path, immutable=True)
-    try:
-        b = store.latest_ready()
-        rows = store_rows(store, b)
-        rels = sorted({e["rel"] for e in Snapshot.from_stored(rows).edges})
-        for reader in (frozenset(), frozenset({"chat:1"}), frozenset({"chat:1", aud.GB})):
-            store.reader = reader
-            view = Snapshot.from_stored(rows).view(reader)
-            for ceiling in (None, PUBLIC, INTERNAL, (9, 9)):
-                assert sorted(reads.node_rows(view, b, ceiling)) == sorted(reads.node_rows(store, b, ceiling))
-                assert list(reads.item_rows(view, b, ceiling)) == list(reads.item_rows(store, b, ceiling))
-                for rel in rels:
-                    assert sorted(reads.edge_rows(view, b, ceiling, rel)) == sorted(
-                        reads.edge_rows(store, b, ceiling, rel)
-                    )
-            assert reads.cluster_rows(view, b) == [tuple(r) for r in reads.cluster_rows(store, b)]
-    finally:
-        store.close()
+    snap, sees = aud_view_of(tmp_path, monkeypatch)
+    items = [aud.M1, aud.M2, aud.M3, aud.PLAN]
+    mentions = {(aud.M1, aud.PLAN), (aud.M2, aud.PLAN), (aud.M3, aud.M2)}
+    for reader, seen in sees.items():
+        view = snap.view(reader)
+        for ceiling in (None, PUBLIC, INTERNAL, (9, 9)):
+            clears = ceiling is not None and ceiling >= INTERNAL  # every row is labelled internal
+            assert {r[0] for r in reads.node_rows(view, 0, ceiling)} == (seen if clears else set())
+            assert [r[0] for r in reads.node_rows(view, 0, ceiling, ("Code",))] == (
+                [aud.K9] if clears and aud.K9 in seen else []
+            )
+            found = list(reads.item_rows(view, 0, ceiling))
+            assert [r[0] for r in found] == sorted(items)  # each item, the ones the reader does not see as 0
+            assert {r[0] for r in found if r[3] == 1} == ({i for i in items if i in seen} if clears else set())
+            assert set(reads.edge_rows(view, 0, ceiling, "mentions")) == (
+                {(src, dst) for src, dst in mentions if src in seen and dst in seen} if clears else set()
+            )
+        assert reads.cluster_rows(view, 0) == []  # built without clusters
 
 
 def test_the_coordinator_holds_the_most_recently_read_projects_and_no_finished_load(monkeypatch):

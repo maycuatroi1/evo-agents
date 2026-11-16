@@ -9,6 +9,7 @@ of its key, as the store reads them. A span-less where-provenance row sorts firs
 from __future__ import annotations
 
 from evo_agents.kg.graph_model import (
+    SCHEMA_VERSION,
     Clusters,
     Graph,
     cluster_tables,
@@ -20,7 +21,6 @@ from evo_agents.kg.graph_model import (
     searched_digest,
 )
 from evo_agents.kg.protocol import canonical_json, sha256
-from evo_agents.kg.store import SCHEMA_VERSION
 
 
 def _contents(rows: dict[str, dict], order) -> list[str]:
