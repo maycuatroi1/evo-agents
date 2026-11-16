@@ -7,6 +7,7 @@ from __future__ import annotations
 import pytest
 
 pytest.importorskip("fastapi")
+pytest.importorskip("sqlalchemy", reason="needs the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub.server import kg as server_kg
 from evo_agents.kg.tools import SIGNATURES

@@ -14,6 +14,7 @@ from tests.hub import live
 from tests.hub.test_plans import PROJECT, draft, needs_pg, plan_url, put, setup_project
 
 pytest.importorskip("fastapi")
+pytest.importorskip("sqlalchemy", reason="needs the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub.server.paging import MAX_LIMIT, TOTAL_COUNT, WHOLE, Page  # noqa: E402
 

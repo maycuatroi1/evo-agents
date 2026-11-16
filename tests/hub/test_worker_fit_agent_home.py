@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 pytest.importorskip("fastapi", reason="the fit of a worker needs the hub-server extra, evo-ak[hub-server]")
+pytest.importorskip("sqlalchemy", reason="needs the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub import runs  # noqa: E402
 from evo_agents.hub.server.runs.service.worker_fit import lacks_agent_home, unfit_worker, worker_problems  # noqa: E402
