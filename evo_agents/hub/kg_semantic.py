@@ -52,10 +52,16 @@ EMBED_BUDGET_SECONDS = 300.0  # a build embeds for 5 minutes at most, so it free
 def index(path: Path, settings: semantic.Settings, cache: semantic.Cache | Path) -> semantic.Indexed:
     """The vectors ``settings`` asks for, in the graph at ``path``; embedded only when ``cache`` (a HubCache, or the
     path of a vectors.sqlite) lacks them, for at most EMBED_BUDGET_SECONDS (the model is downloaded first, here,
-    never by a search). Blocking."""
-    if isinstance(cache, Path):
-        return store_vectors.index_file(path, settings, cache, leave_wal=True, budget=EMBED_BUDGET_SECONDS)
-    return store_vectors.index_file(path, settings, cache=cache, leave_wal=True, budget=EMBED_BUDGET_SECONDS)
+    never by a search). A model this call loaded is dropped after: kept in a worker's process, it stayed on top of
+    the next build's peak (some 1.2 GB for bge-m3), which a kg worker's memory cap did not hold. Blocking."""
+    loaded = semantic.is_loaded(settings.model)
+    try:
+        if isinstance(cache, Path):
+            return store_vectors.index_file(path, settings, cache, leave_wal=True, budget=EMBED_BUDGET_SECONDS)
+        return store_vectors.index_file(path, settings, cache=cache, leave_wal=True, budget=EMBED_BUDGET_SECONDS)
+    finally:
+        if not loaded:
+            semantic.forget_model(settings.model)
 
 
 SEED_FILES = (
