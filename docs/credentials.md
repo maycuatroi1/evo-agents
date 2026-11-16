@@ -336,6 +336,11 @@ take the same turn:
    - `round-robin` (the default): each run takes the account whose turn it is;
    - `weighted-round-robin`: each account takes runs in proportion to its `weight`; weight 0 leaves the pool;
    - `fill-first`: the lowest `priority` (then the name) while it is usable;
+   - `quota-pacing`: the account with the most of its weekly (`seven_day`) window left per hour until that window
+     resets, so a quota that resets soon is spent first. A window not reported, or past its reset, counts as unused.
+     An account whose `five_hour` window is at `five_hour_ceiling_pct` (default 90) or over waits while a cooler one
+     exists, and the last `hard_reserve_pct` (default 10) of a weekly window is kept back while another account has
+     more. It applies to env accounts and to provider accounts reached through the gateway alike;
    an account its owner paused, or one cooling down until `cooldown_until`, is skipped;
 3. when every account left cools down, the one whose cooldown ends first, and a `system` event of the run says so;
    when every one is paused, none, and an event says that. An event names the account by its secret's id, never by
@@ -441,7 +446,18 @@ evo-agents hub account pause claude-a                         # a run that holds
 evo-agents hub account resume claude-a
 evo-agents hub account policy demo --strategy weighted-round-robin --cooldown 1800 --no-failover
 evo-agents hub account policy demo --reset                    # the defaults again
+evo-agents hub account policy demo --strategy quota-pacing --hard-reserve-pct 15 --five-hour-ceiling-pct 80
+evo-agents hub account set claude-a --weekly-budget-usd 50 --weekly-reset-at 2026-11-16T06:00:00Z
+evo-agents hub account set claude-a --no-weekly-budget
 ```
+
+**A weekly budget.** An owner may give an account `weekly_budget_usd` and, if they like, `weekly_reset_at`, the UTC
+instant its weeks start from (Monday 00:00 UTC without one); PATCH `/v1/accounts/{name}` takes both, null drops them,
+and the `account.set` audit row says so. The cost of the runs that took the account since its week began, over the
+budget, is the account's `seven_day` window, reset when the week ends (`server/account_budgets.py`). It replaces a
+`seven_day` window the account reported, shows on `/v1/accounts`, `hub account list|show` and the account pools, and
+quota-pacing weighs it. A budget spent marks the usage `rejected` until the week ends. The cost is an estimate from the
+runs' usage.
 
 ### Adding and renewing a Claude account
 
@@ -653,8 +669,12 @@ by id, never by name or value.
   `PUT .../account-pools/{pool}/accounts` (body `name`, optional `agent`), `DELETE .../accounts/{secret_id}` and
   `PUT /v1/projects/{p}/agents/{handle}/account-pool` (body `account_pool`, null to detach). Reading and changing need the
   admin role on the project or on the hub.
-- CLI: `evo-agents hub account-pool list|show|create|delete|add|remove` and `evo-agents hub agent account-pool HANDLE POOL`
+- CLI: `evo-agents hub account-pool list|show|create|delete|add|remove|policy` and `evo-agents hub agent account-pool HANDLE POOL`
   (`--none` detaches).
+- Policy: a pool has its own `strategy` (round-robin by default) and the quota-pacing thresholds `hard_reserve_pct` and
+  `five_hour_ceiling_pct`, given at creation or changed with `PATCH .../account-pools/{pool}` (admin only, audited as
+  `account-pool.policy`): `evo-agents hub account-pool policy POOL --strategy quota-pacing --five-hour-ceiling-pct 80`.
+  Cooldown and failover stay the defaults.
 - Web: the Account pools group of the Accounts page, a section for each project the visitor administers: its pools as
   cards, each listing its accounts (an X removes one) and the agents that use it, with a menu that adds one of the
   visitor's model accounts or of the project's agents (no name to type); New pool; and a select per agent of the
@@ -694,6 +714,13 @@ accounts keep the sign-in of the section above.
   holds it. `/v1/secrets` does not list it.
 - A provider account is an account like the others: bound to projects and workers, with a weight, a priority, a pause,
   a cooldown and an end, shared through `/v1/secrets/{name}/shares`, picked by the rules of the section Accounts.
+- **Z.ai quota.** For an account of provider `zai`, the hub reads the quota left from GET
+  `<origin>/api/monitor/usage/quota/limit` (the origin of its base URL) with the key as a Bearer token, pinned to the
+  checked public address as a probe is (`server/provider_quota.py`). The five-hour limit becomes the `five_hour` window
+  and the weekly one `seven_day`, each a share used with its UTC reset; a window used up cools the account down until it
+  resets. The result is kept in the account's last usage. `GatewaySync` reads it periodically and after each sweep;
+  `POST /v1/provider-accounts/{name}/quota`, its agent route under `/v1/projects/{project}/agents/{handle}/` and
+  `evo-agents hub provider-account quota NAME [--agent HANDLE]` read it on demand. An error never holds the key.
 
 **The gateway.** The model calls of such accounts go through OmniRoute, the hub's `gateway` service: it runs on a
 network only the api joins, with no port and no domain, and the hub reconciles its connections from the provider

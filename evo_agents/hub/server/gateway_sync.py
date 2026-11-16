@@ -1,6 +1,8 @@
 """The hub is the source of truth of the model gateway: ``reconcile`` makes the gateway's connections what the provider
 accounts in Postgres say, and ``GatewaySync`` runs it when the api starts, shortly after a write of a provider account
-(``poke``) and every ``INTERVAL`` seconds, so a gateway that lost its volume is rebuilt on the next round.
+(``poke``) and every ``INTERVAL`` seconds, so a gateway that lost its volume is rebuilt on the next round. Each round
+also reads the quota of every Z.ai account (``provider_quota.refresh_all``) when ``QUOTA_INTERVAL`` seconds passed
+since the last read, or when its sweep took back the keys of runs that ended.
 
 Each live provider account whose catalog entry goes through the gateway is one connection named
 ``evo-<secret id>-<fingerprint>``: of the catalog's provider, or, for a custom endpoint (custom-openai,
@@ -23,6 +25,7 @@ import asyncio
 import hmac
 import logging
 import re
+import time
 from dataclasses import dataclass
 
 from fastapi import FastAPI
@@ -39,6 +42,7 @@ from evo_agents.hub.server.sealing import Sealed, Sealer, agent_provider_aad, se
 log = logging.getLogger(__name__)
 
 INTERVAL = 60.0  # seconds between two rounds when nothing pokes
+QUOTA_INTERVAL = 300.0  # seconds between two reads of the Z.ai accounts' quotas (provider_quota)
 DEBOUNCE = 0.2  # seconds a poke waits for the writes that follow it
 NAME = re.compile(r"evo-(\d+)-([0-9a-f]{16})")  # a connection the hub made
 NODE_KINDS = {"custom-openai": "openai-compatible", "custom-anthropic": "anthropic-compatible"}
@@ -208,10 +212,14 @@ async def reconcile(
 
 
 class GatewaySync:
-    """Runs ``reconcile`` at start, after a ``poke`` and every ``interval`` seconds, one round at a time."""
+    """Runs ``reconcile`` at start, after a ``poke`` and every ``interval`` seconds, one round at a time; reads the
+    quota of the Z.ai accounts with ``quota_hooks`` (transport, resolver: the tests' or none) as the module says."""
 
     def __init__(self, client: GatewayClient, engine: AsyncEngine, sealer: Sealer, secret: str, interval=INTERVAL):
         self.client, self.engine, self.sealer, self.interval = client, engine, sealer, interval
+        self.quota_hooks: tuple = (None, None)
+        self.quota_interval = QUOTA_INTERVAL
+        self._quota_at: float | None = None  # time.monotonic() of the last read of the quotas
         self._fingerprint_key = derive(secret, "fingerprint")
         self._wake = asyncio.Event()
         self._asked = 1  # the start asks for the first round
@@ -250,7 +258,11 @@ class GatewaySync:
             await asyncio.sleep(DEBOUNCE)
 
     async def round(self) -> None:
-        await self._sweep()
+        swept = await self._sweep()
+        await self._reconcile()
+        await self._quotas(swept)
+
+    async def _reconcile(self) -> None:
         try:
             changes = await reconcile(self.client, self.engine, self.sealer, self._fingerprint_key, self.status)
         except GatewayError as exc:
@@ -264,14 +276,29 @@ class GatewaySync:
         self.last_error = None
         log.debug("gateway: reconciled", extra={"changes": changes})
 
-    async def _sweep(self) -> None:
-        """Take back the keys of the runs that ended (``gateway_leases.sweep``); a failure waits for the next round."""
+    async def _sweep(self) -> int:
+        """Take back the keys of the runs that ended (``gateway_leases.sweep``), how many; a failure waits for the next
+        round."""
         from evo_agents.hub.server import gateway_leases  # it reads the gateway's connections through this module
 
         try:
-            await gateway_leases.sweep(self.client, self.engine)
+            return await gateway_leases.sweep(self.client, self.engine)
         except Exception as exc:  # the loop must not die
             log.exception("gateway: the sweep of run keys failed", extra={"error": type(exc).__name__})
+            return 0
+
+    async def _quotas(self, swept: int) -> None:
+        """Read the quota of every Z.ai account when it is time, as the module says; a failure waits for the next."""
+        from evo_agents.hub.server import provider_quota  # it reads the accounts' cooldowns through account_choice
+
+        now = time.monotonic()
+        if not swept and self._quota_at is not None and now - self._quota_at < self.quota_interval:
+            return
+        self._quota_at = now
+        try:
+            await provider_quota.refresh_all(self.engine, self.sealer, self.quota_hooks)
+        except Exception as exc:  # the loop must not die
+            log.exception("gateway: the read of Z.ai quotas failed", extra={"error": type(exc).__name__})
 
 
 def poke(app: FastAPI) -> None:
@@ -312,6 +339,9 @@ async def start(app: FastAPI, config: HubConfig) -> Running:
         return Running(app)
     interval = getattr(app.state, "gateway_interval", INTERVAL)
     sync = GatewaySync(client, app.state.engine, app.state.sealer, config.gateway_secret, interval)
+    state = app.state
+    sync.quota_hooks = (getattr(state, "provider_transport", None), getattr(state, "provider_resolver", None))
+    sync.quota_interval = getattr(state, "quota_interval", QUOTA_INTERVAL)
     app.state.gateway_sync = sync
     app.state.gateway_task = asyncio.create_task(sync.run(), name="gateway-sync")
     return Running(app)

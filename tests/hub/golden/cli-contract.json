@@ -34,6 +34,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -127,6 +129,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -220,6 +224,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -273,6 +279,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -306,7 +314,8 @@
           "choices": [
             "round-robin",
             "weighted-round-robin",
-            "fill-first"
+            "fill-first",
+            "quota-pacing"
           ]
         },
         {
@@ -329,6 +338,22 @@
         {
           "flags": [
             "--max-failovers"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--hard-reserve-pct"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--five-hour-ceiling-pct"
           ],
           "value": "integer",
           "required": false,
@@ -359,7 +384,9 @@
           "failover",
           "max_failovers",
           "project",
-          "updated_at"
+          "updated_at",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
         ],
         "schema": "AccountPolicy"
       }
@@ -405,6 +432,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -451,6 +480,30 @@
           "value": "integer",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--weekly-budget-usd"
+          ],
+          "value": "number",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-weekly-budget"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--weekly-reset-at"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": {
@@ -474,6 +527,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -667,6 +722,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -775,7 +832,10 @@
           "created_by",
           "created_at",
           "accounts",
-          "agents"
+          "agents",
+          "strategy",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
         ],
         "schema": "AccountPool"
       }
@@ -801,6 +861,36 @@
         },
         {
           "flags": [
+            "--strategy"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "round-robin",
+            "weighted-round-robin",
+            "fill-first",
+            "quota-pacing"
+          ]
+        },
+        {
+          "flags": [
+            "--hard-reserve-pct"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--five-hour-ceiling-pct"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -817,7 +907,10 @@
           "created_by",
           "created_at",
           "accounts",
-          "agents"
+          "agents",
+          "strategy",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
         ],
         "schema": "AccountPool"
       }
@@ -873,7 +966,85 @@
           "created_by",
           "created_at",
           "accounts",
-          "agents"
+          "agents",
+          "strategy",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
+        ],
+        "schema": "AccountPool"
+      }
+    },
+    "hub account-pool policy": {
+      "positionals": [
+        {
+          "name": "pool",
+          "metavar": "POOL",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--strategy"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "round-robin",
+            "weighted-round-robin",
+            "fill-first",
+            "quota-pacing"
+          ]
+        },
+        {
+          "flags": [
+            "--hard-reserve-pct"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--five-hour-ceiling-pct"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "created_by",
+          "created_at",
+          "accounts",
+          "agents",
+          "strategy",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
         ],
         "schema": "AccountPool"
       }
@@ -930,7 +1101,10 @@
           "created_by",
           "created_at",
           "accounts",
-          "agents"
+          "agents",
+          "strategy",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
         ],
         "schema": "AccountPool"
       }
@@ -972,7 +1146,10 @@
           "created_by",
           "created_at",
           "accounts",
-          "agents"
+          "agents",
+          "strategy",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
         ],
         "schema": "AccountPool"
       }
@@ -20884,6 +21061,53 @@
           "updated_at"
         ],
         "schema": "ProviderAccount"
+      }
+    },
+    "hub provider-account quota": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "ok",
+          "usage",
+          "status",
+          "error"
+        ],
+        "schema": "ProviderQuota"
       }
     },
     "hub provider-account resume": {
@@ -82953,7 +83177,7 @@
             "accounts"
           ],
           "summary": "Change Account",
-          "description": "Change the weight or priority of the caller's account ``name``, or pause or resume it.",
+          "description": "Change the weight, priority or weekly budget of the caller's account ``name``, or pause or resume it.",
           "operationId": "change_account_v1_accounts__name__patch",
           "parameters": [
             {
@@ -87830,6 +88054,110 @@
             }
           }
         },
+        "patch": {
+          "tags": [
+            "account pools"
+          ],
+          "summary": "Set Pool Policy",
+          "description": "Set the pool's strategy and the thresholds of quota-pacing (an admin of the project or of the hub); a field left\nout stays. The agents of the pool pick their accounts by it from their next choice on.",
+          "operationId": "set_pool_policy_v1_projects__project__account_pools__pool__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "pool",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name, 1 to 40 characters",
+                "title": "Pool"
+              },
+              "description": "the pool's name, 1 to 40 characters"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolPolicy"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountPool"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
         "delete": {
           "tags": [
             "account pools"
@@ -88538,6 +88866,124 @@
           "responses": {
             "204": {
               "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/agents/{handle}/provider-accounts/{name}/quota": {
+        "post": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Quota Of Agent Provider Account",
+          "description": "Read the quota the agent's Z.ai account ``name`` has left and keep it as the account's last usage; any member\nof the project may.",
+          "operationId": "quota_of_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__quota_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the agent's live accounts",
+                "title": "Name"
+              },
+              "description": "unique among the agent's live accounts"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProviderQuota"
+                  }
+                }
+              }
             },
             "401": {
               "content": {
@@ -106105,6 +106551,102 @@
           }
         }
       },
+      "/v1/provider-accounts/{name}/quota": {
+        "post": {
+          "tags": [
+            "provider-accounts"
+          ],
+          "summary": "Quota Of Provider Account",
+          "description": "Read the quota the caller's Z.ai account ``name`` has left and keep it as the account's last usage.",
+          "operationId": "quota_of_provider_account_v1_provider_accounts__name__quota_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the caller's secrets and accounts",
+                "title": "Name"
+              },
+              "description": "unique among the caller's secrets and accounts"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProviderQuota"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/runnable-models": {
         "get": {
           "tags": [
@@ -112598,6 +113140,31 @@
                 }
               ],
               "description": "a provider account's endpoint and what the model gateway last said of it; null for a secret"
+            },
+            "weekly_budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weekly Budget Usd",
+              "description": "the USD its owner gives it a week, turned into its seven_day window; null for none"
+            },
+            "weekly_reset_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weekly Reset At",
+              "description": "an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC"
             }
           },
           "type": "object",
@@ -112733,6 +113300,33 @@
               ],
               "title": "Paused",
               "description": "true pauses it, so no new run takes it; false resumes it"
+            },
+            "weekly_budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weekly Budget Usd",
+              "description": "the USD it may spend a week, for a model account; null drops it"
+            },
+            "weekly_reset_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weekly Reset At",
+              "description": "an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC"
             }
           },
           "additionalProperties": false,
@@ -112746,7 +113340,8 @@
               "enum": [
                 "round-robin",
                 "weighted-round-robin",
-                "fill-first"
+                "fill-first",
+                "quota-pacing"
               ],
               "title": "Strategy",
               "description": "how a run picks among the accounts",
@@ -112773,6 +113368,22 @@
               "title": "Max Failovers",
               "description": "at most how many times a run moves on",
               "default": 3
+            },
+            "hard_reserve_pct": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "title": "Hard Reserve Pct",
+              "description": "quota-pacing: the share of a weekly window kept back while another account has more",
+              "default": 10
+            },
+            "five_hour_ceiling_pct": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "Five Hour Ceiling Pct",
+              "description": "quota-pacing: the five-hour use above which an account waits while a cooler one is ready",
+              "default": 90
             },
             "project": {
               "type": "string",
@@ -112807,7 +113418,8 @@
               "enum": [
                 "round-robin",
                 "weighted-round-robin",
-                "fill-first"
+                "fill-first",
+                "quota-pacing"
               ],
               "title": "Strategy",
               "description": "how a run picks among the accounts",
@@ -112834,6 +113446,22 @@
               "title": "Max Failovers",
               "description": "at most how many times a run moves on",
               "default": 3
+            },
+            "hard_reserve_pct": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "title": "Hard Reserve Pct",
+              "description": "quota-pacing: the share of a weekly window kept back while another account has more",
+              "default": 10
+            },
+            "five_hour_ceiling_pct": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "Five Hour Ceiling Pct",
+              "description": "quota-pacing: the five-hour use above which an account waits while a cooler one is ready",
+              "default": 90
             }
           },
           "additionalProperties": false,
@@ -112853,6 +113481,22 @@
             "name": {
               "type": "string",
               "title": "Name"
+            },
+            "strategy": {
+              "type": "string",
+              "title": "Strategy",
+              "description": "how a run picks among its accounts",
+              "default": "round-robin"
+            },
+            "hard_reserve_pct": {
+              "type": "integer",
+              "title": "Hard Reserve Pct",
+              "default": 10
+            },
+            "five_hour_ceiling_pct": {
+              "type": "integer",
+              "title": "Five Hour Ceiling Pct",
+              "default": 90
             },
             "created_by": {
               "type": "string",
@@ -159757,6 +160401,19 @@
               "type": "string",
               "format": "date-time",
               "title": "Added At"
+            },
+            "last_usage": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Usage",
+              "description": "its last usage: windows five_hour and seven_day (a weekly budget's among them), 0 to 1"
             }
           },
           "type": "object",
@@ -159912,6 +160569,57 @@
             "last_heartbeat_at"
           ],
           "title": "PoolNode"
+        },
+        "PoolPolicy": {
+          "properties": {
+            "strategy": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "round-robin",
+                    "weighted-round-robin",
+                    "fill-first",
+                    "quota-pacing"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Strategy"
+            },
+            "hard_reserve_pct": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 100.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hard Reserve Pct"
+            },
+            "five_hour_ceiling_pct": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 100.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Five Hour Ceiling Pct"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "PoolPolicy",
+          "description": "What PATCH .../account-pools/{pool} changes; a field left out stays as it is."
         },
         "PoolRequest": {
           "properties": {
@@ -160092,6 +160800,34 @@
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
               "title": "Name",
               "description": "1 to 40 characters, unique in the project in any case"
+            },
+            "strategy": {
+              "type": "string",
+              "enum": [
+                "round-robin",
+                "weighted-round-robin",
+                "fill-first",
+                "quota-pacing"
+              ],
+              "title": "Strategy",
+              "description": "how a run picks among the pool's accounts",
+              "default": "round-robin"
+            },
+            "hard_reserve_pct": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "title": "Hard Reserve Pct",
+              "description": "quota-pacing: the share of a weekly window kept back while another account has more",
+              "default": 10
+            },
+            "five_hour_ceiling_pct": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "Five Hour Ceiling Pct",
+              "description": "quota-pacing: the five-hour use above which an account waits while a cooler one is ready",
+              "default": 90
             }
           },
           "additionalProperties": false,
@@ -166984,6 +167720,54 @@
           "title": "ProviderProbe",
           "description": "What the endpoint answered a call with the key: never the key, nor more than a line of its words."
         },
+        "ProviderQuota": {
+          "properties": {
+            "ok": {
+              "type": "boolean",
+              "title": "Ok"
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/QuotaUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the usage kept as the account's last"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "Z.ai's HTTP status; null when no answer came"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ok"
+          ],
+          "title": "ProviderQuota",
+          "description": "What POST .../{name}/quota answers: whether the quota was read and kept, and an error without the key."
+        },
         "PruneRequest": {
           "properties": {
             "project": {
@@ -167952,6 +168736,92 @@
             "end"
           ],
           "title": "QuietHours"
+        },
+        "QuotaUsage": {
+          "properties": {
+            "status": {
+              "type": "string",
+              "title": "Status",
+              "description": "allowed, or rejected once a window is used up"
+            },
+            "rate_limit_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rate Limit Type",
+              "description": "with rejected: the window used up"
+            },
+            "resets_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resets At",
+              "description": "with rejected: when that window resets"
+            },
+            "utilization": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Utilization",
+              "description": "the highest share used among the windows"
+            },
+            "windows": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/QuotaWindow"
+              },
+              "type": "object",
+              "title": "Windows",
+              "description": "five_hour and seven_day, as read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "title": "QuotaUsage"
+        },
+        "QuotaWindow": {
+          "properties": {
+            "utilization": {
+              "type": "number",
+              "title": "Utilization",
+              "description": "the share of the window's limit used, 0 to 1"
+            },
+            "resets_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resets At",
+              "description": "when it resets, UTC"
+            }
+          },
+          "type": "object",
+          "required": [
+            "utilization"
+          ],
+          "title": "QuotaWindow"
         },
         "RateLimitAnswer": {
           "properties": {

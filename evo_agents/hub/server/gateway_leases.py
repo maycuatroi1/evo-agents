@@ -4,7 +4,7 @@ accounts").
 
 When the worker asks for the run's credentials (``credentials.lease_credentials``), ``prepare`` finds the provider
 accounts the run may use on that worker (``gateway_accounts.usable_accounts``, the account picked by hand alone when one
-was) and, unless the run holds a key of the gateway for that same set already, has the gateway make one whose
+was, the one quota-pacing gives alone under that strategy: ``paced_accounts``) and, unless the run holds a key of the gateway for that same set already, has the gateway make one whose
 allowedConnections are those accounts' connections (``gateway_sync``), ending GRACE seconds after the run's timeout
 would, never logging a request. ``record`` writes it in the ask's transaction: a credential_leases row of provider
 gateway for the key (secret_id null, external_id the key's id, the key sealed under the lease's id, token_hash the
@@ -102,8 +102,11 @@ async def _picked(conn: AsyncConnection, run_id: int, prefix: str) -> int | None
     return (await conn.execute(query)).scalar_one_or_none()
 
 
-async def _held_key(conn: AsyncConnection, run_id: int, worker_id: int, wanted: set[int]) -> int | None:
-    """The live key row the run holds on this worker that reaches exactly the accounts ``wanted``."""
+async def _held_key(
+    conn: AsyncConnection, run_id: int, worker_id: int, wanted: set[int], *, within: bool = False
+) -> int | None:
+    """The live key row the run holds on this worker that reaches exactly the accounts ``wanted``; with ``within``,
+    some of them alone (quota-pacing narrowed the run to one: the run keeps the one it took)."""
     cl = tables.credential_leases
     live = and_(cl.c.run_id == run_id, cl.c.worker_id == worker_id, cl.c.provider == GATEWAY, cl.c.revoked_at.is_(None))
     keys = select(cl.c.id, cl.c.external_id).where(live, cl.c.secret_id.is_(None), cl.c.sealed_value.is_not(None))
@@ -111,7 +114,8 @@ async def _held_key(conn: AsyncConnection, run_id: int, worker_id: int, wanted: 
     if key is None:
         return None
     reached = select(cl.c.secret_id).where(live, cl.c.secret_id.is_not(None), cl.c.external_id == key.external_id)
-    return key.id if set((await conn.execute(reached)).scalars()) == wanted else None
+    reaches = set((await conn.execute(reached)).scalars())
+    return key.id if reaches == wanted or (within and reaches and reaches <= wanted) else None
 
 
 async def _connections(client: GatewayClient, accounts, reasons: list[str]) -> dict[int, str]:
@@ -146,10 +150,13 @@ async def prepare(app, engine: AsyncEngine, run, worker_id: int, base_url: str) 
         if not usable.accounts:
             found.reasons = [usable.why(prefix)]
             return found
-        found.held = await _held_key(conn, run.id, worker_id, {account.secret_id for account in usable.accounts})
+        paced = await gateway_accounts.paced_accounts(conn, _asker(run), usable.accounts)
+        wanted = {account.secret_id for account in usable.accounts}
+        found.held = await _held_key(conn, run.id, worker_id, wanted, within=len(paced) < len(usable.accounts))
     if found.held is not None:
         found.accounts = usable.accounts
         return found
+    usable.accounts = paced
     try:
         client = gateway_sync.client_of(app)
         connections = await _connections(client, usable.accounts, found.reasons)

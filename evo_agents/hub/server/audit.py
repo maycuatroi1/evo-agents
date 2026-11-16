@@ -222,6 +222,7 @@ ACCOUNT_POOL_DELETE = "account-pool.delete"  # an admin deleted a pool no agent 
 ACCOUNT_POOL_ADD = "account-pool.add"  # an admin added an account to it
 ACCOUNT_POOL_REMOVE = "account-pool.remove"  # an admin took an account out of it
 ACCOUNT_POOL_ATTACH = "account-pool.attach"  # an admin attached it to an agent, or detached it (none)
+ACCOUNT_POOL_POLICY = "account-pool.policy"  # an admin set its strategy and thresholds (" strategy=<s> ...")
 # The lists of the core plugin guard (evo_agents.core_plugins.guard), in the project; the target is
 # "<project> guard-term:<id>" or "<project> guard-target:<id>", never the term itself.
 GUARD_TERM_ADD = "guard-term.add"  # an admin added a private name of the project

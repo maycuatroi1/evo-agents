@@ -50,7 +50,7 @@ def test_the_account_commands_are_in_the_contract():
         assert "value" not in printed[command]["json"]["keys"]
     assert printed["hub account policy"]["json"]["schema"] == "AccountPolicy"
     options = {o["flags"][0]: o for o in printed["hub account policy"]["options"]}
-    assert options["--strategy"]["choices"] == ["round-robin", "weighted-round-robin", "fill-first"]
+    assert options["--strategy"]["choices"] == ["round-robin", "weighted-round-robin", "fill-first", "quota-pacing"]
 
 
 @pytest.mark.parametrize(
@@ -58,7 +58,10 @@ def test_the_account_commands_are_in_the_contract():
     [
         (("set", "claude-a", "--weight", "1001"), "--weight is a whole number from 0 to 1000, not 1001"),
         (("set", "claude-a", "--priority", "-1"), "--priority is a whole number from 0 to 1000, not -1"),
-        (("set", "claude-a"), "give --weight, --priority or both"),
+        (
+            ("set", "claude-a"),
+            "give --weight, --priority, --weekly-budget-usd, --no-weekly-budget or --weekly-reset-at",
+        ),
         (("policy", "evo-agents", "--cooldown", "59"), "--cooldown is a whole number from 60 to 604800, not 59"),
         (("policy", "evo-agents", "--max-failovers", "21"), "--max-failovers is a whole number from 0 to 20, not 21"),
         (("policy", "evo-agents", "--reset", "--strategy", "fill-first"), "--reset drops the policy: give it alone"),
