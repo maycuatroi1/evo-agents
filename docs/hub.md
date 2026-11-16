@@ -3610,8 +3610,9 @@ to the strongest claim: the project whose harness root it is, whatever lists it 
 kg bind --project <name> <dir>` bound it to, among those listing it; else the one project listing it. Anything else, two
 projects with one harness root among it, is refused rather than guessed, and a memory synced with one project never
 moves to another by itself. When both sides changed a file, the hub's version keeps the name and this machine's lands
-next to it as `<name>.conflict-<host>.md`. Deletions cross only with `--prune`. `evo-agents hub memory search "a
-phrase"` searches what you see. The plugin pulls at SessionStart and pushes at Stop; in the session of a run's
+next to it as `<name>.conflict-<host>.md`. Deletions cross only with `--prune`; a pull with it also removes the
+MEMORY.md line of each file it deletes. `evo-agents hub memory search "a phrase"` searches what you see. The plugin
+pulls at SessionStart, pruning only files that did not change here, and pushes at Stop; in the session of a run's
 agent on a worker (`EVO_RUN_ID` set) Stop pushes nothing, since nobody reviews that unattended session.
 
 **Audience of memories.** A memory derived from chat messages carries the audience of those chats

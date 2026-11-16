@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import re
 import stat
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from urllib.parse import quote
 
@@ -122,6 +122,28 @@ def add_pointers(directory: Path, files: Mapping[str, str]) -> list[str]:
     data += "".join(pointer_line(name, files[name]) + "\n" for name in missing).encode("utf-8")
     write_atomic(index, data, file_mode(index))
     return missing
+
+
+def drop_pointers(directory: Path, names: Iterable[str]) -> list[str]:
+    """Remove from ``directory``/MEMORY.md each list line that links to one of ``names``. Every other line stays byte
+    for byte. The names a line was removed for."""
+    index = directory / INDEX
+    try:
+        raw = index.read_bytes()
+    except FileNotFoundError:
+        return []
+    wanted = set(names)
+    kept, dropped = [], set()
+    for line in raw.splitlines(keepends=True):
+        text = line.decode("utf-8", "replace")
+        hit = [n for n in wanted if points_at(text, n)] if text.lstrip().startswith(("- ", "* ")) else []
+        if hit:
+            dropped.update(hit)
+        else:
+            kept.append(line)
+    if dropped:
+        write_atomic(index, b"".join(kept), file_mode(index))
+    return sorted(dropped)
 
 
 def file_mode(path: Path) -> int:

@@ -896,7 +896,19 @@ def test_deletions_cross_only_with_prune(client, who, hub_db, tmp_path, monkeypa
     waiting = two.run("pull")  # without --prune the other machine keeps its copy, and says so
     assert waiting.counts["kept_here"] == 1 and (two.dir("ws/demo-harness") / "a.md").exists()
     assert two.run("push").counts["unchanged"] == 3  # the copy the hub deleted is unchanged: not pushed back
-    assert two.run("pull", prune=True).counts["deleted"] == 1
+
+    # c.md goes on the hub too, after two changed its copy. The SessionStart hook's pull (keep_changed) deletes
+    # the unchanged a.md with its MEMORY.md line and leaves the changed c.md and its line as they are.
+    (one.dir("ws/demo-harness") / "c.md").unlink()
+    assert one.run("push", prune=True).counts["deleted"] == 1
+    changed = two.write("ws/demo-harness", "c.md", typed("project", "changed on two"))
+    hook = two.run("pull", prune=True, keep_changed=True)
+    assert (hook.counts["deleted"], hook.counts["kept_here"], hook.counts["unindexed"]) == (1, 1, 1)
+    assert not hook.conflicts and changed.read_text(encoding="utf-8") == typed("project", "changed on two")
+    index = (two.dir("ws/demo-harness") / INDEX).read_text(encoding="utf-8")
+    assert "](a.md)" not in index and "](b.md)" in index and "](c.md)" in index
+    assert two.run("pull", prune=True).counts["conflicts"] == 1  # a plain --prune still keeps it as a conflict copy
+    assert "](c.md)" not in (two.dir("ws/demo-harness") / INDEX).read_text(encoding="utf-8")
     assert two.files() == one.files()
 
 

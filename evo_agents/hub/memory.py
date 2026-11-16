@@ -20,7 +20,8 @@ Where a directory's memories live on the hub, as (scope, project, location):
 
 A file goes to the hub whole, so name, description and metadata.type come back as they were; its type
 (metadata.type, else type, else ``user``, the private one) decides who sees it. MEMORY.md is never pushed: a pull
-appends the pointer lines it lacks for the files it brings and removes none. Conflict copies, hidden files and
+appends the pointer lines it lacks for the files it brings, and a pull with ``--prune`` removes the line of each
+memory the hub deleted whose file is no longer here; every other line stays. Conflict copies, hidden files and
 anything that is not a regular file (a symlink among them) are never pushed either.
 
 ~/.evo/hub/memory-state.json holds what the last sync left, per hub and per file (``<slug>/<name>``): the memory id,
@@ -30,7 +31,9 @@ pull finds a file changed both here and on the hub, the hub's version stays unde
 written next to it as ``<name>.conflict-<host>.md``, and the conflict is reported. Deletions cross only with
 ``--prune``: ``push --prune`` turns the files deleted here into tombstones on the hub, and ``pull --prune`` deletes
 the files the hub holds a tombstone for when they did not change here since the last sync. Without it a deletion is
-reported and nothing else happens; a pull brings back a file deleted only here. A push for a Claude Code session sends
+reported and nothing else happens; a pull brings back a file deleted only here. ``keep_changed`` (the SessionStart
+hook's pull, which prunes unattended) deletes only such unchanged files: a file changed here, or never synced, whose
+memory the hub deleted stays as it is and is reported rather than moved to a conflict copy. A push for a Claude Code session sends
 each file with the audience of the session's label (``evo_agents.kg.sessions``), which the hub adds to the memory's.
 
 A directory never moves a memory out of a project into the personal scope, and a personal memory is never pulled into
@@ -63,6 +66,7 @@ from evo_agents.hub.memory_files import (
     LeftAlone,
     add_pointers,
     body_problem,
+    drop_pointers,
     conflict_path,
     file_mode,
     host_tag,
@@ -238,6 +242,7 @@ class MemorySync:
         sink: str = AGENT_SINK,
         dry_run: bool = False,
         prune: bool = False,
+        keep_changed: bool = False,
         base: Path | None = None,
         home: Path | None = None,
         registry: Path | None = None,
@@ -251,6 +256,7 @@ class MemorySync:
         self.sink = sink
         self.dry_run = dry_run
         self.prune = prune
+        self.keep_changed = keep_changed  # with prune: a file changed here whose memory the hub deleted stays as it is
         self.base = base or claude_projects()
         self.home = home or Path.home()
         self.registry = registry or default_registry()
@@ -634,7 +640,7 @@ class MemorySync:
         live = [m for m in chosen.values() if not m["deleted"]]
         if live:
             self._note_place(Place(live[0]["scope"], live[0].get("project"), live[0]["location"]), len(live))
-        present = {}
+        present, gone = {}, []
         for file_name, memory in sorted(chosen.items()):
             try:
                 text = self._pull_file(name, directory, file_name, memory)
@@ -643,6 +649,10 @@ class MemorySync:
                 continue
             if text is not None:
                 present[file_name] = text
+            elif memory["deleted"]:
+                gone.append(file_name)
+        if self.prune and gone:  # the line of a memory the hub deleted and whose file is gone points at nothing
+            self._unindex(directory, gone)
         if not present:
             return
         if self.dry_run:
@@ -651,6 +661,15 @@ class MemorySync:
             self.report.counts["indexed"] += sum(1 for n in present if not points_at(held, n))
             return
         self.report.counts["indexed"] += len(add_pointers(directory, present))
+
+    def _unindex(self, directory: Path, names: list[str]) -> None:
+        """Remove the MEMORY.md lines of ``names``, memories the hub deleted whose files are not here any more."""
+        if self.dry_run:
+            index = directory / INDEX
+            held = index.read_text(encoding="utf-8", errors="replace") if index.is_file() else ""
+            self.report.counts["unindexed"] += sum(1 for n in names if points_at(held, n))
+            return
+        self.report.counts["unindexed"] += len(drop_pointers(directory, names))
 
     def _pull_file(self, name: str, directory: Path, file_name: str, memory: dict) -> str | None:
         """Bring one memory; the text of the file there afterwards, None when there is none."""
@@ -667,13 +686,14 @@ class MemorySync:
                 return None
             if tracked and entry.get("sha256") is None:
                 return local.decode("utf-8", "replace")  # written here after the deletion: it waits for a push
-            if not self.prune:
+            unchanged = tracked and local_sha == entry.get("sha256")
+            if not self.prune or (self.keep_changed and not unchanged):
                 counts["kept_here"] += 1
                 self.report.notes.append(
                     f"{path}: deleted on the hub, kept here; `evo-agents hub memory pull --prune` deletes it"
                 )
                 return local.decode("utf-8", "replace")
-            if tracked and local_sha == entry.get("sha256"):
+            if unchanged:
                 if not self.dry_run:
                     self._remove(path, local_sha)
                     self.state.drop(key)
