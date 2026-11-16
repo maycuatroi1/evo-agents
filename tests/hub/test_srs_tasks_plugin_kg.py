@@ -3,14 +3,14 @@ srs-tasks-plugins names it: the worker's build reads the plugins' sources (``evo
 runs machines push.
 
 Checked here, end to end on the hub: approving a version and creating a task each queue a build, which joins the one
-that waits; the build holds the use cases of the approved version and the task, and kg_path goes from a use case code
-to the task, the plan step it links and the commit the step's evidence names; the plugins' data carries the project's
-label and a member whose grant is below it sees none of it; a build of unchanged data points at the artifact of the
-build before, and a verifying build (``build_project(verify=True)``) on the worker's store gives its hash; a changed task is built again, and a
-plugin the project turns off leaves the graph. Archiving a document and unarchiving it each queue a build, and an
-archived document is out of the graph (criterion a1 of plan srs-document-lifecycle). The sources of a finding are
-looked up in that graph as the member reads it: node ids, and paths a file or document node carries (criterion a4 of
-plan srs-conflicts-and-tasks).
+that waits; the build holds the use cases of the approved version and the task, and kg_path goes from a use case code to
+the task, the plan step it links and the commit the step's evidence names; the plugins' data carries the project's label
+and a member whose grant is below it sees none of it; a build of unchanged data points at the artifact of the build
+before, and a verifying build (``verify_rows``) of the worker's corpus gives its hash; a changed task is built again,
+and a plugin the project turns off leaves the graph. Archiving a document and unarchiving it each queue a build, and an
+archived document is out of the graph (criterion a1 of plan srs-document-lifecycle). The sources of a finding are looked
+up in that graph as the member reads it: node ids, and paths a file or document node carries (criterion a4 of plan
+srs-conflicts-and-tasks).
 
 The api and the worker run in this process and the blob store is moto's, as in ``tests.hub.test_kg``; the machine is a
 harness of project alpha that reads the hub's plans and pushes its runs.
@@ -35,7 +35,6 @@ from evo_agents.hub import kg_plans, plugin_calls, plugin_events, tables
 from evo_agents.hub.kg_build import worker_project
 from evo_agents.hub.server import kg
 from evo_agents.hub.server.security import MACHINE, Principal
-from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.sync import sync_project
 from evo_agents.plugins import core
@@ -57,6 +56,7 @@ from tests.hub.test_kg import (
     served,
     tool_ok,
 )
+from tests.kg import built as memory
 
 CORE = {
     "srs": EntryPoint("srs", "evo_agents.hub.server.srs:MANIFEST", ENTRY_POINT_GROUP),
@@ -192,7 +192,7 @@ def test_srs_tasks_plugin_graph_on_the_hub_traces_a_use_case_to_its_task_step_an
     same = build_rows(hub)[0]
     assert same["id"] != built["id"] and same["content_hash"] == built["content_hash"]
     assert same["graph_kept"] and same["artifact_sha256"] is None  # its graph is in the tables; no file uploaded
-    checked = build_project(worker_project(hub.worker_dir, PROJECT), verify=True)
+    checked = memory.build(worker_project(hub.worker_dir, PROJECT), verify=True)
     assert checked.ok and checked.verify["match"] and checked.content_hash == built["content_hash"]
 
     edited = hub.client.patch(f"/v1/x/tasks/{PROJECT}/tasks/T-4", json={"status": "done"}, headers=hub.alice)

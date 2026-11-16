@@ -376,11 +376,11 @@ def sign_in(home: Path, url: str) -> None:
 
 
 def test_auto_and_hub_both_ask_the_hub_and_never_a_graph_left_on_this_machine(machine):
-    from evo_agents.kg.build import build_project
+    from tests.kg.test_scrub import old_graph_file
 
     project, sync, home = machine
     sync("docs", item("left"))
-    assert build_project(project).ok  # a graph store left on this machine, from before graphs were built on the hub
+    old_graph_file(project.root / "graph.sqlite", [("left", "left")], [])  # left from before the hub built graphs
     for backend in ("auto", "hub"):
         refused = open_session(backend, str(project.harness.root), "hub")
         text = refused.call("kg_status", {})["content"][0]["text"]

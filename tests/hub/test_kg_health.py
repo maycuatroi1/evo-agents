@@ -639,20 +639,15 @@ def test_the_eval_asks_the_holdout_set_through_the_agent_sink_and_pushes_its_sig
 def test_the_review_queue_is_counted_on_the_snapshot_of_the_hubs_tables(world, tmp_path):  # noqa: F811
     from evo_agents.hub import kg_graph_rows, kg_snapshots
     from evo_agents.kg import review
-    from evo_agents.kg.snapshot import store_rows
-    from evo_agents.kg.store import Store
+    from evo_agents.kg.graph_rows import graph_rows
+    from evo_agents.kg.snapshot import rows_clusters
     from tests.kg.test_review import queue
 
     second = graph_of(world)
     graph = queue()
     graph.review = review.compute(graph)
-    store = Store(tmp_path / "graph.sqlite")
-    try:
-        b = store.write(graph, state_digest="x", coverage={}, stats={}, policy=None)
-        rows = store_rows(store, b)
-        kept = (store.clusters(b), store.review_items(b))
-    finally:
-        store.close()
+    rows = graph_rows(graph, coverage={}, stats={}, built_at="2026-11-05T00:00:00Z")
+    kept = (rows_clusters(rows.clusters), list(rows.review))
     assert rows.clusters and rows.review
 
     async def keep():
@@ -662,7 +657,7 @@ def test_the_review_queue_is_counted_on_the_snapshot_of_the_hubs_tables(world, t
 
     loaded = world.client.portal.call(keep)
     view = loaded.view(frozenset())
-    assert (view.clusters(0), view.review_items(0)) == kept  # the tables hold what the file held
+    assert (view.clusters(0), view.review_items(0)) == kept  # the tables hold what the build gave
     state = world.app.state
     found = partial(  # no blob store to read a graph file from: only the snapshot can be counted
         kg_health.measure, state.engine, github_app=state.github_app, blobs=object(), data_dir=tmp_path, now=MEASURED

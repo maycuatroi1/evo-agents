@@ -19,21 +19,18 @@ from sqlalchemy.pool import NullPool
 
 from evo_agents import sqlite_legacy
 from evo_agents.hub import kg_semantic
-from evo_agents.kg import semantic, store_vectors
-from evo_agents.kg.snapshot import StoreRows, store_rows
-from evo_agents.kg.store import Store
+from evo_agents.kg import semantic
+from evo_agents.kg.snapshot import StoreRows
 from tests.hub import live
 from tests.hub.test_migrate import seed
+from tests.kg import built
+from tests.kg.built import old_vector_cache, sync_build
 from tests.kg.test_hybrid import FAKE, Words, with_garage
-from tests.kg.test_store import sync_build
 
 
 def rows_of(project) -> StoreRows:
-    store = Store.open_file(project.root / "graph.sqlite", immutable=True)
-    try:
-        return replace(store_rows(store, store.latest_ready()), vectors=(), vector_info=None)
-    finally:
-        store.close()
+    """The rows of the project's latest build, as a hub build keeps them before it puts its vectors in."""
+    return replace(built.rows_of(project), vectors=(), vector_info=None)
 
 
 def roundtrip(db, project_id: int, settings: semantic.Settings | None, user_id: int) -> semantic.Settings:
@@ -103,11 +100,15 @@ def test_the_hub_cache_seeds_from_the_files_then_embeds_only_what_changed(hub_db
     monkeypatch.setitem(semantic.FACTORIES, FAKE, Words)
     project = with_garage(tmp_path, tmp_path / "kg-home")
     sync_build(project)
-    graph = project.root / "graph.sqlite"
     settings = semantic.Settings("index", FAKE)
-    local = store_vectors.index_file(graph, settings)  # what a build before kg_vector_cache left in the directory
-    held = sqlite_legacy.vector_cache_rows(project.root / store_vectors.CACHE_FILE, FAKE)
-    assert local.embedded > 0 and len(held) > 0
+    embedded = semantic.MemoryCache()
+    _, local = kg_semantic.index(rows_of(project), settings, embedded)
+    # what a build before kg_vector_cache left in the directory
+    files = old_vector_cache(
+        project.root / kg_semantic.SEED_FILES[0], FAKE, {d: v for (_, d), v in embedded.held.items()}
+    )
+    held = sqlite_legacy.vector_cache_rows(files, FAKE)
+    assert local.embedded > 0 and len(held) == local.embedded
     loop = asyncio.new_event_loop()
     thread = threading.Thread(target=loop.run_forever, daemon=True)
     thread.start()
@@ -119,7 +120,7 @@ def test_the_hub_cache_seeds_from_the_files_then_embeds_only_what_changed(hub_db
         assert not cache.held(FAKE)
         assert cache.seed(project.root, FAKE) == len(held)
         assert cache.seed(project.root, FAKE) == 0  # seeded once: the files are not read again
-        assert (project.root / store_vectors.CACHE_FILE).exists() and graph.exists()  # and they stay
+        assert files.exists()  # and they stay
         _, first = kg_semantic.index(rows_of(project), settings, cache)
         assert (first.digest, first.embedded) == (local.digest, 0)
         assert cache.get(FAKE, sorted(held)) == held

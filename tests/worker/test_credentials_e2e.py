@@ -57,7 +57,7 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 import httpx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from sqlalchemy import BigInteger, func, insert, literal, select
+from sqlalchemy import func, insert, literal, select
 
 from evo_agents.hub import tables
 from evo_agents.kg.sessions import READ_META
@@ -168,14 +168,11 @@ sources:
 
 
 def install_graph(db: pg.Database, cache: Path, root: Path, monkeypatch) -> None:
-    """A graph of PROJECT built on a laptop under ``root``, put where ``hub serve`` keeps the graphs it fetched
-    (``cache``, its EVO_HUB_DATA_DIR), recorded as the project's latest successful build and kept in the hub's graph
-    tables as the head of its main."""
-    import hashlib
-
-    from evo_agents.kg.build import build_project
+    """A graph of PROJECT synced under ``root`` and built in memory as the hub builds it, recorded as the project's
+    latest successful build and kept in the hub's graph tables as the head of its main; ``cache`` is not written."""
     from evo_agents.kg.project import load_project_at
     from evo_agents.kg.sync import sync_project
+    from tests.kg import built as memory
 
     harness, home = root / f"{PROJECT}-harness", root / "kg-home"
     harness.mkdir(parents=True)
@@ -190,29 +187,23 @@ def install_graph(db: pg.Database, cache: Path, root: Path, monkeypatch) -> None
     monkeypatch.setenv("EVO_KG_HOME", str(home))
     project = load_project_at(harness, home)
     assert all(result.ok for result in sync_project(project, ["docs"]))
-    report = build_project(project)
-    path = project.root / "graph.sqlite"
-    data = path.read_bytes()
-    sha256 = hashlib.sha256(data).hexdigest()
-    target = cache / "kg" / "graphs" / PROJECT / f"{sha256}.sqlite"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(data)
+    report = memory.build(project)
+    assert report.ok, report.errors
     builds, projects = tables.kg_builds, tables.projects
     built = select(
         projects.c.id,
         literal("succeeded"),
-        literal(sha256),
-        literal(len(data), BigInteger),
         literal(report.content_hash),
         literal(report.nodes),
         literal(report.edges),
         func.now(),
         func.now(),
     ).where(projects.c.name == PROJECT)
-    columns = ["project_id", "status", "artifact_sha256", "artifact_size", "content_hash", "nodes", "edges"]
+    columns = ["project_id", "status", "content_hash", "nodes", "edges"]
     inserted = insert(builds).from_select([*columns, "started_at", "finished_at"], built)
     ((build_id, project_id),) = live.sql(db, inserted.returning(builds.c.id, builds.c.project_id))
-    keep_rows(db, project_id, build_id, target)  # the hub reads the graph from its tables, from the main head on
+    # the hub reads the graph from its tables, from the main head on
+    keep_rows(db, project_id, build_id, memory.rows_of(project))
 
 
 # The worker machine
