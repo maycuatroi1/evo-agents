@@ -1,5 +1,5 @@
 """Fixes of the 2026-11-04 review of kg/: labels of entity props, the ceiling of failed calls, the state a build read,
-the memo committed as it goes, Vietnamese names, kg_status under the sink's clearance, the MCP server against messages
+the memo keeping each entry once written, Vietnamese names, kg_status under the sink's clearance, the MCP server against messages
 it cannot read, and the label filter before the limit."""
 
 import io
@@ -154,21 +154,36 @@ def test_digest_read_is_the_state_the_build_read(fake_project, monkeypatch):
     assert not build_project(project).skipped
 
 
-def test_memo_commit_as_it_goes_keeps_rows_after_a_crash(tmp_path, monkeypatch):
-    path = tmp_path / "memo.sqlite"
-    monkeypatch.setattr(memo, "COMMIT_ROWS", 2)
+def test_memo_keeps_each_entry_once_written_and_skips_one_a_crash_cut(tmp_path):
+    path = tmp_path / "memo"
     m = Memo(path)
     for i in range(3):
         m.run("stage", "1", {"i": str(i)}, lambda i=i: {"out": i})
-    m.run("paid", "1", {"i": "x"}, lambda: {"answer": 1}, commit=True)
-    other = sqlite3.connect(path, timeout=0)  # another build: no write lock left held
-    try:
-        other.execute("BEGIN IMMEDIATE")
-        other.rollback()
-        assert other.execute("SELECT count(*) FROM memo").fetchone()[0] == 4
-    finally:
-        other.close()
-    m.db.close()  # a crash: nothing committed at the end
+    m.run("paid", "1", {"i": "x"}, lambda: {"answer": 1})
+    # a crash: nothing closed. Another build reads every entry, and one half written counts as none.
+    other = Memo(path)
+    assert len(other.keys("stage")) == 3 and len(other.keys("paid")) == 1
+    assert other.run("paid", "1", {"i": "x"}, lambda: {"answer": 2})[0] == {"answer": 1}
+    cut = next((path / "stage").glob("*/*"))
+    cut.write_bytes(cut.read_bytes()[:10])
+    outs = [other.run("stage", "1", {"i": str(i)}, lambda: {"out": "again"})[0]["out"] for i in range(3)]
+    assert outs.count("again") == 1
+    assert other.stats()["stage"] == {"hits": 2, "misses": 1}
+
+
+def test_memo_traced_entries_and_usages(tmp_path):
+    m = Memo(tmp_path / "memo")
+    out = m.run_traced("link", "1", {"i": "a"}, lambda: ({"to": "b"}, ["k"]), lambda keys: "held-1")
+    assert m.run_traced("link", "1", {"i": "a"}, lambda: ({"to": "c"}, ["k"]), lambda keys: "held-1") == out
+    assert m.run_traced("link", "1", {"i": "a"}, lambda: ({"to": "c"}, ["k"]), lambda keys: "held-2")[0] == {"to": "c"}
+    assert (tmp_path / "memo" / "link+reads").is_dir()
+    m.run("entities", "1", {"i": "a"}, lambda: {"usage": {"input_tokens": 3}})
+    m.run("entities", "1", {"i": "b"}, lambda: {})
+    assert sorted(map(str, memo.usages(tmp_path / "memo", "entities"))) == ["{'input_tokens': 3}", "{}"]
+    held = Memo(None)
+    held.run("entities", "1", {"i": "a"}, lambda: {"x": 1})
+    assert held.keys("entities") == {memo.memo_key("entities", "1", {"i": "a"})}
+    assert held.run("entities", "1", {"i": "a"}, lambda: {"x": 2})[0] == {"x": 1}
 
 
 def test_verify_build_closes_what_it_opened(tmp_path, kg_env):

@@ -106,8 +106,8 @@ class Layout:
         return f"{slug(task.repo)}-{task.commit[:12].lower()}"
 
     def memo(self, repo: str) -> Path:
-        """The memo of the repo's builds, its own so that builds of two repos at once never wait on one file."""
-        return self.base / "memo" / f"{slug(repo)}.sqlite"
+        """The memo of the repo's builds, a directory of its own, shared by the repo's snapshots."""
+        return self.base / "memo" / slug(repo)
 
     def vectors(self, repo: str) -> Path:
         """The vectors of the repo's snapshots, by the digest of a row's text: a snapshot embeds only the rows no
@@ -426,7 +426,6 @@ def build_graph(
             if failed:
                 why = failed[0].exception or "; ".join(failed[0].issues[:2]) or failed[0].status
                 return Built(task, False, time.monotonic() - start, f"sync: {why}")
-            lay.memo(task.repo).parent.mkdir(parents=True, exist_ok=True)
             memo = Memo(lay.memo(task.repo))
             try:
                 report = build_project(project, memo=memo)
@@ -457,8 +456,8 @@ def prune_graph(lay: Layout, task: Task) -> None:
 def prune_repo(lay: Layout, repo: str) -> None:
     """Delete the bare clone of ``repo``, the memo of its builds and its cache of vectors."""
     remove_tree(lay.clone(repo))
+    remove_tree(lay.memo(repo))
     for suffix in ("", "-wal", "-shm"):
-        Path(f"{lay.memo(repo)}{suffix}").unlink(missing_ok=True)
         Path(f"{lay.vectors(repo)}{suffix}").unlink(missing_ok=True)
 
 
