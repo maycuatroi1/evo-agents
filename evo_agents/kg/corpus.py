@@ -176,22 +176,23 @@ class Corpus:
             os.chmod(self.root, 0o700)
         self.state_path = self.root / STATE_FILE
         self.state = _empty_state()
-        self.loaded: tuple[int, int] | None = None  # (mtime_ns, size) of the state file read last
+        self.loaded: tuple[int, int, int] | None = None  # (inode, mtime_ns, size) of the state file read last
         self.depth = 0  # transactions open (``transaction``)
         self.read_digest: str | None = None  # the state digest of the items ``read_state`` read last
         self._load()
 
-    def _stat(self) -> tuple[int, int] | None:
+    def _stat(self) -> tuple[int, int, int] | None:
         try:
             st = self.state_path.stat()
         except FileNotFoundError:
             return None
-        return st.st_mtime_ns, st.st_size
+        return st.st_ino, st.st_mtime_ns, st.st_size  # each write is a new file: its inode tells it from the last
 
-    def _load(self) -> None:
-        """Read the state file when another process wrote it since it was read here."""
+    def _load(self, *, always: bool = False) -> None:
+        """Read the state file when another process wrote it since it was read here, or ``always``: a transaction
+        reads it under the lock whatever the stat says, as two writes within a clock tick may leave it the same."""
         seen = self._stat()
-        if seen == self.loaded:
+        if seen == self.loaded and not always:
             return
         state = _empty_state()
         if seen is not None:
@@ -218,7 +219,7 @@ class Corpus:
         fh = open(self.lock_dir / STATE_LOCK, "a", encoding="utf-8")
         filelock.lock(fh.fileno())
         try:
-            self._load()
+            self._load(always=True)
             self.depth = 1
             try:
                 yield

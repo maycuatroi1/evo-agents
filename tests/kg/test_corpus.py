@@ -198,3 +198,13 @@ def test_a_source_named_corpus_commits_its_run_under_its_own_lock(tmp_path):
     with corpus.lock("corpus"), corpus.transaction():  # a sync of the bench's source "corpus" commits its run
         corpus.record_cursor("corpus", "c1", "run-1")
     assert corpus.cursor("corpus") == "c1"
+
+
+def test_two_corpora_alternating_writes_of_one_size_lose_none(tmp_path):
+    a, b = Corpus("alpha", tmp_path), Corpus("alpha", tmp_path)
+    for i in range(50):  # within one clock tick, a write of the same size can leave the stat the same
+        b.set_cursor("one", f"b{i % 10}", f"run-b{i:03}")
+        a.set_cursor("two", f"a{i % 10}", f"run-a{i:03}")
+        assert b.cursor("two") == f"a{i % 10}" and a.cursor("one") == f"b{i % 10}"
+    b.set_cursor("one", "end", "run-b999")
+    assert Corpus("alpha", tmp_path).cursor("two") == "a9"
