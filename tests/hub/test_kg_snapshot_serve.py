@@ -340,19 +340,20 @@ def test_reading_a_graph_gives_the_event_loop_back_between_its_rows(hub, tmp_pat
     pid = project_id(hub)
     monkeypatch.setattr(kg_graph_rows, "READ_BATCH", 2, raising=False)
     ticks, seen, loads = [0], [], set()
-    stored = kg_graph_rows._stored
+    pairs, rows_json = kg_graph_rows._row_pairs, kg_graph_rows._ROW_JSON
 
-    def counted(name, values):
-        if name == "kg_nodes":
-            seen.append(ticks[0])
-        return stored(name, values)
+    def counted(name, part):
+        for pair in pairs(name, part):
+            if name == "kg_nodes":
+                seen.append(ticks[0])
+            yield pair
 
     def decoded(text):
         loads.add(threading.current_thread() is threading.main_thread())
-        return json.loads(text)
+        return rows_json.decode(text)
 
-    monkeypatch.setattr(kg_graph_rows, "_stored", counted)
-    monkeypatch.setattr(kg_graph_rows, "json", type("Json", (), {"loads": staticmethod(decoded), "dumps": json.dumps}))
+    monkeypatch.setattr(kg_graph_rows, "_row_pairs", counted)
+    monkeypatch.setattr(kg_graph_rows, "_ROW_JSON", type("Json", (), {"decode": staticmethod(decoded)}))
 
     async def run():
         async def tick():
@@ -374,6 +375,16 @@ def test_reading_a_graph_gives_the_event_loop_back_between_its_rows(hub, tmp_pat
     assert seen[0] < seen[-1]  # the loop ran between the first batch of nodes and the last
     assert loads == {False}  # every row's JSON was decoded off the loop
     assert "guide" in found(Snapshot.from_stored(rows), "kiwi")
+
+
+def test_a_row_read_back_parses_once_into_what_the_build_wrote():
+    """A JSON row as Postgres keeps it (jsonb puts shorter keys first) parses, in one go, into the row ``_json`` wrote
+    with every object's keys sorted: the snapshot reads the same row whichever way the tables were read."""
+    written = ["r", "key", {"rule": "x", "evidence": ["a"], "bounds": {"required": 1, "max": 2}, "id": 3.5}]
+    kept = '["r", "key", {"id": 3.5, "rule": "x", "bounds": {"max": 2, "required": 1}, "evidence": ["a"]}]'
+    back = kg_graph_rows._ROW_JSON.decode(kept)
+    assert back == json.loads(kg_graph_rows._json(written))
+    assert repr(back) == repr(json.loads(kg_graph_rows._json(written)))  # the keys in the same order too
 
 
 def test_a_load_runs_no_garbage_collection_and_leaves_the_snapshot_out_of_later_ones(
