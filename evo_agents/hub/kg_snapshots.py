@@ -174,6 +174,7 @@ class SnapshotCoordinator:
         self._listener = listener
         self._held: dict[int, Held] = {}
         self._loading: dict[int, asyncio.Task] = {}
+        self._began: dict[int, float] = {}  # project: when its load in ``_loading`` began, on the loop's clock
         self._tasks: set[asyncio.Task] = set()
         self._branches: dict[tuple[int, str], tuple[tuple, Held]] = {}  # (project, branch): (its key, snapshot)
         self._asked: dict[int, int] = {}  # project: the newest build ``current`` loaded again for
@@ -201,8 +202,9 @@ class SnapshotCoordinator:
         """The project's snapshot, None before its first build kept a graph. One older than build ``build_id``, the
         newest the caller found, starts a load, once per build, unless one runs (a caller that missed the
         notification, or reads without a listener, catches up), and the caller waits up to ``wait`` seconds
-        (FRESH_WAIT) for the load running: a read right after a build answers from it, as its writer expects. Past
-        that, or when the load fails, the older snapshot answers; the load goes on."""
+        (FRESH_WAIT) for the load running, counted from when that load began: a read right after a build answers from
+        it, as its writer expects, and one coming after the load ran that long waits no more. Past that, or when the
+        load fails, the older snapshot answers; the load goes on."""
         held = await self.get(project_id)
         if held is None or held.build_id == build_id:
             return held
@@ -213,6 +215,8 @@ class SnapshotCoordinator:
             task.add_done_callback(self._done)
         task = self._loading.get(project_id)
         wait = FRESH_WAIT if wait is None else wait
+        if task is not None:
+            wait -= asyncio.get_running_loop().time() - self._began.get(project_id, 0.0)
         if task is None or wait <= 0:
             return held
         with contextlib.suppress(Exception):  # a slow load times out, a failed one is logged by ``_done``
@@ -262,6 +266,7 @@ class SnapshotCoordinator:
             build = self._build(project_id, None if task is None or task.done() else task)
             task = asyncio.get_running_loop().create_task(build, name=f"kg-snapshot-{project_id}")
             self._loading[project_id] = task
+            self._began[project_id] = asyncio.get_running_loop().time()
         return task
 
     async def _build(self, project_id: int, after: asyncio.Task | None = None) -> Held | None:
@@ -273,6 +278,7 @@ class SnapshotCoordinator:
         finally:
             if self._loading.get(project_id) is asyncio.current_task():
                 del self._loading[project_id]  # a finished load is not kept; a fresh one queued behind it stays
+                self._began.pop(project_id, None)
         if held is None:
             return None
         self._keep(project_id, held)

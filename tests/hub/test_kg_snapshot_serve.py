@@ -237,8 +237,8 @@ def test_the_coordinator_holds_the_most_recently_read_projects_and_no_finished_l
 
 def test_a_read_right_after_a_build_waits_for_its_snapshot_and_not_past_fresh_wait(monkeypatch):
     """A tool call right after a build answers from the snapshot of that build, which the notification began to load
-    (an archived node is gone at once); a load slower than FRESH_WAIT leaves the older snapshot answering, and a
-    plugin read (``held``) never waits."""
+    (an archived node is gone at once); a load slower than FRESH_WAIT leaves the older snapshot answering, a read
+    coming once that load ran past FRESH_WAIT waits no more, and a plugin read (``held``) never waits."""
     newest, gate = [1], {}
 
     async def load(engine, project_id):
@@ -265,15 +265,19 @@ def test_a_read_right_after_a_build_waits_for_its_snapshot_and_not_past_fresh_wa
             started = asyncio.get_running_loop().time()
             slow = (await coordinator.current(7, 3)).build_id
             waited = asyncio.get_running_loop().time() - started
+            started = asyncio.get_running_loop().time()
+            later = (await coordinator.current(7, 3)).build_id  # the load of 3 still runs, past FRESH_WAIT already
+            again = asyncio.get_running_loop().time() - started
             gate[3].set()
             await asyncio.gather(*coordinator._tasks, *coordinator._loading.values())
-            return first, fresh, plugin, slow, waited, (await coordinator.current(7, 3)).build_id
+            return first, fresh, plugin, slow, waited, later, again, (await coordinator.current(7, 3)).build_id
         finally:
             await coordinator.close()
 
-    first, fresh, plugin, slow, waited, caught_up = asyncio.run(run())
+    first, fresh, plugin, slow, waited, later, again, caught_up = asyncio.run(run())
     assert (first, fresh) == (1, 2)  # the old code answered 1 here: the archived node still read
-    assert (plugin, slow, caught_up) == (2, 2, 3) and 0.9 <= waited < 3
+    assert (plugin, slow, later, caught_up) == (2, 2, 2, 3) and 0.9 <= waited < 3
+    assert again < 0.1  # not another FRESH_WAIT for each read while a load of minutes runs
 
 
 def test_loads_making_snapshots_leave_the_pool_to_the_workers_heartbeats(hub, tmp_path, caplog, monkeypatch):
