@@ -10,10 +10,11 @@ from evo_agents.kg import search as text_search
 from evo_agents.kg import semantic
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.build import build_inputs
-from evo_agents.kg.store import Store
-from tests.kg.hub_graph import sign_in
+from tests.kg import built
+from tests.kg.built import sync_build
+from tests.kg.hub_graph import search_tuning, sign_in
 from tests.kg.projects import commit, make_project, write
-from tests.kg.test_store import make_searchable, sync_build
+from tests.kg.test_store import make_searchable
 
 
 def test_a_project_that_set_nothing_is_tuned_by_the_constants_the_code_always_had(tmp_path):
@@ -105,35 +106,23 @@ def test_passage_from_cuts_a_shorter_body_into_passages_and_a_build_applies_it(t
     write(app / "docs/long.md", "# Long\n\n" + long_page(40))
     commit(app, "long page")
     sync_build(project)
-    store = Store.for_project(project)
-    default_rows = store.db.execute("SELECT count(*) FROM node_fts").fetchone()[0]
-    store.close()
+    default_rows = len(built.rows_of(project).keyed)
     kg_settings.write(project.root, kg_settings.of({"passage_from": 800, "passage_chars": 300}))
     sync_build(project)
-    store = Store.for_project(project)
-    tuned_rows = store.db.execute("SELECT count(*) FROM node_fts").fetchone()[0]
-    store.close()
+    tuned_rows = len(built.rows_of(project).keyed)
     assert tuned_rows > default_rows
 
 
 def test_a_query_key_acts_on_the_next_search_without_a_build(tmp_path, kg_env):
     project = make_searchable(tmp_path, kg_env)
     sync_build(project)
-    store = Store.open_readonly(project)
-    assert store.tuning == kg_settings.DEFAULT
-    store.close()
+    assert search_tuning(project) == kg_settings.DEFAULT
     kg_settings.write(project.root, kg_settings.of({"bm25_name": 9.0, "semantic_weight": 2.0}))
-    store = Store.open_readonly(project)
-    try:
-        assert store.tuning.bm25[2] == 9.0 and store.tuning.semantic_weight == 2.0
-    finally:
-        store.close()
+    tuning = search_tuning(project)
+    assert tuning.bm25[2] == 9.0 and tuning.semantic_weight == 2.0
     with kg_settings.overriding({"bm25_name": 1.5}):  # a run asking for a candidate wins over the file
-        store = Store.open_readonly(project)
-        try:
-            assert store.tuning.bm25_name == 1.5 and store.tuning.semantic_weight == semantic.SEMANTIC_WEIGHT
-        finally:
-            store.close()
+        tuning = search_tuning(project)
+        assert tuning.bm25_name == 1.5 and tuning.semantic_weight == semantic.SEMANTIC_WEIGHT
     assert kg_settings.override_of() is None
 
 
