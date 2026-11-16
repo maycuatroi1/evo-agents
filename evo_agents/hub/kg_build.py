@@ -153,6 +153,7 @@ class Built:
     files: dict | None = None  # the files of each git source (``kg_coverage.source_files``)
     requests: tuple | None = None  # the deferred entity requests: path, sha256, size, count (``kg_entity_relay``)
     items: tuple = ()  # the live items of its corpus, as kg_corpus_items keeps them (``kg_graph_rows``)
+    read: str | None = None  # a skipped build's: the content hash of the head of main it took its rows from
 
 
 def kg_root(data_dir: Path) -> Path:
@@ -418,6 +419,7 @@ def build_in_cache(
         kg_coverage.source_files(project),
         requests,
         tuple(_corpus_items(project)),
+        previous.content_hash if report.skipped and previous is not None else None,
     )
 
 
@@ -520,18 +522,34 @@ async def record(engine, store: BlobStore, project_id: int, build_id: int, diges
 async def keep_graph(conn: AsyncConnection, project_id: int, build_id: int, built: Built) -> None:
     """Keep the corpus items and the graph of a build in the hub's tables, only what changed, and notify the readers
     (``kg_graph_rows``). The head's content hash is the build's, which folds in the asked index and the vectors. A
-    skipped build's rows are those the hub kept, its merged branches applied already; a new build's get them."""
+    skipped build's rows are those the hub kept, its merged branches applied already; a new build's get them. A
+    skipped build whose head of main a merge moved since it read it (under the project's lock, as here) leaves it."""
     corpus = await kg_graph_rows.merge_corpus(conn, project_id, list(built.items))
     rows = dataclasses.replace(built.rows, content_hash=built.content_hash)
     if not built.skipped:  # a skipped build keeps the head it read, and its build id
         rows = dataclasses.replace(rows, summary={**rows.summary, "build_id": build_id})
     await kg_branches.lock(conn, project_id)  # a merge of a draft branch writes main too (``kg_branches``)
+    if built.skipped and await _head_hash(conn, project_id) != built.read:
+        # a branch merged since the build read main: main is as the merge wrote it, which the next build takes again
+        log.info("kg graph left as a merge wrote it", extra={"project_id": project_id, "build_id": build_id})
+        return
     if not built.skipped:
         rows = await kg_branches.overlay(conn, project_id, rows)
     changed = await kg_graph_rows.write_graph(conn, project_id, build_id, rows)
     log.info(
         "kg graph kept", extra={"project_id": project_id, "build_id": build_id, "corpus": corpus.counts(), **changed}
     )
+
+
+async def _head_hash(conn: AsyncConnection, project_id: int) -> str | None:
+    heads = tables.kg_graph_heads
+    return (
+        await conn.execute(
+            select(heads.c.content_hash).where(
+                heads.c.project_id == project_id, heads.c.branch_id == kg_graph_rows.MAIN
+            )
+        )
+    ).scalar_one_or_none()
 
 
 async def start_eval_set(engine, project_id: int, project: str, built: Built) -> None:
