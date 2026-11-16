@@ -11,6 +11,7 @@ from urllib.parse import unquote
 
 from evo_agents.hub.client import HubError
 from evo_agents.hub.kg_graph import BuiltGraph, HubSession
+from evo_agents.kg import grep_links
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.policy import Label
 from evo_agents.kg.project import Project, load_project_at
@@ -80,9 +81,22 @@ class GraphHub:
         name, rest = unquote(parts[2]), parts[3:]
         if rest == ["tools", "kg_status"] and method == "POST":
             return self.session(name, (body or {}).get("sink")).call("kg_status", {})
+        if rest == ["grep-links"] and method == "POST":
+            return {"lines": self.grep_links(name, body or {})}
         if rest[0] == "settings":
             return self.settings(name, method, rest[1:], body or {})
         raise HubError(f"HTTP 404: {method} {path}")
+
+    def grep_links(self, name: str, body: dict) -> list[str]:
+        """POST grep-links as the hub answers it (``evo_agents.hub.server.kg_grep``), with the session's (level,
+        location) clearance, none for a sink knowledge.yaml does not declare; 409 without a graph."""
+        session = self.session(name, body.get("sink"))
+        if isinstance(session, NoGraph):
+            raise HubError("HTTP 409: no graph yet", 409)
+        files = [(f["repo"], f["path"]) for f in body.get("files") or []]
+        hits = [(files[h["file"]], h.get("line"), h.get("text") or "") for h in body.get("hits") or []]
+        clearance = None if session.error else session.clearance
+        return grep_links.link_lines(session.graph_store, clearance, hits)
 
     def settings(self, name: str, method: str, rest: list[str], body: dict) -> dict:
         root = self.project(name).root

@@ -1155,8 +1155,8 @@ routes of its run's project and nothing else, every other path answering 403 and
 - `GET /v1/kg/{project}/init`, which `hub kg init` reads to find the run in flight;
 - `POST /v1/kg/{project}/init/{id}/questions` and `.../decision`, for its own kg_init run alone;
 - `POST /v1/kg/{project}/answers/{job}/replies`, for the questions of its own batch alone;
-- `POST /v1/kg/{project}/tools/{tool}` and `GET /v1/kg/{project}/eval-set`, read through the agents' sink
-  (`claude-code@anthropic`) whatever the request names.
+- `POST /v1/kg/{project}/tools/{tool}`, `POST /v1/kg/{project}/grep-links` and `GET /v1/kg/{project}/eval-set`,
+  read through the agents' sink (`claude-code@anthropic`) whatever the request names.
 
 ## A run that asks for a credential
 

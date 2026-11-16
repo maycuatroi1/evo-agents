@@ -498,12 +498,15 @@ the hub's next build (`kg build` or `kg sync --build` asks for one), and readers
 ## After grep
 
 The evo-kg plugin runs `evo-agents kg hook post-search` after Grep, and after a Bash command whose pipeline starts with
-`rg` or `grep` (`evo_agents/kg/post_search.py`, `evo_agents/kg/grep_command.py`). When a matched line falls in a node
-of the graph, it adds a note beside the result, never in it:
+`rg` or `grep` (`evo_agents/kg/post_search.py`, `evo_agents/kg/grep_command.py`). The hook reads the result on this
+machine, maps its paths to (repo, path) of the bound project, and asks the hub what the project's graph links to those
+lines (`POST /v1/kg/{project}/grep-links`, `evo_agents/hub/kg_grep_hook.py`, `evo_agents/hub/server/kg_grep.py`,
+`evo_agents/kg/grep_links.py`); no graph is read on this machine. When a matched line falls in a node of the graph,
+it adds a note beside the result, never in it:
 
 ```
 evo-kg: what the project graph links to the code this search matched (callers, tests, plan steps); kg_context or kg_impact with an id gives more:
-- evo-agents:evo_agents/kg/store.py::Store.search: callers evo-agents:evo_agents/kg/serve.py::Session.tool_kg_context, evo-agents:evo_agents/kg/serve.py::Session.tool_kg_search (+1 more); tests evo-agents:tests/kg/test_store.py, evo-agents:tests/kg/test_audit.py (+9 more); plan steps plan:kg-fresh-and-useful/step:5, plan:kg-fresh-and-useful/step:4 (+2 more)
+- app:app/search.py::search: callers app:app/server.py::Server.handle; tests app:tests/test_search.py::test_search_ranks; plan steps plan:northwind/step:1
 ```
 
 - It reads the lines of the result: `path:line:text`, `path:text`, `path` (`-l`), `path:count` (`-c`), `line:text`
@@ -520,18 +523,22 @@ evo-kg: what the project graph links to the code this search matched (callers, t
   them and the plan steps that name it. Two of each, then a count. A symbol whose definition matched comes first,
   then other symbols, then files, at most four lines after the header; a file whose symbol has a line gets no line of
   its own.
-- Only edges of status `parsed` or `resolved` (never `proposed` or `extracted`) and nodes and edges the sink may see; only ids, no
-  name or text of a source. Nothing to add, an unbound directory, no store, a result past 0.35 s of lookup, `-v`,
-  `-L`, `--json`, `--files`, or a `grep` that filters another command's output: no note. Errors go to stderr as one
-  line naming their type; the exit status is always 0.
+- Only edges of status `parsed` or `resolved` (never `proposed` or `extracted`) and nodes and edges the reader may
+  see: the hub answers with the rule of the kg_* tools, the meet of the member's grant and the sink's clearance, and
+  the audience the member has at that call; a KG run's token reads through the agents' sink. Only ids, no name or
+  text of a source. Nothing to add, an unbound directory, no sign-in, a project the hub does not know or holds no
+  graph of, no grant, a hub that cannot be reached, an answer past the 1.0 s budget, `-v`, `-L`, `--json`,
+  `--files`, or a `grep` that filters another command's output: no note. Errors go to stderr as one line naming
+  their type; the exit status is always 0.
 - The note is `additionalContext`, so evo-hub's PostToolUse hook, which cuts a long result to its head and tail, cuts
   none of it, and both hooks read the same whole result. `EVO_KG_GREP_HINTS=0` turns the note off.
 - It runs on every grep, so it starts lean: `evo-agents kg hook post-search` skips building the parsers of every other
-  command (0.2 to 0.3 s), and reads the bound project from `hook-scope.json` under the kg home while the bindings,
-  the project index, the harness registries, the harness.yaml above the directory and the project's harness.yaml and
-  knowledge.yaml stay as they were (`evo_agents/kg/hook_scope.py`), so it imports neither the harness loader nor
-  PyYAML. On 50 grep commands in the evo-agents checkout with the machine loaded (load average 21, 2026-10-18), the
-  hook took 71 ms at the median and 109 ms at p95.
+  command, and reads the bound project and its repo roots from `hook-scope.json` under the kg home while the
+  bindings, the project index, the harness registries, the harness.yaml above the directory and the project's
+  harness.yaml and knowledge.yaml stay as they were (`evo_agents/kg/hook_scope.py`), so it imports neither the
+  harness loader nor PyYAML. The request gets what is left of a 1.0 s budget. A fresh process that imports the
+  hook, loads the sign-in and makes one TLS round trip to the hub took 225 ms at the median and 255 ms at most over
+  15 runs (2026-11-16).
 
 ## Plans of the hub, commits and pull requests
 

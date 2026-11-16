@@ -806,6 +806,17 @@ class SnapshotView:
             return None
         return dict(zip(UNIT_KEYS, row[:7], strict=True))
 
+    def unit_spans(self, item_ids, visible=None) -> dict[str, list[str]]:
+        """The spans of the live units the reader sees of each of ``item_ids``, by item, in one pass over the units;
+        with ``visible``, only those whose (level, location) label it passes."""
+        wanted, out = set(item_ids), {}
+        for row in self.snap.units.values():
+            if row[1] not in wanted or not row[6] or not within(self.reader, row[7]):
+                continue
+            if visible is None or visible((row[8] or 0, row[9] or 0)):
+                out.setdefault(row[1], []).append(row[6])
+        return out
+
     def where(self, elem_id: str, b: int = 0) -> list[dict]:
         return [{"unit": unit, "span": span} for unit, span in self.snap.where.get(elem_id, ())]
 

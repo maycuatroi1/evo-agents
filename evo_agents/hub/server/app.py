@@ -318,10 +318,11 @@ def _include_account_routes(app: FastAPI) -> None:
 
 
 def _include_kg_routes(app: FastAPI) -> None:
-    from evo_agents.hub.server import kg, kg_config
+    from evo_agents.hub.server import kg, kg_config, kg_grep
 
     app.include_router(kg.router)
     app.include_router(kg_config.router)
+    app.include_router(kg_grep.router)
 
     from evo_agents.hub.server import kg_web
 

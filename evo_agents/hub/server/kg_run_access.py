@@ -17,8 +17,9 @@ route answers, and ``project_access`` finds no other project for it (``Principal
 - POST /v1/kg/{project}/init/{id}/questions and .../decision, which take the run's own kg_init run alone
   (``kg_questions``, ``kg_init``: ``acts_for_run``);
 - POST /v1/kg/{project}/answers/{job}/replies, for the questions of its own batch alone (``kg_answers``);
-- POST /v1/kg/{project}/tools/{tool} and GET /v1/kg/{project}/eval-set, read through the agents' sink whatever the
-  request names (``sink``), as the agents read the graph on /mcp;
+- POST /v1/kg/{project}/tools/{tool}, GET /v1/kg/{project}/eval-set and POST /v1/kg/{project}/grep-links (the note
+  the hook adds after the agent's greps), read through the agents' sink whatever the request names (``sink``), as the
+  agents read the graph on /mcp;
 - POST /v1/kg/{project}/entity-map, the entity map a run of strategy entity-graph-agent made, checked through that
   sink too (``kg_entity_map``), and GET /v1/kg/{project}/entity-map/outline, .../changed and .../runs, which an
   entity map run reads through that sink (``kg_entity_map_run``).
@@ -47,6 +48,7 @@ ROUTES = (
     ("POST", re.compile(rf"/v1/kg/{_PROJECT}/answers/[0-9]+/replies")),
     ("POST", re.compile(rf"/v1/kg/{_PROJECT}/tools/[a-z_]+")),
     ("GET", re.compile(rf"/v1/kg/{_PROJECT}/eval-set")),
+    ("POST", re.compile(rf"/v1/kg/{_PROJECT}/grep-links")),
     ("POST", re.compile(rf"/v1/kg/{_PROJECT}/entity-map")),
     ("GET", re.compile(rf"/v1/kg/{_PROJECT}/entity-map/(outline|changed|runs)")),
 )
