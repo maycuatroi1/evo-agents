@@ -3151,6 +3151,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runs/{run_id}/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Priority
+         * @description Change the priority of a queued run of the project, for a writer of it: a worker claims its queued runs by
+         *     priority, highest first, then the oldest. 409 for a run that is no longer queued.
+         */
+        post: operations["priority_v1_projects__project__runs__run_id__priority_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/claim": {
         parameters: {
             query?: never;
@@ -11671,6 +11692,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/ops/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Priority Route
+         * @description Give a queued run of the project another priority, as the Orchestrator's chat run of an ops thread.
+         */
+        post: operations["priority_route_v1_worker_runs__run_id__ops_priority_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/ops/plan-dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Dispatch Route
+         * @description Hand a stalled plan of this ops thread's batch again to the default system's entry agent, as its Orchestrator's
+         *     chat run.
+         */
+        post: operations["plan_dispatch_route_v1_worker_runs__run_id__ops_plan_dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/work": {
         parameters: {
             query?: never;
@@ -15223,6 +15285,13 @@ export interface components {
              * @description why an agent of a system asks an agent off its interacts edges; without it such an ask is refused
              */
             reason?: string | null;
+            /**
+             * Priority
+             * @description the priority of the run it asks for: a worker claims its queued runs by it, urgent first
+             * @default medium
+             * @enum {string}
+             */
+            priority: "urgent" | "high" | "medium" | "low";
         };
         /** AgentAsked */
         AgentAsked: {
@@ -31771,6 +31840,38 @@ export interface components {
              */
             reason?: string | null;
         };
+        /** OpsPlanIn */
+        OpsPlanIn: {
+            /**
+             * Plan Id
+             * @description a stalled plan of the batch (a plan.stalled item)
+             */
+            plan_id: string;
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** OpsPriorityIn */
+        OpsPriorityIn: {
+            /**
+             * Run Id
+             * @description a queued run of the project
+             */
+            run_id: number;
+            /**
+             * Level
+             * @description its new priority: urgent, high, medium or low
+             * @enum {string}
+             */
+            level: "urgent" | "high" | "medium" | "low";
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
         /** OpsReadIn */
         OpsReadIn: {
             /**
@@ -31822,6 +31923,12 @@ export interface components {
              * @description or once it holds this many items
              */
             max_items: number;
+            /**
+             * Plan Stall Minutes
+             * @description a plan a system ran stalls, and a chat run has queued too long, after this many quiet minutes
+             * @default 30
+             */
+            plan_stall_minutes: number;
         };
         /** OpsWaitIn */
         OpsWaitIn: {
@@ -35307,6 +35414,18 @@ export interface components {
              * @description what those runs cost since the month began, in USD, an estimate
              */
             cost_month_usd: number;
+        };
+        /**
+         * PriorityChange
+         * @description What POST /v1/projects/{p}/runs/{id}/priority changes of a queued run of the project.
+         */
+        PriorityChange: {
+            /**
+             * Priority
+             * @description the run's new priority: a worker claims urgent first, low last
+             * @enum {string}
+             */
+            priority: "urgent" | "high" | "medium" | "low";
         };
         /** Probe */
         Probe: {
@@ -40392,6 +40511,13 @@ export interface components {
              * @enum {string}
              */
             state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled" | "idle" | "ended";
+            /**
+             * Priority
+             * @description the order a worker claims the queued runs in, highest first, then the oldest: an agent's ask sets it, a writer changes it while the run is queued; a plan or step run has medium
+             * @default medium
+             * @enum {string}
+             */
+            priority: "urgent" | "high" | "medium" | "low";
             /** Lease Expires At */
             lease_expires_at: string | null;
             /** Session Id */
@@ -62370,6 +62496,78 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AccessChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    priority_v1_projects__project__runs__run_id__priority_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriorityChange"];
             };
         };
         responses: {
@@ -95703,6 +95901,148 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["OpsFindingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    priority_route_v1_worker_runs__run_id__ops_priority_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsPriorityIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    plan_dispatch_route_v1_worker_runs__run_id__ops_plan_dispatch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsPlanIn"];
             };
         };
         responses: {

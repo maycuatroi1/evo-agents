@@ -261,6 +261,19 @@ like any decision, so the run is `waiting` at the end of the agent's turn, and t
 unless it wakes within 10 minutes (`DECISION_WAIT_SECONDS`), so the wait holds no worker: the run that wakes resumes it
 in its session on the same worker.
 
+Any run that is `waiting` on a decision keeps its slot for those 10 minutes only while no other work wants it: when a
+run is queued for its node (pinned to it, as a mention or an ask to an agent whose nodes are all busy is) and the node
+has no free slot, the reaper parks the waiting run at its next pass, and the queued run takes the slot. The queue
+goes by priority (`urgent`, `high`, `medium`, `low`, then the oldest): `evo-agents worker agent ask --priority LEVEL`
+sets it, and `evo-agents hub run priority RUN LEVEL` (a writer) or the Orchestrator's `evo-agents worker ops priority`
+changes it while the run is queued. The answer wakes a parked run as it wakes a waiting one.
+
+No notice tells a person about a stalled plan, a chat run queued too long or a refused mention: with ops on in the
+project's default system, the hub writes them as the operations events `plan.stalled`, `run.queued_long` and
+`mention.refused`, and the Orchestrator gets them in an ops thread (`docs/hub.md`, Agent systems). It hands a stalled
+plan again to the system's entry agent with `evo-agents worker ops plan-dispatch PLAN` and orders the queue with
+`evo-agents worker ops priority RUN LEVEL`; what is the owner's to decide it still asks as a decision.
+
 `wake_at` is when it wakes at the latest: `--until` (a time with a timezone, or a span such as `+6h`), at most
 `MAX_WAIT_DAYS` (7) days ahead, and that far when only `--on` is given. `wake_on` is the event that wakes it sooner: an
 event of the run's project in hub_events of kind `--on` (`plan.step`, `github.workflow_run`, `canvas.claim`,

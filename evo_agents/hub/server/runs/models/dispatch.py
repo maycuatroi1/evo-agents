@@ -210,6 +210,14 @@ class AccessChange(BaseModel):
     )
 
 
+class PriorityChange(BaseModel):
+    """What POST /v1/projects/{p}/runs/{id}/priority changes of a queued run of the project."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    priority: runs.Priority = Field(description="the run's new priority: a worker claims urgent first, low last")
+
+
 class OverlapWait(BaseModel):
     """The runs a queued step run waits for: they work on the same plan and repo and have edited files the step names
     in its what or note, so the hub leaves the run in the queue until they end."""
@@ -296,6 +304,11 @@ class Run(RunPlacement):
     state: runs.ShownState = Field(
         description="idle and ended are a local run's alone: the turn ended and the person has the word; the session "
         "is over, or went silent for a day"
+    )
+    priority: runs.Priority = Field(
+        runs.DEFAULT_PRIORITY,
+        description="the order a worker claims the queued runs in, highest first, then the oldest: an agent's ask sets "
+        "it, a writer changes it while the run is queued; a plan or step run has medium",
     )
     lease_expires_at: datetime | None
     session_id: str | None

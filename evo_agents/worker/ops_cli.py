@@ -1,4 +1,4 @@
-"""``evo-agents worker ops rerun|redeliver|answer-wait|curator-resume|read|finding``: what the Orchestrator of a
+"""``evo-agents worker ops rerun|redeliver|answer-wait|curator-resume|read|finding|priority|plan-dispatch``: what the Orchestrator of a
 project's default system does in an ops thread the hub opened to it for a batch of the ops queue
 (``evo_agents.hub.server.ops_actions``; ``evo_agents.hub.server.ops_threads`` opens the threads).
 
@@ -11,6 +11,10 @@ project's default system does in an ops thread the hub opened to it for a batch 
 - ``read NOTICE --reason TEXT``: mark a notice of the project read.
 - ``finding --lens LENS --severity low|medium|high --title TEXT --body TEXT --reason TEXT``: write a finding for the
   Curator, with the batch as its evidence: a recurring cause is fixed in the system, not rerun.
+- ``priority RUN LEVEL --reason TEXT``: give a queued run of the project another priority (urgent, high, medium, low),
+  the order a worker claims its queue in: for a ``run.queued_long`` item.
+- ``plan-dispatch PLAN --reason TEXT``: hand a stalled plan of the batch (a ``plan.stalled`` item) again to the entry
+  agent of the default system, as ``evo-agents hub plan system-dispatch`` does for a person.
 
 All read the run from EVO_RUN_ID like ``worker chat`` (``chat_cli``) and are for a chat run in an ops thread only. The
 hub refuses what is outside the frame, with the reason, and the command prints it on stderr and exits 1. Each success
@@ -22,6 +26,7 @@ from __future__ import annotations
 
 import sys
 
+from evo_agents.hub.runs import PRIORITIES
 from evo_agents.worker.chat_cli import agent_run, call, chat_command
 
 SEVERITIES = ("low", "medium", "high")
@@ -85,6 +90,19 @@ def cmd_finding(args) -> int:
     return _said(answer, f"Wrote finding #{answer['finding_id']} for the Curator")
 
 
+@chat_command
+def cmd_priority(args) -> int:
+    body = {"run_id": args.run, "level": args.level, "reason": _text(args.reason)}
+    answer = _act("priority", "priority", body)
+    return _said(answer, f"Set the priority of queued run #{args.run} to {args.level}")
+
+
+@chat_command
+def cmd_plan_dispatch(args) -> int:
+    answer = _act("plan-dispatch", "plan-dispatch", {"plan_id": args.plan, "reason": _text(args.reason)})
+    return _said(answer, f"Handed plan {args.plan} again to the entry agent, in run #{answer['run_id']}")
+
+
 def _reason(parser) -> None:
     parser.add_argument("--reason", required=True, metavar="TEXT", help="why, for the Decision line (- for stdin)")
 
@@ -122,3 +140,14 @@ def register_ops(wsub) -> None:
     finding.add_argument("--body", required=True, metavar="TEXT", help="what is wrong, and the fix (- for stdin)")
     _reason(finding)
     finding.set_defaults(func=cmd_finding)
+    prio = osub.add_parser("priority", help="give a queued run of the project another priority: the queue's order")
+    prio.add_argument("run", type=int, metavar="RUN", help="the queued run's id")
+    prio.add_argument("level", choices=PRIORITIES, metavar="LEVEL", help=f"one of {', '.join(PRIORITIES)}")
+    _reason(prio)
+    prio.set_defaults(func=cmd_priority)
+    plan = osub.add_parser(
+        "plan-dispatch", help="hand a stalled plan of the batch again to the entry agent of the default system"
+    )
+    plan.add_argument("plan", metavar="PLAN", help="the stalled plan's id")
+    _reason(plan)
+    plan.set_defaults(func=cmd_plan_dispatch)

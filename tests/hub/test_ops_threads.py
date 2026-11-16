@@ -19,6 +19,7 @@ from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import hub_events, tables
 from evo_agents.hub.server import ops_threads
+from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import (  # noqa: F401 (fixtures)
     app_key,
@@ -29,11 +30,13 @@ from tests.hub.test_chat_runs import (  # noqa: F401 (fixtures)
     hub,
     in_chats,
     moved,
+    sent,
     started,
 )
 from tests.hub.test_ops_batches import project_id, record, run_pass
 from tests.hub.test_runs import PROJECT, set_run
-from tests.hub.test_system_orchestrator import LED, audited, led_desk, threads_of
+from tests.hub.test_system_orchestrator import LED, audited, in_thread, led_desk, threads_of
+from tests.hub.test_system_traces import push_plan
 
 KEY = "run.ended:agent:@reviewer"
 
@@ -55,6 +58,18 @@ def batch(
     values = {**row, "key": key, "state": state, "closes_at": func.now(), "closed_at": func.now()}
     ((batch_id,),) = sql(db, insert(b).values(**values).returning(b.c.id))
     sql(db, insert(i).values(**row, batch_id=batch_id, run_id=run_id, decision_id=decision_id))
+    return batch_id
+
+
+def item_batch(db, kind: str, cause: str, subject: str, payload: dict, run_id: int | None = None) -> int:
+    """A ready batch of one pending item of ``kind``, written from a hub event of ``payload``."""
+    b, i, e = tables.ops_batches, tables.ops_items, tables.hub_events
+    row = {"project_id": project_id(db), "kind": kind, "cause": cause, "subject": subject}
+    values = {**row, "key": f"{kind}:{cause}:{subject}", "state": "ready", "closes_at": func.now()}
+    ((batch_id,),) = sql(db, insert(b).values(**values, closed_at=func.now()).returning(b.c.id))
+    event = {"project_id": row["project_id"], "kind": kind, "payload": payload}
+    ((event_id,),) = sql(db, insert(e).values(**event).returning(e.c.id))
+    sql(db, insert(i).values(**row, batch_id=batch_id, event_id=event_id, run_id=run_id))
     return batch_id
 
 
@@ -305,3 +320,97 @@ def test_the_events_of_an_ops_run_are_no_item_of_the_queue(client, hub, hub_db):
     record(client, hub_db, hub_events.RUN_ENDED, run_id=ops_run, run_kind="chat", state="failed", worker_id=7)
     record(client, hub_db, hub_events.DECISION_OPENED, **{**asked, "run_id": parent, "decision_id": 2})
     assert run_pass(client)["queued"] == 1, "the Orchestrator's own decision comes back to it as no batch"
+
+
+def test_a_mention_an_ops_run_makes_that_no_node_takes_writes_no_mention_refused(client, hub, hub_db):
+    _, fixer, lead, parent = led_desk(client, hub)
+    ops_on(hub_db)
+    failed(hub_db, parent, "the retry test fails")
+    batch(hub_db, parent)
+    threads_pass(client)
+    (thread,) = ops_threads_of(hub_db)
+    run_id = thread["orchestrator_run_id"]
+    lead_claims(client, lead, run_id)
+    joined = client.put(f"/v1/chats/{thread['chat_id']}/agents/fixer", headers=hub["owner"])
+    assert joined.status_code == 200, joined.text
+    w, e = tables.workers, tables.hub_events
+    sql(hub_db, update(w).values(dispatch_from="web").where(w.c.id == fixer["id"]))  # no node takes @fixer
+    refused = select(func.count()).select_from(e).where(e.c.kind == hub_events.MENTION_REFUSED)
+
+    handed = in_chats(client, lead, run_id, "chat/mentions", {"handle": "fixer", "body": "run the retry test again"})
+    assert handed.status_code == 201 and handed.json()["refusal"], handed.text
+    assert sql(hub_db, refused)[0][0] == 0, "the ops run's own refusal would come back to it as a batch, and again"
+    said = sent(client, hub["owner"], thread["chat_id"], "@fixer run it again")
+    assert said["mentions"][0]["refusal"]
+    assert sql(hub_db, refused)[0][0] == 1, "a person's mention no node takes still tells the Orchestrator"
+
+
+def test_the_orchestrator_dispatches_a_stalled_plan_again(client, hub, hub_db):
+    _, _, lead, _ = led_desk(client, hub)
+    ops_on(hub_db)
+    plan = credentials_api.PLAN
+    push_plan(client, hub["owner"])
+    payload = {"v": 1, "plan_id": plan, "revision": 1, "run_id": None, "steps": ["1"], "state": "stalled"}
+    batch_id = item_batch(hub_db, hub_events.PLAN_STALLED, "stalled", f"plan:{plan}", payload)
+    threads_pass(client)
+    (thread,) = ops_threads_of(hub_db)
+    root = root_of(hub_db, thread)
+    assert f"plan {plan} (revision 1) has ready steps 1" in root, root
+    assert f"`evo-agents hub plan handoff {plan} --step 1`" in root and f"ops plan-dispatch {plan}`" in root, root
+    run_id = thread["orchestrator_run_id"]
+    lead_claims(client, lead, run_id)
+
+    ops(client, lead, run_id, "plan-dispatch", {"plan_id": "no-such-plan", "reason": "r"}, 404)  # not in the batch
+    acted = ops(client, lead, run_id, "plan-dispatch", {"plan_id": plan, "reason": "step 1 waits on no one"})
+    assert acted["run_id"] and acted["handled"] == 1
+    t = tables.system_traces
+    ((trace_id, revision),) = sql(hub_db, select(t.c.id, t.c.plan_revision).where(t.c.plan_id == plan))
+    assert revision == 1
+    r = tables.runs
+    assert sql(hub_db, select(r.c.kind, r.c.state).where(r.c.id == acted["run_id"])) == [("chat", "queued")]
+    i = tables.ops_items
+    assert sql(hub_db, select(i.c.state, i.c.handled_by).where(i.c.batch_id == batch_id)) == [
+        ("handled", "orchestrator")
+    ]
+    (target,) = audited(hub_db, "ops.plan_dispatch")
+    assert f"orchestrator_run:{run_id} plan:{plan} run:{acted['run_id']} trace:{trace_id}" in target
+    assert len(audited(hub_db, "run.dispatch_system")) == 1, "dispatched as dispatch_to_system does"
+    lines = in_thread(hub_db, thread["root_message_id"])
+    assert any(line.startswith(f"Decision: handed plan {plan} (revision 1) again") for line in lines), lines
+
+    again = ops(client, lead, run_id, "plan-dispatch", {"plan_id": plan, "reason": "r"}, 409)
+    assert f"trace #{trace_id}" in again["message"], again  # its trace runs it now: the same refusal as a person's
+
+
+def test_the_orchestrator_sets_a_queued_runs_priority(client, hub, hub_db):
+    _, _, lead, _ = led_desk(client, hub)
+    ops_on(hub_db)
+    chat = created(client, hub["owner"], title="Fixes", agents=["fixer"])
+    sent(client, hub["owner"], chat["id"], "@fixer please fix the flaky wait test")
+    r = tables.runs
+    ((queued, worker_id),) = sql(
+        hub_db, select(r.c.id, r.c.pinned_worker_id).where(r.c.state == "queued", r.c.kind == "chat")
+    )
+    payload = {"v": 1, "run_id": queued, "run_kind": "chat", "state": "queued", "worker_id": worker_id}
+    batch_id = item_batch(hub_db, hub_events.RUN_QUEUED_LONG, "queued", "-", {**payload, "priority": "medium"}, queued)
+    threads_pass(client)
+    (thread,) = ops_threads_of(hub_db)
+    root = root_of(hub_db, thread)
+    assert f"run #{queued} (chat, @fixer) queued for a slot of " in root and "priority medium" in root, root
+    assert f"`evo-agents worker ops priority {queued} LEVEL`" in root, root
+    run_id = thread["orchestrator_run_id"]
+    lead_claims(client, lead, run_id)
+
+    ops(client, lead, run_id, "priority", {"run_id": queued, "level": "asap", "reason": "r"}, 422)
+    ops(client, lead, run_id, "priority", {"run_id": run_id, "level": "high", "reason": "r"}, 409)  # running
+    acted = ops(client, lead, run_id, "priority", {"run_id": queued, "level": "urgent", "reason": "the owner waits"})
+    assert (acted["run_id"], acted["handled"]) == (queued, 1)
+    assert sql(hub_db, select(r.c.priority).where(r.c.id == queued)) == [("urgent",)]
+    i = tables.ops_items
+    assert sql(hub_db, select(i.c.state, i.c.handled_by).where(i.c.batch_id == batch_id)) == [
+        ("handled", "orchestrator")
+    ]
+    (target,) = audited(hub_db, "ops.priority")
+    assert f"orchestrator_run:{run_id} run:{queued} priority:medium->urgent" in target
+    lines = in_thread(hub_db, thread["root_message_id"])
+    assert f"Decision: set the priority of queued run #{queued} to urgent, from medium: the owner waits" in lines

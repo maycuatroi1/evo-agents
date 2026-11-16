@@ -3509,7 +3509,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -21573,7 +21574,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -21692,7 +21694,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -21870,7 +21873,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -21989,7 +21993,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -22343,7 +22348,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -22462,7 +22468,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -22581,7 +22588,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -23083,7 +23091,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run",
         "with": {
@@ -23102,6 +23111,139 @@
             "schema": "SystemDispatched"
           }
         }
+      }
+    },
+    "hub run priority": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "level",
+          "metavar": "LEVEL",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "urgent",
+            "high",
+            "medium",
+            "low"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "dispatched_via",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "model",
+          "mode",
+          "approval",
+          "timeout_min",
+          "run_seconds",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "resume_of_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "repos",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "budget",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "waiting_since",
+          "parked_at",
+          "finished_at",
+          "request",
+          "finish_requested_at",
+          "steady_wait",
+          "overlap_wait",
+          "warning",
+          "failure_cause",
+          "session_per_step",
+          "browser",
+          "browser_identities",
+          "profile",
+          "profile_id",
+          "profile_version",
+          "environment",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
+          "chat_id",
+          "chat_message_id",
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title",
+          "principal",
+          "autonomy",
+          "selector",
+          "tolerations",
+          "spend",
+          "plan_progress",
+          "as_owner",
+          "as_owner_since",
+          "model_used",
+          "routing",
+          "spawned_by_run_id",
+          "priority"
+        ],
+        "schema": "Run"
       }
     },
     "hub run rerun": {
@@ -23242,7 +23384,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -23419,7 +23562,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -23538,7 +23682,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -28138,6 +28283,20 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--priority"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "urgent",
+            "high",
+            "medium",
+            "low"
+          ]
         }
       ],
       "json": null
@@ -28948,6 +29107,63 @@
           "required": true,
           "repeatable": false
         },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker ops plan-dispatch": {
+      "positionals": [
+        {
+          "name": "plan",
+          "metavar": "PLAN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker ops priority": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "level",
+          "metavar": "LEVEL",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "urgent",
+            "high",
+            "medium",
+            "low"
+          ]
+        }
+      ],
+      "options": [
         {
           "flags": [
             "--reason"
@@ -29882,7 +30098,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.67.2"
+      "version": "0.70.3"
     },
     "paths": {
       "/v1/health": {
@@ -47371,6 +47587,111 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AccessChange"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/priority": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Priority",
+          "description": "Change the priority of a queued run of the project, for a writer of it: a worker claims its queued runs by\npriority, highest first, then the oldest. 409 for a run that is no longer queued.",
+          "operationId": "priority_v1_projects__project__runs__run_id__priority_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriorityChange"
                 }
               }
             }
@@ -98086,6 +98407,196 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/ops/priority": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Priority Route",
+          "description": "Give a queued run of the project another priority, as the Orchestrator's chat run of an ops thread.",
+          "operationId": "priority_route_v1_worker_runs__run_id__ops_priority_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsPriorityIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpsActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/ops/plan-dispatch": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Plan Dispatch Route",
+          "description": "Hand a stalled plan of this ops thread's batch again to the default system's entry agent, as its Orchestrator's\nchat run.",
+          "operationId": "plan_dispatch_route_v1_worker_runs__run_id__ops_plan_dispatch_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsPlanIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpsActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/work": {
         "post": {
           "tags": [
@@ -114219,6 +114730,18 @@
               ],
               "title": "Reason",
               "description": "why an agent of a system asks an agent off its interacts edges; without it such an ask is refused"
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority",
+              "description": "the priority of the run it asks for: a worker claims its queued runs by it, urgent first",
+              "default": "medium"
             }
           },
           "type": "object",
@@ -152573,6 +153096,66 @@
           "type": "object",
           "title": "OpsPause"
         },
+        "OpsPlanIn": {
+          "properties": {
+            "plan_id": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Plan Id",
+              "description": "a stalled plan of the batch (a plan.stalled item)"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plan_id",
+            "reason"
+          ],
+          "title": "OpsPlanIn"
+        },
+        "OpsPriorityIn": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Run Id",
+              "description": "a queued run of the project"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Level",
+              "description": "its new priority: urgent, high, medium or low"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "level",
+            "reason"
+          ],
+          "title": "OpsPriorityIn"
+        },
         "OpsReadIn": {
           "properties": {
             "notification_id": {
@@ -152653,6 +153236,12 @@
               "type": "integer",
               "title": "Max Items",
               "description": "or once it holds this many items"
+            },
+            "plan_stall_minutes": {
+              "type": "integer",
+              "title": "Plan Stall Minutes",
+              "description": "a plan a system ran stalls, and a chat run has queued too long, after this many quiet minutes",
+              "default": 30
             }
           },
           "type": "object",
@@ -160291,6 +160880,28 @@
             "cost_month_usd"
           ],
           "title": "PrincipalCost"
+        },
+        "PriorityChange": {
+          "properties": {
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority",
+              "description": "the run's new priority: a worker claims urgent first, low last"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "priority"
+          ],
+          "title": "PriorityChange",
+          "description": "What POST /v1/projects/{p}/runs/{id}/priority changes of a queued run of the project."
         },
         "Probe": {
           "properties": {
@@ -171957,6 +172568,18 @@
               ],
               "title": "State",
               "description": "idle and ended are a local run's alone: the turn ended and the person has the word; the session is over, or went silent for a day"
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority",
+              "description": "the order a worker claims the queued runs in, highest first, then the oldest: an agent's ask sets it, a writer changes it while the run is queued; a plan or step run has medium",
+              "default": "medium"
             },
             "lease_expires_at": {
               "anyOf": [

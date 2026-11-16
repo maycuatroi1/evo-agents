@@ -297,6 +297,12 @@ CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "finish",
 # at once; one that waits only for a time or an event of the hub, later than this, is parked at once
 DECISION_WAIT_SECONDS = 10 * 60
 PARKED_DAYS = 7  # a run parked this long is cancelled, and its open decisions expire
+# The priority of a run (runs.priority, schema 0255), highest first, as a task's (tables_tasks.PRIORITIES): a worker
+# claims the queued runs by it first, then by id. A plan or step run, or a run of the reaper or a schedule, has the
+# default.
+Priority = Literal["urgent", "high", "medium", "low"]
+PRIORITIES: tuple[str, ...] = get_args(Priority)
+DEFAULT_PRIORITY = "medium"
 # the longest timeout the runs table takes for a run of a kind other than step (schema 0014): that of a chat, task or
 # question run, which no time cap stops before
 LONGEST_TIMEOUT_MIN = 24 * 60
