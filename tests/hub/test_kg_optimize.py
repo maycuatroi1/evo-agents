@@ -366,3 +366,15 @@ def test_a_failing_measure_ends_the_run_failed_with_a_report(review):
     row = optimize_row(db, run_id)
     assert row["state"] == "failed" and row["error"] == "the project's eval set has no holdout question"
     assert row["report"].startswith(f"**KG optimize of {PROJECT} failed**")
+
+
+@needs_pg
+def test_the_job_applies_the_review_through_the_route_that_reads_the_query(review, tmp_path):
+    """The run applies the review queue's fixes through the route's code (``kg_review.apply_review``), which reads the
+    request's ``branch`` query: the job's request has an empty query (KG optimize run #44 failed on its missing one)."""
+    db = review.db
+    configured(review)
+    ctx = SimpleNamespace(owner_id=user_id(db, OWNER), owner=OWNER, project=PROJECT, agent_run_id=None)
+    body: dict = {}
+    review.client.portal.call(partial(kg_optimize._apply, review.client.app.state.engine, ctx, None, tmp_path, body))
+    assert "numbers" in body["decisions"], body
