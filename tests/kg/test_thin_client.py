@@ -64,7 +64,7 @@ def test_a_sync_pushes_its_run_to_the_hub_and_keeps_no_corpus(tmp_path, kg_env, 
     (run,) = body["runs"]
     assert code == 0 and run["status"] == "ok" and run["items"] == 2 and run["log"] is None
     assert list(hub.ingested) == [run["run_id"]] and alive(hub) == ["docs:doc:a", "docs:doc:b"]
-    assert not (kg_env / PROJECT / "corpus.sqlite").exists() and not (kg_env / PROJECT / "logs").exists()
+    assert not (kg_env / PROJECT / "state.json").exists() and not (kg_env / PROJECT / "logs").exists()
     assert not list((kg_env / PROJECT).glob("spool-*"))  # the run's spool goes once it is pushed
 
 

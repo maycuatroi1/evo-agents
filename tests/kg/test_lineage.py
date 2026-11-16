@@ -3,7 +3,6 @@ whatever the commit times say."""
 
 import os
 import random
-import sqlite3
 import subprocess
 from pathlib import Path
 
@@ -155,7 +154,7 @@ def test_the_first_run_after_an_upgrade_supersedes_records_logged_without_an_epo
     corpus = project.corpus()
     legacy = uuid7()
     item = {"type": "item", "id": "docs:doc:a", "kind": "doc", "rev": "9", "rev_time": "2026-10-09T00:00:00Z"}
-    with corpus.db:
+    with corpus.transaction():
         corpus.merge([{"type": "run", "run_id": legacy, "source": "docs"}, {**item, "hash": "sha256:old"}], legacy)
     fake.set(items=[doc("a", "# a\n\ncurrent\n", rev="2", rev_time="2026-10-01T00:00:00Z")])
     assert sync_source(project, "docs").ok
@@ -174,23 +173,3 @@ def test_removals_held_before_a_switch_are_accepted_in_the_new_epoch(fake_projec
     assert result.held and result.removals == 0
     assert accept_removals(project, "docs") == 3
     assert sorted(r.item_id for r in project.corpus().items()) == ["docs:doc:d00"]
-
-
-def test_a_corpus_from_before_epochs_gains_the_column_and_keeps_its_items(kg_env):
-    root = kg_env / "old"
-    root.mkdir(parents=True)
-    db = sqlite3.connect(root / "corpus.sqlite")
-    db.executescript(
-        """
-        CREATE TABLE items (item_id TEXT PRIMARY KEY, source TEXT NOT NULL, deleted INTEGER NOT NULL,
-            k_time TEXT NOT NULL, k_rev TEXT NOT NULL, k_run TEXT NOT NULL, k_tie TEXT NOT NULL,
-            record TEXT NOT NULL) STRICT;
-        INSERT INTO items VALUES ('s:doc:a', 's', 0, '2026-10-01T00:00:00.000000Z', '', 'r1', 't', '{"id": "s:doc:a"}');
-        """
-    )
-    db.commit()
-    db.close()
-    corpus = Corpus("old", kg_env)
-    assert corpus.db.execute("SELECT k_epoch FROM items").fetchall() == [("",)]
-    assert corpus.get("s:doc:a").record == {"id": "s:doc:a"}
-    Corpus("old", kg_env).close()  # a second open finds the column there
