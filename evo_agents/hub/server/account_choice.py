@@ -10,7 +10,8 @@ variable:
    it in answer to its credential request, which comes before any other for its variable;
 1. the account the run took already (run_accounts), the one its owner picked when dispatching it among them, or the
    one the run it resumes took, while it is still one of those secrets: a run keeps its account on every ask for its
-   leases, whatever happened to the account since; else the secret of a lease the run holds for that variable;
+   leases, whatever happened to the account since; else the secret of a lease the run holds for that variable. A
+   shared account picked by hand is one of them only while its share lends it: meanwhile the next tiers choose;
 2. else among the accounts bound to this worker (for a run of the Curator: the accounts its charter lists), then
    among the others bound to the project, by the strategy of the owner's policy for the project
    (``evo_agents.hub.accounts.pick``), skipping each account its owner paused or that cools down; then, the same way,

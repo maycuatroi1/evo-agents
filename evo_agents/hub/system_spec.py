@@ -76,8 +76,12 @@ OPTIONAL_LIMITS = ("ops_daily_usd",)  # filled in only when given, so a spec fro
 OPS = {  # name: (default, lowest, highest); how its Orchestrator handles the operations events of the project
     "debounce_minutes": (5, 0, 1440),  # a batch closes this long after its first item
     "max_items": (20, 1, 1000),  # or once it holds this many
+    # a plan a system ran with a ready step and no run on it this long writes plan.stalled, and a chat run queued for
+    # a slot this long run.queued_long (``ops_stalls``)
+    "plan_stall_minutes": (30, 1, 1440),
 }
 OPS_KEYS = ("enabled", *OPS)  # enabled: the project's operations events go to its queue (its default system only)
+OPS_FILLED = ("debounce_minutes", "max_items")  # what a check fills in; a later key a spec lacks stays out of it
 TOP_KEYS = ("schema", "slug", "name", "purpose", "limits", "ops", "nodes", "edges")
 NODE_KEYS = ("id", "kind", "label", "position", "profile", "version", "graph")
 EDGE_KEYS = ("from", "to", "kind", "description")
@@ -183,9 +187,9 @@ def _bounded(c: _Checker, path: str, value, low: int, high: int) -> int | None:
 
 
 def _ops(c: _Checker, given) -> dict:
-    found: dict = {"enabled": False, **{name: default for name, (default, _, _) in OPS.items()}}
+    found: dict = {"enabled": False, **{name: OPS[name][0] for name in OPS_FILLED}}
     if not isinstance(given, dict):
-        c.add("ops", "is a mapping: enabled, debounce_minutes, max_items")
+        c.add("ops", f"is a mapping: {', '.join(OPS_KEYS)}")
         return found
     c.unknown(given, OPS_KEYS, "ops")
     enabled = given.get("enabled", False)
@@ -194,6 +198,8 @@ def _ops(c: _Checker, given) -> dict:
     else:
         found["enabled"] = enabled
     for name, (default, low, high) in OPS.items():
+        if name not in OPS_FILLED and name not in given:
+            continue
         value = _bounded(c, f"ops.{name}", given.get(name, default), low, high)
         if value is not None:
             found[name] = value
@@ -202,9 +208,10 @@ def _ops(c: _Checker, given) -> dict:
 
 def ops_of(spec) -> dict:
     """The ``ops`` of a spec with its defaults filled in: ``enabled`` false for a spec that has none, as one written
-    before the key, and the defaults in place of a value out of bounds."""
+    before the key, and the defaults in place of a value out of bounds or a key the spec lacks."""
     given = spec.get("ops") if isinstance(spec, dict) else None
-    return _ops(_Checker(), given) if isinstance(given, dict) else _ops(_Checker(), {})
+    defaults = {name: default for name, (default, _, _) in OPS.items()}
+    return {**defaults, **_ops(_Checker(), given if isinstance(given, dict) else {})}
 
 
 def limit_of(spec, name: str) -> float | int:

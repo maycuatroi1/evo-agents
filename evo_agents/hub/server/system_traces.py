@@ -25,6 +25,7 @@ trace's runs and the runs their tree spawned, for the budget (``budget_problem``
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 
 from sqlalchemy import func, insert, select, update
@@ -42,6 +43,7 @@ RESUME = "evo.resume_of_run_id"  # the attribute of an invoke_agent span of a ru
 ENDED_OK = ("done",)  # the end states of a run whose span is ok; the others are errors
 MAX_RESUMES = 50  # how far back the brief of a session is looked for
 KG_RESULTS = "evo.kg.results"  # the attribute of a kg span: how many results the query read (record_kg)
+PLAN_REF = re.compile(r"plan:([a-z0-9][a-z0-9-]{0,99})")  # a ref of a brief that names a plan (plans.PLAN_ID)
 
 
 @dataclass(frozen=True)
@@ -453,11 +455,48 @@ async def budget_problem(conn: AsyncConnection, membership: Membership | None) -
     return system_context.budget_problem(membership.spec, count, usd)
 
 
+# The plan of a trace
+
+
+async def take_plan(conn: AsyncConnection, run_id: int, plan_id: str) -> int | None:
+    """Give the trace of run ``run_id`` plan ``plan_id`` of its project, at the plan's revision now, when the trace has
+    no plan yet: a brief that refs the plan, or a step of it the run marked, says the trace works on it, so a stalled
+    plan sees its runs (``ops_stalls``). The trace's id when it took the plan; None for a run in no trace, a trace
+    that has a plan already, and a plan the project lacks."""
+    span = await _span_of(conn, run_id)
+    if span is None:
+        return None
+    t, p = tables.system_traces, tables.plans
+    revision = select(p.c.revision).where(p.c.project_id == t.c.project_id, p.c.plan_id == plan_id).scalar_subquery()
+    query = (
+        update(t)
+        .values(plan_id=plan_id, plan_revision=revision)
+        .where(t.c.id == span.trace_id, t.c.plan_id.is_(None), revision.is_not(None))
+        .returning(t.c.id)
+    )
+    taken = (await conn.execute(query)).scalar_one_or_none()
+    if taken is not None:
+        await touch(conn, taken)
+        log.info("trace took a plan", extra={"run_id": run_id, "trace_id": taken, "plan_id": plan_id})
+    return taken
+
+
+def ref_plans(brief: dict) -> list[str]:
+    """The plans the refs of a brief name, ``plan:<id>``, in their order."""
+    found = []
+    for ref in brief.get("refs") or ():
+        matched = PLAN_REF.fullmatch(ref.strip()) if isinstance(ref, str) else None
+        if matched and matched.group(1) not in found:
+            found.append(matched.group(1))
+    return found
+
+
 # Briefs
 
 
 async def save_brief(conn: AsyncConnection, run_id: int, asked_by: int, brief: dict) -> None:
-    """Keep the brief an ask by run ``asked_by`` gave run ``run_id``; nothing for an empty one."""
+    """Keep the brief an ask by run ``asked_by`` gave run ``run_id``; nothing for an empty one. A brief whose refs name
+    a plan (``plan:<id>``) gives the run's trace that plan when it has none (``take_plan``)."""
     found = system_context.clean_brief(brief)
     found.pop("reason", None)
     if not found:
@@ -467,6 +506,9 @@ async def save_brief(conn: AsyncConnection, run_id: int, asked_by: int, brief: d
     await conn.execute(
         statement.on_conflict_do_update(index_elements=[b.c.run_id], set_={"brief": found, "asked_by_run_id": asked_by})
     )
+    for plan_id in ref_plans(found):
+        if await take_plan(conn, run_id, plan_id) is not None:
+            break
     if found.get("goal"):
         from evo_agents.hub.server import orchestrator  # it opens threads through chat_runs, which joins runs here
 

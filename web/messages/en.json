@@ -5185,6 +5185,18 @@
     "sharing": {
       "overCeiling": "Over its ceiling: shared runs wait"
     },
+    "sharedWithYou": {
+      "title": "Shared with you",
+      "description": "Accounts other members share with you. Your runs take one by the rules when none of your own is ready, or pick it by hand in a dispatch form. Runs and cost here are yours alone.",
+      "caption": "Accounts shared with you, by owner",
+      "owner": "Owner",
+      "ownedBy": "owned by {owner}, {variable}",
+      "terms": "Share terms",
+      "yourRuns": "Your runs 24 h / 7 d",
+      "yourCost": "Your cost 24 h / 7 d",
+      "empty": "No member shares an account with you.",
+      "loadFailed": "Couldn't load the accounts shared with you. The page tries again shortly."
+    },
     "costByPrincipal": {
       "title": "Cost by member",
       "empty": "No run of another member has used them yet.",
@@ -6857,7 +6869,12 @@
       "hint": "An account picked here stays with the run, with no failover to another one. Auto lets your policy for the project pick when a worker takes the run, and move on when an account hits its limit.",
       "none": "None of your accounts is bound to project {project}, so your policy picks among the workers' own credentials. Bind one on the Secrets page.",
       "rerunHint": "By default the rerun takes the account picked by hand for run #{id}, or the rules when none was. An account picked by hand is kept, with no failover.",
-      "expired": "{name} ({variable}), expired"
+      "expired": "{name} ({variable}), expired",
+      "sharedGroup": "Shared with you",
+      "shared": "{owner}/{name} ({variable})",
+      "shared_paused": "{owner}/{name} ({variable}), paused by its owner",
+      "shared_cooling": "{owner}/{name} ({variable}), cooling down: the rules pick until it is lent again",
+      "shared_expired": "{owner}/{name} ({variable}), expired"
     },
     "agent": {
       "label": "Agent",

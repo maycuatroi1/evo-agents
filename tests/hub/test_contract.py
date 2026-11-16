@@ -307,6 +307,8 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker ops answer-wait",
         "worker ops curator-resume",
         "worker ops finding",
+        "worker ops plan-dispatch",
+        "worker ops priority",
         "worker ops read",
         "worker ops redeliver",
         "worker ops rerun",

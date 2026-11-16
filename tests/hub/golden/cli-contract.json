@@ -3509,7 +3509,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -21777,7 +21778,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -21896,7 +21898,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -22074,7 +22077,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -22193,7 +22197,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -22547,7 +22552,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -22666,7 +22672,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -22785,7 +22792,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -23288,7 +23296,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run",
         "with": {
@@ -23307,6 +23316,139 @@
             "schema": "SystemDispatched"
           }
         }
+      }
+    },
+    "hub run priority": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "level",
+          "metavar": "LEVEL",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "urgent",
+            "high",
+            "medium",
+            "low"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "dispatched_via",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "model",
+          "mode",
+          "approval",
+          "timeout_min",
+          "run_seconds",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "resume_of_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "repos",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "budget",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "waiting_since",
+          "parked_at",
+          "finished_at",
+          "request",
+          "finish_requested_at",
+          "steady_wait",
+          "overlap_wait",
+          "warning",
+          "failure_cause",
+          "session_per_step",
+          "browser",
+          "browser_identities",
+          "profile",
+          "profile_id",
+          "profile_version",
+          "environment",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
+          "chat_id",
+          "chat_message_id",
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title",
+          "principal",
+          "autonomy",
+          "selector",
+          "tolerations",
+          "spend",
+          "plan_progress",
+          "as_owner",
+          "as_owner_since",
+          "model_used",
+          "routing",
+          "spawned_by_run_id",
+          "priority"
+        ],
+        "schema": "Run"
       }
     },
     "hub run rerun": {
@@ -23447,7 +23589,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -23624,7 +23767,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -23743,7 +23887,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -28343,6 +28488,20 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--priority"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "urgent",
+            "high",
+            "medium",
+            "low"
+          ]
         }
       ],
       "json": null
@@ -29153,6 +29312,63 @@
           "required": true,
           "repeatable": false
         },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker ops plan-dispatch": {
+      "positionals": [
+        {
+          "name": "plan",
+          "metavar": "PLAN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker ops priority": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "level",
+          "metavar": "LEVEL",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "urgent",
+            "high",
+            "medium",
+            "low"
+          ]
+        }
+      ],
+      "options": [
         {
           "flags": [
             "--reason"
@@ -47585,6 +47801,111 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AccessChange"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/priority": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Priority",
+          "description": "Change the priority of a queued run of the project, for a writer of it: a worker claims its queued runs by\npriority, highest first, then the oldest. 409 for a run that is no longer queued.",
+          "operationId": "priority_v1_projects__project__runs__run_id__priority_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriorityChange"
                 }
               }
             }
@@ -84025,6 +84346,42 @@
           }
         }
       },
+      "/v1/shared-accounts": {
+        "get": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "List Shared Accounts",
+          "description": "The env accounts other members share with the caller through a live share for every run, by variable, owner\nand name, as ``_shared_account`` gives each one, with the projects of those shares its owner binds it to; one bound\nto none of them is left out.",
+          "operationId": "list_shared_accounts_v1_shared_accounts_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/SharedAccount"
+                    },
+                    "type": "array",
+                    "title": "Response List Shared Accounts V1 Shared Accounts Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/account-policies": {
         "get": {
           "tags": [
@@ -98974,6 +99331,196 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OpsFindingIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpsActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/ops/priority": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Priority Route",
+          "description": "Give a queued run of the project another priority, as the Orchestrator's chat run of an ops thread.",
+          "operationId": "priority_route_v1_worker_runs__run_id__ops_priority_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsPriorityIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpsActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/ops/plan-dispatch": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Plan Dispatch Route",
+          "description": "Hand a stalled plan of this ops thread's batch again to the default system's entry agent, as its Orchestrator's\nchat run.",
+          "operationId": "plan_dispatch_route_v1_worker_runs__run_id__ops_plan_dispatch_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsPlanIn"
                 }
               }
             }
@@ -115175,6 +115722,18 @@
               ],
               "title": "Reason",
               "description": "why an agent of a system asks an agent off its interacts edges; without it such an ask is refused"
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority",
+              "description": "the priority of the run it asks for: a worker claims its queued runs by it, urgent first",
+              "default": "medium"
             }
           },
           "type": "object",
@@ -117455,15 +118014,15 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Account",
-              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
+              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project"
             },
             "profile": {
               "anyOf": [
@@ -131731,15 +132290,15 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Account",
-              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
+              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project"
             },
             "profile": {
               "anyOf": [
@@ -154695,6 +155254,66 @@
           "type": "object",
           "title": "OpsPause"
         },
+        "OpsPlanIn": {
+          "properties": {
+            "plan_id": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Plan Id",
+              "description": "a stalled plan of the batch (a plan.stalled item)"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plan_id",
+            "reason"
+          ],
+          "title": "OpsPlanIn"
+        },
+        "OpsPriorityIn": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Run Id",
+              "description": "a queued run of the project"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Level",
+              "description": "its new priority: urgent, high, medium or low"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "level",
+            "reason"
+          ],
+          "title": "OpsPriorityIn"
+        },
         "OpsReadIn": {
           "properties": {
             "notification_id": {
@@ -154775,6 +155394,12 @@
               "type": "integer",
               "title": "Max Items",
               "description": "or once it holds this many items"
+            },
+            "plan_stall_minutes": {
+              "type": "integer",
+              "title": "Plan Stall Minutes",
+              "description": "a plan a system ran stalls, and a chat run has queued too long, after this many quiet minutes",
+              "default": 30
             }
           },
           "type": "object",
@@ -158645,15 +159270,15 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Account",
-              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
+              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project"
             },
             "profile": {
               "anyOf": [
@@ -162446,6 +163071,28 @@
             "cost_month_usd"
           ],
           "title": "PrincipalCost"
+        },
+        "PriorityChange": {
+          "properties": {
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority",
+              "description": "the run's new priority: a worker claims urgent first, low last"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "priority"
+          ],
+          "title": "PriorityChange",
+          "description": "What POST /v1/projects/{p}/runs/{id}/priority changes of a queued run of the project."
         },
         "Probe": {
           "properties": {
@@ -172869,15 +173516,15 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Account",
-              "description": "one of the caller's env secrets bound to the project, by name: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick"
+              "description": "one of the caller's env secrets bound to the project, by name, or <login>/<name> for one that member shares with the caller: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick"
             },
             "account_by_rule": {
               "type": "boolean",
@@ -174199,6 +174846,18 @@
               ],
               "title": "State",
               "description": "idle and ended are a local run's alone: the turn ended and the person has the word; the session is over, or went silent for a day"
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority",
+              "description": "the order a worker claims the queued runs in, highest first, then the oldest: an agent's ask sets it, a writer changes it while the run is queued; a plan or step run has medium",
+              "default": "medium"
             },
             "lease_expires_at": {
               "anyOf": [
@@ -180570,6 +181229,297 @@
             "projects"
           ],
           "title": "ShareWrite"
+        },
+        "SharedAccount": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "env_var": {
+              "type": "string",
+              "title": "Env Var",
+              "description": "the variable it sets"
+            },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "claude",
+                "anthropic",
+                "openai",
+                "gitlab",
+                "github",
+                "notion",
+                "lark",
+                "ssh",
+                "other"
+              ],
+              "title": "Provider",
+              "description": "who it signs in to, read from its variable (``account_providers``)"
+            },
+            "category": {
+              "type": "string",
+              "enum": [
+                "model",
+                "service"
+              ],
+              "title": "Category",
+              "description": "model: the runtime's own sign-in, whose runs cost; service: any other"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects whose runs may take it"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it is bound to; empty for any worker of its owner"
+            },
+            "pools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Pools",
+              "description": "the worker pools it is bound to, each node of each",
+              "default": []
+            },
+            "auth": {
+              "type": "string",
+              "enum": [
+                "token",
+                "oauth"
+              ],
+              "title": "Auth",
+              "description": "oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight",
+              "description": "0 to 1000: its share in a weighted-round-robin pool; 0 leaves it"
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priority",
+              "description": "0 to 1000: the lower, the sooner a fill-first pool takes it"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At",
+              "description": "when its owner paused it; null while it may be taken"
+            },
+            "cooldown_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Until",
+              "description": "until when it cools down after a usage limit"
+            },
+            "cooldown_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Reason",
+              "description": "why it cools down"
+            },
+            "last_leased_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Leased At",
+              "description": "when a run last took it"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "cooling",
+                "paused",
+                "expired",
+                "needs-relogin"
+              ],
+              "title": "State",
+              "description": "ready, cooling, paused, expired or needs-relogin (an OAuth account whose refresh token was refused: run oauth-login again), now"
+            },
+            "last_usage": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AccountUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what a run's CLI last said of its usage; null before any"
+            },
+            "last_usage_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Usage At",
+              "description": "when a run reported that usage"
+            },
+            "runs_24h": {
+              "type": "integer",
+              "title": "Runs 24H",
+              "description": "the runs that took it in the last 24 hours"
+            },
+            "runs_7d": {
+              "type": "integer",
+              "title": "Runs 7D",
+              "description": "the runs that took it in the last 7 days"
+            },
+            "cost_24h_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost 24H Usd",
+              "description": "what those runs cost in the last 24 hours, in USD, from their usage; null for a service account"
+            },
+            "cost_7d_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost 7D Usd",
+              "description": "what those runs cost in the last 7 days, in USD, an estimate; null for a service account"
+            },
+            "held_by": {
+              "items": {
+                "$ref": "#/components/schemas/HeldBy"
+              },
+              "type": "array",
+              "title": "Held By",
+              "description": "the runs a worker holds now with it"
+            },
+            "shares": {
+              "items": {
+                "$ref": "#/components/schemas/CredentialShare"
+              },
+              "type": "array",
+              "title": "Shares",
+              "description": "its shares not revoked, newest first"
+            },
+            "cost_by_principal": {
+              "items": {
+                "$ref": "#/components/schemas/PrincipalCost"
+              },
+              "type": "array",
+              "title": "Cost By Principal",
+              "description": "its runs and their cost by the member each was made for; for a member it was shared with, theirs"
+            },
+            "gateway": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GatewayAccount"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a provider account's endpoint and what the model gateway last said of it; null for a secret"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the member who owns it and shares it"
+            },
+            "pick": {
+              "type": "string",
+              "title": "Pick",
+              "description": "how ``account`` of a dispatch names it: <owner>/<name>"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "env_var",
+            "provider",
+            "category",
+            "projects",
+            "workers",
+            "auth",
+            "weight",
+            "priority",
+            "paused_at",
+            "cooldown_until",
+            "cooldown_reason",
+            "last_leased_at",
+            "expires_at",
+            "state",
+            "last_usage",
+            "last_usage_at",
+            "runs_24h",
+            "runs_7d",
+            "cost_24h_usd",
+            "cost_7d_usd",
+            "held_by",
+            "shares",
+            "cost_by_principal",
+            "owner",
+            "pick"
+          ],
+          "title": "SharedAccount",
+          "description": "An env account another member shares with the caller, as GET /v1/accounts/{name}?owner= gives it: its figures\nare the caller's own runs alone, its shares those that lend it to the caller, and its projects those of these\nshares its owner binds it to."
         },
         "Sign": {
           "properties": {
@@ -192964,8 +193914,8 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
@@ -193083,8 +194033,8 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"

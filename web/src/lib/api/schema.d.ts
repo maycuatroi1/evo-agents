@@ -3151,6 +3151,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runs/{run_id}/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Priority
+         * @description Change the priority of a queued run of the project, for a writer of it: a worker claims its queued runs by
+         *     priority, highest first, then the oldest. 409 for a run that is no longer queued.
+         */
+        post: operations["priority_v1_projects__project__runs__run_id__priority_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/claim": {
         parameters: {
             query?: never;
@@ -9244,6 +9265,28 @@ export interface paths {
         patch: operations["change_account_v1_accounts__name__patch"];
         trace?: never;
     };
+    "/v1/shared-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Shared Accounts
+         * @description The env accounts other members share with the caller through a live share for every run, by variable, owner
+         *     and name, as ``_shared_account`` gives each one, with the projects of those shares its owner binds it to; one bound
+         *     to none of them is left out.
+         */
+        get: operations["list_shared_accounts_v1_shared_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/account-policies": {
         parameters: {
             query?: never;
@@ -11768,6 +11811,47 @@ export interface paths {
          * @description Write a finding for the Curator, as the Orchestrator's chat run of an ops thread.
          */
         post: operations["finding_route_v1_worker_runs__run_id__ops_finding_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/ops/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Priority Route
+         * @description Give a queued run of the project another priority, as the Orchestrator's chat run of an ops thread.
+         */
+        post: operations["priority_route_v1_worker_runs__run_id__ops_priority_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/ops/plan-dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Dispatch Route
+         * @description Hand a stalled plan of this ops thread's batch again to the default system's entry agent, as its Orchestrator's
+         *     chat run.
+         */
+        post: operations["plan_dispatch_route_v1_worker_runs__run_id__ops_plan_dispatch_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15326,6 +15410,13 @@ export interface components {
              * @description why an agent of a system asks an agent off its interacts edges; without it such an ask is refused
              */
             reason?: string | null;
+            /**
+             * Priority
+             * @description the priority of the run it asks for: a worker claims its queued runs by it, urgent first
+             * @default medium
+             * @enum {string}
+             */
+            priority: "urgent" | "high" | "medium" | "low";
         };
         /** AgentAsked */
         AgentAsked: {
@@ -16290,7 +16381,7 @@ export interface components {
             timeout_h: 1 | 2 | 4;
             /**
              * Account
-             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
+             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project
              */
             account?: string | null;
             /**
@@ -22476,7 +22567,7 @@ export interface components {
             model?: string | null;
             /**
              * Account
-             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
+             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project
              */
             account?: string | null;
             /**
@@ -32302,6 +32393,38 @@ export interface components {
              */
             reason?: string | null;
         };
+        /** OpsPlanIn */
+        OpsPlanIn: {
+            /**
+             * Plan Id
+             * @description a stalled plan of the batch (a plan.stalled item)
+             */
+            plan_id: string;
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** OpsPriorityIn */
+        OpsPriorityIn: {
+            /**
+             * Run Id
+             * @description a queued run of the project
+             */
+            run_id: number;
+            /**
+             * Level
+             * @description its new priority: urgent, high, medium or low
+             * @enum {string}
+             */
+            level: "urgent" | "high" | "medium" | "low";
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
         /** OpsReadIn */
         OpsReadIn: {
             /**
@@ -32353,6 +32476,12 @@ export interface components {
              * @description or once it holds this many items
              */
             max_items: number;
+            /**
+             * Plan Stall Minutes
+             * @description a plan a system ran stalls, and a chat run has queued too long, after this many quiet minutes
+             * @default 30
+             */
+            plan_stall_minutes: number;
         };
         /** OpsWaitIn */
         OpsWaitIn: {
@@ -34098,7 +34227,7 @@ export interface components {
             session_per_step: boolean;
             /**
              * Account
-             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
+             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project
              */
             account?: string | null;
             /**
@@ -35854,6 +35983,18 @@ export interface components {
              * @description what those runs cost since the month began, in USD, an estimate
              */
             cost_month_usd: number;
+        };
+        /**
+         * PriorityChange
+         * @description What POST /v1/projects/{p}/runs/{id}/priority changes of a queued run of the project.
+         */
+        PriorityChange: {
+            /**
+             * Priority
+             * @description the run's new priority: a worker claims urgent first, low last
+             * @enum {string}
+             */
+            priority: "urgent" | "high" | "medium" | "low";
         };
         /** Probe */
         Probe: {
@@ -40357,7 +40498,7 @@ export interface components {
         Rerun: {
             /**
              * Account
-             * @description one of the caller's env secrets bound to the project, by name: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick
+             * @description one of the caller's env secrets bound to the project, by name, or <login>/<name> for one that member shares with the caller: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick
              */
             account?: string | null;
             /**
@@ -40963,6 +41104,13 @@ export interface components {
              * @enum {string}
              */
             state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled" | "idle" | "ended";
+            /**
+             * Priority
+             * @description the order a worker claims the queued runs in, highest first, then the oldest: an agent's ask sets it, a writer changes it while the run is queued; a plan or step run has medium
+             * @default medium
+             * @enum {string}
+             */
+            priority: "urgent" | "high" | "medium" | "low";
             /** Lease Expires At */
             lease_expires_at: string | null;
             /** Session Id */
@@ -43846,6 +43994,147 @@ export interface components {
              * @default false
              */
             terms_ack: boolean;
+        };
+        /**
+         * SharedAccount
+         * @description An env account another member shares with the caller, as GET /v1/accounts/{name}?owner= gives it: its figures
+         *     are the caller's own runs alone, its shares those that lend it to the caller, and its projects those of these
+         *     shares its owner binds it to.
+         */
+        SharedAccount: {
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
+             * Projects
+             * @description the projects whose runs may take it
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /**
+             * Pools
+             * @description the worker pools it is bound to, each node of each
+             * @default []
+             */
+            pools: string[];
+            /**
+             * Auth
+             * @description oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given
+             * @enum {string}
+             */
+            auth: "token" | "oauth";
+            /**
+             * Weight
+             * @description 0 to 1000: its share in a weighted-round-robin pool; 0 leaves it
+             */
+            weight: number;
+            /**
+             * Priority
+             * @description 0 to 1000: the lower, the sooner a fill-first pool takes it
+             */
+            priority: number;
+            /**
+             * Paused At
+             * @description when its owner paused it; null while it may be taken
+             */
+            paused_at: string | null;
+            /**
+             * Cooldown Until
+             * @description until when it cools down after a usage limit
+             */
+            cooldown_until: string | null;
+            /**
+             * Cooldown Reason
+             * @description why it cools down
+             */
+            cooldown_reason: string | null;
+            /**
+             * Last Leased At
+             * @description when a run last took it
+             */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @description ready, cooling, paused, expired or needs-relogin (an OAuth account whose refresh token was refused: run oauth-login again), now
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /** @description what a run's CLI last said of its usage; null before any */
+            last_usage: components["schemas"]["AccountUsage"] | null;
+            /**
+             * Last Usage At
+             * @description when a run reported that usage
+             */
+            last_usage_at: string | null;
+            /**
+             * Runs 24H
+             * @description the runs that took it in the last 24 hours
+             */
+            runs_24h: number;
+            /**
+             * Runs 7D
+             * @description the runs that took it in the last 7 days
+             */
+            runs_7d: number;
+            /**
+             * Cost 24H Usd
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
+             */
+            cost_24h_usd: number | null;
+            /**
+             * Cost 7D Usd
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
+             */
+            cost_7d_usd: number | null;
+            /**
+             * Held By
+             * @description the runs a worker holds now with it
+             */
+            held_by: components["schemas"]["HeldBy"][];
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
+            /**
+             * Cost By Principal
+             * @description its runs and their cost by the member each was made for; for a member it was shared with, theirs
+             */
+            cost_by_principal: components["schemas"]["PrincipalCost"][];
+            /** @description a provider account's endpoint and what the model gateway last said of it; null for a secret */
+            gateway?: components["schemas"]["GatewayAccount"] | null;
+            /**
+             * Owner
+             * @description the login of the member who owns it and shares it
+             */
+            owner: string;
+            /**
+             * Pick
+             * @description how ``account`` of a dispatch names it: <owner>/<name>
+             */
+            pick: string;
         };
         /** Sign */
         Sign: {
@@ -62823,6 +63112,78 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AccessChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    priority_v1_projects__project__runs__run_id__priority_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriorityChange"];
             };
         };
         responses: {
@@ -86261,6 +86622,35 @@ export interface operations {
             };
         };
     };
+    list_shared_accounts_v1_shared_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_account_policies_v1_account_policies_get: {
         parameters: {
             query?: never;
@@ -96632,6 +97022,148 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["OpsFindingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    priority_route_v1_worker_runs__run_id__ops_priority_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsPriorityIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    plan_dispatch_route_v1_worker_runs__run_id__ops_plan_dispatch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsPlanIn"];
             };
         };
         responses: {

@@ -103,6 +103,7 @@ def run_select():
             r.c.resume_of_run_id,
             r.c.spawned_by_run_id,
             r.c.state,
+            r.c.priority,
             r.c.lease_expires_at,
             r.c.session_id,
             r.c.repo,
