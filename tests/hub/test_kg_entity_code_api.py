@@ -16,7 +16,7 @@ pytest.importorskip("sqlalchemy", reason="the hub's graph needs the hub-server e
 
 from evo_agents.hub import kg_entity_graph
 from evo_agents.kg.graph_model import label_columns
-from tests.hub.test_kg_entity_graph_api import PROJECT, PUBLIC, SECRET, _edge, _graph, _ids, _node, _session, view_of
+from tests.hub.test_kg_entity_graph_api import PUBLIC, SECRET, _edge, _graph, _ids, _node, _session, view_of
 
 REPO = "r"
 BRANCH = "https://github.com/o/r/blob/main/"

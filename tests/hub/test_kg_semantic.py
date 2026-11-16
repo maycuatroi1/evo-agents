@@ -23,9 +23,9 @@ from evo_agents.kg import semantic
 from evo_agents.kg.snapshot import StoreRows
 from tests.hub import live
 from tests.hub.test_migrate import seed
-from tests.kg.test_hybrid import FAKE, Words, with_garage
 from tests.kg import built
 from tests.kg.built import old_vector_cache, sync_build
+from tests.kg.test_hybrid import FAKE, Words, with_garage
 
 
 def rows_of(project) -> StoreRows:
