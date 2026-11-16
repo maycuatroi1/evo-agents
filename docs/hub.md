@@ -4329,6 +4329,12 @@ out at that moment, longest held first, each with its holder and `held_ms`. A tu
 second or more is logged as `event loop stalled` with `stalled_ms`: a burst of timeouts with no long hold in `out`
 but stalls beside it is the loop starved, not the pool too small.
 
+The pool reconnects by itself after Postgres restarts. When Postgres goes away without closing its connections (its
+container killed on a stalled host, so no reset reaches the api), the pooled connections stay open with nobody
+answering: the check before a connection is handed out gives up after 5 seconds (`db.CHECK_TIMEOUT`) and the pool
+drops it and connects again, and libpq's TCP keepalives and user timeout (`db.CONNECT_KWARGS`, the LISTEN connection
+too) fail a connection whose peer stopped answering in about 25 seconds. Meanwhile `/v1/health` answers 503.
+
 Each load of the api also logs `kg snapshot load timed`, with the seconds of its phases (`slot`: waiting for a read
 slot, `rows`: reading the tables, `made`: making the snapshot) and, per phase, the longest time the event loop ran
 nothing else (`stall_s`), and `kg snapshot frozen` the seconds of the full collection before the last freeze
