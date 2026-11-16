@@ -18,6 +18,7 @@ the blob store is moto's server (``tests.hub.s3``)."""
 from __future__ import annotations
 
 import json
+import sqlite3
 
 import pytest
 
@@ -32,7 +33,6 @@ from sqlalchemy import select
 from evo_agents.hub import tables
 from evo_agents.hub.blobs import blob_key
 from evo_agents.hub.client import Hub
-from evo_agents.hub.kg_build import worker_project
 from evo_agents.hub.kg_push import Pusher
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.scrub import blob_refs, blob_secrets, secrets_in
@@ -73,6 +73,23 @@ def leaked(text: str) -> list[str]:
     return [value for value in VALUES if value in text]
 
 
+def old_graph(scratch, guide_line: str) -> bytes:
+    """A graph file as builds uploaded before the hub kept graphs in its tables: the guide and the notes in its
+    full-text index and its nodes."""
+    path = scratch / "old-graph.sqlite"
+    path.unlink(missing_ok=True)
+    db = sqlite3.connect(path)
+    db.execute("CREATE TABLE node_fts (name TEXT, body TEXT)")
+    db.execute("CREATE TABLE nodes (name TEXT, props TEXT)")
+    db.execute("CREATE TABLE edges (props TEXT)")
+    docs = [("guide", guide_line), ("notes", DEPLOY_LINE), ("setup", "Install it.")]
+    db.executemany("INSERT INTO node_fts VALUES (?, ?)", docs)
+    db.executemany("INSERT INTO nodes VALUES (?, ?)", [(name, json.dumps({"title": name})) for name, _ in docs])
+    db.commit()
+    db.close()
+    return path.read_bytes()
+
+
 def built(hub, laptop: Machine, guide_line: str, rev: str) -> dict:
     """Sync the docs (a guide holding ``guide_line``, notes holding a deploy key), push, build; the build."""
     laptop.sync("docs", doc("guide", guide_line, rev=rev), doc("notes", DEPLOY_LINE), doc("setup", "Install it."))
@@ -80,9 +97,7 @@ def built(hub, laptop: Machine, guide_line: str, rev: str) -> dict:
     run_worker(hub)
     build = build_rows(hub)[0]
     assert build["status"] == "succeeded", build
-    # the graph file an older build uploaded: the one the worker built into its cache
-    graph = (worker_project(hub.worker_dir, PROJECT).root / "graph.sqlite").read_bytes()
-    seed_artifact(hub, build, data=graph)
+    seed_artifact(hub, build, data=old_graph(hub.worker_dir, guide_line))  # a graph file an older build uploaded
     return build_rows(hub)[0]
 
 

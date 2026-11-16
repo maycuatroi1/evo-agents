@@ -17,6 +17,7 @@ import psycopg
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
+from evo_agents import sqlite_legacy
 from evo_agents.hub import kg_semantic
 from evo_agents.kg import semantic, store_vectors
 from evo_agents.kg.snapshot import StoreRows, store_rows
@@ -67,7 +68,7 @@ def test_a_hub_build_writes_the_vectors_into_its_rows_and_off_drops_them(tmp_pat
     monkeypatch.setitem(semantic.FACTORIES, FAKE, Words)
     project = with_garage(tmp_path, tmp_path / "kg-home")
     sync_build(project)
-    cache = tmp_path / "cache" / store_vectors.CACHE_FILE
+    cache = semantic.MemoryCache()
     rows, done = kg_semantic.index(rows_of(project), semantic.Settings("index", FAKE), cache)
     assert done.digest and done.rows > 0 and done.embedded == done.rows and not done.error
     assert len(rows.vectors) == done.rows and rows.vector_info["digest"] == done.digest
@@ -85,10 +86,10 @@ def test_the_rows_set_aside_under_the_model_come_back_as_they_were(tmp_path, mon
     project = with_garage(tmp_path, tmp_path / "kg-home")
     sync_build(project)
     settings = semantic.Settings("index", FAKE)
-    held, done = kg_semantic.index(rows_of(project), settings, tmp_path / "held" / store_vectors.CACHE_FILE)
+    held, done = kg_semantic.index(rows_of(project), settings, None)
     light, aside = kg_semantic.set_aside(rows_of(project))
     assert light.nodes == () and light.wheres == () and light.code == {} and light.keyed
-    light, found = kg_semantic.index(light, settings, tmp_path / "aside" / store_vectors.CACHE_FILE)
+    light, found = kg_semantic.index(light, settings, None)
     assert (found.digest, found.rows) == (done.digest, done.rows)
     assert kg_semantic.taken_back(light, aside) == held
     semantic.forget_models()
@@ -105,7 +106,7 @@ def test_the_hub_cache_seeds_from_the_files_then_embeds_only_what_changed(hub_db
     graph = project.root / "graph.sqlite"
     settings = semantic.Settings("index", FAKE)
     local = store_vectors.index_file(graph, settings)  # what a build before kg_vector_cache left in the directory
-    held = store_vectors.cache_file_vectors(project.root / store_vectors.CACHE_FILE, FAKE)
+    held = sqlite_legacy.vector_cache_rows(project.root / store_vectors.CACHE_FILE, FAKE)
     assert local.embedded > 0 and len(held) > 0
     loop = asyncio.new_event_loop()
     thread = threading.Thread(target=loop.run_forever, daemon=True)
@@ -132,3 +133,10 @@ def test_the_hub_cache_seeds_from_the_files_then_embeds_only_what_changed(hub_db
         thread.join()
         loop.close()
         semantic.forget_models()
+
+
+def test_the_seed_readers_take_nothing_from_a_file_that_is_not_one(tmp_path):
+    bad = tmp_path / "vectors.sqlite"
+    bad.write_bytes(b"not a database" * 100)
+    assert sqlite_legacy.vector_cache_rows(bad, FAKE) == {} and sqlite_legacy.graph_vectors(bad, FAKE) == {}
+    assert sqlite_legacy.vector_cache_rows(tmp_path / "none", FAKE) == {}

@@ -386,7 +386,8 @@ def build_in_cache(
     asked index of the project's searches (``kg_asked``), and its content hash folds in the index's digest, so a
     build whose graph is the same but whose index is not is a new graph. With ``semantic`` settings that ask for
     them, the graph gets the vectors of its rows (``kg_semantic``), embedded only when ``vector_cache``, the project's
-    in the hub's database (seeded once from its vectors.sqlite and graph.sqlite), else its vectors.sqlite, lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
+    in the hub's database (seeded once from its vectors.sqlite and graph.sqlite), else a cache of this build only,
+    lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
     overrides are put in its settings.json first, so the build reads them as a local one does. ``answers``, the hashes
     of the project's kg-entity-answers blobs, are the entities step's inbox, and the requests it defers are written
     for ``record`` to keep (``kg_entity_relay``). ``uploads``: the newest upload read of each upload source, whose
@@ -427,7 +428,7 @@ def build_in_cache(
         if semantic.indexes:  # the model loads: what it does not read is held packed under it
             rows, aside = kg_semantic.set_aside(rows)
             give_back()
-        rows, vectors = kg_semantic.index(rows, semantic, vector_cache or project.root / kg_semantic.SEED_FILES[0])
+        rows, vectors = kg_semantic.index(rows, semantic, vector_cache)
         if aside is not None:
             rows = kg_semantic.taken_back(rows, aside)
             del aside

@@ -1,4 +1,4 @@
-"""Secrets in text (``evo_agents.kg.scrub``, ``evo_agents.kg.store_secrets``), what the hub's scrub reads with, and
+"""Secrets in text (``evo_agents.kg.scrub``, ``evo_agents.sqlite_legacy.graph_text_rows``), what the hub's scrub reads with, and
 ``evo-agents kg scrub`` and ``kg prune``, which have the hub scrub and prune a project: a machine keeps no corpus, memo
 or graph of its own to clean. Nothing these read answers a value."""
 
@@ -14,10 +14,10 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub import kg_cli
+from evo_agents.hub.server.kg_scrub import graph_secrets
 from evo_agents.kg import scrub as scrub_module
 from evo_agents.kg.redact import redact_file
 from evo_agents.kg.scrub import might_hold_secret, run_summary, secrets_in_json
-from evo_agents.kg.store_secrets import graph_secrets
 from evo_agents.kg.sync import sync_project
 from tests.kg.conftest import doc
 from tests.kg.test_redact import COMPOSE, LITERAL, PEM, REDACTED, SERVICE_ACCOUNT, SETTINGS
@@ -71,7 +71,6 @@ def test_graph_secrets_counts_the_rows_of_a_graph_file_holding_one(tmp_path):
     db.commit()
     db.close()
     assert graph_secrets(path) == (2, {"password": 1, "secret": 1})
-    assert graph_secrets(path, immutable=True) == (2, {"password": 1, "secret": 1})
 
 
 def asked(monkeypatch, command: str) -> list:
@@ -103,7 +102,7 @@ def test_kg_prune_counts_on_the_hub_unless_told_to_delete(monkeypatch):
 
 
 def test_scrub_runs_without_the_hub():
-    code = "import sys, evo_agents.kg.scrub, evo_agents.kg.store_secrets\n"
+    code = "import sys, evo_agents.kg.scrub, evo_agents.sqlite_legacy\n"
     code += "print(sorted(m for m in sys.modules if m.startswith(('evo_agents.hub', 'fastapi', 'sqlalchemy'))))"
     root = Path(__file__).resolve().parents[2]
     env = {**os.environ, "PYTHONPATH": str(root)}

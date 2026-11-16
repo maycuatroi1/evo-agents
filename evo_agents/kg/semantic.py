@@ -346,7 +346,7 @@ def text_digest(model: str, text: str) -> str:
 class Cache(Protocol):
     """Vectors by (model, digest of the text), kept across builds so only the rows whose text changed are embedded
     again: on the hub a table of its database (``evo_agents.hub.kg_semantic.HubCache``), else ``vectors.sqlite`` next
-    to a graph file (``evo_agents.kg.store_vectors.FileCache``)."""
+    to a graph file (``evo_agents.kg.store_vectors.FileCache``), or ``MemoryCache`` for one process."""
 
     def get(self, model: str, digests: list[str]) -> dict[str, bytes]: ...
 
@@ -357,6 +357,25 @@ class Cache(Protocol):
         ...
 
     def close(self) -> None: ...
+
+
+class MemoryCache:
+    """A ``Cache`` held in memory, which a build without one starts empty."""
+
+    def __init__(self):
+        self.held: dict[tuple[str, str], bytes] = {}
+
+    def get(self, model: str, digests: list[str]) -> dict[str, bytes]:
+        return {d: self.held[(model, d)] for d in digests if (model, d) in self.held}
+
+    def put(self, model: str, rows: Iterable[tuple[str, bytes]]) -> None:
+        self.held.update(((model, d), v) for d, v in rows)
+
+    def keep(self, model: str, digests: set[str]) -> None:
+        self.held = {(m, d): v for (m, d), v in self.held.items() if m != model or d in digests}
+
+    def close(self) -> None:
+        pass
 
 
 class Graph(Protocol):
