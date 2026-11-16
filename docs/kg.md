@@ -542,6 +542,13 @@ A plan step names the commits and pull requests that did it; the graph follows t
 changed, so `kg_path from=plan:<plan>/step:<n> to=<repo>:<path>` answers "which step changed this file" in two hops:
 the step `mentions` a commit, and the commit `changes` the file.
 
+**Harness commits.** A harness commits its docs and plans straight to its default branch, so its steps name commits of
+the harness that no git source reads. `history: true` on the `harness` source (default false) has the harness
+connector, in a harness that is a git checkout, yield after its files the commit items of HEAD's history as the git
+connector makes them (`<source>:commit:<sha>`, with the paths each changed). Its cursor keeps the commit read under
+`history` beside the hub's `plans`, so the next run reads only the commits since, and a run that did not read the hub
+keeps the plans it held.
+
 **Plans.** In a harness whose harness.yaml names a hub project, the hub holds the plans and `plans/` only copies of
 them, which lag whenever nobody exported. `kg sync` then has the harness connector read the plans through the hub
 (`evo_agents/hub/kg_plans.py`, `evo_agents/kg/connectors/hub_plans.py`): each plan the signed-in member sees becomes
