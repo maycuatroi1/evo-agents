@@ -732,7 +732,8 @@ def unchanged_rows(project: Project, rows: StoreRows | None) -> BuildReport | No
     if entities.unfinished(coverage):  # items left for a later build: this build goes on with them
         return None
     size = stats.get("size") or rows.summary
-    report = BuildReport(project.name, ok=True, content_hash=rows.content_hash, skipped=True)
+    hashed = rows.summary.get("content_hash") or rows.content_hash  # the graph's: a keeper's may fold in more
+    report = BuildReport(project.name, ok=True, content_hash=hashed, skipped=True)
     report.nodes, report.edges, report.units = size["nodes"], size["edges"], size["units"]
     report.coverage, report.warnings = coverage, coverage.get("warnings", [])
     report.issues, report.dangling_edges = coverage.get("issues", []), coverage.get("dangling_edges", 0)

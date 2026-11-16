@@ -15,6 +15,8 @@ from evo_agents.hub import kg_eval_starter as starter
 from evo_agents.hub.server import kg_eval_sets
 from evo_agents.kg.build import build_project
 from evo_agents.kg.evaluate import QuestionSet, parse_set
+from evo_agents.kg.snapshot import store_rows
+from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, make_project, write
 
@@ -51,10 +53,14 @@ def graph_of(tmp_path, kg_env):
     )
     commit(app, "Make search return a constant while the ranker is rebuilt")
     assert all(r.ok for r in sync_project(project)) and build_project(project).ok
-    return project.root / "graph.sqlite"
+    store = Store.open_file(project.root / "graph.sqlite", immutable=True)
+    try:
+        return store_rows(store, store.latest_ready())
+    finally:
+        store.close()
 
 
-def test_the_first_graph_gives_the_questions_from_its_file_alone(tmp_path, kg_env):
+def test_the_first_graph_gives_the_questions_from_its_rows_alone(tmp_path, kg_env):
     graph = graph_of(tmp_path, kg_env)
     questions = starter.questions_of(graph, None)
     assert [q["files"] for q in questions] == [["app:app/search.py"]]

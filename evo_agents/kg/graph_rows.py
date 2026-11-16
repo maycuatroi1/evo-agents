@@ -61,10 +61,7 @@ def graph_rows(graph: Graph, *, coverage: dict, stats: dict, built_at: str) -> S
         {nid: text_search.fold(text) for nid, text in graph.code.items()},
         (label_pair(top_label_of(graph)), frozenset(top_audience_of(graph).get("top_audience", ()))),
         tuple(tuple(u.get(c) for c in UNIT_COLUMNS) for _, u in sorted(tables["units"].items())),
-        tuple(
-            (r["elem_id"], r["unit_id"], r["span"])
-            for r in sorted(tables["where_prov"].values(), key=lambda r: (r["elem_id"], r["unit_id"], r["span"] or ""))
-        ),
+        tuple((r["elem_id"], r["unit_id"], r["span"]) for r in sorted(tables["where_prov"].values(), key=_where_order)),
         tuple(
             (r["elem_id"], r["units"], r["needs"])
             for r in sorted(tables["derivations"].values(), key=lambda r: (r["elem_id"], r["deriv_id"]))
@@ -84,6 +81,10 @@ def graph_rows(graph: Graph, *, coverage: dict, stats: dict, built_at: str) -> S
             for r in review
         ),
     )
+
+
+def _where_order(r: dict) -> tuple:
+    return r["elem_id"], r["unit_id"], r["span"] is not None, r["span"] or ""  # as SQLite orders them
 
 
 def asked_nodes(rows: StoreRows) -> asked.Nodes:
