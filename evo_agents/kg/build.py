@@ -937,7 +937,9 @@ def verify_build(
 
 def verify_rows(project: Project, expected: str, *, cold: bool = False, warm: Clusters | None = None) -> dict:
     """``verify_build`` without a store: rebuild in memory and compare the graph's content hash, the one
-    ``build_rows`` gives its rows, with ``expected``. ``warm`` is the clusters the checked build started from."""
+    ``build_rows`` gives its rows, with ``expected``. ``warm`` is the clusters the checked build started from; unlike
+    ``verify_build`` it is not looked up, so a build that started from the clusters of the one before matches only
+    when they are passed."""
     from evo_agents.kg import content
 
     return _rebuilt(project, expected, cold, warm, lambda graph, coverage, corpus: content.content_hash(graph))
