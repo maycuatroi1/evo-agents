@@ -71,7 +71,7 @@ def replace_source(corpus: Corpus, source: str, items: list[dict], *, connector:
     for record in records:
         writer.write(record)
     writer.close()
-    with corpus.db:
+    with corpus.transaction():
         corpus.merge(writer.records, run_id)
         corpus.record_run(
             run_id,
@@ -97,7 +97,7 @@ def keep_cursor(corpus: Corpus, source: str, cursor) -> bool:
     """Make ``cursor`` (None: none) the cursor of source ``source`` in ``corpus``; whether it changed."""
     if corpus.cursor(source) == cursor:
         return False
-    with corpus.db:
+    with corpus.transaction():
         corpus.set_cursor(source, cursor, uuid7())
     return True
 

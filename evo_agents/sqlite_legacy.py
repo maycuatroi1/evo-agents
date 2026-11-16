@@ -11,11 +11,15 @@ from pathlib import Path
 
 
 def memo_rows(path: Path) -> Iterator[tuple[str, str, bytes, str]]:
-    """(key, stage, gzipped output, output hash) of each row of the memo.sqlite at ``path``; none when it is not one."""
+    """(key, stage, gzipped output, output hash) of each row of the memo.sqlite at ``path``. Raises
+    ``sqlite3.Error`` when it cannot be read whole, so the caller can try again rather than take part of it."""
     db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
     try:
         yield from db.execute("SELECT key, stage, output, output_hash FROM memo")
-    except sqlite3.DatabaseError:  # not a memo, or a file a crash cut
-        return
     finally:
         db.close()
+
+
+def errors() -> tuple[type[Exception], ...]:
+    """What reading an old file raises when it is not one, or not whole."""
+    return (sqlite3.Error,)

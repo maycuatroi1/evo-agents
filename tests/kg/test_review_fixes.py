@@ -379,3 +379,22 @@ def test_harness_walk_leaves_out_symlinks_out_of_the_repo(tmp_path):
     (root / "docs/link.md").symlink_to(outside)
     (root / "docs/inner.md").symlink_to(root / "docs/a.md")
     assert [rel for _, rel in walk(root)] == ["docs/a.md", "docs/inner.md"]
+
+
+def test_memo_import_skips_a_cut_row_and_marks_nothing_it_could_not_read(tmp_path):
+    import gzip
+
+    key = memo.memo_key("entities", "1", {"item": "a"})
+    old = sqlite3.connect(tmp_path / "memo.sqlite")
+    old.execute("CREATE TABLE memo (key TEXT PRIMARY KEY, stage TEXT NOT NULL, output BLOB NOT NULL, output_hash TEXT)")
+    data = memo.canonical_json({"nodes": []})
+    old.execute("INSERT INTO memo VALUES (?, 'entities', ?, ?)", (key, gzip.compress(data), memo.sha256(data)))
+    cut = memo.memo_key("entities", "1", {"item": "b"})
+    old.execute("INSERT INTO memo VALUES (?, 'entities', ?, 'x')", (cut, gzip.compress(data)[:5]))
+    old.commit()
+    old.close()
+    assert Memo(tmp_path / "memo").keys("entities") == {key}
+
+    (tmp_path / "other.sqlite").write_bytes(b"not a database" * 100)
+    Memo(tmp_path / "other")
+    assert not (tmp_path / "other" / memo.IMPORTED).exists()
