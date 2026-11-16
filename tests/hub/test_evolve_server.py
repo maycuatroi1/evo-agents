@@ -242,6 +242,35 @@ def test_evolve_each_candidate_recomputes_the_pareto_front(world):
     posted(world, spec, "candidate", candidate({}, "orphan", parents=[10**9]), status=422)
 
 
+def test_evolve_each_candidate_keeps_the_asi_of_each_task_bounded_and_show_returns_it(world):
+    refs = suite(world)
+    one = refs["select1"]
+    enabled(world)
+    evolve_id = started(world).json()["id"]
+    spec = evolve_run(world)
+    tail = "x" * 9000 + "\nfatal: cannot change to '/home/lumen/github/evo-agents'\n"
+    asi = {
+        "score": 0.0,
+        "checks": [{"exit_code": 128, "output_tail": tail}],
+        "failed_tools": [f"Bash: no such file {n}" for n in range(40)],
+        "agent_error": None,
+        "summary": "I could not find the repo.",
+    }
+    body = candidate({one: 0.0}, "seed", origin="seed", iteration=0)
+    body["traces"] = {one: asi, refs["holdout"]: {"score": 1.0}, "replay:0": "not an object"}
+    posted(world, spec, "candidate", body)
+    shown_one = world.client.get(path("evolve", str(evolve_id)), headers=world.headers["owner"])
+    assert shown_one.status_code == 200, shown_one.text
+    (item,) = shown_one.json()["candidates"]
+    assert list(item["asi"]) == [one]  # a task the candidate was not measured on is left out
+    kept = item["asi"][one]
+    assert kept["checks"][0]["exit_code"] == 128 and kept["summary"] == "I could not find the repo."
+    assert len(kept["checks"][0]["output_tail"]) == evolve.ASI_TEXT
+    assert kept["checks"][0]["output_tail"].endswith("fatal: cannot change to '/home/lumen/github/evo-agents'\n")
+    assert kept["failed_tools"] == asi["failed_tools"][-evolve.ASI_ITEMS :]
+    assert item["components"] == {"AGENTS.md": "seed"}  # the candidate itself is never cut
+
+
 def test_evolve_a_git_evolution_done_moves_its_proposals_planned_change_on(world):
     proposal = accepted(world)
     change = one_change(world)

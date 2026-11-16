@@ -31,6 +31,11 @@ The tasks of an evolution are light ones of the ``select`` split of the project'
 commits of a task recorded before the repo's history was rewritten (``git filter-repo``) are read through the
 commit-map that rewrite wrote (``parse_commit_map``). The baseline arm of a task runs at most once for one baseline:
 ``arm_key`` names its result by task kind, task, base commit, digest of the baseline's components, runtime and model.
+
+Each candidate is kept with its actionable side information (ASI, GEPA's diagnostic feedback), one entry per task it
+was measured on: each failed check's exit code and the end of its output, the agent's failed tool calls, error and last
+message, never a verify command. ``asi_of`` bounds each entry (ASI_TEXT characters a text, ASI_ITEMS items a list); the
+candidate itself, its components, is never cut.
 """
 
 from __future__ import annotations
@@ -41,7 +46,7 @@ import random
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Literal, get_args
+from typing import Any, Literal, get_args
 
 from evo_agents.hub import replay, tiers
 
@@ -61,6 +66,9 @@ EVOLVE_KEY_HEADER = "X-Evo-Evolve-Key"  # an evolve run's own credential, which 
 GONE_SHA = re.compile(r"^0+$")  # what a commit-map writes for a commit the rewrite dropped
 FULL_SHA = replay.SHA
 MIN_PREFIX = 7  # a short sha the commit-map is read by
+ASI_TEXT = 4000  # characters of one text of a task's ASI: its end, where a failure says why
+ASI_ITEMS = 20  # items of one list of a task's ASI
+ASI_DEPTH = 4  # levels of nesting of a task's ASI
 
 
 class EvolveProblem(ValueError):
@@ -417,6 +425,36 @@ def task_ref(kind: str | None, task_id) -> str:
     if kind not in TASK_KINDS:
         raise EvolveProblem(f"a task is of kind {' or '.join(TASK_KINDS)}, not {kind!r}")
     return f"{kind}:{task_id}"
+
+
+# The actionable side information of a candidate
+
+
+def _bounded(value, depth: int) -> Any:
+    if isinstance(value, str):
+        return value[-ASI_TEXT:]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if depth <= 0:
+        return None
+    if isinstance(value, Mapping):
+        return {str(key)[:200]: _bounded(item, depth - 1) for key, item in list(value.items())[:ASI_ITEMS]}
+    if isinstance(value, (list, tuple)):
+        return [_bounded(item, depth - 1) for item in list(value)[-ASI_ITEMS:]]
+    return str(value)[-ASI_TEXT:]
+
+
+def asi_of(traces, refs: Iterable[str] | None = None) -> dict[str, dict]:
+    """task ref -> its ASI, each entry bounded (ASI_TEXT, ASI_ITEMS, ASI_DEPTH), from what a worker posted of a
+    candidate's traces; an entry that is no object, or of a task not among ``refs`` when given, is left out."""
+    if not isinstance(traces, Mapping):
+        return {}
+    wanted = set(refs) if refs is not None else None
+    return {
+        str(ref): _bounded(entry, ASI_DEPTH)
+        for ref, entry in traces.items()
+        if isinstance(entry, Mapping) and (wanted is None or ref in wanted)
+    }
 
 
 # The cache of the baseline arm

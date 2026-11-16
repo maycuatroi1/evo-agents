@@ -155,12 +155,23 @@ def _write_json(path: Path, body) -> None:
     path.write_text(json.dumps(body, ensure_ascii=False, indent=1, sort_keys=True), encoding="utf-8")
 
 
-def proposer_prompt(*, target: str, iteration: int, parent: str, files: Iterable[str]) -> str:
+def proposer_prompt(
+    *, target: str, iteration: int, parent: str, files: Iterable[str], asi: Mapping[str, Mapping] | None = None
+) -> str:
     """What the proposer agent of iteration ``iteration`` is asked, in the tree's root: rewrite the parent's files in
-    iterations/<n>/candidate/ whole, as it sees fit, from the reflection data of the tree."""
+    iterations/<n>/candidate/ whole, as it sees fit, from the reflection data of the tree and the parent's ASI of each
+    task it did not pass (``asi``, task -> ``evolve_eval.short_trace``), written in the prompt itself."""
     where = f"{ITERATIONS}/{iteration}/{CANDIDATE}/"
     what = "an agent's instructions and skill" if target == evolve.TARGETS[1] else "harness files of a repository"
     listed = "\n".join(f"- {where}{name}" for name in files)
+    failed = ""
+    if asi:
+        shown = json.dumps({ref: dict(asi[ref]) for ref in sorted(asi)}, ensure_ascii=False, indent=1, sort_keys=True)
+        failed = (
+            f"What candidate {parent} showed on each task it did not pass (its actionable side information: each "
+            f"failed check's exit code and the end of its output, the agent's failed tool calls, error and last "
+            f"message):\n{shown}\n\n"
+        )
     return (
         f"You improve {what} by evolution. Your working directory holds the evolution so far:\n"
         f"- {FRONTIER}: the candidates on the Pareto front, how many tasks each is best on, their scores and cost;\n"
@@ -169,7 +180,7 @@ def proposer_prompt(*, target: str, iteration: int, parent: str, files: Iterable
         "check's exit code and whole output, the agent's failed tool calls, its turns and cost;\n"
         f"- {ITERATIONS}/<n>/: the files each earlier iteration started from.\n\n"
         f"This is iteration {iteration}. {where} holds the whole files of candidate {parent}, the parent:\n{listed}\n\n"
-        "Read the traces of the tasks it failed or did badly on, and of those other candidates did better on, find "
+        f"{failed}Read the traces of the tasks it failed or did badly on, and of those other candidates did better on, find "
         f"why, and rewrite the files in {where} to do better on those tasks without losing the others. Rewrite any "
         "file whole, at any length; add a side file in the directory of a skill when it helps, or delete a file that "
         f"hurts. Change nothing outside {where}, and end your turn once the files are as you want them."

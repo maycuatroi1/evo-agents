@@ -206,3 +206,56 @@ def test_replay_runs_agent_command_of_a_plan_says_what_a_replay_run_does_instead
     assert command["exit"] != 0
     assert "is a replay run, which does a step of the project's history again" in command["stderr"]
     assert json.dumps(command)  # it ran in the arm's directory as the agent
+
+
+def test_a_verify_path_into_a_developers_checkout_is_written_as_where_the_repo_is_here():
+    from pathlib import Path
+
+    from evo_agents.worker.runner.replay_files import localized
+
+    places = {
+        "evo-agents": Path("/w/checkouts/evo-agents"),
+        "evo-agents-harness": Path("/r/evals/0/evo-agents-harness"),
+    }
+    command = (  # the verify of replay task 105 of project evo-agents, written on a developer's machine
+        'test "$(git -C ~/github/evo-agents show origin/main:evo_agents/__init__.py)" = x && evo-agents worker status'
+    )
+    assert localized(command, places) == (
+        'test "$(git -C /w/checkouts/evo-agents show origin/main:evo_agents/__init__.py)" = x && evo-agents worker status'
+    )
+    assert localized('cd ~/github/evo-agents-harness && cat "$HOME/github/evo-agents/a"', places) == (
+        'cd /r/evals/0/evo-agents-harness && cat "/w/checkouts/evo-agents/a"'
+    )
+    assert (
+        localized("cd /home/bob/github/evo-agents-harness/ && ls", places) == "cd /r/evals/0/evo-agents-harness/ && ls"
+    )
+    # another name, a hidden folder, a path not under a home, and a place the shell would split are left as they are
+    kept = "ls ~/github/evo-agents-x ~/.evo/evo-agents /srv/home/bob/github/evo-agents"
+    assert localized(kept, places) == kept
+    assert localized("ls ~/github/beta", {"beta": Path("/a b/beta")}) == "ls ~/github/beta"
+
+
+def test_replay_run_runs_a_verify_written_for_a_developers_workspace_on_the_arm_and_the_other_checkout(machine):  # noqa: F811
+    commits = history(machine)
+    beta = machine.checkouts["beta"]
+    machine.scenarios({"replay": [{"say": "Nothing."}], "replay/2": [{"write": {"alpha/done.txt": "done\n"}}]})
+    found = {}
+
+    async def body(hub, daemon):
+        spec = curator(machine, [commits["step"]], head=commits["head"])
+        # as the step's verify was written where the step ran: the repos side by side under ~/github
+        spec["replay"]["task"]["verify"] = [
+            f'grep -q done ~/github/alpha/done.txt && test -n "$(git -C ~/github/beta rev-parse HEAD)" '
+            f"&& pwd > {machine.tmp}/verify-cwd-$(basename $(dirname $PWD))"
+        ]
+        run_id = hub.queue_replay_run([{"repo": "alpha", "branch": BRANCH}], spec)
+        assert await hub.wait_state(run_id, "done", "failed", timeout=60) == "done", hub.texts(run_id)
+        found.update(hub=hub)
+
+    with_daemon(machine, body)
+    first, second = found["hub"].replays
+    # arm a wrote nothing and fails on its own work, arm b passes: ~/github/alpha is the arm's repository, and
+    # ~/github/beta the worker's checkout of beta, not a folder of the developer's machine
+    assert (first["result"]["passed"], second["result"]["passed"]) == (False, True)
+    assert (machine.tmp / "verify-cwd-b").read_text(encoding="utf-8").strip().endswith("/b/alpha")
+    assert beta.is_dir()

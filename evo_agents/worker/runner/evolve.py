@@ -14,7 +14,9 @@ agent works, and each task's directory under ``evals/``, a new repository of the
 with the candidate's files placed (a skill's files also under ``.claude/skills/``; an agent's instructions as the
 directory's CLAUDE.md and AGENTS.md, its skill under ``.claude/skills/``). Each agent session starts new on the run's
 runtime and model, with what is left of the run's caps, none of the hub's tools and no remote to push to; the worker
-runs each verify itself as code it does not trust (``verify.run_untrusted``), and no event carries a verify command or
+runs each verify itself as code it does not trust (``verify.run_untrusted``), in the task's repository, each path of it
+into a developer's checkout of a repo (``~/github/<repo>``) written as where that repo is here (``localized``: the
+task's repository for the evolution's repo, this worker's checkout for another repo of the project), and no event carries a verify command or
 its output. The proposer never sees a verify command or a holdout task: neither is in the tree.
 
 Once the loop ends, for a git target the best candidate, when it differs from the baseline, is committed on top of
@@ -140,10 +142,11 @@ class RunSeams:
         run.watchdog.spent_usd = 0.0  # a new session, whose cost starts at nothing
         figures = SessionFigures()
         run.listeners.append(figures)
-        error, usage = None, None
+        error, usage, summary = None, None, None
         try:
             await owner.conversation.turns(owner.cls, prompt, None)
             usage = run.outcome.usage if run.outcome else None
+            summary = run.outcome.summary if run.outcome else None
         except RunFailed as exc:
             error, usage = exc.error, exc.fields.get("usage")
             run.note(f"An agent's turn in {directory.name} did not end ({exc.error}); its work is taken as it is.")
@@ -152,12 +155,14 @@ class RunSeams:
         owner.usages.append(usage)
         cost = usage_cost(usage)
         owner.spent_usd += cost or 0.0
-        return measure.Session(cost, figures.turns, figures.errors, cut(error, MAX_REASON_CHARS) if error else None)
+        reason = cut(error, MAX_REASON_CHARS) if error else None
+        return measure.Session(cost, figures.turns, figures.errors, reason, summary)
 
     async def verify(self, command: str, cwd: Path) -> measure.Checked:
         """``command`` run by the worker as code it does not trust; the event says its exit code alone."""
         run = self.run
         run.check()
+        command = await self.owner.localized(command, self.owner.harness_repo, cwd)
         started = run.loop.time()
         code, output = await verify.run_untrusted(run, command, cwd, keep=VERIFY_KEEP)
         duration_ms = int((run.loop.time() - started) * 1000)
@@ -226,6 +231,7 @@ class EvolveRun(ReplayRun):
         self.total = _budget(run.spec)  # the run's caps, which its sessions share as they go
         self.env = gitops.without_hooks(run.daemon.env)
         self.usages: list = []
+        self.siblings: set[str] = set()
         self.spent_usd = 0.0
         self.source: Path | None = None
         self.cls = None

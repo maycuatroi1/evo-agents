@@ -79,6 +79,11 @@ class CandidateView(BaseModel):
     turns: int | None
     on_front: bool
     components: dict[str, str | None] | None = Field(None, description="its whole files or axes; null in a list")
+    asi: dict[str, dict] = Field(
+        default_factory=dict,
+        description="task ref -> its actionable side information: each failed check's exit code and output tail, the "
+        "agent's failed tool calls, error and last message, each text cut to its end",
+    )
     created_at: datetime
 
 
@@ -182,7 +187,9 @@ class CandidateIn(BaseModel):
     scores: dict[Ref, Score] = Field(default_factory=dict, max_length=MAX_SCORES)
     cost_usd: float | None = Field(None, ge=0, le=1e6)
     turns: int | None = Field(None, ge=0, le=10**6)
-    traces: dict | list = Field(default_factory=dict, description="what the proposer read of each failure")
+    traces: dict | list = Field(
+        default_factory=dict, description="task ref -> its ASI (evolve_eval.short_trace), kept bounded (evolve.asi_of)"
+    )
 
 
 class CandidateOut(BaseModel):

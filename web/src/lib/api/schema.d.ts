@@ -5160,8 +5160,9 @@ export interface paths {
         put?: never;
         /**
          * Plan Proposal
-         * @description Make an accepted proposal of tier 0 to 2 that has no change yet the Curator's plan, as accepting it does now;
-         *     the project's admins alone may. The change: planned, or left open with why its draft cannot become a plan.
+         * @description Make an accepted proposal of tier 0 to 2 that has no change yet, or a stuck one, the Curator's plan, as
+         *     accepting it does now; the project's admins alone may. The change: planned, or left open with why its draft
+         *     cannot become a plan.
          */
         post: operations["plan_proposal_v1_projects__project__curator_proposals__proposal_id__plan_post"];
         delete?: never;
@@ -5869,7 +5870,7 @@ export interface paths {
         };
         /**
          * Show Evolution
-         * @description One evolution, with each candidate (its components, scores and cost) and its front.
+         * @description One evolution, with each candidate (its components, scores, cost and ASI of each task) and its front.
          */
         get: operations["show_evolution_v1_projects__project__curator_evolve__evolve_id__get"];
         put?: never;
@@ -17796,7 +17797,7 @@ export interface components {
             turns?: number | null;
             /**
              * Traces
-             * @description what the proposer read of each failure
+             * @description task ref -> its ASI (evolve_eval.short_trace), kept bounded (evolve.asi_of)
              */
             traces?: {
                 [key: string]: unknown;
@@ -17838,6 +17839,15 @@ export interface components {
             components?: {
                 [key: string]: string | null;
             } | null;
+            /**
+             * Asi
+             * @description task ref -> its actionable side information: each failed check's exit code and output tail, the agent's failed tool calls, error and last message, each text cut to its end
+             */
+            asi?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
             /**
              * Created At
              * Format: date-time

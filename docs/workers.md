@@ -3143,7 +3143,10 @@ nothing, end the turn with what it did), with half the run's cost cap and half i
 stands, its turns cap, and none of the hub's MCP tools; `evo-agents worker step`, `plan`, `ask` and the others refuse
 inside it. When its turn is over, or is cut short, which the arm notes as its error, the daemon runs the step's verify
 in the repository as code it does not trust, as a judge run runs its checks (on `/bin/sh -s`, in a session of its own,
-without the worker's variables or any credential, every process it left killed), and posts the arm: passed when every
+without the worker's variables or any credential, every process it left killed), and posts the arm. A verify was
+written where the step ran, a developer's machine with the project's repos side by side (`~/github/<repo>`): each path
+of it into a repo of the project, under `~`, `$HOME` or a home directory, runs on the arm's repository for the task's
+repo and on this worker's checkout for another repo, fetched once first (`replay_files.localized`). Passed when every
 command exited 0, the commit and files of the harness, the exit codes, the cost of the session, its turns, its tool
 calls and those that failed, its largest context and the agent's time. The run ends `done` with both arms' usage
 added up, pushing nothing (`gitops.check_push` refuses every push of a replay run); its directory goes with the
@@ -3220,8 +3223,12 @@ output, failed tool calls, turns and cost. It holds no verify command and no hol
 runs in a directory of its own under `evals/`: a new repository of the task's repo at its base commit with the
 candidate's files placed (a skill also under `.claude/skills/`; an agent's instructions as CLAUDE.md and AGENTS.md),
 a new agent session on the task's prompt with what is left of the run's caps, none of the hub's tools and no remote;
-then the worker runs the verify itself as code it does not trust, as a judge run runs its checks. A candidate's score
-on a task is the share of its verify commands that exited 0.
+then the worker runs the verify itself as code it does not trust, as a judge run runs its checks, its paths into a
+developer's checkout written as where each repo is here, as a replay run does. A candidate's score on a task is the
+share of its verify commands that exited 0. Each candidate goes to the hub with its ASI (actionable side information)
+of each task: each failed check's exit code and the end of its output, the agent's last failed tool calls, error and
+last message, each text cut to 4000 characters; `curator evolve show` returns it, and a mutation's prompt holds its
+parent's ASI of each task it did not pass.
 
 The loop measures the baseline first, taking from the cache each arm the hub holds and posting the others
 (`evolve.arm_key`). Each round then either merges two candidates of the front (every third round, over their nearest

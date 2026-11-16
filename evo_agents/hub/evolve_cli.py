@@ -4,7 +4,9 @@
 ``curator evolve run`` starts one (POST /v1/projects/{p}/curator/evolve): of a repo's harness files with ``--repo`` and
 ``--path`` (target git), or of an agent of an agent system with ``--system-id`` and ``--agent`` (target agent_config);
 its run is queued at once when the night shift's gate is open, else the evolution waits, with why. ``curator evolve
-show ID`` shows one with each candidate, its scores and the Pareto front (GET .../curator/evolve/{id}); ``curator
+show ID`` shows one with each candidate, its scores and the Pareto front, then a line of each task a candidate did not
+pass from its ASI (the failed check's exit code and the end of its output, else the agent's error) (GET
+.../curator/evolve/{id}); ``--json`` has each candidate's whole ASI; ``curator
 evolve status`` lists them, the newest first (GET .../curator/evolve).
 
 The project is ``--project``, or ``hub.project`` in the harness.yaml around the current directory. ``--json`` prints
@@ -46,6 +48,7 @@ EVOLVE_KEYS = (
 )
 EVOLVE_LIST_KEYS = ("project", "evolutions")
 STATES = ("queued", "running", "done", "failed")
+ASI_LINE = 160  # characters of a task's ASI on its line of ``show``
 
 
 def _path(project: str, *parts: str) -> str:
@@ -56,6 +59,24 @@ def _what(found: dict) -> str:
     if found["target"] == "git":
         return f"{found['repo']} {', '.join(found['paths'])}"
     return f"agent {found['agent']} of system #{found['system_id']}"
+
+
+def _asi_line(asi: dict) -> str:
+    """One line of a task's ASI: the exit code and last line of output of its first failed check, else the agent's
+    error, else its last message."""
+    for check in asi.get("checks") or []:
+        if isinstance(check, dict) and check.get("exit_code") not in (0, None):
+            lines = [line for line in str(check.get("output_tail") or "").splitlines() if line.strip()]
+            return f"exit {check['exit_code']}: {lines[-1] if lines else 'no output'}"[:ASI_LINE]
+    text = asi.get("agent_error") or asi.get("summary") or "no check failed"
+    return " ".join(str(text).split())[:ASI_LINE]
+
+
+def _print_asi(candidates: list) -> None:
+    for item in candidates:
+        for ref, asi in sorted((item.get("asi") or {}).items()):
+            if isinstance(asi, dict) and (item.get("scores") or {}).get(ref, 0) < 1:
+                print(f"#{item['id']} {ref}: {_asi_line(asi)}")
 
 
 def _print_evolution(found: dict) -> None:
@@ -78,6 +99,7 @@ def _print_evolution(found: dict) -> None:
     ]
     if rows:
         table(("ID", "ORIGIN", "PARENTS", "ROUND", "SCORE", "COST", "FRONT"), rows)
+        _print_asi(found.get("candidates") or [])
     front = ", ".join(f"#{item['candidate_id']} leads {item['freq']}" for item in found["frontier"]) or "none yet"
     print(f"front: {front}")
     if found.get("best_candidate_id"):
