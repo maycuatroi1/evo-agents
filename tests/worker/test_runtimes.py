@@ -962,7 +962,29 @@ def test_claude_writes_to_the_agent_when_a_background_command_ends_and_the_cli_o
     assert outcome.completed and outcome.summary == "DONE"
 
 
-def test_claude_ends_at_a_result_once_result_json_is_written_whatever_runs_in_the_background(tmp_path):
+def test_claude_ends_at_a_result_once_result_json_is_written_and_nothing_runs_in_the_background(tmp_path):
+    result_file = tmp_path / "worktree" / runs.RESULT_FILE
+
+    async def behaviour(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(INIT)
+        result_file.parent.mkdir(parents=True, exist_ok=True)
+        result_file.write_text('{"verify_commands": ["true"], "summary": "done"}', encoding="utf-8")
+        cli.print(_text("DONE"))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    adapter = _claude(tmp_path, behaviour, timers=SLOW)
+    events, outcome = asyncio.run(_collect(adapter))
+    assert adapter.cli.log[-2:] == [("result", "DONE"), ("end_input",)]
+    assert outcome.completed and outcome.summary == "DONE"
+
+
+def test_claude_keeps_the_input_open_for_a_background_command_after_the_agent_wrote_an_interim_result_json(tmp_path):
+    """Run #8661 of evo-agents wrote its result file during its own session while two test commands ran in the
+    background: the input ended at that turn's result, and every tool call of the turn Claude Code opened when the
+    commands ended was refused. The input stays open until they end, and the file of an earlier turn ends nothing."""
     result_file = tmp_path / "worktree" / runs.RESULT_FILE
 
     async def behaviour(cli: FakeCLI) -> None:
@@ -970,18 +992,35 @@ def test_claude_ends_at_a_result_once_result_json_is_written_whatever_runs_in_th
         cli.print(INIT)
         _print(cli, background_start())
         result_file.parent.mkdir(parents=True, exist_ok=True)
-        result_file.write_text('{"verify_commands": ["true"], "summary": "done"}', encoding="utf-8")
-        cli.print(_text("DONE"))
-        cli.print(_result("DONE"))
+        result_file.write_text('{"summary": "tests still run"}', encoding="utf-8")
+        cli.print(_text("STARTED"))
+        cli.print(_result("STARTED"))
+        await cli.go.wait()
+        _print(cli, background_end())
+        cli.print(INIT)  # Claude Code opens a turn by itself, for the notification
+        cli.print(_text("READ"))  # the agent's tool calls of this turn go through: the input is still open
+        cli.print(_result("READ"))
         await cli.input_closed.wait()
-        _print(cli, background_end(status="killed"))  # Claude Code stops the command once its input ends
         cli.exit()
 
+    async def during(adapter, events) -> None:
+        await _turn_ended(adapter, events)
+        await asyncio.sleep(0.2)
+        assert ("end_input",) not in adapter.cli.log, "the input stays open while the command runs"
+        assert adapter.background.pending
+        adapter.cli.go.set()
+
     adapter = _claude(tmp_path, behaviour, timers=SLOW)
-    events, outcome = asyncio.run(_collect(adapter))
-    assert adapter.cli.log[-2:] == [("result", "DONE"), ("end_input",)]
-    assert adapter.background.ended[BG_TASK]["status"] == "stopped"
-    assert outcome.completed and outcome.summary == "DONE"
+    events, outcome = asyncio.run(_collect(adapter, during))
+    assert adapter.cli.log == [
+        ("control", "initialize"),
+        ("user", PROMPT),
+        ("result", "STARTED"),
+        ("result", "READ"),
+        ("end_input",),
+    ]
+    assert not adapter.background.pending
+    assert outcome.completed and outcome.summary == "READ"
 
 
 def test_claude_keeps_the_input_open_for_a_background_command_when_a_previous_run_left_its_result_json(tmp_path):

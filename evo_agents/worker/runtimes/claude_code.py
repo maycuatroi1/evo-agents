@@ -55,10 +55,12 @@ here.
   tests on a busy worker ran 46 and 57 minutes in release runs #1072 and #1069 of evo-agents, the input ended at 30,
   and Claude Code 2.1.310 then kept the command running but refused the agent's next tool call ("The user doesn't
   want to take this action right now"), so neither run wrote its result. Once the agent has written
-  ``.evo-run/result.json`` it has finished, and its ``result`` ends the input whatever still runs. Only a file written
-  since this session opened counts: a run that goes on in a chat's worktree finds the one its previous run wrote,
-  which ended the input at the first ``result`` of runs #8221 and #8229 of evo-agents while a test command ran in the
-  background, and the turn Claude Code opened when it ended had every tool call refused the same way.
+  ``.evo-run/result.json`` in a turn and nothing it started runs in the background, it has finished, and that turn's
+  ``result`` ends the input. A command still running keeps the input open whatever the file says, and only a file
+  written since the turn began counts: a file a chat's previous run wrote ended the input at the first ``result`` of
+  runs #8221 and #8229 of evo-agents while a test command ran in the background, and an interim one the agent wrote
+  itself did the same in run #8661; each time the turn Claude Code opened when the command ended had every tool call
+  refused the same way.
   A decision of a plan run left open is the daemon's, not the adapter's: the turn ends, and the daemon waits for the
   answer and hands it to a new adapter in the same session (``evo_agents.worker.adapter``).
 - ``stop_at_turn_boundary`` ends the input stream at once, so the turn in progress finishes and the CLI exits, a
@@ -443,7 +445,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._ended_in_turn = False  # a background command ended during the turn that runs
         self._unseen: list[str] = []  # background tasks that ended while no turn ran
         self._timer: asyncio.Task | None = None
-        self._opened: float | None = None  # when the session opened (time.time), which a result file must follow
+        self._turn_began: float | None = None  # when the last turn began (time.time), which a result file must follow
 
     @property
     def session_id(self) -> str | None:
@@ -531,7 +533,7 @@ class ClaudeCodeAdapter(QueueAdapter):
     async def _open(self) -> None:
         environment = self.context.environment
         program = environment.program(self.binary, self.context.env)
-        self._opened = time.time()
+        self._turn_began = time.time()
         self._dir = Path(tempfile.mkdtemp(prefix="evo-claude-"))
         self.pid_file = self._dir / "pid"
         unset = [key for key in dropped_env(self.context) if key not in DROPPED_ENV]  # the SDK passes the daemon's
@@ -637,6 +639,7 @@ class ClaudeCodeAdapter(QueueAdapter):
 
     def _turn_starts(self) -> None:
         self._turn_open = True
+        self._turn_began = time.time()
         self._ended_in_turn = False
         self._unseen.clear()
         self._disarm()
@@ -645,24 +648,27 @@ class ClaudeCodeAdapter(QueueAdapter):
         """A ``result``: end the input, unless the agent may go on in this session (the module's docstring)."""
         self._turn_open = False
         ended_in_turn, self._ended_in_turn = self._ended_in_turn, False
-        if self.stopping or self.interrupted or self._result_written():
+        if self.stopping or self.interrupted:
             await self._close_input()
-        elif self.background.pending:
+        elif self.background.pending:  # before the result file: an agent may write it while its tests still run
             # a run's time cap ends the wait itself, by interrupting the agent; with no background_wait, its timeout
             if self._time_cap is None and self.background_wait is not None:
                 self._arm(self.background_wait, self._leave_background)
+        elif self._result_written():
+            await self._close_input()
         elif ended_in_turn:
             self._arm(self.turn_grace, self._close_input)
         else:
             await self._close_input()  # the CLI ends once it has done what it was given
 
     def _result_written(self) -> bool:
-        """The agent wrote its result file in this session: one a previous run left in the worktree does not count."""
+        """The agent wrote its result file in the turn that just ended: one a previous run left in the worktree, or one
+        an earlier turn of this session wrote, does not count."""
         path = Path(self.context.worktree) / runs.RESULT_FILE
         if not path.is_file() or path.is_symlink():
             return False
         # a second's slack: the kernel stamps a file's mtime from a coarser clock than time.time()
-        return self._opened is None or path.stat().st_mtime >= self._opened - 1.0
+        return self._turn_began is None or path.stat().st_mtime >= self._turn_began - 1.0
 
     def _background_ended(self, tasks: list[str]) -> None:
         if self._turn_open:
