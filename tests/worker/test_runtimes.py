@@ -2254,6 +2254,50 @@ def test_the_heartbeat_reports_the_models_of_available_runtimes_within_the_hubs_
     assert adapter_module.clean_models([]) is None and adapter_module.clean_models(["", " "]) is None
 
 
+class _Probed(Adapter):
+    runtime = "claude-code"
+    binary = "claude"
+
+    @classmethod
+    def detect(cls) -> Detection:
+        return adapter_module.probe_binary(cls.binary, timeout=0.01)
+
+    @classmethod
+    def models(cls):
+        return None
+
+
+def test_a_version_that_times_out_keeps_the_runtime_the_last_look_found(monkeypatch):
+    """A loaded machine whose --version gives no answer in time keeps the runtime available, as the last look found
+    it; a runtime never seen available, or a --version that fails, is reported unavailable as before."""
+    monkeypatch.setattr(adapter_module.shutil, "which", lambda binary, path=None: f"/usr/bin/{binary}")
+
+    def slow(argv, **kwargs):
+        raise subprocess.TimeoutExpired(argv, kwargs.get("timeout"))
+
+    monkeypatch.setattr(adapter_module.subprocess, "run", slow)
+    last = {"claude-code": {"available": True, "version": "2.1.312", "reason": None, "models": ["opus"]}}
+    found = adapter_module.detect_runtimes({"claude-code": _Probed}, previous=last)
+    assert found["claude-code"] == last["claude-code"] and found["claude-code"] is not last["claude-code"]
+    assert adapter_module.detect_adapters({"acp-x": _Probed}, previous={"acp-x": last["claude-code"]}) == {
+        "acp-x": last["claude-code"]
+    }
+
+    first = adapter_module.detect_runtimes({"claude-code": _Probed})["claude-code"]
+    assert first["available"] is False and "gave no answer" in first["reason"]
+    gone = {"claude-code": {"available": False, "version": None, "reason": "claude is not on PATH"}}
+    assert adapter_module.detect_runtimes({"claude-code": _Probed}, previous=gone)["claude-code"]["available"] is False
+
+    monkeypatch.setattr(
+        adapter_module.subprocess,
+        "run",
+        lambda argv, **kwargs: subprocess.CompletedProcess(argv, 1, stdout="", stderr="broken"),
+    )
+    failed = adapter_module.detect_runtimes({"claude-code": _Probed}, previous=last)["claude-code"]
+    assert failed["available"] is False and failed["reason"] == "claude --version exited 1"
+    assert "timed_out" not in failed
+
+
 # The selftest command
 
 

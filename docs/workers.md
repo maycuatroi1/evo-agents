@@ -1419,7 +1419,10 @@ declared to the worker ([Runtimes of plugins](#runtimes-of-plugins)), each `{ava
 is required, `reason` says why a runtime that is there cannot take runs, and only an available runtime is claimed
 for. `models` lists the models an available runtime offers on the machine, when the runtime lets them be read (see
 [Runtime adapters](#runtime-adapters)): at most 200, each one line of at most 200 characters, so the web can suggest
-them for a dispatch; it is left out (null) otherwise, and a run's `model` is never checked against it.
+them for a dispatch; it is left out (null) otherwise, and a run's `model` is never checked against it. A runtime
+whose `--version` gives no answer within 15 seconds (a loaded machine) keeps what the daemon's last look found when
+that look had it available, so a slow machine does not drop the agents of its pool for "no runtime"; a runtime the
+daemon has not yet seen available since it started is reported unavailable with that reason.
 `checkouts` is keyed `<project>/<repo>`, as the project and its repo are named on the hub, each `{path, branch}` with
 the path required. The hub keeps both as sent, every key present (a missing one is null), and `GET /v1/workers/{id}`
 shows them in that shape. `free_slots` is what the daemon counts free, at most the worker's slots; the hub shows it,
