@@ -124,21 +124,24 @@ class Timing:
 
     def __init__(self) -> None:
         self.phases: dict[str, dict[str, float]] = {}
-        self._start = time.perf_counter()
+        self._start = self._slept = time.perf_counter()
         self._stall = 0.0
 
     def phase(self, name: str) -> None:
-        """End the phase running now as ``name``; the next one starts."""
+        """End the phase running now as ``name``; the next one starts. A stall still running, which the watch has not
+        woken up from yet, is the phase's too."""
         now = time.perf_counter()
-        self.phases[name] = {"s": round(now - self._start, 3), "stall_s": round(self._stall, 3)}
-        self._start, self._stall = now, 0.0
+        stall = max(self._stall, now - self._slept - STALL)
+        self.phases[name] = {"s": round(now - self._start, 3), "stall_s": round(stall, 3)}
+        self._start = self._slept = now
+        self._stall = 0.0
 
     async def watch(self) -> None:
         """Sleep STALL at a time and keep the longest overrun: a loop that ran nothing else for a while wakes late."""
         while True:
-            before = time.perf_counter()
+            self._slept = time.perf_counter()
             await asyncio.sleep(STALL)
-            self._stall = max(self._stall, time.perf_counter() - before - STALL)
+            self._stall = max(self._stall, time.perf_counter() - self._slept - STALL)
 
 
 @contextlib.asynccontextmanager

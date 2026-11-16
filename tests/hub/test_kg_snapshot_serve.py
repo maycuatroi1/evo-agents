@@ -398,13 +398,14 @@ def test_a_load_logs_how_long_each_phase_took_and_stalled_the_event_loop(hub, tm
     assert push(hub, laptop).ok
     build(hub, caplog)
     pid = project_id(hub)
-    hub_build = kg_snapshots.hub_build
+    made = kg_snapshots._made
 
-    def blocking(*args):
-        time.sleep(0.4)  # on the loop, as the made phase starts
-        return hub_build(*args)
+    async def blocking(*args):
+        held = await made(*args)
+        time.sleep(0.4)  # on the loop as the made phase ends, with no await before it does: the watch is not awake
+        return held
 
-    monkeypatch.setattr(kg_snapshots, "hub_build", blocking)
+    monkeypatch.setattr(kg_snapshots, "_made", blocking)
     caplog.clear()
     try:
         with caplog.at_level(logging.INFO, logger="evo_agents.hub.kg_snapshots"):
