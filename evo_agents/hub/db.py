@@ -12,15 +12,23 @@ the psycopg connection, the engine undoes as it gives the connection back (``mak
 back otherwise; queries on it are SQLAlchemy Core on ``evo_agents.hub.tables``. ``driver(conn)`` is the psycopg
 connection under it, in the same transaction: what procrastinate defers a job on (``evo_agents.hub.jobs``), and
 nothing else; ``docs/hub.md`` (Data access) says how queries are written.
+
+The pool times each connection it hands out (``TimedPool``): one held ``HOLD_LOG_SECONDS`` or longer is logged as
+``pool connection held`` with its holder, the request path the api's middleware set in ``holder`` and the name of the
+task that took it, and a ``PoolTimeout`` is logged as ``pool timeout`` with the connections out at that moment, each
+with its holder and how long it has held it: what the log says of who emptied the pool.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import suppress
+from contextvars import ContextVar
+from time import monotonic
 
 import psycopg
-from psycopg_pool import AsyncConnectionPool
+from psycopg_pool import AsyncConnectionPool, PoolTimeout
 from sqlalchemy import ColumnElement, any_, bindparam, column, event, func, literal, select, table
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.dialects.postgresql.psycopg import _log_notices
@@ -29,12 +37,70 @@ from sqlalchemy.pool import NullPool
 
 from evo_agents.hub.config import HubConfig
 
+log = logging.getLogger(__name__)
+
 APPLICATION_NAME = "evo-agents-hub"
 CONNECT_TIMEOUT = 10  # seconds for libpq to establish one connection
+HOLD_LOG_SECONDS = 2.0  # a pooled connection held this long or longer is logged with its holder (``TimedPool``)
+HOLDERS_LOGGED = 30  # of the connections out when the pool times out, the longest held ones logged
+
+# the request path, set by the api's middleware
+holder: ContextVar[str] = ContextVar("evo_hub_pool_holder", default="-")
+
+
+def _holder() -> str:
+    """Who takes a connection now: ``holder``, and the name of the running task unless asyncio named it Task-<n>. A
+    task inherits the ``holder`` of the request that started it, so a background load names the path it came from."""
+    try:
+        task = asyncio.current_task()
+    except RuntimeError:
+        task = None
+    name = task.get_name() if task is not None else ""
+    return holder.get() if not name or name.startswith("Task-") else f"{holder.get()} task:{name}"
+
+
+class TimedPool(AsyncConnectionPool):
+    """An ``AsyncConnectionPool`` that knows, for each connection out, who took it and when: it logs a connection
+    held ``HOLD_LOG_SECONDS`` or longer as it comes back, and on a ``PoolTimeout`` the connections out then, the
+    longest held first. ``connection()`` and a connection closed with ``close_returns`` go through ``getconn`` and
+    ``putconn`` too."""
+
+    def __init__(self, *args, **kwargs):
+        self._out: dict[int, tuple[float, str]] = {}  # id of a connection out: (when it was taken, who took it)
+        super().__init__(*args, **kwargs)
+
+    async def getconn(self, timeout: float | None = None):
+        who, asked = _holder(), monotonic()
+        try:
+            conn = await super().getconn(timeout)
+        except PoolTimeout:
+            log.warning(
+                "pool timeout",
+                extra={"holder": who, "waited_ms": _ms(monotonic() - asked), "out": self.holders()},
+            )
+            raise
+        self._out[id(conn)] = (monotonic(), who)
+        return conn
+
+    async def putconn(self, conn) -> None:
+        taken = self._out.pop(id(conn), None)
+        if taken is not None and (held := monotonic() - taken[0]) >= HOLD_LOG_SECONDS:
+            log.info("pool connection held", extra={"holder": taken[1], "held_ms": _ms(held)})
+        await super().putconn(conn)
+
+    def holders(self) -> list[dict]:
+        """The connections out now, the longest held first: each one's holder and how long it has held it."""
+        now = monotonic()
+        out = sorted(self._out.values())[:HOLDERS_LOGGED]
+        return [{"holder": who, "held_ms": _ms(now - taken)} for taken, who in out]
+
+
+def _ms(seconds: float) -> float:
+    return round(seconds * 1000, 1)
 
 
 def create_pool(config: HubConfig) -> AsyncConnectionPool:
-    return AsyncConnectionPool(
+    return TimedPool(
         config.dsn,
         min_size=config.pool_min_size,
         max_size=config.pool_max_size,

@@ -29,6 +29,7 @@ from pathlib import PurePosixPath
 from evo_agents.kg import asked as asked_words
 from evo_agents.kg import search as text_search
 from evo_agents.kg import semantic
+from evo_agents.kg.pacing import paced
 from evo_agents.kg.policy import audience_below
 from evo_agents.kg.snapshot_fts import Table, code_words, trigrams, words
 from evo_agents.kg.store_filters import stored_audience
@@ -103,16 +104,19 @@ class TextIndex:
         """The index of ``keyed`` (key, (node id, kind, name, path, body[, audience])), as ``store_fts.search_rows``
         gives them, and of ``code`` (file node id: text; already folded when ``folded``)."""
         rows, public, audience = [], [], []
-        for key, row in keyed:
+        for key, row in paced(keyed):
             aud = next(iter(row[5:6]), None)
             rows.append(Row(key, row[0], row[1], row[2] or "", row[3] or "", aud))
             (public if aud is None else audience).append((row[2] or "", row[3] or "", row[4] or ""))
         tri_rows = [r for r in rows if r.aud is None and r.own]
         tri = Table(
-            [(text_search.tri_text(r.name.split("\n", 1)[0]), text_search.tri_text(r.path)) for r in tri_rows], trigrams
+            [(text_search.tri_text(r.name.split("\n", 1)[0]), text_search.tri_text(r.path)) for r in paced(tri_rows)],
+            trigrams,
         )
         code_ids = tuple(sorted(code))
-        code_table = Table([(code[nid] if folded else text_search.fold(code[nid]),) for nid in code_ids], code_words)
+        code_table = Table(
+            [(code[nid] if folded else text_search.fold(code[nid]),) for nid in paced(code_ids)], code_words
+        )
         return cls(rows, Table(public, words), Table(audience, words), tri, tri_rows, code_table, code_ids)
 
     def index_row(self, node_id: str) -> IndexRow:
