@@ -145,3 +145,20 @@ def test_a_done_review_counts_its_shown_entries_and_the_curator_retires_the_due_
     assert [row[1:6] for row in last[len(after) :]] == [
         (until["id"], "retire", None, playbook.CURATOR_ACTOR, gone["retired_note"])
     ]
+
+
+@needs_pg
+def test_the_charters_exposure_limit_is_the_one_the_curator_retires_by(lab):
+    ch = tables.charters
+    ((project_id, revision, body, created_by),) = sql(
+        lab.db,
+        select(ch.c.project_id, ch.c.revision, ch.c.body, ch.c.created_by).order_by(ch.c.revision.desc()).limit(1),
+    )
+    from evo_agents.hub.server import playbook as playbook_routes
+
+    assert on_db(lab.db, lambda conn: playbook_routes.exposure_limit_of(conn, project_id)) == playbook.EXPOSURE_LIMIT
+    for offset, held, limit in ((1, 5, 5), (2, 0, 0), (3, None, playbook.EXPOSURE_LIMIT)):
+        evolved = {**body, "evolve": {**(body.get("evolve") or {}), "exposure_limit": held}}
+        row = {"project_id": project_id, "revision": revision + offset, "body": evolved, "created_by": created_by}
+        sql(lab.db, insert(ch).values(**row))
+        assert on_db(lab.db, lambda conn: playbook_routes.exposure_limit_of(conn, project_id)) == limit

@@ -300,13 +300,24 @@ async def exposed(conn: AsyncConnection, run_id: int, project_id: int) -> list[i
     return await retire_due(conn, project_id)
 
 
-async def retire_due(
-    conn: AsyncConnection, project_id: int, exposure_limit: int = playbook.EXPOSURE_LIMIT
-) -> list[int]:
+async def exposure_limit_of(conn: AsyncConnection, project_id: int) -> int:
+    """The review runs that show an entry never found helpful before it is retired: the charter's
+    ``evolve.exposure_limit``, ``playbook.EXPOSURE_LIMIT`` when it says none; 0 retires none that way."""
+    ch = tables.charters
+    query = select(ch.c.body).where(ch.c.project_id == project_id).order_by(ch.c.revision.desc()).limit(1)
+    body = (await conn.execute(query)).scalar_one_or_none() or {}
+    held = (body.get("evolve") or {}).get("exposure_limit") if isinstance(body, dict) else None
+    return held if isinstance(held, int) and not isinstance(held, bool) and held >= 0 else playbook.EXPOSURE_LIMIT
+
+
+async def retire_due(conn: AsyncConnection, project_id: int, exposure_limit: int | None = None) -> list[int]:
     """Retire each live entry of project ``project_id`` that ``playbook.due_retires`` names, under the rows' locks,
     with a delta ``retire`` of actor CURATOR_ACTOR and no run: the one that holds until a proposal whose change is
     merged (its ``until_proposal_id``, else what its text says, for an entry older than the column), and the one shown
-    in ``exposure_limit`` review runs that none found helpful. The ids it retired, oldest first."""
+    in ``exposure_limit`` review runs that none found helpful (``exposure_limit_of`` when None). The ids it retired,
+    oldest first."""
+    if exposure_limit is None:
+        exposure_limit = await exposure_limit_of(conn, project_id)
     pb, d, c = tables.curator_playbook, tables.curator_playbook_deltas, tables.curator_changes
     live = select(pb.c.id, pb.c.text, pb.c.until_proposal_id, pb.c.prompt_exposures, pb.c.helpful)
     live = live.where(pb.c.project_id == project_id, pb.c.retired_at.is_(None)).order_by(pb.c.id).with_for_update()
