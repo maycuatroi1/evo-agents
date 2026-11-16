@@ -277,6 +277,11 @@ class FakeAdapter(Adapter):
         return bool(folder) and (Path(folder) / session_id).is_file()
 
     @classmethod
+    def tells_sessions(cls, env) -> bool:
+        """Whether EVO_FAKE_SESSIONS names a directory of session records, which ``has_session`` reads."""
+        return bool(env.get("EVO_FAKE_SESSIONS"))
+
+    @classmethod
     def environment_notes(cls, context) -> list[str]:
         """A line naming the variables the run's leases set, but for git's configuration, when there are any."""
         names = sorted(name for name in context.leased if not name.startswith("GIT_CONFIG_"))

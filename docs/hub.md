@@ -4169,15 +4169,34 @@ claims without one (`PoolTimeout`), whatever `EVO_HUB_POOL_MAX_SIZE` was. Nor do
 fetches the rows of each table 2000 at a time on a server-side cursor (`kg_graph_rows.READ_BATCH`), the api serving other
 requests between two fetches, and decodes their JSON and makes the snapshot in a thread. Fetching and decoding a large
 graph's hundreds of thousands of rows in one go stalled every request for seconds after each build, and the
-heartbeats and claims waiting meanwhile timed out on the pool all at once. While a load runs, Python's cyclic garbage
-collector is off, and the snapshot it made is frozen out of later collections (`gc.freeze`): a large graph is
-millions of tracked objects, and each full collection walked them all holding the GIL, stalling the loop for seconds,
-dozens of times per load. As the last load running ends, one collection frees the cyclic garbage the requests served
-meanwhile left, before the rest is frozen, so it is not frozen with the snapshot. A snapshot has no reference cycle,
-so one replaced is freed though frozen. Each load of the api logs `kg snapshot load timed`, with the seconds of its
-phases (`slot`: waiting for a read slot, `rows`: reading the tables, `made`: making the snapshot) and, per phase, the
-longest time the event loop ran nothing else (`stall_s`), and `kg snapshot frozen` the seconds of the collection before
-the freeze (`collect_s`), which runs on the loop. A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
+heartbeats and claims waiting meanwhile timed out on the pool all at once. The thread that makes the snapshot sleeps
+1 ms every 2 ms (`evo_agents.kg.pacing.paced`, within `pacing()`, which only the api's loads enter), so the build
+takes a third longer: a thread that kept the GIL until the interpreter forced a switch
+left the event loop one step every 5 ms for the minute or two a large graph takes, every pooled connection sat idle in a
+transaction the loop could not finish, and the heartbeats and claims timed out on the pool. A sort of the hundreds of
+thousands of edges is made in runs merged as they go (`paced_sorted`), as one sort keeps the GIL from start to end.
+While a load runs, Python's cyclic garbage collector makes no full collection, and the snapshot it made is frozen out
+of later collections (`gc.freeze`): a large graph is millions of tracked objects, and each full collection walked
+them all holding the GIL, stalling the loop for seconds, dozens of times per load. The collections of the young
+generations go on, so the cyclic garbage the requests served meanwhile leave is freed; as the last load running ends,
+one full collection frees what reached the old generation before it died, and the rest is frozen. That one
+collection walks the new snapshot, not those frozen before: one stall of a second or two per load. A snapshot has no reference cycle, so one
+replaced is freed though frozen.
+
+What holds the pool is in the api's log. The pool times each connection it gives out (`evo_agents.hub.db.TimedPool`):
+one held 2 seconds or more is logged as `pool connection held` with its `holder`, the method and path of the request
+that took it (and the name of the task, when a named task such as `kg-snapshot-<project>` took it) and `held_ms`; a
+request that timed out waiting is logged as `pool timeout` with its own holder, `waited_ms` and `out`, the connections
+out at that moment, longest held first, each with its holder and `held_ms`. A turn of the event loop that took a
+second or more is logged as `event loop stalled` with `stalled_ms`: a burst of timeouts with no long hold in `out`
+but stalls beside it is the loop starved, not the pool too small.
+
+Each load of the api also logs `kg snapshot load timed`, with the seconds of its phases (`slot`: waiting for a read
+slot, `rows`: reading the tables, `made`: making the snapshot) and, per phase, the longest time the event loop ran
+nothing else (`stall_s`), and `kg snapshot frozen` the seconds of the full collection before the freeze (`collect_s`),
+which runs on the loop.
+
+A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
 the build at the head or one before it: the graph it wrote is the one the tables hold or an older one they replaced.
 
 **Graph files of older builds.** Builds before 0248 uploaded the graph's SQLite file to the bucket as a blob of kind
@@ -4206,7 +4225,7 @@ full-text rows), and counts the rows holding a secret by kind; that graph is in 
 also reads each graph file older builds uploaded and each source blob a project holds in the bucket, page by page (`POST /v1/admin/kg/scrub`, at most 1000
 objects and 256 MiB a page), with the connector's patterns, and lists those holding a secret by hash, kind, size and the kinds of secret,
 never a value. A source blob is read as the file the items of
-the project's run logs say it is (their `props.path`), as `evo-agents kg scrub` reads it on a machine: in code a bare
+the project's run logs say it is (their `props.path`), as the git connector reads it: in code a bare
 value after `=` is an expression, in a config file or a document a literal. A blob no item names with a path is read
 as a document. The first page that meets a source blob that may hold a secret reads every run log of the project for
 those paths, so it takes longer; the api keeps them, and reads only the logs of new runs after that. Run logs hold
@@ -4232,9 +4251,8 @@ evo-agents hub kg scrub --purge                # delete the old copies, after a 
 Which blob is live is a guess from the newest full run of each source. When the merge kept an older record (a removal
 the deletion guard held back, or an older checkout pushed after a newer one), a blob in use may count as old. Deleting
 it makes the project's next build fail, naming the blob, and pushing a new run of that source mends it. The worker's
-cache under `<data dir>/kg/home` holds the corpus as a machine's kg home does, old blobs included:
-`EVO_KG_HOME=<data dir>/kg/home evo-agents kg scrub --all --purge --yes` in the worker's container cleans it the same
-way, or delete the cache, and the next build fetches what it needs again.
+cache under `<data dir>/kg/home` holds the corpus a build reads, old blobs included: delete the cache, and the next
+build fetches what it needs again.
 
 ## Plugins
 

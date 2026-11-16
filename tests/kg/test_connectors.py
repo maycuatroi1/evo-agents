@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from evo_agents.harness import Harness, plan_digest
-from evo_agents.kg import retention
 from evo_agents.kg.build import build_project
 from evo_agents.kg.connectors import _files, gitcli
 from evo_agents.kg.connectors import git as git_connector
@@ -763,13 +762,9 @@ def history_of(corpus) -> set[str]:
     return {r.item_id for r in corpus.items("app") if ":commit:" in r.item_id or ":pr:" in r.item_id}
 
 
-def items_in(path: Path) -> set[str]:
-    return {record["id"] for record in Corpus.read_log(path) if record.get("type") == "item"}
-
-
-def test_a_default_prune_keeps_the_commits_and_pull_requests_a_later_run_reads_on_from(tmp_path, kg_env, github):
+def test_a_later_run_reads_on_from_the_commits_and_pull_requests_of_the_runs_before(tmp_path, kg_env, github):
     """Later runs read only the commits and pull requests since the cursor's (``history_and_pulls``): the records of
-    the runs before must outlive retention (``evo_agents.kg.retention``), or the graph would lose them for good."""
+    the runs before stay in the merged state, or the graph would lose them for good."""
     project = make_project(tmp_path, kg_env)
     app = tmp_path / "demo-app"
     github.pages = [[github_pull(7, "2026-10-02T00:00:00Z"), github_pull(6, "2026-10-01T00:00:00Z")]]
@@ -785,14 +780,6 @@ def test_a_default_prune_keeps_the_commits_and_pull_requests_a_later_run_reads_o
     history = history_of(corpus)
     assert len(history) == 5  # three commits, two pull requests, each read by one run only
     state, cursor = corpus.state_digest(), corpus.cursor("app")
-
-    later = dt.datetime.now(dt.UTC) + dt.timedelta(days=2)  # every run is older than the default periods
-    found = retention.plan(project.name, project.root, retention.DEFAULTS, now=later, policy=project.policy)
-    # The third run holds every file; the two before hold nothing else the corpus has but their history.
-    assert found.logs == [] and set(found.rewrite) == {first.name, second.name}
-    assert found.kept[retention.IN_USE] == 1 and found.runs == []
-    retention.apply(found)
-    assert items_in(first) | items_in(second) == history - {f"app:commit:{git(app, 'rev-parse', 'HEAD').strip()}"}
     corpus = project.corpus()
     assert [p.name for p in corpus.log_files()] == [first.name, second.name, third.name]
     assert history_of(corpus) == history

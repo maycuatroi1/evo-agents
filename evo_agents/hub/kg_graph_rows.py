@@ -29,6 +29,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables, wake
+from evo_agents.kg.pacing import paced
 from evo_agents.kg.snapshot import StoreRows, asked_order, cluster_order
 
 CHANNEL = "kg_graph"
@@ -275,7 +276,7 @@ GRAPH_TABLES = (
 def _assembled(head, read: dict[str, dict[str, tuple]]) -> StoreRows:
     """The ``StoreRows`` of the head of a branch and the rows of its tables (``GRAPH_TABLES``) by key."""
     keyed, code = [], {}
-    for _, row in read["kg_text_rows"].items():
+    for _, row in paced(read["kg_text_rows"].items()):
         kind, key, value = json.loads(row[1])
         if kind == TEXT:
             keyed.append((key, tuple(value)))
@@ -283,11 +284,11 @@ def _assembled(head, read: dict[str, dict[str, tuple]]) -> StoreRows:
             code[key] = value
     top = ((head.top_label[0], head.top_label[1]), frozenset(head.top_audience))
     units, wheres, derived = [], [], []
-    for _, row in sorted(read["kg_provenance"].items()):
+    for _, row in paced(sorted(read["kg_provenance"].items())):
         kind, *values = json.loads(row[1])
         {UNIT: units, WHERE: wheres, DERIVED: derived}[kind].append(tuple(values))
     clusters, review = [], []
-    for _, row in read["kg_review_rows"].items():
+    for _, row in paced(read["kg_review_rows"].items()):
         kind, key, value = json.loads(row[1])
         if kind == REVIEW:
             review.append(value)

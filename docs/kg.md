@@ -655,48 +655,19 @@ whose text or structure changed or that looked up a name or path that now resolv
 rows of the full-text index that changed (`node_fts_rows`, under Search). The first build after an upgrade that
 changes the structure or link versions is cold.
 
-## Retention on this machine
+## Retention
 
-`evo-agents kg prune` deletes what this machine no longer needs from its kg home (`evo_agents/kg/retention.py`). Three
-periods, each `0` or a number with `m`, `h`, `d` or `w`, say what is old:
-
-| Period | Default | What it ages |
-| --- | --- | --- |
-| `logs` | `1d` | run logs, blobs and rows of the runs table |
-| `history` | `1d` | the builds of `graph.sqlite` and the rows only they read |
-| `memo` | `14d` | memo rows, from their last use |
-
-What a pass deletes in a project directory:
-
-- A finished run log of a run that started before the logs period, when no record of it is the one the corpus holds;
-  one that still holds some is rewritten without the others, as `kg scrub --purge` does, so the logs left replay to
-  the same state. A log the hub has not received is never touched: `hub kg push` records which runs the hub holds,
-  and a run whose source's label is above the project's hub sink, or of a project that declares no hub sink and never
-  pushed, goes to no hub. A project whose knowledge config does not load keeps every log no push recorded.
-- Blobs older than the logs period that no log left and no item refers to.
-- Rows of the runs table older than the logs period whose log is gone or never was, except the newest run and the
-  newest ok run of each source (`kg sync --due` and `kg status` read them) and runs whose records the corpus holds.
-- Builds that finished before the history period, except the latest two, so a reader that opened the previous build
-  just before a new one landed still reads it whole.
-- Memo rows that no key used within the memo period nor in the latest build; a corpus that stays the same keeps the
-  rows of its latest build. `--all` also prunes the memo the projects share.
-
-None of it changes what a build makes: a build from scratch gives the same hash before and after. A SQLite file
-is compacted only when at least a tenth of its pages are free.
+A machine keeps no corpus, memo or graph since the hub holds them, so there is no retention on it: `kg sync --due
+--all`, the LaunchAgent's command, only syncs. `evo-agents kg prune` runs the hub's retention of built graphs
+(`evo_agents/hub/kg_prune.py`) for the project of the current directory, `--project` or `--all`: it counts the
+artifacts of the graphs older than the `--keep` newest, and `--delete` deletes them. It needs a hub admin, as
+`evo-agents hub kg prune`, which also takes `--graph-files`. Files a release before this one left in `~/.evo/kg/`
+stay until their owner deletes them.
 
 ```sh
 evo-agents kg prune                          # the project of the current directory: count, change nothing
-evo-agents kg prune --all --delete           # every project: say what goes, ask, delete (--yes when no terminal)
-evo-agents kg prune --logs 3d --memo 30d     # other periods for this pass
-evo-agents kg prune --schedule on            # count, ask, then prune with every kg sync --due --all
-evo-agents kg prune --schedule off
+evo-agents kg prune --all --delete           # every project: delete the artifacts of the older graphs
 ```
-
-The schedule is off until the owner turns it on. `--schedule on` saves the periods in `<kg home>/retention.json`;
-from then on `kg sync --due --all`, the command the LaunchAgent of `kg schedule install` runs, prunes each project at
-most once a day, after its sync and push, holding every source's lock so no sync writes meanwhile. Each pass that
-deletes appends a `prune` line with the counts to the project's `audit.jsonl`. `--json` prints the counts for a
-script.
 
 ## Clusters
 

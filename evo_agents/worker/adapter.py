@@ -310,6 +310,12 @@ class Adapter(abc.ABC):
         return False
 
     @classmethod
+    def tells_sessions(cls, env: Mapping[str, str]) -> bool:
+        """Whether ``has_session`` can tell, for an agent with the environment ``env``, that a session is not here: a
+        run that goes on in a session it does not find then starts a new one rather than fail to load it."""
+        return False
+
+    @classmethod
     def environment_notes(cls, context: RunContext) -> list[str]:
         """What the runtime's agent, headless or in its terminal UI, does not get of ``context.env`` and why, as lines
         for the run's log; the daemon writes each once a run, as a ``system`` event, once the agent has started."""

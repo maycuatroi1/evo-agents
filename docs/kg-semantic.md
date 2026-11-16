@@ -61,8 +61,9 @@ The vectors are in the graph file, in `node_vec` and `node_vec_meta`, tables out
 the build's content hash: a reader of before opens the file and ignores them, and a graph without them, or a reader
 without the model, searches by words as it did. On the hub the build folds the vectors' digest and the mode into the
 content hash it records, so a build whose graph is the same but whose vectors are not uploads its file. Each vector is
-also kept in `vectors.sqlite` next to the graph, by model and digest of its text, so a build embeds only the rows
-whose text changed: the first one of a large project embeds everything (20,462 rows, 10.6 M characters for the
+also kept by model and digest of its text, so a build embeds only the rows whose text changed: a local build keeps
+them in `vectors.sqlite` next to the graph, the hub in its database (`kg_vector_cache`, filled at a project's first
+build from the `vectors.sqlite` and the graph its directory held, which stay): the first one of a large project embeds everything (20,462 rows, 10.6 M characters for the
 evo-agents graph, 72 minutes on 8 CPU cores), the next ones a few rows.
 
 ## The fusion

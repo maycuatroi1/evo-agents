@@ -17,8 +17,8 @@ A memo commits as it goes, every COMMIT_ROWS rows written or COMMIT_SECONDS afte
 moment, not for a whole build, and a build that crashes keeps what it had committed.
 
 Every row a memo returns or writes counts as used: ``commit`` records, in ``memo_used``, the time the memo was opened
-as the row's last use, and in ``memo_meta`` that time as ``last_build``. Retention (``evo_agents.kg.retention``)
-deletes the rows no key uses any more: those whose last use is older than its period and than ``last_build``
+as the row's last use, and in ``memo_meta`` that time as ``last_build``. Retention (the
+``kg prune`` of a machine's kg home, before the hub held it) deleted the rows no key uses any more: those whose last use is older than its period and than ``last_build``
 (``unused``). Rows written before uses were recorded have none, and go once a build has recorded its own. Both tables
 sit beside ``memo``, which keeps its four columns, so a memo stays readable and writable by a version that does not
 know them.

@@ -14,12 +14,12 @@ which already starts with its document's name and the headings above it. The ind
 query is folded the same way. Rows without a body (most symbols, directories, repos) get no vector: their names are
 what BM25 finds them by.
 
-The vectors sit in the graph file, in two tables outside the store's schema version and its content hash, found by
-existence like the asked index: ``node_vec`` (one row a full-text row, keyed as ``node_fts_rows``, with its node, its
-kind, its audience and its vector as float16) and ``node_vec_meta`` (the model, the dimension, the mode, the digest).
-A reader of before ignores them; a graph without them, or a reader without the model, searches by words as before.
-Embedding is the slow part, so each vector is also kept in ``vectors.sqlite`` next to the graph, by model and digest
-of its text: a build embeds only the rows whose text changed since.
+This module reads and writes no file of a graph: ``index`` embeds the rows a ``Graph`` gives and hands the vectors
+back to it, ``matrix`` makes one matrix of the rows a reader loads. A graph file keeps them in two tables
+(``evo_agents.kg.store_vectors``), the hub's graph in kg_embeddings and the head's vectors (``evo_agents.hub
+.kg_graph_rows``). A reader without them, or without the model, searches by words. Embedding is the slow part, so
+each vector is also kept in a ``Cache`` by model and digest of its text: a build embeds only the rows whose text
+changed since. The hub keeps that cache in its database (``evo_agents.hub.kg_semantic``).
 
 ``Store.search`` fuses the two rankings by reciprocal rank fusion (Cormack et al., 2009): a node scores
 1 / (RRF_K + its rank by words) plus SEMANTIC_WEIGHT / (RRF_K + its rank by meaning), each over the nodes the list holds,
@@ -32,12 +32,12 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import threading
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 from evo_agents.kg import search as text_search
 from evo_agents.kg.protocol import canonical_json, sha256
@@ -45,19 +45,11 @@ from evo_agents.kg.protocol import canonical_json, sha256
 MODES = ("off", "index", "on")
 DEFAULT_MODEL = "BAAI/bge-m3"
 SETTINGS_FILE = "semantic.json"
-CACHE_FILE = "vectors.sqlite"
 EMBED_CHARS = 2_000  # of a row's text, about the 512 tokens the model reads; a long body has passages for the rest
 BATCH = 16
 RRF_K = 60
 SEMANTIC_WEIGHT = 0.5  # tuned on the tune split of the evo-agents questions: 0.25 to 5 move hit@5 by under a point
 SEMANTIC_POOL = 100  # the nearest nodes the ranking by meaning holds
-VEC_TABLES = ("node_vec", "node_vec_meta")
-VEC_SCHEMA = """
-CREATE TABLE node_vec (
-    key TEXT PRIMARY KEY, node_id TEXT NOT NULL, kind TEXT NOT NULL, aud TEXT, digest TEXT NOT NULL, vec BLOB NOT NULL
-) STRICT;
-CREATE TABLE node_vec_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
-"""
 # The models this code knows how to load and what they are. BGE-M3: dense vectors of 1,024, over 100 languages, read
 # through its ONNX export, CLS pooling, normalized. Any other name is read as a model fastembed itself lists.
 KNOWN_MODELS = {
@@ -336,59 +328,41 @@ def text_digest(model: str, text: str) -> str:
     return sha256(canonical_json([model, text]))
 
 
-def index_rows(db: sqlite3.Connection, chars: int = EMBED_CHARS) -> list[tuple[str, str, str, str | None, str]]:
-    """(key, node id, kind, audience, text) of every full-text row with a body, by key."""
-    out = []
-    for table, aud in (("node_fts", "NULL"), ("node_fts_aud", "f.aud")):
-        flag = 0 if table == "node_fts" else 1
-        out += db.execute(
-            f"SELECT r.node_id, f.node_id, f.kind, {aud}, f.name, f.path, f.body FROM node_fts_rows r"
-            f" JOIN {table} f ON f.rowid = r.fts_rowid WHERE r.aud = ? AND length(trim(f.body)) > 0",
-            (flag,),
-        ).fetchall()
-    return sorted(
-        (key, nid, kind, aud, embed_text(name, path, body, chars)) for key, nid, kind, aud, name, path, body in out
-    )
+# -- where the vectors and the texts are --------------------------------------------------------------------------
 
 
-# -- the cache of vectors -----------------------------------------------------------------------------------------
+class Cache(Protocol):
+    """Vectors by (model, digest of the text), kept across builds so only the rows whose text changed are embedded
+    again: on the hub a table of its database (``evo_agents.hub.kg_semantic.HubCache``), else ``vectors.sqlite`` next
+    to a graph file (``evo_agents.kg.store_vectors.FileCache``)."""
 
+    def get(self, model: str, digests: list[str]) -> dict[str, bytes]: ...
 
-class Cache:
-    """Vectors by (model, digest of the text), in ``vectors.sqlite`` next to a graph: only rows whose text changed are
-    embedded again."""
-
-    def __init__(self, path: Path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path)
-        self.db.execute(
-            "CREATE TABLE IF NOT EXISTS vec (model TEXT NOT NULL, digest TEXT NOT NULL, vec BLOB NOT NULL,"
-            " PRIMARY KEY (model, digest)) STRICT, WITHOUT ROWID"
-        )
-
-    def get(self, model: str, digests: list[str]) -> dict[str, bytes]:
-        out: dict[str, bytes] = {}
-        for i in range(0, len(digests), 500):
-            chunk = digests[i : i + 500]
-            marks = ", ".join("?" for _ in chunk)
-            sql = f"SELECT digest, vec FROM vec WHERE model = ? AND digest IN ({marks})"
-            out.update(self.db.execute(sql, (model, *chunk)).fetchall())
-        return out
-
-    def put(self, model: str, rows: Iterable[tuple[str, bytes]]) -> None:
-        self.db.executemany("INSERT OR REPLACE INTO vec VALUES (?, ?, ?)", [(model, d, v) for d, v in rows])
-        self.db.commit()
+    def put(self, model: str, rows: Iterable[tuple[str, bytes]]) -> None: ...
 
     def keep(self, model: str, digests: set[str]) -> None:
         """Forget the vectors of ``model`` no row has now."""
-        held = [d for (d,) in self.db.execute("SELECT digest FROM vec WHERE model = ?", (model,))]
-        self.db.executemany(
-            "DELETE FROM vec WHERE model = ? AND digest = ?", [(model, d) for d in held if d not in digests]
-        )
-        self.db.commit()
+        ...
 
-    def close(self) -> None:
-        self.db.close()
+    def close(self) -> None: ...
+
+
+class Graph(Protocol):
+    """The graph ``index`` writes the vectors into (``evo_agents.kg.store_vectors.GraphFile``)."""
+
+    def rows(self, chars: int) -> list[tuple[str, str, str, str | None, str]]:
+        """(key, node id, kind, audience, text) of every full-text row with a body, by key (``embed_text``)."""
+        ...
+
+    def info(self) -> Info | None: ...
+
+    def set_mode(self, mode: str) -> None: ...
+
+    def write(self, rows: list[tuple], meta: dict[str, str]) -> None:
+        """Replace the vectors with ``rows``, (key, node id, kind, audience, digest, vector), and their ``meta``."""
+        ...
+
+    def drop(self) -> None: ...
 
 
 # -- writing the vectors into a graph -----------------------------------------------------------------------------
@@ -425,24 +399,12 @@ class Indexed:
         return f"semantic {self.mode}: {self.rows} rows with a vector, {self.embedded} embedded now{more}"
 
 
-def has_vectors(db: sqlite3.Connection) -> bool:
-    marks = ", ".join("?" for _ in VEC_TABLES)
-    found = db.execute(f"SELECT count(*) FROM sqlite_master WHERE name IN ({marks})", VEC_TABLES).fetchone()[0]
-    return found == len(VEC_TABLES)
-
-
-def drop(db: sqlite3.Connection) -> None:
-    for table in VEC_TABLES:
-        db.execute(f"DROP TABLE IF EXISTS {table}")
-    db.commit()
-
-
 def _rows_digest(model: str, rows: list, digests: list[str]) -> str:
     return sha256(canonical_json([model, [[r[0], d] for r, d in zip(rows, digests, strict=True)]]))
 
 
 def _write_vectors(
-    db: sqlite3.Connection, settings: Settings, rows: list, digests: list[str], held: dict, dim: int | None
+    graph: Graph, settings: Settings, rows: list, digests: list[str], held: dict, dim: int | None
 ) -> tuple[int, str]:
     """Write the vectors ``held`` has of ``rows`` into the graph: how many rows have one, and their digest."""
     if dim is None:  # every vector came from the cache
@@ -451,45 +413,38 @@ def _write_vectors(
         kept = [(r, d) for r, d in zip(rows, digests, strict=True) if d in held]
         rows, digests = [r for r, _ in kept], [d for _, d in kept]
     digest = _rows_digest(settings.model, rows, digests)
-    drop(db)
-    db.executescript(VEC_SCHEMA)
-    db.executemany(
-        "INSERT INTO node_vec VALUES (?, ?, ?, ?, ?, ?)",
+    graph.write(
         [(key, nid, kind, aud, d, held[d]) for (key, nid, kind, aud, _), d in zip(rows, digests, strict=True)],
+        {"model": settings.model, "dim": str(dim), "mode": settings.mode, "digest": digest},
     )
-    meta = {"model": settings.model, "dim": str(dim), "mode": settings.mode, "digest": digest}
-    db.executemany("INSERT INTO node_vec_meta VALUES (?, ?)", sorted(meta.items()))
-    db.commit()
     return len(rows), digest
 
 
 def index(
-    db: sqlite3.Connection,
+    graph: Graph,
     settings: Settings,
-    cache_path: Path | None,
+    cache: Cache | None,
     *,
     download: bool = True,
     progress: Callable[[int, int], None] | None = None,
     forget: bool = True,
     budget: float | None = None,
 ) -> Indexed:
-    """Make the graph in ``db`` hold the vectors ``settings`` asks for: none when off (the tables go), else one per
-    full-text row with a body, embedded only when ``cache_path`` lacks it. A model that cannot be loaded leaves the
-    graph without vectors, as off, and says why. ``budget`` is the seconds the embedding may take: past it the rows
-    left stay without a vector, the graph holds the rest, and the next build goes on from the cache. ``forget`` False keeps the vectors of the cache that no row of this
-    graph has, for a cache shared by the snapshots of one repo."""
+    """Make ``graph`` hold the vectors ``settings`` asks for: none when off (the tables go), else one per full-text row
+    with a body, embedded only when ``cache`` lacks it. A model that cannot be loaded leaves the graph without vectors,
+    as off, and says why. ``budget`` is the seconds the embedding may take: past it the rows left stay without a
+    vector, the graph holds the rest, and the next build goes on from the cache. ``forget`` False keeps the vectors of
+    the cache that no row of this graph has, for a cache shared by the snapshots of one repo. The cache stays open."""
     if not settings.indexes:
-        drop(db)
+        graph.drop()
         return Indexed("off")
-    rows = index_rows(db, settings.embed_chars)
+    rows = graph.rows(settings.embed_chars)
     digests = [text_digest(settings.model, text) for *_, text in rows]
     digest = _rows_digest(settings.model, rows, digests)
-    held_info = info(db)
+    held_info = graph.info()
     if held_info is not None and held_info.digest == digest:  # the graph holds these vectors already
-        db.execute("UPDATE node_vec_meta SET value = ? WHERE key = 'mode'", (settings.mode,))
-        db.commit()
+        graph.set_mode(settings.mode)
         return Indexed(settings.mode, len(rows), 0, digest, total=len(rows))
-    cache = Cache(cache_path) if cache_path is not None else None
     try:
         np = _numpy()
         held = cache.get(settings.model, sorted(set(digests))) if cache else {}
@@ -515,29 +470,10 @@ def index(
         if cache and forget:
             cache.keep(settings.model, set(digests))
     except SemanticUnavailable as exc:
-        drop(db)
+        graph.drop()
         return Indexed(settings.mode, error=str(exc))
-    finally:
-        if cache:
-            cache.close()
-    written, digest = _write_vectors(db, settings, rows, digests, held, dim)
+    written, digest = _write_vectors(graph, settings, rows, digests, held, dim)
     return Indexed(settings.mode, written, done, digest, total=len(rows))
-
-
-def index_file(
-    path: Path, settings: Settings, cache_path: Path | None = None, *, leave_wal: bool = False, **kw
-) -> Indexed:
-    """``index`` on the graph file at ``path``, the cache next to it by default; ``leave_wal`` puts the file out of
-    WAL mode again after, as the hub keeps its graphs."""
-    db = sqlite3.connect(path)
-    try:
-        found = index(db, settings, cache_path or path.with_name(CACHE_FILE), **kw)
-        if leave_wal:
-            db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            db.execute("PRAGMA journal_mode=DELETE")
-        return found
-    finally:
-        db.close()
 
 
 # -- reading them -------------------------------------------------------------------------------------------------
@@ -551,11 +487,8 @@ class Info:
     digest: str
 
 
-def info(db: sqlite3.Connection) -> Info | None:
-    """What the graph's vectors are, None when it has none."""
-    if not has_vectors(db):
-        return None
-    meta = dict(db.execute("SELECT key, value FROM node_vec_meta").fetchall())
+def info_of(meta: dict[str, str]) -> Info | None:
+    """What the vectors whose meta rows are ``meta`` are, None when they say too little."""
     try:
         return Info(meta["model"], int(meta["dim"]), meta["mode"], meta["digest"])
     except (KeyError, ValueError):
@@ -574,13 +507,13 @@ _MATRICES: dict[tuple, Matrix] = {}
 MAX_MATRICES = 4
 
 
-def matrix(db: sqlite3.Connection, found: Info, key: tuple | None = None) -> Matrix:
-    """The graph's vectors as one matrix, kept for the process under ``key`` (the file and its digest) when given: a
-    hub call opens the graph again each time."""
+def matrix(load: Callable[[], list[tuple]], found: Info, key: tuple | None = None) -> Matrix:
+    """The graph's vectors, the rows (node id, kind, audience, vector) ``load`` reads by key, as one matrix, kept for
+    the process under ``key`` (the file and its digest) when given: a hub call opens the graph again each time."""
     np = _numpy()
     if key is not None and key in _MATRICES:
         return _MATRICES[key]
-    rows = db.execute("SELECT node_id, kind, aud, vec FROM node_vec ORDER BY key").fetchall()
+    rows = load()
     vectors = np.frombuffer(b"".join(r[3] for r in rows), dtype=np.float16).reshape(len(rows), found.dim)
     out = Matrix([r[0] for r in rows], [r[1] for r in rows], [r[2] for r in rows], vectors.astype(np.float32))
     if key is not None:

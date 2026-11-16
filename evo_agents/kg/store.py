@@ -434,7 +434,7 @@ class Store(Ranking, ClusterTables):
     # -- history -------------------------------------------------------------------------------
 
     def history_floor(self, cutoff: str, keep: int = KEEP_BUILDS) -> int | None:
-        """The oldest build retention keeps (``evo_agents.kg.retention``): of the latest ``keep`` ready builds and
+        """The oldest build retention keeps: of the latest ``keep`` ready builds and
         every ready build finished at ``cutoff`` or later, the first. None when the store has no ready build."""
         latest = self.db.execute(
             "SELECT build_id FROM builds WHERE status = 'ready' ORDER BY build_id DESC LIMIT ?", (keep,)

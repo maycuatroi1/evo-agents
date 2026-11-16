@@ -5,8 +5,7 @@ then push every finished run here that it has not ingested, oldest first, in the
 (``evo_agents.hub.server.kg``): upload the log through a presigned PUT, have the hub check it, upload and commit the
 blobs it says it lacks, commit the run. A log the hub holds already from an attempt that stopped half way is named by
 its hash instead of being uploaded again. Every run the hub says it has ingested, of those whose log is here, is
-recorded in the corpus (``Corpus.record_on_hub``): retention deletes no log the hub has not received
-(``evo_agents.kg.retention``).
+recorded in the corpus (``Corpus.record_on_hub``).
 
 The hub reads every upload back from its blob store when it is committed, a few round trips each, so a commit takes
 longer the more it carries: 0.2.0 hubs on R2 needed about 90 ms per upload, and one commit of 459 outlasted the

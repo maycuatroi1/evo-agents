@@ -375,14 +375,15 @@ def build_in_cache(
     uploads: list[kg_upload_sources.Held] | None = None,
     keys: dict | None = None,
     maps: list[str] | None = None,
+    vector_cache: kg_semantic.HubCache | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
     from the blob store, the graph, whose rows ``record`` keeps in the hub's tables, and what the
     build covers with the files of each git source, which ``record`` keeps. With ``learned``, the graph gets the
     asked index of the project's searches (``kg_asked``), and its content hash folds in the index's digest, so a
     build whose graph is the same but whose index is not is a new graph. With ``semantic`` settings that ask for
-    them, the graph gets the vectors of its rows (``kg_semantic``), embedded only when the project's vectors.sqlite
-    lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
+    them, the graph gets the vectors of its rows (``kg_semantic``), embedded only when ``vector_cache``, the project's
+    in the hub's database (seeded once from its vectors.sqlite and graph.sqlite), else its vectors.sqlite, lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
     overrides are put in its settings.json first, so the build reads them as a local one does. ``answers``, the hashes
     of the project's kg-entity-answers blobs, are the entities step's inbox, and the requests it defers are written
     for ``record`` to keep (``kg_entity_relay``). ``uploads``: the newest upload read of each upload source, whose
@@ -400,6 +401,8 @@ def build_in_cache(
         put_tuning(project.root, tuning)
         semantic = tuning.semantic_settings()
     kg_entity_maps.write_maps(store, project.root, maps or [])
+    if vector_cache is not None and semantic is not None and semantic.indexes:
+        vector_cache.seed(project.root, semantic.model)  # before the build replaces the graph that holds them
     inbox = kg_entity_relay.read_answers(store, answers) if answers else {}
     outbox: list[dict] = []
     path, report = build_graph(project, entity_inbox=inbox, entity_outbox=outbox, entity_keys=keys)
@@ -408,7 +411,7 @@ def build_in_cache(
     content_hash = report.content_hash if asked is None else sha256_of(f"{report.content_hash}\n{asked}")
     vector_coverage = None
     if semantic is not None:
-        vectors = kg_semantic.index(path, semantic, project.root / kg_semantic.semantic.CACHE_FILE)
+        vectors = kg_semantic.index(path, semantic, vector_cache or project.root / kg_semantic.SEED_FILES[0])
         if vectors.error:
             log.warning("kg build without vectors", extra={"project": name, "error": vectors.error})
         if vectors.digest is not None:
@@ -717,6 +720,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             uploads,
             keys,
             maps,
+            kg_semantic.HubCache(engine, asyncio.get_running_loop(), project_id),
         )
         entities_coverage = (built.coverage or {}).get("entities")
         if key_from is not None and isinstance(entities_coverage, dict):

@@ -349,6 +349,11 @@ class CodexAdapter(QueueAdapter):
         return codex_rollout(env, session_id) is not None
 
     @classmethod
+    def tells_sessions(cls, env: Mapping[str, str]) -> bool:
+        """Codex keeps its rollouts in the codex home of ``env``, which ``has_session`` reads."""
+        return True
+
+    @classmethod
     def profile_refusal(cls, run) -> str | None:
         profile = profiles.Profile.of(run)
         return profiles.model_refusal(profile, run) or profiles.codex_refusal(profile)

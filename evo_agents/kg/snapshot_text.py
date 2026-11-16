@@ -22,6 +22,7 @@ when it holds a word of the query, as FTS5 matches any of them."""
 from __future__ import annotations
 
 import math
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -29,11 +30,15 @@ from pathlib import PurePosixPath
 from evo_agents.kg import asked as asked_words
 from evo_agents.kg import search as text_search
 from evo_agents.kg import semantic
+from evo_agents.kg.pacing import paced
 from evo_agents.kg.policy import audience_below
 from evo_agents.kg.snapshot_fts import Table, code_words, trigrams, words
 from evo_agents.kg.store_filters import stored_audience
 
 IndexRow = tuple[str, str, str]  # (kind, name, path) of a node's own row, as ``Store._index_row`` reads it
+
+
+_MATRIX_MADE = threading.Lock()  # one thread makes a snapshot's matrix of vectors
 
 
 @dataclass(frozen=True)
@@ -50,9 +55,11 @@ class Vectors:
     def nearest(self, vector, limit: int, kinds: Sequence[str], readable) -> list[tuple[str, float]]:
         """(node id, dot product) of the ``limit`` nodes nearest ``vector``, a node at its best row, of ``kinds``
         when given, a row with an audience only when ``readable`` says so (``semantic.nearest``)."""
-        q = [float(x) for x in vector]
-        scores = [sum(a * b for a, b in zip(row, q, strict=False)) for row in self.rows]
-        order = sorted(range(len(scores)), key=lambda i: -scores[i])
+        if not self.node_ids:
+            return []
+        np = semantic._numpy()
+        scores = self._matrix @ np.asarray(vector, dtype=np.float32)
+        order = np.argsort(-scores, kind="stable")
         wanted = set(kinds or ())
         out: dict[str, float] = {}
         for i in order:
@@ -63,8 +70,24 @@ class Vectors:
                 continue
             if self.auds[i] is not None and not readable(self.auds[i]):
                 continue
-            out[nid] = scores[i]
+            out[nid] = float(scores[i])
         return list(out.items())
+
+    @property
+    def _matrix(self):
+        """The rows as one float32 matrix, made at the first search by meaning: a product of Python floats per row
+        took seconds a question on a graph of tens of thousands of vectors (``semantic.nearest`` does the same). It
+        takes the place of ``rows``, which only this search reads."""
+        found = self.__dict__.get("_matrix_made")
+        if found is None:
+            with _MATRIX_MADE:  # a second thread searching meanwhile would read the rows already dropped
+                found = self.__dict__.get("_matrix_made")
+                if found is None:
+                    np = semantic._numpy()
+                    found = np.asarray(self.rows, dtype=np.float32)
+                    self.__dict__["_matrix_made"] = found
+                    object.__setattr__(self, "rows", ())  # the matrix holds them now: both held their memory twice
+        return found
 
 
 @dataclass(frozen=True)
@@ -103,16 +126,19 @@ class TextIndex:
         """The index of ``keyed`` (key, (node id, kind, name, path, body[, audience])), as ``store_fts.search_rows``
         gives them, and of ``code`` (file node id: text; already folded when ``folded``)."""
         rows, public, audience = [], [], []
-        for key, row in keyed:
+        for key, row in paced(keyed):
             aud = next(iter(row[5:6]), None)
             rows.append(Row(key, row[0], row[1], row[2] or "", row[3] or "", aud))
             (public if aud is None else audience).append((row[2] or "", row[3] or "", row[4] or ""))
         tri_rows = [r for r in rows if r.aud is None and r.own]
         tri = Table(
-            [(text_search.tri_text(r.name.split("\n", 1)[0]), text_search.tri_text(r.path)) for r in tri_rows], trigrams
+            [(text_search.tri_text(r.name.split("\n", 1)[0]), text_search.tri_text(r.path)) for r in paced(tri_rows)],
+            trigrams,
         )
         code_ids = tuple(sorted(code))
-        code_table = Table([(code[nid] if folded else text_search.fold(code[nid]),) for nid in code_ids], code_words)
+        code_table = Table(
+            [(code[nid] if folded else text_search.fold(code[nid]),) for nid in paced(code_ids)], code_words
+        )
         return cls(rows, Table(public, words), Table(audience, words), tri, tri_rows, code_table, code_ids)
 
     def index_row(self, node_id: str) -> IndexRow:

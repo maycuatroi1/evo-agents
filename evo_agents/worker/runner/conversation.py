@@ -182,6 +182,7 @@ class Conversation:
                 f"The worktrees of {before} #{old_id} are not on this worker any more: the run makes new ones from "
                 f"the branches on origin, and goes on in the session of the {before}."
             )
+            self._forget_lost_session(before, old_id)
             return
         for item in record.get("repos") or []:
             try:
@@ -197,6 +198,22 @@ class Conversation:
         home.save_run(record)
         names = ", ".join(self.directory.workspaces) or "no repo"
         run.note(f"Goes on from {before} #{old_id} in {directory}, with its worktrees of {names}.")
+
+    def _forget_lost_session(self, before: str, old_id: int) -> None:
+        """Start a new session when the runtime keeps its sessions in the run's directory and the one of ``old_id`` went
+        with that directory: resuming it would fail before the agent starts (Claude Code: "No conversation found")."""
+        run, session_id = self.run, self.session_id
+        if session_id is None:
+            return
+        cls = run.agent.runtime_class()
+        env = run.agent.env()
+        if not cls.tells_sessions(env) or cls.has_session(env, session_id):
+            return
+        self.session_id = None
+        run.note(
+            f"{run.runtime} has no record of session {session_id} of the {before} #{old_id} on this worker: the agent "
+            "starts a new session, with the owner's messages."
+        )
 
     async def adopt_lost(self, cls) -> bool:
         """Go on in the session and the worktrees of the attempt before this one, which the hub lost on this worker

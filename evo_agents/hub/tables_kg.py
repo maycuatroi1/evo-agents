@@ -378,6 +378,23 @@ def semantic_settings(metadata: MetaData) -> Table:
     )
 
 
+def vector_cache(metadata: MetaData) -> Table:
+    """kg_vector_cache (0254), added to ``metadata``: the vectors a project's builds embedded, by model and digest of
+    the text (``evo_agents.hub.kg_semantic.HubCache``), so a build embeds only the rows whose text changed. A build
+    forgets the vectors no row of its graph has."""
+    name = "kg_vector_cache"
+    return Table(
+        name,
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("model", Text, nullable=False),
+        Column("digest", Text, nullable=False),
+        Column("vector", LargeBinary, nullable=False),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name=f"{name}_project_id_fkey"),
+        PrimaryKeyConstraint("project_id", "model", "digest", name=f"{name}_pkey"),
+    )
+
+
 GRAPH_NAME_PATTERN = r"^[a-z0-9][a-z0-9._-]{0,62}$"  # of a named graph; ``default`` is the implicit one
 
 

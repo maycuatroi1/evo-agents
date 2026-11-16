@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.kg import search as text_search
-from evo_agents.kg import semantic
+from evo_agents.kg import semantic, store_vectors
 from evo_agents.kg.store_asked import AskedIndex
 from evo_agents.kg.store_filters import FTS_SEEN, live, seen, within
 from evo_agents.kg.store_fts import FullText
@@ -299,7 +299,7 @@ class Ranking(AskedIndex, FullText):
     def vector_info(self) -> semantic.Info | None:
         """What the graph's vectors are, None when it has none (a graph built without them, or by an older build)."""
         if not hasattr(self, "_vectors"):
-            self._vectors = semantic.info(self.db)
+            self._vectors = store_vectors.info(self.db)
         return self._vectors
 
     def _semantic_ranked(self, vector, kinds: list[str], hits: set[str]) -> dict[str, float]:
@@ -311,7 +311,7 @@ class Ranking(AskedIndex, FullText):
         try:
             stat = self.path.stat()
             key = (str(self.path.resolve()), stat.st_mtime_ns, stat.st_size, found.digest)
-            m = semantic.matrix(self.db, found, key)
+            m = semantic.matrix(lambda: store_vectors.vector_rows(self.db), found, key)
             reader = self.reader
 
             def readable(aud: str) -> bool:
