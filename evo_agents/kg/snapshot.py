@@ -500,7 +500,6 @@ class SnapshotView:
 
     def __init__(self, snap: Snapshot, reader: frozenset[str], ceiling: tuple[int, int] | None, tuning):
         self.snap, self.reader, self.ceiling, self.tuning = snap, reader, ceiling, tuning
-        self._ranker = None
         self._edge_ids: dict[str, dict] | None = None
         self.asked_clearance: tuple[int, int] | None = None  # search reads the asked rows within it (``Store``)
         self.asked_weight: float | None = None  # the weight of an asked match in place of the build's (an eval)
@@ -635,9 +634,11 @@ class SnapshotView:
 
     @property
     def ranker(self):
-        if self._ranker is None:
-            self._ranker = snapshot_text.Ranker(self)
-        return self._ranker
+        """A ranker of its own each time, not kept: a view holding the ranker that holds it is a reference cycle, which
+        only a full collection frees, and one alive when a load froze the api's objects (``kg_snapshots.uncollected``)
+        is never freed and holds its whole snapshot: the api grew by a snapshot at each build of a graph read meanwhile.
+        A ranker keeps nothing between calls."""
+        return snapshot_text.Ranker(self)
 
     def search(self, query: str, b: int = 0, limit: int = 50, **kw) -> list[str]:
         return self.ranker.search(query, b, limit, **kw)

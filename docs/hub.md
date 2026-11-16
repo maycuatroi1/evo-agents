@@ -4185,7 +4185,14 @@ before it died is collected, not frozen, and no collection walks more than what 
 collection at the end walked the whole new snapshot instead, 9 seconds of a stalled loop for the largest graph. A
 snapshot has no reference cycle, so one replaced is freed though frozen; in the api it is freed by a thread of its own,
 a part at a time with the GIL given up in between (`evo_agents.kg.pacing.free_aside`, from `Snapshot.__del__`), as
-freeing it in one go where it was dropped held the loop for seconds too.
+freeing it in one go where it was dropped held the loop for seconds too. A freeze also takes the objects of the requests running at that
+moment, and a reference cycle among them is never collected: one that holds a snapshot keeps the whole graph. So
+nothing a reader holds forms a cycle with a snapshot or its view: a view makes a ranker for each search
+(`SnapshotView.ranker`), as a view that kept the ranker holding it was such a cycle, and the api grew by a graph at
+each build until the host ran out of memory. Each `kg snapshot loaded` line counts the snapshots the api replaced or
+dropped that are still in memory (`lingering`): a reader holds one until it is done, so it is 0 or a few, and a count
+that grows with the builds is a snapshot held for good. The compose file caps the api's memory with
+`EVO_HUB_API_MEMORY`, default `12g`.
 
 What holds the pool is in the api's log. The pool times each connection it gives out (`evo_agents.hub.db.TimedPool`):
 one held 2 seconds or more is logged as `pool connection held` with its `holder`, the method and path of the request
@@ -4953,6 +4960,7 @@ environment, never in a committed file.
 | `EVO_HUB_REDIS_URL` | api, worker, deliver | optional: the Redis the cache and the shared rate limits use, `redis://`, `rediss://` or `unix://`, such as `redis://:<password>@evo-agents-hub-redis:6379/0` with the profile `bus`; unset, each process caches in its memory (section Cache) |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_KG_EMBEDDINGS`, `OPENROUTER_API_KEY` | api, worker | where graph rows and `kg_search` queries are embedded: `openrouter` calls OpenRouter's embeddings API (`baai/bge-m3`, batches of 64, four requests at once) with the key and loads no model; empty uses the local `BAAI/bge-m3` on the worker's CPUs (docs/kg-semantic.md) |
+| `EVO_HUB_API_MEMORY` | compose | memory of the `api` service, default `12g`: it holds the graph of each project read and makes a new one beside it at each build (the largest graph took about 5 GB); over it the kernel kills the api and it restarts |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | limits of `worker`, default `2` and `4g`; the CPUs are also each `worker-kg`'s |
 | `EVO_HUB_WORKER_KG_MEMORY` | compose | memory of each of the two `worker-kg`, which run the graph builds, default `6g` (a large project's build peaked at about 4.7 GB) |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |

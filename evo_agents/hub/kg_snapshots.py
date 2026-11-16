@@ -265,6 +265,7 @@ class SnapshotCoordinator:
         self._tasks: set[asyncio.Task] = set()
         self._branches: dict[tuple[int, str], tuple[tuple, Held]] = {}  # (project, branch): (its key, snapshot)
         self._asked: dict[int, int] = {}  # project: the newest build ``current`` loaded again for
+        self._dropped: list[weakref.ref[Snapshot]] = []  # the snapshots replaced or dropped, until they are freed
         if listener is not None:
             listener.on(CHANNEL, self.notified)
 
@@ -339,10 +340,12 @@ class SnapshotCoordinator:
                         select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
                     )
                     _, _, rows = await kg_branches.graph(conn, project_id, name)
+                if found is not None:
+                    self._watch(found[1].snapshot)
                 found = key, await _made(build_id, rows)
         self._branches[(project_id, name)] = found
         while len(self._branches) > HELD_BRANCHES:
-            del self._branches[next(iter(self._branches))]
+            self._watch(self._branches.pop(next(iter(self._branches)))[1].snapshot)
         return found[1]
 
     def _load(self, project_id: int, fresh: bool = False) -> asyncio.Task:
@@ -369,18 +372,34 @@ class SnapshotCoordinator:
         if held is None:
             return None
         self._keep(project_id, held)
-        log.info("kg snapshot loaded", extra={"project_id": project_id, "build_id": held.build_id})
+        log.info(
+            "kg snapshot loaded",
+            extra={"project_id": project_id, "build_id": held.build_id, "lingering": self.lingering()},
+        )
         return held
 
     def _keep(self, project_id: int, held: Held) -> None:
         """Hold ``held`` as the project's snapshot, the most recently read, and drop the least recently read ones
         past HELD_PROJECTS: a notification for a dropped project is ignored, and its next read loads it again."""
-        self._held.pop(project_id, None)
+        old = self._held.pop(project_id, None)
         self._held[project_id] = held  # one assignment: a reader sees the old snapshot or the new one
+        if old is not None and old.snapshot is not held.snapshot:
+            self._watch(old.snapshot)
         while len(self._held) > HELD_PROJECTS:
             dropped = next(iter(self._held))
-            del self._held[dropped]
+            self._watch(self._held.pop(dropped).snapshot)
             self._asked.pop(dropped, None)
+
+    def _watch(self, dropped: Snapshot) -> None:
+        if isinstance(dropped, Snapshot):
+            self._dropped.append(weakref.ref(dropped))
+
+    def lingering(self) -> int:
+        """The snapshots this coordinator replaced or dropped that are still in memory: a reader holds one until it is
+        done, so a few for a while; more after each build means something holds them for good, and the api grows by a
+        whole graph each time (``evo_agents.kg.snapshot.SnapshotView.ranker``). Logged with each load."""
+        self._dropped = [ref for ref in self._dropped if ref() is not None]
+        return len(self._dropped)
 
     def notified(self, payload: str | None) -> None:
         """A listener's handler: rebuild the snapshot a notification names, or each held one after a reconnection."""
