@@ -30,8 +30,18 @@ from evo_agents.hub import plugin_calls
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live
-from tests.hub.test_kg import PROJECT, build_rows, call_tool, grant, open_hub, put_plan, run_jobs, tool_ok
-from tests.hub.test_srs_tasks_plugin_kg import PLAN, STEP, TICKET, USE_CASE, approve_sample, machine, node, queued
+from tests.hub.test_kg import PROJECT, build_rows, call_tool, grant, open_hub, put_plan, tool_ok
+from tests.hub.test_srs_tasks_plugin_kg import (
+    PLAN,
+    STEP,
+    TICKET,
+    USE_CASE,
+    approve_sample,
+    machine,
+    node,
+    queued,
+    run_and_serve,
+)
 
 CORE = {
     "srs": EntryPoint("srs", "evo_agents.hub.server.srs:MANIFEST", ENTRY_POINT_GROUP),
@@ -88,14 +98,14 @@ def canvas_post(hub, path: str, body: dict, member: str = "alice", expect: int =
 def test_canvas_plugin_graph_on_the_hub_traces_a_claim_to_its_use_case_task_and_step(hub, tmp_path):
     put_plan(hub, PLAN)
     machine(hub, tmp_path)  # the knowledge config, and a build of the plan
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     approve_sample(hub)
     links = {"use_cases": ["UC ORD-1"], "steps": ["rollout#1"]}
     made = hub.client.post(
         f"/v1/x/tasks/{PROJECT}/tasks", json={"title": "Checkout", "links": links}, headers=hub.alice
     )
     assert made.status_code == 201, made.text
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert queued(hub) == 0
 
     canvas_post(hub, "", {"slug": SLUG, "name": "Northwind Pantry"}, expect=201)
@@ -104,7 +114,7 @@ def test_canvas_plugin_graph_on_the_hub_traces_a_claim_to_its_use_case_task_and_
     claim |= {"use_cases": ["UC-ORD-001"], "signal_keys": [STOCKOUTS]}
     canvas_post(hub, f"/{SLUG}/edit", {"changes": [claim]})
     assert queued(hub) == 1  # the edit's build joined the one that waits
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert build_rows(hub)[0]["status"] == "succeeded", build_rows(hub)[0].get("error")
 
     found = node(hub, CLAIM)
@@ -122,13 +132,13 @@ def test_canvas_plugin_graph_on_the_hub_traces_a_claim_to_its_use_case_task_and_
 
     canvas_post(hub, f"/{SLUG}/edit", {"changes": [{"claim": "CL-1", "base_rev": 1, "archived": True}]})
     assert queued(hub) == 1
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert call_tool(hub, "kg_node", {"id": CLAIM}).json()["isError"]  # an archived claim leaves the graph
     assert node(hub, CANVAS)["kind"] == "Document"
     archived = hub.client.post(f"/v1/x/canvas/{PROJECT}/canvases/{SLUG}/archive", headers=hub.owner)
     assert archived.status_code == 200, archived.text
     assert queued(hub) == 1
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert call_tool(hub, "kg_node", {"id": CANVAS}).json()["isError"]  # so does an archived canvas
 
 
@@ -157,7 +167,7 @@ def test_problem_graph_on_the_hub_finds_a_problem_by_code_or_text_with_the_plan_
     assert made.status_code == 200, made.text
     put_plan(hub, RESTOCK)
     machine(hub, tmp_path)  # the knowledge config, and a build of the plan and the problem
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert build_rows(hub)[0]["status"] == "succeeded", build_rows(hub)[0].get("error")
 
     found = node(hub, PROBLEM)
@@ -179,7 +189,7 @@ def test_problem_graph_on_the_hub_finds_a_problem_by_code_or_text_with_the_plan_
     named = hub.client.put(f"/v1/projects/{PROJECT}/goals/G-1", json=goal, headers=hub.owner)
     assert named.status_code == 200, named.text
     assert queued(hub) == 1  # the canvas, the claim and the goal joined one build
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     for start in (CLAIM, "goal:G-1"):
         path = tool_ok(hub, "kg_path", {"from": start, "to": PROBLEM})["structuredContent"]
         assert path["found"] and [edge["rel"] for edge in path["edges"]] == ["addresses"], start
@@ -192,7 +202,7 @@ def test_problem_graph_on_the_hub_finds_a_problem_by_code_or_text_with_the_plan_
     )
     assert closed.status_code == 200, closed.text
     assert queued(hub) == 1  # a problem's write queues a build
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     solved = tool_ok(hub, "kg_search", {"query": "second delivery on Wednesday"})["structuredContent"]["results"]
     assert "plugin.hub_problems:doc:problems#P-1" in [hit["id"] for hit in solved]
 
@@ -209,11 +219,11 @@ def test_problem_evidence_joins_the_graph_as_edges_of_the_problem_with_the_label
         "label": "internal",
     }
     machine(hub, tmp_path)
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     added = hub.client.post(f"/v1/projects/{PROJECT}/problems/P-1/evidence", json=line, headers=hub.alice)
     assert added.status_code == 201, added.text
     assert queued(hub) == 1  # an added line queues a build
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     found = tool_ok(hub, "kg_search", {"query": "ring the depot"})["structuredContent"]["results"]
     assert "plugin.hub_problems:doc:evidence#P-1/E-1" in [hit["id"] for hit in found]
     path = tool_ok(hub, "kg_path", {"from": "plugin.hub_problems:doc:evidence#P-1/E-1", "to": PROBLEM})
@@ -239,11 +249,11 @@ def test_opportunity_graph_on_the_hub_finds_an_opportunity_by_code_or_text_and_l
     made = hub.client.put(f"/v1/projects/{PROJECT}/problems/P-1", json=STOCK_OUTS, headers=hub.alice)
     assert made.status_code == 200, made.text
     machine(hub, tmp_path)
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     put = hub.client.put(f"/v1/projects/{PROJECT}/opportunities/O-1", json=DEPOT, headers=hub.alice)
     assert put.status_code == 200, put.text
     assert queued(hub) == 1  # an opportunity's write queues a build
-    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    run_and_serve(hub)
     assert build_rows(hub)[0]["status"] == "succeeded", build_rows(hub)[0].get("error")
     found = node(hub, "opportunity:O-1")
     assert (found["kind"], found["name"], found["label"]["level"]) == ("Opportunity", "O-1", "internal")

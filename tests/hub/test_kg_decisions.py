@@ -36,7 +36,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.kg_decisions import Kind, State, Step
 from tests.hub.s3 import fake_s3
-from tests.hub.test_kg import InProcessHub, make_config, run_jobs
+from tests.hub.test_kg import InProcessHub, make_config, run_jobs, served
 from tests.hub.test_mcp import call as mcp_call
 from tests.hub.test_mcp import rpc
 
@@ -84,6 +84,7 @@ def hub(hub_template, tmp_path_factory):
                         harness.sync(extra)
                         harness.push(InProcessHub(client, members["wendy"]))
                     run_jobs(db, s3, base / "worker")
+                    served(SimpleNamespace(client=client, db=db), PROJECT)
                     return client.get(f"/v1/kg/{PROJECT}/builds", headers=members["wendy"]).json()["builds"][0]
 
                 assert build()["status"] == "succeeded"
