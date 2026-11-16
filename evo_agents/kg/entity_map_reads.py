@@ -11,7 +11,8 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 
-from evo_agents.kg.store_filters import LIVE, SEEN, within
+from evo_agents.kg.graph_model import within
+from evo_agents.kg.store_filters import LIVE, SEEN
 
 
 def _under(label, ceiling: tuple[int, int] | None) -> bool:

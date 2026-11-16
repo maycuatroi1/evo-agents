@@ -38,7 +38,7 @@ from pathlib import PurePosixPath
 
 from evo_agents.hub.kg_map import ViewCache
 from evo_agents.kg.freshness import Links
-from evo_agents.kg.store import Store
+from evo_agents.kg.snapshot import SnapshotView
 
 ENTITY_PREFIX = "entity:"
 MENTIONS = "mentions"
@@ -72,7 +72,7 @@ class EntityView:
 VIEWS: ViewCache[EntityView] = ViewCache()
 
 
-def view(store: Store, b: int, seen: Seen) -> EntityView:
+def view(store: SnapshotView, b: int, seen: Seen) -> EntityView:
     """The reader's entity view of build b."""
     nodes, edges = store.entity_graph(b, ENTITY_PREFIX)
     shown = {n["id"]: n for n in nodes if seen(n)}
@@ -106,7 +106,7 @@ def view(store: Store, b: int, seen: Seen) -> EntityView:
     )
 
 
-def _code(store: Store, b: int, seen: Seen, shown: dict[str, dict]) -> tuple[dict, dict]:
+def _code(store: SnapshotView, b: int, seen: Seen, shown: dict[str, dict]) -> tuple[dict, dict]:
     """The code each seen entity points to: the seen edges of CODE_RELS to a seen code node, ``implemented_by``
     first, then by confidence."""
     found = [e for e in store.entity_code(b, CODE_RELS, ENTITY_PREFIX) if e["src"] in shown and seen(e)]
@@ -250,7 +250,7 @@ def _other(edge: dict, current: str) -> str:
     return edge["dst"] if edge["src"] == current else edge["src"]
 
 
-def _document(store: Store, b: int, links: Links, doc: dict, edge_id: str | None) -> dict:
+def _document(store: SnapshotView, b: int, links: Links, doc: dict, edge_id: str | None) -> dict:
     """A document as a citation names it: id, name, path and its link at the commit its source read (the source of
     ``edge_id``'s first unit, else the document's own)."""
     source = None
@@ -279,7 +279,7 @@ def _quoted(props: dict) -> dict:
     }
 
 
-def entity_citations(store: Store, b: int, found: EntityView, nid: str) -> tuple[list[dict], int]:
+def entity_citations(store: SnapshotView, b: int, found: EntityView, nid: str) -> tuple[list[dict], int]:
     """The documents that mention entity ``nid`` (at most CITATIONS, by name), each with what its mention says."""
     mentions = found.docs.get(nid, [])
     documents = store.nodes({e["src"] for e in mentions}, b)
@@ -295,7 +295,7 @@ def entity_citations(store: Store, b: int, found: EntityView, nid: str) -> tuple
     return out[:CITATIONS], len(out)
 
 
-def relation_citations(store: Store, b: int, edge: dict, seen: Seen) -> tuple[list[dict], int]:
+def relation_citations(store: SnapshotView, b: int, edge: dict, seen: Seen) -> tuple[list[dict], int]:
     """The documents relation ``edge`` was read from that the reader sees (at most CITATIONS, by name); the one whose
     statement the relation's props hold carries its quote and line."""
     items: dict[str, str] = {}  # document id -> the source of the unit it was read from
@@ -385,7 +385,7 @@ def _surest(edges: list[dict]) -> float:
     return max((e["conf"] for e in edges if isinstance(e["conf"], (int, float))), default=0.0)
 
 
-def _source(store: Store, b: int, nid: str, seen: Seen) -> str | None:
+def _source(store: SnapshotView, b: int, nid: str, seen: Seen) -> str | None:
     """The source of the first unit node ``nid`` was derived from whose item the reader sees."""
     for d in store.derivations(nid, b):
         for u in d["units"]:
@@ -407,7 +407,7 @@ def _directory_uri(links: Links, source: str | None, path: str | None) -> str | 
 
 
 def code_links(
-    store: Store, b: int, found: EntityView, nid: str, seen: Seen, describe: Callable[[tuple], dict]
+    store: SnapshotView, b: int, found: EntityView, nid: str, seen: Seen, describe: Callable[[tuple], dict]
 ) -> tuple[list[dict], int]:
     """The code entity ``nid`` points to (at most CODE_LINKS, by package, kind and path), one entry per code node: the
     relations that link them, the agent's reason and the name that matched, the surest confidence, and the code's

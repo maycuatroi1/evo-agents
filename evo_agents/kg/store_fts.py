@@ -12,42 +12,13 @@ from typing import TYPE_CHECKING
 
 from evo_agents.kg import search as text_search
 from evo_agents.kg import settings as kg_settings
+from evo_agents.kg.graph_model import search_rows, searched_digest, tri_row
 from evo_agents.kg.protocol import canonical_json, sha256
-from evo_agents.kg.store_filters import FTS_SEEN, label_columns
+from evo_agents.kg.store_filters import FTS_SEEN
 from evo_agents.kg.store_schema import FTS_TABLES, OWN_ROWS
 
 if TYPE_CHECKING:
-    from evo_agents.kg.store import Graph
-
-
-def search_rows(graph: Graph) -> tuple[list[tuple], list[tuple[str, tuple]]]:
-    """The full-text rows of ``graph``: every row as the digest reads it, and each keyed as ``node_fts_rows`` keeps it.
-    A row of a node with an audience ends with it. A passage's row is its node's (id, kind, name, path) with the
-    passage's text as body, keyed ``search.passage_key``."""
-    rows: list[tuple] = []
-    keyed: list[tuple[str, tuple]] = []
-    for nid, n in sorted(graph.nodes.items()):
-        aud = (label_columns(n["label"])["label_aud"],) if n["label"].audience else ()
-        name, path = text_search.index_text(n["name"] or ""), text_search.fold(graph.paths.get(nid, ""))
-        row = (nid, n["kind"], name, path, text_search.index_text(graph.texts.get(nid, ""))) + aud
-        rows.append(row)
-        keyed.append((nid, row))
-        for p in graph.passages.get(nid, ()):
-            key = text_search.passage_key(nid, p["start"], p["end"])
-            passage = (nid, n["kind"], name, path, text_search.index_text(p["text"])) + aud
-            rows.append((key, *passage))
-            keyed.append((key, passage))
-    return rows, keyed
-
-
-def code_digest(code: dict[str, str]) -> str | None:
-    """The digest of what ``code_fts`` holds for ``code``; None when it holds nothing."""
-    return sha256(canonical_json(sorted((nid, sha256(text)) for nid, text in code.items()))) if code else None
-
-
-def searched_digest(rows: list[tuple], code: str | None) -> str:
-    """The digest of what the full-text index holds: its rows and the digest of its code."""
-    return sha256(canonical_json(rows if code is None else {"nodes": rows, "code": code}))
+    from evo_agents.kg.graph_model import Graph
 
 
 class FullText:
@@ -352,11 +323,3 @@ class FullText:
                 lines = text_search.passage_lines(best[0])[1]
                 out[node_id] = (lines, " ".join(str(best[2] or "").split()) or None)
         return out
-
-
-def tri_row(row) -> tuple:
-    """A row of ``node_tri`` from one of ``node_fts`` (rowid, node id, kind, name, path): the name without the parts
-    of its camelCase words ``search.index_text`` added, which substrings find, and both in ``search.tri_text``."""
-    rowid, node_id, kind, name, path = row
-    name = str(name or "").split("\n", 1)[0]
-    return (rowid, node_id, kind, text_search.tri_text(name), text_search.tri_text(path or ""))

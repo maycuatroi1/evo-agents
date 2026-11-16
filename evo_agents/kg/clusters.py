@@ -36,10 +36,9 @@ import re
 from collections import Counter, defaultdict
 from importlib import metadata
 
+from evo_agents.kg.graph_model import Clusters, Graph
 from evo_agents.kg.policy import Policy
 from evo_agents.kg.protocol import sha256
-from evo_agents.kg.store import Graph
-from evo_agents.kg.store_clusters import Clusters
 
 ALGORITHM_VERSION = "1"
 ENGINE = "graspologic-native"

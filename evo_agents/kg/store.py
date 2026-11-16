@@ -62,26 +62,17 @@ import json
 import os
 import sqlite3
 from collections import defaultdict
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents.kg import settings as kg_settings
+from evo_agents.kg.graph_model import EDGE_COLUMNS, NODE_COLUMNS, Clusters, Graph, graph_stats, stored_audience
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.protocol import canonical_json, sha256
-from evo_agents.kg.store_clusters import Clusters, ClusterTables
-from evo_agents.kg.store_diff import diff_graph, graph_stats
-from evo_agents.kg.store_filters import CEILING, LIVE, SEEN, live, read_as, seen, stored_audience
+from evo_agents.kg.store_clusters import ClusterTables
+from evo_agents.kg.store_diff import diff_graph
+from evo_agents.kg.store_filters import CEILING, LIVE, SEEN, live, read_as, seen
 from evo_agents.kg.store_rank import Ranking
-from evo_agents.kg.store_schema import (
-    CLUSTER_TABLES,
-    EDGE_COLUMNS,
-    KEYED_KINDS,
-    NODE_COLUMNS,
-    REVIEW_TABLES,
-    SCHEMA,
-    TRIGRAM_SCHEMA,
-    schema_version,
-)
+from evo_agents.kg.store_schema import CLUSTER_TABLES, REVIEW_TABLES, SCHEMA, TRIGRAM_SCHEMA, schema_version
 
 SCHEMA_VERSION = "4"  # 4: units, nodes and edges gained label_aud, node_fts_aud came; 3: node_fts kind and path
 
@@ -91,45 +82,6 @@ HISTORY_TABLES = ("units", "nodes", "edges", "derivations", "where_prov", *CLUST
 # Builds retention always keeps: the latest, and the one before it, which a reader that read the latest build id just
 # before a build landed may still be reading.
 KEEP_BUILDS = 2
-
-
-def edge_id(src: str, rel: str, dst: str) -> str:
-    return "e:" + sha256(f"{src}\x1f{rel}\x1f{dst}")[7:23]
-
-
-@dataclass
-class Graph:
-    """An assembled graph, ready to write: plain dicts keyed by id."""
-
-    nodes: dict[str, dict] = field(default_factory=dict)
-    edges: dict[str, dict] = field(default_factory=dict)
-    derivations: dict[str, list[dict]] = field(default_factory=dict)  # elem id -> [{units, needs}]
-    where: dict[str, list[list[str]]] = field(default_factory=dict)  # elem id -> [[unit, span]]
-    units: dict[str, dict] = field(default_factory=dict)
-    texts: dict[str, str] = field(default_factory=dict)  # node id -> the body of its searchable text
-    paths: dict[str, str] = field(default_factory=dict)  # node id -> the path it is found by, when it has one
-    # node id -> the passages its long body is also indexed as (``kg.search``): [{"start", "end", "text"}], text with
-    # its context first; never nodes
-    passages: dict[str, list[dict]] = field(default_factory=dict)
-    # file node id -> the text of its code or markup, where kg_search looks up the words of a query (``code_fts``)
-    code: dict[str, str] = field(default_factory=dict)
-    clusters: Clusters | None = None  # None: not computed (``evo_agents.kg.clusters``)
-    mentions: dict[str, dict] = field(default_factory=dict)  # item id -> its dangling and ambiguous mentions, samples
-    review: list[dict] = field(default_factory=list)  # the review items of a build with clusters (``kg.review``)
-    # The deprecations a curation item declared (``evo_agents.kg.pipeline.curation``): applied to the props of the
-    # nodes and edges they name before the graph is written, never written themselves.
-    deprecations: list[dict] = field(default_factory=list)
-
-
-def key_conflicts(graph: Graph) -> dict[tuple[str, str], list[str]]:
-    """Keys that more than one node of the graph would hold, under the same predicate as the nodes_key
-    index. Checked before writing, so a violation names its nodes instead of surfacing as an IntegrityError."""
-    holders: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for nid, n in graph.nodes.items():
-        key = (n.get("props") or {}).get("key")
-        if n["kind"] in KEYED_KINDS and n["status"] not in (None, "proposed") and key is not None:
-            holders[(n["kind"], json.dumps(key, ensure_ascii=False))].append(nid)
-    return {k: sorted(ids) for k, ids in sorted(holders.items()) if len(ids) > 1}
 
 
 class StaleSchema(RuntimeError):

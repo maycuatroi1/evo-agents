@@ -42,7 +42,7 @@ class OpError(ValueError):
 
 
 def edge_id(src: str, rel: str, dst: str) -> str:
-    """The id a store gives the edge ``src`` ``rel`` ``dst`` (``evo_agents.kg.store.edge_id``)."""
+    """The id a store gives the edge ``src`` ``rel`` ``dst`` (``evo_agents.kg.graph_model.edge_id``)."""
     return "e:" + sha256(f"{src}\x1f{rel}\x1f{dst}".encode()).hexdigest()[:16]
 
 

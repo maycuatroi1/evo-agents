@@ -3,12 +3,11 @@ whose audience is not within the store's ``reader`` (``evo_agents.kg.policy``), 
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import weakref
 from typing import Protocol
 
-from evo_agents.kg.policy import TOP_AUDIENCE, audience_below, audience_of
+from evo_agents.kg.graph_model import within
 
 LIVE = "tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)"
 SEEN = "(label_aud IS NULL OR aud_seen(label_aud))"  # the row's audience is within the store's reader
@@ -29,28 +28,6 @@ def seen_column(column: str) -> str:
 def seen(t: str) -> str:
     """SEEN for the rows of table alias ``t``."""
     return seen_column(f"{t}.label_aud")
-
-
-def label_columns(label) -> dict:
-    """The label columns of a row: ``label_aud`` only when the label names an audience, so a row without one keeps
-    the content it had before audiences came."""
-    columns = {"label_lvl": label.level, "label_loc": label.location, "label_int": label.integrity}
-    return {**columns, "label_aud": json.dumps(sorted(label.audience))} if label.audience else columns
-
-
-def stored_audience(text: str | None) -> frozenset[str]:
-    """The audience a ``label_aud`` holds; the highest for one that cannot be read."""
-    if text is None:
-        return frozenset()
-    try:
-        return audience_of(json.loads(text))
-    except ValueError:
-        return TOP_AUDIENCE
-
-
-def within(reader: frozenset[str], text: str | None) -> bool:
-    """Whether the audience a ``label_aud`` holds is within ``reader``."""
-    return audience_below(stored_audience(text), reader)
 
 
 class Reader(Protocol):

@@ -6,67 +6,18 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass, field
 
+from evo_agents.kg.graph_model import (
+    CLUSTER_FIELDS,
+    REVIEW_FIELDS,
+    Clusters,
+    cluster_tables,
+    review_table,
+    stored_audience,
+)
 from evo_agents.kg.store_diff import diff_rows
-from evo_agents.kg.store_filters import LIVE, SEEN, live, seen, stored_audience
+from evo_agents.kg.store_filters import LIVE, SEEN, live, seen
 from evo_agents.kg.store_schema import CLUSTER_TABLES, REVIEW_TABLES, has_tables
-
-
-@dataclass
-class Clusters:
-    """The clusters of a graph (``evo_agents.kg.clusters``): each cluster's level (1 or 2), parent (a level-2 cluster's
-    level-1 cluster), label, size and members by kind; each member's level-1 cluster and level-2 cluster, if any; and
-    the weight of the edges between two clusters of a level, keyed (level, a, b) with a < b."""
-
-    clusters: dict[str, dict] = field(default_factory=dict)
-    members: dict[str, tuple[str, str | None]] = field(default_factory=dict)
-    links: dict[tuple[int, str, str], float] = field(default_factory=dict)
-
-
-CLUSTER_FIELDS = ["cluster_id", "level", "parent", "label", "size", "kinds"]
-REVIEW_FIELDS = ["fingerprint", "rule", "cluster_id", "evidence", "clusters", "action", "detail"]
-
-
-def cluster_tables(found: Clusters) -> dict[str, dict[str, dict]]:
-    """The rows ``found`` puts in each cluster table, by key: what a build writes and ``kg.content`` hashes."""
-    links = {}
-    for (level, a, c), w in found.links.items():
-        link_id = f"{level}\x1f{a}\x1f{c}"
-        links[link_id] = {"link_id": link_id, "level": level, "a": a, "b": c, "weight": w}
-    return {
-        "clusters": {
-            cid: {
-                "cluster_id": cid,
-                "level": c["level"],
-                "parent": c["parent"],
-                "label": c["label"],
-                "size": c["size"],
-                "kinds": json.dumps(c["kinds"], sort_keys=True),
-            }
-            for cid, c in found.clusters.items()
-        },
-        "cluster_members": {
-            nid: {"node_id": nid, "cluster_id": top, "sub_id": sub} for nid, (top, sub) in found.members.items()
-        },
-        "cluster_links": links,
-    }
-
-
-def review_table(items: list[dict]) -> dict[str, dict]:
-    """The rows of ``review_items`` for ``items``, by fingerprint."""
-    return {
-        item["fingerprint"]: {
-            "fingerprint": item["fingerprint"],
-            "rule": item["rule"],
-            "cluster_id": item["cluster"],
-            "evidence": json.dumps(item["evidence"], ensure_ascii=False),
-            "clusters": json.dumps(item["clusters"]),
-            "action": item["action"],
-            "detail": json.dumps(item["detail"], ensure_ascii=False, sort_keys=True),
-        }
-        for item in items
-    }
 
 
 def owner(t: str) -> str:

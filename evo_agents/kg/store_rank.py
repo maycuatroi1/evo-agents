@@ -13,8 +13,9 @@ from typing import TYPE_CHECKING
 
 from evo_agents.kg import search as text_search
 from evo_agents.kg import semantic, store_vectors
+from evo_agents.kg.graph_model import within
 from evo_agents.kg.store_asked import AskedIndex
-from evo_agents.kg.store_filters import FTS_SEEN, live, seen, within
+from evo_agents.kg.store_filters import FTS_SEEN, live, seen
 from evo_agents.kg.store_fts import FullText
 from evo_agents.kg.store_schema import FTS_TABLES
 

@@ -7,8 +7,9 @@ import pytest
 
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg.build import build_project
+from evo_agents.kg.graph_model import Graph, edge_id
 from evo_agents.kg.policy import Label, Policy
-from evo_agents.kg.store import Graph, Store, edge_id
+from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from tests.kg.hub_graph import hub_status
 from tests.kg.projects import commit, make_project, write

@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import sqlite3
 
-KEYED_KINDS = ("Symbol",)  # kinds whose props.key is unique; keep in step with the nodes_key index
-
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
 CREATE TABLE IF NOT EXISTS builds (
@@ -114,8 +112,6 @@ TRIGRAM_SCHEMA = (
     "node_id UNINDEXED, kind UNINDEXED, name, path, tokenize = 'trigram')"
 )
 OWN_ROWS = "node_fts_rows WHERE aud = 0 AND instr(node_id, char(31)) = 0"  # the rows of node_fts that node_tri holds
-NODE_COLUMNS = "node_id, kind, name, props, status, conf, label_lvl, label_loc, label_int, aliases, label_aud"
-EDGE_COLUMNS = "edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int, label_aud"
 CLUSTER_TABLES = ("clusters", "cluster_members", "cluster_links")  # absent from a file written before clusters came
 REVIEW_TABLES = ("review_items",)  # absent from a file written before the review queue came
 

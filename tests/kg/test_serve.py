@@ -10,13 +10,14 @@ from evo_agents.kg import explore, serve, serve_impact, serve_walk
 from evo_agents.kg.build import build_project
 from evo_agents.kg.explore import Explorer
 from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, TABLES, coverage_of
+from evo_agents.kg.graph_model import edge_id
 from evo_agents.kg.impact import diff_lines
 from evo_agents.kg.refs import readable, stored
 from evo_agents.kg.serve import handle
 from evo_agents.kg.serve_search import FULL_LINES, in_repo
 from evo_agents.kg.serve_walk import CHAIN_RELS
 from evo_agents.kg.sessions import READ_META, labels_in
-from evo_agents.kg.store import Store, edge_id
+from evo_agents.kg.store import Store
 from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from evo_agents.kg.tools import IMPACT_LIMIT, IMPACT_MAX_LIMIT

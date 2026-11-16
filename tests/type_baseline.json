@@ -29190,24 +29190,6 @@
                 }
             }
         ],
-        "./evo_agents/kg/retention.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 49,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 60,
-                    "endColumn": 94,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/kg/scrub.py": [
             {
                 "code": "reportArgumentType",

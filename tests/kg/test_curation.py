@@ -14,9 +14,10 @@ from evo_agents.hub import kg_decisions
 from evo_agents.hub.kg_sources import HUB, checked, keep_sources, knowledge_with
 from evo_agents.kg import clusters
 from evo_agents.kg.build import build_project
+from evo_agents.kg.graph_model import edge_id
 from evo_agents.kg.pipeline.curation import curation_item
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Store, edge_id
+from evo_agents.kg.store import Store
 from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import make_project

@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from typing import Generic, TypeVar
 
 from evo_agents.kg import clusters as kg_clusters
-from evo_agents.kg.store import Store
+from evo_agents.kg.snapshot import SnapshotView
 
 WHOLE_NODES = 20_000  # most nodes the whole-graph view takes
 VIEWS_KEPT = 8  # views ViewCache keeps, the latest used first
@@ -52,7 +52,7 @@ class View:
     pairs: dict[tuple[str, str], int] = field(default_factory=dict)  # (member, member), sorted: visible edges
 
 
-def view(store: Store, b: int, visible: Visible) -> View:
+def view(store: SnapshotView, b: int, visible: Visible) -> View:
     """The visible clusters of build b, recounted and renamed over their visible members."""
     stored = store.clusters(b)
     if stored is None:
@@ -192,7 +192,7 @@ def cluster_detail(found: View, cid: str) -> dict | None:
     }
 
 
-def whole(store: Store, b: int, visible: Visible, limit: int, found: View | None = None) -> dict:
+def whole(store: SnapshotView, b: int, visible: Visible, limit: int, found: View | None = None) -> dict:
     """Every visible node, at most ``limit`` by id, with the level-1 cluster it counts in, and the visible edges between
     two of them as [source index, target index, type index into ``rels``]. ``found`` is the reader's view of build b,
     counted here when not given."""
