@@ -2788,8 +2788,9 @@ id starts with `curator-` is made this way alone (a member's put of one is 409).
 Curator's plan or a plan run of it (409): the night shift alone runs it, at any hour. `evo-agents hub curator proposal plan ID`
 (`POST .../curator/proposals/{id}/plan`, the project's admins alone, audited as curator.plan) does the same for an
 accepted proposal of a tier the charter plans that has no change yet, such as one of tier 2 accepted while that tier
-still recorded the answer alone; one not accepted, of a tier the charter does not plan or with a change already is 409
-with the reason.
+still recorded the answer alone, or whose change is stuck (`open` or `closed` with no plan, branch or pull request:
+that change becomes `planned` in place); one not accepted, of a tier the charter does not plan or with a live change
+already is 409 with the reason, and so is a stuck one whose draft still cannot become a plan.
 
 Each night, after its review run, the night shift queues the judge run of a change waiting for one, else the Builder
 of a planned change: a plan run of its plan, pinned to the worker on duty, with the night's caps. A change on GitHub
