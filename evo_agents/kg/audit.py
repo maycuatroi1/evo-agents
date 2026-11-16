@@ -125,7 +125,7 @@ def record_build(root: Path, report: BuildReport, *, started: str, finished: str
             "errors": len(report.errors),
             "issues": sum(s["issues"] for s in sources),
             "verified": None if report.verify is None else bool(report.verify.get("match")),
-            "rebuilt_from": report.rebuilt_from,
+            "rebuilt_from": None,  # the older store schema a build replaced, when builds wrote a graph file
             "exception": exception,
         },
     )

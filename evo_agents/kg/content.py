@@ -1,10 +1,10 @@
-"""The content hash of a graph, computed from its items, nodes and edges with no store: the hash ``Store.write`` gives
-the build it writes of the same graph (``Store.content_hash``), so an in-RAM snapshot (``evo_agents.kg.snapshot``)
-names the build it holds the way the hub does.
+"""The content hash of a graph, computed from its items, nodes and edges: the hash of the rows of its build
+(``evo_agents.kg.graph_rows``), so an in-RAM snapshot (``evo_agents.kg.snapshot``) names the build it holds the way
+the hub does.
 
-Each row is the one a store table holds for the graph (``graph_model.graph_tables``, ``graph_model.cluster_tables``,
-``graph_model.review_table``), hashed by ``graph_model.row_content``, and the rows of a table come in the order
-of its key, as the store reads them. A span-less where-provenance row sorts first, as SQL puts NULL first."""
+Each row is the one a table of the build holds for the graph (``graph_model.graph_tables``,
+``graph_model.cluster_tables``, ``graph_model.review_table``), hashed by ``graph_model.row_content``, and the rows of a
+table come in the order of its key. A span-less where-provenance row sorts first, as SQL puts NULL first."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def searched(graph: Graph) -> str:
 
 
 def content_hash(graph: Graph) -> str:
-    """The content hash of a build of ``graph``, as ``Store.content_hash`` reads it from the build's rows."""
+    """The content hash of a build of ``graph``."""
     tables = graph_tables(graph)
     parts: list = [
         SCHEMA_VERSION,

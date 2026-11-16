@@ -1,6 +1,6 @@
 """Locating code for a question: which files and symbols of a code graph a bug report or a task is about.
 
-``Store.search`` ranks every node by its words alone. A report of a defect is a poor query for that: it is long,
+``SnapshotView.search`` ranks every node by its words alone. A report of a defect is a poor query for that: it is long,
 it quotes a template, a log and a snippet, and the nodes it is about are named in it (a path, a traceback line, a
 function) more often than they share its words. ``arrange`` reads the text matches again, the way a developer reads
 the report, in four steps, none of which trains anything:
@@ -16,7 +16,7 @@ the report, in four steps, none of which trains anything:
 4. Regions. Results are the best symbol of each file in the order of the files, then the next ones: an agent reads
    five results as five places, not five spots of one file.
 
-A graph that is not code (a hub's plans, chats and documents) is left as ``Store.search`` ranks it: ``arrange``
+A graph that is not code (a hub's plans, chats and documents) is left as ``SnapshotView.search`` ranks it: ``arrange``
 returns None unless most of the best matches are code.
 
 The numbers of ``Params`` are tuned on the tune part of ``kg bench`` (docs/kg-bench.md), the harness's own question set
@@ -486,11 +486,11 @@ def arrange(
     """The ids of a question's candidates in reading order, or None when the graph is not code and no ``ranker`` is
     given (the text order stands).
 
-    ``scored`` is ``Store.search_scored``: (id, text score) of the text matches, best first. The text matches that the
-    reading leaves out follow the ones it lists. ``ranker``, a learned model of ``evo_agents.kg.rank``, fills the first
-    places of the reading, told the ``limit`` of results asked for, and reads a pool of mostly documents too (on the
-    tune part, the file order of such pools found more answering files than the text order); None keeps the order of
-    step 3.
+    ``scored`` is ``SnapshotView.search_scored``: (id, text score) of the text matches, best first. The text matches
+    that the reading leaves out follow the ones it lists. ``ranker``, a learned model of ``evo_agents.kg.rank``, fills
+    the first places of the reading, told the ``limit`` of results asked for, and reads a pool of mostly documents too
+    (on the tune part, the file order of such pools found more answering files than the text order); None keeps the
+    order of step 3.
     """
     scored = list(scored)
     if not scored:

@@ -1,10 +1,10 @@
-"""The text index of a snapshot (``evo_agents.kg.snapshot``) and the ranking of a query on it: ``Store.search_scored``
-(``evo_agents.kg.store_rank``) over in-RAM tables (``evo_agents.kg.snapshot_fts``) in place of the store's FTS5 ones.
+"""The text index of a snapshot (``evo_agents.kg.snapshot``) and the ranking of a query on it (``search_scored``),
+over in-RAM tables (``evo_agents.kg.snapshot_fts``) that stand for FTS5 ones.
 
-``TextIndex`` holds the rows the store writes to its full-text tables (``graph_model.search_rows``): those without an
+``TextIndex`` holds the rows of a build's full-text index (``graph_model.search_rows``): those without an
 audience (``node_fts``), those with one (``node_fts_aud``), the trigrams of the name and path of each node's own row
 without one (``node_tri``), and the text of code files (``code_fts``). ``search_scored`` reads a query against them
-the way the store does, in the same order of ways:
+in this order of ways:
 
 1. the nodes whose id, alias or name is the query (``exact``);
 2. BM25 of every word whole, of every word as a prefix, then of any word, each stage read while the ones before
@@ -15,7 +15,7 @@ the way the store does, in the same order of ways:
    query's long words as substrings;
 5. ``search.weight`` and closed plans, then reciprocal rank fusion (``semantic.fuse``).
 
-What agents asked before they read a node (``Snapshot.asked``) counts as in the store (``store_asked``): for a reader
+What agents asked before they read a node (``Snapshot.asked``) counts too (``evo_agents.kg.asked``): for a reader
 whose ``asked_clearance`` is set, an asked match adds to a node's score and its prior multiplies it. A row matches
 when it holds a word of the query, as FTS5 matches any of them."""
 
@@ -35,7 +35,7 @@ from evo_agents.kg.pacing import paced
 from evo_agents.kg.policy import audience_below
 from evo_agents.kg.snapshot_fts import Table, code_words, trigrams, words
 
-IndexRow = tuple[str, str, str]  # (kind, name, path) of a node's own row, as ``Store._index_row`` reads it
+IndexRow = tuple[str, str, str]  # (kind, name, path) of a node's own row, as ``TextIndex.index_row`` reads it
 
 
 _MATRIX_MADE = threading.Lock()  # one thread makes a snapshot's matrix of vectors
@@ -153,7 +153,7 @@ class TextIndex:
 
 
 class Ranker:
-    """``Store.search_scored`` on a snapshot view: ``view`` gives the reader, its tuning and its nodes."""
+    """The search of a snapshot view: ``view`` gives the reader, its tuning and its nodes."""
 
     def __init__(self, view):
         self.view = view
@@ -174,7 +174,7 @@ class Ranker:
         deprecated: bool = True,
         vector=None,
     ) -> list[tuple[str, float | None]]:
-        """(id, text score) of the nodes matching a query, best first, at most ``limit * 3``, as the store gives."""
+        """(id, text score) of the nodes matching a query, best first, at most ``limit * 3``."""
         want = limit * 3
         kinds = sorted({k for k in kinds or [] if isinstance(k, str)})
         hits = self.view.exact(query, b, want, kinds)
@@ -228,7 +228,7 @@ class Ranker:
         return [r for r in self.view.snap.asked if r[1] <= lvl and r[2] <= loc and self._readable(r[3])]
 
     def _asked_scores(self, query: str) -> dict[str, float]:
-        """``Store._asked_scores``: per node, how well the best of its readable asked rows matches ``query``."""
+        """Per node, how well the best of its readable asked rows matches ``query``."""
         if not self.view.snap.asked or not self.view.weight_of_asked():
             return {}
         words_of = asked_words.terms(query)
@@ -240,7 +240,7 @@ class Ranker:
         return out
 
     def _asked_priors(self, ids) -> dict[str, float]:
-        """``Store._asked_priors``: per node of ``ids``, the highest prior of its readable asked rows."""
+        """Per node of ``ids``, the highest prior of its readable asked rows."""
         ids = set(ids)
         out: dict[str, float] = {}
         for node_id, _, _, _, prior, _ in self._asked_rows() if ids else ():
@@ -249,7 +249,7 @@ class Ranker:
         return {k: min(max(v, 1.0), asked_words.PRIOR_MAX) for k, v in out.items()}
 
     def _by_asked(self, query, kinds, hits, found) -> None:
-        """``Store._by_asked``: an asked match adds to a node's score, weighed against the best text score."""
+        """An asked match adds to a node's score, weighed against the best text score."""
         scores, rows = found
         asked = self._asked_scores(query)
         best = min(scores.values(), default=-1.0)
@@ -263,14 +263,14 @@ class Ranker:
                     scores[node_id], rows[node_id] = score, row
 
     def files_named(self, word: str, kinds: list[str]) -> list[tuple[str, IndexRow]]:
-        """(node id, (kind, name, path)) of the files whose file name or stem is ``word`` (``Store._files_named``)."""
+        """(node id, (kind, name, path)) of the files whose file name or stem is ``word``."""
         if kinds and "File" not in kinds:
             return []
         found = self.text.files.get(word, [])[: text_search.RERANK_POOL]
         return [(r.node_id, (r.kind, r.name, r.path)) for r in found if text_search.file_named(r.path, word)]
 
     def matched(self, ids: list[str], query: str) -> dict[str, dict]:
-        """``Store.matched`` without its passages: per node of ``ids`` with an own row the reader reads, how many of
+        """What matched, without the passages: per node of ``ids`` with an own row the reader reads, how many of
         the query's words its name, path or body holds whole (``words``), of ``of``."""
         from evo_agents.kg.snapshot_fts import QueryError, matching, parse
 
@@ -296,8 +296,7 @@ class Ranker:
         return aud is None or (bool(self.view.reader) and audience_below(stored_audience(aud), self.view.reader))
 
     def ranked(self, fts_query: str, limit: int, kinds: list[str]) -> list[tuple[str, float, IndexRow]]:
-        """(node id, score, (kind, name, path)) of the nodes matching an FTS5 query, best first, as ``Store._ranked``
-        gives them."""
+        """(node id, score, (kind, name, path)) of the nodes matching an FTS5 query, best first."""
         pool = max(limit, text_search.RERANK_POOL)
         wanted = set(kinds)
         text = self.text
@@ -321,7 +320,7 @@ class Ranker:
 
     def _audience(self, fts_query: str, pool: int, wanted: set[str]) -> list[tuple[Row, float]]:
         """The best ``pool`` rows with an audience the reader reads, by their own BM25, each scored again with the IDF
-        the rows without one give each phrase (``Store._as_public``)."""
+        the rows without one give each phrase."""
         from evo_agents.kg.snapshot_fts import Phrase
 
         text = self.text
@@ -409,7 +408,7 @@ class Ranker:
     # -- code --------------------------------------------------------------------------------------------------------
 
     def code_files(self, words_of: list[str], limit: int = text_search.CODE_POOL) -> list[tuple[str, int]]:
-        """(file node id, how many of ``words_of`` its text holds), the most words first (``Store.code_files``)."""
+        """(file node id, how many of ``words_of`` its text holds), the most words first."""
         held: dict[str, list] = {}
         ids = self.text.code_ids
         for word in words_of:

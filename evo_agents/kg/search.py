@@ -1,4 +1,4 @@
-"""What the graph's full-text index holds for a node, and how ``Store.search`` reads a query against it.
+"""What the graph's full-text index holds for a node, and how ``SnapshotView.search`` reads a query against it.
 
 SQLite's ``unicode61`` tokenizer (``remove_diacritics 2``) cuts text at anything that is not a letter or a digit, so
 snake_case names and paths already come apart into words, and it folds accents: "kiểm toán" matches "kiem toan". Two
@@ -19,9 +19,9 @@ PASSAGE_CHARS (``kg.text.split_passages``: cut between paragraphs and code block
 node's id, named like the node, with the document's name and the headings above it before its text (contextual BM25
 without a model): a question about one paragraph of a long page finds it without the rest of the page weighing on its
 score. Its score is weighed by PASSAGE_WEIGHT, and a node scores its best row. A passage is no node: a hit on it is a
-hit on its node, and ``Store.matched`` gives the lines of the passage that matched best, which ``kg_search`` prints.
-The row is keyed ``passage_key`` in ``node_fts_rows``; a reader of before, which knows no passage, reads its hit as one
-on the node.
+hit on its node, and ``SnapshotView.matched`` gives the lines of the passage that matched best, which ``kg_search``
+prints. The row is keyed ``passage_key`` in ``node_fts_rows``; a reader of before, which knows no passage, reads its hit
+as one on the node.
 
 A query is read three ways, each read while the ones before found fewer nodes than asked: every word as a whole word
 (AND), every word as a prefix (AND), then any word (OR). A node scores BM25 times a light prior by kind (PRIOR) times
@@ -212,9 +212,9 @@ def query_words(query: str) -> list[str]:
     return (meaning or words)[:MAX_TERMS]
 
 
-# Plain BM25 (``Store.plain_search``, ``kg bench run --search plain``): the baseline the public benches print, to set
-# the ranking against. Every word of the query, ORed, over the repo's content at its commit, the columns name, path and
-# body weighed alike, with no prior, boost or cut.
+# Plain BM25 (``SnapshotView.plain_search``, ``kg bench run --search plain``): the baseline the public benches print, to
+# set the ranking against. Every word of the query, ORed, over the repo's content at its commit, the columns name, path
+# and body weighed alike, with no prior, boost or cut.
 PLAIN_KINDS = ("File", "Symbol", "Document", "Section")
 PLAIN_WEIGHTS = (0.0, 0.0, 1.0, 1.0, 1.0)
 PLAIN_TERMS = 512
@@ -306,11 +306,11 @@ def phrases(fts_query: str) -> list[str]:
 
 # -- what a node is, besides how well its text matches -----------------------------------------------------------
 
-# A node named by one word of the query as the query writes it (``store.py``, ``Store.search``, ``HUB_DEGREE``) is
-# what the question is about far more often than a node that only holds the words: its score is weighed up by
-# NAMED_WEIGHT, and Store.search looks each such word up by name too, so a symbol found by name and by no text query
-# still ranks. Only a word that reads as a name counts: one with ``_ . / :``, a digit, or camelCase, or a word in upper
-# case; a plain word ("hub", "plan") names a directory or a heading of every other page.
+# A node named by one word of the query as the query writes it (``snapshot.py``, ``SnapshotView.search``,
+# ``HUB_DEGREE``) is what the question is about far more often than a node that only holds the words: its score is
+# weighed up by NAMED_WEIGHT, and the search looks each such word up by name too, so a symbol found by name and by no
+# text query still ranks. Only a word that reads as a name counts: one with ``_ . / :``, a digit, or camelCase, or a
+# word in upper case; a plain word ("hub", "plan") names a directory or a heading of every other page.
 NAMED_WEIGHT = 1.5
 NAMED_LOOKUPS = 8  # the words of a query looked up by name, at most
 _EDGE_PUNCT = "\"'`()[]{}<>,;!?*"
@@ -378,9 +378,9 @@ def named_words(query: str) -> list[str]:
 
 
 def names(node_id: str, name: str, path: str, words: list[str]) -> bool:
-    """Whether one of ``words`` (``named_words``) is the node's name or its path, ends its id (``…::Store.search``,
-    ``…/search.py``), or, for the file itself, is its file name or stem (``file_named``). A symbol or section is not
-    named by its file's name: the file is what such a word asks for."""
+    """Whether one of ``words`` (``named_words``) is the node's name or its path, ends its id
+    (``…::SnapshotView.search``, ``…/search.py``), or, for the file itself, is its file name or stem (``file_named``). A
+    symbol or section is not named by its file's name: the file is what such a word asks for."""
     for word in words:
         if word == name or word == path:
             return True

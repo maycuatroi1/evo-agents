@@ -3,8 +3,8 @@
 A build of project P (job ``hub.kg_build``, under the lock ``kg:P``) runs in the worker's cache, ``<data dir>/kg``:
 
 - ``harness/P/``: a harness.yaml, and the knowledge.yaml and ontology.yaml of P's config (``kg_configs``), so the
-  build loads P like any project, and ``evo_agents.kg.build.build_project`` with ``verify=True`` on that harness,
-  with ``EVO_KG_HOME=<data dir>/kg/home``, checks the worker's store by hand.
+  build loads P like any project, and ``evo_agents.kg.build.verify_rows`` on that harness, with
+  ``EVO_KG_HOME=<data dir>/kg/home``, checks a build's content hash by hand.
 - ``home/P/``: P's corpus as ``evo_agents.kg.corpus`` lays it out (log/, blobs/, state.json) and its memo.
 
 The sources of the core plugins the project enables (``evo_agents.hub.kg_sources``) are read from the hub's database
@@ -16,7 +16,7 @@ unless a later run's is, so a git source's coverage names the commit its newest 
 A merge cannot be undone, so a corpus holding a run merged from the hub that kg_ingests no longer lists (its source
 was taken off the hub) is started again first, its blobs kept (``drop_forgotten``).
 Then every blob a live item refers to and the cache lacks is fetched, checked, and moved into place. The graph is
-built in memory by ``evo_agents.kg.build.build_rows``, into the rows a store would hold of it (``evo_agents.kg.graph_rows``),
+built in memory by ``evo_agents.kg.build.build_rows``, into the rows of its build (``evo_agents.kg.graph_rows``),
 its clustering started from the clusters of the graph the hub keeps; no graph file is written. Anything that fails
 marks the build failed with a message naming no content, and the worker goes on with the next job.
 

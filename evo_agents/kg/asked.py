@@ -1,6 +1,7 @@
 """What agents asked before they read a node: the words of the kg_search queries whose results led to it, learned from
 the hub's labels (``evo_agents.hub.kg_labels``) and written into the graph as the ``node_asked`` index
-(``Store.write_asked``), which ``Store.search`` reads as one more column of the text a node matches.
+(``graph_rows.with_asked``), which the search (``evo_agents.kg.snapshot_text``) reads as one more column of the text a
+node matches.
 
 A label is one kg_search and what the agent did next: the files of its results it read or edited (clicks, each with
 the rank it had), and the files it opened after a grep that followed the search, which no result named (the search
@@ -184,19 +185,6 @@ class Nodes:
     def __init__(self, known: set[str], paths: Mapping[str, list[str]]):
         self.known = known
         self.paths = paths
-
-    @classmethod
-    def of_store(cls, store, b: int) -> Nodes:
-        known = {
-            row[0]
-            for row in store.db.execute(
-                "SELECT node_id FROM nodes WHERE tx_from <= ? AND (tx_to IS NULL OR tx_to > ?)", (b, b)
-            )
-        }
-        paths: dict[str, list[str]] = defaultdict(list)
-        for node in store.path_nodes(b):
-            paths[node["props"]["path"].strip("/")].append(node["id"])
-        return cls(known, paths)
 
     def by_id(self, ident) -> str | None:
         if not isinstance(ident, str):

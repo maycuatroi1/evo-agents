@@ -23,7 +23,7 @@ class SessionText(SessionView):
         its label unless it is ``shared`` (the one the result prints once), and the path when the id does not hold
         it, the status and number of a plan step, the chat and thread of a chat message (KIND_PROPS), and where in
         its file it is (``lines``): the lines of a section, the first and last line of a symbol, or ``passage``, the
-        lines a search matched best (``Store.matched``), with the node's own after ``of``. Never its URI: kg_node
+        lines a search matched best, with the node's own after ``of``. Never its URI: kg_node
         gives that. With ``status``, the status the result prints once too (kg_search), the line is briefer: its
         node's status only when it is another, no name of a section its anchor spells, no number of a step its id
         holds, and no parentheses when they would hold nothing."""

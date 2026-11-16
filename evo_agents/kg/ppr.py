@@ -317,7 +317,7 @@ def order(store, b: int, scored, walk: Walk, seen) -> list[str]:
     """kg_search's ids under the walk: the matches the search gave no score (an id or a name is the query) first, then
     the first ``walk.top_matches`` text matches by their text score, then the nodes the walk reached that are not
     entities, by its score, then the entities it reached, then the other text matches in the text order. ``scored`` is
-    ``Store.search_scored``: (id, text score), best first.
+    ``SnapshotView.search_scored``: (id, text score), best first.
 
     A reached node that is no text match ranks by its walk score divided by log2(2 + its edges in the subgraph), as
     ``fallback_seeds`` weighs a seed, so a hub joined to every seed gathers no rank by its edges alone; with

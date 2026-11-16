@@ -2,7 +2,7 @@
 of the one build of a snapshot view (``evo_agents.kg.snapshot.SnapshotView``) that a reader up to a ceiling (level,
 location) and the view's audience sees. The hub module turns the rows into what the agent reads.
 
-A ceiling of None sees nothing. ``b`` names the build the caller asks for; a view holds one build, so it is not read.
+A ceiling of None sees nothing. A view holds one build, the one read.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ def _under(label, ceiling: tuple[int, int] | None) -> bool:
     return ceiling is not None and (label[0] or 0) <= ceiling[0] and (label[1] or 0) <= ceiling[1]
 
 
-def node_rows(view, b: int, ceiling: tuple[int, int] | None, kinds=()) -> Iterator[tuple]:
+def node_rows(view, ceiling: tuple[int, int] | None, kinds=()) -> Iterator[tuple]:
     """(node_id, kind, name, props) of the nodes of ``view`` of ``kinds`` (every kind when empty) the reader sees."""
     wanted = set(kinds)
     for n in view.snap.nodes:
@@ -25,14 +25,14 @@ def node_rows(view, b: int, ceiling: tuple[int, int] | None, kinds=()) -> Iterat
             yield n["id"], n["kind"], n["name"], json.dumps(n["props"])
 
 
-def edge_rows(view, b: int, ceiling: tuple[int, int] | None, rel: str) -> Iterator[tuple[str, str]]:
+def edge_rows(view, ceiling: tuple[int, int] | None, rel: str) -> Iterator[tuple[str, str]]:
     """(src, dst) of the edges of ``view`` with ``rel`` the reader sees."""
     for e in view.snap.edges:
         if e["rel"] == rel and view.sees(e) and _under(e["label"], ceiling):
             yield e["src"], e["dst"]
 
 
-def item_rows(view, b: int, ceiling: tuple[int, int] | None) -> Iterator[tuple]:
+def item_rows(view, ceiling: tuple[int, int] | None) -> Iterator[tuple]:
     """(item_id, rev, hash, visible) of the whole-item units of ``view`` by item id, visible 1 when the reader sees the
     unit and 0 when it is above the ceiling."""
     for row in sorted((r for r in view.snap.units.values() if r[2] == ""), key=lambda r: r[1]):
@@ -40,7 +40,7 @@ def item_rows(view, b: int, ceiling: tuple[int, int] | None) -> Iterator[tuple]:
         yield row[1], row[3], row[4], 1 if seen else 0
 
 
-def cluster_rows(view, b: int) -> list[tuple]:
+def cluster_rows(view) -> list[tuple]:
     """(cluster_id, level, node_id) of each member of a cluster of ``view``, by cluster and node; empty for a graph
     built without clusters."""
     found = view.snap.found

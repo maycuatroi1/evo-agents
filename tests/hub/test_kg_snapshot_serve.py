@@ -216,17 +216,17 @@ def test_the_entity_map_reads_of_a_view_hold_what_its_reader_sees_under_the_ceil
         view = snap.view(reader)
         for ceiling in (None, PUBLIC, INTERNAL, (9, 9)):
             clears = ceiling is not None and ceiling >= INTERNAL  # every row is labelled internal
-            assert {r[0] for r in reads.node_rows(view, 0, ceiling)} == (seen if clears else set())
-            assert [r[0] for r in reads.node_rows(view, 0, ceiling, ("Code",))] == (
+            assert {r[0] for r in reads.node_rows(view, ceiling)} == (seen if clears else set())
+            assert [r[0] for r in reads.node_rows(view, ceiling, ("Code",))] == (
                 [aud.K9] if clears and aud.K9 in seen else []
             )
-            found = list(reads.item_rows(view, 0, ceiling))
+            found = list(reads.item_rows(view, ceiling))
             assert [r[0] for r in found] == sorted(items)  # each item, the ones the reader does not see as 0
             assert {r[0] for r in found if r[3] == 1} == ({i for i in items if i in seen} if clears else set())
-            assert set(reads.edge_rows(view, 0, ceiling, "mentions")) == (
+            assert set(reads.edge_rows(view, ceiling, "mentions")) == (
                 {(src, dst) for src, dst in mentions if src in seen and dst in seen} if clears else set()
             )
-        assert reads.cluster_rows(view, 0) == []  # built without clusters
+        assert reads.cluster_rows(view) == []  # built without clusters
 
 
 def test_the_coordinator_holds_the_most_recently_read_projects_and_no_finished_load(monkeypatch):
