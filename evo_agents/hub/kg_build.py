@@ -540,7 +540,8 @@ async def keep_graph(conn: AsyncConnection, project_id: int, build_id: int, buil
     """Keep the corpus items and the graph of a build in the hub's tables, only what changed, and notify the readers
     (``kg_graph_rows``). The head's content hash is the build's, which folds in the asked index and the vectors. A
     skipped build's rows are those the hub kept, its merged branches applied already; a new build's get them. A
-    skipped build whose head of main a merge moved since it read it (under the project's lock, as here) leaves it."""
+    skipped build whose head of main a merge moved since it read it (under the project's lock, as here) leaves it,
+    and its build row then names the head's content hash and counts, not those of the rows it read."""
     corpus = await kg_graph_rows.merge_corpus(conn, project_id, list(built.items))
     rows = dataclasses.replace(built.rows, content_hash=built.content_hash)
     if not built.skipped:  # a skipped build keeps the head it read, and its build id
@@ -549,6 +550,7 @@ async def keep_graph(conn: AsyncConnection, project_id: int, build_id: int, buil
     if built.skipped and await _head_hash(conn, project_id) != built.read:
         # a branch merged since the build read main: main is as the merge wrote it, which the next build takes again
         log.info("kg graph left as a merge wrote it", extra={"project_id": project_id, "build_id": build_id})
+        await _name_head(conn, project_id, build_id)
         return
     if not built.skipped:
         rows = await kg_branches.overlay(conn, project_id, rows)
@@ -567,6 +569,23 @@ async def _head_hash(conn: AsyncConnection, project_id: int) -> str | None:
             )
         )
     ).scalar_one_or_none()
+
+
+async def _name_head(conn: AsyncConnection, project_id: int, build_id: int) -> None:
+    """Give build ``build_id`` the content hash and the node and edge counts of the head of main, which a merge wrote."""
+    counts = [
+        select(func.count())
+        .select_from(t)
+        .where(t.c.project_id == project_id, t.c.branch_id == kg_graph_rows.MAIN)
+        .scalar_subquery()
+        for t in (tables.kg_nodes, tables.kg_edges)
+    ]
+    builds = tables.kg_builds
+    await conn.execute(
+        update(builds)
+        .values(content_hash=await _head_hash(conn, project_id), nodes=counts[0], edges=counts[1])
+        .where(builds.c.id == build_id)
+    )
 
 
 async def start_eval_set(engine, project_id: int, project: str, built: Built) -> None:

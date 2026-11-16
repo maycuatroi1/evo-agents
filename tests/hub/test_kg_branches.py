@@ -314,10 +314,17 @@ def test_a_branch_merged_while_a_build_of_nothing_new_runs_stays_on_main(hub, tm
     caplog.clear()
     with caplog.at_level("INFO", logger="evo_agents.hub.kg_build"):
         run_jobs(hub.db, hub.s3, hub.worker_dir)
-    assert latest(hub)["status"] == "succeeded"
+    row = latest(hub)
+    assert row["status"] == "succeeded"
     assert [m.status_code for m in merged] == [200], [m.text for m in merged]
-    assert "concept:mango" in {r[0] for r in read_back(hub.db, project_id(hub)).nodes}, "the merge stays on main"
+    main = read_back(hub.db, project_id(hub))
+    assert "concept:mango" in {r[0] for r in main.nodes}, "the merge stays on main"
     assert "kg graph left as a merge wrote it" in caplog.messages
+    heads = tables.kg_graph_heads
+    head = sql(
+        hub.db, select(heads.c.content_hash).where(heads.c.project_id == project_id(hub), heads.c.branch_id == 0)
+    )
+    assert (row["content_hash"], row["nodes"], row["edges"]) == (head[0][0], len(main.nodes), len(main.edges))
 
 
 @needs_db
