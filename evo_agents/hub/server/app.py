@@ -503,6 +503,7 @@ def _include_curator_routes(app: FastAPI) -> None:
         change_routes,
         digests,
         earlier,
+        evolve,
         history,
         history_search,
         kg_health,
@@ -543,6 +544,8 @@ def _include_curator_routes(app: FastAPI) -> None:
         probe_routes.worker_router,
         probe_runs.worker_router,  # the probe runs' sessions (plan correction-recurrence)
         probe_report.router,  # and their weekly report
+        evolve.router,  # the evolutions of a harness or an agent (plan pareto-curator-evolution)
+        evolve.worker_router,  # and what their runs read and post
         org.router,  # the org chart (plan org-chart)
         autonomy_routes.router,  # the autonomy levels (plan autonomy-levels)
         autonomy_stops.router,  # and their stop S4

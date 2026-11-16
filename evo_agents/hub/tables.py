@@ -838,6 +838,12 @@ curator_change_repos = tables_curator.change_repos_table(metadata)  # each repo 
 curator_evolve_runs, curator_evolve_candidates, curator_evolve_arm_cache = tables_curator.evolve_tables(
     metadata
 )  # 0255
+Index(  # 0256: one evolve run of a project active at a time, as runs_active_probe_key does
+    "runs_active_evolve_key",
+    runs.c.project_id,
+    unique=True,
+    postgresql_where=(runs.c.kind == "evolve") & runs.c.state.in_(RUN_ACTIVE),
+)
 curator_probe_runs = tables_curator.probe_run_tables(metadata, runs, RUN_ACTIVE)  # 0131, and runs_active_probe_key
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 merge_checks = tables_merge.check_table(metadata)  # a run's pull request on github.com judged (0187)

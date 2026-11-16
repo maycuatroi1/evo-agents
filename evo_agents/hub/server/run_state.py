@@ -91,8 +91,8 @@ PLAN_TRIES = 5  # writes of a step tried before giving up on revision conflicts
 MAX_NOTE_CHARS = 1000  # a note the hub sets on a step
 LEASE = timedelta(seconds=runs.LEASE_SECONDS)  # the api's own comes from EVO_HUB_RUN_LEASE_SECONDS
 # The kinds whose failed runs always carry a failure_cause: the worker's, else the hub's guess from the error. The
-# Curator's (review, judge, replay, history, probe; its Builder's are plan runs) for the night shift's breakers.
-CAUSED_KINDS = ("step", "plan", "author", "chat", "review", "judge", "replay", "history", "probe")
+# Curator's (review, judge, replay, history, probe, evolve; its Builder's are plan runs) for the night shift's breakers.
+CAUSED_KINDS = ("step", "plan", "author", "chat", "review", "judge", "replay", "history", "probe", "evolve")
 # Columns a move may set besides the state, its times and the lease.
 MOVE_COLUMNS = frozenset({"worker_id", "runtime", "environment", "session_id", "commit_sha", "diffstat", "verify"})
 MOVE_COLUMNS |= {"evidence", "usage", "failure_cause", "model_used", "routing", "proofs"}
@@ -596,6 +596,11 @@ async def record_move(
         from evo_agents.hub.server import probe_runs  # it reads runs through the routes that import this module
 
         await probe_runs.probe_ended(conn, found, old, new, reason=reason)
+        return None
+    if found.kind == "evolve":  # it writes no step: its candidates and its end reach the hub through its own routes
+        from evo_agents.hub.server import evolve_runs  # it reads runs through the routes that import this module
+
+        await evolve_runs.evolve_ended(conn, found, new, reason=reason)
         return None
     if found.kind == "history":  # it writes no step: its facets reach the hub through its own routes
         from evo_agents.hub.server import history  # it reads runs through the routes that import this module

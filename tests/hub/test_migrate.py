@@ -6395,3 +6395,29 @@ def test_0255_adds_the_curators_evolutions_and_its_playbooks_retires_and_going_b
     assert not {"until_proposal_id", "prompt_exposures"} & columns(hub_db, "curator_playbook")
     assert "actor" not in columns(hub_db, "curator_playbook_deltas")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0255") :]
+
+
+def test_0256_takes_evolve_runs_one_active_a_project_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0255")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        evolve = {"kind": "evolve", "request": None}
+        with pytest.raises(errors.CheckViolation):  # no evolve run before 0256
+            conn.execute(_command_run(ids, **evolve))
+    move_to(hub_db, "0256")
+    with live.connect(hub_db) as conn:
+        first = one(conn, _command_run(ids, **evolve))  # in no repo, an agent's configuration
+        with pytest.raises(errors.UniqueViolation):  # runs_active_evolve_key
+            conn.execute(_command_run(ids, **evolve, repos=[{"repo": "harness"}]))
+    ended = {"state": "cancelled", "finished_at": func.now()}
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation, match="runs_kind_plan_check"):
+            conn.execute(_command_run(ids, **evolve, **ended, plan_id="a-plan"))
+    with live.connect(hub_db) as conn:
+        one(conn, _command_run(ids, **evolve, **ended, attempt=2, parent_run_id=first))
+        author = one(conn, _author_run(ids))
+
+    # Going back deletes the evolve runs, the retry first; the rest stays.
+    move_to(hub_db, "0255", down=True)
+    assert query(hub_db, select(hub_tables.runs.c.id, hub_tables.runs.c.kind)) == [(author, "author")]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0256") :]

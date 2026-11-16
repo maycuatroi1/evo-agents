@@ -671,6 +671,8 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
         "history_key": None,
         "probe": None,  # a probe run's alone
         "probe_key": None,
+        "evolve": None,  # an evolve run's alone
+        "evolve_key": None,
         "merge_result": False,  # a merge check's alone
         "signs_passed": False,  # a merge queue Judge's alone
     }
