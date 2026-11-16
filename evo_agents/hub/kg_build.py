@@ -542,9 +542,11 @@ async def record(engine, store: BlobStore, project_id: int, build_id: int, diges
 async def keep_graph(conn: AsyncConnection, project_id: int, build_id: int, built: Built) -> None:
     """Keep the corpus items and the graph of a build in the hub's tables, only what changed, and notify the readers
     (``kg_graph_rows``). The head's content hash is the build's, which folds in the asked index and the vectors. A
-    skipped build's rows are those the hub kept, its merged branches applied already; a new build's get them. A
+    skipped build's rows are those the hub kept, its merged branches applied already, and main's hash folds them in as
+    their merges did (``kg_branches.merged_hash``); a new build's get them. A
     skipped build whose head of main a merge moved since it read it (under the project's lock, as here) leaves it,
-    and its build row then names the head's content hash and counts, not those of the rows it read."""
+    and its build row then names the head's content hash and counts, not those of the rows it read, as the row of a
+    new build does once merged branches changed its rows."""
     corpus = await kg_graph_rows.merge_corpus(conn, project_id, list(built.items))
     rows = dataclasses.replace(built.rows, content_hash=built.content_hash)
     if not built.skipped:  # a skipped build keeps the head it read, and its build id
@@ -555,9 +557,14 @@ async def keep_graph(conn: AsyncConnection, project_id: int, build_id: int, buil
         log.info("kg graph left as a merge wrote it", extra={"project_id": project_id, "build_id": build_id})
         await _name_head(conn, project_id, build_id)
         return
+    groups = await kg_branches.merged(conn, project_id)
     if not built.skipped:
-        rows = await kg_branches.overlay(conn, project_id, rows)
+        rows = await kg_branches.overlay(conn, project_id, rows, groups)
+    elif groups:  # rows that hold the merged branches already: main's hash, as the merges gave it
+        rows = dataclasses.replace(rows, content_hash=kg_branches.merged_hash(rows.content_hash, groups))
     changed = await kg_graph_rows.write_graph(conn, project_id, build_id, rows)
+    if groups:  # the merged branches changed what the build made: its row names what main holds
+        await _name_head(conn, project_id, build_id)
     log.info(
         "kg graph kept", extra={"project_id": project_id, "build_id": build_id, "corpus": corpus.counts(), **changed}
     )

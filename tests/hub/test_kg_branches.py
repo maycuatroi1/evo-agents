@@ -284,9 +284,32 @@ def test_a_branch_is_read_apart_from_main_then_merged_and_outlives_the_next_buil
     laptop.sync("docs", doc("guide", "How the kiwi app works, again.", rev="2"))
     assert push(hub, laptop).ok
     build(hub, caplog)
-    assert "concept:mango" in {r[0] for r in read_back(hub.db, project_id(hub)).nodes}  # the merge outlived it
+    main = read_back(hub.db, project_id(hub))
+    assert "concept:mango" in {r[0] for r in main.nodes}  # the merge outlived it
+    built, head = _row_and_head(hub)
+    assert built == head, "the build's row names main's head"
     listed = hub.client.get(f"{_base()}?status=merged", headers=hub.carol).json()["branches"]
     assert [b["name"] for b in listed] == ["kiwi-draft"]
+
+
+@needs_db
+def test_a_build_of_nothing_new_after_merges_keeps_main_and_its_hash(hub, tmp_path, caplog):
+    _built(hub, tmp_path, caplog, doc("guide", "How the kiwi app works."))
+    guide = _guide(hub)
+    for name, node in (("mango", "concept:mango"), ("papaya", "concept:papaya")):  # two merges: their hashes chain
+        assert _post(hub, _base(), {"name": name}).status_code == 201
+        ops = [
+            {"op": "node.put", "id": node, "kind": "Concept", "name": f"{name.title()} pipeline"},
+            {"op": "edge.put", "src": guide, "rel": "mentions", "dst": node},
+        ]
+        assert _post(hub, f"{_base(name)}/ops", {"ops": ops}).status_code == 200
+        assert _post(hub, f"{_base(name)}/merge").status_code == 200
+    _, merged = _row_and_head(hub)
+    assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
+    build(hub, caplog)
+    built, head = _row_and_head(hub)
+    assert head == merged, "a build of nothing new leaves main and its hash as the merges wrote them"
+    assert built == head, "the build's row names main's head"
 
 
 @needs_db
@@ -320,11 +343,21 @@ def test_a_branch_merged_while_a_build_of_nothing_new_runs_stays_on_main(hub, tm
     main = read_back(hub.db, project_id(hub))
     assert "concept:mango" in {r[0] for r in main.nodes}, "the merge stays on main"
     assert "kg graph left as a merge wrote it" in caplog.messages
+    built, head = _row_and_head(hub)
+    assert built == head, "the build's row names main's head"
+
+
+def _row_and_head(hub) -> tuple[tuple, tuple]:
+    """(content hash, nodes, edges) of the latest build's row, then of main's head."""
+    from tests.hub.test_kg import latest
+
+    row = latest(hub)
     heads = tables.kg_graph_heads
     head = sql(
         hub.db, select(heads.c.content_hash).where(heads.c.project_id == project_id(hub), heads.c.branch_id == 0)
     )
-    assert (row["content_hash"], row["nodes"], row["edges"]) == (head[0][0], len(main.nodes), len(main.edges))
+    main = read_back(hub.db, project_id(hub))
+    return (row["content_hash"], row["nodes"], row["edges"]), (head[0][0], len(main.nodes), len(main.edges))
 
 
 @needs_db
