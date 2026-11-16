@@ -1405,7 +1405,7 @@ def recover(hub, data_dir: Path) -> dict:
 
 def test_a_build_whose_worker_died_is_failed_and_queued_again(hub, tmp_path):
     from evo_agents.hub import jobs as hub_jobs
-    from evo_agents.hub.kg_build import STOPPED
+    from evo_agents.hub.kg_build import STALLED
 
     periodic = {p.task.name: p for p in queue.periodic_registry.periodic_tasks.values()}
     assert periodic[hub_jobs.RECOVER_KG_BUILDS].cron == "*/5 * * * *"
@@ -1423,7 +1423,7 @@ def test_a_build_whose_worker_died_is_failed_and_queued_again(hub, tmp_path):
     recovered = recover(hub, tmp_path / "recover")
     assert (recovered["failed"], recovered["orphaned"], recovered["queued"]) == (1, 0, [PROJECT])
     first, second = query(hub.db, select(builds.c.status, builds.c.error, builds.c.job_id).order_by(builds.c.id))
-    assert first == ("failed", STOPPED, job_id)
+    assert first == ("failed", STALLED, job_id)
     assert second[0] == "queued" and [row[1] for row in jobs(hub.db)] == ["failed", "todo"]
     again = recover(hub, tmp_path / "recover")
     assert (again["failed"], again["orphaned"], again["queued"]) == (0, 0, [])
@@ -1450,11 +1450,11 @@ def halted_notices(hub) -> list[tuple]:
 
 
 def test_a_project_whose_builds_keep_killing_their_worker_is_not_queued_again_and_its_admins_are_told(hub, tmp_path):
-    """evo-lms's build ran over worker-kg's memory limit: the kernel killed it, the pass queued another, which died
-    the same way, a hundred times in a row. After DIED_IN_A_ROW builds in a row ended so the pass queues none, says
+    """A large project's build ran over worker-kg's memory limit: the kernel killed it, the pass queued another, which
+    died the same way, a hundred times in a row. After DIED_IN_A_ROW builds in a row ended so the pass queues none, says
     why on the build and tells the project's admins once; a build queued by hand, or one that succeeds, starts a new
     row."""
-    from evo_agents.hub.kg_build import DIED_IN_A_ROW, HALTED, ORPHANED, STOPPED
+    from evo_agents.hub.kg_build import DIED_IN_A_ROW, HALTED, ORPHANED, STALLED
 
     assert DIED_IN_A_ROW == 3
     builds, users = tables.kg_builds, tables.users
@@ -1469,7 +1469,7 @@ def test_a_project_whose_builds_keep_killing_their_worker_is_not_queued_again_an
     recovered = recover(hub, tmp_path / "recover")
     assert (recovered["failed"], recovered["queued"], recovered["halted"]) == (1, [], [PROJECT])
     errors = [row[0] for row in query(hub.db, select(builds.c.error).order_by(builds.c.id))]
-    assert errors == [STOPPED] * (DIED_IN_A_ROW - 1) + [HALTED]
+    assert errors == [STALLED] * (DIED_IN_A_ROW - 1) + [HALTED]
     assert query(hub.db, select(builds.c.id).where(builds.c.status.in_(("queued", "running")))) == []
     ((user_id, title, details, link),) = halted_notices(hub)
     assert query(hub.db, select(users.c.login).where(users.c.id == user_id)) == [(live.ADMIN,)]  # it made alpha
@@ -1494,7 +1494,7 @@ def test_a_project_whose_builds_keep_killing_their_worker_is_not_queued_again_an
     recovered = recover(hub, tmp_path / "recover")
     assert (recovered["queued"], recovered["halted"]) == ([], [PROJECT]) and len(halted_notices(hub)) == 2
     assert query(hub.db, select(builds.c.error).where(builds.c.id > last).order_by(builds.c.id))[-3:] == [
-        (STOPPED,),
+        (STALLED,),
         (ORPHANED,),
         (HALTED,),
     ]
@@ -1507,6 +1507,24 @@ def test_a_project_whose_builds_keep_killing_their_worker_is_not_queued_again_an
     assert push(hub, laptop).ok
     kill_the_waiting_build(hub)
     assert recover(hub, tmp_path / "recover")["queued"] == [PROJECT]
+
+
+def test_builds_their_worker_stopped_cleanly_do_not_count_in_the_row(hub, tmp_path):
+    """A deploy stops worker-kg during a long build: ``_stopped`` records STOPPED and queues the next build. Two such
+    stops, then one lost machine, are not three builds that killed their worker: the pass queues the next build."""
+    from evo_agents.hub.kg_build import STOPPED
+
+    builds, projects = tables.kg_builds, tables.projects
+    ((project_id,),) = query(hub.db, select(projects.c.id).where(projects.c.name == PROJECT))
+    for _ in range(2):
+        stopped = {"status": "failed", "error": STOPPED, "started_at": func.now(), "finished_at": func.now()}
+        query(hub.db, insert(builds).values(project_id=project_id, **stopped))
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."))
+    assert push(hub, laptop).ok
+    kill_the_waiting_build(hub)
+    recovered = recover(hub, tmp_path / "recover")
+    assert (recovered["queued"], recovered["halted"]) == ([PROJECT], []) and halted_notices(hub) == []
 
 
 def test_three_builds_whose_jobs_ended_unrecorded_stop_the_orphaned_pass_too(hub, tmp_path):

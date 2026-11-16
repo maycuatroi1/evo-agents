@@ -97,17 +97,22 @@ QUEUE_ATTEMPTS = 5
 STALLED_AFTER = 120.0  # seconds without a heartbeat from its worker before a running build counts as abandoned
 STOPPED = "the worker running this build stopped before it finished; a new build was queued"
 ORPHANED = "the job of this build ended without recording how it went; the project's next build takes its place"
-REPLACED = (STOPPED, ORPHANED)  # the errors of a build whose place the project's next build takes
+STALLED = (
+    "the worker running this build stopped sending heartbeats before it finished (killed, out of memory, or its machine "
+    "lost); a new build was queued"
+)
+REPLACED = (STOPPED, STALLED, ORPHANED)  # the errors of a build whose place the project's next build takes
 # After this many builds of a project in a row ended with their worker gone (DIED), the recovery pass queues no other:
 # a build that kills its worker, as one over the memory limit of worker-kg does, would otherwise die and be queued again
-# every few minutes for ever. A build that succeeds, or one a member queues by hand, starts a new row.
+# every few minutes for ever. A build that succeeds, one a member queues by hand, or one its worker stopped cleanly
+# (STOPPED, as a deploy does: ``_stopped``) starts a new row.
 DIED_IN_A_ROW = 3
 HALTED = (
     f"the worker running this build stopped before it finished, as it did for at least {DIED_IN_A_ROW - 1} builds of "
     "the project before it; no new build was queued and the project's admins were told: queue one by hand once the "
     "cause is fixed"
 )
-DIED = (STOPPED, STOPPED.split(";")[0], ORPHANED, HALTED)  # the errors of a build that ended with its worker gone
+DIED = (STALLED, ORPHANED, HALTED)  # the errors of a build that ended with its worker gone
 DIED_READ = 100  # the newest builds of a project the count of DIED_IN_A_ROW reads at most
 HALTED_NOTICE = "kg_build_halted"  # runs.NOTICE_KINDS: the recovery pass stopped queueing a project's builds
 IN_FLIGHT = ("queued", "running")
@@ -949,7 +954,8 @@ async def _fill_headless(context, manager) -> list[str]:
 
 async def _died_in_a_row(conn: AsyncConnection, project_id: int) -> tuple[int, bool]:
     """How many of the newest ended builds of a project in a row ended with their worker gone (DIED), back to the
-    newest a member queued by hand, which starts the row; and whether one of them was told already (HALTED)."""
+    newest a member queued by hand, which starts the row; and whether one of them was told already (HALTED). A build
+    that succeeded, or that its worker stopped cleanly (STOPPED), ends the row."""
     builds = tables.kg_builds
     rows = await conn.execute(
         select(builds.c.status, builds.c.error, builds.c.requested_by)
@@ -1029,7 +1035,7 @@ async def recover_stalled(context, manager) -> dict:
                 update(builds)
                 .values(
                     status="failed",
-                    error=STOPPED,
+                    error=STALLED,
                     started_at=func.coalesce(builds.c.started_at, func.now()),
                     finished_at=func.now(),
                 )
