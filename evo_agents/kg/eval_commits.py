@@ -18,10 +18,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from evo_agents.kg.commit_labels import MAX_FILES, MIN_WORDS, commit_label
 from evo_agents.kg.evaluate import FILE_ID
+from evo_agents.kg.snapshot import StoreRows
 from evo_agents.kg.store import Store
 from evo_agents.kg.store_filters import LIVE, SEEN
 
@@ -97,16 +99,80 @@ def commit_questions(
 ) -> Found:
     """The questions of build ``b`` (the latest ready one) of the graph in ``store``. ``ceiling`` is the (level,
     location) of the most a reader of the set may see: a commit above it asks nothing."""
-    found = Found()
     b = b if b is not None else store.latest_ready()
     if b is None:
-        return found
-    held = _files(store, b)
+        return Found()
     rows = store.db.execute(
         "SELECT node_id, props, label_lvl, label_loc FROM nodes WHERE kind = 'Commit'"
         f" AND {LIVE} AND {SEEN} ORDER BY node_id",
         {"b": b},
     ).fetchall()
+    return _questions(
+        rows,
+        _files(store, b),
+        lambda ids: _messages(store, ids),
+        lambda ids: _changed(store, b, ids),
+        min_words=min_words,
+        max_files=max_files,
+        limit=limit,
+        ceiling=ceiling,
+    )
+
+
+def rows_questions(
+    rows: StoreRows,
+    *,
+    min_words: int = MIN_WORDS,
+    max_files: int = MAX_FILES,
+    limit: int = DEFAULT_LIMIT,
+    ceiling: tuple[int, int] | None = None,
+) -> Found:
+    """``commit_questions`` of the rows of a build (``evo_agents.kg.snapshot.StoreRows``), read as a reader without an
+    audience reads them."""
+    public = sorted(n for n in rows.nodes if n[10] is None)
+    commits = [(n[0], n[3], n[6], n[7]) for n in public if n[1] == "Commit"]
+    held: dict[str, set[str]] = {}
+    for n in public:
+        found = FILE_ID.match(n[0]) if n[1] == "File" else None
+        if found:
+            held.setdefault(found["repo"], set()).add(found["path"])
+    bodies = {key: row[4] or "" for key, row in rows.keyed if key == row[0] and len(row) == 5 and row[1] == "Commit"}
+
+    def changed(ids: list[str]) -> dict[str, list[str]]:
+        out: dict[str, list[str]] = {node_id: [] for node_id in ids}
+        for e in sorted(
+            (e for e in rows.edges if e[2] == "changes" and e[1] in out and e[10] is None), key=lambda e: e[3]
+        ):
+            found = FILE_ID.match(e[3])
+            if found:
+                out[e[1]].append(found["path"])
+        return out
+
+    return _questions(
+        commits,
+        held,
+        lambda ids: {i: bodies[i] for i in ids if i in bodies},
+        changed,
+        min_words=min_words,
+        max_files=max_files,
+        limit=limit,
+        ceiling=ceiling,
+    )
+
+
+def _questions(
+    rows,
+    held: dict[str, set[str]],
+    messages_of: Callable[[list[str]], dict[str, str]],
+    changed_of: Callable[[list[str]], dict[str, list[str]]],
+    *,
+    min_words: int,
+    max_files: int,
+    limit: int,
+    ceiling: tuple[int, int] | None,
+) -> Found:
+    """The questions of the Commit node rows ``rows`` (node id, props, level, location), by node id."""
+    found = Found()
     commits = []
     for node_id, props, level, location in rows:
         data = json.loads(props or "{}")
@@ -120,7 +186,7 @@ def commit_questions(
         else:
             commits.append((node_id, data))
     ids = [node_id for node_id, _ in commits]
-    messages, changed = _messages(store, ids), _changed(store, b, ids)
+    messages, changed = messages_of(ids), changed_of(ids)
     made = []
     for node_id, data in commits:
         paths = changed[node_id]

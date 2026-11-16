@@ -1296,7 +1296,8 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
         env = pg.clean_env(HOME=str(home), EVO_KG_HOME=str(laptop.home))
         harness = str(laptop.harness)
 
-        assert build_project(load_project_at(laptop.harness, laptop.home)).ok  # a graph built here, to compare below
+        built_here = build_project(load_project_at(laptop.harness, laptop.home))  # to compare with the hub's below
+        assert built_here.ok
         pushed = ok(pg.cli(["hub", "kg", "push", "--project", harness], env=env))
         assert pushed.stdout.startswith("project alpha: pushed 1 run(s)")
         again = ok(pg.cli(["hub", "kg", "push", "--project", harness], env=env))
@@ -1326,8 +1327,9 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
             local["edges"],
         )
         assert remote["graph"]["content_hash"] == local["content_hash"] == answer["build"]["content_hash"]
+        assert answer["build"]["content_hash"] == built_here.content_hash, "the hub builds what this machine builds"
 
-        # kg serve: the same seven tools whichever backend answers
+        # kg serve reads the hub, whatever the backend, and answers as a session over the graph built here
         hello = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}}
         tools = {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
         status = {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "kg_status", "arguments": {}}}
@@ -1348,12 +1350,17 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
 
         on_the_hub = f"project {PROJECT} on the hub: build"
         assert on_the_hub in shown(served_hub[2])["text"]
-        assert shown(served_hub[3])["_meta"][READ_META]["results_read"]
+        local = StoreSession(load_project_at(laptop.harness, laptop.home), AGENT).call("kg_search", {"query": "guide"})
+        hub_found, (local_found,) = shown(served_hub[3]), local["content"]
+        assert hub_found["text"].splitlines()[1:] == local_found["text"].splitlines()[1:]  # the first names the build
+        assert hub_found["_meta"][READ_META]["results_read"]
         signed_out = pg.clean_env(HOME=str(tmp_path / "nobody"), EVO_KG_HOME=str(laptop.home))
         served_local = mcp(["kg", "serve", "--project", harness], signed_out, hello, tools, status, search)
         assert [t["name"] for t in served_local[1]["result"]["tools"]] == [t["name"] for t in serve.TOOLS]
         for reply in served_local[2:]:  # the graph this machine built answers nothing: graphs are read on the hub
             assert reply["result"]["isError"] and "not signed in to a hub" in shown(reply)["text"]
+        (refused,) = mcp(["kg", "serve", "--backend", "hub", "--project", PROJECT], signed_out, status)
+        assert refused["result"]["isError"] and "not signed in to a hub" in shown(refused)["text"], refused
         auto = mcp(["kg", "serve", "--project", harness], env, status)  # signed in, and the hub has a graph
         assert on_the_hub in shown(auto[0])["text"]
 

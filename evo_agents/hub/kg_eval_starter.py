@@ -15,7 +15,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -23,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.access import ProjectRules
+from evo_agents.kg.snapshot import StoreRows
 
 log = logging.getLogger("evo_agents.hub.kg_eval_starter")
 
@@ -41,16 +41,11 @@ def clean(entries: list[dict]) -> list[dict]:
     return [{key: entry[key] for key in QUESTION_KEYS + ANSWER_KEYS if entry.get(key) is not None} for entry in entries]
 
 
-def questions_of(graph: Path, ceiling: tuple[int, int] | None) -> list[dict]:
-    """The starter questions of the graph in the store at ``graph``; none when it has no ready build. Blocking."""
-    from evo_agents.kg.eval_commits import commit_questions
-    from evo_agents.kg.store import Store
+def questions_of(rows: StoreRows, ceiling: tuple[int, int] | None) -> list[dict]:
+    """The starter questions of the rows of a build (``evo_agents.kg.eval_commits.rows_questions``). Blocking."""
+    from evo_agents.kg.eval_commits import rows_questions
 
-    store = Store.open_file(graph)
-    try:
-        return commit_questions(store, ceiling=ceiling).questions
-    finally:
-        store.close()
+    return rows_questions(rows, ceiling=ceiling).questions
 
 
 async def start(conn: AsyncConnection, project_id: int, project: str, questions: list[dict]) -> int | None:

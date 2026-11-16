@@ -18,10 +18,11 @@ import pytest
 
 pytest.importorskip("sqlalchemy", reason="the hub's graph health needs the hub-server extra, evo-ak[hub-server]")
 
-from evo_agents.hub import kg_build, kg_coverage, kg_health_eval, ledger, review
+from evo_agents.hub import kg_coverage, kg_health_eval, ledger, review
 from evo_agents.hub.kg_graph import BuiltGraph
 from evo_agents.hub.kg_snapshots import Held
 from evo_agents.hub.server import kg_health
+from evo_agents.kg import graph_rows
 from evo_agents.kg.build import build_project
 from evo_agents.kg.health import is_test_path
 from evo_agents.kg.policy import Label
@@ -133,7 +134,11 @@ def demo(tmp_path, monkeypatch):
 
 
 def test_a_built_graph_says_which_python_methods_no_call_reaches_and_which_files_each_git_source_holds(demo):
-    reach = kg_build.graph_reach(demo.graph)
+    store = Store.open_file(demo.graph, immutable=True)
+    try:
+        reach = graph_rows.call_reach(store_rows(store, store.latest_ready()))
+    finally:
+        store.close()
     assert reach == {  # rank_results is called by search, search by Server.handle; nothing calls handle
         "functions": 2,
         "uncalled_functions": 0,
@@ -345,7 +350,19 @@ def test_the_lens_kg_health_has_its_figure_and_metrics_in_the_ledger():
     )
     before = night(4, behind=3, missing=2, empty=4, fallbacks=2, edited=4, in_top=1)
     values = [ledger.read_metric(before, key) for key in ledger.LENS_METRICS["kg_health"]]
-    assert values == [3.0, 3.0, 4.0, 2.0, 3.0, 400.0, 2000.0, 1200.0, 25.0, 50.0, *[0.0] * len(LENS_RULES)]  # no queue yet
+    assert values == [
+        3.0,
+        3.0,
+        4.0,
+        2.0,
+        3.0,
+        400.0,
+        2000.0,
+        1200.0,
+        25.0,
+        50.0,
+        *[0.0] * len(LENS_RULES),
+    ]  # no queue yet
     assert len(ledger.LENS_METRICS["kg_health"]) <= ledger.MAX_METRICS, "a trigger holds every metric of the lens"
     before["kg_health"]["review"] = {"build_id": 7, "open": {"dangling_mention": 2, "bulk_noise": 1}}
     assert ledger.read_metric(before, "kg_review_dangling_mention") == 2.0

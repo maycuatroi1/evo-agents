@@ -5,8 +5,7 @@ A build of project P (job ``hub.kg_build``, under the lock ``kg:P``) runs in the
 - ``harness/P/``: a harness.yaml, and the knowledge.yaml and ontology.yaml of P's config (``kg_configs``), so the
   build loads P like any project, and ``evo_agents.kg.build.build_project`` with ``verify=True`` on that harness,
   with ``EVO_KG_HOME=<data dir>/kg/home``, checks the worker's store by hand.
-- ``home/P/``: P's corpus as ``evo_agents.kg.corpus`` lays it out (log/, blobs/, corpus.sqlite), its memo and its
-  latest graph.sqlite.
+- ``home/P/``: P's corpus as ``evo_agents.kg.corpus`` lays it out (log/, blobs/, corpus.sqlite) and its memo.
 
 The sources of the core plugins the project enables (``evo_agents.hub.kg_sources``) are read from the hub's database
 first: the config written into the cache names them and their identifiers, and their items and cursors in the corpus
@@ -17,12 +16,13 @@ unless a later run's is, so a git source's coverage names the commit its newest 
 A merge cannot be undone, so a corpus holding a run merged from the hub that kg_ingests no longer lists (its source
 was taken off the hub) is started again first, its blobs kept (``drop_forgotten``).
 Then every blob a live item refers to and the cache lacks is fetched, checked, and moved into place. The graph is
-built by ``evo_agents.kg.build`` into a fresh store, which leaves WAL mode and replaces graph.sqlite in one rename: the
-worker's working copy, which the next build compares with and which no reader fetches. Anything that fails marks the build failed with a message naming no content, and the worker
-goes on with the next job.
+built in memory by ``evo_agents.kg.build.build_rows``, into the rows a store would hold of it (``evo_agents.kg.graph_rows``),
+its clustering started from the clusters of the graph the hub keeps; no graph file is written. Anything that fails
+marks the build failed with a message naming no content, and the worker goes on with the next job.
 
-A build whose corpus state and inputs (the knowledge config, the code, the cursors) are those of the graph.sqlite
-in the cache builds nothing (``skipped``): it takes that file, whose content hash is the latest build's. Most pushes carry runs that changed nothing, and such a build takes seconds, not minutes.
+A build whose corpus state and inputs (the knowledge config, the code, the cursors) are those the graph the hub keeps
+was built from builds nothing (``skipped``): it takes those rows, whose content hash is the latest build's. Most pushes
+carry runs that changed nothing, and such a build takes seconds, not minutes.
 
 A build uploads no graph file: the graph's rows go to the hub's tables (``keep_graph``, ``evo_agents.hub.kg_graph_rows``),
 which the api's snapshots read, and the build row gets the content hash and the counts, its ``artifact_*`` columns
@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import hashlib
 import json
 import logging
 import os
@@ -55,6 +54,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 from sqlalchemy import BigInteger, Text, cast, column, delete, exists, func, insert, literal, or_, select, table, update
@@ -84,11 +84,15 @@ from evo_agents.hub.heap import give_back
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
 from evo_agents.hub.kg_source_state import fill_run_facts
-from evo_agents.kg import settings
+from evo_agents.kg import graph_rows, settings
 from evo_agents.kg import strategy as kg_strategy
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import Project, load_project_at
 from evo_agents.kg.protocol import sha256 as sha256_of
+from evo_agents.kg.snapshot import StoreRows
+
+if TYPE_CHECKING:
+    from evo_agents.kg.build import BuildReport
 
 log = logging.getLogger(__name__)
 
@@ -156,9 +160,7 @@ class Ingest:
 
 @dataclass(frozen=True)
 class Built:
-    path: Path
-    sha256: str
-    size: int
+    rows: StoreRows  # the graph's rows, with its asked index and vectors (``evo_agents.kg.graph_rows``)
     content_hash: str
     nodes: int
     edges: int
@@ -169,6 +171,7 @@ class Built:
     files: dict | None = None  # the files of each git source (``kg_coverage.source_files``)
     requests: tuple | None = None  # the deferred entity requests: path, sha256, size, count (``kg_entity_relay``)
     items: tuple = ()  # the live items of its corpus, as kg_corpus_items keeps them (``kg_graph_rows``)
+    read: str | None = None  # a skipped build's: the content hash of the head of main it took its rows from
 
 
 def kg_root(data_dir: Path) -> Path:
@@ -311,62 +314,36 @@ def prepare_corpus(store: BlobStore, project: Project, ingests: list[Ingest]) ->
         corpus.close()
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(CHUNK), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def build_graph(
     project: Project,
     *,
+    previous: StoreRows | None = None,
     entity_inbox: dict | None = None,
     entity_outbox: list | None = None,
     entity_keys: dict | None = None,
-) -> tuple[Path, object]:
-    """Build ``project`` into a fresh store and make it its graph.sqlite: one file, out of WAL mode. The path and the
-    build report; BuildFailure when the build reports errors. When the graph.sqlite of the cache was built from the
-    corpus state and the inputs ``project`` has now (``evo_agents.kg.build.unchanged``), nothing is built: that file
-    and the report of its build, ``skipped``. ``entity_inbox``, ``entity_outbox`` and ``entity_keys`` go to the
-    entities step (``evo_agents.kg.entities.run``)."""
-    from evo_agents.kg.build import build_project, unchanged
-    from evo_agents.kg.store import Store
+) -> tuple[StoreRows, BuildReport]:
+    """Build ``project`` in memory (``evo_agents.kg.build.build_rows``): the rows of its graph and the build report;
+    BuildFailure when the build reports errors. ``previous``, the rows of the graph the hub keeps: when they were
+    built from the corpus state and the inputs ``project`` has now (``unchanged_rows``), nothing is built, and they
+    come back with a report of them, ``skipped``; otherwise the clustering starts from their clusters.
+    ``entity_inbox``, ``entity_outbox`` and ``entity_keys`` go to the entities step (``evo_agents.kg.entities.run``)."""
+    from evo_agents.kg.build import build_rows, unchanged_rows
+    from evo_agents.kg.snapshot import rows_clusters
 
-    target = project.root / "graph.sqlite"
-    current = unchanged(project) if not Path(f"{target}-wal").exists() else None  # a WAL: written by hand since
-    if current is not None:
-        return target, current
-    stage = Store.staging(target)
-    try:
-        report = build_project(
-            project, store=stage, entity_outbox=entity_outbox, entity_inbox=entity_inbox, entity_keys=entity_keys
-        )
-        if not report.ok:
-            shown = "; ".join(report.errors[:5])
-            raise BuildFailure(f"the build reported {len(report.errors)} error(s): {shown}")
-        stage.leave_wal()
-    finally:
-        stage.close()
-    for stale in (Path(f"{target}-wal"), Path(f"{target}-shm")):
-        stale.unlink(missing_ok=True)
-    os.replace(stage.path, target)
-    return target, report
-
-
-def graph_reach(path: Path) -> dict | None:
-    """The call reach of the graph in the store at ``path`` (``evo_agents.kg.health.call_reach``); None when it has no
-    ready build."""
-    from evo_agents.kg.health import call_reach
-    from evo_agents.kg.store import Store
-
-    graph = Store.open_file(path)
-    try:
-        b = graph.latest_ready()
-        return call_reach(graph, b) if b is not None else None
-    finally:
-        graph.close()
+    current = unchanged_rows(project, previous)
+    if current is not None and previous is not None:
+        return previous, current
+    report, rows = build_rows(
+        project,
+        warm=rows_clusters(previous.clusters) if previous is not None else None,
+        entity_outbox=entity_outbox,
+        entity_inbox=entity_inbox,
+        entity_keys=entity_keys,
+    )
+    if not report.ok or rows is None:
+        shown = "; ".join(report.errors[:5])
+        raise BuildFailure(f"the build reported {len(report.errors)} error(s): {shown}")
+    return rows, report
 
 
 def put_tuning(root: Path, tuning: settings.Tuning) -> None:
@@ -394,6 +371,7 @@ def build_in_cache(
     keys: dict | None = None,
     maps: list[str] | None = None,
     vector_cache: kg_semantic.HubCache | None = None,
+    previous: StoreRows | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
     from the blob store, the graph, whose rows ``record`` keeps in the hub's tables, and what the
@@ -407,7 +385,9 @@ def build_in_cache(
     for ``record`` to keep (``kg_entity_relay``). ``uploads``: the newest upload read of each upload source, whose
     items are fetched and held as a plugin's (``kg_upload_sources``). ``keys``: the key of the entities step's url
     model, in memory (``evo_agents.hub.server.kg_entity_key``). ``maps``: the hashes of the project's kg-entity-map
-    blobs, put where the entity_map step reads them (``kg_entity_maps``). Blocking."""
+    blobs, put where the entity_map step reads them (``kg_entity_maps``). ``previous``: the rows of the graph the hub
+    keeps, which a build of the same corpus state and inputs takes again, and whose clusters a build starts from
+    (``build_graph``). Blocking."""
     give_back()  # what the worker's last build and the tables it wrote still held, before this one
     uploads = uploads or []
     sources = (sources or []) + kg_upload_sources.load_all(store, data_dir, uploads, config["knowledge"], name)
@@ -424,13 +404,16 @@ def build_in_cache(
         vector_cache.seed(project.root, semantic.model)  # before the build replaces the graph that holds them
     inbox = kg_entity_relay.read_answers(store, answers) if answers else {}
     outbox: list[dict] = []
-    path, report = build_graph(project, entity_inbox=inbox, entity_outbox=outbox, entity_keys=keys)
+    rows, report = build_graph(project, previous=previous, entity_inbox=inbox, entity_outbox=outbox, entity_keys=keys)
     requests = kg_entity_relay.write_requests(project.root, outbox) if not report.skipped else None
-    asked = kg_asked.write(path, learned) if learned is not None else None
-    content_hash = report.content_hash if asked is None else sha256_of(f"{report.content_hash}\n{asked}")
+    asked = None
+    if learned is not None:
+        rows, asked = kg_asked.put(rows, learned)
+    graph_hash = str(rows.summary["content_hash"])  # the graph's own, without the asked index and the vectors
+    content_hash = graph_hash if asked is None else sha256_of(f"{graph_hash}\n{asked}")
     vector_coverage = None
     if semantic is not None:
-        vectors = kg_semantic.index(path, semantic, vector_cache or project.root / kg_semantic.SEED_FILES[0])
+        rows, vectors = kg_semantic.index(rows, semantic, vector_cache or project.root / kg_semantic.SEED_FILES[0])
         if vectors.error:
             log.warning("kg build without vectors", extra={"project": name, "error": vectors.error})
         if vectors.digest is not None:
@@ -438,17 +421,14 @@ def build_in_cache(
         if semantic.indexes:
             vector_coverage = vectors.coverage(semantic.model)
     give_back()  # what the build and the model of its vectors took, before the hub's tables take the graph's rows
-    sha256 = _sha256(path)
-    coverage = kg_coverage.build_coverage(report.coverage, graph_reach(path), skipped=report.skipped)
+    coverage = kg_coverage.build_coverage(report.coverage, graph_rows.call_reach(rows), skipped=report.skipped)
     kg_upload_sources.annotate(coverage, uploads)
     if vector_coverage is not None:
         coverage["vectors"] = vector_coverage
     if requests is not None:
         coverage["entity_requests"] = {"sha256": requests[1], "count": requests[3]}
     return Built(
-        path,
-        sha256,
-        path.stat().st_size,
+        rows,
         content_hash,
         report.nodes,
         report.edges,
@@ -459,6 +439,7 @@ def build_in_cache(
         kg_coverage.source_files(project),
         requests,
         tuple(_corpus_items(project)),
+        previous.content_hash if report.skipped and previous is not None else None,
     )
 
 
@@ -468,19 +449,6 @@ def _corpus_items(project: Project) -> list:
         return kg_graph_rows.corpus_items(corpus.items())
     finally:
         corpus.close()
-
-
-def graph_rows_of(path: Path):
-    """The rows of the latest build of the store file ``path`` (``evo_agents.kg.snapshot.store_rows``). Blocking."""
-    from evo_agents.kg.snapshot import store_rows
-    from evo_agents.kg.store import Store
-
-    store = Store.open_file(path, immutable=True)
-    try:
-        b = store.latest_ready()
-        return store_rows(store, b) if b is not None else None
-    finally:
-        store.close()
 
 
 def describe_failure(exc: BaseException) -> str:
@@ -534,7 +502,6 @@ def _project_id(name: str):
 
 async def record(engine, store: BlobStore, project_id: int, build_id: int, digest: str | None, built: Built) -> None:
     """Mark build ``build_id`` succeeded with ``built`` and keep its graph in the hub's tables (see the module)."""
-    rows = await asyncio.to_thread(graph_rows_of, built.path)
     if built.requests is not None:
         await asyncio.to_thread(store.put_file, built.requests[1], built.requests[0])
     async with engine.begin() as conn:
@@ -559,7 +526,7 @@ async def record(engine, store: BlobStore, project_id: int, build_id: int, diges
             path, sha, size, _ = built.requests
             await kg_entity_relay.hold(conn, store, project_id, sha, path, size, kg_entity_relay.REQUESTS_KIND, None)
         await keep_source_files(conn, project_id, build_id, built.files)
-        await keep_graph(conn, project_id, build_id, built, rows)
+        await keep_graph(conn, project_id, build_id, built)
         try:  # the Curator configures a new graph from its profile (kg_init); a failure never fails the build
             async with conn.begin_nested():
                 await kg_init_db.on_build(conn, project_id, build_id, built.coverage)
@@ -572,19 +539,37 @@ async def record(engine, store: BlobStore, project_id: int, build_id: int, diges
             log.exception("a kg entity map run was not queued", extra={"project_id": project_id, "build_id": build_id})
 
 
-async def keep_graph(conn: AsyncConnection, project_id: int, build_id: int, built: Built, rows) -> None:
+async def keep_graph(conn: AsyncConnection, project_id: int, build_id: int, built: Built) -> None:
     """Keep the corpus items and the graph of a build in the hub's tables, only what changed, and notify the readers
-    (``kg_graph_rows``). The head's content hash is the build's, which folds in the asked index and the vectors."""
+    (``kg_graph_rows``). The head's content hash is the build's, which folds in the asked index and the vectors. A
+    skipped build's rows are those the hub kept, its merged branches applied already; a new build's get them. A
+    skipped build whose head of main a merge moved since it read it (under the project's lock, as here) leaves it."""
     corpus = await kg_graph_rows.merge_corpus(conn, project_id, list(built.items))
-    if rows is None:
-        return
-    rows = dataclasses.replace(rows, content_hash=built.content_hash)
+    rows = dataclasses.replace(built.rows, content_hash=built.content_hash)
+    if not built.skipped:  # a skipped build keeps the head it read, and its build id
+        rows = dataclasses.replace(rows, summary={**rows.summary, "build_id": build_id})
     await kg_branches.lock(conn, project_id)  # a merge of a draft branch writes main too (``kg_branches``)
-    rows = await kg_branches.overlay(conn, project_id, rows)
+    if built.skipped and await _head_hash(conn, project_id) != built.read:
+        # a branch merged since the build read main: main is as the merge wrote it, which the next build takes again
+        log.info("kg graph left as a merge wrote it", extra={"project_id": project_id, "build_id": build_id})
+        return
+    if not built.skipped:
+        rows = await kg_branches.overlay(conn, project_id, rows)
     changed = await kg_graph_rows.write_graph(conn, project_id, build_id, rows)
     log.info(
         "kg graph kept", extra={"project_id": project_id, "build_id": build_id, "corpus": corpus.counts(), **changed}
     )
+
+
+async def _head_hash(conn: AsyncConnection, project_id: int) -> str | None:
+    heads = tables.kg_graph_heads
+    return (
+        await conn.execute(
+            select(heads.c.content_hash).where(
+                heads.c.project_id == project_id, heads.c.branch_id == kg_graph_rows.MAIN
+            )
+        )
+    ).scalar_one_or_none()
 
 
 async def start_eval_set(engine, project_id: int, project: str, built: Built) -> None:
@@ -599,7 +584,7 @@ async def start_eval_set(engine, project_id: int, project: str, built: Built) ->
             ).first():
                 return
             ceiling = await kg_eval_starter.ceiling_of(conn, project_id, project)
-        questions = await asyncio.to_thread(kg_eval_starter.questions_of, built.path, ceiling)
+        questions = await asyncio.to_thread(kg_eval_starter.questions_of, built.rows, ceiling)
         async with engine.begin() as conn:
             made = await kg_eval_starter.start(conn, project_id, project, questions)
         if made:
@@ -725,6 +710,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             tuning = await kg_settings.read(conn, project_id)
             uploads = await kg_upload_sources.latest(conn, project_id)
             keys, key_from = await _entity_key(conn, context, project_id, tuning)
+            previous = await kg_graph_rows.read_graph(conn, project_id)
         built = await asyncio.to_thread(
             build_in_cache,
             context.blobs,
@@ -741,6 +727,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             keys,
             maps,
             kg_semantic.HubCache(engine, asyncio.get_running_loop(), project_id),
+            previous,
         )
         entities_coverage = (built.coverage or {}).get("entities")
         if key_from is not None and isinstance(entities_coverage, dict):

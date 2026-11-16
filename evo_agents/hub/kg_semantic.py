@@ -2,8 +2,8 @@
 kg_semantic, off without one. ``read`` gives the build its settings; ``write`` is how the KG optimize loop turns the
 search by meaning on, to ``on`` only when the holdout of its eval set says it helps (plan kg-retrieval-quality, a12):
 hit@5 at least five points above the search by words, tokens per answer file not up, p95 under a second.
-``index`` puts the vectors the settings ask for into a built graph.sqlite, out of WAL mode again after, embedding only
-what the project's ``HubCache`` lacks: its vectors by model and digest of their text, in kg_vector_cache."""
+``index`` puts the vectors the settings ask for into the rows of a build, embedding only what the project's
+``HubCache`` lacks: its vectors by model and digest of their text, in kg_vector_cache."""
 
 from __future__ import annotations
 
@@ -16,7 +16,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.kg import semantic, store_vectors
+from evo_agents.kg import graph_rows, semantic, store_vectors
+from evo_agents.kg.snapshot import StoreRows
 
 DEFAULT_NEW_MODE = "index"  # a project registered now: vectors written, search by words until the holdout says on
 
@@ -49,19 +50,33 @@ async def write(
 EMBED_BUDGET_SECONDS = 300.0  # a build embeds for 5 minutes at most, so it frees its worker; the rest wait for the next
 
 
-def index(path: Path, settings: semantic.Settings, cache: semantic.Cache | Path) -> semantic.Indexed:
-    """The vectors ``settings`` asks for, in the graph at ``path``; embedded only when ``cache`` (a HubCache, or the
-    path of a vectors.sqlite) lacks them, for at most EMBED_BUDGET_SECONDS (the model is downloaded first, here,
-    never by a search). A model this call loaded is dropped after: kept in a worker's process, it stayed on top of
-    the next build's peak (some 1.2 GB for bge-m3), which a kg worker's memory cap did not hold. Blocking."""
+def index(
+    rows: StoreRows, settings: semantic.Settings, cache: semantic.Cache | Path
+) -> tuple[StoreRows, semantic.Indexed]:
+    """``rows`` with the vectors ``settings`` asks for (``evo_agents.kg.graph_rows.RowsVectors``), and what was indexed;
+    embedded only when ``cache`` (a HubCache, or the path of a vectors.sqlite) lacks them, for at most
+    EMBED_BUDGET_SECONDS (the model is downloaded first, here, never by a search). A model this call loaded is dropped
+    after: kept in a worker's process, it stayed on top of the next build's peak (some 1.2 GB for bge-m3), which a kg
+    worker's memory cap did not hold. Blocking."""
     loaded = semantic.is_loaded(settings.model)
     try:
-        if isinstance(cache, Path):
-            return store_vectors.index_file(path, settings, cache, leave_wal=True, budget=EMBED_BUDGET_SECONDS)
-        return store_vectors.index_file(path, settings, cache=cache, leave_wal=True, budget=EMBED_BUDGET_SECONDS)
+        graph = graph_rows.RowsVectors(rows)
+        if not isinstance(cache, Path):
+            found = _indexed(graph, settings, cache)
+            return graph.held, found
+        own = store_vectors.FileCache(cache)
+        try:
+            found = _indexed(graph, settings, own)
+        finally:
+            own.close()
+        return graph.held, found
     finally:
         if not loaded:
             semantic.forget_model(settings.model)
+
+
+def _indexed(graph: graph_rows.RowsVectors, settings: semantic.Settings, cache: semantic.Cache) -> semantic.Indexed:
+    return semantic.index(graph, settings, cache, budget=EMBED_BUDGET_SECONDS)
 
 
 SEED_FILES = (

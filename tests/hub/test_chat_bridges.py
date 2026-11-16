@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 pytest.importorskip("fastapi", reason="the hub extras are not installed")
+pytest.importorskip("sqlalchemy", reason="needs the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub.server.chat_access import LabelProject, channel_allows, with_override
 from tests.hub import pg

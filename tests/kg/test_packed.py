@@ -2,12 +2,23 @@
 not as objects, and a model a hub build loaded only for itself dropped after it. Both had a build of some 25,000 items
 past a kg worker's memory cap."""
 
+from dataclasses import replace
+
 from evo_agents.hub import kg_semantic
 from evo_agents.kg import build, semantic, store_vectors
 from evo_agents.kg.packed import Packed
+from evo_agents.kg.snapshot import StoreRows, store_rows
 from evo_agents.kg.store import Store
 from tests.kg.test_hybrid import FAKE, Words, with_garage
 from tests.kg.test_store import sync_build
+
+
+def rows_of(project) -> StoreRows:
+    store = Store.open_file(project.root / "graph.sqlite", immutable=True)
+    try:
+        return replace(store_rows(store, store.latest_ready()), vectors=(), vector_info=None)
+    finally:
+        store.close()
 
 
 def test_a_packed_value_reads_back_equal_and_a_fresh_copy_each_time():
@@ -48,17 +59,13 @@ def test_a_hub_build_drops_the_model_it_loaded_and_keeps_one_already_loaded(tmp_
     monkeypatch.setitem(semantic.FACTORIES, FAKE, Words)
     project = with_garage(tmp_path, kg_env)
     sync_build(project)
-    graph = project.root / "graph.sqlite"
-    store = Store(graph)
-    store.leave_wal()
-    store.close()
     cache = tmp_path / "cache" / store_vectors.CACHE_FILE
     try:
-        done = kg_semantic.index(graph, semantic.Settings("index", FAKE), cache)
+        _, done = kg_semantic.index(rows_of(project), semantic.Settings("index", FAKE), cache)
         assert done.rows > 0 and done.embedded == done.rows and not done.error
         assert not semantic.is_loaded(FAKE)
         semantic.embedder(FAKE)
-        kg_semantic.index(graph, semantic.Settings("index", FAKE), cache)
+        kg_semantic.index(rows_of(project), semantic.Settings("index", FAKE), cache)
         assert semantic.is_loaded(FAKE)
     finally:
         semantic.forget_models()

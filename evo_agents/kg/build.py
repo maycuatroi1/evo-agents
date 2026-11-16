@@ -22,7 +22,7 @@ import sqlite3
 import tempfile
 import time
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -64,7 +64,7 @@ from evo_agents.kg.schema import known_kinds, known_relations
 from evo_agents.kg.settings import DEFAULT as DEFAULT_TUNING
 from evo_agents.kg.settings import SettingsError, Tuning
 from evo_agents.kg.settings import read as read_tuning
-from evo_agents.kg.snapshot import Snapshot
+from evo_agents.kg.snapshot import Snapshot, StoreRows
 from evo_agents.kg.store import Graph, StaleSchema, Store
 from evo_agents.kg.store_clusters import Clusters
 from evo_agents.kg.store_filters import label_columns
@@ -645,6 +645,110 @@ def unchanged(project: Project) -> BuildReport | None:
     return report
 
 
+def _assemble(
+    project: Project,
+    report: BuildReport,
+    corpus: Corpus,
+    memo: Memo,
+    warm_of: Callable[[], Clusters | None],
+    entity_outbox: list | None,
+    entity_inbox: dict | None,
+    entity_keys: dict | None,
+) -> tuple[Graph, dict, Clusters | None] | None:
+    """The graph of the project, its coverage and the clusters ``warm_of`` gave its clustering to start from; None when
+    the pipeline reported errors, which ``report`` then holds."""
+    graph, coverage, errors, issues = run_pipeline(
+        project, corpus, memo, entity_outbox=entity_outbox, entity_inbox=entity_inbox, entity_keys=entity_keys
+    )
+    add_reads(coverage, corpus)
+    memo.commit()
+    report.memo = memo.stats()
+    report.issues = issues[:50]
+    report.warnings = coverage.get("warnings", [])
+    report.coverage = coverage
+    if errors:
+        report.errors = errors
+        return None
+    add_curation(graph, coverage)
+    warm = warm_of()
+    add_clusters(project, graph, coverage, warm)
+    add_review(graph, coverage, project.ontology)
+    return graph, coverage, warm
+
+
+def build_rows(
+    project: Project,
+    *,
+    warm: Clusters | None = None,
+    entity_outbox: list | None = None,
+    entity_inbox: dict | None = None,
+    entity_keys: dict | None = None,
+) -> tuple[BuildReport, StoreRows | None]:
+    """Build the project's graph in memory, without a store: the report and the rows a store would hold of the build
+    (``graph_rows``), None when the build failed. The clustering starts from ``warm``, the clusters of the build
+    before; the corpus state the build read is the stats' ``state_digest``, for ``unchanged_rows``. The audit log
+    gets its line, as from ``build_project``."""
+    from evo_agents.kg.graph_rows import graph_rows
+
+    started_at = utc_now()
+    report = BuildReport(project.name, ok=False)
+    crashed, rows = None, None
+    started = time.monotonic()
+    corpus = project.corpus()
+    path = memo_path(project)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    memo = Memo(path)
+    try:
+        found = _assemble(project, report, corpus, memo, lambda: warm, entity_outbox, entity_inbox, entity_keys)
+        if found is not None:
+            graph, coverage, warm = found
+            stats = {
+                "memo": report.memo,
+                "inputs": build_inputs(project, corpus),
+                "state_digest": corpus.read_digest,
+                "warm": len(warm.members) if warm is not None else 0,
+            }
+            rows = graph_rows(graph, coverage=coverage, stats=stats, built_at=utc_now())
+            size = rows.summary["stats"]["size"]
+            report.ok, report.content_hash = True, rows.content_hash
+            report.nodes, report.edges, report.units = size["nodes"], size["edges"], size["units"]
+            report.dangling_edges = coverage["dangling_edges"]
+    except BaseException as exc:
+        crashed = type(exc).__name__
+        raise
+    finally:
+        memo.close()
+        corpus.close()
+        report.seconds = round(time.monotonic() - started, 3)
+        audit.record_build(project.root, report, started=started_at, finished=utc_now(), exception=crashed)
+    return report, rows
+
+
+def unchanged_rows(project: Project, rows: StoreRows | None) -> BuildReport | None:
+    """The report of the build ``rows`` hold (``build_rows``) when it was made of the corpus state the project has now,
+    with the inputs it has now: a build would make those rows again (``unchanged``, for rows kept elsewhere). None
+    otherwise, and without rows or a state they recorded."""
+    if rows is None or not rows.summary.get("ready"):
+        return None
+    stats, coverage = rows.summary.get("stats") or {}, rows.summary.get("coverage") or {}
+    corpus = project.corpus()
+    try:
+        state, inputs = corpus.state_digest(), build_inputs(project, corpus)
+    finally:
+        corpus.close()
+    if inputs is None or stats.get("state_digest") != state or stats.get("inputs") != inputs:
+        return None
+    if entities.unfinished(coverage):  # items left for a later build: this build goes on with them
+        return None
+    size = stats.get("size") or rows.summary
+    hashed = rows.summary.get("content_hash") or rows.content_hash  # the graph's: a keeper's may fold in more
+    report = BuildReport(project.name, ok=True, content_hash=hashed, skipped=True)
+    report.nodes, report.edges, report.units = size["nodes"], size["edges"], size["units"]
+    report.coverage, report.warnings = coverage, coverage.get("warnings", [])
+    report.issues, report.dangling_edges = coverage.get("issues", []), coverage.get("dangling_edges", 0)
+    return report
+
+
 def _build(
     project: Project,
     report: BuildReport,
@@ -663,23 +767,20 @@ def _build(
         path.parent.mkdir(parents=True, exist_ok=True)
         memo = Memo(path)
     try:
-        graph, coverage, errors, issues = run_pipeline(
-            project, corpus, memo, entity_outbox=entity_outbox, entity_inbox=entity_inbox, entity_keys=entity_keys
-        )
-        add_reads(coverage, corpus)
-        memo.commit()
-        report.memo = memo.stats()
-        report.issues = issues[:50]
-        report.warnings = coverage.get("warnings", [])
-        report.coverage = coverage
-        if errors:
-            report.errors = errors
-            return
-        add_curation(graph, coverage)
         target = project.root / "graph.sqlite"
-        warm = previous_clusters(store, target)
-        add_clusters(project, graph, coverage, warm)
-        add_review(graph, coverage, project.ontology)
+        found = _assemble(
+            project,
+            report,
+            corpus,
+            memo,
+            lambda: previous_clusters(store, target),
+            entity_outbox,
+            entity_inbox,
+            entity_keys,
+        )
+        if found is None:
+            return
+        graph, coverage, warm = found
         if store is None:
             found = Store.stored_schema(target)
             if found not in (None, kg_store.SCHEMA_VERSION):

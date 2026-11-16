@@ -6,6 +6,7 @@ with the session's label, read back only through a sink whose clearance reads th
 FACET_VERSION changes, replaces the labels before it; and the night's figures push the share of the chains of lookups a
 grep followed as a signal, once a night."""
 
+from dataclasses import replace
 from datetime import date
 from functools import partial
 
@@ -16,7 +17,7 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import column, create_engine, func, insert, select, table
+from sqlalchemy import func, insert, select
 
 from evo_agents.hub import facets, kg_asked, kg_labels, tables
 from evo_agents.hub.server.curator_shift import owner_access
@@ -24,6 +25,7 @@ from evo_agents.hub.server.kg_labels import visible_labels
 from evo_agents.kg.build import build_project
 from evo_agents.kg.evaluate import HOLDOUT, split_of
 from evo_agents.kg.policy import Policy
+from evo_agents.kg.snapshot import store_rows
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from tests.hub.live import sql
@@ -32,19 +34,6 @@ from tests.hub.test_facet_job import SESSION, analyzed, later, session_facet_of,
 from tests.hub.test_runs import OWNER, PROJECT
 from tests.hub.test_session_transcripts import hub, parts_of, send, statuses, transcript  # noqa: F401 (hub: a fixture)
 from tests.kg.projects import make_project
-
-ASKED_ROWS = table("node_asked_rows", column("node_id"), column("lvl"))  # of the graph's SQLite file
-
-
-def asked_rows(graph, *columns) -> list[tuple]:
-    """The rows of node_asked_rows in ``graph``, ordered by ``columns``."""
-    engine = create_engine(f"sqlite:///{graph}")
-    try:
-        with engine.connect() as conn:
-            return [tuple(row) for row in conn.execute(select(*columns).order_by(*columns))]
-    finally:
-        engine.dispose()
-
 
 KG = "mcp__plugin_evo-hub_evo-hub__kg_search"
 FOUND = """2 result(s) for 'claim a job' in project evo-agents (build 3)
@@ -227,21 +216,19 @@ def test_a_build_learns_the_searches_under_their_labels_and_keeps_the_chance_an_
     demo = make_project(tmp_path, tmp_path / "kg-home")
     sync_project(demo)
     assert build_project(demo).ok
-    graph = demo.root / "graph.sqlite"
-    assert kg_asked.write(graph, learned) is not None
-    store = Store.open_file(graph)
-    rows = asked_rows(graph, ASKED_ROWS.c.node_id, ASKED_ROWS.c.lvl)
-    assert rows == [
+    store = Store.open_file(demo.root / "graph.sqlite", immutable=True)
+    try:
+        built = store_rows(store, store.latest_ready())
+    finally:
+        store.close()
+    held, digest = kg_asked.put(built, learned)
+    assert digest is not None
+    assert sorted((row[0], row[1]) for row in held.asked) == [
         ("app:file:app/server.py", policy.levels.index("customer")),  # opened after the grep
         ("symbol:app:app/server.py::Server.handle", policy.levels.index("internal")),  # the explored result read
     ]
-    store.asked_clearance = (policy.levels.index("internal"), len(policy.locations) - 1)
-    assert store._asked_scores("server secrets") == {}, "an internal reader reads no customer row"
-    store.close()
 
     too_alike = kg_asked.Learned(learned.labels, ["handle requests"])
-    assert kg_asked.write(graph, kg_asked.Learned([], [])) is None
-    assert kg_asked.write(graph, too_alike) is not None
-    store = Store.open_file(graph)
-    assert [r[0] for r in asked_rows(graph, ASKED_ROWS.c.node_id)] == ["app:file:app/server.py"]
-    store.close()
+    assert kg_asked.put(built, kg_asked.Learned([], [])) == (replace(built, asked=(), asked_weight=None), None)
+    held, digest = kg_asked.put(built, too_alike)
+    assert digest is not None and [row[0] for row in held.asked] == ["app:file:app/server.py"]

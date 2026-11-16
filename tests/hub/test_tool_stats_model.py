@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 pytest.importorskip("fastapi")
+pytest.importorskip("sqlalchemy", reason="needs the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub.server.tool_stats import ToolFigures, summarize, tool_name
 

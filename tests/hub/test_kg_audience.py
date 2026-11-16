@@ -121,7 +121,7 @@ def items(one: int, two: int) -> list[dict]:
 
 def build(root: Path, monkeypatch, one: int, two: int) -> SimpleNamespace:
     """The graph of aud with the items of chats ``one`` and ``two``, built on a machine."""
-    from evo_agents.hub.kg_build import build_graph
+    from evo_agents.kg.build import build_project
     from evo_agents.kg.project import load_project_at
     from evo_agents.kg.sync import sync_project
 
@@ -133,7 +133,8 @@ def build(root: Path, monkeypatch, one: int, two: int) -> SimpleNamespace:
     monkeypatch.setenv("EVO_KG_HOME", str(home))
     project = load_project_at(harness, home)
     assert all(result.ok for result in sync_project(project, ["chat"]))
-    path, report = build_graph(project)
+    report = build_project(project)
+    path = project.root / "graph.sqlite"
     data = path.read_bytes()
     return SimpleNamespace(data=data, sha256=hashlib.sha256(data).hexdigest(), report=report)
 
