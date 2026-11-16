@@ -13,10 +13,15 @@ event loop beside it (``kg build``, the bench) runs at full speed."""
 from __future__ import annotations
 
 import heapq
+import logging
+import queue
+import sys
+import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from types import MappingProxyType
 from typing import Any, TypeVar
 
 T = TypeVar("T")
@@ -30,15 +35,18 @@ RUN = 8192  # items ``paced_sorted`` sorts in one go
 _on: ContextVar[bool] = ContextVar(
     "evo_kg_paced", default=False
 )  # within ``pacing()``; a thread of ``asyncio.to_thread`` gets it
+_between: ContextVar[Callable[[], None] | None] = ContextVar("evo_kg_paced_between", default=None)
 
 
 @contextmanager
-def pacing():
-    """``paced`` and ``paced_sorted`` give the GIL up while the block runs, in the threads it starts too."""
-    token = _on.set(True)
+def pacing(between: Callable[[], None] | None = None):
+    """``paced`` and ``paced_sorted`` give the GIL up while the block runs, in the threads it starts too, and call
+    ``between`` each time they took it back."""
+    token, step = _on.set(True), _between.set(between)
     try:
         yield
     finally:
+        _between.reset(step)
         _on.reset(token)
 
 
@@ -51,13 +59,15 @@ def paced(items: Iterable[T]) -> Iterator[T]:
 
 
 def _paced(items: Iterable[T]) -> Iterator[T]:
-    clock = time.perf_counter
+    clock, between = time.perf_counter, _between.get()
     last = clock()
     for item in items:
         yield item
         now = clock()
         if now - last >= YIELD_SECONDS:
             time.sleep(PAUSE_SECONDS)
+            if between is not None:
+                between()
             last = clock()
 
 
@@ -71,3 +81,85 @@ def paced_sorted(items: Iterable[T], key: Callable[[T], Any] | None = None) -> l
     items = list(paced(items))
     runs = [sorted(items[i : i + RUN], key=key) for i in paced(range(0, len(items), RUN))]
     return list(paced(heapq.merge(*runs, key=key)))
+
+
+CHUNK = 1024  # items ``let_go`` frees at once: a few milliseconds of the GIL
+OPEN = 64  # items of a container ``let_go`` opens, not frees at once: such a container's items may be large ones
+HAND_OVER = 0.01  # seconds the thread waits before it takes apart what it was given: ``let_go`` returns meanwhile
+ALONE = 2  # ``sys.getrefcount`` of an object only a local variable holds: it and the argument of the call
+
+log = logging.getLogger(__name__)
+
+_aside: queue.SimpleQueue | None = None  # what ``let_go`` was given, for the thread ``free_aside`` started
+
+
+def free_aside() -> None:
+    """From now on ``let_go`` frees what it is given in a thread of its own, paced: in the api, where a snapshot
+    replaced or dropped is millions of objects, and freeing them in one go held the GIL, the event loop with it, for
+    seconds. Once per process."""
+    global _aside
+    if _aside is None:
+        _aside = queue.SimpleQueue()
+        threading.Thread(target=_freeing, args=(_aside,), name="kg-free-aside", daemon=True).start()
+
+
+def let_go(dying: Any) -> None:
+    """From the ``__del__`` of ``dying``, an instance nothing holds any more: what it holds goes to the thread
+    ``free_aside`` started, which frees it a part at a time; nothing before it ran: it is freed as ``dying`` is."""
+    if _aside is not None:
+        held = vars(dying)
+        parts = list(held.values())
+        held.clear()  # the thread is the only holder of what nothing else holds, once this returns
+        _aside.put(parts)
+
+
+def _freeing(given: queue.SimpleQueue) -> None:
+    with pacing():
+        while True:
+            parts = given.get()
+            time.sleep(HAND_OVER)
+            try:
+                _take_apart(parts)
+            except Exception:  # the thread goes on: ended, every snapshot dropped after it would stay in memory
+                log.exception("kg free aside failed")
+            del parts
+
+
+def _take_apart(objs: list) -> None:
+    """Drop ``objs`` at most CHUNK references at a time, pacing in between. What is given, and the attributes of an
+    instance opened, are opened too: an instance into its attributes, a container of more than OPEN items into lists of
+    CHUNK of them, so dropping it frees none of them, and each list dropped after frees at most CHUNK, each of which is
+    small or opened in its turn. Only what
+    nothing else holds is opened, and nothing is changed. What another part holds too waits until the rest is taken
+    apart, then is opened in its turn, as many rounds as each frees one; what is held from outside after that is left
+    to its other holder (a snapshot and a copy of it share their parts: the second one dropped gives them here
+    again)."""
+    stack: list[tuple[list, bool]] = [(objs, True)]  # (references, whether an instance among them is opened)
+    del objs
+    opened: set[int] = set()  # what was opened: an object in a cycle is opened once
+    x = None
+    while stack:
+        held: dict[int, Any] = {}  # what another part held too, once each
+        for _ in paced(iter(lambda: bool(stack), False)):
+            parts, deep = stack.pop()
+            while parts:
+                x = parts.pop()  # the one before freed, but what it held when opened
+                if id(x) in opened:
+                    continue
+                if sys.getrefcount(x) > ALONE:
+                    held[id(x)] = x
+                elif isinstance(x, (tuple, list, set, frozenset, dict, MappingProxyType)):
+                    if len(x) > OPEN:
+                        items = [*x.keys(), *x.values()] if isinstance(x, (dict, MappingProxyType)) else list(x)
+                        opened.add(id(x))
+                        stack.extend((items[i : i + CHUNK], False) for i in range(0, len(items), CHUNK))
+                        del items
+                elif deep and hasattr(x, "__dict__") and not isinstance(x, type):
+                    opened.add(id(x))
+                    stack.append((list(vars(x).values()), True))
+                x = None
+        alone = [h for h in held.values() if sys.getrefcount(h) <= ALONE + 1]  # ``held`` holds it too
+        del held
+        if alone:
+            stack.append((alone, True))
+        del alone

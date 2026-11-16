@@ -99,3 +99,63 @@ def test_a_build_paces_only_within_pacing(monkeypatch):
 
     assert asyncio.run(made()) == [0, 1, 2]
     assert slept == [pacing.PAUSE_SECONDS] * 3  # the thread of the api's load got it
+
+
+def test_a_snapshot_dropped_in_the_api_is_freed_in_a_thread_a_part_at_a_time(monkeypatch):
+    """In the api (``pacing.free_aside``), a snapshot replaced or dropped is freed by a thread of its own, a part at a
+    time with the GIL given up in between: freed where it was dropped, on the event loop, a large graph's snapshot
+    held the loop for seconds, and the workers' heartbeats and claims timed out on the pool meanwhile."""
+    import dataclasses
+    import threading
+
+    from evo_agents.kg.snapshot import Snapshot
+
+    freed: list[str] = []
+    done = threading.Event()
+    parts = 3 * pacing.CHUNK
+
+    class Part:
+        def __del__(self):
+            freed.append(threading.current_thread().name)
+            if len(freed) == parts:
+                done.set()
+
+    monkeypatch.setattr(pacing, "_aside", None)  # a thread of this test's own, gone with it
+    pacing.free_aside()
+    snap = Snapshot.from_stored(graph_rows(10))
+    # parts held as a large graph's snapshot holds its own: in a tuple, and in lists inside the values of a mapping
+    snap = dataclasses.replace(snap, nodes=tuple(Part() for _ in range(parts // 3)))
+    object.__setattr__(snap, "review", ({"parts": [Part() for _ in range(2 * parts // 3)]},))
+    del snap
+    assert done.wait(30)
+    assert set(freed) == {"kg-free-aside"}  # none on the thread that dropped it
+
+
+def test_a_part_that_raises_as_it_is_taken_apart_does_not_stop_the_thread_freeing_the_next_snapshot(monkeypatch):
+    """One part raising as it is opened is logged, and the thread goes on: ended, it left every snapshot dropped
+    after it in memory until the api restarted."""
+    import threading
+
+    from evo_agents.kg.snapshot import Snapshot
+
+    freed = threading.Event()
+
+    class Raising:
+        def __getattribute__(self, name):
+            if name == "__dict__":
+                raise RuntimeError("a part that cannot be opened")
+            return object.__getattribute__(self, name)
+
+    class Part:
+        def __del__(self):
+            freed.set()
+
+    monkeypatch.setattr(pacing, "_aside", None)  # a thread of this test's own, gone with it
+    pacing.free_aside()
+    snap = Snapshot.from_stored(graph_rows(10))
+    object.__setattr__(snap, "review", Raising())
+    del snap
+    snap = Snapshot.from_stored(graph_rows(10))
+    object.__setattr__(snap, "review", Part())
+    del snap
+    assert freed.wait(30)
