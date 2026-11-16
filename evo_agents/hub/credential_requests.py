@@ -154,23 +154,48 @@ _GIVES = re.compile(
 )
 
 
-# Tokens counted, not a credential: "515 tokens", "tokens per file", "token budget". Removed before _CREDENTIAL_WORDS.
+# Tokens a model reads and writes, not a credential (run 8919 was refused for "set ... the Token strategy"): counted
+# ("515 tokens", "200k tokens", "more tokens", "output tokens"), the word before a noun it qualifies ("token budget",
+# "Token strategy", "the token ceiling"), joined to a word by a hyphen ("token-and-quota-economy", "token-based"), or,
+# in Vietnamese, after the noun it qualifies ("chiến lược token", "ngân sách token"). Removed before
+# _CREDENTIAL_WORDS, so "the token ceiling" asks for nothing while "the token" or "the GitHub token" still does.
+_TOKEN_NOUNS = (
+    r"strateg(?:y|ies)|budgets?|ceilings?|caps?|limits?|quotas?|econom(?:y|ics)|usage|spend(?:ing)?|costs?|"
+    r"pric(?:e|es|ing)|counts?|counting|counters?|accounting|windows?|rates?|per|savings?|efficiency|consumption|"
+    r"pacing|routing|polic(?:y|ies)|plans?|modes?|reports?|metrics?|stats|statistics|totals?|burn|throughput|"
+    r"estimates?|bounds?|thresholds?|allowances?|ratios?|overhead|footprint|bills?|billing|trims?|reductions?|growth|"
+    r"length|size|math"
+)
+_TOKEN_MEASURES = (
+    r"\d[\d.,]*\s*[km]?|more|fewer|extra|enough|million|thousand|input|output|prompt|completion|cached|cache|"
+    r"reasoning|thinking|context|max|total"
+)
+_VI_TOKEN_MEASURES = r"chiến lược|ngân sách|trần|hạn mức|giới hạn|số|lượng|chi phí|mức|tiết kiệm|tốn|tiêu thụ|tiêu tốn"
 _COUNTED_TOKENS = re.compile(
-    r"\b\d[\d.,]*\s*tokens?\b|\btokens?[ _-]?(?:per|counts?|budgets?|usage|used|spent|costs?|limits?|windows?)\b",
+    rf"\b(?:{_TOKEN_MEASURES})[ _-]?tokens?\b|\btokens?(?:[ _]+(?:{_TOKEN_NOUNS})\b|-\w)|\btokens[ _]+(?:used|spent)\b|"
+    rf"\b(?:{_VI_TOKEN_MEASURES}) tokens?\b",
     re.IGNORECASE,
 )
+# A route of the hub's API names a method, not the act of giving: "PUT /v1/projects/{p}/policy".
+_ROUTE = re.compile(r"\b(?:GET|HEAD|POST|PUT|PATCH|DELETE)\s+/\S*")
 # The sentences of a question: a credential in words counts only with a word of giving in its own sentence.
 _SENTENCE_END = re.compile(r"(?<=[.!?;])\s+|\n+")
 
 
-def _asks_value(text: str) -> bool:
-    """Whether a sentence of ``text`` names a credential in words (_CREDENTIAL_WORDS, counted tokens aside) next to
-    the act of giving its value (_GIVES)."""
+def _asks_value(text: str) -> tuple[str, str] | None:
+    """The credential in words (_CREDENTIAL_WORDS, counted tokens aside) and the word of giving its value (_GIVES,
+    routes aside, and outside the credential's words, so "đăng nhập" alone gives nothing) that a sentence of ``text``
+    holds together, lower case; None when no sentence holds both. Both come from the two fixed vocabularies, never
+    from the rest of the text."""
     for sentence in _SENTENCE_END.split(text):
-        words = _COUNTED_TOKENS.sub(" ", sentence)
-        if _CREDENTIAL_WORDS.search(words) and _GIVES.search(words):
-            return True
-    return False
+        words = _ROUTE.sub(" ", _COUNTED_TOKENS.sub(" ", sentence))
+        credential, gives = _CREDENTIAL_WORDS.search(words), _GIVES.search(_CREDENTIAL_WORDS.sub(" ", words))
+        if credential and gives:
+            return " ".join(_SEPARATORS.split(credential.group().lower())).strip(), gives.group().lower()
+    return None
+
+
+_SEPARATORS = re.compile(r"[\s_-]+")
 
 
 def _names_credential(name: str) -> bool:
@@ -190,16 +215,20 @@ def prose_credential(category: str, question: str, context: str | None) -> str |
     """Why a decision of ``category`` with ``question`` and ``context`` cannot be asked, when it is in PROSE_CATEGORIES
     and asks for a credential's value in words: a variable named as an environment names a credential, or a credential
     in words next to giving its value. The reason names ASK_COMMAND, with the variable for NAME when the text names
-    one. None for any other decision. The reason repeats the variable's name alone, never the text it was found in."""
+    one, or the two words it read together, so an agent whose question asks for no credential sees what to reword.
+    None for any other decision. The reason repeats the variable's name or those words alone, never the text they
+    were found in."""
     if category not in PROSE_CATEGORIES:
         return None
     text = f"{question}\n{context or ''}"
     named = next((name for name in _ENV_NAME.findall(text) if _names_credential(name)), None)
-    if named is None and not _asks_value(text):
+    words = None if named else _asks_value(text)
+    if named is None and words is None:
         return None
     command = ASK_COMMAND.replace("NAME", named) if named else ASK_COMMAND
+    read = f' (it read "{words[0]}" and "{words[1]}" in one sentence)' if words else ""
     return (
-        f"a {category} decision does not ask for a credential's value: ask for it with `{command}` (add "
+        f"a {category} decision does not ask for a credential's value{read}: ask for it with `{command}` (add "
         "`--hub-account` for the owner's account on the hub), so the owner gives it in a password field, the hub keeps "
         f"it as their secret, and the run reads it with `{ENV_COMMAND}`"
     )
