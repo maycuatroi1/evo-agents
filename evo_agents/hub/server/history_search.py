@@ -199,7 +199,7 @@ class RunReader:
         local_run = and_(r.c.kind == "local", r.c.dispatched_by == self.user.user_id, true() if mine else false())
         unplanned = and_(r.c.kind != "local", r.c.plan_id.is_(None), true() if self.unplanned else false())
         planned = and_(r.c.kind != "local", r.c.plan_id.in_(sorted(self.plans) or [""]))
-        kept = [] if agent_reads(self.user, "replay") else [r.c.kind.not_in(("replay", "probe"))]
+        kept = [] if agent_reads(self.user, "replay") else [r.c.kind.not_in(("replay", "probe", "evolve"))]
         return and_(or_(local_run, unplanned, planned), *kept)
 
 

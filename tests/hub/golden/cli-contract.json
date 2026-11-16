@@ -6031,7 +6031,8 @@
           "merged_at",
           "merge_sha",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "repos"
         ],
         "schema": "Change"
       }
@@ -6148,6 +6149,7 @@
           "replay",
           "history",
           "probes",
+          "evolve",
           "reviewer",
           "builder",
           "judge",
@@ -6215,6 +6217,7 @@
           "replay",
           "history",
           "probes",
+          "evolve",
           "reviewer",
           "builder",
           "judge",
@@ -6313,6 +6316,206 @@
           "rejected"
         ],
         "schema": "EarlierView"
+      }
+    },
+    "hub curator evolve run": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--path"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--system-id"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--proposal"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "target",
+          "repo",
+          "paths",
+          "system_id",
+          "agent",
+          "state",
+          "runtime",
+          "model",
+          "budget",
+          "tasks",
+          "iterations",
+          "frontier",
+          "best_candidate_id",
+          "proposal_id",
+          "change_id",
+          "reason",
+          "created_at",
+          "updated_at",
+          "candidates"
+        ],
+        "schema": "EvolveView"
+      }
+    },
+    "hub curator evolve show": {
+      "positionals": [
+        {
+          "name": "evolution",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "target",
+          "repo",
+          "paths",
+          "system_id",
+          "agent",
+          "state",
+          "runtime",
+          "model",
+          "budget",
+          "tasks",
+          "iterations",
+          "frontier",
+          "best_candidate_id",
+          "proposal_id",
+          "change_id",
+          "reason",
+          "created_at",
+          "updated_at",
+          "candidates"
+        ],
+        "schema": "EvolveView"
+      }
+    },
+    "hub curator evolve status": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "queued",
+            "running",
+            "done",
+            "failed"
+          ]
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "evolutions"
+        ],
+        "schema": "EvolveList"
       }
     },
     "hub curator figures": {
@@ -7851,7 +8054,8 @@
           "merged_at",
           "merge_sha",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "repos"
         ],
         "schema": "Change"
       }
@@ -22651,6 +22855,7 @@
             "question",
             "browser",
             "command",
+            "evolve",
             "local"
           ]
         },
@@ -29347,6 +29552,14 @@
             "kg_questions",
             "kg_entity_map"
           ]
+        },
+        {
+          "flags": [
+            "--until-proposal"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": null
@@ -46383,6 +46596,7 @@
                       "question",
                       "browser",
                       "command",
+                      "evolve",
                       "local"
                     ],
                     "type": "string"
@@ -63040,6 +63254,784 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/evolve": {
+        "post": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Start Evolution",
+          "description": "Start an evolution of a harness's files in a repo (git) or of an agent's configuration (agent_config).",
+          "operationId": "start_evolution_v1_projects__project__curator_evolve_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolveStart"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvolveView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "List Evolutions",
+          "description": "The project's evolutions, the newest first, each with its state, tasks and front.",
+          "operationId": "list_evolutions_v1_projects__project__curator_evolve_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^(queued|running|done|failed)$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "State"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "default": 20,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvolveList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/evolve/{evolve_id}": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Evolution",
+          "description": "One evolution, with each candidate (its components, scores and cost) and its front.",
+          "operationId": "show_evolution_v1_projects__project__curator_evolve__evolve_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "evolve_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Evolve Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvolveView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/evolve": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Evolve Inputs",
+          "description": "What the held evolve run evolves: its baseline, its light tasks with their verify, the cached baseline arms.",
+          "operationId": "evolve_inputs_v1_worker_runs__run_id__evolve_get",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Evolve-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Evolve-Key"
+              },
+              "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvolveInputs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/evolve/arm": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Evolve Arm",
+          "description": "Keep the result of a baseline arm of one task by its ``evolve.arm_key``; one the cache holds stays as it is.",
+          "operationId": "evolve_arm_v1_worker_runs__run_id__evolve_arm_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Evolve-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Evolve-Key"
+              },
+              "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArmIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ArmOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/evolve/candidate": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Evolve Candidate",
+          "description": "Keep a candidate, unique by the digest of its components, and recompute the evolution's Pareto front.",
+          "operationId": "evolve_candidate_v1_worker_runs__run_id__evolve_candidate_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Evolve-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Evolve-Key"
+              },
+              "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CandidateOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/evolve/report": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Evolve Report Route",
+          "description": "End the evolution: of target git, its branch goes on as its proposal's change; of target agent_config, its best\ncandidate is pinned as the agent's next version when it holds on the holdout split; why, either way.",
+          "operationId": "evolve_report_route_v1_worker_runs__run_id__evolve_report_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Evolve-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Evolve-Key"
+              },
+              "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvolveView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -116528,6 +117520,95 @@
           "title": "ApprovedUseCases",
           "description": "The use cases of the version of a document approved last, identifiers only."
         },
+        "ArmIn": {
+          "properties": {
+            "task_kind": {
+              "type": "string",
+              "enum": [
+                "replay",
+                "probe"
+              ],
+              "title": "Task Kind"
+            },
+            "task_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Task Id"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{7,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha"
+            },
+            "baseline_digest": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Baseline Digest"
+            },
+            "runtime": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Runtime"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "result": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Result",
+              "description": "score, cost_usd, turns and trace of the baseline arm"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "task_kind",
+            "task_id",
+            "baseline_digest",
+            "runtime",
+            "result"
+          ],
+          "title": "ArmIn"
+        },
+        "ArmOut": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "cached": {
+              "type": "boolean",
+              "title": "Cached",
+              "description": "true: the cache held this key already, and keeps what it held"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "cached"
+          ],
+          "title": "ArmOut"
+        },
         "ArmResult": {
           "properties": {
             "passed": {
@@ -119232,6 +120313,36 @@
           "title": "BrowserReport",
           "description": "The Chromium a daemon starts for a browser run, as its heartbeat says."
         },
+        "BudgetInput": {
+          "properties": {
+            "iterations": {
+              "type": "integer",
+              "title": "Iterations"
+            },
+            "max_candidates": {
+              "type": "integer",
+              "title": "Max Candidates"
+            },
+            "max_cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Cost Usd"
+            }
+          },
+          "type": "object",
+          "required": [
+            "iterations",
+            "max_candidates",
+            "max_cost_usd"
+          ],
+          "title": "BudgetInput"
+        },
         "Build": {
           "properties": {
             "id": {
@@ -119809,6 +120920,239 @@
             "contact"
           ],
           "title": "BuyIn"
+        },
+        "CandidateIn": {
+          "properties": {
+            "parents": {
+              "items": {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 2,
+              "title": "Parents"
+            },
+            "origin": {
+              "type": "string",
+              "enum": [
+                "seed",
+                "mutate",
+                "merge"
+              ],
+              "title": "Origin"
+            },
+            "iteration": {
+              "type": "integer",
+              "maximum": 1000.0,
+              "minimum": 0.0,
+              "title": "Iteration",
+              "default": 0
+            },
+            "components": {
+              "patternProperties": {
+                "^[^\\x00-\\x1f\\x7f]+$": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "propertyNames": {
+                "maxLength": 500,
+                "minLength": 1
+              },
+              "type": "object",
+              "maxProperties": 50,
+              "minProperties": 1,
+              "title": "Components"
+            },
+            "scores": {
+              "patternProperties": {
+                "^(replay|probe):[0-9]{1,19}$": {
+                  "type": "number",
+                  "maximum": 1000000000.0,
+                  "minimum": -1000000000.0
+                }
+              },
+              "type": "object",
+              "maxProperties": 200,
+              "title": "Scores"
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd"
+            },
+            "turns": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Turns"
+            },
+            "traces": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "items": {},
+                  "type": "array"
+                }
+              ],
+              "title": "Traces",
+              "description": "what the proposer read of each failure"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "origin",
+            "components"
+          ],
+          "title": "CandidateIn"
+        },
+        "CandidateOut": {
+          "properties": {
+            "candidate_id": {
+              "type": "integer",
+              "title": "Candidate Id"
+            },
+            "frontier": {
+              "items": {
+                "$ref": "#/components/schemas/FrontItem"
+              },
+              "type": "array",
+              "title": "Frontier"
+            }
+          },
+          "type": "object",
+          "required": [
+            "candidate_id",
+            "frontier"
+          ],
+          "title": "CandidateOut"
+        },
+        "CandidateView": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "parents": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Parents"
+            },
+            "origin": {
+              "type": "string",
+              "title": "Origin"
+            },
+            "iteration": {
+              "type": "integer",
+              "title": "Iteration"
+            },
+            "digest": {
+              "type": "string",
+              "title": "Digest"
+            },
+            "scores": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object",
+              "title": "Scores"
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd"
+            },
+            "turns": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Turns"
+            },
+            "on_front": {
+              "type": "boolean",
+              "title": "On Front"
+            },
+            "components": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Components",
+              "description": "its whole files or axes; null in a list"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "parents",
+            "origin",
+            "iteration",
+            "digest",
+            "scores",
+            "cost_usd",
+            "turns",
+            "on_front",
+            "created_at"
+          ],
+          "title": "CandidateView"
         },
         "CanvasBaseline": {
           "properties": {
@@ -123704,6 +125048,14 @@
               "type": "string",
               "format": "date-time",
               "title": "Updated At"
+            },
+            "repos": {
+              "items": {
+                "$ref": "#/components/schemas/ChangeRepo"
+              },
+              "type": "array",
+              "title": "Repos",
+              "description": "a change in several repos: each, in plan order; empty for one in one repo"
             }
           },
           "type": "object",
@@ -123944,6 +125296,102 @@
           ],
           "title": "ChangeReplay"
         },
+        "ChangeRepo": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "position": {
+              "type": "integer",
+              "title": "Position",
+              "description": "its order in the plan, from 1: an owner before the repos that consume it"
+            },
+            "depends_on": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Depends On",
+              "description": "the repos merged before it"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "pr_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pr Number"
+            },
+            "pr_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pr Url"
+            },
+            "passed": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Passed",
+              "description": "its Judge's verdict; null before it"
+            },
+            "merged_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merged At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "position",
+            "depends_on",
+            "state",
+            "reason",
+            "pr_number",
+            "pr_url",
+            "passed",
+            "merged_at"
+          ],
+          "title": "ChangeRepo",
+          "description": "One repo of a change that works in several (``evo_agents.hub.server.change_repos``), in plan order."
+        },
         "Charter": {
           "properties": {
             "goals": {
@@ -124130,6 +125578,9 @@
             },
             "probes": {
               "$ref": "#/components/schemas/ProbeSettings"
+            },
+            "evolve": {
+              "$ref": "#/components/schemas/EvolveSettings"
             },
             "reviewer": {
               "$ref": "#/components/schemas/Role"
@@ -124410,6 +125861,9 @@
             },
             "probes": {
               "$ref": "#/components/schemas/ProbeSettings"
+            },
+            "evolve": {
+              "$ref": "#/components/schemas/EvolveSettings"
             },
             "reviewer": {
               "$ref": "#/components/schemas/Role"
@@ -129182,7 +130636,8 @@
                 "judge",
                 "replay",
                 "history",
-                "probe"
+                "probe",
+                "evolve"
               ],
               "title": "Role"
             },
@@ -129360,6 +130815,29 @@
               ],
               "title": "Probe Key",
               "description": "a probe run's own key, for POST .../probe (X-Evo-Probe-Key); the daemon keeps it as a judge run's"
+            },
+            "evolve": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EvolveSpec"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "an evolve run's evolution; null for any other run"
+            },
+            "evolve_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evolve Key",
+              "description": "an evolve run's own key, for GET .../evolve and POST .../evolve/arm, .../candidate and .../report (X-Evo-Evolve-Key); the daemon keeps it as a judge run's"
             }
           },
           "type": "object",
@@ -129367,7 +130845,7 @@
             "role"
           ],
           "title": "CuratorSpec",
-          "description": "What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the\ncharter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the\nchange, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's\nhead, its task and its own key (``evo_agents.hub.server.replays``), for a history run its batches and its own\nkey (``evo_agents.hub.server.history``), and for a probe run its probe, the change's head and its own key\n(``evo_agents.hub.server.probe_runs``)."
+          "description": "What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the\ncharter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the\nchange, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's\nhead, its task and its own key (``evo_agents.hub.server.replays``), for a history run its batches and its own\nkey (``evo_agents.hub.server.history``), for a probe run its probe, the change's head and its own key\n(``evo_agents.hub.server.probe_runs``), and for an evolve run its evolution and its own key\n(``evo_agents.hub.server.evolve``)."
         },
         "CuratorStatus": {
           "properties": {
@@ -135102,6 +136580,636 @@
           "title": "EvidenceIn",
           "description": "One piece of evidence, as ``review.parse_evidence`` reads it from the command line."
         },
+        "EvolveBudget": {
+          "properties": {
+            "iterations": {
+              "type": "integer",
+              "maximum": 50.0,
+              "minimum": 1.0,
+              "title": "Iterations",
+              "description": "rounds of its loop",
+              "default": 6
+            },
+            "max_candidates": {
+              "type": "integer",
+              "maximum": 200.0,
+              "minimum": 1.0,
+              "title": "Max Candidates",
+              "description": "candidates it measures at most",
+              "default": 12
+            },
+            "max_cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Cost Usd",
+              "description": "the most it may cost; null: the run's own cap"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "EvolveBudget",
+          "description": "What one evolution may spend (``evo_agents.hub.server.evolve``): rounds of its loop, candidates it measures,\nand dollars."
+        },
+        "EvolveInputs": {
+          "properties": {
+            "evolve_id": {
+              "type": "integer",
+              "title": "Evolve Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha",
+              "description": "null: the tip of the repo's default branch"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "target git: the branch the run pushes its best candidate to"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Paths"
+            },
+            "system_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "System Id"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent"
+            },
+            "baseline": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object",
+              "title": "Baseline",
+              "description": "target agent_config: instructions and skill; git: {}"
+            },
+            "tasks": {
+              "items": {
+                "$ref": "#/components/schemas/TaskInput"
+              },
+              "type": "array",
+              "title": "Tasks"
+            },
+            "cached": {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object",
+              "title": "Cached",
+              "description": "evolve.arm_key -> the result of a baseline arm"
+            },
+            "budget": {
+              "$ref": "#/components/schemas/BudgetInput"
+            },
+            "runtime": {
+              "type": "string",
+              "title": "Runtime"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "evolvable_paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Evolvable Paths"
+            }
+          },
+          "type": "object",
+          "required": [
+            "evolve_id",
+            "project",
+            "target",
+            "repo",
+            "base_sha",
+            "branch",
+            "paths",
+            "system_id",
+            "agent",
+            "baseline",
+            "tasks",
+            "cached",
+            "budget",
+            "runtime",
+            "model",
+            "evolvable_paths"
+          ],
+          "title": "EvolveInputs",
+          "description": "What the worker of an evolve run reads: the evolution, its baseline, its light tasks (select split and active\nprobes alone), the baseline arms the project's cache holds, its budget, runtime and model."
+        },
+        "EvolveList": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "evolutions": {
+              "items": {
+                "$ref": "#/components/schemas/EvolveView"
+              },
+              "type": "array",
+              "title": "Evolutions"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "evolutions"
+          ],
+          "title": "EvolveList"
+        },
+        "EvolveSettings": {
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "title": "Enabled",
+              "description": "false: no evolution is started or queued",
+              "default": false
+            },
+            "evolvable_paths": {
+              "items": {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Evolvable Paths",
+              "description": "globs of harness files an evolution may rewrite, repo:glob for one repo; empty: none"
+            },
+            "budget": {
+              "$ref": "#/components/schemas/EvolveBudget"
+            },
+            "tasks": {
+              "type": "integer",
+              "maximum": 20.0,
+              "minimum": 0.0,
+              "title": "Tasks",
+              "description": "light replay tasks of the select split",
+              "default": 8
+            },
+            "probes": {
+              "type": "integer",
+              "maximum": 20.0,
+              "minimum": 0.0,
+              "title": "Probes",
+              "description": "active probes of its paths",
+              "default": 4
+            },
+            "exposure_limit": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exposure Limit",
+              "description": "review runs that show an entry of the playbook never found helpful before it is retired; null: 30; 0: never for that"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "EvolveSettings",
+          "description": "Whether and how the Curator evolves a harness or an agent's configuration (``evo_agents.hub.evolve``): the\npaths it may rewrite, what one evolution spends, how many light tasks of the select split and probes it measures\non, and how many review runs show an entry of the playbook never found helpful before it is retired."
+        },
+        "EvolveSpec": {
+          "properties": {
+            "evolve_id": {
+              "type": "integer",
+              "title": "Evolve Id"
+            },
+            "target": {
+              "type": "string",
+              "enum": [
+                "git",
+                "agent_config"
+              ],
+              "title": "Target"
+            }
+          },
+          "type": "object",
+          "required": [
+            "evolve_id",
+            "target"
+          ],
+          "title": "EvolveSpec",
+          "description": "The evolution an evolve run makes (``evo_agents.hub.server.evolve``): its inputs come from GET .../evolve."
+        },
+        "EvolveStart": {
+          "properties": {
+            "target": {
+              "type": "string",
+              "enum": [
+                "git",
+                "agent_config"
+              ],
+              "title": "Target"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            },
+            "paths": {
+              "items": {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Paths"
+            },
+            "system_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "System Id"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the node's id, or its profile's handle"
+            },
+            "proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal Id"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "target"
+          ],
+          "title": "EvolveStart",
+          "description": "An evolution to start: of a harness's files in a repo (target git: ``repo`` and ``paths``), or of an agent of\nan agent system (target agent_config: ``system_id`` and ``agent``); ``proposal_id`` names the accepted proposal\nwhose planned change takes the branch of a git evolution."
+        },
+        "EvolveTaskView": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "replay",
+                "probe"
+              ],
+              "title": "Kind"
+            },
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "ref": {
+              "type": "string",
+              "title": "Ref"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "id",
+            "ref"
+          ],
+          "title": "EvolveTaskView",
+          "description": "A task of an evolution as its owner reads it: never its verify."
+        },
+        "EvolveView": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Paths"
+            },
+            "system_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "System Id"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "runtime": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "budget": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Budget"
+            },
+            "tasks": {
+              "items": {
+                "$ref": "#/components/schemas/EvolveTaskView"
+              },
+              "type": "array",
+              "title": "Tasks"
+            },
+            "iterations": {
+              "type": "integer",
+              "title": "Iterations"
+            },
+            "frontier": {
+              "items": {
+                "$ref": "#/components/schemas/FrontItem"
+              },
+              "type": "array",
+              "title": "Frontier"
+            },
+            "best_candidate_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Best Candidate Id"
+            },
+            "proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal Id"
+            },
+            "change_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Id"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "candidates": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/CandidateView"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Candidates",
+              "description": "its candidates; null in a list"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "run_id",
+            "target",
+            "repo",
+            "paths",
+            "system_id",
+            "agent",
+            "state",
+            "runtime",
+            "model",
+            "budget",
+            "tasks",
+            "iterations",
+            "frontier",
+            "best_candidate_id",
+            "proposal_id",
+            "change_id",
+            "reason",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "EvolveView"
+        },
         "FacetCluster": {
           "properties": {
             "key": {
@@ -135824,6 +137932,25 @@
             "rank"
           ],
           "title": "Found"
+        },
+        "FrontItem": {
+          "properties": {
+            "candidate_id": {
+              "type": "integer",
+              "title": "Candidate Id"
+            },
+            "freq": {
+              "type": "integer",
+              "title": "Freq",
+              "description": "on how many tasks it reaches the ceiling of every candidate"
+            }
+          },
+          "type": "object",
+          "required": [
+            "candidate_id",
+            "freq"
+          ],
+          "title": "FrontItem"
         },
         "GatewayAccount": {
           "properties": {
@@ -138558,6 +140685,29 @@
           ],
           "title": "HoldPass"
         },
+        "HoldoutPair": {
+          "properties": {
+            "baseline": {
+              "type": "number",
+              "maximum": 1000000000.0,
+              "minimum": -1000000000.0,
+              "title": "Baseline"
+            },
+            "candidate": {
+              "type": "number",
+              "maximum": 1000000000.0,
+              "minimum": -1000000000.0,
+              "title": "Candidate"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "baseline",
+            "candidate"
+          ],
+          "title": "HoldoutPair"
+        },
         "HubIdentity": {
           "properties": {
             "hub": {
@@ -141068,6 +143218,14 @@
               },
               "type": "array",
               "title": "Protected Paths"
+            },
+            "evolvable_paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Evolvable Paths",
+              "description": "the charter's evolve.evolvable_paths: a harness file of these is no protected_path sign"
             },
             "hidden_checks": {
               "items": {
@@ -155259,6 +157417,7 @@
                 "question",
                 "browser",
                 "command",
+                "evolve",
                 "local"
               ],
               "title": "Kind"
@@ -157444,6 +159603,20 @@
               ],
               "title": "Note",
               "description": "retire: why"
+            },
+            "until_proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until Proposal Id",
+              "description": "add: the proposal it holds until; the merge of its change retires it"
             }
           },
           "type": "object",
@@ -157531,6 +159704,24 @@
                 }
               ],
               "title": "Retired Note"
+            },
+            "until_proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until Proposal Id",
+              "description": "the proposal it holds until; its merge retires it"
+            },
+            "prompt_exposures": {
+              "type": "integer",
+              "title": "Prompt Exposures",
+              "description": "review runs that showed it in their prompt and are done",
+              "default": 0
             },
             "created_at": {
               "type": "string",
@@ -171169,6 +173360,92 @@
           ],
           "title": "RepoPath"
         },
+        "ReportIn": {
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "done",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "best_candidate_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Best Candidate Id"
+            },
+            "head_sha": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{7,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head Sha"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "holdout": {
+              "anyOf": [
+                {
+                  "patternProperties": {
+                    "^(replay|probe):[0-9]{1,19}$": {
+                      "$ref": "#/components/schemas/HoldoutPair"
+                    }
+                  },
+                  "type": "object",
+                  "maxProperties": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Holdout"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "title": "ReportIn",
+          "description": "The end of an evolution. ``holdout`` (target agent_config) holds the scores of the baseline and of the best\ncandidate on tasks of the holdout split, which the hub checks before it pins a new version of the profile."
+        },
         "ReportItem": {
           "properties": {
             "fingerprint": {
@@ -172326,6 +174603,7 @@
                 "question",
                 "browser",
                 "command",
+                "evolve",
                 "local"
               ],
               "title": "Kind",
@@ -175307,7 +177585,8 @@
                 "release",
                 "question",
                 "browser",
-                "command"
+                "command",
+                "evolve"
               ],
               "title": "Kind"
             },
@@ -186307,6 +188586,67 @@
             "task"
           ],
           "title": "TaskIn"
+        },
+        "TaskInput": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "replay",
+                "probe"
+              ],
+              "title": "Kind"
+            },
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "ref": {
+              "type": "string",
+              "title": "Ref"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha"
+            },
+            "prompt": {
+              "type": "string",
+              "title": "Prompt"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Paths"
+            },
+            "verify": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Verify"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "id",
+            "ref",
+            "base_sha",
+            "prompt",
+            "paths",
+            "verify"
+          ],
+          "title": "TaskInput",
+          "description": "A light task as the trusted daemon runs it, with its verify."
         },
         "TaskPull": {
           "properties": {

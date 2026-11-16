@@ -73,7 +73,7 @@ ACTION_NOTICES = frozenset(
     }
 )
 # Run kinds that are a person's own session or a review of the hub's, never waiting on anyone.
-QUIET_KINDS = frozenset({"local", "history", "probe", "judge", "replay"})
+QUIET_KINDS = frozenset({"local", "history", "probe", "judge", "replay", "evolve"})
 # What an item is, in the order the person should see them.
 ORDER = ("decision", "review", "credential", "failed", "lost", "waiting", "parked", "stale", "notice", "proposal")
 

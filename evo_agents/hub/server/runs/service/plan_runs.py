@@ -66,7 +66,9 @@ async def held_row(conn: AsyncConnection, run_id: int, worker_id: int | None, *,
         raise HTTPException(404, NOT_HELD.format(id=run_id))
     if row.kind not in kinds:
         what = {"review": "a review run", "judge": "a judge run", "author": "an author run", "replay": "a replay run"}
-        what = (what | {"history": "a history run", "probe": "a probe run"}).get(row.kind, "a run of one step")
+        what = (what | {"history": "a history run", "probe": "a probe run", "evolve": "an evolve run"}).get(
+            row.kind, "a run of one step"
+        )
         raise HTTPException(
             404,
             f"run {run_id} is {what}, which has no plan to read or steps to report: report its state with "

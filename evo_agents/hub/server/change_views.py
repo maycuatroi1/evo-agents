@@ -35,6 +35,20 @@ JudgeKey = Annotated[
 # Models
 
 
+class ChangeRepo(BaseModel):
+    """One repo of a change that works in several (``evo_agents.hub.server.change_repos``), in plan order."""
+
+    repo: str
+    position: int = Field(description="its order in the plan, from 1: an owner before the repos that consume it")
+    depends_on: list[str] = Field(description="the repos merged before it")
+    state: str
+    reason: str | None
+    pr_number: int | None
+    pr_url: str | None
+    passed: bool | None = Field(description="its Judge's verdict; null before it")
+    merged_at: datetime | None
+
+
 class Change(BaseModel):
     """What an accepted proposal of tier 0 to 2 became, and where it stands."""
 
@@ -60,6 +74,9 @@ class Change(BaseModel):
     merge_sha: str | None
     created_at: datetime
     updated_at: datetime
+    repos: list[ChangeRepo] = Field(
+        default_factory=list, description="a change in several repos: each, in plan order; empty for one in one repo"
+    )
 
 
 class ChangeList(BaseModel):
@@ -97,6 +114,10 @@ class JudgeInputs(BaseModel):
     proposal: dict = Field(description="id, title, kind, tier, summary, paths")
     verify: list[str] = Field(description="the verify of each step of the plan, as the Builder had them")
     protected_paths: list[str]
+    evolvable_paths: list[str] = Field(
+        default_factory=list,
+        description="the charter's evolve.evolvable_paths: a harness file of these is no protected_path sign",
+    )
     hidden_checks: list[str] = Field(description="commands run in the worktree; never logged, never shown")
     knowledge: dict | None = Field(
         None,
@@ -230,7 +251,21 @@ async def change_with_origin(conn: AsyncConnection, project_id: int, change_id: 
 
 async def change_view(conn: AsyncConnection, change_id: int) -> Change:
     row = (await conn.execute(changes_query().where(tables.curator_changes.c.id == change_id))).one()
-    return Change(**row._mapping)
+    return (await with_repos(conn, [Change(**row._mapping)]))[0]
+
+
+async def with_repos(conn: AsyncConnection, changes: list[Change]) -> list[Change]:
+    """``changes`` with the repos of each that works in several, read at once."""
+    cr = tables.curator_change_repos
+    if not changes:
+        return changes
+    query = select(cr).where(cr.c.change_id.in_([change.id for change in changes])).order_by(cr.c.position)
+    found: dict[int, list[ChangeRepo]] = {}
+    for row in (await conn.execute(query)).all():
+        found.setdefault(row.change_id, []).append(ChangeRepo.model_validate(row, from_attributes=True))
+    for change in changes:
+        change.repos = found.get(change.id, [])
+    return changes
 
 
 async def set_change(conn: AsyncConnection, change_id: int, *, ledger_extra: dict | None = None, **values) -> None:
@@ -276,21 +311,24 @@ async def plan_write_refusal(
     change = await change_of_plan(conn, project_id, plan_id)
     if change is None:
         return None
+    from evo_agents.hub.server import change_repos  # it reads the changes of this module
+
+    allowed = await change_repos.repo_names(conn, change)  # the change's own repo, or each of a change in several
     why = (
-        f"plan {plan_id} is the Curator's: it works on {change.branch} of {change.repo} alone, never on another branch "
+        f"plan {plan_id} is the Curator's: it works on {change.branch} of {', '.join(allowed)} alone, never on another branch "
         "or repo and least of all on a default branch, and a write of it changes the status, done_at, evidence and "
         "note of its steps and its status alone, its what, goal, context, verify and acceptance staying as the hub "
         "made them (a verify that is no shell command line may be replaced by one that is and keeps each of its "
         "runnable clauses); nothing was written"
     )
     repos = new_body.get("repos")
-    if not isinstance(repos, list) or len(repos) != 1 or not isinstance(repos[0], dict):
+    if not isinstance(repos, list) or len(repos) != len(allowed) or not all(isinstance(item, dict) for item in repos):
         return why
-    if repos[0].get("repo") != change.repo or repos[0].get("branch") != change.branch:
+    if [item.get("repo") for item in repos] != allowed or any(item.get("branch") != change.branch for item in repos):
         return why
     steps = new_body.get("steps")
     steps = steps if isinstance(steps, list) else []
-    if any(isinstance(step, dict) and step.get("repo") not in (None, change.repo) for step in steps):
+    if any(isinstance(step, dict) and step.get("repo") not in (None, *allowed) for step in steps):
         return why
     if old_body is not None and judge.progress_free(old_body) != judge.progress_free(
         judge.mended_verify(old_body, new_body)
@@ -328,8 +366,15 @@ async def curator_policy(
     conn: AsyncConnection, project_id: int, kind: str, plan_id: str | None
 ) -> CuratorPolicy | None:
     """The policy of a run of ``kind`` on ``plan_id`` when it is a run of the Curator (a review run, a judge run, a
-    replay run, a history run, a probe run, or any run of a Curator's plan); None for any other run."""
-    roles = {"review": "reviewer", "judge": "judge", "replay": "replay", "history": "history", "probe": "probe"}
+    replay run, a history run, a probe run, an evolve run, or any run of a Curator's plan); None for any other run."""
+    roles = {
+        "review": "reviewer",
+        "judge": "judge",
+        "replay": "replay",
+        "history": "history",
+        "probe": "probe",
+        "evolve": "evolve",
+    }
     role = roles.get(kind, "builder")
     change = None if kind == "review" else await change_of_plan(conn, project_id, plan_id)
     if change is None and (role == "builder" or (role == "judge" and not plan_id)):  # no plan: the merge queue's
@@ -349,8 +394,9 @@ async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | No
     """What the claim of run ``view`` (a ``runs.Run``) tells its worker of the Curator: its role, the charter's
     protected paths its watchdog compares the worktree with, and for a Builder, a Judge or a replay the change, its
     branch and forge, for a Judge, a replay and a probe the change's head, for a replay its task and its own key
-    (``replays.replay_claim``), and for a probe run its probe and its own key (``probe_runs.probe_claim``). None for
-    any other run."""
+    (``replays.replay_claim``), for a probe run its probe and its own key (``probe_runs.probe_claim``), and for an
+    evolve run its evolution and its own key (``evolve_runs.evolve_claim``). None for any other run."""
+    from evo_agents.hub.server import change_repos  # it reads the changes of this module
     from evo_agents.hub.server.probe_runs import probe_claim  # it reads the changes of this module
     from evo_agents.hub.server.replays import replay_claim  # it reads the changes of this module
 
@@ -362,6 +408,8 @@ async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | No
         change = (
             await conn.execute(select(tables.curator_changes).where(tables.curator_changes.c.id == policy.change_id))
         ).one()
+        if policy.role == "judge" and change.judge_run_id == view.id:  # in several repos: the one it judges
+            change = await change_repos.in_focus(conn, change)
         found.update(
             change_id=change.id,
             branch=change.branch,
@@ -376,6 +424,10 @@ async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | No
             found.update(await replay_claim(conn, change, view.id))
     if policy.role == "probe":  # a run of a plugin's probe has no change
         found.update(await probe_claim(conn, change, view.id))
+    if policy.role == "evolve":  # an evolution has no change while it runs
+        from evo_agents.hub.server.evolve_runs import evolve_claim  # it imports the runs service, which imports this
+
+        found.update(await evolve_claim(conn, view.id))
     return found
 
 
@@ -397,7 +449,11 @@ async def judge_prompt(conn: AsyncConnection, view) -> str:
     the revision the run was queued at."""
     r, pr, rev = tables.runs, tables.proposals, tables.plan_revisions
     project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == view.id))).scalar_one()
+    from evo_agents.hub.server import change_repos  # it reads the changes of this module
+
     change = await change_of_plan(conn, project_id, view.plan_id)
+    if change is not None and change.judge_run_id == view.id:  # in several repos: the one it judges
+        change = await change_repos.in_focus(conn, change)
     if change is None:
         return judge.build_judge_prompt(
             view.project, {}, {}, "", branch="", base="the default branch", head=None, pr_url=None
@@ -414,6 +470,8 @@ async def judge_prompt(conn: AsyncConnection, view) -> str:
             )
         )
     ).scalar_one_or_none() or {}
+    if getattr(change, "repo_row_id", None) is not None:
+        body = change_repos.repo_body(body, change.repo)
     base = f"origin/{change.base_branch}" if change.base_branch else "origin/HEAD"
     return judge.build_judge_prompt(
         view.project,

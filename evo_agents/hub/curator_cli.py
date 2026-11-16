@@ -57,6 +57,7 @@ from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.curator import CHARTER_META, money, period_budget, zone_of
 from evo_agents.hub.curator_session_cli import register_session
+from evo_agents.hub.evolve_cli import register_evolve
 from evo_agents.hub.history import budget_usd as history_budget
 from evo_agents.hub.history_cli import register_history
 from evo_agents.hub.plan_cli import project_of_args
@@ -90,6 +91,7 @@ CHARTER_BODY_KEYS = (
     "replay",
     "history",
     "probes",
+    "evolve",
     "reviewer",
     "builder",
     "judge",
@@ -166,6 +168,7 @@ CHANGE_KEYS = (
     "merge_sha",
     "created_at",
     "updated_at",
+    "repos",
 )
 REPO_CHECK_KEYS = (
     "repo",
@@ -785,6 +788,7 @@ def register_curator(hsub) -> None:
         register_playbook,
         register_probe,
         register_session,
+        register_evolve,
     ):
         register(csub, with_project)
 

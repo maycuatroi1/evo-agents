@@ -12,13 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, judge, runs, tables
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.server import audit, merge_gate
+from evo_agents.hub.server import audit, change_repos, merge_gate
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.change_views import change_of_plan, set_change
 from evo_agents.hub.server.protection import (
     reason_line,
-    ruleset_wait,
 )
 from evo_agents.hub.server.run_state import RunStep, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
@@ -155,13 +154,13 @@ async def _build_wait(conn: AsyncConnection, due, gate, change, runtime: str, *,
             None,
             f"its plan {change.plan_id} is not on the hub, or {due.owner}, the night shift's owner, may not read it",
         )
-    why = None
-    if change.forge == "github":
-        why = await ruleset_wait(conn, due.project_id, change.repo, curator_app=curator_app)
+    why, repos = None, await change_repos.repo_names(conn, change)
+    if change.forge == "github":  # the ruleset of each of its repos (``change_repos``)
+        why = await change_repos.ruleset_waits(conn, due.project_id, repos, curator_app=curator_app)
     elif change.forge == "gitlab":
         why = await _git_secret_wait(conn, due, change)
     why = why or await _run_wait(conn, due.project_id, change, held)
-    problems = [] if why else gate.duty.unfit(due.project, "plan", [change.repo], runtime)
+    problems = [] if why else gate.duty.unfit(due.project, "plan", repos, runtime)
     if problems:
         why = f"{gate.duty.where} on duty cannot build it: {'; '.join(problems)}"
     return (None, why) if why else (held, None)
@@ -212,7 +211,7 @@ async def queue_builder(conn: AsyncConnection, due, gate, *, curator_app: bool, 
                 title=runs.step_title(held.body),
                 runtime=runtime,
                 model=builder.get("model"),
-                repos=[{"repo": change.repo, "branch": change.branch}],
+                repos=[{"repo": repo, "branch": change.branch} for repo in await change_repos.repo_names(conn, change)],
             )
             try:
                 run_id = await insert_run(conn, values)
@@ -253,12 +252,14 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     activity = await plan_activity(conn, due.project_id, waiting.plan_id)
     if activity.plan_run is not None or activity.steps:
         return None  # a Builder of the change still runs: never both at once
+    row = await change_repos.next_to_judge(conn, waiting.id)  # a change in several repos: one repo at a time
+    repo, head_sha = (row.repo, row.head_sha) if row is not None else (waiting.repo, waiting.head_sha)
     usable = {name for name in runs.RUNTIMES if duty.runtime(name) is not None and name not in gate.avoid}
     cleared = judge.codex_cleared(access.rules, waiting.proposal_label)
     runtime, model, why = judge.judge_runtime(
         charter.get("judge") or {}, charter.get("builder") or {}, codex_allowed=cleared, worker_runtimes=usable
     )
-    problems = duty.unfit(due.project, "judge", [waiting.repo], runtime)
+    problems = duty.unfit(due.project, "judge", [repo], runtime)
     if runtime in gate.avoid:  # its dependency waits its backoff, and no other runtime is on duty
         problems = [f"{runtime} is held off: it failed of an infra cause"]
     if problems:
@@ -273,7 +274,7 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
         title=f"Judge of the Curator's change #{waiting.id}: {waiting.proposal_title}"[:200],
         runtime=runtime,
         model=model,
-        repos=[{"repo": waiting.repo, "branch": waiting.branch}],
+        repos=[{"repo": repo, "branch": waiting.branch}],
     )
     values["max_attempts"] = 1  # a judge run that ends without a verdict is tried again by the change, not the reaper
     try:
@@ -281,7 +282,10 @@ async def queue_judge(conn: AsyncConnection, due, gate) -> int | None:
     except IntegrityError:  # another judge run of the project is active
         return None
     await set_change(conn, waiting.id, state="judging", judge_run_id=run_id, reason=None)
-    head = waiting.head_sha[:12] if waiting.head_sha else f"the tip of {waiting.branch}"
+    if row is not None:
+        await change_repos.judge_queued(conn, row.id, run_id)
+    head = head_sha[:12] if head_sha else f"the tip of {waiting.branch}"
+    head += f" of {repo}" if row is not None else ""
     text = (
         f"Queued by the night shift of project {due.project} as the Judge of the Curator's change #{waiting.id} "
         f"(proposal #{waiting.proposal_id}, tier {waiting.tier}) at {head}, on {runtime}"
@@ -377,6 +381,8 @@ async def judge_ended(conn: AsyncConnection, found: RunStep, old: str, new: str,
         return
     attempts = change.judge_attempts + 1
     why = found.error or reason
+    left = "open" if attempts >= judge.JUDGE_ATTEMPTS else "judge_pending"
+    await change_repos.judge_left(conn, change.id, found.run_id, left, reason_line(f"judge run #{found.run_id}: {why}"))
     if attempts >= judge.JUDGE_ATTEMPTS:
         await set_change(
             conn,

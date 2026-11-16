@@ -5836,6 +5836,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/evolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Evolutions
+         * @description The project's evolutions, the newest first, each with its state, tasks and front.
+         */
+        get: operations["list_evolutions_v1_projects__project__curator_evolve_get"];
+        put?: never;
+        /**
+         * Start Evolution
+         * @description Start an evolution of a harness's files in a repo (git) or of an agent's configuration (agent_config).
+         */
+        post: operations["start_evolution_v1_projects__project__curator_evolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/evolve/{evolve_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Evolution
+         * @description One evolution, with each candidate (its components, scores and cost) and its front.
+         */
+        get: operations["show_evolution_v1_projects__project__curator_evolve__evolve_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/evolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Evolve Inputs
+         * @description What the held evolve run evolves: its baseline, its light tasks with their verify, the cached baseline arms.
+         */
+        get: operations["evolve_inputs_v1_worker_runs__run_id__evolve_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/evolve/arm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evolve Arm
+         * @description Keep the result of a baseline arm of one task by its ``evolve.arm_key``; one the cache holds stays as it is.
+         */
+        post: operations["evolve_arm_v1_worker_runs__run_id__evolve_arm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/evolve/candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evolve Candidate
+         * @description Keep a candidate, unique by the digest of its components, and recompute the evolution's Pareto front.
+         */
+        post: operations["evolve_candidate_v1_worker_runs__run_id__evolve_candidate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/evolve/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evolve Report Route
+         * @description End the evolution: of target git, its branch goes on as its proposal's change; of target agent_config, its best
+         *     candidate is pinned as the agent's next version when it holds on the holdout split; why, either way.
+         */
+        post: operations["evolve_report_route_v1_worker_runs__run_id__evolve_report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/org": {
         parameters: {
             query?: never;
@@ -16030,6 +16155,41 @@ export interface components {
              */
             use_cases: components["schemas"]["ApprovedUseCase"][];
         };
+        /** ArmIn */
+        ArmIn: {
+            /**
+             * Task Kind
+             * @enum {string}
+             */
+            task_kind: "replay" | "probe";
+            /** Task Id */
+            task_id: number;
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Baseline Digest */
+            baseline_digest: string;
+            /** Runtime */
+            runtime: string;
+            /** Model */
+            model?: string | null;
+            /**
+             * Result
+             * @description score, cost_usd, turns and trace of the baseline arm
+             */
+            result: {
+                [key: string]: unknown;
+            };
+        };
+        /** ArmOut */
+        ArmOut: {
+            /** Key */
+            key: string;
+            /**
+             * Cached
+             * @description true: the cache held this key already, and keeps what it held
+             */
+            cached: boolean;
+        };
         /**
          * ArmResult
          * @description What one arm of a replay found: whether the step's verify passed on the agent's work, and what the agent took.
@@ -17261,6 +17421,15 @@ export interface components {
              */
             sandbox: boolean;
         };
+        /** BudgetInput */
+        BudgetInput: {
+            /** Iterations */
+            iterations: number;
+            /** Max Candidates */
+            max_candidates: number;
+            /** Max Cost Usd */
+            max_cost_usd: number | null;
+        };
         /** Build */
         Build: {
             /** Id */
@@ -17492,6 +17661,82 @@ export interface components {
              * @default false
              */
             trust_publisher: boolean;
+        };
+        /** CandidateIn */
+        CandidateIn: {
+            /** Parents */
+            parents?: number[];
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "seed" | "mutate" | "merge";
+            /**
+             * Iteration
+             * @default 0
+             */
+            iteration: number;
+            /** Components */
+            components: {
+                [key: string]: string | null;
+            };
+            /** Scores */
+            scores?: {
+                [key: string]: number;
+            };
+            /** Cost Usd */
+            cost_usd?: number | null;
+            /** Turns */
+            turns?: number | null;
+            /**
+             * Traces
+             * @description what the proposer read of each failure
+             */
+            traces?: {
+                [key: string]: unknown;
+            } | unknown[];
+        };
+        /** CandidateOut */
+        CandidateOut: {
+            /** Candidate Id */
+            candidate_id: number;
+            /** Frontier */
+            frontier: components["schemas"]["FrontItem"][];
+        };
+        /** CandidateView */
+        CandidateView: {
+            /** Id */
+            id: number;
+            /** Parents */
+            parents: number[];
+            /** Origin */
+            origin: string;
+            /** Iteration */
+            iteration: number;
+            /** Digest */
+            digest: string;
+            /** Scores */
+            scores: {
+                [key: string]: number;
+            };
+            /** Cost Usd */
+            cost_usd: number | null;
+            /** Turns */
+            turns: number | null;
+            /** On Front */
+            on_front: boolean;
+            /**
+             * Components
+             * @description its whole files or axes; null in a list
+             */
+            components?: {
+                [key: string]: string | null;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * CanvasBaseline
@@ -19080,6 +19325,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Repos
+             * @description a change in several repos: each, in plan order; empty for one in one repo
+             */
+            repos?: components["schemas"]["ChangeRepo"][];
         };
         /** ChangeClose */
         ChangeClose: {
@@ -19171,6 +19421,39 @@ export interface components {
             verdict: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * ChangeRepo
+         * @description One repo of a change that works in several (``evo_agents.hub.server.change_repos``), in plan order.
+         */
+        ChangeRepo: {
+            /** Repo */
+            repo: string;
+            /**
+             * Position
+             * @description its order in the plan, from 1: an owner before the repos that consume it
+             */
+            position: number;
+            /**
+             * Depends On
+             * @description the repos merged before it
+             */
+            depends_on: string[];
+            /** State */
+            state: string;
+            /** Reason */
+            reason: string | null;
+            /** Pr Number */
+            pr_number: number | null;
+            /** Pr Url */
+            pr_url: string | null;
+            /**
+             * Passed
+             * @description its Judge's verdict; null before it
+             */
+            passed: boolean | null;
+            /** Merged At */
+            merged_at: string | null;
         };
         /** Charter */
         Charter: {
@@ -19265,6 +19548,7 @@ export interface components {
             replay?: components["schemas"]["ReplaySettings"];
             history?: components["schemas"]["HistorySettings"];
             probes?: components["schemas"]["ProbeSettings"];
+            evolve?: components["schemas"]["EvolveSettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -19403,6 +19687,7 @@ export interface components {
             replay?: components["schemas"]["ReplaySettings"];
             history?: components["schemas"]["HistorySettings"];
             probes?: components["schemas"]["ProbeSettings"];
+            evolve?: components["schemas"]["EvolveSettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -21611,15 +21896,16 @@ export interface components {
          *     charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
          *     change, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's
          *     head, its task and its own key (``evo_agents.hub.server.replays``), for a history run its batches and its own
-         *     key (``evo_agents.hub.server.history``), and for a probe run its probe, the change's head and its own key
-         *     (``evo_agents.hub.server.probe_runs``).
+         *     key (``evo_agents.hub.server.history``), for a probe run its probe, the change's head and its own key
+         *     (``evo_agents.hub.server.probe_runs``), and for an evolve run its evolution and its own key
+         *     (``evo_agents.hub.server.evolve``).
          */
         CuratorSpec: {
             /**
              * Role
              * @enum {string}
              */
-            role: "reviewer" | "builder" | "judge" | "replay" | "history" | "probe";
+            role: "reviewer" | "builder" | "judge" | "replay" | "history" | "probe" | "evolve";
             /**
              * Protected Paths
              * @description globs of the charter, repo:glob for one repo
@@ -21687,6 +21973,13 @@ export interface components {
              * @description a probe run's own key, for POST .../probe (X-Evo-Probe-Key); the daemon keeps it as a judge run's
              */
             probe_key?: string | null;
+            /** @description an evolve run's evolution; null for any other run */
+            evolve?: components["schemas"]["EvolveSpec"] | null;
+            /**
+             * Evolve Key
+             * @description an evolve run's own key, for GET .../evolve and POST .../evolve/arm, .../candidate and .../report (X-Evo-Evolve-Key); the daemon keeps it as a judge run's
+             */
+            evolve_key?: string | null;
         };
         /** CuratorStatus */
         CuratorStatus: {
@@ -24171,6 +24464,244 @@ export interface components {
              */
             span_id?: number | null;
         };
+        /**
+         * EvolveBudget
+         * @description What one evolution may spend (``evo_agents.hub.server.evolve``): rounds of its loop, candidates it measures,
+         *     and dollars.
+         */
+        EvolveBudget: {
+            /**
+             * Iterations
+             * @description rounds of its loop
+             * @default 6
+             */
+            iterations: number;
+            /**
+             * Max Candidates
+             * @description candidates it measures at most
+             * @default 12
+             */
+            max_candidates: number;
+            /**
+             * Max Cost Usd
+             * @description the most it may cost; null: the run's own cap
+             */
+            max_cost_usd?: number | null;
+        };
+        /**
+         * EvolveInputs
+         * @description What the worker of an evolve run reads: the evolution, its baseline, its light tasks (select split and active
+         *     probes alone), the baseline arms the project's cache holds, its budget, runtime and model.
+         */
+        EvolveInputs: {
+            /** Evolve Id */
+            evolve_id: number;
+            /** Project */
+            project: string;
+            /** Target */
+            target: string;
+            /** Repo */
+            repo: string | null;
+            /**
+             * Base Sha
+             * @description null: the tip of the repo's default branch
+             */
+            base_sha: string | null;
+            /**
+             * Branch
+             * @description target git: the branch the run pushes its best candidate to
+             */
+            branch: string | null;
+            /** Paths */
+            paths: string[];
+            /** System Id */
+            system_id: number | null;
+            /** Agent */
+            agent: string | null;
+            /**
+             * Baseline
+             * @description target agent_config: instructions and skill; git: {}
+             */
+            baseline: {
+                [key: string]: string | null;
+            };
+            /** Tasks */
+            tasks: components["schemas"]["TaskInput"][];
+            /**
+             * Cached
+             * @description evolve.arm_key -> the result of a baseline arm
+             */
+            cached: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            budget: components["schemas"]["BudgetInput"];
+            /** Runtime */
+            runtime: string;
+            /** Model */
+            model: string | null;
+            /** Evolvable Paths */
+            evolvable_paths: string[];
+        };
+        /** EvolveList */
+        EvolveList: {
+            /** Project */
+            project: string;
+            /** Evolutions */
+            evolutions: components["schemas"]["EvolveView"][];
+        };
+        /**
+         * EvolveSettings
+         * @description Whether and how the Curator evolves a harness or an agent's configuration (``evo_agents.hub.evolve``): the
+         *     paths it may rewrite, what one evolution spends, how many light tasks of the select split and probes it measures
+         *     on, and how many review runs show an entry of the playbook never found helpful before it is retired.
+         */
+        EvolveSettings: {
+            /**
+             * Enabled
+             * @description false: no evolution is started or queued
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Evolvable Paths
+             * @description globs of harness files an evolution may rewrite, repo:glob for one repo; empty: none
+             */
+            evolvable_paths?: string[];
+            budget?: components["schemas"]["EvolveBudget"];
+            /**
+             * Tasks
+             * @description light replay tasks of the select split
+             * @default 8
+             */
+            tasks: number;
+            /**
+             * Probes
+             * @description active probes of its paths
+             * @default 4
+             */
+            probes: number;
+            /**
+             * Exposure Limit
+             * @description review runs that show an entry of the playbook never found helpful before it is retired; null: 30; 0: never for that
+             */
+            exposure_limit?: number | null;
+        };
+        /**
+         * EvolveSpec
+         * @description The evolution an evolve run makes (``evo_agents.hub.server.evolve``): its inputs come from GET .../evolve.
+         */
+        EvolveSpec: {
+            /** Evolve Id */
+            evolve_id: number;
+            /**
+             * Target
+             * @enum {string}
+             */
+            target: "git" | "agent_config";
+        };
+        /**
+         * EvolveStart
+         * @description An evolution to start: of a harness's files in a repo (target git: ``repo`` and ``paths``), or of an agent of
+         *     an agent system (target agent_config: ``system_id`` and ``agent``); ``proposal_id`` names the accepted proposal
+         *     whose planned change takes the branch of a git evolution.
+         */
+        EvolveStart: {
+            /**
+             * Target
+             * @enum {string}
+             */
+            target: "git" | "agent_config";
+            /** Repo */
+            repo?: string | null;
+            /** Paths */
+            paths?: string[];
+            /** System Id */
+            system_id?: number | null;
+            /**
+             * Agent
+             * @description the node's id, or its profile's handle
+             */
+            agent?: string | null;
+            /** Proposal Id */
+            proposal_id?: number | null;
+        };
+        /**
+         * EvolveTaskView
+         * @description A task of an evolution as its owner reads it: never its verify.
+         */
+        EvolveTaskView: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "replay" | "probe";
+            /** Id */
+            id: number;
+            /** Ref */
+            ref: string;
+            /** Repo */
+            repo?: string | null;
+        };
+        /** EvolveView */
+        EvolveView: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /** Run Id */
+            run_id: number | null;
+            /** Target */
+            target: string;
+            /** Repo */
+            repo: string | null;
+            /** Paths */
+            paths: string[];
+            /** System Id */
+            system_id: number | null;
+            /** Agent */
+            agent: string | null;
+            /** State */
+            state: string;
+            /** Runtime */
+            runtime: string | null;
+            /** Model */
+            model: string | null;
+            /** Budget */
+            budget: {
+                [key: string]: unknown;
+            };
+            /** Tasks */
+            tasks: components["schemas"]["EvolveTaskView"][];
+            /** Iterations */
+            iterations: number;
+            /** Frontier */
+            frontier: components["schemas"]["FrontItem"][];
+            /** Best Candidate Id */
+            best_candidate_id: number | null;
+            /** Proposal Id */
+            proposal_id: number | null;
+            /** Change Id */
+            change_id: number | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Candidates
+             * @description its candidates; null in a list
+             */
+            candidates?: components["schemas"]["CandidateView"][] | null;
+        };
         /** FacetCluster */
         FacetCluster: {
             /** Key */
@@ -24485,6 +25016,16 @@ export interface components {
             updated_by: string;
             /** Rank */
             rank: number;
+        };
+        /** FrontItem */
+        FrontItem: {
+            /** Candidate Id */
+            candidate_id: number;
+            /**
+             * Freq
+             * @description on how many tasks it reaches the ceiling of every candidate
+             */
+            freq: number;
         };
         /**
          * GatewayAccount
@@ -25710,6 +26251,13 @@ export interface components {
              */
             reason: string;
         };
+        /** HoldoutPair */
+        HoldoutPair: {
+            /** Baseline */
+            baseline: number;
+            /** Candidate */
+            candidate: number;
+        };
         /** HubIdentity */
         HubIdentity: {
             /**
@@ -26760,6 +27308,11 @@ export interface components {
             verify: string[];
             /** Protected Paths */
             protected_paths: string[];
+            /**
+             * Evolvable Paths
+             * @description the charter's evolve.evolvable_paths: a harness file of these is no protected_path sign
+             */
+            evolvable_paths?: string[];
             /**
              * Hidden Checks
              * @description commands run in the worktree; never logged, never shown
@@ -32799,7 +33352,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "evolve" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -33816,6 +34369,11 @@ export interface components {
              * @description retire: why
              */
             note?: string | null;
+            /**
+             * Until Proposal Id
+             * @description add: the proposal it holds until; the merge of its change retires it
+             */
+            until_proposal_id?: number | null;
         };
         /** PlaybookEntry */
         PlaybookEntry: {
@@ -33846,6 +34404,17 @@ export interface components {
             retired: boolean;
             /** Retired Note */
             retired_note: string | null;
+            /**
+             * Until Proposal Id
+             * @description the proposal it holds until; its merge retires it
+             */
+            until_proposal_id?: number | null;
+            /**
+             * Prompt Exposures
+             * @description review runs that showed it in their prompt and are done
+             * @default 0
+             */
+            prompt_exposures: number;
             /**
              * Created At
              * Format: date-time
@@ -39882,6 +40451,30 @@ export interface components {
             /** Path */
             path: string;
         };
+        /**
+         * ReportIn
+         * @description The end of an evolution. ``holdout`` (target agent_config) holds the scores of the baseline and of the best
+         *     candidate on tasks of the holdout split, which the hub checks before it pins a new version of the profile.
+         */
+        ReportIn: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "done" | "failed";
+            /** Best Candidate Id */
+            best_candidate_id?: number | null;
+            /** Head Sha */
+            head_sha?: string | null;
+            /** Branch */
+            branch?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Holdout */
+            holdout?: {
+                [key: string]: components["schemas"]["HoldoutPair"];
+            } | null;
+        };
         /** ReportItem */
         ReportItem: {
             /** Fingerprint */
@@ -40402,7 +40995,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan, or a Judge of a merge request of the merge queue, on no plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "evolve" | "local";
             /** Project */
             project: string;
             /**
@@ -41855,7 +42448,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "evolve";
             /** Project */
             project: string;
             /**
@@ -46538,6 +47131,29 @@ export interface components {
              * @description a branch of origin each worktree of the run starts from instead of the repo's default branch, unless its item of repos names a base of its own, which the draft pull request of each branch it pushes goes into; the run fails when a repo's origin lacks it
              */
             base?: string | null;
+        };
+        /**
+         * TaskInput
+         * @description A light task as the trusted daemon runs it, with its verify.
+         */
+        TaskInput: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "replay" | "probe";
+            /** Id */
+            id: number;
+            /** Ref */
+            ref: string;
+            /** Base Sha */
+            base_sha: string | null;
+            /** Prompt */
+            prompt: string;
+            /** Paths */
+            paths: string[];
+            /** Verify */
+            verify: string[];
         };
         /** TaskPull */
         TaskPull: {
@@ -61733,7 +62349,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "evolve" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -72390,6 +73006,511 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_evolutions_v1_projects__project__curator_evolve_get: {
+        parameters: {
+            query?: {
+                state?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolveList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_evolution_v1_projects__project__curator_evolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvolveStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolveView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_evolution_v1_projects__project__curator_evolve__evolve_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                evolve_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolveView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    evolve_inputs_v1_worker_runs__run_id__evolve_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the evolve run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Evolve-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolveInputs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    evolve_arm_v1_worker_runs__run_id__evolve_arm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the evolve run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Evolve-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArmIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArmOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    evolve_candidate_v1_worker_runs__run_id__evolve_candidate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the evolve run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Evolve-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    evolve_report_route_v1_worker_runs__run_id__evolve_report_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the evolve run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Evolve-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolveView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

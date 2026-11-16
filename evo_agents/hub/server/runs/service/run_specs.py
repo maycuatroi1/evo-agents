@@ -208,6 +208,7 @@ OWN_PROMPTS = (
     "probe",
     "release",
     "question",
+    "evolve",
 )  # whose prompt their module builds
 
 
@@ -245,6 +246,10 @@ async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...
         from evo_agents.hub.server.probe_runs import run_prompt as probe_prompt
 
         return await probe_prompt(conn, view)
+    if view.kind == "evolve":
+        from evo_agents.hub.server.evolve_runs import run_prompt as evolve_prompt
+
+        return await evolve_prompt(conn, view)
     if view.kind == "release":
         from evo_agents.hub.server.release_claims import release_prompt  # it reads runs through this package
 

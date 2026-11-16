@@ -696,6 +696,26 @@ REVIEW_TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "curator_evolve",
+        "description": (
+            "The history of the project's evolutions of a harness (target git) or an agent's configuration (target "
+            "agent_config): without evolve_id each evolution, the newest first, with its state, rounds and front; with "
+            "it, its tasks of the select split and probes, each candidate with its origin, parents, scores per task, "
+            "cost and turns, and the Pareto front with how many tasks each candidate leads. Never a task of the "
+            "holdout split, nor any task's verify."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "evolve_id": {"type": "integer", "minimum": 1, "maximum": MAX_ID, "description": "one evolution"},
+                "state": {"type": "string", "enum": ["queued", "running", "done", "failed"]},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                "project": _PROJECT,
+            },
+            "additionalProperties": False,
+        },
+    },
 ]
 
 _SINCE = {"type": "string", "pattern": DATE_PATTERN, "description": "YYYY-MM-DD, UTC: from this day on"}
@@ -910,7 +930,14 @@ REPLAY_TOOLS: frozenset[str] = frozenset()
 HISTORY_TOOLS: frozenset[str] = frozenset()
 PROBE_TOOLS: frozenset[str] = frozenset()  # a probe run's agent sees its task alone: no tool of the hub
 # the kinds of run whose agent calls only these
-RUN_TOOLS = {"judge": JUDGE_TOOLS, "replay": REPLAY_TOOLS, "history": HISTORY_TOOLS, "probe": PROBE_TOOLS}
+EVOLVE_TOOLS: frozenset[str] = frozenset()  # an evolve run's agent sees its task alone, as a probe run's
+RUN_TOOLS = {
+    "judge": JUDGE_TOOLS,
+    "replay": REPLAY_TOOLS,
+    "history": HISTORY_TOOLS,
+    "probe": PROBE_TOOLS,
+    "evolve": EVOLVE_TOOLS,
+}
 # What only a local session can call: the agent of a run asks its owner through the run's decisions.
 LOCAL_ONLY = frozenset({"ask_member"})
 

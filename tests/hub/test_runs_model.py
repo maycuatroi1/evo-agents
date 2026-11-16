@@ -97,6 +97,7 @@ def test_the_table_covers_every_state_and_only_known_actors():
         "question",
         "browser",
         "command",
+        "evolve",
     )
     assert ACTORS == ("worker", "owner", "reaper")
     assert set(TRANSITIONS) == set(RUN_STATES)

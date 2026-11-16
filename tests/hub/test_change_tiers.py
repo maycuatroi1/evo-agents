@@ -304,7 +304,7 @@ def test_tier_a_proposal_while_the_projects_graph_cannot_be_read_is_at_least_tie
     "unmatched, impacted, tier, why",
     [
         (["evo-agents:tests/test_wait.py"], [], 1, "the knowledge graph has no file evo-agents:tests/test_wait.py"),
-        ([], [("evo-agents", "curator.yaml")], 3, "the change reaches evo-agents:curator.yaml in the knowledge graph"),
+        ([], [("evo-agents", "curator.yaml")], 0, None),  # protected, but no Python: it uses no name the diff breaks
         ([], [("evo-agents", "docs/x.md")], 0, None),
     ],
 )

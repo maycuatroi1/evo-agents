@@ -10,7 +10,12 @@ for one change, with what its two arms found (``evo_agents.hub.replay``, ``evo_a
 curator_playbook (0060) holds the entries of each project's playbook of the Curator, and curator_playbook_deltas (0060)
 every delta that added one, counted it helpful or harmful, or retired it, never changed or deleted
 (``evo_agents.hub.playbook``, ``evo_agents.hub.server.playbook``). curator_briefs (0015) holds the morning brief of
-each project's night, one a day (``evo_agents.hub.server.brief``).
+each project's night, one a day (``evo_agents.hub.server.brief``). curator_playbook keeps the proposal an entry holds
+until and how many review runs showed it (0256), and a delta its actor (0256): ``curator`` for a retire of the
+maintenance. curator_change_repos (0256) holds each repo of a change that works in several, with its own pull request
+and Judge. curator_evolve_runs, curator_evolve_candidates and curator_evolve_arm_cache (0256) hold the Curator's
+evolutions of a harness: each evolution, each candidate it measured with its whole text, and the results of baseline
+arms read again rather than run again (``evo_agents.hub.evolve``).
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ from sqlalchemy import (
     Index,
     Integer,
     MetaData,
+    Numeric,
     PrimaryKeyConstraint,
     SmallInteger,
     Table,
@@ -291,8 +297,16 @@ def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("retired_note", Text),
         _stamp("created_at"),
         _stamp("updated_at"),
+        Column("until_proposal_id", BigInteger),  # the proposal it holds until; its merge retires it (0256)
+        Column("prompt_exposures", Integer, nullable=False, server_default="0"),  # review runs that showed it (0256)
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_playbook_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["until_proposal_id"],
+            ["proposals.id"],
+            ondelete="SET NULL",
+            name="curator_playbook_until_proposal_id_fkey",
         ),
         ForeignKeyConstraint(
             ["created_run_id"], ["runs.id"], ondelete="SET NULL", name="curator_playbook_created_run_id_fkey"
@@ -314,6 +328,7 @@ def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("evidence", JSONB, nullable=False, server_default="[]"),
         Column("note", Text),
         _stamp("created_at"),
+        Column("actor", Text),  # curator: the hub's maintenance; None: the agent of run_id (0256)
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_playbook_deltas_project_id_fkey"
         ),
@@ -443,3 +458,160 @@ def probe_run_tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -
         Index("curator_probe_runs_week_idx", "project_id", "week", "id"),
         Index("curator_probe_runs_run_idx", "run_id"),
     )
+
+
+def change_repos_table(metadata: MetaData) -> Table:
+    """curator_change_repos (0256), added to ``metadata``: each repo of a change that works in several, in the order its
+    plan has them (an owner of a seam first), with its pull request, its Judge and its merge."""
+    return Table(
+        "curator_change_repos",
+        metadata,
+        _id(),
+        Column("project_id", BigInteger, nullable=False),
+        Column("change_id", BigInteger, nullable=False),
+        Column("repo", Text, nullable=False),
+        Column("position", SmallInteger, nullable=False),  # the repo's order in the plan, from 1
+        Column("depends_on", ARRAY(Text), nullable=False, server_default="{}"),  # repos merged before this one
+        Column("branch", Text, nullable=False),
+        Column("forge", Text),
+        Column("state", Text, nullable=False, server_default="pr_pending"),
+        Column("reason", Text),
+        Column("pr_number", Integer),
+        Column("pr_url", Text),
+        Column("head_sha", Text),
+        Column("judge_run_id", BigInteger),
+        Column("judge_attempts", SmallInteger, nullable=False, server_default="0"),
+        Column("judge_key", Text),  # SHA-256 of the key the claim of its judge run handed the daemon
+        Column("verdict", JSONB),
+        Column("passed", Boolean),
+        Column("check_run_id", BigInteger),
+        _when("merged_at"),
+        Column("merge_sha", Text),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_change_repos_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["change_id"], ["curator_changes.id"], ondelete="CASCADE", name="curator_change_repos_change_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["judge_run_id"], ["runs.id"], ondelete="SET NULL", name="curator_change_repos_judge_run_id_fkey"
+        ),
+        PrimaryKeyConstraint("id", name="curator_change_repos_pkey"),
+        UniqueConstraint("change_id", "repo", name="curator_change_repos_change_id_repo_key"),
+        Index("curator_change_repos_state_idx", "project_id", "state", "id"),
+    )
+
+
+def _evolve_runs(metadata: MetaData) -> Table:
+    """Each evolution of a harness (0256): its run, what it evolves, its light tasks, and its Pareto front."""
+    return Table(
+        "curator_evolve_runs",
+        metadata,
+        _id(),
+        Column("project_id", BigInteger, nullable=False),
+        Column("run_id", BigInteger),
+        Column("target", Text, nullable=False),  # evolve.TARGETS: git or agent_config
+        Column("repo", Text),  # target git: the repo whose harness files it rewrites
+        Column("paths", ARRAY(Text), nullable=False, server_default="{}"),  # target git: the files it rewrites
+        Column("system_id", BigInteger),  # target agent_config: the agent system, and its agent
+        Column("agent", Text),
+        Column("state", Text, nullable=False, server_default="queued"),
+        Column("evolve_key", Text),  # SHA-256 of the key the claim of its run handed the daemon
+        Column("runtime", Text),
+        Column("model", Text),
+        Column("budget", JSONB, nullable=False, server_default="{}"),
+        Column("tasks", JSONB, nullable=False, server_default="[]"),  # evolve.light_tasks: select and probes alone
+        Column("iterations", Integer, nullable=False, server_default="0"),
+        Column(
+            "frontier", JSONB, nullable=False, server_default="[]"
+        ),  # the candidates prune_all kept, with front_freq
+        Column("best_candidate_id", BigInteger),
+        Column("proposal_id", BigInteger),  # what the best candidate became
+        Column("change_id", BigInteger),
+        Column("reason", Text),
+        Column("label", JSONB, nullable=False),
+        Column("created_by", BigInteger),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_evolve_runs_project_id_fkey"
+        ),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="curator_evolve_runs_run_id_fkey"),
+        ForeignKeyConstraint(
+            ["proposal_id"], ["proposals.id"], ondelete="SET NULL", name="curator_evolve_runs_proposal_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["change_id"], ["curator_changes.id"], ondelete="SET NULL", name="curator_evolve_runs_change_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["created_by"], ["users.id"], ondelete="SET NULL", name="curator_evolve_runs_created_by_fkey"
+        ),
+        PrimaryKeyConstraint("id", name="curator_evolve_runs_pkey"),
+        Index("curator_evolve_runs_state_idx", "project_id", "state", "id"),
+        Index("curator_evolve_runs_run_idx", "run_id"),
+    )
+
+
+def _evolve_candidates(metadata: MetaData) -> Table:
+    """Each candidate of an evolution (0256): its parents, its whole components, and its scores, cost and turns."""
+    return Table(
+        "curator_evolve_candidates",
+        metadata,
+        _id(),
+        Column("project_id", BigInteger, nullable=False),
+        Column("evolve_id", BigInteger, nullable=False),
+        Column("parents", ARRAY(BigInteger), nullable=False, server_default="{}"),
+        Column("origin", Text, nullable=False),  # evolve.ORIGINS
+        Column("iteration", Integer, nullable=False, server_default="0"),
+        Column("components", JSONB, nullable=False),  # path or axis -> its whole text, no length capped
+        Column("digest", Text, nullable=False),  # evolve.baseline_digest of components
+        Column("scores", JSONB, nullable=False, server_default="{}"),  # evolve.task_ref -> score
+        Column("cost_usd", Numeric(14, 6, asdecimal=False)),
+        Column("turns", Integer),
+        Column("traces", JSONB, nullable=False, server_default="[]"),  # what the proposer read of each failure
+        Column("on_front", Boolean, nullable=False, server_default="false"),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_evolve_candidates_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["evolve_id"],
+            ["curator_evolve_runs.id"],
+            ondelete="CASCADE",
+            name="curator_evolve_candidates_evolve_id_fkey",
+        ),
+        PrimaryKeyConstraint("id", name="curator_evolve_candidates_pkey"),
+        UniqueConstraint("evolve_id", "digest", name="curator_evolve_candidates_evolve_id_digest_key"),
+    )
+
+
+def _evolve_arm_cache(metadata: MetaData) -> Table:
+    """The result of a baseline arm of one task (0256), by evolve.arm_key, read again instead of run again."""
+    return Table(
+        "curator_evolve_arm_cache",
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("key", Text, nullable=False),  # evolve.arm_key
+        Column("task_kind", Text, nullable=False),
+        Column("task_id", BigInteger, nullable=False),
+        Column("base_sha", Text),
+        Column("baseline_digest", Text, nullable=False),
+        Column("runtime", Text, nullable=False),
+        Column("model", Text),
+        Column("result", JSONB, nullable=False),
+        Column("run_id", BigInteger),
+        _stamp("created_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_evolve_arm_cache_project_id_fkey"
+        ),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="curator_evolve_arm_cache_run_id_fkey"),
+        PrimaryKeyConstraint("project_id", "key", name="curator_evolve_arm_cache_pkey"),
+    )
+
+
+def evolve_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
+    """curator_evolve_runs, curator_evolve_candidates and curator_evolve_arm_cache (0256), added to ``metadata``."""
+    return _evolve_runs(metadata), _evolve_candidates(metadata), _evolve_arm_cache(metadata)

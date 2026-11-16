@@ -146,11 +146,11 @@ async def shell(
     return proc.returncode, tail.decode(errors="replace")
 
 
-async def read_tail(proc, tail: bytearray) -> None:
-    """Read the output of ``proc`` into ``tail``, keeping its last OUTPUT_TAIL bytes."""
+async def read_tail(proc, tail: bytearray, keep: int = OUTPUT_TAIL) -> None:
+    """Read the output of ``proc`` into ``tail``, keeping its last ``keep`` bytes."""
     while chunk := await proc.stdout.read(65536):
         tail.extend(chunk)
-        del tail[:-OUTPUT_TAIL]
+        del tail[:-keep]
 
 
 async def run_untrusted(
@@ -160,17 +160,18 @@ async def run_untrusted(
     *,
     extra_env: dict[str, str] | None = None,
     without: Collection[str] = (),
+    keep: int = OUTPUT_TAIL,
 ) -> tuple[int, str]:
     """(exit code, the end of its output) of ``command``, code the worker does not trust (``untrusted``): in ``cwd``,
     on the standard input of ``/bin/sh -s``, in a session of its own, with an environment that leads to no credential
     (plus ``extra_env``, which names none, and less the names of ``without``), and every process it left killed once it
-    ends; Stopped when the run is asked to stop or runs out of time first."""
+    ends; Stopped when the run is asked to stop or runs out of time first. The output kept is its last ``keep`` bytes."""
     marker = untrusted.new_marker()
     scrubbed = untrusted.scrubbed_env(run.daemon.env, credentials.held_values())
     env = {key: value for key, value in {**scrubbed, **(extra_env or {})}.items() if key not in without}
     proc = await untrusted.start(command, cwd=cwd, env=env, marker=marker)
     tail = bytearray()
-    reader = asyncio.create_task(read_tail(proc, tail))
+    reader = asyncio.create_task(read_tail(proc, tail, keep))
     waiter = asyncio.create_task(untrusted.exited(proc))
     stopper = asyncio.create_task(run.stop_event.wait())
     try:
