@@ -74,6 +74,29 @@ def edge_dict(row) -> dict:
     return _edge_dict(row)
 
 
+class Shared:
+    """One object for each value a snapshot's nodes and edges repeat: the id of a node an edge names, a kind, relation
+    or status, a label. Each row read is objects of its own, a large graph's hundreds of thousands of edges as many
+    copies of a few values. Only a string stands for an equal string, and a label for one of the same types, since
+    1 == 1.0 == True; nothing it is given changes."""
+
+    def __init__(self, ids: tuple[str, ...]):
+        self._texts: dict[str, str] = dict(zip(ids, ids, strict=True))
+        self._labels: dict[tuple, tuple] = {}
+
+    def text(self, value):
+        return self._texts.setdefault(value, value) if type(value) is str else value
+
+    def label(self, label):
+        return self._labels.setdefault((label, tuple(map(type, label))), label)
+
+    def edge(self, e: dict) -> dict:
+        for key in ("src", "rel", "dst", "status"):
+            e[key] = self.text(e[key])
+        e["label"] = self.label(e["label"])
+        return e
+
+
 def label_pair(label) -> tuple[int, int]:
     """The level and location of a label."""
     return int(label[0]), int(label[1])
@@ -213,10 +236,14 @@ class Snapshot:
         read = paced_sorted(map(_node_dict, nodes), key=lambda n: n["id"])
         ids = tuple(n["id"] for n in read)
         index = {nid: i for i, nid in enumerate(paced(ids))}
+        one = Shared(ids)
+        for n in paced(read):
+            n["kind"], n["status"], n["label"] = one.text(n["kind"]), one.text(n["status"]), one.label(n["label"])
         held = paced_sorted(
-            (e for e in map(_edge_dict, edges) if e["src"] in index and e["dst"] in index),
+            (one.edge(e) for e in map(_edge_dict, edges) if e["src"] in index and e["dst"] in index),
             key=lambda e: (e["rel"], e["src"], e["dst"], e["id"]),
         )
+        del one
         src = array("I", (index[e["src"]] for e in paced(held)))
         dst = array("I", (index[e["dst"]] for e in paced(held)))
         groups: dict[tuple[str, str], list[int]] = defaultdict(list)

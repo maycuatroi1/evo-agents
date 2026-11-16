@@ -7,6 +7,7 @@ timed out waiting for one."""
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 
 import pytest
@@ -92,8 +93,16 @@ def test_paced_sorted_sorts_as_sorted_does_equal_items_in_their_order(monkeypatc
 
 def test_a_build_paces_only_within_pacing(monkeypatch):
     slept = []
+    sleep = pacing.time.sleep
+
+    def counted(seconds):  # the thread freeing aside, which a test of the api left running, paces on its own
+        if threading.current_thread().name == "kg-free-aside":
+            sleep(seconds)
+        else:
+            slept.append(seconds)
+
     monkeypatch.setattr(pacing, "YIELD_SECONDS", 0)
-    monkeypatch.setattr(pacing.time, "sleep", slept.append)
+    monkeypatch.setattr(pacing.time, "sleep", counted)
     assert list(pacing.paced(range(3))) == [0, 1, 2] and pacing.paced_sorted([2, 1]) == [1, 2]
     assert slept == []  # ``kg build`` and the bench, with no event loop beside them, run at full speed
 
