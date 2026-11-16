@@ -11,9 +11,9 @@ curator_playbook (0060) holds the entries of each project's playbook of the Cura
 every delta that added one, counted it helpful or harmful, or retired it, never changed or deleted
 (``evo_agents.hub.playbook``, ``evo_agents.hub.server.playbook``). curator_briefs (0015) holds the morning brief of
 each project's night, one a day (``evo_agents.hub.server.brief``). curator_playbook keeps the proposal an entry holds
-until and how many review runs showed it (0255), and a delta its actor (0255): ``curator`` for a retire of the
-maintenance. curator_change_repos (0255) holds each repo of a change that works in several, with its own pull request
-and Judge. curator_evolve_runs, curator_evolve_candidates and curator_evolve_arm_cache (0255) hold the Curator's
+until and how many review runs showed it (0256), and a delta its actor (0256): ``curator`` for a retire of the
+maintenance. curator_change_repos (0256) holds each repo of a change that works in several, with its own pull request
+and Judge. curator_evolve_runs, curator_evolve_candidates and curator_evolve_arm_cache (0256) hold the Curator's
 evolutions of a harness: each evolution, each candidate it measured with its whole text, and the results of baseline
 arms read again rather than run again (``evo_agents.hub.evolve``).
 """
@@ -297,8 +297,8 @@ def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("retired_note", Text),
         _stamp("created_at"),
         _stamp("updated_at"),
-        Column("until_proposal_id", BigInteger),  # the proposal it holds until; its merge retires it (0255)
-        Column("prompt_exposures", Integer, nullable=False, server_default="0"),  # review runs that showed it (0255)
+        Column("until_proposal_id", BigInteger),  # the proposal it holds until; its merge retires it (0256)
+        Column("prompt_exposures", Integer, nullable=False, server_default="0"),  # review runs that showed it (0256)
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_playbook_project_id_fkey"
         ),
@@ -328,7 +328,7 @@ def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("evidence", JSONB, nullable=False, server_default="[]"),
         Column("note", Text),
         _stamp("created_at"),
-        Column("actor", Text),  # curator: the hub's maintenance; None: the agent of run_id (0255)
+        Column("actor", Text),  # curator: the hub's maintenance; None: the agent of run_id (0256)
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_playbook_deltas_project_id_fkey"
         ),
@@ -461,7 +461,7 @@ def probe_run_tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -
 
 
 def change_repos_table(metadata: MetaData) -> Table:
-    """curator_change_repos (0255), added to ``metadata``: each repo of a change that works in several, in the order its
+    """curator_change_repos (0256), added to ``metadata``: each repo of a change that works in several, in the order its
     plan has them (an owner of a seam first), with its pull request, its Judge and its merge."""
     return Table(
         "curator_change_repos",
@@ -505,7 +505,7 @@ def change_repos_table(metadata: MetaData) -> Table:
 
 
 def _evolve_runs(metadata: MetaData) -> Table:
-    """Each evolution of a harness (0255): its run, what it evolves, its light tasks, and its Pareto front."""
+    """Each evolution of a harness (0256): its run, what it evolves, its light tasks, and its Pareto front."""
     return Table(
         "curator_evolve_runs",
         metadata,
@@ -555,7 +555,7 @@ def _evolve_runs(metadata: MetaData) -> Table:
 
 
 def _evolve_candidates(metadata: MetaData) -> Table:
-    """Each candidate of an evolution (0255): its parents, its whole components, and its scores, cost and turns."""
+    """Each candidate of an evolution (0256): its parents, its whole components, and its scores, cost and turns."""
     return Table(
         "curator_evolve_candidates",
         metadata,
@@ -589,7 +589,7 @@ def _evolve_candidates(metadata: MetaData) -> Table:
 
 
 def _evolve_arm_cache(metadata: MetaData) -> Table:
-    """The result of a baseline arm of one task (0255), by evolve.arm_key, read again instead of run again."""
+    """The result of a baseline arm of one task (0256), by evolve.arm_key, read again instead of run again."""
     return Table(
         "curator_evolve_arm_cache",
         metadata,
@@ -613,5 +613,5 @@ def _evolve_arm_cache(metadata: MetaData) -> Table:
 
 
 def evolve_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
-    """curator_evolve_runs, curator_evolve_candidates and curator_evolve_arm_cache (0255), added to ``metadata``."""
+    """curator_evolve_runs, curator_evolve_candidates and curator_evolve_arm_cache (0256), added to ``metadata``."""
     return _evolve_runs(metadata), _evolve_candidates(metadata), _evolve_arm_cache(metadata)

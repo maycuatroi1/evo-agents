@@ -107,7 +107,7 @@ def test_a_done_review_counts_its_shown_entries_and_the_curator_retires_the_due_
     good = written(lab, first, op="add", text="Read the numbers first.", evidence=[PUSH])
     written(lab, first, op="helpful", entry_id=good["id"])
     pb = tables.curator_playbook
-    legacy = update(pb).values(text=f"Pin the runner until proposal #{made['id']} lands.")  # as before 0255
+    legacy = update(pb).values(text=f"Pin the runner until proposal #{made['id']} lands.")  # as before 0256
     sql(lab.db, legacy.where(pb.c.id == until["id"]))
     near = update(pb).values(prompt_exposures=playbook.EXPOSURE_LIMIT - 1).where(pb.c.id.in_([stale["id"], good["id"]]))
     sql(lab.db, near)

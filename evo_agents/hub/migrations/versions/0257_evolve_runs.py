@@ -1,7 +1,7 @@
 """Evolve runs: a run of kind ``evolve``, the Curator's evolution of a harness or an agent's configuration.
 
-Revision ID: 0256
-Revises: 0255
+Revision ID: 0257
+Revises: 0256
 Create Date: 2026-11-16
 
 Plan pareto-curator-evolution, step 2, criterion a2 (``evo_agents.hub.server.evolve``). runs_kind_check takes
@@ -16,8 +16,8 @@ Going back deletes the evolve runs, retries first, drops the index and puts the 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0256"
-down_revision = "0255"
+revision = "0257"
+down_revision = "0256"
 branch_labels = None
 depends_on = None
 

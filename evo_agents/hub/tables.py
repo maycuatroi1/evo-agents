@@ -835,11 +835,11 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
 curator_probes = tables_curator.probe_tables(metadata)  # the probes of proposals and changes (0130)
-curator_change_repos = tables_curator.change_repos_table(metadata)  # each repo of a change in several (0255)
+curator_change_repos = tables_curator.change_repos_table(metadata)  # each repo of a change in several (0256)
 curator_evolve_runs, curator_evolve_candidates, curator_evolve_arm_cache = tables_curator.evolve_tables(
     metadata
-)  # 0255
-Index(  # 0256: one evolve run of a project active at a time, as runs_active_probe_key does
+)  # 0256
+Index(  # 0257: one evolve run of a project active at a time, as runs_active_probe_key does
     "runs_active_evolve_key",
     runs.c.project_id,
     unique=True,

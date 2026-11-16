@@ -2870,7 +2870,7 @@ keeps its SHA-256 (`curator_changes.judge_key`, schema 0019) and forgets it with
 which code on the worker's machine can read, gets 403 there. A worker token gets 403 on the charter's routes, as on
 every route of a project.
 
-**A change in several repos** (schema 0255, `evo_agents/hub/server/change_repos.py`). An accepted proposal whose paths
+**A change in several repos** (schema 0256, `evo_agents/hub/server/change_repos.py`). An accepted proposal whose paths
 and draft name several repos of the project, each on GitHub, becomes one plan in them all (`judge.curator_repos_plan`),
 the repos ordered owner before consumer by the seams of the project's graph, and a row of `curator_change_repos` for
 each, with the repos merged before it. The change itself keeps the first repo. The Builder waits until the ruleset of
@@ -3061,7 +3061,7 @@ evo-agents hub curator probe report --weeks 2 --json    # keys weeks, unprobed, 
 
 ## The Curator's evolutions
 
-What `docs/curator.md`, Evolving a harness, describes (schemas 0255 and 0256, `evo_agents/hub/evolve.py`,
+What `docs/curator.md`, Evolving a harness, describes (schemas 0256 and 0257, `evo_agents/hub/evolve.py`,
 `evo_agents/hub/server/evolve.py`, `evolve_runs.py`, `evolve_report.py`). A writer of the project starts an evolution
 with `POST /v1/projects/{p}/curator/evolve` (`target` `git` with `repo` and `paths`, each one of the charter's
 `evolve.evolvable_paths`, or `agent_config` with `system_id` and `agent`; `proposal_id` names the accepted proposal
@@ -3230,7 +3230,7 @@ them). The prompt of a review run shows the live entries of its lenses and those
 harmful first, 40 at most; `GET .../curator/playbook` (reader), the MCP tool `curator_playbook` and `evo-agents hub
 curator playbook` list them.
 
-The hub keeps the playbook itself too (schema 0255). An entry added with `until_proposal_id` (`--until-proposal ID`),
+The hub keeps the playbook itself too (schema 0256). An entry added with `until_proposal_id` (`--until-proposal ID`),
 or whose text says `until proposal #12 lands`, holds only until that proposal's change merges: the merge retires it.
 The prompt of a review run records the entries it showed (a run event `playbook_shown`), and when the run ends done
 each of them counts one more `prompt_exposures`; an entry shown in the charter's `evolve.exposure_limit` review runs

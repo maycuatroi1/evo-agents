@@ -1171,8 +1171,8 @@ evo-agents hub kg health --project demo
 | 0132 | the notice `curator_probe_report` |
 | 0133 | `proposals.fix_of`, `findings.fix_of`, `curator_probes.replaces`: the fix proposals and the replacement probes |
 | 0220 | the lens `agent_system`, the kind `agent_config`, `proposals.system_change`: the change of an agent or a graph a system's curator optimizes |
-| 0255 | `curator_evolve_runs`, `curator_evolve_candidates`, `curator_evolve_arm_cache`: the evolutions, their candidates and the cache of baseline arms; `curator_change_repos`: each repo of a change in several; `curator_playbook.until_proposal_id`, `prompt_exposures` and the actor of a delta |
-| 0256 | runs of kind `evolve`, `runs_active_evolve_key`: at most one active evolve run a project |
+| 0256 | `curator_evolve_runs`, `curator_evolve_candidates`, `curator_evolve_arm_cache`: the evolutions, their candidates and the cache of baseline arms; `curator_change_repos`: each repo of a change in several; `curator_playbook.until_proposal_id`, `prompt_exposures` and the actor of a delta |
+| 0257 | runs of kind `evolve`, `runs_active_evolve_key`: at most one active evolve run a project |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
 `curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes`, `curator.replay_suite` and

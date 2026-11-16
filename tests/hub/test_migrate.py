@@ -197,7 +197,7 @@ TABLES |= {
     "curator_evolve_runs",
     "curator_evolve_candidates",
     "curator_evolve_arm_cache",
-}  # migration 0255
+}  # migration 0256
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -6382,29 +6382,29 @@ def test_0254_keeps_a_projects_vectors_by_text_and_going_back_drops_them(hub_db)
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0254") :]
 
 
-def test_0255_adds_the_curators_evolutions_and_its_playbooks_retires_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0254")
+def test_0256_adds_the_curators_evolutions_and_its_playbooks_retires_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0255")
     new = {"curator_change_repos", "curator_evolve_runs", "curator_evolve_candidates", "curator_evolve_arm_cache"}
     assert not new & tables(hub_db)
-    move_to(hub_db, "0255")
+    move_to(hub_db, "0256")
     assert new <= tables(hub_db)
     assert {"until_proposal_id", "prompt_exposures"} <= columns(hub_db, "curator_playbook")
     assert "actor" in columns(hub_db, "curator_playbook_deltas")
-    move_to(hub_db, "0254", down=True)
+    move_to(hub_db, "0255", down=True)
     assert not new & tables(hub_db)
     assert not {"until_proposal_id", "prompt_exposures"} & columns(hub_db, "curator_playbook")
     assert "actor" not in columns(hub_db, "curator_playbook_deltas")
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0255") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0256") :]
 
 
-def test_0256_takes_evolve_runs_one_active_a_project_and_going_back_deletes_them(hub_db):
-    move_to(hub_db, "0255")
+def test_0257_takes_evolve_runs_one_active_a_project_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0256")
     with live.connect(hub_db) as conn:
         ids = seed(conn)
         evolve = {"kind": "evolve", "request": None}
-        with pytest.raises(errors.CheckViolation):  # no evolve run before 0256
+        with pytest.raises(errors.CheckViolation):  # no evolve run before 0257
             conn.execute(_command_run(ids, **evolve))
-    move_to(hub_db, "0256")
+    move_to(hub_db, "0257")
     with live.connect(hub_db) as conn:
         first = one(conn, _command_run(ids, **evolve))  # in no repo, an agent's configuration
         with pytest.raises(errors.UniqueViolation):  # runs_active_evolve_key
@@ -6418,6 +6418,6 @@ def test_0256_takes_evolve_runs_one_active_a_project_and_going_back_deletes_them
         author = one(conn, _author_run(ids))
 
     # Going back deletes the evolve runs, the retry first; the rest stays.
-    move_to(hub_db, "0255", down=True)
+    move_to(hub_db, "0256", down=True)
     assert query(hub_db, select(hub_tables.runs.c.id, hub_tables.runs.c.kind)) == [(author, "author")]
-    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0256") :]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0257") :]

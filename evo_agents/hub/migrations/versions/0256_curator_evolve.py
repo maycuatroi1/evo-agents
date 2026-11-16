@@ -1,7 +1,7 @@
 """The Curator's evolutions of a harness, its changes in several repos, and its playbook's own retires.
 
-Revision ID: 0255
-Revises: 0254
+Revision ID: 0256
+Revises: 0255
 Create Date: 2026-11-16
 
 Plan pareto-curator-evolution, step 1. curator_evolve_runs holds each evolution of a harness (the files of a repo, or
@@ -17,8 +17,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0255"
-down_revision = "0254"
+revision = "0256"
+down_revision = "0255"
 branch_labels = None
 depends_on = None
 
