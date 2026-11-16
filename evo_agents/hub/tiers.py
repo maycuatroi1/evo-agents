@@ -18,8 +18,9 @@ and the owner alone makes the change. ``tier_of`` computes it from these:
 - the paths those reach in the project's knowledge graph (``kg_impact``), when the project has one: a reached path
   that is protected or one of HARD_PATHS makes it tier 3 only when the pull request's diff removes a module-level name
   that file imports or calls, or changes its signature (``api``: of each such path, the names it uses that the diff
-  breaks, ``evo_agents.hub.api_surface.reached_api``); before the diff is known (``api`` None) it makes it at least
-  tier 2 and no more, so the Builder still builds the branch whose diff the tier is computed again from;
+  breaks, ``evo_agents.hub.api_surface.reached_api``; one the hub could not read makes it tier 3 too); before the
+  diff is known (``api`` None) it makes it at least tier 2 and no more, so the Builder still builds the branch whose
+  diff the tier is computed again from;
 - what that raise cannot know (``unknown``): a path the graph has no file for, one whose file the graph holds older
   than the default branch's (the latest measure of the graph's health says so), or every path while the graph of a
   project that has one cannot be read, makes it at least tier 1, the reason saying which;
@@ -234,6 +235,19 @@ def _first(globs, repo: str, path: str) -> str | None:
     return next((glob for glob in globs if matches(glob, repo, path)), None)
 
 
+def reach_glob(protected, repo: str, path: str) -> str | None:
+    """The glob that makes ``repo:path`` a file whose reach raises a change (``tier_of``'s ``impacted``): a protected
+    glob of the charter, or one of HARD_PATHS; None for any other file."""
+    return _first(protected, repo, path) or _first(HARD_PATHS, repo, path)
+
+
+def evolvable_paths(charter: Mapping) -> list[str]:
+    """The charter's ``evolve.evolvable_paths``, ``tier_of``'s ``evolvable``: its strings, none when it names none."""
+    evolve = charter.get("evolve") if isinstance(charter, Mapping) else None
+    found = evolve.get("evolvable_paths") if isinstance(evolve, Mapping) else None
+    return [item for item in found if isinstance(item, str)] if isinstance(found, (list, tuple)) else []
+
+
 def split_target(text: str) -> tuple[str, str] | None:
     """``("repo", "path")`` of ``repo:path``; None when either part is missing or the path is not a repo path."""
     repo, sep, path = (text or "").partition(":")
@@ -308,10 +322,19 @@ def path_raises(repo: str, path: str, protected=()) -> list[tuple[int, str]]:
 
 def _reach_raises(repo: str, path: str, found: str, api) -> list[tuple[int, str]]:
     """The raise of a protected path ``repo:path`` (glob ``found``) a change reaches in the knowledge graph: tier 3 when
-    the diff breaks names it uses (``api``), at least tier 2 before the diff is known (``api`` None), a note else."""
+    the diff breaks names it uses (``api``) or the hub could not read them (its entry None), at least tier 2 before the
+    diff is known (``api`` None), a note else."""
     where = f"the change reaches {repo}:{path} in the knowledge graph, which is protected ({found})"
     if api is None:
         return [(2, f"{where}; until the pull request's diff shows which names it breaks there: at least tier 2")]
+    if (repo, path) in api and api[(repo, path)] is None:
+        return [
+            (
+                3,
+                f"{where}, and the hub could not read it or the diff's Python files to tell which names the diff "
+                "breaks there: tier 3",
+            )
+        ]
     hits = list(api.get((repo, path)) or ())
     if not hits:
         return [(0, f"{where}, but the diff breaks no module-level name it imports or calls: no raise")]
@@ -338,8 +361,8 @@ def tier_of(
     graph cannot tell what it reaches, and ``knowledge``, of a knowledge.yaml the pull request changes, what it changes
     besides SOURCE_KEYS (None: it could not be read), None before the diff is known; ``fix_of``, the change a fix
     proposal fixes; ``api``, of a protected path reached, the module-level names it uses that the diff removes or
-    changes (None before the diff is known); ``evolvable``, the charter's ``evolve.evolvable_paths``. See the module's
-    docstring. ValueError for a kind not in CHANGE_KINDS."""
+    changes (an entry None: they could not be read, tier 3; ``api`` None before the diff is known); ``evolvable``, the
+    charter's ``evolve.evolvable_paths``. See the module's docstring. ValueError for a kind not in CHANGE_KINDS."""
     if kind not in CHANGE_KINDS:
         raise ValueError(f"{kind!r} is not a kind of change; the kinds are {', '.join(CHANGE_KINDS)}")
     tier, what = CHANGE_KINDS[kind]
@@ -363,7 +386,7 @@ def tier_of(
             raise_to(level, why, lowerable)
     named = set(paths)
     for repo, path in impacted:
-        found = None if (repo, path) in named else _first(protected, repo, path) or _first(HARD_PATHS, repo, path)
+        found = None if (repo, path) in named else reach_glob(protected, repo, path)
         for level, why in _reach_raises(repo, path, found, api) if found is not None else []:
             raise_to(level, why)
     if fix_of is not None:
