@@ -4583,12 +4583,16 @@ The worker runs jobs from a [procrastinate](https://procrastinate.readthedocs.io
 Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 
 - `hub.kg_build`: one build of a project's graph. Builds of one project run one at a time, and at most one waits.
-- `hub.recover_kg_builds`, every 5 minutes: fails builds whose worker stopped sending heartbeats and queues a new one.
-  It also fails builds still queued or running whose job ended (failed, cancelled, aborted, or pruned) without
-  recording them, and queues a new build of the project unless a later build already took their place. Then it
-  fails every other job a worker left running when it stopped sending heartbeats for 2 minutes (killed, out of
-  memory): procrastinate leaves such a job `doing` for ever, and one with a lock, such as `hub.release_schedules`,
-  would hold back every later job of that lock.
+- `hub.recover_kg_builds`, every 5 minutes: fails builds whose worker stopped sending heartbeats and queues a new one,
+  unless the project's last 3 builds in a row (`DIED_IN_A_ROW`, back to the newest a member queued by hand) ended with
+  their worker gone: then it queues none, records why on the build and tells the project's admins and creator (notice
+  `kg_build_halted`), once a row. A build that kills its worker, as one over the memory limit of `worker-kg` does, so
+  dies three times, not for ever; a build that succeeds, or one a member queues (`evo-agents hub kg build`), starts a
+  new row. It also fails builds still queued or running whose job ended (failed, cancelled, aborted, or pruned)
+  without recording them, and queues a new build of the project unless a later build already took their place or the
+  same count of three stops it. Then it fails every other job a worker left running when it stopped sending heartbeats
+  for 2 minutes (killed, out of memory): procrastinate leaves such a job `doing` for ever, and one with a lock, such
+  as `hub.release_schedules`, would hold back every later job of that lock.
 - `hub.prune_kg_artifacts`, hourly at minute 31: deletes the graph files older builds uploaded, past each project's
   `EVO_HUB_KG_KEEP_ARTIFACTS` newest.
 - `hub.recover_runs`, every minute: runs whose worker stopped extending the lease become lost and their step is
@@ -4701,7 +4705,10 @@ minute while a long plugin job holds the others, and two for `hub.deliver_plugin
 so what a commit stores for a plugin goes out within seconds. On SIGTERM a worker takes no
 new job and gives running ones 25 seconds, so give its container a stop grace period above that (the compose file
 uses 40 s). It exits 1 when it loses Postgres, which lets the restart policy bring it back. Graph builds use CPU and
-memory, so the compose file caps `worker` and each `worker-kg` with `EVO_HUB_WORKER_CPUS` and `EVO_HUB_WORKER_MEMORY`. With
+memory, so the compose file caps the CPUs of `worker` and of each `worker-kg` with `EVO_HUB_WORKER_CPUS`, the memory of
+`worker` with `EVO_HUB_WORKER_MEMORY` and that of each `worker-kg` with `EVO_HUB_WORKER_KG_MEMORY`, default `6g`: a
+large project's build peaked at about 4.7 GB. The kernel kills a build over the limit, and its worker with it; the
+recovery pass queues it again twice, then stops and tells the project's admins (`hub.recover_kg_builds` above). With
 `EVO_KG_EMBEDDINGS=openrouter` the embedding of a build goes to OpenRouter and takes none of those CPUs. The worker
 refuses to start without a blob store, since builds read from it and write to it.
 
@@ -4940,7 +4947,8 @@ environment, never in a committed file.
 | `EVO_HUB_REDIS_URL` | api, worker, deliver | optional: the Redis the cache and the shared rate limits use, `redis://`, `rediss://` or `unix://`, such as `redis://:<password>@evo-agents-hub-redis:6379/0` with the profile `bus`; unset, each process caches in its memory (section Cache) |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_KG_EMBEDDINGS`, `OPENROUTER_API_KEY` | api, worker | where graph rows and `kg_search` queries are embedded: `openrouter` calls OpenRouter's embeddings API (`baai/bge-m3`, batches of 64, four requests at once) with the key and loads no model; empty uses the local `BAAI/bge-m3` on the worker's CPUs (docs/kg-semantic.md) |
-| `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
+| `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | limits of `worker`, default `2` and `4g`; the CPUs are also each `worker-kg`'s |
+| `EVO_HUB_WORKER_KG_MEMORY` | compose | memory of each of the two `worker-kg`, which run the graph builds, default `6g` (a large project's build peaked at about 4.7 GB) |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |
 | `EVO_HUB_GATEWAY_CPUS`, `EVO_HUB_GATEWAY_MEMORY` | compose | limits of the `gateway` service, default `1` and `1536m` |
 | `EVO_HUB_GATEWAY_SUBNET` | compose | the subnet of the `gateway` network, default `10.231.128.0/28`, outside Docker's default address pools so the network is created on a host whose pools are all taken; change it when it overlaps a network of the host |

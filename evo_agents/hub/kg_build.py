@@ -98,6 +98,18 @@ STALLED_AFTER = 120.0  # seconds without a heartbeat from its worker before a ru
 STOPPED = "the worker running this build stopped before it finished; a new build was queued"
 ORPHANED = "the job of this build ended without recording how it went; the project's next build takes its place"
 REPLACED = (STOPPED, ORPHANED)  # the errors of a build whose place the project's next build takes
+# After this many builds of a project in a row ended with their worker gone (DIED), the recovery pass queues no other:
+# a build that kills its worker, as one over the memory limit of worker-kg does, would otherwise die and be queued again
+# every few minutes for ever. A build that succeeds, or one a member queues by hand, starts a new row.
+DIED_IN_A_ROW = 3
+HALTED = (
+    f"the worker running this build stopped before it finished, as it did for at least {DIED_IN_A_ROW - 1} builds of "
+    "the project before it; no new build was queued and the project's admins were told: queue one by hand once the "
+    "cause is fixed"
+)
+DIED = (STOPPED, STOPPED.split(";")[0], ORPHANED, HALTED)  # the errors of a build that ended with its worker gone
+DIED_READ = 100  # the newest builds of a project the count of DIED_IN_A_ROW reads at most
+HALTED_NOTICE = "kg_build_halted"  # runs.NOTICE_KINDS: the recovery pass stopped queueing a project's builds
 IN_FLIGHT = ("queued", "running")
 JOB_ENDED = ("succeeded", "failed", "cancelled", "aborted")  # a procrastinate job in these will not run again
 CHUNK = 1024 * 1024
@@ -833,17 +845,18 @@ def _orphaned():
     )
 
 
-async def _fail_orphaned(context, manager) -> tuple[int, list[str]]:
+async def _fail_orphaned(context, manager) -> tuple[int, list[str], list[str]]:
     """Fail the builds ``_orphaned`` finds, a project at a time, and queue a build of each project none of whose
-    builds came after them: the runs they would have built then wait for nothing. A project whose queue stays busy
-    keeps its builds as they are until the next pass."""
+    builds came after them (``_requeue``): the runs they would have built then wait for nothing. A project whose queue
+    stays busy keeps its builds as they are until the next pass. The builds failed, and the projects queued again and
+    those ``_requeue`` stopped."""
     builds = tables.kg_builds
     async with context.engine.connect() as conn:
         found = (await conn.execute(_orphaned())).all()
     by_project: dict[tuple[int, str], list] = {}
     for row in found:
         by_project.setdefault((row.project_id, row.name), []).append(row)
-    failed, queued = 0, []
+    failed, queued, stopped = 0, [], []
     for (project_id, project), rows in by_project.items():
         try:
             async with context.engine.begin() as conn:
@@ -863,9 +876,11 @@ async def _fail_orphaned(context, manager) -> tuple[int, list[str]]:
                     continue
                 later = exists().where(builds.c.project_id == project_id, builds.c.id > max(ended))
                 if not await conn.scalar(select(later)):
-                    build_id, _ = await queue_build(JobQueue(manager), conn, project_id, project, None)
+                    build_id, halted = await _requeue(conn, manager, project_id, project, ended)
                     if build_id is not None:
                         queued.append(project)
+                    elif halted:
+                        stopped.append(project)
         except QueueBusy:
             log.warning("orphaned kg builds left for the next pass: the queue was busy", extra={"project": project})
             continue
@@ -878,7 +893,7 @@ async def _fail_orphaned(context, manager) -> tuple[int, list[str]]:
                 "jobs": {row.job_id: row.job_status for row in rows if row.id in ended},
             },
         )
-    return failed, queued
+    return failed, queued, stopped
 
 
 def _headless():
@@ -932,20 +947,85 @@ async def _fill_headless(context, manager) -> list[str]:
     return queued
 
 
+async def _died_in_a_row(conn: AsyncConnection, project_id: int) -> tuple[int, bool]:
+    """How many of the newest ended builds of a project in a row ended with their worker gone (DIED), back to the
+    newest a member queued by hand, which starts the row; and whether one of them was told already (HALTED)."""
+    builds = tables.kg_builds
+    rows = await conn.execute(
+        select(builds.c.status, builds.c.error, builds.c.requested_by)
+        .where(builds.c.project_id == project_id, builds.c.status.not_in(IN_FLIGHT))
+        .order_by(builds.c.id.desc())
+        .limit(DIED_READ)
+    )
+    count, told = 0, False
+    for row in rows:
+        if row.status != "failed" or row.error not in DIED:
+            break
+        count, told = count + 1, told or row.error == HALTED
+        if row.requested_by is not None:
+            break
+    return count, told
+
+
+async def _tell_halted(conn: AsyncConnection, project_id: int, project: str, count: int) -> None:
+    """Tell the admins and the creator of a project that its builds stopped being queued (HALTED_NOTICE)."""
+    from evo_agents.hub.server.notifications import notify  # notifications import the claim, which imports the KG
+
+    g, p = tables.grants, tables.projects
+    admins = await conn.execute(select(g.c.user_id).where(g.c.project_id == project_id, g.c.role == "admin"))
+    creator = await conn.scalar(select(p.c.created_by).where(p.c.id == project_id))
+    for user_id in sorted({*admins.scalars(), *([creator] if creator is not None else [])}):
+        await notify(
+            conn,
+            user_id=user_id,
+            kind="notice",
+            notice_kind=HALTED_NOTICE,
+            project_id=project_id,
+            title=f"Knowledge graph builds of {project} are no longer queued again",
+            body=(
+                f"The last {count} builds of {project} ended because the worker running them stopped before they "
+                "finished, which a build over the memory limit of worker-kg (EVO_HUB_WORKER_KG_MEMORY) does. The hub "
+                "queues no new build after such a stop until one succeeds or a member queues one: "
+                f"`evo-agents hub kg build --project {project}` once the cause is fixed."
+            ),
+            details={"project": project, "builds_in_a_row": count},
+            link=f"/p/{project}/kg",
+        )
+
+
+async def _requeue(
+    conn: AsyncConnection, manager, project_id: int, project: str, ended: list[int]
+) -> tuple[int | None, bool]:
+    """Queue a build of a project whose builds ``ended`` ended with their worker gone, in ``conn``'s transaction:
+    (its build id, False). When they make DIED_IN_A_ROW builds in a row (``_died_in_a_row``), queue none, record
+    HALTED on them and tell the project's admins, once a row: (None, True)."""
+    count, told = await _died_in_a_row(conn, project_id)
+    if count < DIED_IN_A_ROW:
+        build_id, _ = await queue_build(JobQueue(manager), conn, project_id, project, None)
+        return build_id, False
+    builds = tables.kg_builds
+    await conn.execute(update(builds).values(error=HALTED).where(builds.c.id.in_(ended)))
+    if not told:
+        await _tell_halted(conn, project_id, project, count)
+    log.warning("kg builds whose worker died not queued again", extra={"project": project, "in_a_row": count})
+    return None, True
+
+
 async def recover_stalled(context, manager) -> dict:
     """Fail the kg builds whose worker stopped sending heartbeats (killed, or its machine lost), which would hold
-    their project's lock for ever, and queue a new build of each such project; then fail the builds whose job ended
-    without recording them (``_fail_orphaned``), which hold no lock but would say queued or running for ever; last,
-    queue a build of each project whose graph the hub's tables lack (``_fill_headless``)."""
+    their project's lock for ever, and queue a new build of each such project, unless its builds keep dying so
+    (``_requeue``); then fail the builds whose job ended without recording them (``_fail_orphaned``), which hold no
+    lock but would say queued or running for ever; last, queue a build of each project whose graph the hub's tables
+    lack (``_fill_headless``), which never picks a project whose newest build failed."""
     from procrastinate.jobs import Status
 
     stalled = await manager.get_stalled_jobs(task_name=KG_BUILD, seconds_since_heartbeat=STALLED_AFTER)
-    projects = set()
+    ended: dict[str, list[int]] = {}
     for job in stalled:
         await manager.finish_job(job, Status.FAILED, delete_job=False)
         builds = tables.kg_builds
         async with context.engine.begin() as conn:
-            await conn.execute(
+            failed = await conn.execute(
                 update(builds)
                 .values(
                     status="failed",
@@ -954,17 +1034,27 @@ async def recover_stalled(context, manager) -> dict:
                     finished_at=func.now(),
                 )
                 .where(builds.c.job_id == job.id, builds.c.status.in_(IN_FLIGHT))
+                .returning(builds.c.id)
             )
-        projects.add(job.task_kwargs.get("project"))
-    queued = []
-    for project in sorted(p for p in projects if isinstance(p, str)):
+        ended.setdefault(job.task_kwargs.get("project"), []).extend(failed.scalars().all())
+    queued, halted = [], []
+    for project in sorted(p for p in ended if isinstance(p, str)):
         async with context.engine.begin() as conn:
             row = (await conn.execute(_project_id(project))).one_or_none()
             if row is not None:
-                await queue_build(JobQueue(manager), conn, row[0], project, None)
-                queued.append(project)
+                build_id, stopped = await _requeue(conn, manager, row[0], project, ended[project])
+                (halted if stopped else queued).append(project)
     if stalled:
-        log.warning("abandoned kg builds failed and queued again", extra={"jobs": len(stalled), "projects": queued})
-    orphaned, requeued = await _fail_orphaned(context, manager)
+        log.warning(
+            "abandoned kg builds failed and queued again",
+            extra={"jobs": len(stalled), "projects": queued, "halted": halted},
+        )
+    orphaned, requeued, stopped = await _fail_orphaned(context, manager)
     filled = await _fill_headless(context, manager)
-    return {"failed": len(stalled), "orphaned": orphaned, "queued": sorted({*queued, *requeued}), "filled": filled}
+    return {
+        "failed": len(stalled),
+        "orphaned": orphaned,
+        "queued": sorted({*queued, *requeued}),
+        "halted": sorted({*halted, *stopped}),
+        "filled": filled,
+    }

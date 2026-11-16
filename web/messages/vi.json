@@ -7603,7 +7603,8 @@
       "ops_paused": "Ops của một hệ thống tạm dừng sau các run hỏng",
       "ops_digest": "Bản tóm tắt ops trong ngày của một hệ thống",
       "cron_paused": "Một cron job tạm dừng: người tạo mất role hay seat, hoặc các run của nó hỏng",
-      "run_admin_action": "Một admin của project đã thao tác trên run bạn dispatch"
+      "run_admin_action": "Một admin của project đã thao tác trên run bạn dispatch",
+      "kg_build_halted": "Build knowledge graph của một project liên tục bị dừng và không được xếp lại nữa"
     },
     "item": {
       "unread": "Chưa đọc",

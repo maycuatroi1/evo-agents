@@ -7603,7 +7603,8 @@
       "ops_paused": "The ops of a system paused after failed runs",
       "ops_digest": "The daily digest of a system's ops",
       "cron_paused": "A cron job paused: its owner lost a role or seat, or its runs failed",
-      "run_admin_action": "An admin of the project acted on a run you dispatched"
+      "run_admin_action": "An admin of the project acted on a run you dispatched",
+      "kg_build_halted": "Knowledge graph builds of a project keep stopping and are no longer queued again"
     },
     "item": {
       "unread": "Unread",

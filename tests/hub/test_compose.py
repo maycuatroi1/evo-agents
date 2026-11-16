@@ -354,7 +354,11 @@ def test_compose_runs_the_kg_builds_on_two_workers_of_their_own_and_the_rest_on_
     assert kg["command"][:-2] == worker["command"][:-2], "the same worker, another queue"
     assert kg["environment"] == data[BLOCK] and kg["volumes"] == worker["volumes"], "the same environment and cache"
     assert kg["deploy"]["replicas"] == 2
-    for key in ("image", "build", "cpus", "mem_limit", "healthcheck", "stop_grace_period", "depends_on"):
+    for key in ("image", "build", "cpus", "healthcheck", "stop_grace_period", "depends_on"):
         assert kg[key] == worker[key], key
+    # a build's memory is its own limit: a large project's build peaked at about 4.7 GB, over the worker's 4g
+    assert worker["mem_limit"] == "${EVO_HUB_WORKER_MEMORY:-4g}"
+    assert kg["mem_limit"] == "${EVO_HUB_WORKER_KG_MEMORY:-6g}"
+    assert {"EVO_HUB_WORKER_MEMORY", "EVO_HUB_WORKER_KG_MEMORY"} <= listed_in_env_example()
     assert kg["networks"] == {"default": {}, "platform": {}}, "a build calls no model: not on the gateway's network"
     assert worker["networks"] == {**kg["networks"], "gateway": {}}
