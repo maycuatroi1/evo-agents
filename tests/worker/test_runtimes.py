@@ -1023,6 +1023,44 @@ def test_claude_keeps_the_input_open_for_a_background_command_after_the_agent_wr
     assert outcome.completed and outcome.summary == "READ"
 
 
+def _finished_with_a_server_left(result_file):
+    """The agent writes its result file and ends its turn while a command it started, a server say, runs on."""
+
+    async def behaviour(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(INIT)
+        _print(cli, background_start())
+        result_file.parent.mkdir(parents=True, exist_ok=True)
+        result_file.write_text('{"summary": "done"}', encoding="utf-8")
+        cli.print(_text("DONE"))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()  # it never ends by itself
+        _print(cli, background_end(status="killed"))
+        cli.exit()
+
+    return behaviour
+
+
+def test_claude_completes_a_run_that_wrote_its_result_when_its_time_cap_ends_a_wait_for_a_background_command(tmp_path):
+    behaviour = _finished_with_a_server_left(tmp_path / "worktree" / runs.RESULT_FILE)
+    budget = {"max_usd": None, "max_seconds": 0.5, "spent_usd": 0.0, "spent_seconds": 0}
+    adapter = _claude(tmp_path, behaviour, timers=SLOW, budget=budget)
+    events, outcome = asyncio.run(_collect(adapter))
+    assert ("control", "interrupt") not in adapter.cli.log
+    assert adapter.cli.log[-2:] == [("result", "DONE"), ("end_input",)]
+    assert outcome.completed and outcome.summary == "DONE" and outcome.cap is None and outcome.error is None
+
+
+def test_claude_with_no_time_cap_ends_a_wait_for_a_background_command_after_the_result_at_the_finished_wait(tmp_path):
+    behaviour = _finished_with_a_server_left(tmp_path / "worktree" / runs.RESULT_FILE)
+    adapter = _claude(tmp_path, behaviour, timers={**SLOW, "background_wait": None, "finished_wait": 0.3})
+    began = time.monotonic()
+    events, outcome = asyncio.run(_collect(adapter))
+    assert time.monotonic() - began >= 0.3, "the session waited for the command first"
+    assert adapter.cli.log[-2:] == [("result", "DONE"), ("end_input",)]
+    assert outcome.completed and outcome.summary == "DONE" and outcome.cap is None
+
+
 def test_claude_keeps_the_input_open_for_a_background_command_when_a_previous_run_left_its_result_json(tmp_path):
     """A run that goes on in a chat's worktree finds the result file of the run before it: that one says nothing of
     this session, whose turn the CLI opens when its background command ends must still have its input (runs #8221
