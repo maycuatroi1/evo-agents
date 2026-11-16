@@ -1,12 +1,10 @@
-"""kg_status of a graph engine (``evo_agents.kg.serve.Session``): per-source freshness, coverage and held deletions,
-plus the graph snapshot. ``evo-agents kg status`` prints the hub's kg_status, and ``render_brief`` of it with
-``--brief`` and in the SessionStart note.
+"""What ``evo-agents kg status`` prints of the hub's kg_status (``evo_agents.hub.kg_graph.HubSession``), which counts
+the build in the hub's tables: ``render_brief`` with ``--brief`` and in the SessionStart note, and the lines the hub's
+text gives the code backend of a source (``code_line``), the clusters (``cluster_line``) and the codes defined in two or
+more places (``multiple_lines``). This machine holds no corpus or graph to count.
 
-For each git source the graph read, it names the commit and how many commits that is behind the remote's default
-branch, counted again from this machine's checkout without fetching (``evo_agents.kg.freshness``); the SessionStart
-note (``brief``) does the same in one line of names and numbers.
-
-Exit code is non-zero when a source has never synced, its last run failed, or deletions are held.
+For each git source the graph read, the note names the commit and how many commits that is behind the remote's default
+branch, as the machine that read it counted (``evo_agents.kg.freshness``), in one line of names and numbers.
 """
 
 from __future__ import annotations
@@ -14,7 +12,6 @@ from __future__ import annotations
 import datetime as dt
 
 from evo_agents.kg import freshness
-from evo_agents.kg.project import Project
 
 DERIVED_FROM_HINT = (
     "keep one definition per code; give each copy a derived_from field in its frontmatter, naming the original"
@@ -56,79 +53,6 @@ def _human_age(seconds: float | None) -> str:
     return f"{int(seconds)}s"
 
 
-def project_status(project: Project) -> dict:
-    corpus = project.corpus()
-    sources = []
-    ok = True
-    for src in project.sources():
-        sid = src["id"]
-        runs = corpus.runs(sid, limit=1)
-        last = runs[0] if runs else None
-        alive = len(corpus.items(sid))
-        total = len(corpus.items(sid, include_deleted=True))
-        held = corpus.held(sid)
-        entry = {
-            "id": sid,
-            "connector": src.get("connector"),
-            "items": alive,
-            "deleted": total - alive,
-            "held_removals": sum(len(h["ids"]) for h in held),
-            "held": [{"scope": h["scope"], "reason": h["reason"]} for h in held],
-            "last_run": None,
-            "age_seconds": None,
-        }
-        if last:
-            detail = last["detail"]
-            entry["last_run"] = {
-                "run_id": last["run_id"],
-                "status": last["status"],
-                "finished_at": last["finished_at"],
-                "items": detail.get("items"),
-                "errors": detail.get("errors"),
-                "rejected": detail.get("rejected"),
-                "removals": detail.get("removals"),
-                "issues": detail.get("issues", [])[:5],
-                "seconds": detail.get("seconds"),
-            }
-            ok_runs = [r for r in corpus.runs(sid, limit=50) if r["status"] == "ok"]
-            entry["age_seconds"] = _age_seconds(ok_runs[0]["finished_at"]) if ok_runs else None
-        if not last or last["status"] != "ok" or held:
-            ok = False
-        sources.append(entry)
-
-    status = {
-        "project": project.name,
-        "harness": str(project.harness.root),
-        "home": str(corpus.root),
-        "ok": ok,
-        "sources": sources,
-        "graph": None,
-        "multiple_definitions": None,
-        "warnings": [],
-        "reads": [],
-    }
-    try:
-        from evo_agents.kg.store import StaleSchema, Store
-
-        try:
-            store = Store.open_readonly(project)
-        except StaleSchema as exc:
-            store, status["graph"], status["ok"] = None, {"ready": False, "error": str(exc)}, False
-        if store is not None:
-            status["graph"] = store.summary()
-            status["reads"] = freshness.count_again(project, freshness.reads(status["graph"].get("coverage")))
-            if not status["graph"].get("ready"):
-                status["ok"] = False
-            # Coverage gaps the build survived, such as non-Python code without symbols: ``ok`` stays as it is.
-            status["warnings"] = status["graph"].get("coverage", {}).get("warnings", [])
-            multiple = status["graph"].get("coverage", {}).get("multiple_definitions")
-            if multiple is not None:  # a convention warning, not a failure: ``ok`` stays as it is
-                status["multiple_definitions"] = {**multiple, "hint": DERIVED_FROM_HINT if multiple["codes"] else None}
-    except ImportError:
-        pass
-    return status
-
-
 def render_brief(status: dict) -> str:
     """The SessionStart note: the snapshot's age and size, the commit each git source read, what failed. Names and
     counts only. The hub's kg_status names no source run, so its note says none failed or held."""
@@ -160,51 +84,8 @@ def render_brief(status: dict) -> str:
     return "\n".join(lines)
 
 
-def read_lines(reads: list[dict]) -> list[str]:
-    """The commit each git source read, under the graph's lines."""
-    return [f"{'read' if i == 0 else '':<8}{r['source']} {freshness.describe(r)}" for i, r in enumerate(reads)]
-
-
-def _source_line(s: dict) -> str:
-    if s.get("withheld"):  # above the clearance of the sink that asked (``serve``)
-        return f"{s['id']:<22}withheld: above the clearance of this sink"
-    last = s["last_run"]
-    state = last["status"] if last else "never"
-    notes = []
-    if s["held_removals"]:
-        notes.append(f"{s['held_removals']} removal(s) held")
-    if last and last.get("errors"):
-        notes.append(f"{last['errors']} item error(s)")
-    if last and last.get("rejected"):
-        notes.append(f"{last['rejected']} rejected")
-    if last and last["status"] != "ok" and last.get("issues"):
-        notes.append(last["issues"][0])
-    connector = (s["connector"] or "")[:11]
-    return (
-        f"{s['id']:<22}{connector:<12}{s['items']:>7}{s['deleted']:>9}  {state:<9}"
-        f"{_human_age(s['age_seconds']):>6}  {'; '.join(notes)}"
-    )
-
-
-def _build_lines(graph: dict) -> list[str]:
-    """The ready build: its size, the coverage of each source and its clusters."""
-    lines = [
-        f"graph   build {graph['build_id']} ({_human_age(_age_seconds(graph.get('built_at')))} old): "
-        f"{graph['nodes']} nodes, {graph['edges']} edges, {graph['units']} units"
-    ]
-    for src in graph.get("coverage", {}).get("sources", []):
-        refs = f", refs {src.get('refs_resolved', 0)}/{src.get('refs', 0)}" if src.get("refs") else ""
-        lines.append(
-            f"        {src['id']:<20} {src['items']:>6} items, mentions {src['resolved']}/{src['mentions']}"
-            f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling{refs}"
-        )
-        if src.get("code"):
-            lines.append(f"          {code_line(src['code'])}")
-    lines.append(f"        {cluster_line(graph.get('coverage', {}).get('clusters'))}")
-    return lines
-
-
-def _multiple_lines(multiple: dict | None) -> list[str]:
+def multiple_lines(multiple: dict | None) -> list[str]:
+    """The codes defined in two or more places, with the hint and the samples of the build's coverage."""
     if not multiple or not multiple["codes"]:
         return []
     lines = ["", f"codes defined in two or more places: {multiple['codes']}; {multiple['hint']}"]
@@ -213,35 +94,3 @@ def _multiple_lines(multiple: dict | None) -> list[str]:
     if multiple["codes"] > len(multiple["samples"]):
         lines.append(f"        and {multiple['codes'] - len(multiple['samples'])} more")
     return lines
-
-
-def _graph_lines(status: dict, graph: dict) -> list[str]:
-    lines = [""]
-    if graph.get("ready"):
-        lines += _build_lines(graph)
-    else:
-        lines.append(f"graph   {graph.get('error') or 'no ready build'}")
-    lines += read_lines(status.get("reads") or [])
-    if status.get("warnings"):
-        lines.append("")
-        lines += [f"warning: {w}" for w in status["warnings"]]
-    return lines + _multiple_lines(status.get("multiple_definitions"))
-
-
-def render_status(status: dict, *, brief: bool = False) -> str:
-    if brief:
-        return render_brief(status)
-    graph = status.get("graph")
-    lines = [f"project {status['project']}  harness {status['harness']}", f"corpus  {status['home']}", ""]
-    lines.append(f"{'source':<22}{'connector':<12}{'items':>7}{'deleted':>9}  {'last run':<9}{'age':>6}  notes")
-    lines += [_source_line(s) for s in status["sources"]]
-    if graph:
-        lines += _graph_lines(status, graph)
-    else:
-        lines.append("")
-        lines.append(
-            "graph   none on this machine: graphs are built on the hub (evo-agents hub kg builds, hub kg health)"
-        )
-    lines.append("")
-    lines.append("OK" if status["ok"] else "NOT OK: a source failed, never synced, or has deletions held")
-    return "\n".join(lines)

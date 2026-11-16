@@ -42,9 +42,9 @@ from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol import finalize_item
 from evo_agents.kg.replace import replace_source
-from evo_agents.kg.serve import Session
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.store import Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.text import split_markdown
 
 PROJECT = "shop"
@@ -270,7 +270,7 @@ def test_srs_use_cases_and_requirements_are_declared_nodes_of_the_approved_versi
         assert store.node(f"requirement:{code}", b)["status"] == "declared"
     assert edge_between(store, b, f"{doc}#k23", "defines", "requirement:NFR-SEC-01") is not None
     assert edge_between(store, b, USE_CASE, "mentions", f"{doc}#k18")["status"] == "declared"  # the screen Cart
-    found = Session(project, AGENT).call("kg_search", {"query": "UC-ORD-001"})["structuredContent"]
+    found = StoreSession(project, AGENT).call("kg_search", {"query": "UC-ORD-001"})["structuredContent"]
     assert section in [hit["id"] for hit in found["results"]]  # an alias finds the section that defines the use case
 
 
@@ -302,7 +302,7 @@ def test_tasks_plugin_tickets_implement_use_cases_and_steps_implement_tickets(sh
 
 def test_srs_kg_path_goes_from_a_use_case_to_its_task_step_test_and_commit(shop):
     project, report = shop([srs_source(), tasks_source()])
-    session = Session(project, AGENT)
+    session = StoreSession(project, AGENT)
     chains = session.call("kg_path", {"from": USE_CASE})["structuredContent"]
     reached = {found["id"] for found in chains["nodes"]}
     assert {TICKET, STEP, "symbol:code:tests/test_orders.py::test_place_order"} <= reached
@@ -318,14 +318,14 @@ def test_srs_plugin_data_carries_its_rows_label_and_a_sink_below_it_sees_nothing
     for internal in ("usecase:UC ORD-2", "requirement:NFR-SEC-01", doc, f"{doc}#k08", TICKET):
         assert store.node(internal, b)["label"][0] == 1, internal
     assert store.node("usecase:UC PAY-1", b)["label"][0] == 3  # the refunds document is secret
-    agent = Session(project, AGENT)
+    agent = StoreSession(project, AGENT)
     assert agent.call("kg_node", {"id": TICKET})["structuredContent"]["node"]["label"]["level"] == "internal"
     hidden = [(AGENT, "usecase:UC PAY-1"), (NARROW, "usecase:UC ORD-2"), (NARROW, TICKET), (NARROW, f"{doc}#k08")]
     for sink, node_id in hidden:
         with pytest.raises(ToolError):
-            Session(project, sink).tool_kg_node(node_id)
+            StoreSession(project, sink).tool_kg_node(node_id)
     # A public document names UC ORD-1: the use case is public with its code alone, its section and task are not.
-    _, shown = Session(project, NARROW).tool_kg_node(USE_CASE)
+    _, shown = StoreSession(project, NARROW).tool_kg_node(USE_CASE)
     assert shown["node"]["label"]["level"] == "public" and shown["node"]["props"] == {"code": "UC ORD-1"}
 
 

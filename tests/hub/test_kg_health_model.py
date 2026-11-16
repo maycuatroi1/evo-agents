@@ -26,9 +26,9 @@ from evo_agents.kg.build import build_project
 from evo_agents.kg.health import is_test_path
 from evo_agents.kg.policy import Label
 from evo_agents.kg.review import ONTOLOGY_RULES, RULES
-from evo_agents.kg.serve import Session
 from evo_agents.kg.snapshot import Snapshot, store_rows
 from evo_agents.kg.store import Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, git, make_project, write
 from tests.kg.test_clusters import needs_engine
@@ -444,7 +444,8 @@ def test_the_eval_asks_the_done_steps_whose_commits_the_graph_read(demo):
             "gives a file",
             "no-repo#2: no repo named",
         ]
-        scored = kg_health_eval.score(questions, skipped, available, Session(demo.project, "agent"), sources=sources)
+        session = StoreSession(demo.project, "agent")
+        scored = kg_health_eval.score(questions, skipped, available, session, sources=sources)
         left_out = kg_health_eval.plan_questions("demo", bodies, commits, leave_out={"demo#1"})
     finally:
         store.close()
@@ -472,7 +473,7 @@ def test_a_step_whose_commits_change_more_than_twenty_files_is_still_asked(demo)
     try:
         commits = kg_health_eval.GraphCommits(store, store.latest_ready())
         questions, skipped, available, _ = kg_health_eval.plan_questions("demo", [("demo", plan(head))], commits)
-        scored = kg_health_eval.score(questions, skipped, available, Session(demo.project, "agent"))
+        scored = kg_health_eval.score(questions, skipped, available, StoreSession(demo.project, "agent"))
     finally:
         store.close()
     assert available == 1 and skipped == [] and len(questions[0].files) == 21

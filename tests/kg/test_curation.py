@@ -16,8 +16,8 @@ from evo_agents.kg import clusters
 from evo_agents.kg.build import build_project
 from evo_agents.kg.pipeline.curation import curation_item
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store, edge_id
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import make_project
 
@@ -110,7 +110,7 @@ def test_curation_item_of_unreadable_or_foreign_entries_gives_no_fact():
 
 def test_deprecated_parts_are_left_out_of_search_context_path_and_impact_unless_asked(tmp_path, kg_env):
     project, _store, _b, _report = curated(tmp_path, kg_env, DECISIONS)
-    session = Session(project, "agent")
+    session = StoreSession(project, "agent")
 
     def text(name: str, args: dict) -> str:
         found = session.call(name, args)
@@ -139,7 +139,7 @@ def test_search_leaves_deprecated_nodes_out_before_it_cuts_the_list(tmp_path, kg
 
 def test_kg_node_states_the_deprecation_and_its_reason(tmp_path, kg_env):
     project, _store, _b, _report = curated(tmp_path, kg_env, DECISIONS)
-    session = Session(project, "agent")
+    session = StoreSession(project, "agent")
     found = session.call("kg_node", {"id": RANK})
     text = found["content"][0]["text"]
     assert "deprecated: ranking moved to the index (decision 3)" in text

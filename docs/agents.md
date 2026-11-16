@@ -39,7 +39,7 @@ a worker, `auto` and `hub` ask the hub with the run's worker token, signed in or
 | `kg_node` | one node: properties, evidence, edges |
 | `kg_path` | shortest path between two ids, or the trace chains from one (requirement, step, code, test) |
 | `kg_impact` | what depends on ids, `repo:path` files or a unified diff, before you change them |
-| `kg_status` | bound project, clearance, snapshot age, coverage per source, session label |
+| `kg_status` | bound project, clearance, snapshot age, coverage per source |
 | `kg_more` | continue a truncated result |
 
 `kg_impact` walks back over callers, in other files too when the caller's imports say where the callee lives,
@@ -56,7 +56,7 @@ Hooks:
   how far behind it is now (`commits read: 16 sources, 13 current; behind: app 1550c7a (3 behind
   origin/main)`, or `commits read: 16 sources, all current`), counted from the checkout without the network.
 - PostToolUse, after every evo-kg call, joins the labels of what the result revealed into a session
-  label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it. In a session without evo-kg,
+  label under `~/.evo/kg/sessions/`. It only rises; the SessionStart note shows it. In a session without evo-kg,
   `evo-agents hub mcp` joins the labels of the `kg_*` results the hub serves into the same label.
 - PostToolUse, after Grep, or `rg` or `grep` at the head of a Bash command, adds a note beside the
   result when a matched line falls in a symbol or file of the graph: at most four lines after its

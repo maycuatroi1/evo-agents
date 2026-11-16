@@ -10,8 +10,8 @@ import pytest
 from evo_agents.cli import main
 from evo_agents.kg import ppr, search
 from evo_agents.kg import settings as kg_settings
-from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
+from evo_agents.kg.store_session import StoreSession
 from tests.kg.test_walk import ALPHA, BETA, QUASAR, entity_project, walk_on
 
 CODE = "app:file:app/search.py"
@@ -36,7 +36,7 @@ def set_code(project, on: bool):
 
 
 def call(project, tool, args, sink="agent"):
-    found = Session(project, sink).call(tool, args)
+    found = StoreSession(project, sink).call(tool, args)
     assert not found.get("isError"), found
     return found
 

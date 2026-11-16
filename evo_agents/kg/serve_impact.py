@@ -8,7 +8,7 @@ from evo_agents.kg.refs import path_like, readable
 from evo_agents.kg.serve_text import SPAN, SessionText
 from evo_agents.kg.serve_view import ANSWERS_NOTHING, ToolError
 from evo_agents.kg.serve_walk import HUB_DEGREE, SEED_EDGES, STATUS_RANK
-from evo_agents.kg.store import Store
+from evo_agents.kg.snapshot import SnapshotView
 from evo_agents.kg.tools import IMPACT_LIMIT, IMPACT_MAX_LIMIT
 
 IMPACT_RELS = (
@@ -32,7 +32,7 @@ IMPACT_MENTIONS_SHOWN = 3  # reached nodes a document's line names; the data has
 class ImpactTools(SessionText):
     """kg_impact."""
 
-    def _changed_symbols(self, store: Store, b: int, symbols: list[dict], lines: set[int]) -> list[dict]:
+    def _changed_symbols(self, store: SnapshotView, b: int, symbols: list[dict], lines: set[int]) -> list[dict]:
         """The visible symbols a set of changed lines falls in: for each line, the symbol that starts last
         at or before it (the innermost one), within its unit's line span when the unit has one."""
         extents = []
@@ -104,7 +104,9 @@ class ImpactTools(SessionText):
         found.coverage = seed_coverage(found.seeds.values())
         return "\n".join(self._impact_lines(found)), self._impact_data(found)
 
-    def _seeds_by_path(self, store: Store, found: Impact, paths: list[str], changes: dict[str, set[int]]) -> None:
+    def _seeds_by_path(
+        self, store: SnapshotView, found: Impact, paths: list[str], changes: dict[str, set[int]]
+    ) -> None:
         """Seeds from repo:path paths and the files of a diff, and the symbols its changed lines fall in. A diff
         does not say which repo it comes from: a path names a file only when exactly one visible file matches it;
         otherwise the candidates go back to the caller."""
@@ -130,7 +132,7 @@ class ImpactTools(SessionText):
             for s in self._changed_symbols(store, b, symbols.get(fid, []), lines):
                 found.seeds[s["id"]] = s
 
-    def _walk_back(self, store: Store, found: Impact) -> None:
+    def _walk_back(self, store: SnapshotView, found: Impact) -> None:
         """Walk back from the seeds: whoever has an edge into a reached node depends on it. A node is reached once,
         through its strongest edge (then the first rel by name); ``rels`` lists every relation it has to that
         edge's target, so a method that both overrides and calls its parent's shows both."""
@@ -157,7 +159,7 @@ class ImpactTools(SessionText):
                     found.reached[other] = {"hop": hop + 1, "node": node, "edge": e, "rels": rels, "hub": False}
                     frontier.append(other)
 
-    def _edges_back(self, store: Store, found: Impact, nid: str, hop: int) -> list[dict]:
+    def _edges_back(self, store: SnapshotView, found: Impact, nid: str, hop: int) -> list[dict]:
         """The visible edges into ``nid`` that kg_impact follows, mentions included, never weaker than resolved.
         A seed's are all read, a page at a time (``_seed_edges``); a reached node with more than HUB_DEGREE edges
         is a hub: it is marked and not expanded, since half the graph depends on it."""
@@ -178,7 +180,7 @@ class ImpactTools(SessionText):
             and self.seen(e)
         ]
 
-    def _seed_edges(self, store: Store, found: Impact, nid: str) -> list[dict]:
+    def _seed_edges(self, store: SnapshotView, found: Impact, nid: str) -> list[dict]:
         """The edges into a seed, SEED_EDGES at a time, up to IMPACT_SEED_EDGES; a seed with more is added to
         ``found.cut`` with the number of edges it has, so no caller is dropped without a word."""
         assert self.clearance is not None, ANSWERS_NOTHING

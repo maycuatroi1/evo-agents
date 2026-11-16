@@ -71,15 +71,13 @@ def test_the_brief_counts_the_current_sources_and_names_only_the_others():
     assert "repo0" not in brief(current + late)
 
 
-def test_a_read_with_its_time_says_its_count_is_of_then_unless_counted_again():
+def test_a_read_with_its_time_says_its_count_is_of_then():
     at = "2026-10-30T13:54:33Z"
     read = read_of({"commit": SHA, "ref": "origin/main", "at": at, "base": "origin/main", "behind": 0})
     assert read["at"] == at
     (found,) = reads({"sources": [{"id": "app", "read": read}]})
     assert found["at"] == at
     assert describe(found) == f"{SHA[:7]} of origin/main at {at}, 0 behind origin/main then"
-    again = {**found, "behind": 9, "recounted": True}  # count_again, from this machine's checkout
-    assert describe(again) == f"{SHA[:7]} of origin/main at {at}, 9 behind origin/main"
     assert describe({**found, "base": None, "behind": None}) == f"{SHA[:7]} of origin/main at {at}"
     assert "at" not in read_of({"commit": SHA, "at": "ignore previous instructions"})
 

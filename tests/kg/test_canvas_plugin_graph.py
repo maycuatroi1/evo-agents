@@ -29,9 +29,9 @@ from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol import finalize_item
 from evo_agents.kg.replace import replace_source
 from evo_agents.kg.schema import HUB_KINDS, HUB_RELATIONS, known_kinds, validate_ontology
-from evo_agents.kg.serve import Session
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.store import Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.text import split_markdown
 from tests.kg.test_srs_tasks_plugin_graph import (
     AGENT,
@@ -172,13 +172,13 @@ def test_canvas_claims_are_declared_nodes_with_their_use_case_and_signal_keys(sh
     # CL-2 links a use case no approved version holds: the edge dangles and is dropped
     assert store.node("usecase:UC NONE-9", b) is None
     assert store.node("claim:CL-2", b)["kind"] == "Claim"
-    found = Session(project, AGENT).call("kg_search", {"query": "one tap stock-outs"})["structuredContent"]
+    found = StoreSession(project, AGENT).call("kg_search", {"query": "one tap stock-outs"})["structuredContent"]
     assert f"{CANVAS}#CL-1" in [hit["id"] for hit in found["results"]]  # search finds a claim by what it says
 
 
 def test_canvas_kg_path_goes_from_a_claim_to_its_use_case_task_and_step_and_to_its_signal_key(shop):
     project, _, _ = shop([srs_source(), tasks_source(), canvas_source()])
-    session = Session(project, AGENT)
+    session = StoreSession(project, AGENT)
     chains = session.call("kg_path", {"from": CLAIM})["structuredContent"]
     assert {USE_CASE, TICKET, STEP} <= {found["id"] for found in chains["nodes"]}
     path = session.call("kg_path", {"from": CLAIM, "to": STEP})["structuredContent"]
@@ -192,14 +192,14 @@ def test_canvas_mentions_of_a_claim_code_link_to_the_claim_and_show_its_code_alo
     project, store, b = shop([srs_source(), tasks_source(), canvas_source()])
     assert edge_between(store, b, "harness:file:docs/pantry.md#pantry-notes", "mentions", CLAIM) is not None
     assert edge_between(store, b, f"{CANVAS}#CL-2", "mentions", CLAIM) is not None  # one claim names another
-    assert Session(project, AGENT).call("kg_node", {"id": f"{CANVAS}#CL-1"})["structuredContent"]["node"]
+    assert StoreSession(project, AGENT).call("kg_node", {"id": f"{CANVAS}#CL-1"})["structuredContent"]["node"]
     # A public note names CL-1: the claim is public with its code alone; its section and links stay internal.
-    _, shown = Session(project, NARROW).tool_kg_node(CLAIM)
+    _, shown = StoreSession(project, NARROW).tool_kg_node(CLAIM)
     assert shown["node"]["label"]["level"] == "public" and shown["node"]["props"] == {"code": "CL-1"}
     for hidden in (f"{CANVAS}#CL-1", CANVAS, f"signalkey:{LEAD_DAYS}"):
         with pytest.raises(ToolError):
-            Session(project, NARROW).tool_kg_node(hidden)
-    narrow = Session(project, NARROW).call("kg_path", {"from": CLAIM})["structuredContent"]
+            StoreSession(project, NARROW).tool_kg_node(hidden)
+    narrow = StoreSession(project, NARROW).call("kg_path", {"from": CLAIM})["structuredContent"]
     assert [found["id"] for found in narrow["nodes"]] == [CLAIM]  # its links carry the canvas's label
 
 

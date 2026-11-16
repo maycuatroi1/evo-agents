@@ -22,9 +22,10 @@ from evo_agents.kg.policy import (
 )
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol import SCHEMAS, finalize_item, hello, item_hash, validate_message
-from evo_agents.kg.serve import READ_META, Session
+from evo_agents.kg.serve import READ_META
 from evo_agents.kg.sessions import describe, read_session, record_read
 from evo_agents.kg.store import SCHEMA_VERSION, StaleSchema, Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from evo_agents.schema import Validator
 
@@ -200,13 +201,13 @@ def chats(tmp_path, kg_env):
     return make(tmp_path, kg_env, json.loads(json.dumps(ITEMS)))
 
 
-def reading(project, audience) -> Session:
-    session = Session(project, "agent")
+def reading(project, audience) -> StoreSession:
+    session = StoreSession(project, "agent")
     session.audience = frozenset(audience)
     return session
 
 
-def data(session: Session, tool: str, **args) -> dict:
+def data(session: StoreSession, tool: str, **args) -> dict:
     found = session.call(tool, args)
     assert not found.get("isError"), found
     return found["structuredContent"]
@@ -216,7 +217,7 @@ def ids(found: dict, key: str = "results") -> set[str]:
     return {n["id"] for n in found[key]}
 
 
-def seen(session: Session, node_id: str) -> bool:
+def seen(session: StoreSession, node_id: str) -> bool:
     return not session.call("kg_node", {"id": node_id}).get("isError")
 
 

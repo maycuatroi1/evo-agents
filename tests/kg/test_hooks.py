@@ -17,10 +17,10 @@ from evo_agents.kg import grep_command, hook_scope, post_search, serve, sessions
 from evo_agents.kg.build import build_project
 from evo_agents.kg.connectors import gitcli
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
-from tests.kg.hub_graph import sign_in
+from tests.kg.hub_graph import hub_session, hub_status, sign_in
 from tests.kg.projects import commit, git, make_project, write
 
 SAMPLE = Path(__file__).parent / "fixtures" / "hooks" / "post_tool_kg_search.json"
@@ -104,7 +104,7 @@ def built(tmp_path, home):
 
 def test_post_tool_joins_across_calls(tmp_path, kg_env, monkeypatch, capsys, unbound):
     project = built(tmp_path, kg_env)
-    session = Session(project, "wide")
+    session = StoreSession(project, "wide")
     sid = "11111111-2222-4333-8444-555555555555"
 
     plans = session.call("kg_search", {"query": "demo", "kinds": ["Plan"]})
@@ -135,7 +135,7 @@ def test_post_tool_joins_across_calls(tmp_path, kg_env, monkeypatch, capsys, unb
 
 def test_post_tool_counts_what_a_truncated_result_reveals(tmp_path, kg_env, monkeypatch, capsys, unbound):
     project = built(tmp_path, kg_env)
-    session = Session(project, "wide")
+    session = StoreSession(project, "wide")
     monkeypatch.setattr(serve, "CAP_CHARS", 300)
     # The use case comes from the public harness; the symbol implementing it from the customer repo.
     card = session.call("kg_node", {"id": "usecase:KB-01"})
@@ -147,7 +147,7 @@ def test_post_tool_counts_what_a_truncated_result_reveals(tmp_path, kg_env, monk
     counted = card["content"][0]["_meta"][sessions.READ_META]["results_read"]
     assert record["level"] == "customer" and record["results_read"] == counted > 0  # counted before the cut
 
-    status = session.call("kg_status", {})  # the sources and the build it describes raise the label, as reads do
+    status = hub_session(project, "wide").call("kg_status", {})  # what it describes raises the label, as reads do
     assert status["structuredContent"]["label"]["level"] == "customer"
     assert post(monkeypatch, capsys, as_claude_code_sends("kg_status", status, sid))[0] == 0
     assert sessions.read_session(sid)["level"] == record["level"]
@@ -283,21 +283,13 @@ def test_post_tool_session_ids_never_share_a_file(kg_env, unbound):
     assert sessions.session_path(42) is None
 
 
-def test_post_tool_label_shows_in_status_and_session_start(tmp_path, kg_env, monkeypatch, capsys, unbound):
+def test_post_tool_label_shows_in_session_start(tmp_path, kg_env, monkeypatch, capsys, unbound):
     project = built(tmp_path, kg_env)
-    session = Session(project, "wide")
+    session = StoreSession(project, "wide")
     sid = "22222222-3333-4444-8555-666666666666"
     found = session.call("kg_search", {"query": "rank_results"})
     assert post(monkeypatch, capsys, as_claude_code_sends("kg_search", found, sid))[0] == 0
 
-    before = session.call("kg_status", {})
-    assert "session label" not in before["content"][0]["text"]  # the server does not know the session
-    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", sid)
-    status = session.call("kg_status", {})
-    assert "session label customer,U over demo" in status["content"][0]["text"]
-    assert status["structuredContent"]["session"]["level"] == "customer"
-
-    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
     sign_in(monkeypatch, project)  # the note reads the hub's kg_status
     stdin = json.dumps({"session_id": sid, "hook_event_name": "SessionStart", "source": "resume"})
@@ -315,12 +307,12 @@ def test_session_start_and_kg_status_name_the_commit_each_git_source_read(
     project = make_project(tmp_path, kg_env)
     app = tmp_path / "demo-app"
     read = git(app, "rev-parse", "HEAD").strip()
-    git(app, "update-ref", "refs/remotes/origin/main", read)  # as a clone that fetched main has it
-    sync_project(project)
-    assert build_project(project).ok
     write(app / "docs/later.md", "# Later\n")
     commit(app, "later")
-    git(app, "update-ref", "refs/remotes/origin/main", "HEAD")  # a later fetch brought one commit; the graph stays
+    git(app, "update-ref", "refs/remotes/origin/main", "HEAD")  # as a clone that fetched main has it
+    git(app, "reset", "--hard", read)  # the checkout one commit behind it
+    sync_project(project)
+    assert build_project(project).ok
     monkeypatch.setattr(gitcli, "fetch", lambda *a, **kw: pytest.fail("fetched outside a sync"))
 
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
@@ -330,13 +322,13 @@ def test_session_start_and_kg_status_name_the_commit_each_git_source_read(
     note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert code == 0
     behind = f"commits read: 1 source, 0 current; behind: app {read[:7]} (1 behind origin/main)"
-    assert behind in note.splitlines()  # counted again, not 0
+    assert behind in note.splitlines()  # as the sync counted it
     assert "http" not in note and read not in note  # names and numbers only
 
-    status = Session(project, "wide").call("kg_status", {})
+    status = hub_status(project, "wide")
     (found,) = status["structuredContent"]["reads"]
     at = found.pop("at")
-    assert f"read    app {read[:7]} of HEAD at {at}, 1 behind origin/main" in status["content"][0]["text"].splitlines()
+    assert f", read {read[:7]} of HEAD at {at}, 1 behind origin/main then" in status["content"][0]["text"]
     url = f"https://github.com/acme/demo-app/commit/{read}"
     assert found == {
         "source": "app",
@@ -345,13 +337,7 @@ def test_session_start_and_kg_status_name_the_commit_each_git_source_read(
         "base": "origin/main",
         "behind": 1,
         "url": url,
-        "recounted": True,
     }
-
-    git(app, "update-ref", "-d", "refs/remotes/origin/main")  # no branch to count against: the count of the sync
-    code, out, _ = run_hook(monkeypatch, capsys, "session-start", stdin)
-    note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
-    assert "commits read: 1 source, all current" in note.splitlines()
 
 
 def test_a_git_source_without_a_remote_branch_names_only_its_commit(tmp_path, kg_env, monkeypatch, capsys, unbound):
@@ -364,9 +350,9 @@ def test_a_git_source_without_a_remote_branch_names_only_its_commit(tmp_path, kg
     code, out, _ = run_hook(monkeypatch, capsys, "session-start", json.dumps({"source": "startup"}))
     note = json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert code == 0 and f"commits read: 1 source, 0 current; behind unknown: app {read[:7]}" in note.splitlines()
-    status = Session(project, "wide").call("kg_status", {})
+    status = hub_status(project, "wide")
     (found,) = status["structuredContent"]["reads"]
-    assert f"read    app {read[:7]} of HEAD at {found['at']}" in status["content"][0]["text"].splitlines()
+    assert f", read {read[:7]} of HEAD at {found['at']}" in status["content"][0]["text"]
 
 
 def test_session_start_says_nothing_when_the_hub_cannot_be_asked_in_time(

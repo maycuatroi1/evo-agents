@@ -1,5 +1,7 @@
-"""What a session of ``kg serve`` may see: its clearance and audience, the visible set V_o of a build, and the store
-it reads, opened read-only as that audience (``evo_agents.kg.serve``)."""
+"""What a session of the kg_* tools may see: its clearance and audience, the visible set V_o of a build, and the graph
+it reads as that audience (``evo_agents.kg.serve``). A session reads the graph its subclass gives (``_graph``): the
+hub's snapshot of its tables (``evo_agents.hub.kg_graph.HubSession``), or a graph file of the tests and benches
+(``evo_agents.kg.store_session``); this one reads none."""
 
 from __future__ import annotations
 
@@ -8,7 +10,7 @@ from evo_agents.kg.graph_scope import DEFAULT_GRAPH, GraphScope
 from evo_agents.kg.policy import Label, audience_below
 from evo_agents.kg.project import Project
 from evo_agents.kg.refs import stored
-from evo_agents.kg.store import StaleSchema, Store
+from evo_agents.kg.snapshot import SnapshotView
 
 # Only a session with an ``error`` has no project, policy or clearance, and it answers nothing but that error.
 ANSWERS_NOTHING = "a session with an error reads nothing"
@@ -36,9 +38,8 @@ class SessionView:
         self.semantic: bool | None = None
         self.plain = False  # kg_search ranks by plain BM25 alone, the public benches' baseline (Store.plain_search)
         self.plain_files: tuple | None = None  # (clone, commit): with ``plain``, rank whole files (kg.filebm25)
-        # the stores the current call opened, closed when it answers: since Python 3.11 a connection left open waits
-        # for the cycle collector (its statement cache refers back to it), and Windows cannot delete a file one holds
-        self._opened: list[Store] | None = None
+        # what the current call opened, closed when it answers (``evo_agents.kg.store_session``)
+        self._opened: list | None = None
         # kg_search orders files by the learned model (evo_agents.kg.rank): None as the setting says, True or False always
         self.rank: bool | None = None
         self.explorer: Explorer | None = None  # kg_search explores (``evo_agents.kg.explore``): agents on the hub only
@@ -117,7 +118,7 @@ class SessionView:
         seen = Label.of(label, frozenset({self.project.name}))
         self.read = seen if self.read is None else self.read.join(seen)
 
-    def _store(self) -> tuple[Store, int]:
+    def _store(self) -> tuple[SnapshotView, int]:
         """The graph this call reads, as the session's audience reads it, and its latest ready build. When the highest
         label of that build is within the clearance and its audiences within the session's, every element is
         visible, and ``visible`` answers so without comparing labels."""
@@ -135,24 +136,19 @@ class SessionView:
             self.sees_all = False
         return store, b
 
-    def _graph(self) -> tuple[Store, int]:
-        """The project's store, opened read-only: serving never writes, so it never waits on a build."""
-        assert self.project is not None, ANSWERS_NOTHING
-        try:
-            store = Store.open_readonly(self.project)
-        except StaleSchema as exc:
-            raise ToolError(str(exc)) from None
-        if store is not None and self._opened is not None:
-            self._opened.append(store)
-        b = store.latest_ready() if store else None
-        if store is None or b is None:
-            raise ToolError(
-                f"project {self.project.name!r} has no graph on this machine: graphs are built on the hub,"
-                " which kg serve reads signed in"
-            )
-        return store, b
+    def _graph(self) -> tuple[SnapshotView, int]:
+        """The graph this call reads and its latest ready build: the subclass's. This machine holds none."""
+        raise self.no_graph()
 
-    def _lookup(self, store: Store, node_id: str, b: int) -> dict | None:
+    def no_graph(self) -> ToolError:
+        """What a call answers when this machine holds no graph of the project."""
+        assert self.project is not None, ANSWERS_NOTHING
+        return ToolError(
+            f"project {self.project.name!r} has no graph on this machine: graphs are built on the hub,"
+            " which kg serve reads signed in"
+        )
+
+    def _lookup(self, store: SnapshotView, node_id: str, b: int) -> dict | None:
         """A visible node by its stored id, its readable id (``refs.stored``) or an alias; None alike for a missing
         node and a hidden one."""
         if not isinstance(node_id, str) or not node_id:

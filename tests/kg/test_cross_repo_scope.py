@@ -15,7 +15,7 @@ import yaml
 from evo_agents.kg import build
 from evo_agents.kg.pipeline.link import Linker
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.serve import Session
+from evo_agents.kg.store_session import StoreSession
 from tests.kg.projects import commit, git, write
 from tests.kg.test_end_to_end import sync_build
 
@@ -78,7 +78,7 @@ def two_repos(tmp_path, kg_env):
 
 
 def impacted(project, seed):
-    result = Session(project, "agent").call("kg_impact", {"id": seed, "depth": 3})
+    result = StoreSession(project, "agent").call("kg_impact", {"id": seed, "depth": 3})
     assert not result.get("isError"), result
     return {row["node"]["id"]: row for row in result["structuredContent"]["impacted"]}
 

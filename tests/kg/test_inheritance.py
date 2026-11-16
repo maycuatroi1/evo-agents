@@ -13,8 +13,8 @@ from evo_agents.kg.extract import graphify as gfy
 from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, INHERITANCE, OVERRIDES
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.schema import HUB_RELATIONS
-from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, git, write
 
@@ -375,7 +375,7 @@ def kin(tmp_path_factory):
             )
         }
         store.close()
-        session = Session(project, "agent")
+        session = StoreSession(project, "agent")
         impact = {seed: session.call("kg_impact", {"id": sym(seed), "depth": 1}) for seed in IMPACT_SEEDS}
     return {(rel, src, dst): status for rel, src, dst, status in rows}, symbols, impact
 

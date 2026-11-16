@@ -6,8 +6,8 @@ import json
 from evo_agents.cli import main
 from evo_agents.kg import profile as kg_profile
 from evo_agents.kg.build import build_project
-from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, make_project, write
 
@@ -57,11 +57,11 @@ def test_the_profile_holds_counts_and_shapes_never_a_value(tmp_path, kg_env):
 def test_the_profile_leaves_the_hash_and_the_answers_unchanged(tmp_path, kg_env, monkeypatch):
     project, report = built(tmp_path, kg_env)
     ask = {"query": "search"}
-    with_profile = Session(project, "wide").call("kg_search", ask)
+    with_profile = StoreSession(project, "wide").call("kg_search", ask)
     monkeypatch.setattr("evo_agents.kg.build.build_profile", lambda *a, **k: {})
     bare = build_project(project, cold=True)
     assert bare.ok and bare.content_hash == report.content_hash
-    assert Session(project, "wide").call("kg_search", ask) == with_profile
+    assert StoreSession(project, "wide").call("kg_search", ask) == with_profile
 
 
 def test_kg_profile_reads_the_hub_and_says_when_there_is_none(tmp_path, kg_env, capsys, monkeypatch):

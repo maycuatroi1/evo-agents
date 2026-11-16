@@ -20,7 +20,7 @@ from evo_agents.kg.search import (
 )
 from evo_agents.kg.serve_text import SessionText
 from evo_agents.kg.serve_view import ANSWERS_NOTHING
-from evo_agents.kg.store import Store
+from evo_agents.kg.snapshot import SnapshotView
 
 FULL_LINES = 5  # the results kg_search shows whole; those past them show their id alone (kg_node reads one)
 SEARCH_REACH = 2000  # how many candidates kg_search reads, at most, to fill a page the clearance thinned
@@ -75,7 +75,7 @@ class SearchTools(SessionText):
             via = {nid: reached for nid, reached in via.items() if any(n["id"] == nid for n in results)}
         direct = [n for n in results if n["id"] not in via]  # a node a hit mentions was not found by its words
         matched = store.matched(
-            [n["id"] for n in direct], query, {n["id"] for n in direct if n["kind"] in SNIPPET_KINDS}
+            [n["id"] for n in direct], query, frozenset(n["id"] for n in direct if n["kind"] in SNIPPET_KINDS)
         )
         code: dict[str, list[int]] = {}
         if not kinds or "File" in kinds:
@@ -99,13 +99,13 @@ class SearchTools(SessionText):
         }
 
     @staticmethod
-    def _stood_names(store: Store, b: int, stood: dict[str, list[str]]) -> dict[str, str]:
+    def _stood_names(store: SnapshotView, b: int, stood: dict[str, list[str]]) -> dict[str, str]:
         """For each result that stands for matched entities, their names as its line shows them."""
         entity = store.nodes(sorted({e for why in stood.values() for e in why}), b)
         return {nid: ", ".join(entity[e]["name"] if e in entity else e for e in why) for nid, why in stood.items()}
 
     def _search_hits(
-        self, store: Store, b: int, query: str, kinds: list | None, limit: int, repo: str | None
+        self, store: SnapshotView, b: int, query: str, kinds: list | None, limit: int, repo: str | None
     ) -> list[dict]:
         """The visible nodes of ``repo`` the ranking puts first, the node an id in ``query`` names before them, read
         further when the clearance left out some of the first."""
@@ -130,7 +130,7 @@ class SearchTools(SessionText):
             hits += [n for n in more if in_repo(n, repo)]
         return hits
 
-    def _ranked(self, store: Store, b: int, query: str, limit: int, vector) -> list[str]:
+    def _ranked(self, store: SnapshotView, b: int, query: str, limit: int, vector) -> list[str]:
         """The ids a search of any kind and repo ranks first: by the project's walk, else by locate's reading of the
         text and meaning matches, else in their order."""
         scored = store.search_scored(query, b, limit=max(limit * 4, 30), deprecated=self.deprecated, vector=vector)
@@ -192,7 +192,9 @@ class SearchTools(SessionText):
                     lines.append(f"    > {m['snippet']}")
         return lines
 
-    def _plain_search(self, store: Store, b: int, query: str, kinds: list | None, limit: int) -> tuple[str, dict]:
+    def _plain_search(
+        self, store: SnapshotView, b: int, query: str, kinds: list | None, limit: int
+    ) -> tuple[str, dict]:
         """kg_search by plain BM25: the nodes in its order, no mention, cut or exploring; the passages matched."""
         if self.plain_files:
             from evo_agents.kg import filebm25
@@ -209,7 +211,7 @@ class SearchTools(SessionText):
                 store, b, ids, limit - len(results), lambda want: store.plain_search(query, want, kinds)
             )
         matched = store.matched(
-            [n["id"] for n in results], query, {n["id"] for n in results if n["kind"] in SNIPPET_KINDS}
+            [n["id"] for n in results], query, frozenset(n["id"] for n in results if n["kind"] in SNIPPET_KINDS)
         )
         shared, label_line = self._labels(results)
         assert self.project is not None, ANSWERS_NOTHING
@@ -223,7 +225,7 @@ class SearchTools(SessionText):
             "summary": f"{len(results)} results",
         }
 
-    def _seen_beyond(self, store: Store, b: int, ids: list[str], wanted: int, search) -> list[dict]:
+    def _seen_beyond(self, store: SnapshotView, b: int, ids: list[str], wanted: int, search) -> list[dict]:
         """Up to ``wanted`` nodes the reader sees that ``search(n)`` ranks past ``ids``, reading 4 times as many
         candidates each round, up to SEARCH_REACH: the label filter runs before the cut, not after it."""
         known, out = set(ids), []
@@ -240,7 +242,7 @@ class SearchTools(SessionText):
         return out[:wanted]
 
     def _with_code(
-        self, store: Store, b: int, query: str, results: list[dict], limit: int, repo: str | None
+        self, store: SnapshotView, b: int, query: str, results: list[dict], limit: int, repo: str | None
     ) -> tuple[list[dict], dict[str, list[int]]]:
         """``results`` with the visible files whose code or markup holds the most words of ``query`` that read as a
         search of code (``search.code_words``) after its first CODE_LEAD, those already listed left in their place,
@@ -256,7 +258,7 @@ class SearchTools(SessionText):
         held = set(found)  # a file the ranking listed already keeps its place and shows its lines too
         return merged, {n["id"]: store.code_lines(n["id"], words) for n in merged if n["id"] in held}
 
-    def _explore(self, store: Store, results: list, hits: list, via: dict) -> tuple[int, float] | None:
+    def _explore(self, store: SnapshotView, results: list, hits: list, via: dict) -> tuple[int, float] | None:
         """With an explorer, maybe put a hit past ``results`` that no agent read after a search yet at rank 4 or 5 of
         them, in place, the last result dropped when that makes one more: (its rank, the chance it had), else None."""
         if self.explorer is None:

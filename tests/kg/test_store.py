@@ -12,8 +12,8 @@ from evo_agents.kg import store as store_module
 from evo_agents.kg.build import build_project
 from evo_agents.kg.pipeline.stages import leading_comment
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.serve import Session
 from evo_agents.kg.store import SCHEMA_VERSION, StaleSchema, Store
+from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
 from evo_agents.kg.text import split_passages
 from tests.kg.projects import commit, git, make_project, write
@@ -162,7 +162,7 @@ def test_schema_upgrade_is_refused_by_readers_and_keeps_the_file_on_failure(tmp_
 
     with pytest.raises(StaleSchema, match=f"schema 1, this code reads {SCHEMA_VERSION}"):
         Store.open_existing(project)
-    answer = Session(project, "agent").call("kg_search", {"query": "search"})
+    answer = StoreSession(project, "agent").call("kg_search", {"query": "search"})
     assert answer["isError"] and "evo-agents kg build" in answer["content"][0]["text"]
 
     # A build that fails leaves the old file as it was: nothing is migrated in place.
@@ -483,7 +483,7 @@ def test_search_keeps_uris_out_and_filters_kinds_in_the_query(tmp_path, kg_env):
     sections = found(store, "search", limit=2, kinds=["Section"])
     assert sections and all(":file:docs/" in h and "#" in h for h in sections)
     assert found(store, "rank_results", kinds=["Section"]) == ["app:file:docs/guide.md#details"]
-    answer = Session(project, "agent").call("kg_search", {"query": "search", "kinds": ["Section"], "limit": 1})
+    answer = StoreSession(project, "agent").call("kg_search", {"query": "search", "kinds": ["Section"], "limit": 1})
     assert [r["kind"] for r in answer["structuredContent"]["results"]] == ["Section"]
 
 
@@ -576,7 +576,7 @@ def test_a_search_leaves_no_connection_to_its_store_open(tmp_path, kg_env):
     gc.disable()
     try:
         for plain in (False, True):
-            session = Session(project, "cli")
+            session = StoreSession(project, "cli")
             session.plain = plain
             assert "isError" not in session.call("kg_search", {"query": "widget", "limit": 5})
             held = []
@@ -599,7 +599,7 @@ def test_a_store_of_schema_2_is_rebuilt_by_the_next_build_and_refused_by_readers
     make_schema_2(path)
     with pytest.raises(StaleSchema, match=f"schema 2, this code reads {SCHEMA_VERSION}"):
         Store.open_file(path)
-    answer = Session(project, "agent").call("kg_search", {"query": "graph builder"})
+    answer = StoreSession(project, "agent").call("kg_search", {"query": "graph builder"})
     assert answer["isError"] and "evo-agents kg build" in answer["content"][0]["text"]
 
     report = sync_build(project)
