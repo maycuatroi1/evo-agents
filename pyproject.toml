@@ -424,6 +424,7 @@ type = "forbidden"
 source_modules = [
     "evo_agents.kg.search",
     "evo_agents.kg.post_search",
+    "evo_agents.kg.grep_links",
     "evo_agents.kg.store",
     "evo_agents.kg.store_asked",
     "evo_agents.kg.store_clusters",

@@ -1302,6 +1302,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/grep-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grep Links Of
+         * @description What the project's latest graph links to the lines a grep matched (see the module).
+         */
+        post: operations["grep_links_of_v1_kg__project__grep_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/graph": {
         parameters: {
             query?: never;
@@ -25484,6 +25504,59 @@ export interface components {
              * @description the commit each git source the member can see read, by source
              */
             sources?: components["schemas"]["SourceRead"][];
+        };
+        /** GrepFile */
+        GrepFile: {
+            /**
+             * Repo
+             * @description the repo's name in the project, as a file node's props.repo
+             */
+            repo: string;
+            /**
+             * Path
+             * @description the file's path inside the repo, with /
+             */
+            path: string;
+        };
+        /** GrepHit */
+        GrepHit: {
+            /**
+             * File
+             * @description the index of the line's file in files
+             */
+            file: number;
+            /**
+             * Line
+             * @description the line number; null for the file alone (-l)
+             */
+            line?: number | null;
+            /**
+             * Text
+             * @description the matched line
+             * @default
+             */
+            text: string;
+        };
+        /** GrepLinks */
+        GrepLinks: {
+            /**
+             * Sink
+             * @description the sink profile whose clearance applies
+             * @default claude-code@anthropic
+             */
+            sink: string;
+            /** Files */
+            files: components["schemas"]["GrepFile"][];
+            /** Hits */
+            hits: components["schemas"]["GrepHit"][];
+        };
+        /** GrepLinksOut */
+        GrepLinksOut: {
+            /**
+             * Lines
+             * @description the note's lines, one per matched node with something to add
+             */
+            lines: string[];
         };
         /** GroupMessage */
         GroupMessage: {
@@ -54152,6 +54225,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["evo_agents__hub__server__memories__Written"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    grep_links_of_v1_kg__project__grep_links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrepLinks"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrepLinksOut"];
                 };
             };
             /** @description Unauthorized */

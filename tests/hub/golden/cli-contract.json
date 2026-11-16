@@ -37318,6 +37318,110 @@
           }
         }
       },
+      "/v1/kg/{project}/grep-links": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Grep Links Of",
+          "description": "What the project's latest graph links to the lines a grep matched (see the module).",
+          "operationId": "grep_links_of_v1_kg__project__grep_links_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrepLinks"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GrepLinksOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
       "/v1/kg/{project}/graph": {
         "get": {
           "tags": [
@@ -139307,6 +139411,117 @@
             "kinds"
           ],
           "title": "GraphSummary"
+        },
+        "GrepFile": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Repo",
+              "description": "the repo's name in the project, as a file node's props.repo"
+            },
+            "path": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Path",
+              "description": "the file's path inside the repo, with /"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "path"
+          ],
+          "title": "GrepFile"
+        },
+        "GrepHit": {
+          "properties": {
+            "file": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "File",
+              "description": "the index of the line's file in files"
+            },
+            "line": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line",
+              "description": "the line number; null for the file alone (-l)"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 400,
+              "title": "Text",
+              "description": "the matched line",
+              "default": ""
+            }
+          },
+          "type": "object",
+          "required": [
+            "file"
+          ],
+          "title": "GrepHit"
+        },
+        "GrepLinks": {
+          "properties": {
+            "sink": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Sink",
+              "description": "the sink profile whose clearance applies",
+              "default": "claude-code@anthropic"
+            },
+            "files": {
+              "items": {
+                "$ref": "#/components/schemas/GrepFile"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Files"
+            },
+            "hits": {
+              "items": {
+                "$ref": "#/components/schemas/GrepHit"
+              },
+              "type": "array",
+              "maxItems": 5000,
+              "title": "Hits"
+            }
+          },
+          "type": "object",
+          "required": [
+            "files",
+            "hits"
+          ],
+          "title": "GrepLinks"
+        },
+        "GrepLinksOut": {
+          "properties": {
+            "lines": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Lines",
+              "description": "the note's lines, one per matched node with something to add"
+            }
+          },
+          "type": "object",
+          "required": [
+            "lines"
+          ],
+          "title": "GrepLinksOut"
         },
         "GroupMessage": {
           "properties": {

@@ -806,6 +806,14 @@ class SnapshotView:
             return None
         return dict(zip(UNIT_KEYS, row[:7], strict=True))
 
+    def unit_spans(self, item_ids) -> dict[str, list[str]]:
+        """The spans of the live units the reader sees of each of ``item_ids``, by item, in one pass over the units."""
+        wanted, out = set(item_ids), {}
+        for row in self.snap.units.values():
+            if row[1] in wanted and row[6] and within(self.reader, row[7]):
+                out.setdefault(row[1], []).append(row[6])
+        return out
+
     def where(self, elem_id: str, b: int = 0) -> list[dict]:
         return [{"unit": unit, "span": span} for unit, span in self.snap.where.get(elem_id, ())]
 
