@@ -302,6 +302,18 @@ def forget_models() -> None:
         _MATRICES.clear()
 
 
+def is_loaded(name: str) -> bool:
+    """Whether this process holds the model ``name`` loaded."""
+    with _LOCK:
+        return name in _LOADED
+
+
+def forget_model(name: str) -> None:
+    """Drop the model ``name``, so the memory it holds can go: what a build that loaded it only for itself does."""
+    with _LOCK:
+        _LOADED.pop(name, None)
+
+
 def _numpy():
     try:
         import numpy

@@ -55,17 +55,24 @@ def index(
 ) -> tuple[StoreRows, semantic.Indexed]:
     """``rows`` with the vectors ``settings`` asks for (``evo_agents.kg.graph_rows.RowsVectors``), and what was indexed;
     embedded only when ``cache`` (a HubCache, or the path of a vectors.sqlite) lacks them, for at most
-    EMBED_BUDGET_SECONDS (the model is downloaded first, here, never by a search). Blocking."""
-    graph = graph_rows.RowsVectors(rows)
-    if not isinstance(cache, Path):
-        found = _indexed(graph, settings, cache)
-        return graph.held, found
-    own = store_vectors.FileCache(cache)
+    EMBED_BUDGET_SECONDS (the model is downloaded first, here, never by a search). A model this call loaded is dropped
+    after: kept in a worker's process, it stayed on top of the next build's peak (some 1.2 GB for bge-m3), which a kg
+    worker's memory cap did not hold. Blocking."""
+    loaded = semantic.is_loaded(settings.model)
     try:
-        found = _indexed(graph, settings, own)
+        graph = graph_rows.RowsVectors(rows)
+        if not isinstance(cache, Path):
+            found = _indexed(graph, settings, cache)
+            return graph.held, found
+        own = store_vectors.FileCache(cache)
+        try:
+            found = _indexed(graph, settings, own)
+        finally:
+            own.close()
+        return graph.held, found
     finally:
-        own.close()
-    return graph.held, found
+        if not loaded:
+            semantic.forget_model(settings.model)
 
 
 def _indexed(graph: graph_rows.RowsVectors, settings: semantic.Settings, cache: semantic.Cache) -> semantic.Indexed:

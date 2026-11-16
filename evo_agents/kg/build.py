@@ -22,7 +22,7 @@ import sqlite3
 import tempfile
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -37,6 +37,7 @@ from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.freshness import add_reads
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.memo import Memo
+from evo_agents.kg.packed import Packed
 from evo_agents.kg.pipeline import curation
 from evo_agents.kg.pipeline.binding import BINDING_VERSION
 from evo_agents.kg.pipeline.link import LINK_VERSION, link_traced
@@ -161,6 +162,7 @@ def run_pipeline(
     first, structure_out, code_items = map_items(records, sources, backends, identifiers, memo, body)
     index = build_index(first, identifiers)
     second = link_items(records, structure_out, index, memo, corpus, body)
+    del structure_out
     tuning = tuning_of(project)
     extracted: dict[str, list[dict]] = {}
     entities_coverage = None
@@ -233,7 +235,7 @@ def _map_kinds(name: str | None, harness_root, kinds) -> list[str]:
     return found if entity_map.OTHER in found else [*found, entity_map.OTHER]
 
 
-def _nodes_of(first: dict[str, list[dict]], second: dict[str, list[dict]]) -> dict[str, list[dict]]:
+def _nodes_of(first: Mapping[str, list[dict]], second: Mapping[str, list[dict]]) -> dict[str, list[dict]]:
     """The node facts of each item, of the map stage and the link stage: what a map may cite."""
     return {
         item: [f for f in first.get(item, []) + second.get(item, []) if f.get("t") == "node"]
@@ -278,12 +280,14 @@ def add_units(graph: Graph, records, policy: Policy) -> dict[str, Label]:
 
 def map_items(
     records, sources: dict[str, dict], backends: dict[str, str], identifiers: list[dict], memo: Memo, body
-) -> tuple[dict[str, list[dict]], dict[str, tuple[list[dict], str]], dict[str, list[tuple[dict, str]]]]:
-    """Map and structure, per item: the facts of both by item, the structure facts and their hash by item, and the
-    code items of each source with the extractor that read them."""
+) -> tuple[Packed, dict[str, tuple[Packed, str]], dict[str, list[tuple[dict, str]]]]:
+    """Map and structure, per item: the facts of both by item, the structure facts (in a Packed shared by the items)
+    and their hash by item, and the code items of each source with the extractor that read them. The facts are held
+    packed (``evo_agents.kg.packed``): as objects, those of every item were most of a build's memory."""
     identifiers_digest = sha256(canonical_json(identifiers))
-    first: dict[str, list[dict]] = {}
-    structure_out: dict[str, tuple[list[dict], str]] = {}
+    first = Packed()
+    structured_of = Packed()
+    structure_out: dict[str, tuple[Packed, str]] = {}
     code_items: dict[str, list[tuple[dict, str]]] = defaultdict(list)
     for rec in records:
         r = rec.record
@@ -310,7 +314,9 @@ def map_items(
             )
         else:
             structured, shash = [], "none"
-        structure_out[rec.item_id] = (structured, shash)
+        if structured:
+            structured_of[rec.item_id] = structured
+        structure_out[rec.item_id] = (structured_of, shash)
         first[rec.item_id] = mapped + structured
     return first, structure_out, code_items
 
@@ -346,13 +352,14 @@ def item_rows(records, memo: Memo, body) -> list[tuple[str, str, dict]]:
     return rows
 
 
-def link_items(records, structure_out: dict, index: dict, memo: Memo, corpus: Corpus, body) -> dict[str, list[dict]]:
-    """Link and binding, per item. A link task is traced (``Memo.run_traced``): it runs again when its item or its
-    structure changed, or when an entry of the index it read holds something else. A binding task is keyed by the
-    whole index, whose digest is taken only when the project has bindings."""
+def link_items(records, structure_out: dict, index: dict, memo: Memo, corpus: Corpus, body) -> Packed:
+    """Link and binding, per item, held packed as ``map_items`` holds its facts. A link task is traced
+    (``Memo.run_traced``): it runs again when its item or its structure changed, or when an entry of the index it read
+    holds something else; only then are its structure facts unpacked. A binding task is keyed by the whole index,
+    whose digest is taken only when the project has bindings."""
     held = Held(index)
     idx = None
-    second: dict[str, list[dict]] = {}
+    second = Packed()
     for rec in records:
         r = rec.record
         structured, shash = structure_out[rec.item_id]
@@ -369,7 +376,9 @@ def link_items(records, structure_out: dict, index: dict, memo: Memo, corpus: Co
                 "link",
                 LINK_VERSION,
                 {"item": rec.item_id, "hash": r["hash"], "structure": shash},
-                lambda rec=rec, r=r, st=structured: link_traced(r, corpus.fragments(r), body(rec), st, index),
+                lambda rec=rec, r=r, st=structured: link_traced(
+                    r, corpus.fragments(r), body(rec), st.get(rec.item_id, []), index
+                ),
                 held.digest,
             )
         second[rec.item_id] = out

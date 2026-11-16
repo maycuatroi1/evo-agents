@@ -80,6 +80,7 @@ from evo_agents.hub import (
     tables,
 )
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
+from evo_agents.hub.heap import give_back
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
 from evo_agents.hub.kg_source_state import fill_run_facts
@@ -387,6 +388,7 @@ def build_in_cache(
     blobs, put where the entity_map step reads them (``kg_entity_maps``). ``previous``: the rows of the graph the hub
     keeps, which a build of the same corpus state and inputs takes again, and whose clusters a build starts from
     (``build_graph``). Blocking."""
+    give_back()  # what the worker's last build and the tables it wrote still held, before this one
     uploads = uploads or []
     sources = (sources or []) + kg_upload_sources.load_all(store, data_dir, uploads, config["knowledge"], name)
     write_config(data_dir, name, *knowledge_and_ontology(config, sources, tuning))
@@ -418,6 +420,7 @@ def build_in_cache(
             content_hash = sha256_of(f"{content_hash}\n{vectors.mode}\n{vectors.digest}")
         if semantic.indexes:
             vector_coverage = vectors.coverage(semantic.model)
+    give_back()  # what the build and the model of its vectors took, before the hub's tables take the graph's rows
     coverage = kg_coverage.build_coverage(report.coverage, graph_rows.call_reach(rows), skipped=report.skipped)
     kg_upload_sources.annotate(coverage, uploads)
     if vector_coverage is not None:
