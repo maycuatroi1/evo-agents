@@ -118,10 +118,9 @@ class RowsVectors:
 
     def rows(self, chars: int) -> list[tuple[str, str, str, str | None, str]]:
         out = []
-        for key, row in self.held.keyed:
-            if (row[4] or "").strip(" "):
-                aud = row[5] if len(row) > 5 else None
-                out.append((key, row[0], row[1], aud, semantic.embed_text(row[2], row[3], row[4], chars)))
+        for key, (nid, kind, name, path, body, *aud) in self.held.keyed:
+            if (body or "").strip(" "):
+                out.append((key, nid, kind, aud[0] if aud else None, semantic.embed_text(name, path, body, chars)))
         return sorted(out)
 
     def info(self) -> semantic.Info | None:

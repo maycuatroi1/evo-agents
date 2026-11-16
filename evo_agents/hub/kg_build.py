@@ -54,6 +54,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 from sqlalchemy import BigInteger, Text, cast, column, delete, exists, func, insert, literal, or_, select, table, update
@@ -88,6 +89,9 @@ from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import Project, load_project_at
 from evo_agents.kg.protocol import sha256 as sha256_of
 from evo_agents.kg.snapshot import StoreRows
+
+if TYPE_CHECKING:
+    from evo_agents.kg.build import BuildReport
 
 log = logging.getLogger(__name__)
 
@@ -298,7 +302,7 @@ def build_graph(
     entity_inbox: dict | None = None,
     entity_outbox: list | None = None,
     entity_keys: dict | None = None,
-) -> tuple[StoreRows, object]:
+) -> tuple[StoreRows, BuildReport]:
     """Build ``project`` in memory (``evo_agents.kg.build.build_rows``): the rows of its graph and the build report;
     BuildFailure when the build reports errors. ``previous``, the rows of the graph the hub keeps: when they were
     built from the corpus state and the inputs ``project`` has now (``unchanged_rows``), nothing is built, and they
@@ -385,7 +389,8 @@ def build_in_cache(
     asked = None
     if learned is not None:
         rows, asked = kg_asked.put(rows, learned)
-    content_hash = report.content_hash if asked is None else sha256_of(f"{report.content_hash}\n{asked}")
+    graph_hash = str(rows.summary["content_hash"])  # the graph's own, without the asked index and the vectors
+    content_hash = graph_hash if asked is None else sha256_of(f"{graph_hash}\n{asked}")
     vector_coverage = None
     if semantic is not None:
         rows, vectors = kg_semantic.index(rows, semantic, vector_cache or project.root / kg_semantic.SEED_FILES[0])

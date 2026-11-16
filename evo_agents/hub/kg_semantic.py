@@ -57,13 +57,19 @@ def index(
     embedded only when ``cache`` (a HubCache, or the path of a vectors.sqlite) lacks them, for at most
     EMBED_BUDGET_SECONDS (the model is downloaded first, here, never by a search). Blocking."""
     graph = graph_rows.RowsVectors(rows)
-    own = store_vectors.FileCache(cache) if isinstance(cache, Path) else None
+    if not isinstance(cache, Path):
+        found = _indexed(graph, settings, cache)
+        return graph.held, found
+    own = store_vectors.FileCache(cache)
     try:
-        found = semantic.index(graph, settings, own if own is not None else cache, budget=EMBED_BUDGET_SECONDS)
+        found = _indexed(graph, settings, own)
     finally:
-        if own is not None:
-            own.close()
+        own.close()
     return graph.held, found
+
+
+def _indexed(graph: graph_rows.RowsVectors, settings: semantic.Settings, cache: semantic.Cache) -> semantic.Indexed:
+    return semantic.index(graph, settings, cache, budget=EMBED_BUDGET_SECONDS)
 
 
 SEED_FILES = (
