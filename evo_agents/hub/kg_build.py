@@ -51,6 +51,7 @@ import json
 import logging
 import os
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,7 +61,7 @@ import yaml
 from sqlalchemy import BigInteger, Text, cast, column, delete, exists, func, insert, literal, or_, select, table, update
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import (
     blob_gc,
@@ -321,18 +322,23 @@ def build_graph(
     entity_inbox: dict | None = None,
     entity_outbox: list | None = None,
     entity_keys: dict | None = None,
+    whole: Callable[[], StoreRows | None] | None = None,
 ) -> tuple[StoreRows, BuildReport]:
     """Build ``project`` in memory (``evo_agents.kg.build.build_rows``): the rows of its graph and the build report;
     BuildFailure when the build reports errors. ``previous``, the rows of the graph the hub keeps: when they were
     built from the corpus state and the inputs ``project`` has now (``unchanged_rows``), nothing is built, and they
-    come back with a report of them, ``skipped``; otherwise the clustering starts from their clusters.
-    ``entity_inbox``, ``entity_outbox`` and ``entity_keys`` go to the entities step (``evo_agents.kg.entities.run``)."""
+    come back with a report of them, ``skipped``; otherwise the clustering starts from their clusters. ``whole``,
+    when ``previous`` holds only the head and the clusters (``kg_graph_rows.read_head``), reads all their rows, for
+    a skipped build only: held during a build, they took as much memory as the build's own rows. ``entity_inbox``,
+    ``entity_outbox`` and ``entity_keys`` go to the entities step (``evo_agents.kg.entities.run``)."""
     from evo_agents.kg.build import build_rows, unchanged_rows
     from evo_agents.kg.snapshot import rows_clusters
 
     current = unchanged_rows(project, previous)
     if current is not None and previous is not None:
-        return previous, current
+        kept = whole() if whole is not None else previous
+        if kept is not None and kept.content_hash == previous.content_hash:
+            return kept, current
     report, rows = build_rows(
         project,
         warm=rows_clusters(previous.clusters) if previous is not None else None,
@@ -372,6 +378,7 @@ def build_in_cache(
     maps: list[str] | None = None,
     vector_cache: kg_semantic.HubCache | None = None,
     previous: StoreRows | None = None,
+    whole: Callable[[], StoreRows | None] | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
     from the blob store, the graph, whose rows ``record`` keeps in the hub's tables, and what the
@@ -387,7 +394,7 @@ def build_in_cache(
     model, in memory (``evo_agents.hub.server.kg_entity_key``). ``maps``: the hashes of the project's kg-entity-map
     blobs, put where the entity_map step reads them (``kg_entity_maps``). ``previous``: the rows of the graph the hub
     keeps, which a build of the same corpus state and inputs takes again, and whose clusters a build starts from
-    (``build_graph``). Blocking."""
+    (``build_graph``), with ``whole`` when they are only its head. Blocking."""
     give_back()  # what the worker's last build and the tables it wrote still held, before this one
     uploads = uploads or []
     sources = (sources or []) + kg_upload_sources.load_all(store, data_dir, uploads, config["knowledge"], name)
@@ -404,7 +411,10 @@ def build_in_cache(
         vector_cache.seed(project.root, semantic.model)  # before the build replaces the graph that holds them
     inbox = kg_entity_relay.read_answers(store, answers) if answers else {}
     outbox: list[dict] = []
-    rows, report = build_graph(project, previous=previous, entity_inbox=inbox, entity_outbox=outbox, entity_keys=keys)
+    rows, report = build_graph(
+        project, previous=previous, entity_inbox=inbox, entity_outbox=outbox, entity_keys=keys, whole=whole
+    )
+    give_back()  # what the build freed, before the model of its vectors loads on top of its rows
     requests = kg_entity_relay.write_requests(project.root, outbox) if not report.skipped else None
     asked = None
     if learned is not None:
@@ -449,6 +459,22 @@ def _corpus_items(project: Project) -> list:
         return kg_graph_rows.corpus_items(corpus.items())
     finally:
         corpus.close()
+
+
+def whole_graph(
+    engine: AsyncEngine, loop: asyncio.AbstractEventLoop, project_id: int
+) -> Callable[[], StoreRows | None]:
+    """A call that reads all the rows of the graph the hub keeps of ``project_id`` (``kg_graph_rows.read_graph``) on
+    ``loop``, the hub's, from the thread of a build: ``build_graph`` reads them only when it builds nothing."""
+
+    def read() -> StoreRows | None:
+        async def rows() -> StoreRows | None:
+            async with engine.connect() as conn:
+                return await kg_graph_rows.read_graph(conn, project_id)
+
+        return asyncio.run_coroutine_threadsafe(rows(), loop).result()
+
+    return read
 
 
 def describe_failure(exc: BaseException) -> str:
@@ -736,7 +762,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             tuning = await kg_settings.read(conn, project_id)
             uploads = await kg_upload_sources.latest(conn, project_id)
             keys, key_from = await _entity_key(conn, context, project_id, tuning)
-            previous = await kg_graph_rows.read_graph(conn, project_id)
+            previous = await kg_graph_rows.read_head(conn, project_id)
         built = await asyncio.to_thread(
             build_in_cache,
             context.blobs,
@@ -754,6 +780,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             maps,
             kg_semantic.HubCache(engine, asyncio.get_running_loop(), project_id),
             previous,
+            whole_graph(engine, asyncio.get_running_loop(), project_id),
         )
         entities_coverage = (built.coverage or {}).get("entities")
         if key_from is not None and isinstance(entities_coverage, dict):

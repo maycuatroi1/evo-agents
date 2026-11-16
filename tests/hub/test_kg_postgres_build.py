@@ -353,3 +353,36 @@ def test_writing_the_same_graph_again_changes_no_row(hub_db):
     first, second = asyncio.run(run())
     assert first["kg_review_rows"]["new"] == 2 and first["kg_text_rows"]["new"] == 2
     assert all(c == {"new": 0, "changed": 0, "deleted": 0} for c in second.values()), second
+
+
+def test_the_head_of_a_graph_reads_its_clusters_and_none_of_its_other_rows(hub_db):
+    pid = add_project(hub_db, "head")
+    item = {"fingerprint": "f1", "title": "Two guides", "nodes": ["docs:doc:a", "docs:doc:b"], "kind": "duplicate"}
+    rows = StoreRows(
+        "sha256:head",
+        (),
+        (),
+        (("docs:doc:a", ("guide", "how the app works")),),
+        {"code:file:a": "def main(): pass"},
+        ((1, 2), frozenset({"chat:1"})),
+        derivations=(("docs:doc:a", "[]", "[]"),),
+        summary={"ready": True, "content_hash": "sha256:head"},
+        clusters=(("cluster", 1, {"label": "Guides"}),),
+        review=(item,),
+    )
+
+    async def run():
+        engine = make_engine(hub_db)
+        try:
+            async with engine.begin() as conn:
+                await kg_graph_rows.write_graph(conn, pid, None, rows)
+            async with engine.connect() as conn:
+                return await kg_graph_rows.read_head(conn, pid), await kg_graph_rows.read_head(conn, pid + 1000)
+        finally:
+            await engine.dispose()
+
+    head, none = asyncio.run(run())
+    assert none is None
+    assert (head.content_hash, head.summary, head.top) == (rows.content_hash, rows.summary, rows.top)
+    assert (head.clusters, head.review) == (rows.clusters, rows.review)
+    assert (head.nodes, head.keyed, head.code, head.derivations) == ((), (), {}, ())
