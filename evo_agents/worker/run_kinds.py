@@ -52,6 +52,11 @@ def kind_refusal(run_id: int, kind: str, kinds: tuple[str, ...], command: str) -
             f"directory and end your turn; the worker checks it, not `evo-agents worker {command}`, which only the "
             f"agent of {kinds_of(kinds)} uses"
         )
+    if kind == "evolve":
+        return (
+            f"run {run_id} is an evolve run, whose agent rewrites the files of its folder and ends its turn: the worker "
+            f"measures and keeps them, not `evo-agents worker {command}`, which only the agent of {kinds_of(kinds)} uses"
+        )
     if kind == "release":
         return (
             f"run {run_id} is a release run, whose agent uses no command: it commits on the run's branch and writes "
