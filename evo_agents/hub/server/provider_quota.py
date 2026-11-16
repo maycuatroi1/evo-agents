@@ -187,7 +187,7 @@ async def refresh(engine: AsyncEngine, sealer: Sealer, secret_id: int, hooks: tu
         return Quota(False, error=f"the account's key does not open: {type(exc).__name__}")
     transport, resolver = hooks
     found = await fetch_zai(row.base_url, key, transport=transport, resolver=resolver)
-    if found.ok:
+    if found.ok and found.usage is not None:
         async with engine.begin() as conn:
             await keep(conn, secret_id, found.usage)
     return found

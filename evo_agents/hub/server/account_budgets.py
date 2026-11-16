@@ -10,6 +10,7 @@ the account's last usage (``with_budgets``).
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -55,7 +56,7 @@ async def budget_windows(conn: AsyncConnection, secret_ids, now: datetime | None
     return found
 
 
-def with_budgets(usages: dict[int, object], windows: dict[int, dict]) -> dict[int, dict]:
+def with_budgets(usages: dict[int, Any], windows: dict[int, dict]) -> dict[int, Any]:
     """``usages`` (accounts.last_usage by secret id) with the budget window of each account that has one."""
     merged = dict(usages)
     for secret_id, window in windows.items():

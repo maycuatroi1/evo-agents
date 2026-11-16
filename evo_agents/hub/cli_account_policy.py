@@ -98,14 +98,14 @@ def cmd_account_policy(args) -> int:
         hub.call("DELETE", path)
         policy = hub.call("GET", path)
     elif given:
-        now = hub.call("GET", path)
+        now = hub.call("GET", path) or {}
         policy = hub.call("PUT", path, {**{key: now[key] for key in POLICY_FLAGS if key in now}, **given})
     else:
         policy = hub.call("GET", path)
     if args.json:
         print_json(policy)
     else:
-        _print_policy(policy)
+        _print_policy(policy or {})
     return 0
 
 

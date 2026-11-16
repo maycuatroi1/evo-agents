@@ -34,9 +34,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Literal, get_args
 
 QUOTA_PACING = "quota-pacing"
 STRATEGIES = ("round-robin", "weighted-round-robin", "fill-first", QUOTA_PACING)
+Strategy = Literal["round-robin", "weighted-round-robin", "fill-first", "quota-pacing"]  # STRATEGIES, as a type
+assert get_args(Strategy) == STRATEGIES
 DEFAULT_STRATEGY = "round-robin"
 MIN_COOLDOWN_SECONDS = 60
 MAX_COOLDOWN_SECONDS = 7 * 24 * 3600
@@ -121,7 +124,8 @@ def window_of(usage, name: str) -> Window | None:
     whose limit is that window counts it full."""
     if not isinstance(usage, dict):
         return None
-    windows = usage.get("windows") if isinstance(usage.get("windows"), dict) else {}
+    windows = usage.get("windows")
+    windows = windows if isinstance(windows, dict) else {}
     found = windows.get(name)
     limited = usage.get("status") == "rejected" and usage.get("rate_limit_type") == name
     if not isinstance(found, dict) and not limited:

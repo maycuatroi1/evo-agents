@@ -36,7 +36,7 @@ its base URL (``provider_store.audit_text``). No route, log line, audit row or e
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Request, Response
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
@@ -95,7 +95,7 @@ NO_ACCOUNT = "you have no provider account named {name} on this hub: see GET /v1
 AccountName = Annotated[
     str, Path(pattern=f"^{SECRET_NAME.pattern}$", description="unique among the caller's secrets and accounts")
 ]
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
 
 router = APIRouter(
     prefix="/v1/provider-accounts",

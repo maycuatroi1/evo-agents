@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Path, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -39,7 +39,7 @@ from evo_agents.hub.accounts import (
     DEFAULT_HARD_RESERVE_PCT,
     DEFAULT_STRATEGY,
     MAX_PCT,
-    STRATEGIES,
+    Strategy,
 )
 from evo_agents.hub.credentials import PROVIDER_KIND
 from evo_agents.hub.server import audit
@@ -55,7 +55,7 @@ log = logging.getLogger(__name__)
 POOL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$")
 MEMBER_KINDS = ("env", PROVIDER_KIND)
 PoolName = Annotated[str, Path(pattern=POOL_NAME.pattern, description="the pool's name, 1 to 40 characters")]
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
 
 router = APIRouter(prefix="/v1/projects", tags=["account pools"], responses={401: {"model": ErrorBody}})
 
@@ -64,7 +64,7 @@ class PoolWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(pattern=POOL_NAME.pattern, description="1 to 40 characters, unique in the project in any case")
-    strategy: Literal[STRATEGIES] = Field(DEFAULT_STRATEGY, description="how a run picks among the pool's accounts")
+    strategy: Strategy = Field(DEFAULT_STRATEGY, description="how a run picks among the pool's accounts")
     hard_reserve_pct: int = Field(
         DEFAULT_HARD_RESERVE_PCT,
         ge=0,
@@ -84,7 +84,7 @@ class PoolPolicy(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    strategy: Literal[STRATEGIES] | None = None
+    strategy: Strategy | None = None
     hard_reserve_pct: int | None = Field(None, ge=0, le=MAX_PCT)
     five_hour_ceiling_pct: int | None = Field(None, ge=1, le=MAX_PCT)
 

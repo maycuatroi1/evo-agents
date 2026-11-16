@@ -256,7 +256,7 @@ def cmd_quota(args) -> int:
     if args.project and not args.agent:
         return _usage("--project goes with --agent")
     hub, _ = signed_in()
-    found = hub.call("POST", _quota_path(args), {})
+    found = hub.call("POST", _quota_path(args), {}) or {}
     if args.json:
         print_json(found)
         return 0 if found["ok"] else EXIT_FAILED

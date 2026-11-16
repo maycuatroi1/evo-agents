@@ -77,7 +77,7 @@ def zai_windows(body) -> dict[str, dict]:
         share = _zai_share(limit) if name else None
         if name is None or share is None:
             continue
-        window = {"utilization": share}
+        window: dict = {"utilization": share}
         reset = _zai_reset(limit)
         if reset is not None:
             window["resets_at"] = reset
@@ -123,7 +123,8 @@ def budget_window(cost_usd: float, budget_usd: float, end: datetime) -> dict:
 def with_budget(usage, window: dict) -> dict:
     """``usage`` (an account's last, or None) with ``window`` as its ``seven_day``, as the module says."""
     kept = dict(usage) if isinstance(usage, dict) else {"status": "allowed"}
-    windows = dict(kept.get("windows") or {}) if isinstance(kept.get("windows"), dict) else {}
+    given = kept.get("windows")
+    windows: dict[str, dict] = dict(given) if isinstance(given, dict) else {}
     windows[SEVEN_DAY] = window
     merged = usage_of(windows)
     if kept.get("status") == "rejected" and merged["status"] != "rejected":

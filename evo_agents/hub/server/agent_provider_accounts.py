@@ -19,7 +19,7 @@ secret's id, the provider and the host of the base URL; no route, log line, audi
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
@@ -73,7 +73,7 @@ from evo_agents.hub.server.worker_models import WORKER_NAME
 log = logging.getLogger(__name__)
 
 PATH = "/{project}/agents/{handle}/provider-accounts"
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
 Workers = list[Annotated[str, Field(pattern=WORKER_NAME)]]
 Models = list[Annotated[str, Field(min_length=1, max_length=200)]]
 

@@ -412,7 +412,11 @@ async def fail_over(
     own = [s for s in secrets if s.kind == "env" and s.env_var == env_var]
     held = next((s for s in own if s.id == current), None)
     owned = held is not None and follows_default(held)  # an agent's accounts: DEFAULT_POLICY, a pool's: its own
-    policy = await _policy_of(conn, run, held) if owned else await account_policy(conn, run.owner_id, run.project_id)
+    policy = (
+        await _policy_of(conn, run, held)
+        if held is not None and owned
+        else await account_policy(conn, run.owner_id, run.project_id)
+    )
     states = await _lock_accounts(conn, [s.id for s in own] + [current])
     now = datetime.now(UTC)
     until = (

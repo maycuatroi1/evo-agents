@@ -103,13 +103,13 @@ def cmd_list(args) -> int:
 @client_command
 def cmd_show(args) -> int:
     hub, _ = signed_in()
-    return _done(args, hub.call("GET", _path(project_of(args), args.pool)))
+    return _done(args, hub.call("GET", _path(project_of(args), args.pool)) or {})
 
 
 @client_command
 def cmd_create(args) -> int:
     hub, _ = signed_in()
-    return _done(args, hub.call("POST", _path(project_of(args)), {"name": args.pool} | _policy_body(args)))
+    return _done(args, hub.call("POST", _path(project_of(args)), {"name": args.pool} | _policy_body(args)) or {})
 
 
 @client_command
@@ -119,7 +119,7 @@ def cmd_policy(args) -> int:
         print("error: give --strategy, --hard-reserve-pct or --five-hour-ceiling-pct", file=sys.stderr)
         return EXIT_USAGE
     hub, _ = signed_in()
-    return _done(args, hub.call("PATCH", _path(project_of(args), args.pool), body))
+    return _done(args, hub.call("PATCH", _path(project_of(args), args.pool), body) or {})
 
 
 @client_command
