@@ -5,7 +5,7 @@ Layout under ``$EVO_KG_HOME/<project>/`` (default ``~/.evo/kg``), mode 0700::
     log/<run_id>.jsonl.gz   every message of one connector run, item text replaced by blob refs
     blobs/sha256/ab/cd...   item bodies and fragments
     state.json              the merged state sigma_p, rebuildable from the log, with the runs, cursors, lineages and
-                            held removals it records; written whole under locks/corpus.lock
+                            held removals it records; written whole under locks/.state.lock
     locks/<source>.lock     one sync per source at a time
     audit.jsonl             one line per sync and per build, counts and ids only (audit.py), mode 0600
 
@@ -41,6 +41,9 @@ from evo_agents.kg.ids import normalize_time, rev_key, utc_now
 from evo_agents.kg.protocol import canonical_json, sha256, source_of
 
 STATE_FILE = "state.json"  # the merged state and what the corpus records of its runs
+# The lock of the state file, beside that of each source (``<source>.lock``): a dot no source id starts with, as the
+# bench's source is named ``corpus``.
+STATE_LOCK = ".state.lock"
 # The epoch of a source's first lineage: below every run ID, above the empty epoch of logs written before epochs.
 BASE_EPOCH = "00000000-0000-0000-0000-000000000000"
 EPOCH = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -212,7 +215,7 @@ class Corpus:
             finally:
                 self.depth -= 1
             return
-        fh = open(self.lock_dir / "corpus.lock", "a", encoding="utf-8")
+        fh = open(self.lock_dir / STATE_LOCK, "a", encoding="utf-8")
         filelock.lock(fh.fileno())
         try:
             self._load()

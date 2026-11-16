@@ -4,7 +4,7 @@ import stat
 
 import pytest
 
-from evo_agents.kg.corpus import replayed_digest
+from evo_agents.kg.corpus import Corpus, replayed_digest
 from evo_agents.kg.sync import accept_removals, sync_source
 from tests.kg.conftest import doc
 
@@ -191,3 +191,10 @@ def test_record_cursor_keeps_the_newest_run_s_whatever_the_order(fake_project):
     assert corpus.cursor("docs") == {"commit": "c" * 40}  # nothing was kept
     corpus.record_cursor("docs", {"commit": "d" * 40}, "0190a000-0000-7000-8000-000000000004")  # its own transaction
     assert project.corpus().cursor("docs") == {"commit": "d" * 40}
+
+
+def test_a_source_named_corpus_commits_its_run_under_its_own_lock(tmp_path):
+    corpus = Corpus("alpha", tmp_path)
+    with corpus.lock("corpus"), corpus.transaction():  # a sync of the bench's source "corpus" commits its run
+        corpus.record_cursor("corpus", "c1", "run-1")
+    assert corpus.cursor("corpus") == "c1"
