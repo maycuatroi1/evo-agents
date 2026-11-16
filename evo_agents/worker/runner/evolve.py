@@ -77,7 +77,15 @@ class SessionFigures(ArmFigures):
                 if isinstance(item, dict) and isinstance(item.get("content"), dict)
             ]
             text = "\n".join(text for text in texts if text) or str(body.get("rawOutput") or "")
-            self.errors.append(cut(f"{self.titles.get(call, 'a tool')}: {text}", MAX_TOOL_ERROR_CHARS))
+            self.errors.append(cut(f"{self.titles.get(str(call), 'a tool')}: {text}", MAX_TOOL_ERROR_CHARS))
+
+
+def _hub(run: Run):
+    """The hub of the worker that runs ``run``; RunFailed for a worker signed in to none."""
+    hub = run.daemon.hub
+    if hub is None:
+        raise RunFailed("the worker is signed in to no hub")
+    return hub
 
 
 class EvolveHub:
@@ -88,13 +96,13 @@ class EvolveHub:
 
     async def arm(self, body: dict) -> dict:
         try:
-            return await self.run.daemon.hub.evolve_arm(self.run.id, body, self.run.evolve_key)
+            return await _hub(self.run).evolve_arm(self.run.id, body, self.run.evolve_key)
         except HubProblem as exc:
             raise RunFailed(f"the hub did not take a baseline arm: {exc}") from None
 
     async def candidate(self, body: dict) -> dict:
         try:
-            return await self.run.daemon.hub.evolve_candidate(self.run.id, body, self.run.evolve_key)
+            return await _hub(self.run).evolve_candidate(self.run.id, body, self.run.evolve_key)
         except HubProblem as exc:
             raise RunFailed(f"the hub did not take a candidate: {exc}") from None
 
@@ -109,7 +117,7 @@ class RunSeams:
 
     async def lay_out(self, task: Mapping, components: Mapping[str, str | None], name: str) -> tuple[Path, Path]:
         owner = self.owner
-        root = owner.directory.path / EVALS / name
+        root = owner.root() / EVALS / name
         try:
             repository = await owner.repository_of(task, root)
             if owner.target == evolve.TARGETS[1]:
@@ -251,7 +259,7 @@ class EvolveRun(ReplayRun):
     async def read_inputs(self) -> dict:
         run = self.run
         try:
-            found = await run.daemon.hub.evolve_inputs(run.id, run.evolve_key)
+            found = await _hub(run).evolve_inputs(run.id, run.evolve_key)
         except HubProblem as exc:
             raise RunFailed(f"the hub did not answer what the evolve run evolves: {exc}") from None
         if not isinstance(found, dict) or found.get("target") not in evolve.TARGETS:
@@ -280,7 +288,7 @@ class EvolveRun(ReplayRun):
         await access.check(run, names, path=path, verify=commands, pushes=pushes)
         run.check()
         await self.prepare_evolution()
-        tree = Tree(self.directory.path / TREE)
+        tree = Tree(self.root() / TREE)
         evolution = Evolution(inputs, EvolveHub(run), RunSeams(self), tree, note=run.note, check=run.check)
         return await evolution.run()
 
@@ -319,6 +327,12 @@ class EvolveRun(ReplayRun):
         await files.standalone(self.source, base or self.inputs["base_sha"], repository, self.env)
         return repository
 
+    def root(self) -> Path:
+        """The run's directory, entered before the evolution starts (``prepare``)."""
+        if self.directory.path is None:
+            raise RunFailed("the run's directory is not made yet")
+        return self.directory.path
+
     def session_budget(self) -> dict | None:
         """The caps of the next session: what is left of the run's cost, the run's agent time (counted over its
         sessions) and its turns."""
@@ -326,8 +340,9 @@ class EvolveRun(ReplayRun):
         if not total:
             return None
         found = {key: total.get(key) for key in curator.BUDGET_KEYS}
-        if found.get("max_usd") is not None:
-            found["max_usd"] = round(max(found["max_usd"] - self.spent_usd, curator.MIN_RUN_USD), 4)
+        usd = found.get("max_usd")
+        if usd is not None:
+            found["max_usd"] = round(max(usd - self.spent_usd, curator.MIN_RUN_USD), 4)
         return {**found, "spent_usd": 0.0, "spent_seconds": 0.0}
 
     async def write_best(self, best: Candidate | None) -> gitops.Pushed | None:
@@ -359,9 +374,7 @@ class EvolveRun(ReplayRun):
         texts = measure.placed(baseline, best.components)
         try:
             async with run.daemon.repo_lock(self.source):
-                found = await write_branch(
-                    self.source, inputs["base_sha"], self.directory.path / BEST, texts, message, push
-                )
+                found = await write_branch(self.source, inputs["base_sha"], self.root() / BEST, texts, message, push)
         except gitops.PushRefused as exc:
             raise RunFailed(f"{repo}: {exc}") from None
         except gitops.GitError as exc:
@@ -373,7 +386,7 @@ class EvolveRun(ReplayRun):
     async def report(self, body: dict, *, quiet: bool = False) -> None:
         run = self.run
         try:
-            await run.daemon.hub.evolve_report(run.id, body, run.evolve_key)
+            await _hub(run).evolve_report(run.id, body, run.evolve_key)
         except HubProblem as exc:
             if not quiet:
                 raise RunFailed(f"the hub did not take the evolution's report: {exc}") from None

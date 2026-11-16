@@ -36,7 +36,7 @@ class EvolveStart(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    target: Literal[evolve.TARGETS]
+    target: evolve.Target
     repo: Name | None = None
     paths: list[Path] = Field(default_factory=list, max_length=MAX_PATHS)
     system_id: Id | None = None
@@ -62,7 +62,7 @@ class FrontItem(BaseModel):
 class EvolveTaskView(BaseModel):
     """A task of an evolution as its owner reads it: never its verify."""
 
-    kind: Literal[evolve.TASK_KINDS]
+    kind: evolve.TaskKind
     id: int
     ref: str
     repo: str | None = None
@@ -118,7 +118,7 @@ class EvolveList(BaseModel):
 class TaskInput(BaseModel):
     """A light task as the trusted daemon runs it, with its verify."""
 
-    kind: Literal[evolve.TASK_KINDS]
+    kind: evolve.TaskKind
     id: int
     ref: str
     base_sha: str | None
@@ -158,7 +158,7 @@ class EvolveInputs(BaseModel):
 class ArmIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    task_kind: Literal[evolve.TASK_KINDS]
+    task_kind: evolve.TaskKind
     task_id: Id
     base_sha: Sha | None = None
     baseline_digest: Digest
@@ -176,7 +176,7 @@ class CandidateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     parents: list[Id] = Field(default_factory=list, max_length=MAX_PARENTS)
-    origin: Literal[evolve.ORIGINS]
+    origin: evolve.Origin
     iteration: int = Field(0, ge=0, le=MAX_ITERATIONS)
     components: dict[Path, str | None] = Field(min_length=1, max_length=MAX_PATHS)
     scores: dict[Ref, Score] = Field(default_factory=dict, max_length=MAX_SCORES)

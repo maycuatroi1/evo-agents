@@ -163,7 +163,7 @@ async def impact_as_owner(
         row = (await conn.execute(query)).one_or_none()
         access = await owner_access(conn, row.owner_id, row.owner, row.project) if row is not None else None
         graphs = await kg.built_graphs(conn, project_id, kg.GRAPHS_TRIED) if access is not None else []
-    if not graphs:
+    if not graphs or access is None or row is None:
         return None
     sink = access.rules.hub_sink.sink if access.rules.hub_sink else kg.CLI_SINK
     ceiling = access.rules.ceiling(access.max_level, sink)
@@ -337,7 +337,11 @@ def _users(source: str | None, edited: list[str]) -> list[str] | None:
     if source is None:
         return None
     try:
-        return [path for path in edited if api_surface.used_names(source, api_surface.module_of(path))]
+        return [
+            path
+            for path in edited
+            if (module := api_surface.module_of(path)) and api_surface.used_names(source, module)
+        ]
     except SyntaxError:
         return None
 
@@ -372,9 +376,9 @@ async def read_api(
             return {}
         changes = {path: (await text(path, compared["merge_base"]), await text(path, head)) for path in wanted}
         return {
-            (repo, path): api_surface.reached_api({key: changes[key] for key in users[path]}, sources[path])
+            (repo, path): api_surface.reached_api({key: changes[key] for key in used}, source)
             for path in here
-            if users[path] is not None
+            if (used := users[path]) is not None and (source := sources[path]) is not None
         }
 
     try:
@@ -450,7 +454,7 @@ async def retier(conn: AsyncConnection, change, facts: PullFacts, charter: dict,
     except ValueError:
         found = tiers.Tier(3, [f"kind {row.kind} is not a kind of change: tier 3"])
     if judged is None:
-        judged = getattr(change, "state", None) == "judged" and getattr(change, "passed", None) is True
+        judged = bool(getattr(change, "state", None) == "judged" and getattr(change, "passed", None) is True)
     replayed = partial(_replayed, conn, change, row.kind, paths=facts.paths, fix=row.fix_of, judged=judged)
     if found.tier <= row.tier:
         return await replayed(max(row.tier, change.tier), evolvable=found.evolvable)

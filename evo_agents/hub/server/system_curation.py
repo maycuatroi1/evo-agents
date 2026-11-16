@@ -37,7 +37,7 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, model_validator
@@ -345,7 +345,7 @@ async def _audit(conn: AsyncConnection, access: ProjectAccess, user: Principal, 
 # The evolution of an agent's configuration (evo_agents.hub.server.evolve)
 
 
-async def evolve_target(conn: AsyncConnection, project_id: int, system_id: int, agent: str) -> tuple[dict, object]:
+async def evolve_target(conn: AsyncConnection, project_id: int, system_id: int, agent: str) -> tuple[dict, Any]:
     """(the target, the profile) of an evolution of ``agent`` (a node's id or its profile's handle) of agent system
     ``system_id``: the system's slug, the node and the profile's handle; 422 when an optimizes edge of the system
     reaches no such agent, or its profile is no live agent of the project but its default."""

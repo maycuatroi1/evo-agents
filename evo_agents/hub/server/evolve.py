@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import hmac
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from sqlalchemy import func, select, update
@@ -36,14 +36,18 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.evolve_models import (
     ArmIn,
     ArmOut,
+    BudgetInput,
     CandidateIn,
     CandidateOut,
     CandidateView,
     EvolveInputs,
     EvolveList,
     EvolveStart,
+    EvolveTaskView,
     EvolveView,
+    FrontItem,
     ReportIn,
+    TaskInput,
 )
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.protection import need_reader
@@ -60,7 +64,7 @@ MAX_LISTED = 100
 
 router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
 
 EvolveKey = Annotated[
     str | None,
@@ -119,9 +123,9 @@ def view_of(project: str, row, candidates: list[CandidateView] | None = None) ->
         runtime=row.runtime,
         model=row.model,
         budget=dict(row.budget or {}),
-        tasks=tasks,
+        tasks=[EvolveTaskView.model_validate(task) for task in tasks],
         iterations=row.iterations,
-        frontier=list(row.frontier or []),
+        frontier=[FrontItem.model_validate(item) for item in row.frontier or []],
         best_candidate_id=row.best_candidate_id,
         proposal_id=row.proposal_id,
         change_id=row.change_id,
@@ -141,7 +145,7 @@ async def evolutions_of(
     if state is not None:
         query = query.where(e.c.state == state)
     rows = (await conn.execute(query.order_by(e.c.id.desc()).limit(limit))).all()
-    return [row for row in rows if access.visible(row.label, plan_routes._sink(access, sink))]
+    return [row for row in rows if access.visible(row.label, plan_routes._sink(access, sink) or "")]
 
 
 async def evolution_of(conn: AsyncConnection, access: ProjectAccess, evolve_id: int, sink: str | None):
@@ -149,7 +153,7 @@ async def evolution_of(conn: AsyncConnection, access: ProjectAccess, evolve_id: 
     e = tables.curator_evolve_runs
     query = select(e).where(e.c.id == evolve_id, e.c.project_id == access.project_id)
     row = (await conn.execute(query)).one_or_none()
-    if row is None or not access.visible(row.label, plan_routes._sink(access, sink)):
+    if row is None or not access.visible(row.label, plan_routes._sink(access, sink) or ""):
         raise HTTPException(404, f"project {access.name} has no evolution #{evolve_id}")
     return row
 
@@ -162,7 +166,7 @@ async def _checked_git(conn: AsyncConnection, access: ProjectAccess, body: Evolv
     query = select(pr.c.name).where(pr.c.project_id == access.project_id, pr.c.name == body.repo)
     if await conn.scalar(query) is None:
         raise HTTPException(422, f"project {access.name} has no repo {body.repo}")
-    outside = [path for path in body.paths if not evolve.evolvable(body.repo, path, globs)]
+    outside = [path for path in body.paths if not evolve.evolvable(body.repo or "", path, globs)]
     if outside:
         raise HTTPException(
             422,
@@ -206,7 +210,7 @@ async def start(conn: AsyncConnection, user: Principal, project: str, body: Evol
         raise HTTPException(409, f"the charter of project {access.name} does not enable evolve: nothing was started")
     if body.target == "git":
         await _checked_git(conn, access, body, settings.evolvable_paths)
-    else:
+    elif body.system_id is not None and body.agent is not None:  # EvolveStart holds both for target agent_config
         await system_curation.evolve_target(conn, access.project_id, body.system_id, body.agent)
     await _checked_proposal(conn, access, body.proposal_id)
     tasks = await evolve_runs.pick_tasks(conn, access.project_id, body.repo, body.paths, settings)
@@ -215,7 +219,7 @@ async def start(conn: AsyncConnection, user: Principal, project: str, body: Evol
     values |= {"label": access.push_label(), "budget": settings.budget.model_dump(), "tasks": tasks}
     values |= {"runtime": (charter.get("builder") or {}).get("runtime") or curator.DEFAULT_RUNTIME}
     values |= {"model": (charter.get("builder") or {}).get("model"), "created_by": user.user_id}
-    evolve_id = await conn.scalar(pg_insert(e).values(**values).returning(e.c.id))
+    evolve_id: int = (await conn.execute(pg_insert(e).values(**values).returning(e.c.id))).scalar_one()
     target = f"{access.name} evolve:{evolve_id} target:{body.target}"
     await audit.record(
         conn,
@@ -327,7 +331,7 @@ async def _baseline(conn: AsyncConnection, row) -> dict:
 
 async def inputs_of(conn: AsyncConnection, row) -> EvolveInputs:
     p = tables.projects
-    project = await conn.scalar(select(p.c.name).where(p.c.id == row.project_id))
+    project = (await conn.execute(select(p.c.name).where(p.c.id == row.project_id))).scalar_one()
     charter = await charter_of(conn, row.project_id)
     budget = {"iterations": 0, "max_candidates": 0, "max_cost_usd": None} | dict(row.budget or {})
     tasks = await evolve_runs.task_inputs(conn, row.project_id, list(row.tasks or []))
@@ -342,9 +346,11 @@ async def inputs_of(conn: AsyncConnection, row) -> EvolveInputs:
         system_id=row.system_id,
         agent=row.agent,
         baseline=await _baseline(conn, row),
-        tasks=[{key: value for key, value in task.items() if key != "repo"} for task in tasks],
+        tasks=[
+            TaskInput.model_validate({key: value for key, value in task.items() if key != "repo"}) for task in tasks
+        ],
         cached=await evolve_runs.cached_arms(conn, row),
-        budget=budget,
+        budget=BudgetInput.model_validate(budget),
         runtime=row.runtime or curator.DEFAULT_RUNTIME,
         model=row.model,
         evolvable_paths=list(evolve_runs.settings_of(charter).evolvable_paths),
@@ -435,7 +441,7 @@ async def evolve_candidate(
         iterations = max(row.iterations, body.iteration)
         await conn.execute(update(e).values(iterations=iterations).where(e.c.id == row.id))
         frontier = await _frontier(conn, row)
-    return CandidateOut(candidate_id=candidate_id, frontier=frontier)
+    return CandidateOut(candidate_id=candidate_id, frontier=[FrontItem.model_validate(item) for item in frontier])
 
 
 @worker_router.post("/runs/{run_id}/evolve/report", response_model=EvolveView, responses=REFUSALS)
@@ -451,7 +457,7 @@ async def evolve_report_route(
         e = tables.curator_evolve_runs
         row = (await conn.execute(select(e).where(e.c.id == row.id))).one()
         p = tables.projects
-        project = await conn.scalar(select(p.c.name).where(p.c.id == row.project_id))
+        project = (await conn.execute(select(p.c.name).where(p.c.id == row.project_id))).scalar_one()
     log.info("evolution reported", extra={"run_id": run_id, "evolve_id": row.id, "state": row.state})
     return view_of(project, row)
 
@@ -485,16 +491,18 @@ async def mcp_answer(request: Request, project: str, user: Principal, arguments:
         need_reader(access)
         if "evolve_id" in arguments:
             row = await evolution_of(conn, access, arguments["evolve_id"], sink)
-            view = view_of(access.name, row, await candidates_of(conn, row.id, components=False))
-        else:
-            rows = await evolutions_of(
-                conn, access, sink, state=arguments.get("state"), limit=arguments.get("limit", 20)
-            )
-            views = [view_of(access.name, row) for row in rows]
-    if "evolve_id" not in arguments:
-        lines = [f"The evolutions of project {project}: {len(views)}."] + [_evolution_line(view) for view in views]
-        data = {"project": project, "evolutions": [view.model_dump(mode="json") for view in views]}
-        return "\n".join(lines), {**data, "summary": f"{len(views)} evolutions"}
+            return _one_answer(view_of(access.name, row, await candidates_of(conn, row.id, components=False)))
+        rows = await evolutions_of(conn, access, sink, state=arguments.get("state"), limit=arguments.get("limit", 20))
+        return _list_answer(project, [view_of(access.name, row) for row in rows])
+
+
+def _list_answer(project: str, views: list[EvolveView]) -> tuple[str, dict]:
+    lines = [f"The evolutions of project {project}: {len(views)}."] + [_evolution_line(view) for view in views]
+    data = {"project": project, "evolutions": [view.model_dump(mode="json") for view in views]}
+    return "\n".join(lines), {**data, "summary": f"{len(views)} evolutions"}
+
+
+def _one_answer(view: EvolveView) -> tuple[str, dict]:
     lines = [f"Evolution {_evolution_line(view)}."]
     lines.append("Tasks (select split and probes): " + (", ".join(task.ref for task in view.tasks) or "none"))
     lines += [_candidate_line(item) for item in view.candidates or []]

@@ -149,8 +149,8 @@ class Evolution:
         """The baseline's measure on ``task``: the hub's cached result of its arm, else the arm run now and posted."""
         cached = (self.inputs.get("cached") or {}).get(self.arm_key(task))
         if isinstance(cached, Mapping) and _number(cached.get("score")) is not None:
-            trace = cached.get("trace") if isinstance(cached.get("trace"), Mapping) else {}
-            trace = {**trace, "task": ref_of(task), "cached": True}
+            kept = cached.get("trace")
+            trace = {**(kept if isinstance(kept, Mapping) else {}), "task": ref_of(task), "cached": True}
             return Measured(ref_of(task), float(cached["score"]), _number(cached.get("cost_usd")), None, trace)
         found = await evaluate(self.seams, task, placed(self.baseline, self.baseline), self.eval_name(0, task))
         self.spend(found.cost_usd)

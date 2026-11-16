@@ -82,7 +82,10 @@ async def _pin(conn: AsyncConnection, user: Principal, row, best: dict, body: Re
     if seed is None:
         return "the evolution has no seed candidate to compare the profile with: the profile keeps its version"
     p = tables.projects
-    access = await access_of(conn, user.user_id, await conn.scalar(select(p.c.name).where(p.c.id == row.project_id)))
+    name = await conn.scalar(select(p.c.name).where(p.c.id == row.project_id))
+    access = None if name is None else await access_of(conn, user.user_id, name)
+    if access is None:
+        return "the evolution's project is gone: the profile keeps its version"
     return (await system_curation.apply_evolved(conn, access, user, row, seed, best, holdout))[1]
 
 

@@ -45,7 +45,7 @@ async def review_ended(conn: AsyncConnection, found: RunStep, old: str, new: str
     if new not in runs.TERMINAL_STATES:
         return []
     project_id = found.project_id
-    if new == "done":
+    if new == "done" and project_id is not None:
         from evo_agents.hub.server import playbook  # it reads the runs of the routes that import this module
 
         await playbook.exposed(conn, found.run_id, project_id)

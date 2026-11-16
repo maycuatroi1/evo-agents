@@ -368,7 +368,7 @@ async def _unchanged(conn: AsyncConnection, change) -> bool:
     return row is not None and (row.state, row.head_sha) == (change.state, change.head_sha)
 
 
-async def _reopen(engine: AsyncEngine, change, why: str, kept: str | None = None) -> str:
+async def _reopen(engine: AsyncEngine, change, why: str | None, kept: str | None = None) -> str:
     """Leave a judged change open for a person, saying ``why``; with ``kept``, the outcome of a change left as it is for
     a later pass (its night shift paused, its principal asked). MOVED, and nothing written, for a change that moved on
     since the pass read it."""
@@ -414,6 +414,7 @@ async def check_run(app: GitHubApp, target: Target, sha: str, passed: bool, verd
 
 async def _write_check(engine: AsyncEngine, app: GitHubApp, change) -> str:
     target = github_target(change.origin)
+    assert target is not None  # a change has a check run only once its pull request is open on GitHub
     check_id = await check_run(
         app, target, change.head_sha, bool(change.passed), change.verdict or {}, f"curator-change:{change.id}"
     )

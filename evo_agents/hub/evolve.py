@@ -41,13 +41,17 @@ import random
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import Literal, get_args
 
 from evo_agents.hub import replay, tiers
 
-TARGETS = ("git", "agent_config")  # the files of a harness in a repo, or an agent of an agent system
+Target = Literal["git", "agent_config"]  # the files of a harness in a repo, or an agent of an agent system
+TARGETS: tuple[Target, ...] = get_args(Target)
 AGENT_AXES = ("instructions", "skill")  # the components of an agent_config candidate
-ORIGINS = ("seed", "mutate", "merge")  # how a candidate came to be
-TASK_KINDS = ("replay", "probe")  # a task of the replay suite's select split, or an active probe
+Origin = Literal["seed", "mutate", "merge"]  # how a candidate came to be
+ORIGINS: tuple[Origin, ...] = get_args(Origin)
+TaskKind = Literal["replay", "probe"]  # a task of the replay suite's select split, or an active probe
+TASK_KINDS: tuple[TaskKind, ...] = get_args(TaskKind)
 SELECT = replay.SPLITS[0]
 DEFAULT_TASKS = 8  # light replay tasks one evolution measures on, by default
 DEFAULT_PROBES = 4  # probes, by default
@@ -356,7 +360,8 @@ def _replay_task(task: Mapping, commit_map: Mapping[str, str] | None) -> dict | 
 
 def _probe_paths(probe: Mapping) -> list[str]:
     paths = [path for path in probe.get("paths") or [] if isinstance(path, str)]
-    arms = probe.get("arms") if isinstance(probe.get("arms"), dict) else {}
+    found = probe.get("arms")
+    arms = found if isinstance(found, dict) else {}
     for side in arms.values():
         paths += [path for path in (side or {}) if isinstance(path, str)]
     return paths
@@ -407,7 +412,7 @@ def light_tasks(
     return picked[: max(limit, 0)] + found_probes[: max(probe_limit, 0)]
 
 
-def task_ref(kind: str, task_id) -> str:
+def task_ref(kind: str | None, task_id) -> str:
     """How a score names a task: ``replay:<id>`` or ``probe:<id>``."""
     if kind not in TASK_KINDS:
         raise EvolveProblem(f"a task is of kind {' or '.join(TASK_KINDS)}, not {kind!r}")
@@ -431,7 +436,9 @@ def baseline_digest(components: Mapping[str, str | None]) -> str:
     return hashlib.sha256(_canonical(found)).hexdigest()
 
 
-def arm_key(task_kind: str, task_id, base_sha: str | None, digest: str, runtime: str, model: str | None) -> str:
+def arm_key(
+    task_kind: str | None, task_id, base_sha: str | None, digest: str, runtime: str | None, model: str | None
+) -> str:
     """The key of the result of the baseline arm of one task: the sha256 of (task kind, task, base commit, baseline
     digest, runtime, model). The same key is the same run, so its result is read again instead of run again."""
     if task_kind not in TASK_KINDS:

@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from types import SimpleNamespace
+from typing import Any
 
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -50,7 +51,8 @@ def draft_seams(draft) -> list[tuple[str, str]]:
     pairs = []
     for seam in found if isinstance(found, list) else []:
         if isinstance(seam, dict) and isinstance(seam.get("owner"), str):
-            consumers = seam.get("consumers") if isinstance(seam.get("consumers"), list) else []
+            named = seam.get("consumers")
+            consumers = named if isinstance(named, list) else []
             pairs += [(seam["owner"], item) for item in consumers if isinstance(item, str)]
     return pairs
 
@@ -144,11 +146,12 @@ def repo_body(body, repo: str) -> dict:
     """Plan ``body`` with the steps of ``repo`` alone: what the Judge of that repo runs again."""
     if not isinstance(body, dict):
         return {}
-    steps = body.get("steps") if isinstance(body.get("steps"), list) else []
+    found = body.get("steps")
+    steps = found if isinstance(found, list) else []
     return {**body, "steps": [step for step in steps if isinstance(step, dict) and step.get("repo") == repo]}
 
 
-async def in_focus(conn: AsyncConnection, change):
+async def in_focus(conn: AsyncConnection, change) -> Any:
     """``change`` as its judge run reads it: for a change in several repos, ``overlay`` of the repo its judge run
     judges now; ``change`` itself otherwise."""
     if change is None or change.judge_run_id is None:
@@ -444,7 +447,7 @@ async def _merge_repo(engine: AsyncEngine, app, curator_app, change, row, charte
             return MOVED, ""
         paused = await changes.night_paused(conn, change.project_id)
         said = None if paused else await autonomy_gates.check(conn, change.builder_run_id, "K5", **act)
-    if paused:
+    if paused or said is None:
         return await changes._reopen(engine, change, changes.PAUSED, "paused"), ""
     if not said.act:
         kept = "wait" if said.waits else None

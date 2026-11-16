@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from urllib.parse import quote, urlencode
 
-from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
+from evo_agents.hub.cli_client import call_object, client_command, print_json, signed_in, table
 from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.hub.curator import money
 from evo_agents.hub.plan_cli import project_of_args
@@ -94,7 +94,7 @@ def cmd_run(args) -> int:
         body = {"target": "agent_config", "system_id": args.system_id, "agent": args.agent}
     if args.proposal:
         body["proposal_id"] = args.proposal
-    found = hub.call("POST", _path(project), body)
+    found = call_object(hub, "POST", _path(project), body)
     if args.json:
         print_json(found)
         return 0
@@ -105,7 +105,7 @@ def cmd_run(args) -> int:
 @client_command
 def cmd_show(args) -> int:
     hub, _ = signed_in()
-    found = hub.call("GET", _path(project_of_args(args), str(args.evolution)))
+    found = call_object(hub, "GET", _path(project_of_args(args), str(args.evolution)))
     if args.json:
         print_json(found)
         return 0
@@ -118,7 +118,7 @@ def cmd_status(args) -> int:
     hub, _ = signed_in()
     project = project_of_args(args)
     query = {"limit": args.limit, **({"state": args.state} if args.state else {})}
-    found = hub.call("GET", _path(project) + f"?{urlencode(query)}")
+    found = call_object(hub, "GET", _path(project) + f"?{urlencode(query)}")
     if args.json:
         print_json(found)
         return 0
