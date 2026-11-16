@@ -31,9 +31,11 @@ request (``pr_pending``) on GitHub, or for its Judge (``judge_pending``) on GitL
 request; judged there, it stays open for its owner, or goes to the merge queue when the project's autonomy policy has
 its repo in mode auto (``merge_gate.curator_judged``; the hub's worker reaches the queue's job through this module).
 The job ``curator.changes`` (``advance``), one pass at a time, compares the change's branch with the default branch
-first (``pulls.compare_files``): a branch with commits of its own that change no file (a Builder that reverted its own
-work) gets no pull request and no Judge, and its change is ``closed`` with the reason "its branch changes nothing"
-(``_changes_nothing``, the audit row EMPTY). Otherwise it opens the pull request with the workers' App, reads its
+first (``pulls.compare_files``): a branch that changes no file gets no pull request and no Judge, and its change is
+``closed`` (``_changes_nothing``, the audit row EMPTY), with the reason "its branch changes nothing" when it has commits
+of its own (a Builder that reverted its own work), or "its branch has no commit of its own" when it has none (a change
+made outside the repo, on the hub's data, or one whose commits are on the default branch already), once no pull request
+of the branch merged or closed by hand settles it (``settle_by_branch``). Otherwise it opens the pull request with the workers' App, reads its
 files and runs ``diff_signs.hack_signs`` on them: a sign fails the change at once and puts its proposal at tier 3. Those
 files also give the proposal its tier again (``change_tiers.retier``: ``tiers.tier_of`` over the paths the pull request
 really changes, what the knowledge graph says of them and, for kind kg_source, what it does to knowledge.yaml key by
@@ -63,8 +65,8 @@ may merge it there (``curator_threads``, through ``merge_read``, ``merge_at_head
 hub's own merge uses too). While the project's night shift is paused the hub merges nothing: a judged change waits for
 it. Every WATCH_EVERY it reads such a pull request again: merged by hand, its change is ``merged`` (when, by whom, at
 which commit), closed without a merge, ``closed`` (``_settle``). A branch merged by hand outside the hub is read the same way
-(``settle_by_branch``): when GitHub refuses to open the pull request of a change (no commits between the default
-branch and its branch, say), and every WATCH_EVERY for a planned change whose plan has no step ready to run, the job
+(``settle_by_branch``): when a change's branch has no commit of its own, or GitHub refuses to open its pull request,
+and every WATCH_EVERY for a planned change whose plan has no step ready to run, the job
 looks for a pull request of the change's branch in any state, and a merged one, else a closed one, settles the change,
 which names it from then on. It also checks rulesets (``protection.check_rulesets``): the one of a repo a planned
 change waits for at its next pass, and every RECHECK_HOURS each one checked before. Each move of a change adds its
@@ -230,8 +232,8 @@ async def _pull_opened(engine: AsyncEngine, change, project: str, made: dict, ba
 
 def opener(engine: AsyncEngine, app: GitHubApp, target: Target, change, title: str, project: str, signed: str):
     """What opens the pull request of ``change``'s branch on ``target`` with a token: {"pull": the pull request as
-    GitHub answers it, "base": the default branch}, the pull request None for a branch with commits of its own that
-    change no file."""
+    GitHub answers it, "base": the default branch, "ahead_by": the commits of its own}, the pull request None for a
+    branch that changes no file, with commits of its own or none."""
     from evo_agents.hub.server import pulls
 
     async def opened(token: str) -> dict:
@@ -247,8 +249,8 @@ def opener(engine: AsyncEngine, app: GitHubApp, target: Target, change, title: s
         if not isinstance(base, str) or not base:
             raise GitHubRefused(f"GitHub names no default branch of {target.owner}/{target.name}")
         compared = await pulls.compare_files(app, token, target.owner, target.name, base, change.branch)
-        if compared["ahead_by"] and compared["files"] == 0:  # commits of its own, and no file they change
-            return {"pull": None, "base": base}
+        if compared["ahead_by"] is not None and compared["files"] == 0:  # no file: commits that change none, or none
+            return {"pull": None, "base": base, "ahead_by": compared["ahead_by"]}
         made = await pulls.open_pull(
             app,
             token,
@@ -284,7 +286,11 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
             await set_change(conn, change.id, reason=reason_line(f"the pull request could not be opened: {exc}"))
         return "refused"
     if found["pull"] is None:
-        return await _changes_nothing(engine, change, project, found["base"])
+        if not found.get("ahead_by"):  # no commit of its own: a pull request merged or closed by hand settles it first
+            settled = await settle_by_branch(engine, app, change, target)
+            if settled is not None:
+                return settled
+        return await _changes_nothing(engine, change, project, found["base"], commits=bool(found.get("ahead_by")))
     made = found["pull"]
     number = made.get("number")
     if not judge.is_sha((made.get("head") or {}).get("sha")) or type(number) is not int:
@@ -300,13 +306,18 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
     return await _pull_opened(engine, change, project, made, found["base"], signs, facts, charter)
 
 
-async def _changes_nothing(engine: AsyncEngine, change, project: str, base: str) -> str:
-    """Close ``change``, whose branch has commits of its own that change no file against ``base`` (a Builder that
-    reverted its own work, say): no pull request and no Judge for an empty diff. NOTHING, or MOVED for a change no
-    longer waiting for its pull request."""
+async def _changes_nothing(engine: AsyncEngine, change, project: str, base: str, commits: bool = True) -> str:
+    """Close ``change``, whose branch changes no file against ``base``: with ``commits``, commits of its own that change
+    nothing (a Builder that reverted its own work, say); without, no commit of its own at all (a change made on the
+    hub's data, or one already on ``base``), which GitHub would refuse a pull request for. No pull request and no Judge
+    for an empty diff. NOTHING, or MOVED for a change no longer waiting for its pull request."""
     why = (
         f"its branch changes nothing: GitHub finds no file {change.branch} changes against {base}, so the hub "
         "opened no pull request and queued no Judge"
+        if commits
+        else f"its branch has no commit of its own: {change.branch} adds nothing to {base} (the change was made outside "
+        "the repo, or its commits are on the default branch already), so the hub opened no pull request and queued no "
+        "Judge"
     )
     async with engine.begin() as conn:
         locked = await change_of_plan(conn, change.project_id, change.plan_id, lock=True)
