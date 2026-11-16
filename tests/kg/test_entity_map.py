@@ -8,11 +8,11 @@ import json
 import pytest
 
 from evo_agents.kg import entity_map, strategy
-from evo_agents.kg.build import build_project, unchanged
+from evo_agents.kg.build import unchanged_rows
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.schema import HUB_RELATIONS
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import make_project
 
 GUIDE = "app:file:docs/guide.md"
@@ -87,25 +87,12 @@ def a_map(**over):
 
 def graph(project):
     """(nodes: id -> (kind, name, status, props, level), edges: (src, rel, dst) -> (status, conf, props, level))."""
-    store = Store.open_file(project.root / "graph.sqlite")
-    try:
-        b = store.latest_ready()
-        live = "tx_from <= ? AND (tx_to IS NULL OR tx_to > ?)"
-        nodes = {
-            r[0]: (r[1], r[2], r[3], json.loads(r[4]), r[5])
-            for r in store.db.execute(
-                f"SELECT node_id, kind, name, status, props, label_lvl FROM nodes WHERE {live}", (b, b)
-            )
-        }
-        edges = {
-            (r[0], r[1], r[2]): (r[3], r[4], json.loads(r[5]), r[6])
-            for r in store.db.execute(
-                f"SELECT src, rel, dst, status, conf, props, label_lvl FROM edges WHERE {live}", (b, b)
-            )
-        }
-        return nodes, edges
-    finally:
-        store.close()
+    nodes = {n["id"]: (n["kind"], n["name"], n["status"], n["props"], n["label"][0]) for n in built.nodes_of(project)}
+    edges = {
+        (e["src"], e["rel"], e["dst"]): (e["status"], e["conf"], e["props"], e["label"][0])
+        for e in built.edges_of(project)
+    }
+    return nodes, edges
 
 
 # -- the format ---------------------------------------------------------------------------------------------------
@@ -178,7 +165,7 @@ def test_check_drops_what_is_not_there_or_of_the_wrong_kind_and_keeps_the_rest()
 def test_the_build_states_the_entities_mentions_relations_and_code_of_a_map(tmp_path, kg_env):
     project = setup(tmp_path, kg_env)
     put_map(project, a_map())
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     nodes, edges = graph(project)
     server, ranking, rocket = "entity:Component:server", "entity:Feature:ranking", "entity:Other:rocket"
@@ -211,7 +198,7 @@ def test_the_build_states_the_entities_mentions_relations_and_code_of_a_map(tmp_
 def test_coverage_counts_what_the_maps_gave(tmp_path, kg_env):
     project = setup(tmp_path, kg_env)
     put_map(project, a_map())
-    cov = build_project(project).coverage
+    cov = built.build(project).coverage
     found = cov["entity_map"]
     assert found["maps"] == 1 and found["runs"] == [7] and found["model"] == "claude-opus-5-5"
     assert found["nodes"] == 3 and found["relations"] == 1
@@ -230,7 +217,7 @@ def test_a_citation_of_an_item_that_changed_since_it_was_read_is_stale(tmp_path,
     data["entities"][1]["mentions"][0]["hash"] = item_hash(project, CLUSTER)
     data["entities"][2]["mentions"][0]["hash"] = fresh
     put_map(project, data)
-    report = build_project(project)
+    report = built.build(project)
     _, edges = graph(project)
     assert edges[(GUIDE, "mentions", "entity:Component:server")][2]["stale"] is True
     assert "stale" not in edges[(f"{CLUSTER}#demo", "mentions", "entity:Feature:ranking")][2]
@@ -251,7 +238,7 @@ def test_two_maps_naming_one_entity_make_one_node_and_a_missing_node_is_rejected
         ],
     }
     put_map(project, second, "b")
-    cov = build_project(project).coverage["entity_map"]
+    cov = built.build(project).coverage["entity_map"]
     nodes, edges = graph(project)
     assert ("app:file:docs/old.md", "mentions", "entity:Component:server") in edges
     assert not [n for n in nodes if n.startswith("entity:Component:ghost")]
@@ -272,7 +259,7 @@ def test_the_label_joins_the_cited_items_and_the_code(tmp_path, kg_env):
         ],
     }
     put_map(project, data)
-    assert build_project(project).ok
+    assert built.build(project).ok
     nodes, edges = graph(project)
     public, customer = nodes[CLUSTER][4], nodes[SERVER][4]
     assert public < customer
@@ -282,19 +269,19 @@ def test_the_label_joins_the_cited_items_and_the_code(tmp_path, kg_env):
 
 def test_a_new_map_is_a_new_build_and_no_map_keeps_the_digest(tmp_path, kg_env):
     project = setup(tmp_path, kg_env)
-    assert build_project(project).ok
-    assert unchanged(project) is not None
+    assert built.build(project).ok
+    assert unchanged_rows(project, built.rows_of(project)) is not None
     put_map(project, a_map())
-    assert unchanged(project) is None
-    assert build_project(project).ok
-    assert unchanged(project) is not None
+    assert unchanged_rows(project, built.rows_of(project)) is None
+    assert built.build(project).ok
+    assert unchanged_rows(project, built.rows_of(project)) is not None
 
 
 def test_without_the_step_the_maps_are_not_read(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
     assert all(r.ok for r in sync_project(project))
     put_map(project, a_map())
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok and "entity_map" not in report.coverage
     nodes, _ = graph(project)
     assert not [n for n in nodes if n.startswith("entity:")]

@@ -13,11 +13,10 @@ pytest.importorskip("sqlalchemy", reason="the entity relay needs the hub-server 
 
 from evo_agents.hub import kg_entity_relay
 from evo_agents.kg import claude_code, entities, init_run, review, strategy
-from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol import canonical_json, sha256
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import make_project, write
 
 KINDS = ["Actor", "Concept", "Artifact", "Other"]
@@ -73,25 +72,23 @@ def setup(tmp_path, kg_env, extra=None):
     return project, log
 
 
-def rows(project, table: str, where: str) -> list[tuple]:
-    store = Store.open_file(project.root / "graph.sqlite")
-    try:
-        b = store.latest_ready()
-        cols = "node_id, kind, props" if table == "nodes" else "src, rel, dst, props"
-        found = store.db.execute(
-            f"SELECT {cols} FROM {table} WHERE {where} AND tx_from <= ? AND (tx_to IS NULL OR tx_to > ?)", (b, b)
-        )
-        return [tuple(r) for r in found.fetchall()]
-    finally:
-        store.close()
+def rows(project, table: str, wanted) -> list[tuple]:
+    """(id, kind, props as JSON) of the nodes, or (src, rel, dst, props as JSON) of the edges, of the project's latest
+    build that ``wanted`` keeps."""
+    if table == "nodes":
+        return [(n["id"], n["kind"], json.dumps(n["props"])) for n in built.nodes_of(project) if wanted(n)]
+    return [(e["src"], e["rel"], e["dst"], json.dumps(e["props"])) for e in built.edges_of(project) if wanted(e)]
 
 
 def test_a_lightrag_model_gives_typed_described_entities_and_keyworded_relations_with_their_source(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     assert {p.read_text() for p in log.iterdir()} == {"lightrag"}, "the command is asked in the lightrag style"
-    nodes = {nid: (kind, json.loads(props)) for nid, kind, props in rows(project, "nodes", "node_id LIKE 'entity:%'")}
+    nodes = {
+        nid: (kind, json.loads(props))
+        for nid, kind, props in rows(project, "nodes", lambda n: n["id"].startswith("entity:"))
+    }
     kind, search = nodes["entity:Concept:search"]
     assert kind == "Concept" and search["description"] == "The app's search." and "type" not in search
     assert search["item"] and search["model"] == "fake-1" and search["evidence"] == "See"
@@ -100,7 +97,7 @@ def test_a_lightrag_model_gives_typed_described_entities_and_keyworded_relations
     assert server["line"] == 7, "the quote's line in the item"
     kind, ann = nodes["entity:Actor:ann"]
     assert kind == "Actor" and ann["type"] == "Person" and "line" not in ann, "Person is Actor; no line without quote"
-    found = rows(project, "edges", "rel = 'relates_to'")
+    found = rows(project, "edges", lambda e: e["rel"] == "relates_to")
     assert [(s, d) for s, _, d, _ in found] == [("entity:Concept:search", "entity:Other:server")]
     props = json.loads(found[0][3])
     assert props["keywords"] == "runs on, hosting" and props["description"] == "Search runs on it."
@@ -108,17 +105,17 @@ def test_a_lightrag_model_gives_typed_described_entities_and_keyworded_relations
     cov = report.coverage["entities"]
     assert cov["tokens_out"] == 40 * cov["calls"] and cov["rejected"] >= 1, "the edge to an unknown name is dropped"
     calls = len(list(log.iterdir()))
-    assert build_project(project).ok and len(list(log.iterdir())) == calls, "memoized by the item's digest"
+    assert built.build(project).ok and len(list(log.iterdir())) == calls, "memoized by the item's digest"
 
 
 def test_the_lightrag_style_keeps_the_sink_check_and_the_cost_ceiling_of_the_step(tmp_path, kg_env):
     project, log = setup(tmp_path / "low", kg_env, {"sink": "llm-low"})
-    cov = build_project(project).coverage["entities"]
+    cov = built.build(project).coverage["entities"]
     assert not list(log.iterdir()) and cov["calls"] == 0 and cov["refused_count"] >= 1
     assert "above the clearance of sink 'llm-low'" in cov["refused"][0]["reason"]
-    assert rows(project, "nodes", "node_id LIKE 'entity:%'") == []
+    assert rows(project, "nodes", lambda n: n["id"].startswith("entity:")) == []
     project, log = setup(tmp_path / "cost", kg_env, {"max_cost": 0.005})
-    cov = build_project(project).coverage["entities"]
+    cov = built.build(project).coverage["entities"]
     assert cov["calls"] == 1 and "max_cost" in cov["stopped"], "one call of 0.01 passes the ceiling, then it stops"
 
 

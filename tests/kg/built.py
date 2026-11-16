@@ -14,7 +14,7 @@ from evo_agents.kg import semantic
 from evo_agents.kg.build import BuildReport, build_rows, tuning_of, unchanged_rows, verify_rows
 from evo_agents.kg.clusters import Clusters
 from evo_agents.kg.project import Project, ProjectError
-from evo_agents.kg.snapshot import Snapshot, StoreRows, rows_clusters
+from evo_agents.kg.snapshot import Snapshot, StoreRows, edge_dict, node_dict, rows_clusters
 from evo_agents.kg.sync import sync_project
 
 
@@ -92,3 +92,16 @@ def snapshot_of(project: Project) -> Snapshot | None:
     """The snapshot of the project's latest build, numbered as the project's builds; None before one."""
     held = HELD.get(project.root)
     return Snapshot.from_stored(held.rows, held.number) if held else None
+
+
+def nodes_of(project: Project) -> list[dict]:
+    """The nodes of the project's latest build as ``Store.nodes`` reads them, by id; [] before a build."""
+    rows = rows_of(project)
+    return sorted((node_dict(r) for r in rows.nodes), key=lambda n: n["id"]) if rows is not None else []
+
+
+def edges_of(project: Project) -> list[dict]:
+    """The edges of the project's latest build as ``Store.edges_of`` reads them, an edge to no node included, by
+    (src, rel, dst); [] before a build."""
+    rows = rows_of(project)
+    return sorted((edge_dict(r) for r in rows.edges), key=lambda e: (e["src"], e["rel"], e["dst"])) if rows else []
