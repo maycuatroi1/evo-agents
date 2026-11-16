@@ -31,6 +31,7 @@ from tests.hub.test_kg import (
     open_hub,
     push,
     run_jobs,
+    served,
     tool_ok,
 )
 
@@ -60,6 +61,7 @@ def built(hub, tmp_path, *, strategy=True):
     laptop.sync("vault", {"key": "combo", "text": f"# Combo\n\n{SECRET_TEXT}\n", "rev": "1"})
     assert push(hub, laptop).ok
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
 
 
 def as_run(hub, login="alice", run_id=41):
@@ -127,6 +129,7 @@ def test_a_run_s_map_is_checked_kept_as_a_blob_and_read_by_the_next_build(hub, t
 
     hub.client.app.dependency_overrides.pop(security.principal, None)
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     node = tool_ok(hub, "kg_node", {"id": "entity:Component:search-engine"})["structuredContent"]
     assert node["node"]["kind"] == "Component" and node["node"]["status"] == "extracted"
     assert node["node"]["label"]["level"] == "internal", "the label of the guide it cites"
@@ -149,6 +152,7 @@ def test_the_first_build_after_switching_to_the_strategy_queues_a_run_and_lets_a
     assert got.status_code == 200, got.text
     assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
     run_jobs(hub.db, hub.s3, hub.worker_dir)
+    served(hub)
     builds = tables.kg_builds
     ((status, coverage),) = sql(
         hub.db, select(builds.c.status, builds.c.coverage).order_by(builds.c.id.desc()).limit(1)
