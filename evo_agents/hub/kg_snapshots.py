@@ -382,11 +382,15 @@ class SnapshotCoordinator:
         old = self._held.pop(project_id, None)
         self._held[project_id] = held  # one assignment: a reader sees the old snapshot or the new one
         if old is not None and old.snapshot is not held.snapshot:
-            self._dropped.append(weakref.ref(old.snapshot))
+            self._watch(old.snapshot)
         while len(self._held) > HELD_PROJECTS:
             dropped = next(iter(self._held))
-            self._dropped.append(weakref.ref(self._held.pop(dropped).snapshot))
+            self._watch(self._held.pop(dropped).snapshot)
             self._asked.pop(dropped, None)
+
+    def _watch(self, dropped: Snapshot) -> None:
+        if isinstance(dropped, Snapshot):
+            self._dropped.append(weakref.ref(dropped))
 
     def lingering(self) -> int:
         """The snapshots this coordinator replaced or dropped that are still in memory: a reader holds one until it is
