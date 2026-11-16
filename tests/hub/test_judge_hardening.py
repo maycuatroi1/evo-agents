@@ -129,6 +129,32 @@ def test_judge_the_paths_of_a_judge_runs_diff_raise_the_tier_and_never_lower_it(
     moved(world.client, world.worker, spec["id"], "running", "verifying", "done")
 
 
+def test_judge_the_graph_read_for_a_verdict_holds_no_lock_on_the_run(world, monkeypatch):  # noqa: F811
+    """The graph read for the tier can wait minutes for a snapshot load; the run row it locked made the worker's
+    heartbeat and claim wait too, each holding a pool connection, until the pool timed out."""
+    from evo_agents.hub.server import change_tiers
+
+    accepted(world)
+    builder(world)
+    moved_on(world)
+    spec = judge_run(world)
+    assert inputs(world, spec["id"]).status_code == 200
+    real = change_tiers.verdict_facts
+    probed = []
+
+    async def reading(*args, **kwargs):
+        r = tables.runs
+        # raises when another transaction holds the row
+        probed.append(sql(world.db, select(r.c.id).where(r.c.id == spec["id"]).with_for_update(nowait=True)))
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(change_tiers, "verdict_facts", reading)
+    response = verdict(world, spec["id"], paths=["tests/test_wait.py", "evo_agents/worker/wait.py"])
+    assert response.status_code == 200, response.text
+    assert probed and response.json()["tier"] == 1
+    moved(world.client, world.worker, spec["id"], "running", "verifying", "done")
+
+
 def test_curator_plan_writes_of_more_than_its_progress_are_refused(world):  # noqa: F811
     accepted(world)
     owner = world.headers["owner"]
