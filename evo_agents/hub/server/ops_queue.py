@@ -2,7 +2,8 @@
 every minute: it queues the operations events of each project whose default system turns ops on
 (``ops_queue.take``, one transaction a project, a project another pass holds skipped), runs the rules of tier 0 on
 what it queued (``ops_rules.tier0``: a run that failed because of its machine handed again, notices whose work is
-done marked read) and closes the batches whose time came (``ops_queue.close_due``). It calls no model. Then it opens
+done marked read), writes the events of stalled plans and of chat runs queued too long that the next pass queues
+(``ops_stalls.check``), and closes the batches whose time came (``ops_queue.close_due``). It calls no model. Then it opens
 the thread of each ready batch to the Orchestrator of the project's default system and settles the batches whose
 thread ended (``ops_threads.threads_pass``).
 """
@@ -15,7 +16,7 @@ from collections import Counter
 from sqlalchemy import select, union
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub import ops_queue, tables
+from evo_agents.hub import ops_queue, ops_stalls, tables
 from evo_agents.hub.server import ops_rules, ops_threads
 
 log = logging.getLogger(__name__)
@@ -37,14 +38,16 @@ async def ops_pass(engine: AsyncEngine, rules: tuple[ops_queue.Rule, ...] | None
     ready and empty."""
     async with engine.connect() as conn:
         projects = sorted((await conn.execute(_candidates())).scalars().all())
-    queued, tier0 = 0, Counter[str]()
+    queued, tier0, stalls = 0, Counter[str](), Counter[str]()
     for project_id in projects:
         async with engine.begin() as conn:
             queued += await ops_queue.take(conn, project_id, TIER0 if rules is None else rules)
             tier0.update(await ops_rules.tier0(conn, project_id))
+            stalls.update(await ops_stalls.check(conn, project_id))
     async with engine.begin() as conn:
         closed = await ops_queue.close_due(conn)
     found = {"queued": queued, **{key: tier0[key] for key in ("redelivered", "orchestrated", "read")}, **closed}
+    found.update({key: stalls[key] for key in ("stalled", "queued_long")})
     threads = await ops_threads.threads_pass(engine)  # logged, not returned: what ops_threads did is its own
     if any(found.values()):
         log.info("ops queue", extra=found)

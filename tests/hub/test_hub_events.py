@@ -236,8 +236,16 @@ def test_ops_events_tell_of_a_decision_asked_a_run_parked_failed_and_lost_with_i
     assert recover(client)["lost"] == 1
 
     events = ops(hub_db)
-    assert [kind for kind, _ in events] == ["decision.opened", "run.parked", "run.ended", "run.ended"]
-    asked, parked, failed, lost = (payload for _, payload in events)
+    # the failed run's escalation to the lead finds no node that takes a chat run: mention.refused
+    assert [kind for kind, _ in events] == [
+        "decision.opened",
+        "run.parked",
+        "run.ended",
+        "mention.refused",
+        "run.ended",
+    ]
+    asked, parked, failed, refused, lost = (payload for _, payload in events)
+    assert set(refused) == {"v", "state", "profile_id", "chat_id", "message_id"} and refused["state"] == "refused"
     assert asked == {
         "v": 1,
         "decision_id": found["id"],

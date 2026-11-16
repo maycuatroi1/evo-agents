@@ -1,5 +1,6 @@
-"""The owner's controls of a run: POST /v1/projects/{p}/runs/{id}/cancel, takeover, handback, approve and rerun, and PUT
-/v1/projects/{p}/runs/{id}/access (``service.controls``)."""
+"""The owner's controls of a run: POST /v1/projects/{p}/runs/{id}/cancel, takeover, handback, approve and rerun, PUT
+/v1/projects/{p}/runs/{id}/access (``service.controls``), and POST .../priority, a writer's change of the priority of a
+queued run (``service.priority``)."""
 
 from __future__ import annotations
 
@@ -7,8 +8,9 @@ from fastapi import APIRouter, Request
 
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.runs.models import REFUSALS, AccessChange, Rerun, Run, RunId
+from evo_agents.hub.server.runs.models import REFUSALS, AccessChange, PriorityChange, Rerun, Run, RunId
 from evo_agents.hub.server.runs.service.controls import approve_run, ask_control, cancel_run, change_access, rerun_run
+from evo_agents.hub.server.runs.service.priority import change_priority
 from evo_agents.hub.server.security import CurrentUser
 
 router = APIRouter()
@@ -55,3 +57,12 @@ async def access(request: Request, project: ProjectName, run_id: RunId, body: Ac
     """Let a run of yours call the hub's API as you, secrets, tokens and workers aside, or stop it: its token ends at
     once (``evo_agents.hub.server.run_access``). A run's own token never reaches this route."""
     return await change_access(request.app.state.engine, user, project, run_id, body)
+
+
+@router.post("/{project}/runs/{run_id}/priority", response_model=Run, responses=REFUSALS)
+async def priority(
+    request: Request, project: ProjectName, run_id: RunId, body: PriorityChange, user: CurrentUser
+) -> Run:
+    """Change the priority of a queued run of the project, for a writer of it: a worker claims its queued runs by
+    priority, highest first, then the oldest. 409 for a run that is no longer queued."""
+    return await change_priority(request.app.state.engine, user, project, run_id, body.priority)

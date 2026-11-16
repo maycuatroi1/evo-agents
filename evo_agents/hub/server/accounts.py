@@ -11,11 +11,12 @@ value. A provider account (``provider_accounts``) is listed too, its variable re
 it serves and what the model gateway last said of it (cooling while a rate limit lasts, failing when its last test
 failed, with the gateway's error code alone as the reason, never its text). GET /v1/accounts/{name} gives one of them; with ``?owner=<login>``, one another member shared with the caller,
 whose figures are those of the caller's own runs alone and whose shares are those that lend it to the caller (a share
-not revoked covers them, or a run of theirs took it). PATCH
-/v1/accounts/{name} changes its weight or priority, pauses (``paused: true``) or resumes it, or gives it a weekly
-budget (``weekly_budget_usd``, null drops it, with ``weekly_reset_at``, the instant its weeks start from), which the
-hub turns into its ``seven_day`` usage window (``account_budgets``); a name that is not one of the caller's live env
-secrets is 404, whoever's it is.
+not revoked covers them, or a run of theirs took it). GET /v1/shared-accounts lists the env accounts other members
+share with the caller for every run, with the projects their shares lend them on, as the account picker of a dispatch
+offers them by ``<login>/<name>`` (``runs.service.accounts``). PATCH /v1/accounts/{name} changes its weight or
+priority, pauses (``paused: true``) or resumes it, or gives it a weekly budget (``weekly_budget_usd``, null drops it,
+with ``weekly_reset_at``, the instant its weeks start from), which the hub turns into its ``seven_day`` usage window
+(``account_budgets``); a name that is not one of the caller's live env secrets is 404, whoever's it is.
 
 A policy is the caller's for one project: GET /v1/account-policies lists the caller's own; GET
 /v1/account-policies/{project} gives the caller's policy for a project they can see, the defaults
@@ -159,6 +160,15 @@ class Account(BaseModel):
     weekly_reset_at: datetime | None = Field(
         None, description="an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC"
     )
+
+
+class SharedAccount(Account):
+    """An env account another member shares with the caller, as GET /v1/accounts/{name}?owner= gives it: its figures
+    are the caller's own runs alone, its shares those that lend it to the caller, and its projects those of these
+    shares its owner binds it to."""
+
+    owner: str = Field(description="the login of the member who owns it and shares it")
+    pick: str = Field(description="how ``account`` of a dispatch names it: <owner>/<name>")
 
 
 class AccountChange(BaseModel):
@@ -378,6 +388,62 @@ async def _shared_account(
     figures = await account_figures(conn, owner_id, [row.id], principal_id=user.user_id)
     shares = [share for share in (await shares_of(conn, [row.id])).get(row.id, []) if share.id in ids]
     return _account(row, figures.get(row.id), shares, seen).model_copy(update={"workers": [], "pools": []})
+
+
+@router.get("/shared-accounts", response_model=list[SharedAccount])
+async def list_shared_accounts(request: Request, user: CurrentUser, response: Response) -> list[SharedAccount]:
+    """The env accounts other members share with the caller through a live share for every run, by variable, owner
+    and name, as ``_shared_account`` gives each one, with the projects of those shares its owner binds it to; one bound
+    to none of them is left out."""
+    s, u, cs, csp, b, p = (
+        tables.secrets,
+        tables.users,
+        tables.credential_shares,
+        tables.credential_share_projects,
+        tables.secret_bindings,
+        tables.projects,
+    )
+    async with request.app.state.engine.begin() as conn:
+        statement = (
+            select(s.c.id, s.c.owner_id, u.c.login, cs.c.id.label("share_id"), p.c.name.label("project"))
+            .join_from(cs, s, s.c.id == cs.c.secret_id)
+            .join(u, u.c.id == s.c.owner_id)
+            .join(csp, csp.c.share_id == cs.c.id)
+            .join(p, p.c.id == csp.c.project_id)
+            .where(
+                live_share(),
+                cs.c.run_id.is_(None),  # one for a single run lends the account to no run of theirs but that one
+                await grantee_clause(conn, user.user_id),
+                s.c.owner_id != user.user_id,
+                s.c.kind == "env",
+                s.c.deleted_at.is_(None),
+                select(b.c.secret_id).where(b.c.secret_id == s.c.id, b.c.project_id == p.c.id).exists(),
+            )
+            .order_by(p.c.name)
+        )
+        lent: dict[int, dict] = {}
+        for row in await conn.execute(statement):
+            found = lent.setdefault(
+                row.id, {"owner": row.owner_id, "login": row.login, "shares": set(), "projects": []}
+            )
+            found["shares"].add(row.share_id)
+            if row.project not in found["projects"]:
+                found["projects"].append(row.project)
+        seen = _seen(request)
+        accounts: list[SharedAccount] = []
+        for owner_id in sorted({found["owner"] for found in lent.values()}):
+            ids = [secret_id for secret_id, found in lent.items() if found["owner"] == owner_id]
+            rows = [row for row in (await conn.execute(_accounts(owner_id))).all() if row.id in lent]
+            figures = await account_figures(conn, owner_id, ids, principal_id=user.user_id)
+            shares = await shares_of(conn, ids)
+            for row in rows:
+                found = lent[row.id]
+                covering = [share for share in shares.get(row.id, []) if share.id in found["shares"]]
+                account = _account(row, figures.get(row.id), covering, seen)
+                values = account.model_dump() | {"workers": [], "pools": [], "projects": found["projects"]}
+                accounts.append(SharedAccount(**values, owner=found["login"], pick=f"{found['login']}/{row.name}"))
+    response.headers.update(NO_STORE)
+    return sorted(accounts, key=lambda account: (account.env_var, account.owner.lower(), account.name))
 
 
 def _paused(change: AccountChange, kept):

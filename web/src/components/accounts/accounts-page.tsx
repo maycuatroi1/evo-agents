@@ -19,7 +19,7 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { AccountDialog } from "./account-dialog";
-import { LazyAccountSharing, LazyModelsTab, LazyPolicies, LazyServicesTab } from "./account-tabs-lazy";
+import { LazyAccountSharing, LazyModelsTab, LazyPolicies, LazyServicesTab, LazySharedWithYou } from "./account-tabs-lazy";
 import { useChangeAccount, useFailure } from "./hooks";
 import { LazyLoginDialog, preloadLogin } from "./login-lazy";
 import { sharedVariables } from "./model";
@@ -63,7 +63,8 @@ const toggled = <T,>(current: Dialog<T>, open: boolean): Dialog<T> => (current ?
 /**
  * The visitor's accounts (docs/credentials.md, section "Accounts"), in tabs: Providers, a card per provider their
  * model accounts call with its keys, their usage and cost, and its models; Models, every model their runs may ask
- * for; Service credentials; Rotation, the policy of each project; Sharing, the shares and what they spent. Add
+ * for; Service credentials; Rotation, the policy of each project; Sharing, the shares and what they spent. Both the
+ * Providers and the Sharing tab list the accounts other members share with the visitor, each with its owner. Add
  * provider opens the catalog: Claude signs in on a worker, any other provider is a key and a base URL. Never a value.
  */
 export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | null }) {
@@ -158,6 +159,7 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
             </TabsList>
             <TabsContent value="providers" data-testid="accounts-panel-providers">
               <ProvidersTab accounts={list} now={now} onCatalog={openCatalog} onAdd={addTo} {...actions} />
+              <LazySharedWithYou now={now} hideEmpty />
             </TabsContent>
             <TabsContent value="models" data-testid="accounts-panel-models">
               <LazyModelsTab accounts={list} onCatalog={openCatalog} />

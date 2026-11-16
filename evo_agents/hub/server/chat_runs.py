@@ -4,7 +4,11 @@ it goes to, the session it goes on in, the agent's messages in the thread and th
 ``hand_work`` is what a mention asks, of a person (``hand_mentions``, from ``chats``) or of an agent (``chat_agents``):
 the run of the profile's agent for the person at the origin of the chain. Refused, with why, when that person is not a
 writer on the profile's project (in a settle chat, any grant on it wakes the chat's own agent: ``chats.SETTLE``), when
-their primary seat in the org chart ended, or when no worker of the person can take it now. Each (thread, agent, person) is one session: a run of it that is queued or held takes the message in its inbox; one that
+their primary seat in the org chart ended, or when no worker of the person can take it now (an operations event of the
+agent's project, ``mention.refused``, tells its Orchestrator, unless the mention is an ops thread's run's own: that
+event would come back to it as a batch of its own, ``ops_queue.ops_run``). When the ready nodes of the
+agent's pool only lack a free slot, the run queues for the first of them instead, by its priority (``Hand.priority``),
+and the thread says how many runs it waits behind. Each (thread, agent, person) is one session: a run of it that is queued or held takes the message in its inbox; one that
 ended done, or failed because the remote declined its push (``rules.goes_on``), is gone on from by a new run, pinned to
 its worker, in its session, with the message in its inbox; else a new session starts on the person's worker the profile
 allows, with the most of the project's repos checked out first, on the branch ``chat/<run>``, in the repos of the
@@ -34,7 +38,7 @@ from dataclasses import dataclass, replace
 from sqlalchemy import func, insert, literal, null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chat_bridge_events, chats, profiles, runs, system_context, tables
+from evo_agents.hub import chat_bridge_events, chats, ops_events, ops_queue, profiles, runs, system_context, tables
 from evo_agents.hub import chat_runs as rules
 from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
@@ -62,7 +66,8 @@ from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
 from evo_agents.hub.server.runs.models.attachment_parts import as_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
-from evo_agents.hub.server.runs.service.worker_fit import unfit_worker, workers_of
+from evo_agents.hub.server.runs.service.priority import ahead
+from evo_agents.hub.server.runs.service.worker_fit import NO_FREE_SLOT, worker_problems, workers_of
 from evo_agents.hub.server.security import MACHINE
 
 log = logging.getLogger(__name__)
@@ -89,7 +94,9 @@ class Hand:
     wrote, with the credential kind ``via`` (runs.dispatched_via). ``route`` is set by ``hand_work`` for a profile
     whose agent type sends its chat runs under the name of its run_as. ``on_worker`` is the worker a new session goes to
     when that worker can take it: the machine the work is about (a program to install, ``triage``). ``answers`` is the
-    agent's message the message answers, when it answers one."""
+    agent's message the message answers, when it answers one. ``priority`` is the run's (runs.PRIORITIES): an agent's
+    ask sets it, a person's mention has the default. ``asker_run_id`` is the run whose agent's mention this is, when an
+    agent's."""
 
     chat: ChatAccess
     message_id: int
@@ -104,6 +111,8 @@ class Hand:
     route: Route | None = None
     on_worker: int | None = None
     answers: Answered | None = None
+    priority: str = runs.DEFAULT_PRIORITY
+    asker_run_id: int | None = None
 
     @property
     def owner_id(self) -> int:
@@ -144,7 +153,8 @@ async def pick_worker(conn: AsyncConnection, hand: Hand):
     the run queues and the admins hear of it (``agent_placement.watch``): a node of the agent's own pool, whoever
     mentioned the agent and whatever the agent type's run_as names. ``hand.on_worker`` when it is one of them and fit,
     else the node that ran the thread's last turn of the agent when it is still fit, else the one with a checkout of
-    the most repos of the project, then the most free slots."""
+    the most repos of the project, then the most free slots. When no ready node is fit and some only lack a free slot,
+    the first of those by the same order: the run queues for it and starts when it has a slot."""
     home, why = await agent_tasking.work_home(conn, hand.profile)
     if home is None:
         return None, why
@@ -159,18 +169,27 @@ async def _pool_worker(conn: AsyncConnection, hand: Hand, home: agent_placement.
     rows = [row for row in rows if row.id in ready]
     if not rows:
         return None, None
-    fit, unfit = [], []
+    fit, busy, unfit = [], [], []
     for row in rows:
-        why = unfit_worker(row, profile, hand.run_via)
-        if why is None:
+        problems = worker_problems(row, profile, hand.run_via)
+        if not problems:
             fit.append(row)
-        else:
-            unfit.append(f"{row.name} {why}")
-    if not fit:
+            continue
+        unfit.append(f"{row.name} {problems[0]}")
+        if problems == [NO_FREE_SLOT]:
+            busy.append(row)
+    if not fit and not busy:
         return None, f"no node of pool {home.pool} can take a run of @{profile.handle} now: {'; '.join(unfit)}"
-    asked = next((row for row in fit if row.id == hand.on_worker), None)
+    return await _first_node(conn, hand, fit or busy), None
+
+
+async def _first_node(conn: AsyncConnection, hand: Hand, nodes: list):
+    """The node of ``nodes`` a run of ``hand`` goes to: ``hand.on_worker``, else the node of the thread's last turn of
+    the agent, else the one with a checkout of the most repos of the project, then the most free slots."""
+    asked = next((row for row in nodes if row.id == hand.on_worker), None)
     if asked is not None:
-        return asked, None
+        return asked
+    profile = hand.profile
     last = await _last_node(conn, hand)
     repos = await project_repos(conn, profile.project_id)
 
@@ -178,7 +197,7 @@ async def _pool_worker(conn: AsyncConnection, hand: Hand, home: agent_placement.
         held = sum(1 for name in repos if f"{profile.project}/{name}" in (row.checkouts or {}))
         return (row.id != last, -held, row.holding - row.slots, row.id)
 
-    return min(fit, key=rank), None
+    return min(nodes, key=rank)
 
 
 async def _last_node(conn: AsyncConnection, hand: Hand) -> int | None:
@@ -286,7 +305,7 @@ async def _to_inbox(conn: AsyncConnection, run_id: int, hand: Hand) -> None:
 
 CONTINUED = ("kind", "project_id", "title", "mode", "approval", "repos", "branch", "model", "chat_id")
 CONTINUED += ("profile_id", "profile_version", "session_id", "runtime", "principal_id", "autonomy")
-CONTINUED += ("gateway_provider",)
+CONTINUED += ("gateway_provider", "priority")
 CONTINUED += ("spawned_by_run_id", "spawned_wait_id")  # a run another agent asked: the run that ends answers it
 
 
@@ -381,6 +400,7 @@ async def _go_on(conn: AsyncConnection, previous, hand: Hand) -> int:
         "chat_message_id": hand.message_id,
         "hop": hand.hop,
         "budget": rules.run_budget(),
+        "priority": hand.priority,
     }
     values = _titled(values, rules.turn_title(hand.profile.handle, hand.chat.title, hand.body))
     values = await _pooled(conn, previous.id, values)
@@ -510,6 +530,7 @@ async def _start(conn: AsyncConnection, hand: Hand, worker) -> int:
         "chat_message_id": hand.message_id,
         "hop": hand.hop,
         "budget": rules.run_budget(),
+        "priority": hand.priority,
     }
     run_as = None if hand.route is None else hand.route.user_id
     who = await run_autonomy.of_message(conn, hand.message_id, run_as, hand.dispatcher_id, names)
@@ -594,12 +615,30 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
         except autonomy_hold.Stopped as exc:
             return None, exc.detail
     worker, why = await pick_worker(conn, hand)
-    if worker is None and why is not None:
+    if worker is None and why is not None:  # no node can take it, for a reason a free slot would not end
+        asker = hand.asker_run_id if hand.asker_run_id is not None else run_access_rules.ACTING_RUN.get()
+        if not await ops_queue.ops_run(conn, asker):  # an ops run's own refusal would wake it again, and again
+            project_id, chat_id = hand.profile.project_id, hand.chat.chat_id
+            await ops_events.mention_refused(
+                conn, project_id=project_id, profile_id=hand.profile.id, chat_id=chat_id, message_id=hand.message_id
+            )
         return None, why
     try:
-        return await _start(conn, hand, worker), None
+        run_id = await _start(conn, hand, worker)
     except autonomy_hold.Stopped as exc:  # refused before anything was written
         return None, exc.detail
+    if worker is not None and worker.holding >= worker.slots:
+        await _say_queued(conn, hand, run_id, worker)
+    return run_id, None
+
+
+async def _say_queued(conn: AsyncConnection, hand: Hand, run_id: int, worker) -> None:
+    """Say in the thread of ``hand`` that its run ``run_id`` waits for a free slot of ``worker``, which every node of
+    the agent's pool lacks now, and how many runs queued for that node it takes first (``priority.ahead``)."""
+    before = await ahead(conn, run_id, worker.id)
+    runs_ahead = f"{before} run{'' if before == 1 else 's'} ahead of it"
+    text = f"run #{run_id} of @{hand.profile.handle} is queued for a free slot on node {worker.name}: {runs_ahead}"
+    await hub_reply(conn, hand.chat.chat_id, hand.root_id, text)
 
 
 async def hand_mentions(conn: AsyncConnection, hand: Hand, kept: list[dict]) -> list[str]:
@@ -781,7 +820,7 @@ async def _hand_on(
             conn, found, system_context.TOOL_MENTION, to_handle=target.handle, status="refused", reason=over
         )
         return None, over
-    child, why = await hand_work(conn, replace(hand, profile=target))
+    child, why = await hand_work(conn, replace(hand, profile=target, asker_run_id=run_id))
     await system_traces.record_mention(conn, found, target.handle, child, why, hand.message_id)
     return child, why
 

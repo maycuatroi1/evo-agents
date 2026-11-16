@@ -383,12 +383,12 @@ or busy depending on whether it holds runs.
 
 | State | Meaning |
 | --- | --- |
-| `queued` | waiting for a worker to claim it |
+| `queued` | waiting for a worker to claim it; a worker claims its queued runs by `priority` (`urgent`, `high`, `medium`, `low`), then the oldest |
 | `leased` | claimed; the worker prepares the checkout |
 | `running` | the agent works headless |
 | `interactive` | a person drives the agent in a terminal (takeover, or interactive mode from the start) |
 | `verifying` | the agent has finished; the daemon runs its verify commands again |
-| `waiting` | a plan run whose agent ended its turn with a decision open; the worker keeps the run and the session |
+| `waiting` | a plan run whose agent ended its turn with a decision open; the worker keeps the run and the session, and gives its slot up at the reaper's next pass when a run is queued for that node and the node is full |
 | `review` | verified; waits for the owner to approve |
 | `parked` | a run that waited 10 minutes for an answer, or waits only for a time or an event of the hub; the worker let it go and kept the session and worktrees |
 | `done` | approved, or verified with approval `auto` |
@@ -397,7 +397,8 @@ or busy depending on whether it holds runs.
 | `cancelled` | stopped on the owner's request |
 
 The worker holds a run, and extends its lease, while it is `leased`, `running`, `interactive`, `verifying` or
-`waiting`; a waiting run keeps its slot. A run in any state before `done` is active, `parked` included, and a step has
+`waiting`; a waiting run keeps its slot for 10 minutes, unless work is queued for its node: a run pinned to a full
+node, as a chat run of a busy pool is, parks the waiting runs of that node at the reaper's next pass. A run in any state before `done` is active, `parked` included, and a step has
 at most one active run, as a plan has at most one active plan run. `done`, `failed`, `lost` and `cancelled` are final:
 running the step again (rerun, or the next attempt) creates a new run, and so does resuming a parked plan run. The one
 exception is a lost run re-attached to the worker that comes back for it ([Re-attach](#re-attach)).
@@ -417,7 +418,7 @@ does not name. The `worker` is the worker that holds the run, the `owner` is the
 | `verifying` | `done` (approval `auto`, every verify command exited 0), `review` (approval `review`) | worker |
 | `running` | `waiting` (the agent's turn ended with a decision open) | worker |
 | `waiting` | `running` (the answer reached the agent) | worker |
-| `waiting` | `parked` (no answer within 10 minutes, or a wait for a time or an event at once) | reaper |
+| `waiting` | `parked` (no answer within 10 minutes; at once for a wait for a time or an event, or when a run queued for its full node waits for its slot) | reaper |
 | `review` | `done` (approve), `cancelled` | owner |
 | `parked` | `done` (the owner answered, and the run that resumes it is queued) | owner |
 | `parked` | `done` (a wait of the run woke, and the run that resumes it is queued) | reaper |
@@ -924,6 +925,15 @@ is optional, and an ask with none works as before:
 | `--done-when TEXT` | `done_when` | when its work is finished |
 | `--ref REF` (repeat) | `refs` | where it starts from: repo:path, a run, a URL |
 | `--reason TEXT` | `reason` | why an agent of a system asks off its `interacts` edges |
+| `--priority LEVEL` | `priority` | `urgent`, `high`, `medium` (the default) or `low`: the order a worker claims the run in |
+
+When every ready node of the agent's pool only lacks a free slot, the run asked is queued, not refused: it is pinned
+to the node the pick would choose (the node of the thread's last turn of the agent, else the one with a checkout of
+the most repos of the project), the hub says in the thread how many runs are ahead of it, and it starts when that node
+has a slot. A person's mention of the agent queues the same way, with priority `medium`. A writer of the project
+changes the priority of a queued run with `evo-agents hub run priority RUN LEVEL` (`POST
+/v1/projects/{p}/runs/{id}/priority`, `{priority}`; 409 once the run left the queue); plan and step runs keep
+`medium`.
 
 The brief heads the prompt of the run asked ("# Your brief from @handle (run #N)") and follows the question in the
 chat. The trace's span keeps which fields came (`evo.brief_fields`). The System section of a system agent's
@@ -1042,10 +1052,11 @@ Answer and reassign close the thread. The hub runtime's tools `orchestrator_answ
 #### Ops threads
 
 The Orchestrator of a project's default system also gets ops threads: one thread a batch of the project's operations
-queue, in the chat `Ops: <slug>` (`docs/hub.md`, Agent systems). Its chat run there has six more commands, each for
-the items of that thread's batch only. They take `--reason TEXT` (`-` reads stdin) for the `Decision:` line, write an
-audit row, and mark the batch's items they handled as handled by the Orchestrator. A chat run in no ops thread gets
-404, another agent's 403, and a batch the hub already settled 409.
+queue, in the chat `Ops: <slug>` (`docs/hub.md`, Agent systems). Its chat run there has eight more commands, each for
+the items of that thread's batch only, but `priority`, which takes any queued run of the project. They take
+`--reason TEXT` (`-` reads stdin) for the `Decision:` line, write an audit row, and mark the batch's items they handled
+as handled by the Orchestrator. A chat run in no ops thread gets 404, another agent's 403, and a batch the hub already
+settled 409.
 
 | Command | Route | What |
 | --- | --- | --- |
@@ -1055,10 +1066,13 @@ audit row, and mark the batch's items they handled as handled by the Orchestrato
 | `evo-agents worker ops curator-resume --reason TEXT` | `POST .../ops/curator-resume` | let the Curator's schedules run again that its breaker paused, never those a person paused. Audit `ops.curator_resume` |
 | `evo-agents worker ops read NOTICE --reason TEXT` | `POST .../ops/read` | mark a notice of the project read. Audit `ops.read` |
 | `evo-agents worker ops finding --lens LENS --severity low\|medium\|high --title TEXT --body TEXT --reason TEXT` | `POST .../ops/finding` | write a finding for the Curator under the project's default label, with the batch as its evidence: the fix for a recurring cause. Audit `ops.finding` |
+| `evo-agents worker ops priority RUN LEVEL --reason TEXT` | `POST .../ops/priority` | give a queued run of the project another priority (`urgent`, `high`, `medium`, `low`), the order a worker claims its queue in: the answer to a `run.queued_long` item. 404 for a run of another project, 409 for a run that is not queued. Audit `ops.priority` |
+| `evo-agents worker ops plan-dispatch PLAN --reason TEXT` | `POST .../ops/plan-dispatch` | hand a stalled plan of the batch (a `plan.stalled` item) again to the entry agent of the default system, as `POST .../plans/{plan_id}/system-dispatch` does for a person, in the name of the system's owner and with its refusals (409 while a trace of the plan has a run that has not ended, a plan run or step run of it is active, it has no pending step, or the Curator made it). Audit `ops.plan_dispatch` and `run.dispatch_system` |
 
 In an ops thread, `triage reassign` works as above and `triage ask-owner` at most once a batch; `triage answer` is
 refused (409), since an ops thread is about a batch, not one agent. The hub runtime's tool `ops_action`, with
-`action` one of `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read` and `finding`, does the same for an
+`action` one of `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read`, `finding`, `priority` (with `run_id`
+and `level`) and `plan_dispatch` (with `plan_id`), does the same for an
 Orchestrator that runs on the hub.
 
 ### Curator proposals the agent answers

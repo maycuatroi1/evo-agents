@@ -737,9 +737,11 @@ hub once (`projects.systems_seeded_at`): `orchestrator`, named "Orchestrator", a
 on a profile the hub creates for it, `@<project>-orchestrator`, with its ops off.
 
 `ops` of the spec says how the Orchestrator of the default system handles the project's operations events (plan
-hub-steward): `enabled` (false), `debounce_minutes` (5, from 0 to 1440) and `max_items` (20, from 1 to 1000). A spec
-with no `ops` reads as ops off and is stored as it is. With ops on, the hub reads the project's operations events
-(`run.ended`, `decision.opened`, `curator.paused`, `worker.health`) after a cursor of its own, and puts each that no
+hub-steward): `enabled` (false), `debounce_minutes` (5, from 0 to 1440), `max_items` (20, from 1 to 1000) and
+`plan_stall_minutes` (30, from 1 to 1440; a spec without it reads 30). A spec with no `ops` reads as ops off and is
+stored as it is. With ops on, the hub reads the project's operations events (`run.ended`, `decision.opened`,
+`curator.paused`, `worker.health`, `plan.stalled`, `run.queued_long`, `mention.refused`) after a cursor of its own,
+and puts each that no
 rule of tier 0 handled in the open batch of its cause key (kind, cause, then the worker for a cause of the
 environment, else the plan; a worker's `disk_low` alone keys by its machine, `host:<hostname>`, since the workers of
 one machine share its drive); a batch closes `debounce_minutes` after it opened or once it holds `max_items`, and one
@@ -747,15 +749,38 @@ whose items tier 0 all handled closes empty, with no run. `evo-agents hub system
 --project P` reads the ops of a system and its batches; pausing (admin) holds closed batches, and the queue still
 gathers.
 
+The same pass every minute writes two of those events, with no model (plan orchestrator-keeps-plans-moving):
+`plan.stalled` for an active plan a trace names (`system_traces.plan_id`) that has a ready step (pending or
+in_progress, every depends_on done), no plan run or step run active, no trace of it with a run queued, held, in
+review or parked, and neither a new revision nor a move of one of its traces for `plan_stall_minutes`; once a stall,
+again after a new revision or a new run. A plan of the Curator never stalls here. `run.queued_long` says a chat run
+still waits for a slot `plan_stall_minutes` after it was queued, once a run. `mention.refused` says a mention or an
+ask found no node that can take its run; one an ops thread's run made writes none, or its refusal would wake it
+again. Each payload holds ids and states only, and tier 0 handles none of them. A trace with no plan takes the plan
+a brief of an ask in it refs (`plan:<id>`), or the plan of a step a run of it marks with plan_step, at the plan's
+revision then; a trace that has a plan keeps it.
+
 Ops threads. For each closed batch with items left, the hub opens one thread in the chat `Ops: <slug>` of the default
 system, as the person who wrote the system, and mentions its Orchestrator with a summary of the batch: each item, its
-cause, a short diagnosis, and the `evo-agents hub inbox` command that shows it. No transcript goes in. The batch is
+cause, a short diagnosis, and the `evo-agents hub inbox` command that shows it. A `plan.stalled` item names the plan,
+its revision, its ready steps, its last trace and the `evo-agents hub plan handoff PLAN --step KEY` command that tells
+what the steps before them did; a `run.queued_long` item names the run, the node whose slot it waits for, how many
+queued runs that node takes before it, and its priority. No transcript goes in. The batch is
 then `running` until the runs of its thread end, and `done` after. A cause key that closed 3 batches in 7 days is
 `recurring`, and the summary asks the Orchestrator to fix the system (a finding for the Curator, or a task) instead of
 running the work again. In the thread the Orchestrator acts with `evo-agents worker ops ...` on a worker
 (`docs/workers.md`, Ops threads) or the tool `ops_action` on the hub runtime (Hub runtime): run a failed run again,
-hand it to a healthy worker, answer a stuck wait, resume the Curator its breaker paused, mark a notice read, or write
-a finding. It may also reassign the work to an agent of the system and ask the owner at most one decision a batch.
+hand it to a healthy worker, answer a stuck wait, resume the Curator its breaker paused, mark a notice read, write
+a finding, give a queued run of the project another priority (`evo-agents worker ops priority RUN LEVEL`, LEVEL one of
+`urgent`, `high`, `medium`, `low`: the order a worker claims its queue in; 409 for a run that is not queued), or hand
+a stalled plan of the batch again to the entry agent of the default system (`evo-agents worker ops plan-dispatch
+PLAN`). `plan-dispatch` does what `POST .../plans/{plan_id}/system-dispatch` does for a person (A plan run in a
+system), in the name of the system's owner, the person at the origin of the thread's work, with the same refusals:
+409 while a trace of the plan has a run that has not ended, while a plan run or a step run of it is active, when it
+has no pending step, and for a plan the Curator made; a plan that is no `plan.stalled` item of the batch gets 404.
+Each action posts a `Decision:` line in the thread, writes an audit row (`ops.priority`, `ops.plan_dispatch`, and
+`run.dispatch_system` for the dispatch itself) and marks the items it handled `handled_by` orchestrator. It may also
+reassign the work to an agent of the system and ask the owner at most one decision a batch.
 It never decides for the owner what is theirs: credentials, scope, spending over the cap, or what cannot be undone
 without a backup.
 
@@ -1200,7 +1225,7 @@ The tools do what the worker's commands do, through the same code:
 | `agent_forward` | `evo-agents worker agent forward` |
 | `escalate` | `evo-agents worker escalate` |
 | `orchestrator_answer`, `orchestrator_reassign`, `orchestrator_ask_owner` | `evo-agents worker triage answer`, `triage reassign`, `triage ask-owner` |
-| `ops_action` (`action`: `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read`, `finding`), in an ops thread only | `evo-agents worker ops rerun`, `redeliver`, `answer-wait`, `curator-resume`, `read`, `finding` |
+| `ops_action` (`action`: `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read`, `finding`, `priority`, `plan_dispatch`), in an ops thread only | `evo-agents worker ops rerun`, `redeliver`, `answer-wait`, `curator-resume`, `read`, `finding`, `priority`, `plan-dispatch` |
 | `memory_write` | a memory of the project, under the rules of `memory_write` |
 
 A tool that is refused answers the model with the reason, and the turn goes on. Repos, branches, pull requests and
@@ -1295,6 +1320,12 @@ thread, and the work card reads it again, so a trace whose work went on stops sh
 could hand no Orchestrator run or whose Orchestrator ended without an answer. An escalation adds no hop, the trace's
 budget does not refuse it, and the work the Orchestrator reassigns keeps its hop. An agent with no `orchestrates` edge
 keeps the triage it had; one with only an `escalates` edge escalates to that Orchestrator and has no other thread.
+
+The Orchestrator of a project's default system also gets the ops threads (Agent systems, Ops threads): the batches of
+the project's operations events, `plan.stalled`, `run.queued_long` and `mention.refused` among them. It keeps a plan
+moving with `evo-agents worker ops plan-dispatch PLAN`, which hands a stalled plan again to the system's entry agent,
+and orders the queue with `evo-agents worker ops priority RUN LEVEL`. Neither adds a node or a slot, and neither
+decides for the owner what is theirs; `limits.ops_daily_usd` still caps what its ops threads spend.
 
 Runs that still wait on each other (each open wait of an ask, `decisions.awaits_run_id`, points from the run that
 holds it to the last run of the chain of resumed runs it awaits) are found by the reaper on each pass
@@ -1493,8 +1524,10 @@ runs), at most three agents a message, the fourth and on refused in the thread. 
 project, dispatched by the person who mentioned it, and pinned to a worker of that person, or one another member
 shares with them in the project (their own first), that the profile allows,
 online, with a free slot (its held runs and the runs queued for it count) and a daemon that runs chat runs, the one with
-a checkout of more of the project's repos first; the person must be a writer on the profile's project. No such worker,
-and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that declares
+a checkout of more of the project's repos first; the person must be a writer on the profile's project. When the ready
+nodes of the agent's pool only lack a free slot, the run queues for the one it would have picked, the hub says in the
+thread how many runs are ahead of it, and it starts when that node has a slot (`docs/workers.md`, Handing work to
+another agent). Any other lack, and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that declares
 `chat_runs: run_as`, such as @ba of the core plugin srs, goes instead to a worker of the member the project enabled the
 type under, whoever mentioned it, and the session stays the mentioner's (`docs/plugins.md`, Agent types). The mention
 keeps the run it made (`run_id`) or why it made none. Each (thread, agent, person) is one session: a message to the

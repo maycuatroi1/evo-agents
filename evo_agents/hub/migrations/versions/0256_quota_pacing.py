@@ -1,7 +1,7 @@
 """Quota pacing: the strategy quota-pacing, its thresholds, a policy of each account pool, and weekly budgets.
 
-Revision ID: 0255
-Revises: 0254
+Revision ID: 0256
+Revises: 0255
 Create Date: 2026-11-16
 
 Plan token-and-quota-economy, step 1. account_policies may name the strategy quota-pacing
@@ -25,8 +25,8 @@ round-robin and puts back 0027's strategy check.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0255"
-down_revision = "0254"
+revision = "0256"
+down_revision = "0255"
 branch_labels = None
 depends_on = None
 

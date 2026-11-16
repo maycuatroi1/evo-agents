@@ -5203,6 +5203,18 @@
     "sharing": {
       "overCeiling": "Vượt ngưỡng: run được chia sẻ phải chờ"
     },
+    "sharedWithYou": {
+      "title": "Được chia sẻ với bạn",
+      "description": "Tài khoản thành viên khác chia sẻ cho bạn. Run của bạn lấy chúng theo quy tắc khi không còn tài khoản riêng nào sẵn sàng, hoặc bạn chọn tay trong form chạy. Số run và chi phí ở đây chỉ tính run của bạn.",
+      "caption": "Tài khoản được chia sẻ với bạn, theo chủ sở hữu",
+      "owner": "Chủ sở hữu",
+      "ownedBy": "của {owner}, {variable}",
+      "terms": "Điều kiện share",
+      "yourRuns": "Run của bạn 24 giờ / 7 ngày",
+      "yourCost": "Chi phí của bạn 24 giờ / 7 ngày",
+      "empty": "Chưa thành viên nào chia sẻ tài khoản cho bạn.",
+      "loadFailed": "Không tải được tài khoản được chia sẻ với bạn. Trang sẽ thử lại sau ít phút."
+    },
     "costByPrincipal": {
       "title": "Chi phí theo member",
       "empty": "Chưa có run nào của member khác dùng chúng.",
@@ -6942,7 +6954,12 @@
       "hint": "Tài khoản chọn ở đây đi theo run, không chuyển sang tài khoản khác. Tự động để quy tắc của bạn cho dự án chọn khi một worker nhận run, và chuyển tiếp khi một tài khoản chạm giới hạn.",
       "none": "Chưa tài khoản nào của bạn được gắn với dự án {project}, nên quy tắc chọn trong credential sẵn có của worker. Gắn một tài khoản ở trang Secret.",
       "rerunHint": "Mặc định, lần chạy lại dùng tài khoản đã chọn tay cho run #{id}, hoặc theo quy tắc nếu không chọn. Tài khoản chọn tay được giữ, không chuyển sang tài khoản khác.",
-      "expired": "{name} ({variable}), đã hết hạn"
+      "expired": "{name} ({variable}), đã hết hạn",
+      "sharedGroup": "Được chia sẻ với bạn",
+      "shared": "{owner}/{name} ({variable})",
+      "shared_paused": "{owner}/{name} ({variable}), chủ tài khoản đang tạm dừng",
+      "shared_cooling": "{owner}/{name} ({variable}), đang nghỉ: quy tắc chọn tài khoản khác tới khi nó được cho mượn lại",
+      "shared_expired": "{owner}/{name} ({variable}), đã hết hạn"
     },
     "agent": {
       "label": "Agent",

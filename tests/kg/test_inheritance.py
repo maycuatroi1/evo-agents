@@ -7,15 +7,14 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from evo_agents.kg.build import build_project
 from evo_agents.kg.connectors._files import LANGUAGE_BY_SUFFIX
 from evo_agents.kg.extract import graphify as gfy
 from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, INHERITANCE, OVERRIDES
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.schema import HUB_RELATIONS
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
+from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, git, write
 
 
@@ -360,22 +359,12 @@ def kin(tmp_path_factory):
         )
         project = load_project_at(root, base / "kg-home")
         assert all(r.ok for r in sync_project(project))
-        report = build_project(project, verify=True, cold=True)
+        report = built.build(project, verify=True, cold=True)
         assert report.ok, report.errors
-        store = Store.for_project(project)
-        live = "tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)"
-        rows = store.db.execute(
-            f"SELECT rel, src, dst, status FROM edges WHERE rel IN ('calls', 'inherits', 'overrides') AND {live}",
-            {"b": report.build_id},
-        ).fetchall()
-        symbols = {
-            r[0]
-            for r in store.db.execute(
-                f"SELECT node_id FROM nodes WHERE kind = 'Symbol' AND {live}", {"b": report.build_id}
-            )
-        }
-        store.close()
-        session = StoreSession(project, "agent")
+        rels = ("calls", "inherits", "overrides")
+        rows = [(e["rel"], e["src"], e["dst"], e["status"]) for e in built.edges_of(project) if e["rel"] in rels]
+        symbols = {n["id"] for n in built.nodes_of(project) if n["kind"] == "Symbol"}
+        session = hub_session(project, "agent")
         impact = {seed: session.call("kg_impact", {"id": sym(seed), "depth": 1}) for seed in IMPACT_SEEDS}
     return {(rel, src, dst): status for rel, src, dst, status in rows}, symbols, impact
 

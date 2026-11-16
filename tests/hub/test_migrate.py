@@ -6374,3 +6374,30 @@ def test_0254_keeps_a_projects_vectors_by_text_and_going_back_drops_them(hub_db)
     move_to(hub_db, "0253", down=True)
     assert not columns(hub_db, "kg_vector_cache")
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0254") :]
+
+
+def test_0256_takes_quota_pacing_and_weekly_budgets_and_going_back_moves_pacing_policies_to_round_robin(hub_db):
+    """0256 lets a policy name quota-pacing with its two thresholds, gives each account pool a policy and each account
+    a weekly budget; going back drops those columns and turns a quota-pacing policy into round-robin."""
+    policies = hub_tables.account_policies
+    pacing = {"hard_reserve_pct", "five_hour_ceiling_pct"}
+    move_to(hub_db, "0255")
+    assert not pacing & columns(hub_db, "account_policies")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    mine = {"owner_id": ids["user"], "project_id": ids["project"]}
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # before 0256 no policy is quota-pacing
+        conn.execute(insert(policies).values(mine | {"strategy": "quota-pacing"}))
+    move_to(hub_db, "0256")
+    assert pacing <= columns(hub_db, "account_policies")
+    assert pacing | {"strategy"} <= columns(hub_db, "account_pools")
+    assert {"weekly_budget_usd", "weekly_reset_at"} <= columns(hub_db, "accounts")
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(policies).values(mine | {"strategy": "quota-pacing", "hard_reserve_pct": 20}))
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):  # a reserve is a share of 0 to 100
+        conn.execute(update(policies).values(hard_reserve_pct=101))
+    move_to(hub_db, "0255", down=True)
+    assert not pacing & columns(hub_db, "account_policies") and not pacing & columns(hub_db, "account_pools")
+    assert not {"weekly_budget_usd", "weekly_reset_at"} & columns(hub_db, "accounts")
+    assert query(hub_db, select(policies.c.strategy)) == [("round-robin",)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0256") :]
