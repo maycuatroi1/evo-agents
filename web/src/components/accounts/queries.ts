@@ -12,6 +12,8 @@ import type { ApiSource } from "@/lib/queries";
  */
 type Schemas = components["schemas"];
 export type Account = Schemas["Account"];
+/** An account another member shares with the visitor: its figures are the visitor's runs alone, `owner` its owner. */
+export type SharedAccount = Schemas["SharedAccount"];
 export type AccountState = Account["state"];
 /** What an account of the visitor's and an account of an agent have in common: what the shared cells read. */
 export type AccountFigures = Omit<Account, "projects" | "auth" | "shares" | "cost_by_principal" | "pools"> & Partial<Pick<Account, "auth">>;
@@ -47,6 +49,7 @@ export const accountKeys = {
   secrets: ["accounts", "secrets"] as const,
   workers: ["accounts", "workers"] as const,
   pools: ["accounts", "pools"] as const,
+  shared: ["accounts", "shared"] as const,
 };
 
 /** The visitor's own accounts with their figures, by variable and name, without their values. */
@@ -54,6 +57,14 @@ export const accountListQuery = (api: ApiSource) =>
   queryOptions({
     queryKey: accountKeys.list,
     queryFn: ({ signal }) => call(api().GET("/v1/accounts", { signal })),
+    refetchInterval: 30_000,
+  });
+
+/** The accounts other members share with the visitor, by variable, owner and name, with the visitor's figures. */
+export const sharedAccountListQuery = (api: ApiSource) =>
+  queryOptions({
+    queryKey: accountKeys.shared,
+    queryFn: ({ signal }) => call(api().GET("/v1/shared-accounts", { signal })),
     refetchInterval: 30_000,
   });
 
