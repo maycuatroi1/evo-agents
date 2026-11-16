@@ -702,53 +702,73 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
 
 
 KNOWLEDGE_GLOB = "evo-agents-harness:knowledge.yaml"
+GLOBS = ["curator.yaml", ".github/workflows/**", KNOWLEDGE_GLOB]
+LISTED = [
+    {"repo": "evo-agents", "path": "tests/test_wait.py"},
+    {"repo": "evo-agents-harness", "path": "knowledge.yaml"},
+]
 
 
-def listing_knowledge(world, state: str = "accepted") -> None:
-    """The charter protects the harness's knowledge.yaml too, and the accepted proposal lists that path besides its
-    own; its state set to ``state``."""
-    globs = ["curator.yaml", ".github/workflows/**", KNOWLEDGE_GLOB]
+def listing(world, globs=GLOBS, paths=LISTED, state: str = "accepted", tier: int = 3) -> list[str]:
+    """The charter protects ``globs``, the proposal lists ``paths``, in ``state`` at ``tier``; the protected paths of
+    the claim of the Builder the night shift then queues."""
     written(world.client, world.headers["owner"], curator_charter(protected_paths=globs))
-    listed = [
-        {"repo": "evo-agents", "path": "tests/test_wait.py"},
-        {"repo": "evo-agents-harness", "path": "knowledge.yaml"},
-    ]
-    sql(world.db, update(tables.proposals).values(paths=listed, state=state))
-
-
-def test_curator_plan_a_builder_is_not_stopped_on_a_protected_path_its_accepted_proposal_lists(world):
-    accepted(world)
-    listing_knowledge(world)
+    sql(world.db, update(tables.proposals).values(paths=paths, state=state, tier=tier))
     assert protect(world).status_code == 200
     assert fire(world.client, NIGHT)["builder"] == 1
     spec = claim(world.client, world.worker)
-    # the glob the proposal lists is left out; the protected paths it does not list stay
     assert spec["curator"]["role"] == "builder"
-    assert spec["curator"]["protected_paths"] == ["curator.yaml", ".github/workflows/**"]
+    return spec["curator"]["protected_paths"]
 
 
-def test_curator_plan_a_builder_of_a_proposal_no_longer_accepted_keeps_every_protected_path(world):
+def test_curator_plan_a_builder_is_not_stopped_on_a_protected_file_its_accepted_proposal_lists(world):
     accepted(world)
-    listing_knowledge(world, state="open")
-    assert protect(world).status_code == 200
-    assert fire(world.client, NIGHT)["builder"] == 1
-    spec = claim(world.client, world.worker)
-    assert spec["curator"]["protected_paths"] == ["curator.yaml", ".github/workflows/**", KNOWLEDGE_GLOB]
+    # the one file the proposal lists is left out; the protected paths it does not list stay
+    assert listing(world) == ["curator.yaml", ".github/workflows/**"]
+
+
+def test_curator_plan_a_builder_keeps_a_wildcard_glob_and_a_listed_file_of_other_repos_protected(world):
+    from evo_agents.worker.runner.transitions import protected_hit
+
+    accepted(world)
+    globs = [".github/workflows/**", "knowledge.yaml", "evo-agents:docs/*.md"]
+    paths = [
+        {"repo": "evo-agents", "path": ".github/workflows/ci.yml"},
+        {"repo": "evo-agents-harness", "path": "knowledge.yaml"},
+        {"repo": "evo-agents", "path": "docs/hub.md"},
+    ]
+    left = listing(world, globs=globs, paths=paths)
+    # a glob with a wildcard stays whole; one file with no repo is scoped to each other repo of the project
+    repos = [name for (name,) in sql(world.db, select(tables.project_repos.c.name).order_by("name"))]
+    scoped = [f"{repo}:knowledge.yaml" for repo in repos if repo != "evo-agents-harness"]
+    assert "evo-agents:knowledge.yaml" in scoped
+    assert left == [".github/workflows/**", *scoped, "evo-agents:docs/*.md"]
+    # a sibling of the listed file, and the same file in another repo, still stop the run; the listed file does not
+    assert protected_hit("evo-agents", [".github/workflows/deploy.yml"], left) is not None
+    assert protected_hit("evo-agents", ["knowledge.yaml"], left) is not None
+    assert protected_hit("evo-agents-harness", ["knowledge.yaml"], left) is None
+
+
+def test_curator_plan_a_builder_of_a_proposal_not_accepted_at_tier_3_keeps_every_protected_path(world):
+    accepted(world)
+    assert listing(world, state="open") == GLOBS
+
+
+def test_curator_plan_a_builder_of_a_proposal_accepted_below_tier_3_keeps_every_protected_path(world):
+    accepted(world)  # the path was protected after the owner accepted the proposal
+    assert listing(world, tier=0) == GLOBS
 
 
 def test_curator_plan_the_judge_keeps_every_protected_path_the_proposal_lists(world):
     accepted(world)
-    listing_knowledge(world)
+    written(world.client, world.headers["owner"], curator_charter(protected_paths=GLOBS))
+    sql(world.db, update(tables.proposals).values(paths=LISTED, tier=3))
     builder(world)
     assert moved_on(world) == {"opened": 1}
     spec = judge_run(world)
     assert spec["curator"]["role"] == "judge"
-    assert spec["curator"]["protected_paths"] == ["curator.yaml", ".github/workflows/**", KNOWLEDGE_GLOB]
-    assert inputs(world, spec["id"]).json()["protected_paths"] == [
-        "curator.yaml",
-        ".github/workflows/**",
-        KNOWLEDGE_GLOB,
-    ]
+    assert spec["curator"]["protected_paths"] == GLOBS
+    assert inputs(world, spec["id"]).json()["protected_paths"] == GLOBS
 
 
 @contextmanager
