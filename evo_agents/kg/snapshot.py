@@ -30,7 +30,7 @@ from types import MappingProxyType
 
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg import snapshot_text
-from evo_agents.kg.pacing import paced, paced_sorted
+from evo_agents.kg.pacing import let_go, paced, paced_sorted
 from evo_agents.kg.policy import audience_below, audience_join
 from evo_agents.kg.store_clusters import Clusters
 from evo_agents.kg.store_filters import LIVE, label_columns, stored_audience, within
@@ -195,6 +195,9 @@ class Snapshot:
     found: Clusters | None = None  # the build's clusters (``Store.clusters``)
     review: tuple[dict, ...] = ()  # the build's review items (``Store.review_items``)
 
+    def __del__(self) -> None:
+        let_go(self)  # in the api, freed a part at a time in a thread of its own (``pacing.free_aside``)
+
     @classmethod
     def from_rows(
         cls,
@@ -344,6 +347,9 @@ class StoreRows:
     # (``Store.review_items``) by fingerprint; empty without them
     clusters: tuple[tuple, ...] = ()
     review: tuple[dict, ...] = ()
+
+    def __del__(self) -> None:
+        let_go(self)  # as a snapshot's parts (``Snapshot.__del__``)
 
 
 UNIT_KEYS = ("unit", "item", "anchor", "rev", "hash", "source", "span")
