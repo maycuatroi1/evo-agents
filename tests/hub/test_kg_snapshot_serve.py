@@ -333,9 +333,9 @@ def test_reading_a_graph_gives_the_event_loop_back_between_its_rows(hub, tmp_pat
 def test_a_load_runs_no_garbage_collection_and_leaves_the_snapshot_out_of_later_ones(
     hub, tmp_path, caplog, monkeypatch
 ):
-    """No collection of the cyclic garbage collector runs while a snapshot is made, and the snapshot is frozen out of
-    the later ones: a large graph is millions of tracked objects, each full collection walked them all holding the
-    GIL, the api's event loop stalled for seconds, and the workers' heartbeats and claims timed out on the pool."""
+    """No full collection of the cyclic garbage collector runs while a snapshot is made, and the snapshot is frozen
+    out of the later ones: a large graph is millions of tracked objects, each full collection walked them all holding
+    the GIL, the api's event loop stalled for seconds, and the workers' heartbeats and claims timed out on the pool."""
     import gc
 
     laptop = Machine(tmp_path, "laptop")
@@ -347,25 +347,28 @@ def test_a_load_runs_no_garbage_collection_and_leaves_the_snapshot_out_of_later_
     from_stored = Snapshot.from_stored
 
     def made(*args, **kwargs):
-        collecting.append(gc.isenabled())
+        collecting.append(gc.get_threshold()[2])
         return from_stored(*args, **kwargs)
 
     monkeypatch.setattr(kg_snapshots.Snapshot, "from_stored", made)
+    thresholds = gc.get_threshold()
     gc.unfreeze()
     try:
         held = asyncio.run(held_on_engine(hub.db, pid))
         collected = [o for o in gc.get_objects() if o is held.snapshot or o is held.snapshot.text]
-        assert gc.isenabled()
+        assert gc.isenabled() and gc.get_threshold() == thresholds
     finally:
         gc.unfreeze()
-    assert collecting == [False]  # none ran while the snapshot was made
+    assert collecting == [kg_snapshots.ONLY_YOUNG]  # no full one ran while the snapshot was made
     assert collected == []  # and the later ones skip it
     assert "guide" in found(held.snapshot, "kiwi")
 
 
 def test_the_garbage_made_during_a_load_is_collected_not_frozen():
-    """The cyclic garbage made while the collector is off for a load is collected as the load ends, before what is
-    left is frozen: frozen, it would never be, and the api would grow by what each load's requests left."""
+    """The cyclic garbage the requests leave while a load runs is collected, by the young collections that go on or
+    as the load ends, before what is left is frozen: frozen, it would never be, and the api would grow by what each
+    load's requests left. A cycle that outlived a few young collections, in the old generation when it died, is
+    collected too."""
     import gc
     import weakref
 
@@ -379,8 +382,13 @@ def test_the_garbage_made_during_a_load_is_collected_not_frozen():
             node.me = node  # garbage only a collection frees
             gone = weakref.ref(node)
             del node
-            assert gone() is not None  # not collected while the load runs
-        assert gone() is None
+            old = Node()
+            old.me = old
+            aged = weakref.ref(old)
+            churn = [[] for _ in range(50_000)]  # the build allocating meanwhile: young collections age the cycle
+            del old, churn
+        gc.collect()  # a frozen object is out of its reach
+        assert gone() is None and aged() is None
         assert gc.isenabled()
     finally:
         gc.unfreeze()

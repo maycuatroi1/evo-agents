@@ -39,7 +39,7 @@ from evo_agents import __version__
 from evo_agents.hub import cache, kg_snapshots, wake
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.db import make_engine, open_pool
+from evo_agents.hub.db import holder, make_engine, open_pool
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_graph import Handles
 from evo_agents.hub.log import redact_dsn, scrub_data
@@ -81,13 +81,15 @@ from evo_agents.plugins.signing import default_sigstore
 
 log = logging.getLogger(__name__)
 
+STALL_LOG_SECONDS = 1.0  # the event loop late by this much or more on a tick of ``_watch_loop`` is logged
 QUIET_PATHS = frozenset({"/v1/health", "/v1/health/live"})  # polled by probes: access lines at debug level
 _REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
 
 
 class RequestContext:
     """Pure ASGI middleware: an X-Request-ID for every request (the caller's when well formed), echoed in
-    the response and in error bodies, and one access log line per request."""
+    the response and in error bodies, and one access log line per request. It names the request's method and path
+    as the ``holder`` of the pooled connections it takes (``evo_agents.hub.db.TimedPool``)."""
 
     def __init__(self, app):
         self.app = app
@@ -101,6 +103,7 @@ class RequestContext:
         scope.setdefault("state", {})["request_id"] = request_id
         started = time.perf_counter()
         status = 500  # what the client gets if the app fails before starting a response
+        held_by = holder.set(f"{scope['method']} {scope['path']}")
 
         async def send_with_id(message):
             nonlocal status
@@ -112,6 +115,7 @@ class RequestContext:
         try:
             await self.app(scope, receive, send_with_id)
         finally:
+            holder.reset(held_by)
             level = logging.DEBUG if scope["path"] in QUIET_PATHS and status < 500 else logging.INFO
             log.log(
                 level,
@@ -227,6 +231,7 @@ async def _open(app: FastAPI, config: HubConfig):
     await _check_plugins(app, config)
     await security.bind_admins(app.state.engine, config.admins)  # EVO_HUB_ADMINS to the accounts that hold them
     app.state.gateway_run = await gateway_sync.start(app, config)  # off without EVO_HUB_GATEWAY_SECRET
+    app.state.loop_watch = asyncio.get_running_loop().create_task(_watch_loop(), name="loop-watch")
     log.info(
         "hub ready",
         extra={
@@ -248,8 +253,21 @@ async def _open(app: FastAPI, config: HubConfig):
     return pool
 
 
+async def _watch_loop(tick: float = 0.5) -> None:
+    """Log ``event loop stalled`` when a sleep of ``tick`` ends STALL_LOG_SECONDS or more late: the loop ran something
+    that did not give it back, and every request, the pool's waiters among them, waited meanwhile."""
+    loop = asyncio.get_running_loop()
+    while True:
+        started = loop.time()
+        await asyncio.sleep(tick)
+        late = loop.time() - started - tick
+        if late >= STALL_LOG_SECONDS:
+            log.warning("event loop stalled", extra={"stalled_ms": round(late * 1000, 1)})
+
+
 async def _close(app: FastAPI, pool) -> None:
     """Close what ``_open`` opened, the engine before the pool."""
+    app.state.loop_watch.cancel()
     await app.state.terminals.close_all()
     await app.state.browser_views.close_all()
     await app.state.listener.close()

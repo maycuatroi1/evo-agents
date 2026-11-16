@@ -30,6 +30,7 @@ from types import MappingProxyType
 
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg import snapshot_text
+from evo_agents.kg.pacing import paced, paced_sorted
 from evo_agents.kg.policy import audience_below, audience_join
 from evo_agents.kg.store_clusters import Clusters
 from evo_agents.kg.store_filters import LIVE, label_columns, stored_audience, within
@@ -137,18 +138,18 @@ def _csr(count: int, keys: list[tuple[int, int, int]]) -> tuple[array, array]:
     """(start, edges) of the CSR index of ``keys`` (node number, other end's number, edge number) over ``count``
     nodes, each node's edges by the other end, then the edge."""
     start = array("I", [0] * (count + 1))
-    for node, _, _ in keys:
+    for node, _, _ in paced(keys):
         start[node + 1] += 1
-    for i in range(count):
+    for i in paced(range(count)):
         start[i + 1] += start[i]
-    return start, array("I", (edge for _, _, edge in sorted(keys)))
+    return start, array("I", (edge for _, _, edge in paced_sorted(keys)))
 
 
 def _partitions(count: int, src: array, dst: array, groups: dict[tuple[str, str], list[int]]) -> MappingProxyType:
     out = {}
     for (rel, status), edges in sorted(groups.items()):
-        out_start, out_edges = _csr(count, [(src[e], dst[e], e) for e in edges])
-        in_start, in_edges = _csr(count, [(dst[e], src[e], e) for e in edges])
+        out_start, out_edges = _csr(count, [(src[e], dst[e], e) for e in paced(edges)])
+        in_start, in_edges = _csr(count, [(dst[e], src[e], e) for e in paced(edges)])
         out[(rel, status)] = Partition(rel, status, out_start, out_edges, in_start, in_edges)
     return MappingProxyType(out)
 
@@ -207,21 +208,21 @@ class Snapshot:
     ) -> Snapshot:
         """A snapshot of rows as the store holds them (NODE_COLUMNS, EDGE_COLUMNS); an edge whose end is no node is
         kept out of the CSR indexes but read by its id, as a store read of a node's edges never meets it."""
-        read = sorted((_node_dict(r) for r in nodes), key=lambda n: n["id"])
+        read = paced_sorted(map(_node_dict, nodes), key=lambda n: n["id"])
         ids = tuple(n["id"] for n in read)
-        index = {nid: i for i, nid in enumerate(ids)}
-        held = sorted(
+        index = {nid: i for i, nid in enumerate(paced(ids))}
+        held = paced_sorted(
             (e for e in map(_edge_dict, edges) if e["src"] in index and e["dst"] in index),
             key=lambda e: (e["rel"], e["src"], e["dst"], e["id"]),
         )
-        src = array("I", (index[e["src"]] for e in held))
-        dst = array("I", (index[e["dst"]] for e in held))
+        src = array("I", (index[e["src"]] for e in paced(held)))
+        dst = array("I", (index[e["dst"]] for e in paced(held)))
         groups: dict[tuple[str, str], list[int]] = defaultdict(list)
-        for i, e in enumerate(held):
+        for i, e in enumerate(paced(held)):
             groups[(e["rel"], e["status"] or "")].append(i)
         names: dict[str, set[int]] = defaultdict(set)
         aliased: dict[str, int] = {}
-        for i, n in enumerate(read):
+        for i, n in enumerate(paced(read)):
             for name in (n["id"], n["name"]):
                 if isinstance(name, str):
                     names[name].add(i)
@@ -244,8 +245,8 @@ class Snapshot:
             src=src,
             dst=dst,
             partitions=_partitions(len(ids), src, dst, groups),
-            names=MappingProxyType({k: tuple(sorted(v)) for k, v in names.items()}),
-            aliases=MappingProxyType({alias: ids[i] for alias, i in aliased.items()}),
+            names=MappingProxyType({k: tuple(sorted(v)) for k, v in paced(names.items())}),
+            aliases=MappingProxyType({alias: ids[i] for alias, i in paced(aliased.items())}),
             text=text,
             vectors=vectors,
             build=build,
@@ -281,19 +282,19 @@ class Snapshot:
     def from_stored(cls, rows: StoreRows, build: int = 0, vectors: snapshot_text.Vectors | None = None) -> Snapshot:
         """The snapshot of rows a store gave (``store_rows``) and something kept, such as the hub's tables; its
         vectors are ``vectors``, else those of the rows."""
-        text = snapshot_text.TextIndex.build(sorted(rows.keyed), rows.code, folded=True)
+        text = snapshot_text.TextIndex.build(paced_sorted(rows.keyed), rows.code, folded=True)
         vectors = vectors if vectors is not None else rows_vectors(rows)
         snap = cls.from_rows(rows.content_hash, list(rows.nodes), list(rows.edges), text, vectors, build, rows.top)
         where: dict[str, list] = defaultdict(list)
-        for elem, unit, span in rows.wheres:
+        for elem, unit, span in paced(rows.wheres):
             where[elem].append((unit, span))
         derived: dict[str, list] = defaultdict(list)
-        for elem, units, needs in rows.derivations:
+        for elem, units, needs in paced(rows.derivations):
             derived[elem].append((units, needs))
-        bodies = {key: (row[4], row[5] if len(row) > 5 else None) for key, row in rows.keyed}
+        bodies = {key: (row[4], row[5] if len(row) > 5 else None) for key, row in paced(rows.keyed)}
         return replace(
             snap,
-            units=MappingProxyType({r[0]: tuple(r) for r in rows.units}),
+            units=MappingProxyType({r[0]: tuple(r) for r in paced(rows.units)}),
             where=MappingProxyType({k: tuple(v) for k, v in where.items()}),
             derivations=MappingProxyType({k: tuple(v) for k, v in derived.items()}),
             bodies=MappingProxyType(bodies),
@@ -374,7 +375,7 @@ def cluster_order(rows) -> tuple[tuple, ...]:
 def rows_clusters(rows) -> Clusters | None:
     """The clusters of ``cluster_rows`` rows; None without a cluster, as ``Store.clusters``."""
     out = Clusters()
-    for kind, key, value in rows:
+    for kind, key, value in paced(rows):
         if kind == CLUSTER:
             out.clusters[key] = dict(value)
         elif kind == MEMBER:
@@ -466,7 +467,7 @@ def rows_vectors(rows: StoreRows) -> snapshot_text.Vectors | None:
         tuple(r[1] for r in rows.vectors),
         tuple(r[2] for r in rows.vectors),
         tuple(r[3] for r in rows.vectors),
-        tuple(array("f", unpack(bytes(r[4]))) for r in rows.vectors),
+        tuple(array("f", unpack(bytes(r[4]))) for r in paced(rows.vectors)),
     )
 
 

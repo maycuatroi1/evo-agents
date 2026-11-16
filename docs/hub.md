@@ -4169,12 +4169,29 @@ claims without one (`PoolTimeout`), whatever `EVO_HUB_POOL_MAX_SIZE` was. Nor do
 fetches the rows of each table 2000 at a time on a server-side cursor (`kg_graph_rows.READ_BATCH`), the api serving other
 requests between two fetches, and decodes their JSON and makes the snapshot in a thread. Fetching and decoding a large
 graph's hundreds of thousands of rows in one go stalled every request for seconds after each build, and the
-heartbeats and claims waiting meanwhile timed out on the pool all at once. While a load runs, Python's cyclic garbage
-collector is off, and the snapshot it made is frozen out of later collections (`gc.freeze`): a large graph is
-millions of tracked objects, and each full collection walked them all holding the GIL, stalling the loop for seconds,
-dozens of times per load. As the last load running ends, one collection frees the cyclic garbage the requests served
-meanwhile left, before the rest is frozen, so it is not frozen with the snapshot. A snapshot has no reference cycle,
-so one replaced is freed though frozen. A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
+heartbeats and claims waiting meanwhile timed out on the pool all at once. The thread that makes the snapshot sleeps
+1 ms every 2 ms (`evo_agents.kg.pacing.paced`, within `pacing()`, which only the api's loads enter), so the build
+takes a third longer: a thread that kept the GIL until the interpreter forced a switch
+left the event loop one step every 5 ms for the minute or two a large graph takes, every pooled connection sat idle in a
+transaction the loop could not finish, and the heartbeats and claims timed out on the pool. A sort of the hundreds of
+thousands of edges is made in runs merged as they go (`paced_sorted`), as one sort keeps the GIL from start to end.
+While a load runs, Python's cyclic garbage collector makes no full collection, and the snapshot it made is frozen out
+of later collections (`gc.freeze`): a large graph is millions of tracked objects, and each full collection walked
+them all holding the GIL, stalling the loop for seconds, dozens of times per load. The collections of the young
+generations go on, so the cyclic garbage the requests served meanwhile leave is freed; as the last load running ends,
+one full collection frees what reached the old generation before it died, and the rest is frozen. That one
+collection walks the new snapshot, not those frozen before: one stall of a second or two per load. A snapshot has no reference cycle, so one
+replaced is freed though frozen.
+
+What holds the pool is in the api's log. The pool times each connection it gives out (`evo_agents.hub.db.TimedPool`):
+one held 2 seconds or more is logged as `pool connection held` with its `holder`, the method and path of the request
+that took it (and the name of the task, when a named task such as `kg-snapshot-<project>` took it) and `held_ms`; a
+request that timed out waiting is logged as `pool timeout` with its own holder, `waited_ms` and `out`, the connections
+out at that moment, longest held first, each with its holder and `held_ms`. A turn of the event loop that took a
+second or more is logged as `event loop stalled` with `stalled_ms`: a burst of timeouts with no long hold in `out`
+but stalls beside it is the loop starved, not the pool too small.
+
+A build is `graph_kept` in the api (`GET /v1/kg/{p}/builds`) when it succeeded and is
 the build at the head or one before it: the graph it wrote is the one the tables hold or an older one they replaced.
 
 **Graph files of older builds.** Builds before 0248 uploaded the graph's SQLite file to the bucket as a blob of kind
