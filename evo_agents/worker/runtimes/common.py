@@ -481,9 +481,21 @@ class QueueAdapter(Adapter):
         await asyncio.sleep(seconds)
         if self.finished:
             return
+        if self._waits_after_its_result():
+            log.info(
+                "the run's agent time ended while the finished agent's background commands ran; ending its session",
+                extra={"runtime": self.runtime},
+            )
+            await self.stop_at_turn_boundary()
+            return
         log.info("the agent used the run's agent time; interrupting it", extra={"runtime": self.runtime})
         self.capped = "time"
         await self.interrupt()
+
+    def _waits_after_its_result(self) -> bool:
+        """No turn runs and the session stays open only for background commands, after the agent wrote its result
+        file: the run is done, and its time cap ends the session without counting as one it reached."""
+        return False
 
     def time_cap_error(self) -> str:
         minutes = (self.budget or {}).get("max_seconds") or 0
