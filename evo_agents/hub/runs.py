@@ -456,6 +456,7 @@ NOTICE_KINDS = (
     "ops_digest",  # what the ops of a project handled in a day and what waits on a person, to its owner (same)
     "cron_paused",  # the hub paused a cron job: its owner lost a role or seat, or its runs failed (``server.cron_fire``)
     "run_admin_action",  # an admin of the project acted on a run the member dispatched (``runs.service.admin_acts``)
+    "kg_build_halted",  # a project's kg builds kept killing their worker, so none is queued again (``kg_build``)
 )
 # The notices that only report what went as it should (plan hub-attention-runtime, criterion a4): a push or merge into a
 # default branch, a plan finished, a run's files. Stored read, delivered on the web alone (no channel, no device), and

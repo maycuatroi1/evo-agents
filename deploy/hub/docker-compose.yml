@@ -174,9 +174,10 @@ services:
 
   # Knowledge graph builds, the queue kg alone (evo_agents.hub.jobs.KG_QUEUE): a long build never holds back the merge
   # queue, notifications or schedules of the worker above, and the two replicas build two projects at once, each one
-  # build at a time (a project's builds wait for each other under its lock). The same image, cache, limits and
+  # build at a time (a project's builds wait for each other under its lock). The same image, cache, CPUs and
   # environment as the worker, the gateway's left out, since a build reads and writes the cache the worker's other jobs
-  # read and calls no model.
+  # read and calls no model. Its memory limit is its own, EVO_HUB_WORKER_KG_MEMORY: a large project's build peaked at
+  # about 4.7 GB, so the default 6g leaves it a quarter more, and the kernel kills a build over it.
   worker-kg:
     <<: *hardening
     image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
@@ -193,7 +194,7 @@ services:
     deploy:
       replicas: 2
     cpus: ${EVO_HUB_WORKER_CPUS:-2}
-    mem_limit: ${EVO_HUB_WORKER_MEMORY:-4g}
+    mem_limit: ${EVO_HUB_WORKER_KG_MEMORY:-6g}
     healthcheck:
       disable: true
     stop_grace_period: 40s

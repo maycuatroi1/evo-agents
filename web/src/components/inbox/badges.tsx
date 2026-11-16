@@ -134,6 +134,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   ops_digest: { icon: ClipboardList },
   cron_paused: { icon: CirclePause },
   run_admin_action: { icon: ShieldCheck },
+  kg_build_halted: { icon: DatabaseZap },
 };
 
 /** Whether the web has a name and an icon for a kind of notice; a core plugin's own kind may have none. */
