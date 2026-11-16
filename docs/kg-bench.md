@@ -77,7 +77,8 @@ kg/EXTRACTOR/home/PROJECT/bench.json the marker of a finished build: its size; i
 
 - **Graph.** A build runs in memory, as the hub builds, and writes its rows once, to a temporary file renamed over
   `graph.rows`. A run reads them back into a snapshot and asks it with the hub's engine; no graph database is
-  written.
+  written. Reading `graph.rows` unpickles it, which can run code: the bench cache is trusted local state, so never
+  point `--cache` at a directory someone else wrote.
 
 - **Snapshot.** A snapshot is the base commit, read straight from the bare clone together with its history. The
   repo's pull requests are never read, because one of them is the fix.

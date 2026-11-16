@@ -333,9 +333,8 @@ def _graph_counts(store, file_ids: list[str]) -> dict[str, dict]:
 
 
 def _snapshot_counts(snap, out: dict[str, dict]) -> dict[str, dict]:
-    """``_graph_counts`` of a snapshot: its live edges, a commit's time from its node. The time is the newest of the
-    commits that changed the file: what the store's first AGE_COMMITS give, the edge index holding a file's commits
-    newest first."""
+    """``_graph_counts`` of a snapshot: its live edges, a commit's time from its node. The time is the newest of all the
+    commits that changed the file; the store read only AGE_COMMITS of them, in no set order."""
     for file_id, counts in out.items():
         i = snap.index.get(file_id)
         if i is None:
