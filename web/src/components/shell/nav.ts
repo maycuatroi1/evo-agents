@@ -9,10 +9,12 @@ import {
   Brain,
   Building2,
   ChartColumn,
+  Compass,
   FolderKanban,
   GitMerge,
   Globe,
   Goal,
+  Hammer,
   Inbox,
   IterationCw,
   LayoutDashboard,
@@ -29,7 +31,6 @@ import {
   Server,
   Settings,
   Shield,
-  Ship,
   Signpost,
   Sparkles,
   Store,
@@ -59,8 +60,12 @@ import { type FeatureId, featureOn, featuresQuery } from "@/lib/hub-settings";
  *
  * An item that names a `group` sits in that fold of the sidebar (NAV_GROUPS) instead of on its own row, so the
  * sidebar keeps to the places a visitor opens every day: the fold opens on a click, by itself when the page shown is
- * one of its items, and stays as the visitor left it (the cookie NAV_GROUPS_COOKIE). An item with a count never sits
- * in a group, so a closed fold never hides a number. The items of a group follow each other in their list.
+ * one of its items, and stays as the visitor left it (the cookie NAV_GROUPS_COOKIE). The project's two cycles come
+ * first, open until the visitor closes them (NAV_GROUPS_OPEN): the Business cycle, what to deliver, to whom and why
+ * (signals, problems, opportunities, goals), and the Development cycle, how it gets built (plans, runs, the Loop and
+ * what ships it). A closed fold shows the counts of its items on its row, so it never hides a number. The items of a
+ * group follow each other in their list. A plugin's page sits in the fold its manifest names (`area`, PLUGIN_AREAS),
+ * after the fold's own items or before the item marked `pluginsBefore`; one that names none sits in Apps.
  */
 export type NavLabel =
   | "home"
@@ -105,16 +110,31 @@ export type NavLabel =
 export type NavCount = "openDecisions" | "activeRuns" | "unreadChats";
 
 /** A fold of the sidebar, its label under `nav.groups` in the message files. */
-export type NavGroup = "delivery" | "improvement" | "knowledge" | "apps" | "settings";
+export type NavGroup = "business" | "development" | "improvement" | "knowledge" | "apps" | "settings";
 
 /** Each fold's icon, before its label; the fold's items keep their own. */
 export const NAV_GROUPS: Record<NavGroup, LucideIcon> = {
-  delivery: Ship,
+  business: Compass,
+  development: Hammer,
   improvement: TrendingUp,
   knowledge: BookMarked,
   apps: LayoutGrid,
   settings: Settings,
 };
+
+/** The folds open until the visitor closes them: the project's two cycles, which hold the pages opened every day. */
+export const NAV_GROUPS_OPEN: readonly NavGroup[] = ["business", "development"];
+
+/**
+ * The folds of a project's menu a plugin's page may name as its `area` (plugin.schema.json, $defs.page.area); a page
+ * that names none, or one this web does not know, sits in apps.
+ */
+export const PLUGIN_AREAS: readonly NavGroup[] = ["business", "development", "improvement", "knowledge", "apps"];
+
+/** The fold of a plugin's page whose manifest names `area`. */
+export function pluginArea(area: string | null | undefined): NavGroup {
+  return PLUGIN_AREAS.find((group) => group === area) ?? "apps";
+}
 
 /** The cookie that keeps which folds are open, read on the server so the sidebar renders as the visitor left it. */
 export const NAV_GROUPS_COOKIE = "hub_nav_groups";
@@ -131,6 +151,8 @@ export type ProjectNavItem = {
   group?: NavGroup;
   /** Shown in the first group, after HOME_NAV, rather than among the project's areas. */
   top?: boolean;
+  /** The pages plugins add to the item's fold come before it rather than after the fold's last item. */
+  pluginsBefore?: boolean;
 };
 
 export type HubNavItem = {
@@ -160,23 +182,23 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "systems", icon: Workflow, segment: "systems", top: true },
   { label: "kg", icon: Network, segment: "kg", feature: "kg", top: true },
   { label: "decide", icon: Signpost, segment: "decide" },
-  { label: "plans", icon: ListChecks, segment: "plans" },
-  { label: "runs", icon: Activity, segment: "runs", count: "activeRuns" },
-  { label: "mergeQueue", icon: GitMerge, segment: "merge-queue", group: "delivery" },
-  { label: "releases", icon: Tags, segment: "releases", group: "delivery" },
-  { label: "cronJobs", icon: AlarmClock, segment: "cron-jobs", group: "delivery" },
-  { label: "problems", icon: Bandage, segment: "problems", group: "improvement" },
-  { label: "opportunities", icon: Telescope, segment: "opportunities", group: "improvement" },
-  { label: "goals", icon: Goal, segment: "goals", group: "improvement" },
-  { label: "signals", icon: RadioTower, segment: "signals", group: "improvement" },
-  { label: "loop", icon: IterationCw, segment: "loop", group: "improvement" },
+  { label: "signals", icon: RadioTower, segment: "signals", group: "business" },
+  { label: "problems", icon: Bandage, segment: "problems", group: "business" },
+  { label: "opportunities", icon: Telescope, segment: "opportunities", group: "business" },
+  { label: "goals", icon: Goal, segment: "goals", group: "business" },
+  { label: "plans", icon: ListChecks, segment: "plans", group: "development", pluginsBefore: true },
+  { label: "runs", icon: Activity, segment: "runs", count: "activeRuns", group: "development" },
+  { label: "loop", icon: IterationCw, segment: "loop", group: "development" },
+  { label: "mergeQueue", icon: GitMerge, segment: "merge-queue", group: "development" },
+  { label: "releases", icon: Tags, segment: "releases", group: "development" },
+  { label: "cronJobs", icon: AlarmClock, segment: "cron-jobs", group: "development" },
   { label: "insights", icon: ChartColumn, segment: "insights", group: "improvement" },
   { label: "curator", icon: MoonStar, segment: "curator", feature: "curator", group: "improvement" },
   { label: "agents", icon: Bot, segment: "agents", group: "knowledge" },
   { label: "memories", icon: BookOpen, segment: "memories", group: "knowledge" },
   { label: "skills", icon: Sparkles, segment: "skills", group: "knowledge" },
   { label: "browser", icon: Globe, segment: "browser", group: "knowledge" },
-  { label: "plugins", icon: Puzzle, segment: "plugins", group: "apps" },
+  { label: "plugins", icon: Puzzle, segment: "plugins", group: "apps", pluginsBefore: true },
 ];
 
 export const HUB_NAV: readonly HubNavItem[] = [
@@ -216,22 +238,37 @@ export function navRows<T extends { group?: NavGroup }>(items: readonly T[]): Na
   return rows.map((row) => (row.kind === "group" && row.items.length === 1 ? { kind: "item", item: row.items[0] } : row));
 }
 
-/** The open folds a cookie value names, leaving out any this web does not know; none from a value it cannot read. */
+const FOLDS = Object.keys(NAV_GROUPS) as NavGroup[];
+
+/**
+ * The open folds of a cookie value: those of NAV_GROUPS_OPEN, plus each it names, less each it names after a minus (a
+ * fold of NAV_GROUPS_OPEN the visitor closed). Names this web does not know are left out; a value it cannot read is
+ * the folds of NAV_GROUPS_OPEN.
+ */
 export function parseNavGroups(value: string | undefined): NavGroup[] {
-  if (!value) return [];
-  let names: string[];
+  const open = new Set<string>(NAV_GROUPS_OPEN);
+  let names: string[] = [];
   try {
-    names = decodeURIComponent(value).split(",");
+    names = value ? decodeURIComponent(value).split(",") : [];
   } catch {
-    return [];
+    names = [];
   }
-  const known = new Set(Object.keys(NAV_GROUPS));
-  return [...new Set(names)].filter((name): name is NavGroup => known.has(name));
+  for (const name of names) {
+    if (name.startsWith("-")) open.delete(name.slice(1));
+    else open.add(name);
+  }
+  return FOLDS.filter((group) => open.has(group));
 }
 
-/** Keeps the open folds for a year, for every page of the hub. */
+/** Keeps for a year, for every page of the hub, how the open folds differ from NAV_GROUPS_OPEN. */
 export function writeNavGroups(open: Iterable<NavGroup>): void {
-  const value = encodeURIComponent([...open].sort().join(","));
+  const shown = new Set(open);
+  const names = FOLDS.flatMap((group) => {
+    const first = NAV_GROUPS_OPEN.includes(group);
+    if (shown.has(group) !== first) return [first ? `-${group}` : group];
+    return [];
+  });
+  const value = encodeURIComponent(names.sort().join(","));
   document.cookie = `${NAV_GROUPS_COOKIE}=${value}; path=/; max-age=31536000; samesite=lax`;
 }
 

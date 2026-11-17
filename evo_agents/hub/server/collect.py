@@ -784,14 +784,14 @@ async def queue_optimize_review(conn: AsyncConnection, due, gate: Gate, optimize
     return run_id, ""
 
 
-async def _remembered(conn: AsyncConnection, owner_id: int, project_id: int, lenses: list[str]) -> tuple[dict, list]:
-    """What earlier nights found through ``lenses`` and the playbook's lines, as the run's owner reads them."""
+async def _remembered(conn: AsyncConnection, row, run_id: int, lenses: list[str]) -> tuple[dict, list]:
+    """Earlier nights' findings through ``lenses`` and the playbook's lines (``run_id`` logs which), as its owner reads."""
     from evo_agents.hub.server import earlier, history, playbook  # they read the proposals and runs of these routes
 
-    access = await history.owner_access(conn, owner_id, project_id)
+    access = await history.owner_access(conn, row.dispatched_by, row.project_id)
     if access is None:
         return {}, []
-    return await earlier.for_prompt(conn, access, lenses), await playbook.for_prompt(conn, access, lenses)
+    return await earlier.for_prompt(conn, access, lenses), await playbook.for_prompt(conn, access, lenses, run_id)
 
 
 async def _assigned(conn: AsyncConnection, owner_id: int, project_id: int, night: date | None) -> list[dict]:
@@ -846,7 +846,7 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
         )
     initiated = await kg_init_db.of_agent_run(conn, view.id)
     if initiated is not None:  # the review run of a kg_init run: no night, its own lens and prompt
-        earlier, playbook = await _remembered(conn, row.dispatched_by, row.project_id, ["kg_init"])
+        earlier, playbook = await _remembered(conn, row, view.id, ["kg_init"])
         return review.build_review_prompt(
             view.project,
             None,
@@ -869,7 +869,7 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
         row.schedule_night, int((charter.get("review") or {}).get("lenses") or review.LENSES_PER_NIGHT)
     )
     repos = [repo.model_dump() for repo in view.repos or []]
-    earlier, playbook = await _remembered(conn, row.dispatched_by, row.project_id, list(lenses))
+    earlier, playbook = await _remembered(conn, row, view.id, list(lenses))
     goals = await project_goals.curator_goals(conn, row.project_id, view.project)
     plugins = [name for name in PRODUCT_PLUGINS if await enabled_in(conn, name, row.project_id) is not None]
     memories = await memory_promotion.for_prompt(conn, view.id, row.project_id, row.dispatched_by)

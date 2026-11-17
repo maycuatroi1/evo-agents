@@ -109,6 +109,19 @@ def _judge_key(key: str | None) -> dict:
     return {JUDGE_KEY_HEADER: key} if key else {}
 
 
+def _evolve_key(key: str | None) -> dict:
+    from evo_agents.hub.evolve import EVOLVE_KEY_HEADER
+
+    return {EVOLVE_KEY_HEADER: key} if key else {}
+
+
+def _object(found) -> dict:
+    """The JSON object a route of an evolve run answers; HubError when the hub answered none."""
+    if not isinstance(found, dict):
+        raise HubError("the hub answered an evolve route with no JSON object")
+    return found
+
+
 def _retry_after(value: str | None) -> float | None:
     """The seconds of a ``Retry-After`` header, within 0 and RETRY_AFTER_MOST; none for a date, a word, inf or nan."""
     try:
@@ -420,6 +433,30 @@ class WorkerHub:
 
         headers = {PROBE_KEY_HEADER: key} if key else {}
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/probe", body, headers=headers)
+
+    # An evolve run: what it evolves, the baseline arms it ran, each candidate it measured and how it ended, each with
+    # the run's own key. The inputs hold the select tasks' verify commands, which no caller hands the proposer.
+
+    async def evolve_inputs(self, run_id: int, key: str | None) -> dict:
+        """GET what an evolve run evolves, its tasks and the cached baseline arms, with the run's own key."""
+        return _object(await self.call("GET", f"/v1/worker/runs/{int(run_id)}/evolve", headers=_evolve_key(key)))
+
+    async def evolve_arm(self, run_id: int, body: dict, key: str | None) -> dict:
+        """POST the result of a baseline arm the run ran, for the hub's arm cache, with the run's own key."""
+        return _object(
+            await self.call("POST", f"/v1/worker/runs/{int(run_id)}/evolve/arm", body, headers=_evolve_key(key))
+        )
+
+    async def evolve_candidate(self, run_id: int, body: dict, key: str | None) -> dict:
+        """POST a candidate the run measured, with the run's own key: its id and the Pareto front after it."""
+        path = f"/v1/worker/runs/{int(run_id)}/evolve/candidate"
+        return _object(await self.call("POST", path, body, headers=_evolve_key(key)))
+
+    async def evolve_report(self, run_id: int, body: dict, key: str | None) -> dict:
+        """POST how the evolution ended (its best candidate, the branch and commit it wrote), with the run's own key."""
+        return _object(
+            await self.call("POST", f"/v1/worker/runs/{int(run_id)}/evolve/report", body, headers=_evolve_key(key))
+        )
 
     async def history_next(self, run_id: int, body: dict, key: str | None) -> dict:
         """POST for the next batch of a history run, with the run's own key."""

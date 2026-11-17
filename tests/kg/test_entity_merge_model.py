@@ -15,11 +15,11 @@ from evo_agents.hub import kg_entity_relay
 from evo_agents.kg import claude_code, entities, strategy
 from evo_agents.kg import entity_links as links
 from evo_agents.kg import entity_merge as merge
-from evo_agents.kg.build import build_project, verify_build
+from evo_agents.kg.build import verify_rows
 from evo_agents.kg.memo import Memo
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import commit, make_project, write
 
 KINDS = ["Actor", "Place", "Concept", "Other"]
@@ -105,26 +105,15 @@ def calls(log, task=None) -> list[dict]:
 
 def graph(project):
     """(entity nodes: id -> (kind, name, props), edges touching an entity: (src, rel, dst) -> props)."""
-    store = Store.open_file(project.root / "graph.sqlite")
-    try:
-        b = store.latest_ready()
-        live = "tx_from <= ? AND (tx_to IS NULL OR tx_to > ?)"
-        nodes = {
-            r[0]: (r[1], r[2], json.loads(r[3]))
-            for r in store.db.execute(
-                f"SELECT node_id, kind, name, props FROM nodes WHERE node_id LIKE 'entity:%' AND {live}", (b, b)
-            )
-        }
-        edges = {
-            (r[0], r[1], r[2]): json.loads(r[3])
-            for r in store.db.execute(
-                f"SELECT src, rel, dst, props FROM edges WHERE (src LIKE 'entity:%' OR dst LIKE 'entity:%') AND {live}",
-                (b, b),
-            )
-        }
-        return nodes, edges
-    finally:
-        store.close()
+    nodes = {
+        n["id"]: (n["kind"], n["name"], n["props"]) for n in built.nodes_of(project) if n["id"].startswith("entity:")
+    }
+    edges = {
+        (e["src"], e["rel"], e["dst"]): e["props"]
+        for e in built.edges_of(project)
+        if e["src"].startswith("entity:") or e["dst"].startswith("entity:")
+    }
+    return nodes, edges
 
 
 OBAMA = {
@@ -184,7 +173,7 @@ def test_a_closed_mapping_merges_nothing_unless_it_asks():
 
 def test_the_model_merges_a_pair_records_why_sums_the_relation_and_memoizes_its_decision(tmp_path, kg_env):
     project, log = setup(tmp_path, kg_env, OBAMA)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     cov = report.coverage["entities"]
     nodes, edges = graph(project)
@@ -203,24 +192,24 @@ def test_the_model_merges_a_pair_records_why_sums_the_relation_and_memoizes_its_
     assert len(calls(log, "merge")) == 1 and cov["calls"] == len(calls(log))
     before = len(calls(log))
     for cold in (False, True):
-        assert verify_build(project, report.content_hash, cold=cold)["match"]
+        assert verify_rows(project, report.content_hash, cold=cold)["match"]
     assert len(calls(log)) == before, "a verification reads the decisions from the memo"
     write(tmp_path / "demo-app/docs/old.md", "# Old\n\nNotes rewritten.\n")
     commit(tmp_path / "demo-app", "old")
     assert all(r.ok for r in sync_project(project))
-    assert build_project(project).ok
+    assert built.build(project).ok
     assert len(calls(log, "merge")) == 1, "the pair's decision is memoized by the pair and the model"
 
 
 def test_a_pair_the_model_calls_two_stays_two_and_a_closed_mapping_asks_nothing(tmp_path, kg_env):
     answers = {**OBAMA, "merges": []}
     project, log = setup(tmp_path, kg_env, answers)
-    cov = build_project(project).coverage["entities"]
+    cov = built.build(project).coverage["entities"]
     nodes, edges = graph(project)
     assert {"entity:Actor:barack-obama", "entity:Actor:obama"} <= set(nodes)
     assert cov["merge"]["same"] == 0 and not [k for k in edges if k[1] == merge.MERGE_REL]
     project, log = setup(tmp_path / "closed", kg_env, OBAMA, extra={"merge": False})
-    cov = build_project(project).coverage["entities"]
+    cov = built.build(project).coverage["entities"]
     assert "merge" not in cov and not calls(log, "merge") and not calls(log, "summary")
 
 
@@ -280,7 +269,7 @@ def test_eight_descriptions_of_one_label_get_a_summary_that_no_other_label_mixes
     answers = {f"marker{i}": {"nodes": [ent("Hawaii", "Place", f"Fact {i} of the islands.")]} for i in range(8)}
     answers["Repos: app"] = {"nodes": [ent("Hawaii", "Place", "Secret harness fact.")]}
     project, log = setup(tmp_path, kg_env, answers, docs=docs, level="customer", app_level="internal")
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     nodes, edges = graph(project)
     _, _, props = nodes["entity:Place:hawaii"]
@@ -295,7 +284,7 @@ def test_eight_descriptions_of_one_label_get_a_summary_that_no_other_label_mixes
     write(tmp_path / "demo-app/docs/old.md", "# Old\n\nNotes rewritten.\n")
     commit(tmp_path / "demo-app", "old")
     assert all(r.ok for r in sync_project(project))
-    assert build_project(project).ok and len(calls(log, "summary")) == 1, "memoized by the descriptions and model"
+    assert built.build(project).ok and len(calls(log, "summary")) == 1, "memoized by the descriptions and model"
 
 
 def test_fewer_descriptions_are_kept_as_they_are():
@@ -395,7 +384,7 @@ def test_a_relation_shows_the_props_of_its_most_public_item(tmp_path, kg_env):
     }
     for level, app_level in (("customer", "internal"), ("internal", "customer")):
         project, _ = setup(tmp_path / level, kg_env, answers, level=level, app_level=app_level)
-        assert build_project(project).ok
+        assert built.build(project).ok
         _, edges = graph(project)
         props = edges[("entity:Concept:search", "relates_to", "entity:Concept:server")]
         public = "Public words." if app_level == "internal" else "Secret words."

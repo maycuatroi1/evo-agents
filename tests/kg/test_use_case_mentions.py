@@ -5,12 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from evo_agents.kg.build import build_project
 from evo_agents.kg.connectors import gitcli
 from evo_agents.kg.connectors import github as github_api
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import commit, git, make_project, write
 
 CODE, ALIAS = "UC CCACT-372", "UC 41"
@@ -66,13 +65,9 @@ def with_use_case_codes(base: Path, home: Path):
 
 
 def edges_of(project) -> set[tuple]:
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
-    store = Store.for_project(project)
-    rows = store.db.execute(
-        "SELECT src, rel, dst FROM edges WHERE tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)", {"b": report.build_id}
-    )
-    return {tuple(r) for r in rows}
+    return {(e["src"], e["rel"], e["dst"]) for e in built.edges_of(project)}
 
 
 def test_commit_messages_pull_requests_and_comments_mention_the_use_case(tmp_path, kg_env, github):

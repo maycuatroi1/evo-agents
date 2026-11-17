@@ -5,18 +5,24 @@ names.
 Accepting a proposal of a tier the charter's ``planned_tiers`` names (``proposals.planned_tiers_of``: tiers 0 to 2
 unless the charter names others, tier 3 included; ``proposals.answer_proposal_as``, on the web, the command line or
 Telegram) makes its draft a plan on the hub in the same transaction (``plan_from_proposal``), as the admin who
-accepted it, labelled as the proposal: the Curator's plan ``curator-<proposal>-<slug>``, in the one repo the proposal
+accepted it, labelled as the proposal: the Curator's plan ``curator-<proposal>-<slug>``, in the repo the proposal
 names, on the branch ``curator/<proposal>-<slug>``, and a row of curator_changes, state ``planned``, with the line
-``planned`` in the proposal's ledger. A proposal that names several repos, a repo the project does not have or one
-without an origin cannot become one: its change is recorded ``open``, without a plan, with the reason and the line
-``left_open``, and nothing of it runs. Either way the change is audited as curator.plan. Accepting a proposal of a
+``planned`` in the proposal's ledger. A proposal that names several repos of the project, each on GitHub, becomes one
+plan in them all, owner before consumer by the project's seams (``change_repos``), and its change has a row of
+curator_change_repos per repo in that order. A proposal that names a repo the project does not have, one without an
+origin, or several repos one of which is not on GitHub cannot become one: its change is recorded ``open``, without a
+plan, with the reason and the line ``left_open``, and nothing of it runs. Either way the change is audited as curator.plan. Accepting a proposal of a
 tier the charter does not plan, tier 3 unless it names it, makes nothing: its owner alone makes the change.
 
 POST /v1/projects/{p}/curator/proposals/{id}/plan does the same for a proposal accepted without becoming a plan, such as
 one of tier 2 accepted while that tier still recorded the answer alone: for the project's admins (403 otherwise), on an
 accepted proposal of a tier the charter plans that has no change yet (409 with why for one that is not accepted, is of
-a tier the charter does not plan or has a change already). It answers the change, planned or left open with the
-reason.
+a tier the charter does not plan or has a live change already). It answers the change, planned or left open with the
+reason. A proposal whose change is stuck, ``open`` or ``closed`` with no plan, branch or pull request (one left open
+because its draft could not become a plan then, such as a draft in several repos before a plan could work in them),
+is planned again in that same row (``replan_stuck``; curator_changes holds one change a proposal): the change becomes
+``planned`` with its plan, its reason gone, and its ledger says which state the plan replaced. When the draft still
+cannot become a plan the route answers 409 with why and the change stays as it was.
 """
 
 from __future__ import annotations
@@ -24,12 +30,12 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
-from sqlalchemy import insert, select
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import judge, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, probes
+from evo_agents.hub.server import audit, change_repos, probes
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -70,34 +76,75 @@ async def _record(conn: AsyncConnection, access: ProjectAccess, user: Principal,
     return change_id
 
 
-async def _make_plan(conn: AsyncConnection, access: ProjectAccess, user: Principal, proposal) -> dict | str:
-    """The values of the change the draft of ``proposal`` becomes, its plan stored; or why it cannot become one."""
-    draft = proposal.plan if isinstance(proposal.plan, dict) else {}
-    origins = await repo_origins(conn, access.project_id)
-    named = {
-        item["repo"] for item in proposal.paths or [] if isinstance(item, dict) and isinstance(item.get("repo"), str)
-    }
+def _named_repos(draft: dict, proposal, origins: dict) -> list[str]:
+    """The repos ``proposal`` names, each once: those of its draft's steps and repos in the draft's order, then those of
+    its paths; the project's one repo when it names none."""
+    named = []
     for section in ("steps", "repos"):
         for item in draft.get(section) or []:
             if isinstance(item, dict) and isinstance(item.get("repo"), str):
-                named.add(item["repo"])
+                named.append(item["repo"])
+    for item in proposal.paths or []:
+        if isinstance(item, dict) and isinstance(item.get("repo"), str):
+            named.append(item["repo"])
     if not named and len(origins) == 1:
-        named = set(origins)
-    if len(named) != 1:
-        return f"a Curator's plan works in one repo, and the proposal names {', '.join(sorted(named)) or 'no repo'}"
-    (repo,) = named
-    if repo not in origins:
-        return f"project {access.name} has no repo {repo}"
-    forge = judge.forge_of(origins[repo])
-    if forge is None:
-        return f"repo {repo} has no origin a Builder could push a branch to"
+        named = list(origins)
+    return list(dict.fromkeys(named))
+
+
+def _not_plannable(named: list[str], origins: dict) -> str | None:
+    """Why a plan cannot work in the several repos ``named``: each must be a repo of the project on GitHub."""
+    away = [repo for repo in named if repo not in origins or judge.forge_of(origins[repo]) != "github"]
+    if not away:
+        return None
+    return (
+        f"a Curator's plan works in one repo, and the proposal names {', '.join(sorted(named))}: a plan in several "
+        f"repos works on GitHub alone, and {', '.join(away)} {'is' if len(away) == 1 else 'are'} not there"
+    )
+
+
+async def _plan_body(conn: AsyncConnection, access: ProjectAccess, proposal, draft: dict, named: list[str]):
+    """(the plan's body, its id, its branch, the rows of its repos: None for a plan in one repo) of ``proposal``'s
+    draft in the repos ``named``; ValueError for a step in none of them."""
     draft_id = str(draft.get("id") or proposal.title)
     plan_id = judge.curator_plan_id(proposal.id, draft_id)
     branch = judge.curator_branch(proposal.id, draft_id)
-    body = judge.curator_plan(
-        draft, plan_id=plan_id, repo=repo, branch=branch, proposal_id=proposal.id, project=access.name
+    if len(named) == 1:
+        body = judge.curator_plan(
+            draft, plan_id=plan_id, repo=named[0], branch=branch, proposal_id=proposal.id, project=access.name
+        )
+        return body, plan_id, branch, None
+    seams = await change_repos.project_seams(conn, access.project_id, draft)
+    body = judge.curator_repos_plan(
+        draft,
+        plan_id=plan_id,
+        repos=named,
+        branch=branch,
+        proposal_id=proposal.id,
+        project=access.name,
+        seams=seams,
     )
+    return body, plan_id, branch, change_repos.repo_rows([item["repo"] for item in body["repos"]], seams)
+
+
+async def _make_plan(conn: AsyncConnection, access: ProjectAccess, user: Principal, proposal) -> dict | str:
+    """The values of the change the draft of ``proposal`` becomes, its plan stored; or why it cannot become one. A
+    change in several repos has the rows of its repos too ("rows", ``change_repos.repo_rows``), its own repo the
+    first."""
+    draft = proposal.plan if isinstance(proposal.plan, dict) else {}
+    origins = await repo_origins(conn, access.project_id)
+    named = _named_repos(draft, proposal, origins)
+    if len(named) > 1 and (why := _not_plannable(named, origins)) is not None:
+        return why
+    if not named:
+        return "a Curator's plan works in one repo, and the proposal names no repo"
+    if len(named) == 1 and named[0] not in origins:
+        return f"project {access.name} has no repo {named[0]}"
+    forge = judge.forge_of(origins[named[0]])
+    if forge is None:
+        return f"repo {named[0]} has no origin a Builder could push a branch to"
     try:
+        body, plan_id, branch, rows = await _plan_body(conn, access, proposal, draft, named)
         plan_routes._schema_checked(body, plan_id)
         label = access.push_label(proposal.label)
         async with conn.begin_nested():  # a store refused after its insert takes nothing with it
@@ -113,13 +160,16 @@ async def _make_plan(conn: AsyncConnection, access: ProjectAccess, user: Princip
                 action=plan_routes.PLAN_CREATE,
                 made_by_curator=True,
             )
+    except ValueError as exc:
+        return str(exc)
     except plan_routes.PlanError as exc:
         return exc.message
     except HTTPException as exc:
         return str(exc.detail)
     if stored is None:
         return f"project {access.name} has a plan {plan_id} already"
-    return {"plan_id": plan_id, "repo": repo, "branch": branch, "forge": forge}
+    repo = rows[0]["repo"] if rows else named[0]
+    return {"plan_id": plan_id, "repo": repo, "branch": branch, "forge": forge, "rows": rows}
 
 
 async def plan_from_proposal(conn: AsyncConnection, access: ProjectAccess, user: Principal, proposal) -> int:
@@ -134,7 +184,10 @@ async def plan_from_proposal(conn: AsyncConnection, access: ProjectAccess, user:
         await ledger_lines.change_recorded(conn, change_id)
         log.info("curator plan not made", extra={"project": access.name, "proposal_id": proposal.id, "why": made})
         return change_id
+    rows = made.pop("rows")
     change_id = await _record(conn, access, user, proposal, made)
+    if rows:
+        await change_repos.record_repos(conn, access.project_id, change_id, rows, made["branch"])
     await probes.attach(conn, proposal.id, change_id)
     await ledger_lines.change_recorded(conn, change_id)
     log.info("curator plan made", extra={"project": access.name, "plan_id": made["plan_id"], "change_id": change_id})
@@ -144,9 +197,19 @@ async def plan_from_proposal(conn: AsyncConnection, access: ProjectAccess, user:
 # A proposal accepted before it could become one
 
 
-async def _refusal(conn: AsyncConnection, project_id: int, proposal) -> str | None:
+STUCK_STATES = ("open", "closed")  # the states of a change with no plan that may be planned again
+
+
+def _stuck(found) -> bool:
+    """Whether change ``found`` never got a plan, a branch or a pull request: one ``plan_from_proposal`` left open,
+    or such a change closed by hand since."""
+    return found.state in STUCK_STATES and found.plan_id is None and found.branch is None and found.pr_number is None
+
+
+async def _refusal(conn: AsyncConnection, project_id: int, proposal, found) -> str | None:
     """Why ``proposal`` does not become the Curator's plan now: it is not accepted, it promotes memories, its tier is
-    not one the charter plans (tier 3 unless the charter names it), or it has a change already; None when it does."""
+    not one the charter plans (tier 3 unless the charter names it), or it has a change ``found`` already that is not
+    stuck (``_stuck``); None when it does."""
     if proposal.state != "accepted":
         return f"proposal {proposal.id} is {proposal.state}: only an accepted proposal becomes the Curator's plan"
     if proposal.promotion is not None:
@@ -161,9 +224,7 @@ async def _refusal(conn: AsyncConnection, project_id: int, proposal) -> str | No
             f"proposal {proposal.id} is tier {proposal.tier}: the night shift builds {judge.tier_words(planned)} "
             f"alone, and its owner makes a change of tier {proposal.tier}"
         )
-    c = tables.curator_changes
-    found = (await conn.execute(select(c.c.id, c.c.state).where(c.c.proposal_id == proposal.id))).one_or_none()
-    if found is not None:
+    if found is not None and not _stuck(found):
         return (
             f"proposal {proposal.id} has change #{found.id} already, {found.state}: `evo-agents hub curator changes` "
             "shows it"
@@ -171,12 +232,60 @@ async def _refusal(conn: AsyncConnection, project_id: int, proposal) -> str | No
     return None
 
 
+async def replan_stuck(conn: AsyncConnection, access: ProjectAccess, user: Principal, proposal, found) -> str | None:
+    """Make the draft of ``proposal`` the Curator's plan in its stuck change ``found`` (``_stuck``), as ``user``: the
+    row becomes ``planned`` with the plan, its reason cleared, audited as curator.plan and its ledger saying which
+    state the plan replaced. Why it still cannot become one, with nothing changed; None once it is planned."""
+    made = await _make_plan(conn, access, user, proposal)
+    if isinstance(made, str):
+        return made
+    rows = made.pop("rows")
+    c = tables.curator_changes
+    await conn.execute(
+        update(c).values(**made, state="planned", reason=None, updated_at=func.now()).where(c.c.id == found.id)
+    )
+    if rows:
+        await change_repos.record_repos(conn, access.project_id, found.id, rows, made["branch"])
+    await audit.record(
+        conn,
+        actor_id=user.user_id,
+        token_id=user.token_id,
+        action=PLAN,
+        target=f"{access.name}/{made['plan_id']} proposal:{proposal.id} change:{found.id} branch={made['branch']} "
+        f"replaces={found.state}",
+        project_id=access.project_id,
+    )
+    await probes.attach(conn, proposal.id, found.id)
+    await ledger_lines.append(
+        conn,
+        project_id=access.project_id,
+        proposal_id=proposal.id,
+        change_id=found.id,
+        action="planned",
+        actor="curator",
+        what=f"It became the Curator's plan {made['plan_id']} on {made['branch']}, replacing change #{found.id} "
+        f"{found.state} with no plan: {found.reason or 'no reason recorded'}",
+        details={
+            "plan_id": made["plan_id"],
+            "repo": made["repo"],
+            "branch": made["branch"],
+            "forge": made["forge"],
+            "replaced": {"state": found.state, "reason": found.reason},
+        },
+    )
+    log.info(
+        "curator plan made again", extra={"project": access.name, "plan_id": made["plan_id"], "change_id": found.id}
+    )
+    return None
+
+
 @router.post(
     "/{project}/curator/proposals/{proposal_id}/plan", status_code=201, response_model=Change, responses=REFUSALS
 )
 async def plan_proposal(request: Request, project: ProjectName, proposal_id: ItemId, user: CurrentUser) -> Change:
-    """Make an accepted proposal of tier 0 to 2 that has no change yet the Curator's plan, as accepting it does now;
-    the project's admins alone may. The change: planned, or left open with why its draft cannot become a plan."""
+    """Make an accepted proposal of tier 0 to 2 that has no change yet, or a stuck one, the Curator's plan, as
+    accepting it does now; the project's admins alone may. The change: planned, or left open with why its draft
+    cannot become a plan."""
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         if not has_role(access.role, "admin"):
@@ -186,10 +295,21 @@ async def plan_proposal(request: Request, project: ProjectName, proposal_id: Ite
                 f"{access.role or 'no role'}",
             )
         row = await readable_proposal(conn, access, proposal_id, None, user, lock=True)
-        why = await _refusal(conn, access.project_id, row)
+        c = tables.curator_changes
+        query = select(c.c.id, c.c.state, c.c.plan_id, c.c.branch, c.c.pr_number, c.c.reason)
+        found = (await conn.execute(query.where(c.c.proposal_id == row.id).with_for_update())).one_or_none()
+        why = await _refusal(conn, access.project_id, row, found)
         if why is not None:
             raise HTTPException(409, f"{why}; nothing was made")
-        change_id = await plan_from_proposal(conn, access, user, row)
+        if found is None:
+            change_id = await plan_from_proposal(conn, access, user, row)
+        elif (why := await replan_stuck(conn, access, user, row, found)) is not None:
+            raise HTTPException(
+                409,
+                f"proposal {row.id} still cannot become the Curator's plan: {why}; change #{found.id} stays {found.state}",
+            )
+        else:
+            change_id = found.id
         view = await change_view(conn, change_id)
     log.info("proposal planned", extra={"proposal_id": proposal_id, "change_id": change_id, "login": user.login})
     return view

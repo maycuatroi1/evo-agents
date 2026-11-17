@@ -24,8 +24,6 @@ from dataclasses import dataclass, field
 from evo_agents.kg.commit_labels import MAX_FILES, MIN_WORDS, commit_label
 from evo_agents.kg.evaluate import FILE_ID
 from evo_agents.kg.snapshot import StoreRows
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_filters import LIVE, SEEN
 
 COMMIT_TYPE = "commit"
 DEFAULT_LIMIT = 300  # questions a set keeps; the commits whose ids hash lowest, so the same ones on every call
@@ -43,80 +41,8 @@ class Found:
         self.left_out[why] = self.left_out.get(why, 0) + 1
 
 
-def _files(store: Store, b: int) -> dict[str, set[str]]:
-    """The paths of each repo's File nodes the graph holds."""
-    held: dict[str, set[str]] = {}
-    rows = store.db.execute(f"SELECT node_id FROM nodes WHERE kind = 'File' AND {LIVE} AND {SEEN}", {"b": b})
-    for (node_id,) in rows:
-        found = FILE_ID.match(node_id)
-        if found:
-            held.setdefault(found["repo"], set()).add(found["path"])
-    return held
-
-
-def _changed(store: Store, b: int, ids: list[str]) -> dict[str, list[str]]:
-    """The paths of the File nodes each commit node changed (its ``changes`` edges), by repo and path."""
-    out: dict[str, list[str]] = {node_id: [] for node_id in ids}
-    for start in range(0, len(ids), 500):
-        chunk = ids[start : start + 500]
-        marks = ", ".join(f":i{n}" for n in range(len(chunk)))
-        rows = store.db.execute(
-            f"SELECT src, dst FROM edges WHERE rel = 'changes' AND src IN ({marks}) AND {LIVE} AND {SEEN} ORDER BY dst",
-            {"b": b, **{f"i{n}": node_id for n, node_id in enumerate(chunk)}},
-        )
-        for src, dst in rows:
-            found = FILE_ID.match(dst)
-            if found:
-                out[src].append(found["path"])
-    return out
-
-
-def _messages(store: Store, ids: list[str]) -> dict[str, str]:
-    """The text each commit node indexes (its message), for the nodes whose row has no audience restriction."""
-    out: dict[str, str] = {}
-    for start in range(0, len(ids), 500):
-        chunk = ids[start : start + 500]
-        marks = ", ".join("?" for _ in chunk)
-        for node_id, body in store.db.execute(
-            f"SELECT node_id, body FROM node_fts WHERE kind = 'Commit' AND node_id IN ({marks})", chunk
-        ):
-            out[node_id] = body or ""
-    return out
-
-
 def question_id(repo: str, sha: str) -> str:
     return f"{ID_PREFIX}{SAFE.sub('-', repo)}-{sha[:12]}"
-
-
-def commit_questions(
-    store: Store,
-    b: int | None = None,
-    *,
-    min_words: int = MIN_WORDS,
-    max_files: int = MAX_FILES,
-    limit: int = DEFAULT_LIMIT,
-    ceiling: tuple[int, int] | None = None,
-) -> Found:
-    """The questions of build ``b`` (the latest ready one) of the graph in ``store``. ``ceiling`` is the (level,
-    location) of the most a reader of the set may see: a commit above it asks nothing."""
-    b = b if b is not None else store.latest_ready()
-    if b is None:
-        return Found()
-    rows = store.db.execute(
-        "SELECT node_id, props, label_lvl, label_loc FROM nodes WHERE kind = 'Commit'"
-        f" AND {LIVE} AND {SEEN} ORDER BY node_id",
-        {"b": b},
-    ).fetchall()
-    return _questions(
-        rows,
-        _files(store, b),
-        lambda ids: _messages(store, ids),
-        lambda ids: _changed(store, b, ids),
-        min_words=min_words,
-        max_files=max_files,
-        limit=limit,
-        ceiling=ceiling,
-    )
 
 
 def rows_questions(
@@ -127,8 +53,9 @@ def rows_questions(
     limit: int = DEFAULT_LIMIT,
     ceiling: tuple[int, int] | None = None,
 ) -> Found:
-    """``commit_questions`` of the rows of a build (``evo_agents.kg.snapshot.StoreRows``), read as a reader without an
-    audience reads them."""
+    """The questions of the rows of a build (``evo_agents.kg.snapshot.StoreRows``), read as a reader without an
+    audience reads them. ``ceiling`` is the (level, location) of the most a reader of the set may see: a commit above
+    it asks nothing."""
     public = sorted(n for n in rows.nodes if n[10] is None)
     commits = [(n[0], n[3], n[6], n[7]) for n in public if n[1] == "Commit"]
     held: dict[str, set[str]] = {}

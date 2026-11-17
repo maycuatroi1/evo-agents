@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="496" viewBox="0 0 1280 496" fill="none">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 1 1.5 L 8.5 5 L 1 8.5 z" fill="#71717a"/>
+    </marker>
+  </defs>
+
+  <!-- Outer Canvas -->
+  <rect width="1280" height="496" rx="10" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
+
+  <!-- ZONE 1: PROJECT SOURCES -->
+  <text x="28" y="42" font-family="'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="600" fill="#71717a" letter-spacing="0.06em">PROJECT SOURCES</text>
+  <g><rect x="28" y="64" width="212" height="108" rx="8" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/><text x="44" y="94" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#09090b">Repositories</text><text x="44" y="120" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Source code across languages,</text><text x="44" y="140" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#71717a">commit history &amp; pull requests</text></g>
+  <g><rect x="28" y="194" width="212" height="108" rx="8" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/><text x="44" y="224" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#09090b">Uploaded Archives</text><text x="44" y="250" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Drop .zip or .tar.gz files of</text><text x="44" y="270" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#71717a">documents, sheets &amp; notes</text></g>
+  <g><rect x="28" y="324" width="212" height="108" rx="8" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/><text x="44" y="354" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#09090b">Team Context</text><text x="44" y="380" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Specs, canvases, group chats</text><text x="44" y="400" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#71717a">&amp; external wiki connectors</text></g>
+
+  <!-- ZONE 2 & 3: EVO-AGENTS HUB -->
+  <rect x="272" y="22" width="692" height="452" rx="10" fill="#f4f4f5" stroke="#d4d4d8" stroke-width="1" stroke-dasharray="5 4"/>
+  <text x="290" y="46" font-family="'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="600" fill="#09090b" letter-spacing="0.05em">EVO-AGENTS HUB</text>
+
+  <!-- Arrows Sources -> Knowledge Base -->
+  <line x1="240" y1="118" x2="288" y2="118" stroke="#71717a" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="240" y1="248" x2="288" y2="248" stroke="#71717a" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="240" y1="378" x2="288" y2="378" stroke="#71717a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- PILLAR A: KNOWLEDGE BASE -->
+  <rect x="290" y="62" width="314" height="394" rx="8" fill="#ffffff" stroke="#b9c5fb" stroke-width="1"/>
+  <rect x="290" y="62" width="314" height="38" rx="8" fill="#ebeefd"/>
+  <rect x="290" y="90" width="314" height="10" fill="#ebeefd"/>
+  <line x1="290" y1="100" x2="604" y2="100" stroke="#b9c5fb" stroke-width="1"/>
+  <text x="308" y="86" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14.5" font-weight="600" fill="#2f4bd8">Knowledge Base</text>
+
+  <!-- KB Card 1 -->
+  <rect x="306" y="116" width="282" height="98" rx="6" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="322" y="142" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#09090b">Entity &amp; Code Graph</text>
+  <text x="322" y="164" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Connects domain concepts, specs and</text>
+  <text x="322" y="182" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">docs directly to files and functions</text>
+  <text x="322" y="200" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#71717a">Scoped views per agent or team workflow</text>
+
+  <!-- KB Card 2 -->
+  <rect x="306" y="228" width="282" height="98" rx="6" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="322" y="254" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#09090b">Living Docs &amp; Shared Memory</text>
+  <text x="322" y="276" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Versioned docs, interactive pages,</text>
+  <text x="322" y="294" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">shared skills and agent memories</text>
+  <text x="322" y="312" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#71717a">Ask questions directly in Home chat</text>
+
+  <!-- KB Card 3 -->
+  <rect x="306" y="340" width="282" height="98" rx="6" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="322" y="366" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#09090b">Role &amp; Chat Permissions</text>
+  <text x="322" y="388" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Redacts secrets before indexing;</text>
+  <text x="322" y="406" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">people and agents only see what</text>
+  <text x="322" y="424" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">their clearance and chats allow</text>
+
+  <!-- Arrows Knowledge Base <-> Plugin Workspace -->
+  <line x1="604" y1="165" x2="632" y2="165" stroke="#71717a" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="632" y1="195" x2="604" y2="195" stroke="#71717a" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="604" y1="290" x2="632" y2="290" stroke="#71717a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- PILLAR B: PLUGIN WORKSPACE -->
+  <rect x="632" y="62" width="314" height="394" rx="8" fill="#ffffff" stroke="#d5c5fb" stroke-width="1"/>
+  <rect x="632" y="62" width="314" height="38" rx="8" fill="#f1ecfd"/>
+  <rect x="632" y="90" width="314" height="10" fill="#f1ecfd"/>
+  <line x1="632" y1="100" x2="946" y2="100" stroke="#d5c5fb" stroke-width="1"/>
+  <text x="650" y="86" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14.5" font-weight="600" fill="#6136c2">Plugin Workspace</text>
+
+  <!-- Plugin Card 1: Product Cycles -->
+  <rect x="648" y="116" width="282" height="132" rx="6" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="664" y="140" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#09090b">Product Cycles on One Hub</text>
+  <text x="664" y="160" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#71717a">Business cycle</text>
+  <g><rect x="664" y="168" width="82" height="22" rx="5" fill="#f1ecfd" stroke="#d5c5fb" stroke-width="1"/><text x="705" y="183" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" fill="#6136c2" text-anchor="middle">Lean Canvas</text></g>
+  <g><rect x="752" y="168" width="44" height="22" rx="5" fill="#f1ecfd" stroke="#d5c5fb" stroke-width="1"/><text x="774" y="183" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" fill="#6136c2" text-anchor="middle">SRS</text></g>
+  <g><rect x="802" y="168" width="46" height="22" rx="5" fill="#f1ecfd" stroke="#d5c5fb" stroke-width="1"/><text x="825" y="183" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" fill="#6136c2" text-anchor="middle">CRM</text></g>
+  <g><rect x="854" y="168" width="64" height="22" rx="5" fill="#f1ecfd" stroke="#d5c5fb" stroke-width="1"/><text x="886" y="183" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" fill="#6136c2" text-anchor="middle">Growth</text></g>
+  <text x="664" y="208" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#71717a">Development cycle</text>
+  <g><rect x="664" y="216" width="56" height="22" rx="5" fill="#e4f4ea" stroke="#a8dfc0" stroke-width="1"/><text x="692" y="231" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" fill="#11713d" text-anchor="middle">Tasks</text></g>
+  <g><rect x="726" y="216" width="44" height="22" rx="5" fill="#e4f4ea" stroke="#a8dfc0" stroke-width="1"/><text x="748" y="231" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" fill="#11713d" text-anchor="middle">PM</text></g>
+  <g><rect x="776" y="216" width="68" height="22" rx="5" fill="#e4f4ea" stroke="#a8dfc0" stroke-width="1"/><text x="810" y="231" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" fill="#11713d" text-anchor="middle">Editorial</text></g>
+  <g><rect x="850" y="216" width="48" height="22" rx="5" fill="#e4f4ea" stroke="#a8dfc0" stroke-width="1"/><text x="874" y="231" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" fill="#11713d" text-anchor="middle">OKR</text></g>
+
+  <!-- Plugin Card 2: Core & Isolated -->
+  <rect x="648" y="260" width="282" height="92" rx="6" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="664" y="284" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#09090b">Core &amp; Sandboxed Plugins</text>
+  <text x="664" y="306" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Built-in core modules plus third-party</text>
+  <text x="664" y="324" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">plugins isolated in separate processes</text>
+  <text x="664" y="342" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#71717a">and sandboxed UI with project grants</text>
+
+  <!-- Plugin Card 3: Market -->
+  <rect x="648" y="364" width="282" height="74" rx="6" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="664" y="388" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="600" fill="#09090b">Plugin Market</text>
+  <text x="664" y="408" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Signed releases from trusted publishers,</text>
+  <text x="664" y="426" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">free or licensed per hub</text>
+
+  <!-- Arrows Hub -> Execution -->
+  <line x1="964" y1="160" x2="996" y2="160" stroke="#71717a" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="964" y1="345" x2="996" y2="345" stroke="#71717a" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ZONE 4: EXECUTION -->
+  <text x="996" y="42" font-family="'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="600" fill="#71717a" letter-spacing="0.06em">EXECUTION</text>
+
+  <!-- Agent Systems -->
+  <rect x="996" y="62" width="256" height="178" rx="8" fill="#ffffff" stroke="#f3cb8a" stroke-width="1"/>
+  <rect x="996" y="62" width="256" height="38" rx="8" fill="#fdf0da"/>
+  <rect x="996" y="90" width="256" height="10" fill="#fdf0da"/>
+  <line x1="996" y1="100" x2="1252" y2="100" stroke="#f3cb8a" stroke-width="1"/>
+  <text x="1014" y="86" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14.5" font-weight="600" fill="#8a4b00">Agent Systems</text>
+  <text x="1014" y="126" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Tech Lead, Developer, Reviewer</text>
+  <text x="1014" y="146" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Domain specialists (@ba, @strategist)</text>
+  <text x="1014" y="166" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Orchestrator &amp; nightly Curator</text>
+  <text x="1014" y="192" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#71717a">Wired directly to project graphs</text>
+  <text x="1014" y="210" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#71717a">and dedicated worker pools</text>
+
+  <!-- Your Machines -->
+  <rect x="996" y="258" width="256" height="198" rx="8" fill="#ffffff" stroke="#d4d4d8" stroke-width="1"/>
+  <text x="1014" y="286" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#09090b">Your Machines</text>
+  <text x="1014" y="310" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Runs steps in Git worktrees and</text>
+  <text x="1014" y="328" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">re-runs verification checks</text>
+  <text x="1014" y="352" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">Leases sealed credentials; asks</text>
+  <text x="1014" y="370" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#52525b">for approval in Inbox or Telegram</text>
+  <g><rect x="1014" y="392" width="82" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" stroke-width="1"/><text x="1055" y="408" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" fill="#09090b" text-anchor="middle">Claude Code</text></g>
+  <g><rect x="1102" y="392" width="70" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" stroke-width="1"/><text x="1137" y="408" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" fill="#09090b" text-anchor="middle">Codex CLI</text></g>
+  <g><rect x="1178" y="392" width="60" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" stroke-width="1"/><text x="1208" y="408" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" fill="#09090b" text-anchor="middle">opencode</text></g>
+  <text x="1014" y="438" font-family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#71717a">Plus terminal MCP &amp; memory plugins</text>
+</svg>

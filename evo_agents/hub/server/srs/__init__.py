@@ -434,11 +434,21 @@ TABLES = (
 )
 
 # The native pages of the hub's web (web/src/app/(app)/p/[project]/x/srs, web/src/components/srs): the documents,
-# with a document's contents, items, versions, comparisons and reviews under it, in the project's menu; the import,
-# reached from the documents.
+# with a document's contents, items, versions, comparisons and reviews under it, in the Business cycle of the
+# project's menu, and the reviews with the conflicts found beside them; the import, reached from the documents.
 PAGES = {
-    "documents": {"title": "SRS", "icon": "file-text", "description": "The project's BA documents"},
-    "reviews": {"title": "SRS reviews", "icon": "list-checks", "description": "The use cases waiting for review"},
+    "documents": {
+        "title": "SRS",
+        "icon": "file-text",
+        "description": "The project's BA documents",
+        "area": "business",
+    },
+    "reviews": {
+        "title": "SRS reviews",
+        "icon": "list-checks",
+        "description": "The use cases waiting for review",
+        "area": "business",
+    },
     "import": {"title": "Import SRS", "icon": "file-text", "menu": False},
 }
 

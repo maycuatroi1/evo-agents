@@ -1,12 +1,12 @@
 """``evo-agents kg links``: the edge model M3 (``evo_agents.kg.links``), docs/kg-links.md.
 
-``propose`` trains the model on a project's latest local build, chooses its threshold on hidden edges, scores the
+``propose`` trains the model on a build made in memory of the project's corpus on this machine, chooses its threshold on hidden edges, scores the
 candidate edges (the review queue's ambiguous and dangling names, resolved edges to a shared name, tests to code
 files, and with ``--docs`` documents to code files) and lists those it proposes. ``--review FILE`` reads the review
 queue from a file (``evo-agents hub kg review --json``); ``--hub`` reads it from the hub and sends each proposal there as a proposal
 (``kg_propose``), at most ``--max``, which a writer or the Curator accepts or rejects. Nothing is written to a graph.
 
-``eval`` measures the model on hidden edges of a project's graph and of a sample of the bench's tune graphs, and
+``eval`` measures the model on hidden edges of such a build and of a sample of the bench's tune graphs, and
 writes a summary ``kg bench show`` checks (``evo_agents.kg.bench.links_eval``).
 """
 
@@ -78,21 +78,19 @@ def _fail(text: str) -> int:
 
 
 def _open(project_name: str | None):
+    """The project, the view of a build of it made in memory (``build.build_rows``) and that build's id: nothing is
+    written to a graph."""
+    from evo_agents.kg.bench import rows_file
+    from evo_agents.kg.bench.datasets import BenchError
     from evo_agents.kg.project import ProjectError, resolve_project
-    from evo_agents.kg.store import Store
 
     try:
         project = resolve_project(project_name)
-    except ProjectError as exc:
+        snap = rows_file.local_snapshot(project)
+    except (ProjectError, BenchError) as exc:
         raise LookupError(str(exc)) from None
-    store = Store.open_readonly(project)
-    if store is None:
-        raise LookupError(f"project {project.name} has no graph on this machine: run `evo-agents kg build` first")
-    b = store.latest_ready()
-    if b is None:
-        store.close()
-        raise LookupError(f"project {project.name} has no finished build")
-    return project, store, b
+    view = snap.view()
+    return project, view, view.latest_ready()
 
 
 def cmd_propose(args) -> int:
@@ -102,12 +100,8 @@ def cmd_propose(args) -> int:
         project, store, b = _open(args.project)
     except LookupError as exc:
         return _fail(str(exc))
-    try:
-        g = links.read(store, b)
-        stored = store.review_items(b)
-    finally:
-        store.close()
-    review = stored
+    g = links.read(store, b)
+    review = store.review_items(b)
     if args.review is not None:
         review = json.loads(args.review.read_text(encoding="utf-8")).get("items") or []
     elif args.hub:
@@ -168,7 +162,7 @@ def cmd_propose(args) -> int:
 
 def cmd_eval(args) -> int:
     from evo_agents.kg import links
-    from evo_agents.kg.bench import datasets, links_eval
+    from evo_agents.kg.bench import datasets, links_eval, rows_file
     from evo_agents.kg.bench.datasets import BenchError
 
     options = _options(args)
@@ -176,10 +170,9 @@ def cmd_eval(args) -> int:
     try:
         for entry in args.local:
             name, _, project_name = entry.partition("=")
-            project, store, b = _open(project_name or name)
-            store.close()
-            _say(f"{name}: the latest build of project {project.name}")
-            sets[name] = [(project.name, links_eval.graph_numbers(project.root / "graph.sqlite", options, _say))]
+            project, view, _ = _open(project_name or name)
+            _say(f"{name}: a build in memory of project {project.name}")
+            sets[name] = [(project.name, links_eval.graph_numbers(project.name, view, options, _say))]
         benches = [s for s in args.bench.split(",") if s]
         cache = datasets.cache_dir(args.cache) if benches else None
         for bench in benches:
@@ -187,7 +180,10 @@ def cmd_eval(args) -> int:
             if not found:
                 return _fail(f"{bench}: no tune graph is built in {cache}: `kg bench build {bench} --part tune`")
             _say(f"{bench}: {len(found)} tune graphs")
-            sets[bench] = [(name, links_eval.graph_numbers(path, options, _say)) for name, path in found]
+            sets[bench] = [
+                (name, links_eval.graph_numbers(name, rows_file.snapshot_of(path).view(), options, _say))
+                for name, path in found
+            ]
     except (LookupError, BenchError, links.LinksError) as exc:
         return _fail(str(exc))
     out = links_eval.summary(sets, options, args.seed, args.graphs)

@@ -24,20 +24,27 @@ a newer version exists. A profile that changed since the proposal was recorded m
 written. For a kg node the hub changes the named graph's sources, or takes the decision, active at once with origin
 ``curator`` and the review run, and queues a build. What it made goes back into proposals.system_change
 (``applied``). No plan, branch or pull request is made.
+
+An evolution of target agent_config (``evo_agents.hub.server.evolve``) evolves an agent an optimizes edge reaches
+(``evolve_target``) from its instructions and skill axis (``agent_baseline``). Its best candidate becomes the profile's
+next version the same way (``apply_evolved``), and only when it wins on the holdout split or regresses on none of its
+tasks (``holdout_verdict``) and the profile still holds what the evolution started from; otherwise nothing is written
+and the evolution keeps why.
 """
 
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import kg_named_graphs, profiles, review, system_context, system_spec, tables
+from evo_agents.hub import evolve, kg_named_graphs, profiles, review, system_context, system_spec, tables
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.kg_decisions import MAX_REASON_CHARS, MAX_REF_CHARS
@@ -333,6 +340,95 @@ async def _audit(conn: AsyncConnection, access: ProjectAccess, user: Principal, 
         target=target,
         project_id=access.project_id,
     )
+
+
+# The evolution of an agent's configuration (evo_agents.hub.server.evolve)
+
+
+async def evolve_target(conn: AsyncConnection, project_id: int, system_id: int, agent: str) -> tuple[dict, Any]:
+    """(the target, the profile) of an evolution of ``agent`` (a node's id or its profile's handle) of agent system
+    ``system_id``: the system's slug, the node and the profile's handle; 422 when an optimizes edge of the system
+    reaches no such agent, or its profile is no live agent of the project but its default."""
+    s = tables.agent_systems
+    slug = await conn.scalar(select(s.c.slug).where(s.c.id == system_id, s.c.project_id == project_id))
+    held = None if slug is None else await system_store.one(conn, project_id, slug)
+    if held is None:
+        raise _refused(f"the project has no agent system #{system_id}")
+    nodes = [n for n in held.spec.get("nodes") or () if n.get("kind") == "agent"]
+    node = next((n for n in nodes if agent in (n["id"], n.get("profile"))), None)
+    if node is None or _optimized(held.spec, node["id"]) is None:
+        raise _refused(f"no optimizes edge of system {held.slug} reaches an agent {agent}")
+    profile = await by_handle(conn, node.get("profile") or "")
+    if profile is None or profile.project_id != project_id or profile.deleted_at is not None:
+        raise _refused(f"node {node['id']} names @{node.get('profile')}, which the project has no live agent of")
+    if profile.is_default:
+        raise _refused(f"@{profile.handle} is the project's default agent: its instructions stay as they are")
+    return {"system": held.slug, "node": node["id"], "profile": profile.handle}, profile
+
+
+def agent_baseline(profile) -> dict[str, str]:
+    """The components of an agent's configuration as an evolution reads them: its instructions, and its skill axis
+    as JSON text (evolve.AGENT_AXES)."""
+    skill = profiles.rule(dict(profile.permissions or {}), "skill")
+    return {"instructions": profile.instructions or "", "skill": json.dumps(skill, sort_keys=True)}
+
+
+def holdout_verdict(results: dict) -> tuple[bool, str]:
+    """(whether the best candidate holds, why) from its holdout results, task ref -> {baseline, candidate}: it holds
+    when it wins on the sum of the scores or regresses on no task."""
+    pairs = {
+        ref: (float(item["baseline"]), float(item["candidate"]))
+        for ref, item in results.items()
+        if isinstance(item, dict) and all(isinstance(item.get(k), (int, float)) for k in ("baseline", "candidate"))
+    }
+    if not pairs:
+        return False, "no holdout task was measured: the profile keeps its version"
+    base, best = sum(a for a, _ in pairs.values()), sum(b for _, b in pairs.values())
+    worse = sorted(ref for ref, (a, b) in pairs.items() if b < a)
+    figures = f"{best:g} against {base:g} on {len(pairs)} holdout task(s)"
+    if best > base:
+        return True, f"it wins on the holdout split, {figures}"
+    if not worse:
+        return True, f"it regresses on no holdout task, {figures}"
+    return False, f"it neither wins nor holds on the holdout split, {figures}; worse on {', '.join(worse)}"
+
+
+def _evolved_change(target: dict, profile, held, components: dict) -> dict:
+    """The system change of ``components`` (instructions, and the skill axis as JSON) on ``target``, as ``checked``
+    keeps one; 409 for a skill axis that is not one."""
+    change = {**target, "revision": held.revision, "target": "agent", "base_version": profile.version}
+    if isinstance(components.get("instructions"), str):
+        change["instructions"] = components["instructions"][: profiles.MAX_INSTRUCTIONS_CHARS]
+    if isinstance(components.get("skill"), str):
+        try:
+            axis = AgentAxis.model_validate(json.loads(components["skill"]))
+        except ValueError as exc:
+            raise HTTPException(409, f"the best candidate's skill axis is not one: {exc}") from None
+        change["skill"] = axis.model_dump(exclude_defaults=False)
+    node = _optimized(held.spec, target["node"]) or {}
+    change["pinned"] = node.get("version")
+    return change
+
+
+async def apply_evolved(
+    conn: AsyncConnection, access: ProjectAccess, user: Principal, evolution, seed: dict, best: dict, holdout: dict
+) -> tuple[dict | None, str]:
+    """Pin the best candidate ``best`` (its components) of agent_config evolution ``evolution`` as the next version of
+    the agent's profile, as an accepted proposal's system change does (``_apply_agent``), when it holds on the holdout
+    split (``holdout_verdict``) and the profile still has the components the evolution started from (``seed``); (what
+    it made, why), or (None, why not)."""
+    held_up, why = holdout_verdict(holdout)
+    if not held_up:
+        return None, why
+    target, profile = await evolve_target(conn, access.project_id, evolution.system_id, evolution.agent)
+    if evolve.baseline_digest(agent_baseline(profile)) != evolve.baseline_digest(seed):
+        return None, f"@{profile.handle} changed since the evolution started: the profile keeps its version"
+    held = await system_store.one(conn, access.project_id, target["system"])
+    try:
+        made = await _apply_agent(conn, access, user, _evolved_change(target, profile, held, best))
+    except HTTPException as exc:
+        return None, str(exc.detail)
+    return made, f"{why}: @{profile.handle} is at version {made['version']}"
 
 
 # The night

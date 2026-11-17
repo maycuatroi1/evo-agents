@@ -93,6 +93,15 @@ class _Part:
         return len(self.text.encode()) + 1
 
 
+def routing_line(handoff: dict | None) -> str:
+    """The line the CLI and the MCP tool add after the handoff of a step: its difficulty and the model the project's
+    Token strategy recommends for it (plan token-and-quota-economy); empty without a difficulty."""
+    if not handoff or not handoff.get("difficulty"):
+        return ""
+    model = handoff.get("recommended_model") or "the runtime's own"
+    return f"\nDifficulty: {handoff['difficulty']}; recommended model: {model}.\n"
+
+
 def estimate_tokens(text: str) -> int:
     """The tokens ``text`` takes as the handoff counts them: its UTF-8 bytes / BYTES_PER_TOKEN, rounded up."""
     return math.ceil(len(text.encode()) / BYTES_PER_TOKEN)

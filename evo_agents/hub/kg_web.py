@@ -39,7 +39,7 @@ from evo_agents.kg.graph_scope import GraphScope
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.serve_walk import HUB_DEGREE, SEED_EDGES, STATUS_RANK
-from evo_agents.kg.store import Store
+from evo_agents.kg.snapshot import SnapshotView
 
 MAX_HOPS = 2
 MAX_NODES = 150
@@ -71,7 +71,7 @@ class WebSession(HubSession):
             raise GraphProblem(str(exc)) from None
         return data
 
-    def _visible_store(self) -> tuple[Store, int]:
+    def _visible_store(self) -> tuple[SnapshotView, int]:
         try:
             return self._store()
         except ToolError as exc:
@@ -146,10 +146,10 @@ class WebSession(HubSession):
         ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
         return [{"src_kind": k[0], "rel": k[1], "dst_kind": k[2], "count": count} for k, count in ordered]
 
-    def _map_view(self, store: Store, b: int) -> kg_map.View:
-        """The clusters of build b as this reader sees them, kept by the artifact and by everything ``visible``
+    def _map_view(self, store: SnapshotView, b: int) -> kg_map.View:
+        """The clusters of build b as this reader sees them, kept by the build's content and by everything ``visible``
         compares with (``evo_agents.hub.kg_map.ViewCache``); call after ``_visible_store``, which sets ``sees_all``."""
-        key = (self.project.name, self.graph.sha256, b, self.sees_all, self.clearance, self.audience)
+        key = (self.project.name, self.graph.content_hash, b, self.sees_all, self.clearance, self.audience)
         return kg_map.VIEWS.get(key, lambda: kg_map.view(store, b, self.visible))
 
     def cluster_map(self, with_nodes: bool = True) -> dict:
@@ -193,10 +193,10 @@ class WebSession(HubSession):
         store, b = self._visible_store()
         return kg_decisions.subjects(store, b, self.visible, nodes, edges)
 
-    def _entity_view(self, store: Store, b: int) -> kg_entity_graph.EntityView:
+    def _entity_view(self, store: SnapshotView, b: int) -> kg_entity_graph.EntityView:
         """The entities, relations and mentions of build b this reader sees (``evo_agents.hub.kg_entity_graph``), kept
         as ``_map_view`` keeps the clusters; call after ``_visible_store``."""
-        key = (self.project.name, self.graph.sha256, b, self.sees_all, self.clearance, self.audience)
+        key = (self.project.name, self.graph.content_hash, b, self.sees_all, self.clearance, self.audience)
         return kg_entity_graph.VIEWS.get(key, lambda: kg_entity_graph.view(store, b, self.seen))
 
     def _describe(self, label: tuple) -> dict:
@@ -228,7 +228,7 @@ class WebSession(HubSession):
         found = self._entity_view(store, b)
         return self._entity_graph(found, kg_entity_graph.top(found, limit), code)
 
-    def _entity(self, store: Store, b: int, found: kg_entity_graph.EntityView, entity_id: str) -> dict:
+    def _entity(self, store: SnapshotView, b: int, found: kg_entity_graph.EntityView, entity_id: str) -> dict:
         n = self._lookup(store, entity_id, b)
         if n is None or n["id"] not in found.nodes:
             raise NotVisible(entity_id)
@@ -294,7 +294,7 @@ class WebSession(HubSession):
             "documents": total,
         }
 
-    def _degrees(self, store: Store, ids, b: int) -> dict[str, int]:
+    def _degrees(self, store: SnapshotView, ids, b: int) -> dict[str, int]:
         """Visible edges of each node of ``ids``, by the same ceiling ``visible`` compares labels with."""
         return store.degrees(ids, b, self.clearance)
 
@@ -338,7 +338,7 @@ class WebSession(HubSession):
         }
 
     def _neighbourhood_walk(
-        self, store: Store, b: int, focus: dict, hops: int, limit: int, group: int | None, opened: frozenset[str]
+        self, store: SnapshotView, b: int, focus: dict, hops: int, limit: int, group: int | None, opened: frozenset[str]
     ) -> _Walk:
         """Breadth first from ``focus``, at most ``hops`` steps and ``limit`` nodes, as ``neighbourhood`` says."""
         walk = _Walk(included={focus["id"]: focus}, hop={focus["id"]: 0})
@@ -366,7 +366,9 @@ class WebSession(HubSession):
                 walk.edges[e["id"]] = e
         return walk
 
-    def _steps(self, store: Store, b: int, current: str, found: list[dict]) -> tuple[list[dict], dict[str, dict]]:
+    def _steps(
+        self, store: SnapshotView, b: int, current: str, found: list[dict]
+    ) -> tuple[list[dict], dict[str, dict]]:
         """The visible edges ``found`` of ``current`` whose other node is visible too, strongest status first and
         ``in_source`` and ``part_of`` last, with the other nodes by id."""
         found = sorted(
@@ -385,7 +387,7 @@ class WebSession(HubSession):
     def _first_step(
         self,
         walk: _Walk,
-        store: Store,
+        store: SnapshotView,
         b: int,
         current: str,
         found: list[dict],

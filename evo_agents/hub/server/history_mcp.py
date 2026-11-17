@@ -219,7 +219,10 @@ async def _playbook(request: Request, project: str, user: Principal, arguments: 
     for entry in found.entries:
         line = playbook_model.line_of(entry.model_dump())
         evidence = ", ".join(earlier.texts_of(entry.evidence)) or "none"
-        lines.append(line + f" Evidence: {evidence}." + (f" Retired: {entry.retired_note}" if entry.retired else ""))
+        until = f" Until proposal #{entry.until_proposal_id} lands." if entry.until_proposal_id else ""
+        shown = f" Shown in {entry.prompt_exposures} review runs."
+        retired = f" Retired: {entry.retired_note}" if entry.retired else ""
+        lines.append(line + f" Evidence: {evidence}." + until + shown + retired)
     data = {**found.model_dump(mode="json"), "summary": f"{found.live} live entries"}
     return "\n".join(lines), data
 

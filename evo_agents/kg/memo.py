@@ -12,45 +12,29 @@ a digest of what those keys held. The next run looks the keys up again; the outp
 them holds what it held. A task is a function of its inputs and of what it reads, so the same values make it read
 the same keys and return the same output.
 
-A memo commits as it goes, every COMMIT_ROWS rows written or COMMIT_SECONDS after its last commit, and ``run`` with
-``commit`` at once (an answer a model was paid for): another build sharing the memo waits on its write lock for a
-moment, not for a whole build, and a build that crashes keeps what it had committed.
+A memo is a directory, one gzipped file an entry: ``<stage>/<first two hex digits of the key>/<the rest>``, the
+output and its hash. An entry is written to a temporary file and moved into place, so another build sharing the memo
+reads a whole entry or none, and a build that crashes keeps every entry it wrote. Two builds that write one key write
+the same output, a task being a function of its key. ``Memo(None)`` keeps its entries in memory.
 
-Every row a memo returns or writes counts as used: ``commit`` records, in ``memo_used``, the time the memo was opened
-as the row's last use, and in ``memo_meta`` that time as ``last_build``. Retention (the
-``kg prune`` of a machine's kg home, before the hub held it) deleted the rows no key uses any more: those whose last use is older than its period and than ``last_build``
-(``unused``). Rows written before uses were recorded have none, and go once a build has recorded its own. Both tables
-sit beside ``memo``, which keeps its four columns, so a memo stays readable and writable by a version that does not
-know them.
+A memo opened where a ``memo.sqlite`` of an earlier version sits beside it (``<path>.sqlite``) first takes its rows
+into entry files, once (``IMPORTED`` marks it done): those rows hold answers a model was paid for, by a key the hub
+holds, that no blob gives again (``evo_agents.sqlite_legacy``).
 """
 
 from __future__ import annotations
 
 import gzip
 import json
-import sqlite3
-import time
+import os
+import threading
 from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 
-from evo_agents.kg.ids import utc_now
 from evo_agents.kg.protocol import canonical_json, sha256
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS memo (
-    key TEXT PRIMARY KEY,
-    stage TEXT NOT NULL,
-    output BLOB NOT NULL,
-    output_hash TEXT NOT NULL
-) STRICT;
-CREATE TABLE IF NOT EXISTS memo_used (key TEXT PRIMARY KEY, used TEXT NOT NULL) STRICT, WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS memo_meta (name TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
-"""
-# The rows no key uses: no use recorded since ``cut``, the earlier of the retention cutoff and ``last_build``.
-COMMIT_ROWS = 500
-COMMIT_SECONDS = 2.0
-UNUSED = "SELECT memo.key FROM memo LEFT JOIN memo_used USING (key) WHERE coalesce(memo_used.used, '') < :cut"
+IMPORTED = ".imported-sqlite"  # the marker of a memo that took the rows of the memo.sqlite beside it
 
 
 def _enc(part) -> bytes:
@@ -68,139 +52,144 @@ def memo_key(stage: str, code_version: str, inputs: dict[str, str]) -> str:
     return sha256(b"".join(parts))
 
 
+def _stage_dir(root: Path, stage: str) -> Path:
+    return root / stage.replace(":", "+")  # ``link:reads``: no colon in a file name on Windows
+
+
+def _entry_path(root: Path, stage: str, key: str) -> Path:
+    digest = key.split(":", 1)[1]
+    return _stage_dir(root, stage) / digest[:2] / digest[2:]
+
+
+def _read(path: Path) -> tuple[object, str] | None:
+    try:
+        entry = json.loads(gzip.decompress(path.read_bytes()))
+    except (OSError, EOFError, ValueError):  # none yet, or half of one a crash left: computed again
+        return None
+    return entry["output"], entry["output_hash"]
+
+
 class Memo:
     def __init__(self, path: Path | None):
-        self.db = sqlite3.connect(path if path else ":memory:")
-        self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.executescript(SCHEMA)
+        self.root = path
+        if path is not None:
+            path.mkdir(parents=True, exist_ok=True)
+            _import_sqlite(path)
+        self.held: dict[tuple[str, str], tuple[object, str]] = {}  # the entries of a memo kept in memory
         self.hits: Counter[str] = Counter()
         self.misses: Counter[str] = Counter()
-        self.opened = utc_now()
-        self.used: set[str] = set()  # keys returned or written since the last commit
-        self.pending = 0  # rows written since the last commit
-        self.committed = time.monotonic()
+
+    def _get(self, stage: str, key: str) -> tuple[object, str] | None:
+        if self.root is None:
+            found = self.held.get((stage, key))
+            return (json.loads(canonical_json(found[0])), found[1]) if found else None
+        return _read(_entry_path(self.root, stage, key))
 
     def run(self, stage: str, code_version: str, inputs: dict[str, str], fn, *, commit: bool = False):
         """Return ``(output, output_hash)``. Downstream keys take the output hash, so a recomputed task
-        whose output did not change does not invalidate anything after it (early cutoff). ``commit`` commits the
-        output it computes at once."""
+        whose output did not change does not invalidate anything after it (early cutoff). ``commit`` is kept for the
+        callers that ask for an entry on disk at once (an answer a model was paid for): every entry is."""
         key = memo_key(stage, code_version, inputs)
-        row = self.db.execute("SELECT output, output_hash FROM memo WHERE key = ?", (key,)).fetchone()
-        if row is not None:
+        found = self._get(stage, key)
+        if found is not None:
             self.hits[stage] += 1
-            self.used.add(key)
-            return json.loads(gzip.decompress(row[0])), row[1]
+            return found
         self.misses[stage] += 1
         output = fn()
-        digest = self._put(key, stage, output)
-        if commit:
-            self.commit()
-        return output, digest
+        return output, self._put(key, stage, output)
 
     def run_traced(self, stage: str, code_version: str, inputs: dict[str, str], fn, held):
         """Return ``(output, output_hash)`` of a task that reads a shared table (see the module). ``fn()`` returns
         the output and the sorted list of the keys it read; ``held(keys)`` is the digest of what those keys hold
         in the table now."""
-        reads_key = memo_key(f"{stage}:reads", code_version, inputs)
-        row = self.db.execute("SELECT output FROM memo WHERE key = ?", (reads_key,)).fetchone()
-        if row is not None:
-            keys = json.loads(gzip.decompress(row[0]))
-            key = memo_key(stage, code_version, {**inputs, "reads": held(keys)})
-            found = self.db.execute("SELECT output, output_hash FROM memo WHERE key = ?", (key,)).fetchone()
+        reads_stage = f"{stage}:reads"
+        reads_key = memo_key(reads_stage, code_version, inputs)
+        read = self._get(reads_stage, reads_key)
+        if read is not None:
+            key = memo_key(stage, code_version, {**inputs, "reads": held(read[0])})
+            found = self._get(stage, key)
             if found is not None:
                 self.hits[stage] += 1
-                self.used.update((reads_key, key))
-                return json.loads(gzip.decompress(found[0])), found[1]
+                return found
         self.misses[stage] += 1
         output, keys = fn()
-        self._put(reads_key, f"{stage}:reads", keys)
+        self._put(reads_key, reads_stage, keys)
         key = memo_key(stage, code_version, {**inputs, "reads": held(keys)})
         return output, self._put(key, stage, output)
 
     def _put(self, key: str, stage: str, output) -> str:
         data = canonical_json(output)
         digest = sha256(data)
-        self.db.execute(
-            "INSERT OR REPLACE INTO memo VALUES (?, ?, ?, ?)",
-            (key, stage, gzip.compress(data, compresslevel=5), digest),
-        )
-        self.used.add(key)
-        self.pending += 1
-        if self.pending >= COMMIT_ROWS or time.monotonic() - self.committed >= COMMIT_SECONDS:
-            self.commit()
+        if self.root is None:
+            self.held[(stage, key)] = (json.loads(data), digest)
+            return digest
+        path = _entry_path(self.root, stage, key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entry = json.dumps({"output": json.loads(data), "output_hash": digest}, ensure_ascii=False, sort_keys=True)
+        _write_entry(path, entry.encode("utf-8"))
         return digest
 
+    def keys(self, stage: str) -> set[str]:
+        """The keys of the entries of ``stage``."""
+        if self.root is None:
+            return {key for (held_stage, key) in self.held if held_stage == stage}
+        top = _stage_dir(self.root, stage)
+        if not top.is_dir():
+            return set()
+        return {
+            f"sha256:{part.name}{entry.name}"
+            for part in top.iterdir()
+            if part.is_dir()
+            for entry in part.iterdir()
+            if ".tmp" not in entry.name
+        }
+
     def commit(self) -> None:
-        """Commit the rows written, with the use of every row returned or written since the last commit."""
-        if self.used:
-            self.db.executemany(
-                "INSERT INTO memo_used VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET used = excluded.used"
-                " WHERE excluded.used > memo_used.used",
-                [(key, self.opened) for key in sorted(self.used)],
-            )
-            self.db.execute(
-                "INSERT INTO memo_meta VALUES ('last_build', ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value"
-                " WHERE excluded.value > memo_meta.value",
-                (self.opened,),
-            )
-            self.used.clear()
-        self.db.commit()
-        self.pending, self.committed = 0, time.monotonic()
+        """Nothing to do: every entry is on disk once ``run`` returns it."""
 
     def close(self) -> None:
-        self.commit()
-        self.db.close()
+        """Nothing to do: a memo holds no file open."""
 
     def stats(self) -> dict:
         stages = sorted(set(self.hits) | set(self.misses))
         return {s: {"hits": self.hits[s], "misses": self.misses[s]} for s in stages}
 
 
-def _read_only(path: Path) -> sqlite3.Connection:
-    return sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+def _write_entry(path: Path, entry: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.tmp{os.getpid()}-{threading.get_ident()}")
+    tmp.write_bytes(gzip.compress(entry, compresslevel=5))
+    os.replace(tmp, path)
+
+
+def _import_sqlite(root: Path) -> None:
+    """Take the rows of the memo.sqlite beside ``root`` into its entry files, unless done already (see the module)."""
+    legacy = root.with_name(f"{root.name}.sqlite")
+    marker = root / IMPORTED
+    if marker.exists() or not legacy.is_file():
+        return
+    from evo_agents.sqlite_legacy import errors, memo_rows
+
+    try:
+        for key, stage, output, output_hash in memo_rows(legacy):
+            path = _entry_path(root, stage, key)
+            if path.exists():
+                continue
+            try:
+                entry = {"output": json.loads(gzip.decompress(output)), "output_hash": output_hash}
+            except (OSError, EOFError, ValueError):  # a row a crash cut: computed again when a build needs it
+                continue
+            _write_entry(path, json.dumps(entry, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+    except errors():  # not read whole: no marker, so the next open tries again; the rows taken stay
+        return
+    marker.write_text(f"{legacy.name}\n", encoding="utf-8")
 
 
 def usages(path: Path, stage: str) -> Iterator[dict]:
     """The ``usage`` (tokens, cost) of each answer of ``stage`` in the memo at ``path``, ``{}`` for an answer without
     one. Reads only."""
-    db = _read_only(path)
-    try:
-        for (blob,) in db.execute("SELECT output FROM memo WHERE stage = ?", (stage,)):
-            yield (json.loads(gzip.decompress(blob)) or {}).get("usage") or {}
-    finally:
-        db.close()
-
-
-def unused(path: Path, cutoff: str) -> tuple[int, int, str | None]:
-    """In the memo at ``path``: how many rows no key uses (no use since ``cutoff`` nor since ``last_build``), how many
-    rows it holds, and the time below which a last use counts as none, None when no build recorded a use. Reads only."""
-    if not path.exists():
-        return 0, 0, None
-    db = _read_only(path)
-    try:
-        total = db.execute("SELECT count(*) FROM memo").fetchone()[0]
-        try:
-            row = db.execute("SELECT value FROM memo_meta WHERE name = 'last_build'").fetchone()
-        except sqlite3.OperationalError:  # a memo written before uses were recorded
-            row = None
-        if row is None:
-            return 0, total, None
-        cut = min(cutoff, row[0])
-        return db.execute(f"SELECT count(*) FROM ({UNUSED})", {"cut": cut}).fetchone()[0], total, cut
-    except sqlite3.OperationalError:  # not a memo
-        return 0, 0, None
-    finally:
-        db.close()
-
-
-def drop_unused(path: Path, cut: str) -> int:
-    """Delete the rows of the memo at ``path`` with no use since ``cut`` (see ``unused``), and the uses recorded of
-    rows that are gone; how many rows went."""
-    db = sqlite3.connect(path, timeout=30)
-    try:
-        with db:
-            deleted = db.execute(f"DELETE FROM memo WHERE key IN ({UNUSED})", {"cut": cut}).rowcount
-            db.execute("DELETE FROM memo_used WHERE key NOT IN (SELECT key FROM memo)")
-    finally:
-        db.close()
-    return deleted
+    top = _stage_dir(path, stage)
+    for entry in sorted(top.glob("*/*")) if top.is_dir() else ():
+        found = None if ".tmp" in entry.name else _read(entry)
+        if found is not None:
+            yield (found[0] or {}).get("usage") or {}  # type: ignore[union-attr]

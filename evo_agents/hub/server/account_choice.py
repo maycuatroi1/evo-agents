@@ -10,7 +10,8 @@ variable:
    it in answer to its credential request, which comes before any other for its variable;
 1. the account the run took already (run_accounts), the one its owner picked when dispatching it among them, or the
    one the run it resumes took, while it is still one of those secrets: a run keeps its account on every ask for its
-   leases, whatever happened to the account since; else the secret of a lease the run holds for that variable;
+   leases, whatever happened to the account since; else the secret of a lease the run holds for that variable. A
+   shared account picked by hand is one of them only while its share lends it: meanwhile the next tiers choose;
 2. else among the accounts bound to this worker (for a run of the Curator: the accounts its charter lists), then
    among the others bound to the project, by the strategy of the owner's policy for the project
    (``evo_agents.hub.accounts.pick``), skipping each account its owner paused or that cools down; then, the same way,
@@ -21,9 +22,13 @@ variable:
 The accounts of an agent profile (``agent_accounts``) come in the same list, and ``credentials.survey_run`` leaves out
 of it every secret of the dispatcher for a variable the agent has an account for on this worker, so a variable's group
 is the agent's or the member's, never both. An agent's accounts are chosen by DEFAULT_POLICY (its strategy, cooldown,
-failover and ``max_failovers``), by the same tiers (all of them are bound to this worker), and fail over among the
+failover and ``max_failovers``), and those of an account pool by the pool's strategy and quota-pacing thresholds
+(``account_pools``, DEFAULT_POLICY for the rest), by the same tiers (all of them are bound to this worker), and fail over among the
 agent's accounts alone. Every account of the agent for a variable past its end (``ended``): the run gets none for it,
 and an event says so.
+
+Quota-pacing weighs the usage windows of each account (``accounts.last_usage``), its weekly budget's window replacing
+the ``seven_day`` one where the owner set one (``account_budgets``).
 
 Each event names an account by its secret's id, never its name: the run's log is read by every reader of the project.
 
@@ -53,7 +58,18 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
-from evo_agents.hub.accounts import DEFAULT_POLICY, Candidate, pick, usable
+from evo_agents.hub.accounts import (
+    DEFAULT_POLICY,
+    FIVE_HOUR,
+    SEVEN_DAY,
+    Candidate,
+    Pacing,
+    Window,
+    pick,
+    usable,
+    window_of,
+)
+from evo_agents.hub.server.account_budgets import budget_windows, with_budgets
 
 
 class Secret(Protocol):
@@ -83,6 +99,8 @@ class _State:
     paused: bool
     cooling_until: datetime | None  # set while it cools down
     rotation: float
+    five_hour: Window | None = None  # its usage windows, for quota-pacing
+    seven_day: Window | None = None
 
 
 @dataclass(frozen=True)
@@ -98,12 +116,39 @@ async def account_policy(conn: AsyncConnection, owner_id: int, project_id: int) 
     p = tables.account_policies
     row = (
         await conn.execute(
-            select(p.c.strategy, p.c.cooldown_seconds, p.c.failover, p.c.max_failovers).where(
-                p.c.owner_id == owner_id, p.c.project_id == project_id
-            )
+            select(
+                p.c.strategy,
+                p.c.cooldown_seconds,
+                p.c.failover,
+                p.c.max_failovers,
+                p.c.hard_reserve_pct,
+                p.c.five_hour_ceiling_pct,
+            ).where(p.c.owner_id == owner_id, p.c.project_id == project_id)
         )
     ).one_or_none()
     return dict(row._mapping) if row is not None else dict(DEFAULT_POLICY)
+
+
+async def pool_policy(conn: AsyncConnection, pool_id: int | None) -> dict:
+    """The policy the accounts of account pool ``pool_id`` are chosen by: its strategy and thresholds, DEFAULT_POLICY
+    for the rest (and for all of it with no pool)."""
+    if pool_id is None:
+        return dict(DEFAULT_POLICY)
+    ap = tables.account_pools
+    row = (
+        await conn.execute(
+            select(ap.c.strategy, ap.c.hard_reserve_pct, ap.c.five_hour_ceiling_pct).where(ap.c.id == pool_id)
+        )
+    ).one_or_none()
+    return dict(DEFAULT_POLICY) | (dict(row._mapping) if row is not None else {})
+
+
+def pacing_of(policy: dict) -> Pacing:
+    """The thresholds of quota-pacing ``policy`` holds."""
+    return Pacing(
+        policy.get("hard_reserve_pct", DEFAULT_POLICY["hard_reserve_pct"]),
+        policy.get("five_hour_ceiling_pct", DEFAULT_POLICY["five_hour_ceiling_pct"]),
+    )
 
 
 async def _lock_accounts(conn: AsyncConnection, ids: list[int]) -> dict[int, _State]:
@@ -120,11 +165,14 @@ async def _lock_accounts(conn: AsyncConnection, ids: list[int]) -> dict[int, _St
             a.c.rotation,
             (a.c.cooldown_until > func.now()).label("cooling"),
             a.c.cooldown_until,
+            a.c.last_usage,
         )
         .where(a.c.secret_id.in_(ordered))
         .order_by(a.c.secret_id)
         .with_for_update()
     )
+    rows = rows.all()
+    usages = with_budgets({row.secret_id: row.last_usage for row in rows}, await budget_windows(conn, ordered))
     return {
         row.secret_id: _State(
             weight=row.weight,
@@ -132,6 +180,8 @@ async def _lock_accounts(conn: AsyncConnection, ids: list[int]) -> dict[int, _St
             paused=row.paused_at is not None,
             cooling_until=row.cooldown_until if row.cooling else None,
             rotation=row.rotation,
+            five_hour=window_of(usages[row.secret_id], FIVE_HOUR),
+            seven_day=window_of(usages[row.secret_id], SEVEN_DAY),
         )
         for row in rows
     }
@@ -153,7 +203,9 @@ async def _kept(conn: AsyncConnection, run_id: int) -> dict[str, int]:
 
 
 def _candidate(secret: Secret, state: _State) -> Candidate:
-    return Candidate(secret.id, secret.name, state.weight, state.priority, state.rotation)
+    return Candidate(
+        secret.id, secret.name, state.weight, state.priority, state.rotation, state.five_hour, state.seven_day
+    )
 
 
 def _tiers(secrets: list[Secret], curator: bool) -> list[tuple[str, list[Secret]]]:
@@ -192,7 +244,8 @@ def _given_for_run(secrets: list[Secret]) -> Secret | None:
 def _decide(
     env_var: str, secrets: list[Secret], states: dict[int, _State], kept: int | None, held: set[int], context: tuple
 ) -> _Choice:
-    strategy, curator = context
+    policy, curator = context
+    strategy = policy["strategy"]
     by_id = {secret.id: secret for secret in secrets}
     given = _given_for_run(secrets)
     if given is not None:
@@ -206,7 +259,7 @@ def _decide(
                 return _Choice(secret, how)
     for how, tier in tiers:
         ready = [s for s in tier if not states[s.id].paused and states[s.id].cooling_until is None]
-        found = pick([_candidate(s, states[s.id]) for s in ready], strategy)
+        found = pick([_candidate(s, states[s.id]) for s in ready], strategy, pacing_of(policy))
         if found is not None:
             rotation = found[1] if strategy != "fill-first" else None
             return _Choice(by_id[found[0].id], how, rotation)
@@ -237,8 +290,19 @@ async def _ended_event(conn: AsyncConnection, run: Run, env_var: str) -> None:
 
 
 def follows_default(secret: Secret) -> bool:
-    """Whether the account is one of an agent or of an account pool: chosen by DEFAULT_POLICY, never a member's."""
+    """Whether the account is one of an agent or of an account pool: chosen by DEFAULT_POLICY or the pool's, never a
+    member's."""
     return secret.agent is not None or getattr(secret, "pool", None) is not None
+
+
+async def _policy_of(conn: AsyncConnection, run: Run, secret: Secret, member: dict | None = None) -> dict:
+    """The policy ``secret`` is chosen by for ``run``: its account pool's, DEFAULT_POLICY for an agent's own, else
+    the member's (``member`` when read already)."""
+    if getattr(secret, "pool", None) is not None:
+        return await pool_policy(conn, getattr(run, "account_pool_id", None))
+    if secret.agent is not None:
+        return dict(DEFAULT_POLICY)
+    return member if member is not None else await account_policy(conn, run.owner_id, run.project_id)
 
 
 async def choose_accounts(
@@ -255,14 +319,14 @@ async def choose_accounts(
     ids = [secret.id for group in by_var.values() for secret in group]
     states = await _lock_accounts(conn, ids) if ids else {}
     kept = await _kept(conn, run.id)
-    member = (await account_policy(conn, run.owner_id, run.project_id))["strategy"]
+    member = await account_policy(conn, run.owner_id, run.project_id)
     chosen: list[Secret] = []
     for env_var in sorted(set(by_var) | set(ended)):
         if env_var not in by_var:  # every account of the agent for it has ended, and the dispatcher's is not leased
             await _ended_event(conn, run, env_var)
             continue
-        owned = follows_default(by_var[env_var][0])  # the agent's accounts follow DEFAULT_POLICY, never a member's
-        context = (DEFAULT_POLICY["strategy"] if owned else member, run.curator is not None and not owned)
+        owned = follows_default(by_var[env_var][0])  # an agent's or a pool's accounts, never by a member's policy
+        context = (await _policy_of(conn, run, by_var[env_var][0], member), run.curator is not None and not owned)
         choice = _decide(env_var, by_var[env_var], states, kept.get(env_var), held, context)
         if choice.note is not None:
             from evo_agents.hub.server.run_state import write_event  # it imports the routes that import this module
@@ -346,8 +410,13 @@ async def fail_over(
     None, the cooldown's reason). A run that moved already answers the account it moved to, as a retry would."""
     resets_at, reason = limit
     own = [s for s in secrets if s.kind == "env" and s.env_var == env_var]
-    owned = any(s.id == current and follows_default(s) for s in own)  # an agent's accounts: DEFAULT_POLICY
-    policy = dict(DEFAULT_POLICY) if owned else await account_policy(conn, run.owner_id, run.project_id)
+    held = next((s for s in own if s.id == current), None)
+    owned = held is not None and follows_default(held)  # an agent's accounts: DEFAULT_POLICY, a pool's: its own
+    policy = (
+        await _policy_of(conn, run, held)
+        if held is not None and owned
+        else await account_policy(conn, run.owner_id, run.project_id)
+    )
     states = await _lock_accounts(conn, [s.id for s in own] + [current])
     now = datetime.now(UTC)
     until = (
@@ -362,7 +431,7 @@ async def fail_over(
     if why is None:
         for tier_how, tier in _tiers(others, run.curator is not None and not owned):
             ready = [s for s in tier if not states[s.id].paused and states[s.id].cooling_until is None]
-            found = pick([_candidate(s, states[s.id]) for s in ready], policy["strategy"])
+            found = pick([_candidate(s, states[s.id]) for s in ready], policy["strategy"], pacing_of(policy))
             if found is not None:
                 rotation = found[1] if policy["strategy"] != "fill-first" else None
                 secret = next(s for s in ready if s.id == found[0].id)

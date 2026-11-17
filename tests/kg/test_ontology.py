@@ -2,10 +2,9 @@
 
 import pytest
 
-from evo_agents.kg.build import build_project
 from evo_agents.kg.project import ProjectError, load_project_at
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import make_project, write
 
 SCREEN = "  - kind: Screen\n    pattern: '\\bSCR-\\d+\\b'\n"
@@ -27,17 +26,21 @@ def with_screens(project, ontology: str | None):
     return project
 
 
+def kind_of(project, node_id: str) -> str:
+    return next(n["kind"] for n in built.nodes_of(project) if n["id"] == node_id)
+
+
 def test_ontology_kinds_build(tmp_path, kg_env):
     project = with_screens(make_project(tmp_path, kg_env), "node_kinds: [Screen]\n")
     assert project.ontology == {"node_kinds": ["Screen"]}
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
-    assert Store.for_project(project).node("screen:SCR-7", report.build_id)["kind"] == "Screen"
+    assert kind_of(project, "screen:SCR-7") == "Screen"
 
 
 def test_kind_outside_the_ontology_fails_the_build_naming_the_item(tmp_path, kg_env):
     project = with_screens(make_project(tmp_path, kg_env), "node_kinds: [Widget]\n")
-    report = build_project(project)
+    report = built.build(project)
     assert not report.ok
     assert report.errors == [f"{NOTES}: node screen:SCR-7 has kind 'Screen', neither a hub kind nor in the ontology"]
 
@@ -47,14 +50,14 @@ def test_missing_ontology_fails_the_build(tmp_path, kg_env):
     (project.harness.root / "ontology.yaml").unlink()
     with pytest.raises(ProjectError, match="file not found"):
         _ = project.ontology
-    report = build_project(project)
+    report = built.build(project)
     assert not report.ok
     assert len(report.errors) == 1 and "ontology.yaml: file not found" in report.errors[0]
 
 
 def test_invalid_ontology_fails_the_build(tmp_path, kg_env):
     project = with_screens(make_project(tmp_path, kg_env), "node_kinds: [Screen, Document]\n")
-    report = build_project(project)
+    report = built.build(project)
     assert not report.ok
     assert "'Document' is a hub kind" in report.errors[0]
 
@@ -64,9 +67,9 @@ def test_without_ontology_key_any_kind_builds_as_before(tmp_path, kg_env):
     write(project.harness.root / "ontology.yaml", "node_kinds:\n  parsed_from_srs: [Entity]\n")
     project = with_screens(project, None)
     assert project.ontology is None
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
-    assert Store.for_project(project).node("screen:SCR-7", report.build_id)["kind"] == "Screen"
+    assert kind_of(project, "screen:SCR-7") == "Screen"
 
 
 def test_commits_and_pull_requests_are_hub_kinds_an_ontology_may_not_redefine(tmp_path, kg_env):
@@ -80,20 +83,18 @@ def test_commits_and_pull_requests_are_hub_kinds_an_ontology_may_not_redefine(tm
         "'changes' is a hub relation",
     ]
     project = with_screens(make_project(tmp_path, kg_env), "node_kinds: [Screen]\n")
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors  # the commit items of the app's history build under an ontology
-    store = Store.for_project(project)
-    commits = store.db.execute("SELECT COUNT(*) FROM nodes WHERE kind = 'Commit' AND node_id LIKE 'app:commit:%'")
-    assert commits.fetchone()[0] == 1
+    commits = [n for n in built.nodes_of(project) if n["kind"] == "Commit" and n["id"].startswith("app:commit:")]
+    assert len(commits) == 1
 
 
 def test_a_build_puts_what_breaks_its_ontology_rules_in_the_review_queue(tmp_path, kg_env):
     ontology = "node_kinds:\n  - name: Screen\n    required_props: [owner]\n"
     project = with_screens(make_project(tmp_path, kg_env), ontology)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
-    store = Store.for_project(project)
-    found = [item for item in store.review_items(report.build_id) if item["rule"] == "missing_prop"]
+    found = [item for item in built.rows_of(project).review if item["rule"] == "missing_prop"]
     assert [(item["evidence"], item["action"]) for item in found] == [(["screen:SCR-7"], "set_prop")]
     assert found[0]["detail"]["missing"] == ["owner"]
     assert report.coverage["review"]["missing_prop"] == 1

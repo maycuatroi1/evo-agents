@@ -27,7 +27,7 @@ import psycopg
 from psycopg import sql
 
 from evo_agents.hub import wake
-from evo_agents.hub.db import CONNECT_TIMEOUT
+from evo_agents.hub.db import CONNECT_TIMEOUT, KEEPALIVES
 
 log = logging.getLogger(__name__)
 
@@ -68,7 +68,11 @@ class Listener:
         while True:
             try:
                 conn = await psycopg.AsyncConnection.connect(
-                    self._dsn, autocommit=True, application_name=APPLICATION_NAME, connect_timeout=CONNECT_TIMEOUT
+                    self._dsn,
+                    autocommit=True,
+                    application_name=APPLICATION_NAME,
+                    connect_timeout=CONNECT_TIMEOUT,
+                    **KEEPALIVES,  # a Postgres gone without a reset fails the wait for notifies, and it listens again
                 )
                 async with conn:
                     for channel in self._handlers:

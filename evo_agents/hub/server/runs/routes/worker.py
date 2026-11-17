@@ -1,5 +1,6 @@
 """The worker's side of the queue: POST /v1/worker/claim, POST /v1/worker/heartbeat and POST
-/v1/worker/runs/{id}/state (``service.claims``, ``service.reports``)."""
+/v1/worker/runs/{id}/state (``service.claims``, ``service.reports``). The claim and the heartbeat take their
+connections from the heartbeat pool (``evo_agents.hub.db.HEARTBEAT_PATHS``)."""
 
 from __future__ import annotations
 
@@ -7,6 +8,7 @@ from datetime import timedelta
 
 from fastapi import APIRouter, Request
 
+from evo_agents.hub.db import engine_for
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import (
     REFUSALS,
@@ -35,8 +37,9 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
     """Wait up to ``wait_s`` seconds (25 by default) for a run this worker may take, and lease it."""
     wait = (body or ClaimRequest()).wait_s
     state = request.app.state
+    engine = engine_for(state, request.url.path)  # the heartbeat pool: no heavy request leaves it waiting
     return await wait_for_run(
-        state.engine, state.run_wakeups, user, lease_of(request), wait, request.is_disconnected, state.blobs
+        engine, state.run_wakeups, user, lease_of(request), wait, request.is_disconnected, state.blobs
     )
 
 
@@ -44,7 +47,8 @@ async def claim(request: Request, user: CurrentUser, body: ClaimRequest | None =
 async def heartbeat(request: Request, body: HeartbeatRequest, user: CurrentUser) -> HeartbeatAnswer:
     """Record the machine, extend the leases of the runs it holds, and say what it should do with them."""
     state = request.app.state
-    return await record_heartbeat(state.engine, user, body, lease_of(request), state.terminals, state.cache)
+    engine = engine_for(state, request.url.path)  # the heartbeat pool: no heavy request leaves it waiting
+    return await record_heartbeat(engine, user, body, lease_of(request), state.terminals, state.cache)
 
 
 @router.post("/runs/{run_id}/state", response_model=Run, responses=REFUSALS)

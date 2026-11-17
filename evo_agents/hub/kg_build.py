@@ -3,20 +3,20 @@
 A build of project P (job ``hub.kg_build``, under the lock ``kg:P``) runs in the worker's cache, ``<data dir>/kg``:
 
 - ``harness/P/``: a harness.yaml, and the knowledge.yaml and ontology.yaml of P's config (``kg_configs``), so the
-  build loads P like any project, and ``evo_agents.kg.build.build_project`` with ``verify=True`` on that harness,
-  with ``EVO_KG_HOME=<data dir>/kg/home``, checks the worker's store by hand.
-- ``home/P/``: P's corpus as ``evo_agents.kg.corpus`` lays it out (log/, blobs/, corpus.sqlite) and its memo.
+  build loads P like any project, and ``evo_agents.kg.build.verify_rows`` on that harness, with
+  ``EVO_KG_HOME=<data dir>/kg/home``, checks a build's content hash by hand.
+- ``home/P/``: P's corpus as ``evo_agents.kg.corpus`` lays it out (log/, blobs/, state.json) and its memo.
 
 The sources of the core plugins the project enables (``evo_agents.hub.kg_sources``) are read from the hub's database
 first: the config written into the cache names them and their identifiers, and their items and cursors in the corpus
-become those they give now, written only when something changed. Each run in ``kg_ingests`` that corpus.sqlite does not list yet
+become those they give now, written only when something changed. Each run in ``kg_ingests`` that the corpus does not list yet
 is fetched (its log, checked against its SHA-256), merged with the corpus's own merge, and listed; the merge is
 order-independent, so the runs of several machines in any order give one state; the cursor a run ended with is kept
 unless a later run's is, so a git source's coverage names the commit its newest run read (``evo_agents.kg.freshness``).
 A merge cannot be undone, so a corpus holding a run merged from the hub that kg_ingests no longer lists (its source
 was taken off the hub) is started again first, its blobs kept (``drop_forgotten``).
 Then every blob a live item refers to and the cache lacks is fetched, checked, and moved into place. The graph is
-built in memory by ``evo_agents.kg.build.build_rows``, into the rows a store would hold of it (``evo_agents.kg.graph_rows``),
+built in memory by ``evo_agents.kg.build.build_rows``, into the rows of its build (``evo_agents.kg.graph_rows``),
 its clustering started from the clusters of the graph the hub keeps; no graph file is written. Anything that fails
 marks the build failed with a message naming no content, and the worker goes on with the next job.
 
@@ -51,6 +51,7 @@ import json
 import logging
 import os
 import uuid
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,7 +61,7 @@ import yaml
 from sqlalchemy import BigInteger, Text, cast, column, delete, exists, func, insert, literal, or_, select, table, update
 from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import (
     blob_gc,
@@ -80,6 +81,7 @@ from evo_agents.hub import (
     tables,
 )
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
+from evo_agents.hub.heap import give_back
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
 from evo_agents.hub.kg_source_state import fill_run_facts
@@ -250,7 +252,7 @@ def _merge(corpus: Corpus, ingest: Ingest) -> None:
     header = records[0]
     end = next((r for r in reversed(records) if r.get("type") == "run_end"), {})
     state = next((r for r in reversed(records) if r.get("type") == "state"), None)
-    with corpus.db:
+    with corpus.transaction():
         corpus.merge(records, run_id)
         if state is not None and header.get("source"):  # the commit a git source read, for the build's coverage
             corpus.record_cursor(header["source"], state.get("cursor"), run_id)
@@ -276,8 +278,7 @@ def drop_forgotten(project: Project, ingests: list[Ingest]) -> int:
         corpus.close()
     forgotten = merged - {ingest.run_id for ingest in ingests}
     if forgotten:
-        for suffix in ("", "-wal", "-shm"):
-            Path(f"{corpus.db_path}{suffix}").unlink(missing_ok=True)
+        corpus.state_path.unlink(missing_ok=True)
         for path in corpus.log_dir.iterdir():
             path.unlink(missing_ok=True)
         log.info(
@@ -299,8 +300,9 @@ def prepare_corpus(store: BlobStore, project: Project, ingests: list[Ingest]) ->
 
         with ThreadPoolExecutor(max_workers=PARALLEL, thread_name_prefix="kg-fetch") as pool:
             list(pool.map(fetch_log, new))
-            for ingest in new:
-                _merge(corpus, ingest)
+            with corpus.transaction():  # the state file written once, not once a run
+                for ingest in new:
+                    _merge(corpus, ingest)
             needed = {ref for record in corpus.items() for ref in blob_refs(record.record)}
             missing = sorted(ref for ref in needed if not corpus.blob_path(f"sha256:{ref}").exists())
 
@@ -320,18 +322,23 @@ def build_graph(
     entity_inbox: dict | None = None,
     entity_outbox: list | None = None,
     entity_keys: dict | None = None,
+    whole: Callable[[], StoreRows | None] | None = None,
 ) -> tuple[StoreRows, BuildReport]:
     """Build ``project`` in memory (``evo_agents.kg.build.build_rows``): the rows of its graph and the build report;
     BuildFailure when the build reports errors. ``previous``, the rows of the graph the hub keeps: when they were
     built from the corpus state and the inputs ``project`` has now (``unchanged_rows``), nothing is built, and they
-    come back with a report of them, ``skipped``; otherwise the clustering starts from their clusters.
-    ``entity_inbox``, ``entity_outbox`` and ``entity_keys`` go to the entities step (``evo_agents.kg.entities.run``)."""
+    come back with a report of them, ``skipped``; otherwise the clustering starts from their clusters. ``whole``,
+    when ``previous`` holds only the head and the clusters (``kg_graph_rows.read_head``), reads all their rows, for
+    a skipped build only: held during a build, they took as much memory as the build's own rows. ``entity_inbox``,
+    ``entity_outbox`` and ``entity_keys`` go to the entities step (``evo_agents.kg.entities.run``)."""
     from evo_agents.kg.build import build_rows, unchanged_rows
     from evo_agents.kg.snapshot import rows_clusters
 
     current = unchanged_rows(project, previous)
     if current is not None and previous is not None:
-        return previous, current
+        kept = whole() if whole is not None else previous
+        if kept is not None and kept.content_hash == previous.content_hash:
+            return kept, current
     report, rows = build_rows(
         project,
         warm=rows_clusters(previous.clusters) if previous is not None else None,
@@ -371,6 +378,7 @@ def build_in_cache(
     maps: list[str] | None = None,
     vector_cache: kg_semantic.HubCache | None = None,
     previous: StoreRows | None = None,
+    whole: Callable[[], StoreRows | None] | None = None,
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
     from the blob store, the graph, whose rows ``record`` keeps in the hub's tables, and what the
@@ -378,7 +386,8 @@ def build_in_cache(
     asked index of the project's searches (``kg_asked``), and its content hash folds in the index's digest, so a
     build whose graph is the same but whose index is not is a new graph. With ``semantic`` settings that ask for
     them, the graph gets the vectors of its rows (``kg_semantic``), embedded only when ``vector_cache``, the project's
-    in the hub's database (seeded once from its vectors.sqlite and graph.sqlite), else its vectors.sqlite, lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
+    in the hub's database (seeded once from its vectors.sqlite and graph.sqlite), else a cache of this build only,
+    lacks them, and the content hash folds in their digest and the mode, the same way. With ``tuning``, the project's
     overrides are put in its settings.json first, so the build reads them as a local one does. ``answers``, the hashes
     of the project's kg-entity-answers blobs, are the entities step's inbox, and the requests it defers are written
     for ``record`` to keep (``kg_entity_relay``). ``uploads``: the newest upload read of each upload source, whose
@@ -386,7 +395,8 @@ def build_in_cache(
     model, in memory (``evo_agents.hub.server.kg_entity_key``). ``maps``: the hashes of the project's kg-entity-map
     blobs, put where the entity_map step reads them (``kg_entity_maps``). ``previous``: the rows of the graph the hub
     keeps, which a build of the same corpus state and inputs takes again, and whose clusters a build starts from
-    (``build_graph``). Blocking."""
+    (``build_graph``), with ``whole`` when they are only its head. Blocking."""
+    give_back()  # what the worker's last build and the tables it wrote still held, before this one
     uploads = uploads or []
     sources = (sources or []) + kg_upload_sources.load_all(store, data_dir, uploads, config["knowledge"], name)
     write_config(data_dir, name, *knowledge_and_ontology(config, sources, tuning))
@@ -402,7 +412,10 @@ def build_in_cache(
         vector_cache.seed(project.root, semantic.model)  # before the build replaces the graph that holds them
     inbox = kg_entity_relay.read_answers(store, answers) if answers else {}
     outbox: list[dict] = []
-    rows, report = build_graph(project, previous=previous, entity_inbox=inbox, entity_outbox=outbox, entity_keys=keys)
+    rows, report = build_graph(
+        project, previous=previous, entity_inbox=inbox, entity_outbox=outbox, entity_keys=keys, whole=whole
+    )
+    give_back()  # what the build freed, before the model of its vectors loads on top of its rows
     requests = kg_entity_relay.write_requests(project.root, outbox) if not report.skipped else None
     asked = None
     if learned is not None:
@@ -411,13 +424,21 @@ def build_in_cache(
     content_hash = graph_hash if asked is None else sha256_of(f"{graph_hash}\n{asked}")
     vector_coverage = None
     if semantic is not None:
-        rows, vectors = kg_semantic.index(rows, semantic, vector_cache or project.root / kg_semantic.SEED_FILES[0])
+        aside = None
+        if semantic.indexes:  # the model loads: what it does not read is held packed under it
+            rows, aside = kg_semantic.set_aside(rows)
+            give_back()
+        rows, vectors = kg_semantic.index(rows, semantic, vector_cache)
+        if aside is not None:
+            rows = kg_semantic.taken_back(rows, aside)
+            del aside
         if vectors.error:
             log.warning("kg build without vectors", extra={"project": name, "error": vectors.error})
         if vectors.digest is not None:
             content_hash = sha256_of(f"{content_hash}\n{vectors.mode}\n{vectors.digest}")
         if semantic.indexes:
             vector_coverage = vectors.coverage(semantic.model)
+    give_back()  # what the build and the model of its vectors took, before the hub's tables take the graph's rows
     coverage = kg_coverage.build_coverage(report.coverage, graph_rows.call_reach(rows), skipped=report.skipped)
     kg_upload_sources.annotate(coverage, uploads)
     if vector_coverage is not None:
@@ -446,6 +467,25 @@ def _corpus_items(project: Project) -> list:
         return kg_graph_rows.corpus_items(corpus.items())
     finally:
         corpus.close()
+
+
+def whole_graph(
+    engine: AsyncEngine, loop: asyncio.AbstractEventLoop, project_id: int
+) -> Callable[[], StoreRows | None]:
+    """A call that reads all the rows of the graph the hub keeps of ``project_id`` (``kg_graph_rows.read_graph``) on
+    ``loop``, the hub's, from the thread of a build: ``build_graph`` reads them only when it builds nothing. The
+    connection goes back to the pool once the rows are fetched: putting them together takes minutes on a large graph
+    and needs none."""
+
+    def read() -> StoreRows | None:
+        async def rows() -> StoreRows | None:
+            async with engine.connect() as conn:
+                fetched = await kg_graph_rows.fetch_graph(conn, project_id)
+            return None if fetched is None else await kg_graph_rows.assemble_graph(fetched)
+
+        return asyncio.run_coroutine_threadsafe(rows(), loop).result()
+
+    return read
 
 
 def describe_failure(exc: BaseException) -> str:
@@ -539,8 +579,11 @@ async def record(engine, store: BlobStore, project_id: int, build_id: int, diges
 async def keep_graph(conn: AsyncConnection, project_id: int, build_id: int, built: Built) -> None:
     """Keep the corpus items and the graph of a build in the hub's tables, only what changed, and notify the readers
     (``kg_graph_rows``). The head's content hash is the build's, which folds in the asked index and the vectors. A
-    skipped build's rows are those the hub kept, its merged branches applied already; a new build's get them. A
-    skipped build whose head of main a merge moved since it read it (under the project's lock, as here) leaves it."""
+    skipped build's rows are those the hub kept, its merged branches applied already, and main's hash folds them in as
+    their merges did (``kg_branches.merged_hash``); a new build's get them. A
+    skipped build whose head of main a merge moved since it read it (under the project's lock, as here) leaves it,
+    and its build row then names the head's content hash and counts, not those of the rows it read, as the row of a
+    new build does once merged branches changed its rows."""
     corpus = await kg_graph_rows.merge_corpus(conn, project_id, list(built.items))
     rows = dataclasses.replace(built.rows, content_hash=built.content_hash)
     if not built.skipped:  # a skipped build keeps the head it read, and its build id
@@ -549,10 +592,16 @@ async def keep_graph(conn: AsyncConnection, project_id: int, build_id: int, buil
     if built.skipped and await _head_hash(conn, project_id) != built.read:
         # a branch merged since the build read main: main is as the merge wrote it, which the next build takes again
         log.info("kg graph left as a merge wrote it", extra={"project_id": project_id, "build_id": build_id})
+        await _name_head(conn, project_id, build_id)
         return
+    groups = await kg_branches.merged(conn, project_id)
     if not built.skipped:
-        rows = await kg_branches.overlay(conn, project_id, rows)
+        rows = await kg_branches.overlay(conn, project_id, rows, groups)
+    elif groups:  # rows that hold the merged branches already: main's hash, as the merges gave it
+        rows = dataclasses.replace(rows, content_hash=kg_branches.merged_hash(rows.content_hash, groups))
     changed = await kg_graph_rows.write_graph(conn, project_id, build_id, rows)
+    if groups:  # the merged branches changed what the build made: its row names what main holds
+        await _name_head(conn, project_id, build_id)
     log.info(
         "kg graph kept", extra={"project_id": project_id, "build_id": build_id, "corpus": corpus.counts(), **changed}
     )
@@ -567,6 +616,23 @@ async def _head_hash(conn: AsyncConnection, project_id: int) -> str | None:
             )
         )
     ).scalar_one_or_none()
+
+
+async def _name_head(conn: AsyncConnection, project_id: int, build_id: int) -> None:
+    """Give build ``build_id`` the content hash and the node and edge counts of the head of main, which a merge wrote."""
+    counts = [
+        select(func.count())
+        .select_from(t)
+        .where(t.c.project_id == project_id, t.c.branch_id == kg_graph_rows.MAIN)
+        .scalar_subquery()
+        for t in (tables.kg_nodes, tables.kg_edges)
+    ]
+    builds = tables.kg_builds
+    await conn.execute(
+        update(builds)
+        .values(content_hash=await _head_hash(conn, project_id), nodes=counts[0], edges=counts[1])
+        .where(builds.c.id == build_id)
+    )
 
 
 async def start_eval_set(engine, project_id: int, project: str, built: Built) -> None:
@@ -707,7 +773,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             tuning = await kg_settings.read(conn, project_id)
             uploads = await kg_upload_sources.latest(conn, project_id)
             keys, key_from = await _entity_key(conn, context, project_id, tuning)
-            previous = await kg_graph_rows.read_graph(conn, project_id)
+            previous = await kg_graph_rows.read_head(conn, project_id)
         built = await asyncio.to_thread(
             build_in_cache,
             context.blobs,
@@ -725,6 +791,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             maps,
             kg_semantic.HubCache(engine, asyncio.get_running_loop(), project_id),
             previous,
+            whole_graph(engine, asyncio.get_running_loop(), project_id),
         )
         entities_coverage = (built.coverage or {}).get("entities")
         if key_from is not None and isinstance(entities_coverage, dict):

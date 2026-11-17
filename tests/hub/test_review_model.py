@@ -81,10 +81,12 @@ def test_a_path_the_knowledge_graph_says_a_change_reaches_counts_when_it_is_prot
     paths = [("evo-agents", "evo_agents/hub/review.py")]
     plain = tiers.tier_of("fix", paths, PROTECTED, impacted=[("evo-agents", "evo_agents/hub/runs.py")])
     assert plain.tier == 1
-    reached = tiers.tier_of("fix", paths, PROTECTED, impacted=[("evo-agents", "evo_agents/hub/tiers.py")])
-    assert (
-        reached.tier == 3 and "reaches evo-agents:evo_agents/hub/tiers.py in the knowledge graph" in reached.reasons[-1]
-    )
+    target = ("evo-agents", "evo_agents/hub/tiers.py")
+    reached = tiers.tier_of("fix", paths, PROTECTED, impacted=[target])
+    assert reached.tier == 2  # before the pull request's diff: at least tier 2, no more
+    assert "reaches evo-agents:evo_agents/hub/tiers.py in the knowledge graph" in reached.reasons[-1]
+    broken = tiers.tier_of("fix", paths, PROTECTED, impacted=[target], api={target: ["evo_agents.hub.review.LENSES"]})
+    assert broken.tier == 3 and "evo_agents.hub.review.LENSES" in broken.reasons[-1]
 
 
 def test_a_kind_the_tier_rules_do_not_know_is_refused():

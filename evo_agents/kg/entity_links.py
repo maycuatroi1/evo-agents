@@ -15,8 +15,8 @@ names of one entity, an edge to the code an entity names, and an edge between tw
 - Synonyms (a2). When the project's graph has vectors (semantic ``index`` or ``on``), the names of two entities of one
   kind whose cosine under that model is at least the mapping's ``synonym_threshold`` get an edge ``synonym_of`` (from
   the smaller id), each entity at most SYNONYM_NEIGHBOURS. The pairs are memoized by the model, the threshold and the
-  names, so a verification reads them and calls no model; the name vectors are kept in ``entity_vectors.sqlite`` next
-  to the graph.
+  names, so a verification reads them and calls no model; the name vectors are kept in the ``semantic.Cache`` the
+  caller passes, else in memory for the one computation (no file is written).
 
 Every edge is stated by each item that stated one of its ends, so its label joins that item's with both nodes': it is
 seen only by a reader who sees both ends.
@@ -28,7 +28,6 @@ import re
 import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from evo_agents.kg.protocol import canonical_json, sha256
 
@@ -39,7 +38,6 @@ DEFAULT_SYNONYM_THRESHOLD = 0.8  # HippoRAG 2's synonymy_edge_sim_threshold
 SYNONYM_NEIGHBOURS = 10
 SYNONYM_VERSION = "1"
 SYNONYM_STAGE = "entity_synonyms"
-VECTOR_CACHE = "entity_vectors.sqlite"
 CASE_CONF = 0.9  # of a code link whose name matches the code's only once case and accents are folded
 MAX_KEY = 80
 _WORD = re.compile(r"[a-z0-9]+")
@@ -220,10 +218,11 @@ class _Offline(Exception):
 
 
 def synonyms(
-    groups: Groups, settings, memo, cache_path: Path | None, threshold: float, *, offline: bool = False
+    groups: Groups, settings, memo, cache, threshold: float, *, offline: bool = False
 ) -> tuple[list[list], str]:
     """([smaller id, larger id, cosine], status) of the entities of one kind whose names are near; ``settings`` the
-    project's semantic settings (None or off: the graph has no vector, no pair)."""
+    project's semantic settings (None or off: the graph has no vector, no pair). ``cache`` (a ``semantic.Cache``, None
+    for one in memory) holds the name vectors; it stays open."""
     if settings is None or not settings.indexes:
         return [], "off: the graph has no vectors"
     items = sorted((groups.kind[nid], nid, groups.name[nid]) for nid in groups.name)
@@ -238,7 +237,7 @@ def synonyms(
     def task():
         if offline:
             raise _Offline
-        return _pairs(items, settings.model, cache_path, float(threshold))
+        return _pairs(items, settings.model, cache, float(threshold))
 
     from evo_agents.kg.semantic import SemanticUnavailable
 
@@ -251,30 +250,23 @@ def synonyms(
     return pairs, "ok"
 
 
-def _pairs(items: list[tuple[str, str, str]], model: str, cache_path: Path | None, threshold: float) -> list[list]:
-    from evo_agents.kg import semantic, store_vectors
+def _pairs(items: list[tuple[str, str, str]], model: str, cache, threshold: float) -> list[list]:
+    from evo_agents.kg import semantic
 
     np = semantic._numpy()
     texts = [name for _, _, name in items]
     digests = [semantic.text_digest(model, t) for t in texts]
-    cache = store_vectors.FileCache(cache_path) if cache_path is not None else None
-    try:
-        held = cache.get(model, sorted(set(digests))) if cache else {}
-        todo = sorted({d: t for d, t in zip(digests, texts, strict=True) if d not in held}.items())
-        if todo:
-            embedder = semantic.embedder(model)
-            for start in range(0, len(todo), semantic.BATCH * 8):
-                part = todo[start : start + semantic.BATCH * 8]
-                vectors = embedder.embed([t for _, t in part])
-                fresh = [
-                    (d, np.asarray(v, dtype=np.float32).tobytes()) for (d, _), v in zip(part, vectors, strict=True)
-                ]
-                held.update(fresh)
-                if cache:
-                    cache.put(model, fresh)
-    finally:
-        if cache:
-            cache.close()
+    cache = cache if cache is not None else semantic.MemoryCache()
+    held = cache.get(model, sorted(set(digests)))
+    todo = sorted({d: t for d, t in zip(digests, texts, strict=True) if d not in held}.items())
+    if todo:
+        embedder = semantic.embedder(model)
+        for start in range(0, len(todo), semantic.BATCH * 8):
+            part = todo[start : start + semantic.BATCH * 8]
+            vectors = embedder.embed([t for _, t in part])
+            fresh = [(d, np.asarray(v, dtype=np.float32).tobytes()) for (d, _), v in zip(part, vectors, strict=True)]
+            held.update(fresh)
+            cache.put(model, fresh)
     out: list[list] = []
     by_kind: dict[str, list[int]] = defaultdict(list)
     for i, (kind, _, _) in enumerate(items):

@@ -262,7 +262,7 @@ token of a run.
 
 ## On the web
 
-The canvases are a native page of the plugin, Lean Canvas in the project's menu
+The canvases are a native page of the plugin, Lean Canvas in the Business cycle of the project's menu
 (`/p/<project>/x/canvas/canvases`). Under it:
 
 - a canvas (`.../canvases/<slug>`): the grid of nine cells with a card per claim and its status chip, the claims by

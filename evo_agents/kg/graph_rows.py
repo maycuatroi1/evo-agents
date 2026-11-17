@@ -1,10 +1,9 @@
-"""The rows a build of a graph puts in a store file (``snapshot.StoreRows``), made in memory: what the hub keeps of a
-build without writing a graph.sqlite (``evo_agents.hub.kg_build``).
+"""The rows of a build of a graph (``snapshot.StoreRows``), made in memory: what the hub keeps of a build
+(``evo_agents.hub.kg_build``).
 
-``graph_rows`` gives the rows ``snapshot.store_rows`` reads back from a store that wrote the graph, with the same
-content hash (``kg.content``). ``with_asked`` puts the asked index in them as ``Store.write_asked`` puts it in a file,
-and ``RowsVectors`` is the ``semantic.Graph`` that ``semantic.index`` writes their vectors into, as
-``store_vectors.GraphFile`` is for a file. ``call_reach`` is ``kg.health.call_reach`` of the rows.
+``graph_rows`` gives the rows of the graph, with its content hash (``kg.content``). ``with_asked`` puts the asked
+index in them, and ``RowsVectors`` is the ``semantic.Graph`` that ``semantic.index`` writes their vectors into.
+``call_reach`` counts how far the call edges of the rows reach.
 """
 
 from __future__ import annotations
@@ -15,6 +14,15 @@ from dataclasses import asdict, replace
 
 from evo_agents.kg import asked, content, semantic
 from evo_agents.kg import search as text_search
+from evo_agents.kg.graph_model import (
+    Graph,
+    graph_stats,
+    graph_tables,
+    review_table,
+    search_rows,
+    top_audience_of,
+    top_label_of,
+)
 from evo_agents.kg.health import KINDS, is_test_path
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.snapshot import (
@@ -25,17 +33,13 @@ from evo_agents.kg.snapshot import (
     label_pair,
     node_row,
 )
-from evo_agents.kg.store import Graph
-from evo_agents.kg.store_clusters import review_table
-from evo_agents.kg.store_diff import graph_stats, graph_tables, top_audience_of, top_label_of
-from evo_agents.kg.store_fts import search_rows
 
 UNIT_COLUMNS = ("unit_id", "item_id", "anchor", "rev", "hash", "source", "span", "label_aud", "label_lvl", "label_loc")
 
 
 def graph_rows(graph: Graph, *, coverage: dict, stats: dict, built_at: str) -> StoreRows:
-    """The rows of a build of ``graph`` (``StoreRows``), as a store that wrote it with ``coverage`` and ``stats``
-    (``Store.write``) reads them back: its summary has build id 0, for the keeper to replace, and no file size."""
+    """The rows of a build of ``graph`` (``StoreRows``) with ``coverage`` and ``stats``: its summary has build id 0,
+    for the keeper to replace, and no file size."""
     tables = graph_tables(graph)
     _, keyed = search_rows(graph)
     hashed = content.content_hash(graph)
@@ -88,8 +92,8 @@ def _where_order(r: dict) -> tuple:
 
 
 def asked_nodes(rows: StoreRows) -> asked.Nodes:
-    """``asked.Nodes`` of the rows, as ``Nodes.of_store`` reads them from a file: every live node by id, and the File
-    and Document nodes without an audience by path."""
+    """``asked.Nodes`` of the rows: every live node by id, and the File and Document nodes without an audience by
+    path."""
     paths: dict[str, list[str]] = defaultdict(list)
     for row in sorted(rows.nodes):
         if row[1] in ("File", "Document") and row[10] is None:
@@ -100,8 +104,8 @@ def asked_nodes(rows: StoreRows) -> asked.Nodes:
 
 
 def with_asked(rows: StoreRows, found: list[asked.Row], weight: float | None) -> tuple[StoreRows, str | None]:
-    """``rows`` with the asked index ``found`` and the weight of an asked match, and the digest ``Store.write_asked``
-    gives of them: None when the index holds nothing."""
+    """``rows`` with the asked index ``found`` and the weight of an asked match, and the digest
+    of them: None when the index holds nothing."""
     held = [[r.node_id, r.level, r.location, r.audience, r.prior, r.asked] for r in found]
     digest = None
     if held:
@@ -140,7 +144,7 @@ class RowsVectors:
 
 
 def call_reach(rows: StoreRows) -> dict:
-    """``kg.health.call_reach`` of the rows: the Python symbols of kinds KINDS outside tests, by kind, how many no
+    """The call reach of the rows: the Python symbols of kinds KINDS outside tests, by kind, how many no
     ``calls`` edge leads into, and the share of them."""
     called = {row[3] for row in rows.edges if row[2] == "calls"}
     total, uncalled = Counter(), Counter()

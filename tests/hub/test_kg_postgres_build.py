@@ -1,13 +1,13 @@
 """A build keeps its corpus items and its graph in the hub's tables (``evo_agents.hub.kg_graph_rows``, migration 0248,
-plan kg-centralized-on-hub criterion a3): the graph read back hashes as the build, a second build writes only the rows
-that changed, a deleted item leaves the corpus, and the readers listening on ``kg_graph`` hear of each build."""
+plan kg-centralized-on-hub criterion a3): the graph read back hashes as the build and holds the rows a build in memory
+of the same corpus gives (``evo_agents.kg.build.build_rows``), its snapshot reads, searches and ranks as theirs, a second
+build writes only the rows that changed, a deleted item leaves the corpus, and the readers listening on ``kg_graph``
+hear of each build."""
 
 from __future__ import annotations
 
 import asyncio
-import shutil
 import struct
-from pathlib import Path
 
 import pytest
 
@@ -22,9 +22,8 @@ from sqlalchemy.pool import NullPool
 
 from evo_agents.hub import kg_graph_rows, tables
 from evo_agents.kg import asked
-from evo_agents.kg.build import build_project
-from evo_agents.kg.snapshot import Snapshot, StoreRows, store_rows
-from evo_agents.kg.store import Store
+from evo_agents.kg.graph_rows import with_asked
+from evo_agents.kg.snapshot import Snapshot, SnapshotView, StoreRows
 from tests.hub.live import add_project
 from tests.hub.test_kg import (  # noqa: F401 (hub is a fixture)
     Machine,
@@ -35,6 +34,7 @@ from tests.hub.test_kg import (  # noqa: F401 (hub is a fixture)
     query,
     run_jobs,
 )
+from tests.kg import built as memory
 
 
 def make_engine(db):
@@ -72,20 +72,22 @@ def project_id(hub) -> int:
     return query(hub.db, select(projects.c.id).where(projects.c.name == "alpha"))[0][0]
 
 
-def built_here(hub, laptop) -> Path:
-    """The graph file of the project as a machine builds it, which holds what the hub built (no file on the hub)."""
+def built_here(hub, laptop) -> StoreRows:
+    """The rows of the project as a build in memory of the machine's corpus gives them (``build_rows``), which hold
+    what the hub built."""
     project = laptop.project()
-    assert build_project(project).content_hash == read_back(hub.db, project_id(hub)).summary["content_hash"]
-    return project.root / "graph.sqlite"
+    assert memory.build(project).content_hash == read_back(hub.db, project_id(hub)).summary["content_hash"]
+    return memory.rows_of(project)
 
 
 def placed(summary: dict) -> dict:
-    """``summary`` without what the hub and a machine give a build each its own way: when, the file, the inputs."""
+    """``summary`` without what the hub and a machine give a build each its own way: when, its id, the file, the
+    inputs."""
     stats = {k: v for k, v in summary["stats"].items() if k not in ("state_digest", "inputs")}
-    return {**{k: v for k, v in summary.items() if k not in ("built_at", "file_bytes")}, "stats": stats}
+    return {**{k: v for k, v in summary.items() if k not in ("built_at", "build_id", "file_bytes")}, "stats": stats}
 
 
-def test_the_graph_a_build_keeps_hashes_as_the_build_and_reads_as_a_file_built_here(hub, tmp_path, caplog):
+def test_the_graph_a_build_keeps_hashes_as_the_build_and_holds_the_rows_of_a_build_in_memory(hub, tmp_path, caplog):
     laptop = Machine(tmp_path, "laptop")
     laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it."))
     assert push(hub, laptop).ok
@@ -98,12 +100,8 @@ def test_the_graph_a_build_keeps_hashes_as_the_build_and_reads_as_a_file_built_h
     rows = read_back(hub.db, project_id(hub))
     assert rows is not None and rows.content_hash == first["content_hash"]
     assert not (hub.worker_dir / "kg" / "home" / "alpha" / "graph.sqlite").exists(), "the hub writes no graph file"
-    assert build_project(laptop.project()).content_hash == first["content_hash"]
-    store = Store.open_file(laptop.project().root / "graph.sqlite", immutable=True)
-    try:
-        own = store_rows(store, store.latest_ready())
-    finally:
-        store.close()
+    assert memory.build(laptop.project()).content_hash == first["content_hash"]
+    own = memory.rows_of(laptop.project())
     assert sorted(rows.nodes) == sorted(own.nodes) and sorted(rows.edges) == sorted(own.edges)
     assert rows.keyed == own.keyed and rows.code == own.code and rows.top == own.top
     mine, theirs = Snapshot.from_stored(rows), Snapshot.from_stored(own)
@@ -159,75 +157,76 @@ def test_the_memo_keeps_the_first_result_of_a_row_hash(hub_db):
     assert asyncio.run(run()) == {"h1": {"n": 1}, "h2": {"n": 3}}
 
 
-def test_a_snapshot_of_the_tables_reads_as_the_store_of_the_build_file(hub, tmp_path, caplog):
+def here_view(hub, laptop) -> SnapshotView:
+    """The snapshot of the build in memory of the machine's corpus, as a reader with no audience reads it."""
+    return Snapshot.from_stored(built_here(hub, laptop)).view()
+
+
+def test_a_snapshot_of_the_tables_reads_as_the_snapshot_of_a_build_in_memory(hub, tmp_path, caplog):
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it, see guide."))
+    assert push(hub, laptop).ok
+    first, _ = build(hub, caplog)
+    view = Snapshot.from_stored(read_back(hub.db, project_id(hub))).view()
+    here = here_view(hub, laptop)
+    b = here.latest_ready()
+    nodes = sorted(here.alive_ids("nodes", b))
+    elements = [*nodes, *sorted(here.alive_ids("edges", b))]
+    units = sorted(here.alive_ids("units", b))
+    assert units and nodes
+    assert sorted(view.alive_ids("nodes", b)) == nodes and sorted(view.alive_ids("units", b)) == units
+    assert placed(view.summary()) == placed(here.summary()) and view.latest_ready() == first["id"]
+    assert view.seen(b) == here.seen(b)
+    assert view.top_audience(b) == here.top_audience(b)
+    assert [view.unit(u) for u in units] == [here.unit(u, b) for u in units]
+    assert [view.where(e) for e in elements] == [here.where(e, b) for e in elements]
+    assert [view.derivations(e) for e in elements] == [here.derivations(e, b) for e in elements]
+    assert any(view.where(e) for e in elements) and any(view.derivations(e) for e in elements)
+    assert [view.body(n) for n in nodes] == [here.body(n) for n in nodes]
+    assert any(view.body(n) for n in nodes)
+    assert [view.degree(n) for n in nodes] == [here.degree(n, b) for n in nodes]
+    assert view.path_nodes() == here.path_nodes(b)
+    assert view.file_symbols(nodes) == here.file_symbols(nodes, b)
+
+
+def test_a_snapshot_of_the_tables_searches_and_counts_as_the_snapshot_of_a_build_in_memory(hub, tmp_path, caplog):
     laptop = Machine(tmp_path, "laptop")
     laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it, see guide."))
     assert push(hub, laptop).ok
     build(hub, caplog)
     view = Snapshot.from_stored(read_back(hub.db, project_id(hub))).view()
-    store = Store.open_file(built_here(hub, laptop), immutable=True)
+    here = here_view(hub, laptop)
     try:
-        store.reader = frozenset()
-        b = store.latest_ready()
-        nodes = sorted(store.alive_ids("nodes", b))
-        elements = [*nodes, *sorted(store.alive_ids("edges", b))]
-        units = sorted(store.alive_ids("units", b))
-        assert units and nodes
-        assert placed(view.summary()) == placed(store.summary()) and view.latest_ready() == b
-        assert view.seen(b) == store.seen(b)
-        assert view.top_audience(b) == store.top_audience(b)
-        assert [view.unit(u) for u in units] == [store.unit(u, b) for u in units]
-        assert [view.where(e) for e in elements] == [store.where(e, b) for e in elements]
-        assert [view.derivations(e) for e in elements] == [store.derivations(e, b) for e in elements]
-        assert any(view.where(e) for e in elements) and any(view.derivations(e) for e in elements)
-        assert [view.body(n) for n in nodes] == [store.body(n) for n in nodes]
-        assert any(view.body(n) for n in nodes)
-        assert [view.degree(n) for n in nodes] == [store.degree(n, b) for n in nodes]
-        assert view.path_nodes() == store.path_nodes(b)
-        assert view.file_symbols(nodes) == store.file_symbols(nodes, b)
-    finally:
-        store.close()
-
-
-def test_a_snapshot_of_the_tables_searches_and_counts_as_the_store_of_the_build_file(hub, tmp_path, caplog):
-    laptop = Machine(tmp_path, "laptop")
-    laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it, see guide."))
-    assert push(hub, laptop).ok
-    build(hub, caplog)
-    view = Snapshot.from_stored(read_back(hub.db, project_id(hub))).view()
-    store = Store.open_file(built_here(hub, laptop), immutable=True)
-    try:
-        store.reader = frozenset()
-        b = store.latest_ready()
-        nodes = sorted(store.alive_ids("nodes", b))
+        b = here.latest_ready()
+        nodes = sorted(here.alive_ids("nodes", b))
         for query in ("guide", "install app", "works"):
-            assert view.search(query, b) == store.search(query, b)
-            assert view.search_scored(query, b) == store.search_scored(query, b)
-            assert view.plain_search(query, 10) == store.plain_search(query, 10)
-            assert view.plain_search(query, 10, ["Document"]) == store.plain_search(query, 10, ["Document"])
-            counted = {n: {"words": m["words"], "of": m["of"]} for n, m in store.matched(nodes, query).items()}
-            assert view.matched(nodes, query) == counted
+            assert view.search(query, b) == here.search(query, b)
+            assert view.search_scored(query, b) == here.search_scored(query, b)
+            assert view.plain_search(query, 10) == here.plain_search(query, 10)
+            assert view.plain_search(query, 10, ["Document"]) == here.plain_search(query, 10, ["Document"])
+            assert view.matched(nodes, query) == here.matched(nodes, query)
         assert view.search("guide", b) and view.plain_search("guide", 10)
-        assert view.code_files(["guide"]) == store.code_files(["guide"])
-        assert [view.code_lines(n, ["guide"]) for n in nodes] == [store.code_lines(n, ["guide"]) for n in nodes]
-        assert view.asked_nodes(nodes) == store.asked_nodes(nodes) == set()
-        assert view.asked_clearance is None and store.asked_clearance is None
-        assert [view.alias_of(n, b) for n in nodes] == [store.alias_of(n, b) for n in nodes]
+        assert any(m["words"] for m in view.matched(nodes, "guide").values())
+        assert view.code_files(["guide"]) == here.code_files(["guide"])
+        assert [view.code_lines(n, ["guide"]) for n in nodes] == [here.code_lines(n, ["guide"]) for n in nodes]
+        assert view.asked_nodes(nodes) == here.asked_nodes(nodes) == set()
+        assert view.asked_clearance is None and here.asked_clearance is None
+        assert [view.alias_of(n, b) for n in nodes] == [here.alias_of(n, b) for n in nodes]
         assert view.alias_of("docs:doc:nowhere", b) is None
-        assert view.degrees(nodes, b, (9, 9)) == store.degrees(nodes, b, (9, 9))
-        assert view.degrees(nodes, b, (0, 0)) == store.degrees(nodes, b, (0, 0))
-        assert sorted(view.kind_counts(b)) == sorted(store.kind_counts(b))
-        assert sorted(view.shape_counts(b)) == sorted(store.shape_counts(b))
+        assert view.degrees(nodes, b, (9, 9)) == here.degrees(nodes, b, (9, 9))
+        assert view.degrees(nodes, b, (0, 0)) == here.degrees(nodes, b, (0, 0))
+        assert sorted(view.kind_counts(b)) == sorted(here.kind_counts(b))
+        assert sorted(view.shape_counts(b)) == sorted(here.shape_counts(b))
         assert view.shape_counts(b)
-        assert view.build_row(b)["coverage"] == store.build_row(b)["coverage"]
-        assert sorted(view.file_ids()) == sorted(store.file_ids())
+        assert view.build_row(b)["coverage"] == here.build_row(b)["coverage"]
+        assert sorted(view.file_ids()) == sorted(here.file_ids())
         low, high = nodes[0], nodes[len(nodes) // 2]
-        assert view.nodes_between(low, high) == store.nodes_between(low, high)
+        assert view.nodes_between(low, high) == here.nodes_between(low, high)
         for n in nodes:
-            assert view.changed_by(n, 20) == store.changed_by(n, 20)
-        assert sorted(view.changes_of(nodes)) == sorted(store.changes_of(nodes))
+            assert view.changed_by(n, 20) == here.changed_by(n, 20)
+        assert sorted(view.changes_of(nodes)) == sorted(here.changes_of(nodes))
     finally:
-        store.close()
+        here.close()
         view.close()
 
 
@@ -245,49 +244,40 @@ def write_and_read(db, project_id: int, rows: StoreRows) -> StoreRows:
     return asyncio.run(run())
 
 
-def test_a_snapshot_of_the_tables_reads_the_asked_rows_as_the_store_of_the_build_file(hub, tmp_path, caplog):
+def test_a_snapshot_of_the_tables_reads_the_asked_rows_as_the_snapshot_of_a_build_in_memory(hub, tmp_path, caplog):
     laptop = Machine(tmp_path, "laptop")
     laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it, see guide."))
     assert push(hub, laptop).ok
     build(hub, caplog)
-    path = tmp_path / "asked.sqlite"
-    shutil.copy(built_here(hub, laptop), path)
-    store = Store(path)
-    try:
-        b = store.latest_ready()
-        nodes = sorted(store.alive_ids("nodes", b))
-        guide, setup = (next(n for n in nodes if n.endswith(name)) for name in ("guide", "setup"))
-        store.write_asked(
-            [
-                asked.Row(guide, 0, 0, None, 1.15, "install install app"),
-                asked.Row(guide, 9, 9, None, 1.2, "works"),
-                asked.Row(setup, 0, 0, '["chat:1"]', 1.1, "works works"),
-            ],
-            2.0,
-        )
-        stored = store_rows(store, b)
-        back = write_and_read(hub.db, add_project(hub.db, "asked"), stored)
-        assert back.asked == stored.asked and len(back.asked) == 3 and back.asked_weight == 2.0
-        snap = Snapshot.from_stored(back)
-        for reader in (frozenset(), frozenset({"chat:1"})):
-            view, store.reader = snap.view(reader), reader
-            assert view.asked_nodes(nodes) == store.asked_nodes(nodes) == {guide, setup}
-            assert view.weight_of_asked() == store.weight_of_asked() == 2.0
-            moved = 0
-            for clearance in (None, (0, 0), (9, 9)):
-                view.asked_clearance = store.asked_clearance = clearance
-                for query in ("install app", "works", "guide"):
-                    assert view.search_scored(query, b) == store.search_scored(query, b), (reader, clearance, query)
-                    store.asked_clearance = None
-                    moved += clearance is not None and view.search_scored(query, b) != store.search_scored(query, b)
-                    store.asked_clearance = clearance
-            assert moved  # the asked rows changed a ranking
-            view.asked_weight = store.asked_weight = 0.5
-            assert view.weight_of_asked() == 0.5
-            assert view.search_scored("works", b) == store.search_scored("works", b)
-            store.asked_weight = None
-    finally:
-        store.close()
+    rows = built_here(hub, laptop)
+    nodes = sorted(row[0] for row in rows.nodes)
+    guide, setup = (next(n for n in nodes if n.endswith(name)) for name in ("guide", "setup"))
+    found = [
+        asked.Row(guide, 0, 0, None, 1.15, "install install app"),
+        asked.Row(guide, 9, 9, None, 1.2, "works"),
+        asked.Row(setup, 0, 0, '["chat:1"]', 1.1, "works works"),
+    ]
+    stored, _ = with_asked(rows, found, 2.0)
+    back = write_and_read(hub.db, add_project(hub.db, "asked"), stored)
+    assert back.asked == stored.asked and len(back.asked) == 3 and back.asked_weight == 2.0
+    snap, own = Snapshot.from_stored(back), Snapshot.from_stored(stored)
+    b = own.view().latest_ready()
+    for reader in (frozenset(), frozenset({"chat:1"})):
+        view, here = snap.view(reader), own.view(reader)
+        assert view.asked_nodes(nodes) == here.asked_nodes(nodes) == {guide, setup}
+        assert view.weight_of_asked() == here.weight_of_asked() == 2.0
+        moved = 0
+        for clearance in (None, (0, 0), (9, 9)):
+            view.asked_clearance = here.asked_clearance = clearance
+            for words in ("install app", "works", "guide"):
+                assert view.search_scored(words, b) == here.search_scored(words, b), (reader, clearance, words)
+                here.asked_clearance = None
+                moved += clearance is not None and view.search_scored(words, b) != here.search_scored(words, b)
+                here.asked_clearance = clearance
+        assert moved  # the asked rows changed a ranking
+        view.asked_weight = here.asked_weight = 0.5
+        assert view.weight_of_asked() == 0.5
+        assert view.search_scored("works", b) == here.search_scored("works", b)
 
 
 def test_the_vectors_of_a_build_read_back_by_their_node_vec_key(hub_db):
@@ -353,3 +343,36 @@ def test_writing_the_same_graph_again_changes_no_row(hub_db):
     first, second = asyncio.run(run())
     assert first["kg_review_rows"]["new"] == 2 and first["kg_text_rows"]["new"] == 2
     assert all(c == {"new": 0, "changed": 0, "deleted": 0} for c in second.values()), second
+
+
+def test_the_head_of_a_graph_reads_its_clusters_and_none_of_its_other_rows(hub_db):
+    pid = add_project(hub_db, "head")
+    item = {"fingerprint": "f1", "title": "Two guides", "nodes": ["docs:doc:a", "docs:doc:b"], "kind": "duplicate"}
+    rows = StoreRows(
+        "sha256:head",
+        (),
+        (),
+        (("docs:doc:a", ("guide", "how the app works")),),
+        {"code:file:a": "def main(): pass"},
+        ((1, 2), frozenset({"chat:1"})),
+        derivations=(("docs:doc:a", "[]", "[]"),),
+        summary={"ready": True, "content_hash": "sha256:head"},
+        clusters=(("cluster", 1, {"label": "Guides"}),),
+        review=(item,),
+    )
+
+    async def run():
+        engine = make_engine(hub_db)
+        try:
+            async with engine.begin() as conn:
+                await kg_graph_rows.write_graph(conn, pid, None, rows)
+            async with engine.connect() as conn:
+                return await kg_graph_rows.read_head(conn, pid), await kg_graph_rows.read_head(conn, pid + 1000)
+        finally:
+            await engine.dispose()
+
+    head, none = asyncio.run(run())
+    assert none is None
+    assert (head.content_hash, head.summary, head.top) == (rows.content_hash, rows.summary, rows.top)
+    assert (head.clusters, head.review) == (rows.clusters, rows.review)
+    assert (head.nodes, head.keyed, head.code, head.derivations) == ((), (), {}, ())

@@ -67,7 +67,7 @@ from evo_agents.hub.kg_graph_rows import MAIN
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.security import Principal
 from evo_agents.kg.scrub import blob_secrets, might_hold_secret, row_secrets, run_summary
-from evo_agents.kg.store_secrets import graph_secrets
+from evo_agents.sqlite_legacy import graph_text_rows
 
 log = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ def _read(store: BlobStore, row, scratch: Path) -> dict[str, int] | str | None:
                 found = store.fetch(blob_key(row.sha256), handle, row.size)
             if found != (row.sha256, row.size):
                 return None
-            return graph_secrets(path, immutable=True)[1]
+            return graph_secrets(path)[1]
     buffer = io.BytesIO()
     found = store.fetch(blob_key(row.sha256), buffer, KIND_LIMITS[SOURCE_KIND])
     if found != (row.sha256, row.size):
@@ -206,7 +206,7 @@ async def _graphs(conn: AsyncConnection, project_id: int) -> dict[str, list[int]
 
 def _graph_rows(project_id: int):
     """The rows of the project's main graph in the hub's tables that hold text, as pairs (text, JSON text), as
-    ``evo_agents.kg.store_secrets.GRAPH_QUERIES`` reads them from a graph file."""
+    ``evo_agents.sqlite_legacy.GRAPH_QUERIES`` reads them from a graph file."""
     nodes, edges, text = tables.kg_nodes, tables.kg_edges, tables.kg_text_rows
     scope = lambda t: (t.c.project_id == project_id, t.c.branch_id == MAIN)  # noqa: E731
     return (
@@ -226,6 +226,19 @@ def _batch_secrets(batch: list) -> tuple[int, Counter]:
             holding += 1
             kinds.update(counts)
     return holding, kinds
+
+
+def graph_secrets(path: Path) -> tuple[int, dict[str, int]]:
+    """The rows of the graph file at ``path``, one an older build uploaded, holding a secret, and the secrets by kind:
+    the full-text index of the nodes (name and text), and the name and properties of every node and edge, current or
+    not."""
+    rows, kinds = 0, Counter()
+    for first, second in graph_text_rows(path, immutable=True):
+        counts = row_secrets(first, second)
+        if counts:
+            rows += 1
+            kinds.update(counts)
+    return rows, dict(sorted(kinds.items()))
 
 
 async def graph_secrets_in_tables(conn: AsyncConnection, project_id: int) -> ScrubGraph:

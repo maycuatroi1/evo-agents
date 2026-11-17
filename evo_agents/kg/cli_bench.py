@@ -192,7 +192,7 @@ def _local_sets(entries: list[str] | None) -> list[tuple[str, Path]]:
 
 def cmd_run(args) -> int:
     from evo_agents.kg import settings as kg_settings
-    from evo_agents.kg.bench import compare, corpus, datasets, memory, run
+    from evo_agents.kg.bench import compare, corpus, datasets, memory, rows_file, run
     from evo_agents.kg.evaluate import load_set, project_checkouts
     from evo_agents.kg.project import ProjectError, resolve_project
 
@@ -231,13 +231,17 @@ def cmd_run(args) -> int:
                 for search in options.searches:
                     parts[search][bench] = part[search]
                     records[search] += mine[search]
+            snap = None
             for name, path in local:
                 project = resolve_project(args.project)
+                snap = snap or rows_file.local_snapshot(project)  # a build in memory of the corpus on this machine
                 for search in options.searches:
                     part, mine = run.score_local(
                         name,
                         load_set(path),
-                        lambda _project, project=project, search=search: run.session_of(project, search),
+                        lambda _project, project=project, search=search, snap=snap: run.session_of(
+                            project, search, snap=snap
+                        ),
                         lambda _project: project_checkouts(args.project),
                         options,
                         run.file_digest(path),
@@ -347,8 +351,7 @@ def cmd_show(args) -> int:
 def cmd_profile(args) -> int:
     """The data profile of every graph of this extractor in the bench cache, summed by repo."""
     from evo_agents.kg import profile as kg_profile
-    from evo_agents.kg.bench import datasets, graphs
-    from evo_agents.kg.store import StaleSchema, Store
+    from evo_agents.kg.bench import datasets, graphs, rows_file
 
     try:
         lay = graphs.layout(datasets.cache_dir(args.cache))
@@ -358,14 +361,8 @@ def cmd_profile(args) -> int:
     for graph in graphs.cached(lay):
         if not graph.current:
             continue
-        try:
-            store = Store.open_file(graph.project / "graph.sqlite")
-        except (StaleSchema, OSError):
-            continue
-        try:
-            found = kg_profile.of_coverage((store.summary() or {}).get("coverage"))
-        finally:
-            store.close()
+        summary = rows_file.summary_of(graph.project)
+        found = kg_profile.of_coverage(summary.get("coverage")) if summary is not None else None
         if found is None:
             continue
         repo = graph.name.rsplit("-", 1)[0]

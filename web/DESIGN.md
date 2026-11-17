@@ -307,7 +307,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Today's items: release, plan step done, run failed, run parked, metric moved, cost, proposal; the notice of Today | `Tags`, `CircleCheck`, `CircleX`, `CirclePause`, `ChartLine`, `Coins`, `Lightbulb`; `CalendarDays` |
 | A decision's grounds: why the agent picks its option, how to undo the act, an act that cannot be undone, a ref of evidence | `Lightbulb`, `Undo2`, `OctagonAlert`, `Paperclip` |
 | Sidebar toggle | `PanelLeft` |
-| The sidebar's folds: Delivery, Improvement, Knowledge, Apps, Settings; a fold's chevron | `Ship`, `TrendingUp`, `BookMarked`, `LayoutGrid`, `Settings`; `ChevronRight` |
+| The sidebar's folds: Business cycle, Development cycle, Improvement, Knowledge, Apps, Settings; a fold's chevron | `Compass`, `Hammer`, `TrendingUp`, `BookMarked`, `LayoutGrid`, `Settings`; `ChevronRight` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
 
 ### Provider logos
@@ -556,19 +556,25 @@ Shared pieces built on them:
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
   "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Today, Inbox, Chats and the
   current project's Systems and Knowledge graph (project areas marked `top`, the core of a project one click from
-  anywhere), the current project (Overview, Decisions, Plans, Runs, then the folds Delivery: Merge queue, Releases, Cron jobs;
-  Improvement: Goals, Signals, Loop, Insights, Curator; Knowledge: Agents, Memories, Skills, Browser; Apps: the pages its
-  enabled plugins add and Plugins, section Plugins below), the hub (Workers, Org chart, My memories, Shared skills, then
-  the fold Settings: Secrets, Accounts, Administration for a hub admin), and at the foot the fleet line and the account.
-  A fold (`NAV_GROUPS`) keeps the areas opened less often under one row, so the sidebar fits a laptop screen: the
+  anywhere), the current project (Overview, Decisions, then the folds Business cycle: Signals, Problems, Opportunities,
+  Goals and the plugin pages that name it, such as the Lean Canvas and the SRS; Development cycle: the plugin pages that
+  name it, such as Tasks, then Plans, Runs, Loop, Merge queue, Releases, Cron jobs; Improvement: Insights, Curator;
+  Knowledge: Agents, Memories, Skills, Browser; Apps: the pages of plugins that name no area and Plugins, section
+  Plugins below), the hub (Workers, Org chart, My memories, Shared skills, then the fold Settings: Secrets, Accounts,
+  Administration for a hub admin), and at the foot the fleet line and the account. The Business cycle holds what to
+  deliver, to whom and why; the Development cycle how it gets built and shipped.
+  A fold (`NAV_GROUPS`) keeps areas under one row, so the sidebar fits a laptop screen: the
   fold's icon, its label and a `ChevronRight` in `fg-subtle` that turns down while open (no turn under reduced motion),
   its items below indented on a `sidebar-border` guide line. It opens on a click (a button with `aria-expanded`), by
-  itself while the page shown is one of its items, and stays as the visitor left it: the folds they opened are the
-  cookie `hub_nav_groups`, read by the server so the sidebar renders open as it was; one opened by the page shown closes
-  again once they leave it. Closed while it holds the page shown, its row is `surface-selected` with a `brand` icon. A
-  closed fold's links stay in the page, `hidden`. On the folded desktop sidebar a fold is its icon, and a click opens
-  its items in a menu to the right (the fold's name as an `overline` on top, the page shown `surface-selected`). A fold
-  left with one item shows it on its own row, and an item with a count never sits in a fold. Inbox counts the decisions
+  itself while the page shown is one of its items, and stays as the visitor left it: the two cycles are open until the
+  visitor closes them (`NAV_GROUPS_OPEN`), the others closed until they open them, and the cookie `hub_nav_groups` keeps
+  how they differ (a closed cycle after a minus), read by the server so the sidebar renders as it was; one opened by the
+  page shown closes again once they leave it. Closed while it holds the page shown, its row is `surface-selected` with
+  a `brand` icon. A closed fold's links stay in the page, `hidden`. On the folded desktop sidebar a fold is its icon,
+  and a click opens its items in a menu to the right (the fold's name as an `overline` on top, the page shown
+  `surface-selected`). A fold left with one item shows it on its own row. A closed fold shows its items' counts on its
+  row, one pill a kind, said in words after its label, and a dot on its icon when the sidebar is folded, so a fold never
+  hides a number. Inbox counts the decisions
   and the Curator's proposals waiting for the visitor's answer in `attention`, Runs the project's active runs in
   `running` (`nav-counts.ts`, through the same queries as the bell and the runs pages); a count is a round pill drawn for the eye, said in words to screen
   readers after the label, hidden at zero, and a dot on the icon when the sidebar is folded. The fleet line
@@ -956,38 +962,37 @@ Shared pieces built on them:
   toast. A third kind, GitLab token for the hub (`forge`, `GitMerge`), is the token the merge queue drives merge
   requests with: its form asks for the URL prefix alone (never github.com), lists only the projects the visitor
   administers, names no worker (the row says "The hub alone"), needs an end day and takes one line.
-- `components/merge-queue`, a project's merge queue on GitLab (`/p/{project}/merge-queue`, first in the sidebar's
-  Delivery fold, `GitMerge`; plan gitlab-merge-queue). Its head carries three tabs (`TabNav`): Queue, Figures and
+- `components/merge-queue`, a project's merge queue on GitLab (`/p/{project}/merge-queue`, in the sidebar's Development
+  cycle after Loop, `GitMerge`; plan gitlab-merge-queue). Its head carries three tabs (`TabNav`): Queue, Figures and
   Policy, the Queue tab counting what waits for an admin. Its queries live in `lib/merge-queue.ts` and its writes in
   `lib/use-merge-actions.ts`, since the Inbox answers the queue's notices too. The Queue (read every 15 seconds, the
   page's LiveIndicator query) puts an `attention` banner first for each repo whose breaker tripped (what tripped it,
   why, when, and Reset for an admin behind a `ConfirmAction`), then a reader's note, the MetricStrip (In queue, Merging
   now in `running`, Blocked in `attention`, After merge), then two columns from xl: the merge requests in a `DataCard`
-  (filter chips by where they stand: waiting, merging, blocked, after merge, finished, and a repo select; the title
-  with its `!iid` over why it waits, in `danger` when it is blocked or undone; the repo and target branch; where it
-  comes from as a tag with the agent profile; its state as a pill; when it moved) and a 22 rem column with the breaker
-  of each repo and the audit samples, those waiting first (OK at once, Faulty through a dialog with a note). A title
-  opens the merge request over the list in a sheet (`?mr=ID`): its state, source and `!iid`, its GitLab link, an
-  admin's Approve release (only while it waits in releasing with its UAT passed and the policy releases its repo by
-  hand) and Revert (only after its merge, never a revert's, behind a `ConfirmAction`), why it stands where it does,
-  its facts (branches, run, plan and steps, agent and model, head, the commit it was rebased onto and its rebases in
-  a row, the commit it merged as, its UAT and PROD checks), the Judges' verdicts dimension by dimension with the
-  risk, and its ledger newest first. The merge states are a map of their own (`badges.tsx`, `StatusPill`): running
-  while the hub or a Judge works on it, `review` once merged and followed to its checks, `success` done, `danger`
-  rolling back or reverting, `attention` blocked or paused, neutral waiting, outline reverted or closed. Figures (`?days=`
-  7, 30 or 90 by a `Segmented`) sums the merges, reverts, rollbacks and Judge misses in a strip over a table by repo,
-  agent and model with the wait in the queue and the time to UAT and to PROD. Policy shows the policy at its newest
-  revision or `?revision=N` (each repo in auto or off with its target branch, PROD release and jobs, then the merge,
-  Judge, breaker and audit keys, a key at its default tagged so), who wrote the revision and why in the head's sub
-  line, the revisions with the keys each changed, and a comparison of two (`?from=N&to=M`, revision 0 being no
-  policy). An admin writes the next revision through the form (`?edit=1`, `policy-form.tsx`): a field per key with
-  its hint and default, the hub's checks repeated (`policy-model.ts`), auto not offered for a repo on github.com, a
-  note, and `if_revision` so a revision saved meanwhile is never overwritten; the body keeps what the policy set and
-  the admin left, and what differs from its default. A reader reads every page and gets no control that writes. In
-  the Inbox, a notice of the queue (`merge_default_branch` with `details.ask` sample, release or revert, and
-  `merge_paused`, `PowerOff`) carries its answer (`inbox/merge-notice.tsx`): OK or Faulty with a note, Approve release,
-  Revert one of the suspects, Reset breaker, and the queue's link; once the queue says the question is answered, the
-  notice says so instead.
+  (filter chips by where they stand: waiting, merging, blocked, after merge, finished, and a repo select; the title with
+  its `!iid` over why it waits, in `danger` when it is blocked or undone; the repo and target branch; where it comes
+  from as a tag with the agent profile; its state as a pill; when it moved) and a 22 rem column with the breaker of each
+  repo and the audit samples, those waiting first (OK at once, Faulty through a dialog with a note). A title opens the
+  merge request over the list in a sheet (`?mr=ID`): its state, source and `!iid`, its GitLab link, an admin's Approve
+  release (only while it waits in releasing with its UAT passed and the policy releases its repo by hand) and Revert
+  (only after its merge, never a revert's, behind a `ConfirmAction`), why it stands where it does, its facts (branches,
+  run, plan and steps, agent and model, head, the commit it was rebased onto and its rebases in a row, the commit it
+  merged as, its UAT and PROD checks), the Judges' verdicts dimension by dimension with the risk, and its ledger newest
+  first. The merge states are a map of their own (`badges.tsx`, `StatusPill`): running while the hub or a Judge works on
+  it, `review` once merged and followed to its checks, `success` done, `danger` rolling back or reverting, `attention`
+  blocked or paused, neutral waiting, outline reverted or closed. Figures (`?days=` 7, 30 or 90 by a `Segmented`) sums
+  the merges, reverts, rollbacks and Judge misses in a strip over a table by repo, agent and model with the wait in the
+  queue and the time to UAT and to PROD. Policy shows the policy at its newest revision or `?revision=N` (each repo in
+  auto or off with its target branch, PROD release and jobs, then the merge, Judge, breaker and audit keys, a key at its
+  default tagged so), who wrote the revision and why in the head's sub line, the revisions with the keys each changed,
+  and a comparison of two (`?from=N&to=M`, revision 0 being no policy). An admin writes the next revision through the
+  form (`?edit=1`, `policy-form.tsx`): a field per key with its hint and default, the hub's checks repeated
+  (`policy-model.ts`), auto not offered for a repo on github.com, a note, and `if_revision` so a revision saved
+  meanwhile is never overwritten; the body keeps what the policy set and the admin left, and what differs from its
+  default. A reader reads every page and gets no control that writes. In the Inbox, a notice of the queue
+  (`merge_default_branch` with `details.ask` sample, release or revert, and `merge_paused`, `PowerOff`) carries its
+  answer (`inbox/merge-notice.tsx`): OK or Faulty with a note, Approve release, Revert one of the suspects, Reset
+  breaker, and the queue's link; once the queue says the question is answered, the notice says so instead.
 - `components/agents`, a project's Agents (`/p/{project}/agents`, first in the sidebar's Knowledge fold;
   docs/hub.md, Agent profiles). An agent is drawn by `components/data/agent-avatar.tsx` (`AgentAvatar`): its uploaded
   image, or until there is one (and while it loads) the first letter of its name on its colour, in white or ink,
@@ -1797,7 +1802,7 @@ Shared pieces built on them:
   first opened): a switch per kind of notice a member may turn off (today Files from your runs), applied when flipped
   with a toast, and All notification settings at its foot, to `/settings/notifications`. The project's overview has a Run outputs card (`pages/output-settings.tsx`): the switch of the images of
   tools' results, which an admin of the project flips and anyone else reads disabled, and the hub's limits.
-- `components/insights`, a project's Insights (`/p/{project}/insights`, in the sidebar's Improvement fold after Loop): the
+- `components/insights`, a project's Insights (`/p/{project}/insights`, first in the sidebar's Improvement fold): the
   runs that ended on each UTC day of the last 7, 30 or 90 days, from `GET /v1/projects/{p}/runs/stats` (prefetched on the
   server for the range the URL names). The range is the kit's segmented control in one row under the page head, with
   the days it spans ("Oct 1 to Oct 7, UTC days"), kept in the URL (`?days=7`, `?days=90`, none for 30) through
@@ -1892,7 +1897,7 @@ Shared pieces built on them:
   decisions and opens it in a sheet of its own (`/inbox?proposal=ID`, `inbox/proposal-sheet.tsx`); Home's Projects
   card says each project's Curator state and what waits. A review run's page carries the Review run tag and links to
   the Curator and to the run's proposals.
-- `components/cron`, a project's cron jobs (`/p/{project}/cron-jobs`, in the sidebar's Delivery fold after Releases;
+- `components/cron`, a project's cron jobs (`/p/{project}/cron-jobs`, in the sidebar's Development cycle after Releases;
   docs/hub.md, Cron jobs), for any member. The head is "Cron jobs" with New cron job for a writer. One table, by name:
   the name (it opens the job's history) with its kind as a `Tag` and what it starts under it (`@agent`, the plan, the
   command line), the schedule in words over the expression in mono and its time zone, the next fire as a relative time,
@@ -1903,29 +1908,29 @@ Shared pieces built on them:
   help, the zone starting as the browser's; a 409 reads the job again and the form starts over from the newest
   revision. Pause asks for an optional reason in `ConfirmAction`; Run now and Resume answer with a toast. A job's
   fires open in a sheet from the right (`?job=`), its facts over a table of due time, outcome, run and reason.
-- `components/releases`, a project's daily release (`/p/{project}/releases`, in the sidebar's Delivery fold after the
-  Merge queue; docs/releases.md). The head is "Releases" with a pill only while the schedule is paused (`attention`), Run now
-  (`Play`, busy while the hub reads GitHub; hidden while paused) and Pause (confirmed in `ConfirmAction`, since it
-  cancels the release runs still queued and closes a cycle left idle) or Resume (the primary button while paused) for an
-  admin of the project, and one line: the repo as an `Identifier` that opens on GitHub, the daily time and zone, the
-  member its runs run as and the next check as a relative time, or who paused it. Under it, only when something is
-  wrong, a `danger` banner (an alert) while the App's installation grants no Actions (`actions_permission`) and an
-  `attention` banner while the cycle is stopped: its cause and reason, that it waits for its owner, and Answer the
-  decision (the Inbox's sheet) and Open the triage thread. The cycle open now is a card (`cycle-card.tsx`): its title
-  with a pill only when stopped, where it started (a cut of the target ref, or the fix of a red tag), the range from the
-  newest tag to the target's commit as `Identifier`s on GitHub, the changed paths as chips, its cost against its cap as
-  the kit's meter (`attention-solid` from 75 %, `danger-solid` from 90 %) with the figure beside it, then the tags it
-  follows (`cycle-tables.tsx`: the tag, its CI as a pill, the workflow run as a link out, who tagged it, when the hub
-  last read it; under the row the failed test ids in `danger` mono, five at most, a fault of the infrastructure and the
-  problem that kept the hub from reading the CI) and its runs (`#N` to the run's page, Cut or Fix of the tag as a
-  `Tag`, the run's pill, how the hub landed it with the pull request, a refusal in `danger`, the cost); without a cycle,
-  one quiet line with the next check. Then the Schedule and Last check cards side by side from lg (`schedule-card.tsx`:
-  the outcome as its icon and words, `attention` for paused or an owner without the admin role, `danger` for an error,
-  with the reason), the recent checks once there are two, and the cycles that ended in a `DataCard` with Newer and
-  Older (`past-cycles.tsx`: `#N` and the day over how it ended, the cycle's pill, its tags each with its CI icon, runs,
-  cost, ended). The CI, cycle and check looks live in `badges.tsx` on the shared `StatusPill`. Under 768 px every table
-  is a list of rows. The page reads the release every 10 seconds while the cycle has a run queued or under way or a tag
-  whose CI the hub still reads, every minute otherwise.
+- `components/releases`, a project's daily release (`/p/{project}/releases`, in the sidebar's Development cycle after
+  the Merge queue; docs/releases.md). The head is "Releases" with a pill only while the schedule is paused
+  (`attention`), Run now (`Play`, busy while the hub reads GitHub; hidden while paused) and Pause (confirmed in
+  `ConfirmAction`, since it cancels the release runs still queued and closes a cycle left idle) or Resume (the primary
+  button while paused) for an admin of the project, and one line: the repo as an `Identifier` that opens on GitHub, the
+  daily time and zone, the member its runs run as and the next check as a relative time, or who paused it. Under it,
+  only when something is wrong, a `danger` banner (an alert) while the App's installation grants no Actions
+  (`actions_permission`) and an `attention` banner while the cycle is stopped: its cause and reason, that it waits for
+  its owner, and Answer the decision (the Inbox's sheet) and Open the triage thread. The cycle open now is a card
+  (`cycle-card.tsx`): its title with a pill only when stopped, where it started (a cut of the target ref, or the fix of
+  a red tag), the range from the newest tag to the target's commit as `Identifier`s on GitHub, the changed paths as
+  chips, its cost against its cap as the kit's meter (`attention-solid` from 75 %, `danger-solid` from 90 %) with the
+  figure beside it, then the tags it follows (`cycle-tables.tsx`: the tag, its CI as a pill, the workflow run as a link
+  out, who tagged it, when the hub last read it; under the row the failed test ids in `danger` mono, five at most, a
+  fault of the infrastructure and the problem that kept the hub from reading the CI) and its runs (`#N` to the run's
+  page, Cut or Fix of the tag as a `Tag`, the run's pill, how the hub landed it with the pull request, a refusal in
+  `danger`, the cost); without a cycle, one quiet line with the next check. Then the Schedule and Last check cards side
+  by side from lg (`schedule-card.tsx`: the outcome as its icon and words, `attention` for paused or an owner without
+  the admin role, `danger` for an error, with the reason), the recent checks once there are two, and the cycles that
+  ended in a `DataCard` with Newer and Older (`past-cycles.tsx`: `#N` and the day over how it ended, the cycle's pill,
+  its tags each with its CI icon, runs, cost, ended). The CI, cycle and check looks live in `badges.tsx` on the shared
+  `StatusPill`. Under 768 px every table is a list of rows. The page reads the release every 10 seconds while the cycle
+  has a run queued or under way or a tag whose CI the hub still reads, every minute otherwise.
 - `components/plugins`, plugins (docs/plugins.md; docs/hub.md, Plugins). Administration gains a Plugins tab
   (`/admin/plugins`, hub admins): the store in one `DataCard` table, a plugin's name over its id and description, its
   publisher in mono (a `ShieldAlert` in `attention` once the operator no longer trusts it; a core plugin of the hub's image
@@ -1965,8 +1970,10 @@ Shared pieces built on them:
     emptied whatever the hub answers. The form repeats the hub's checks of one layer (type, bounds, length, pattern,
     choices) and takes focus to the first wrong field; Save sends only what changed with `if_version`, a refusal shows
     above it, the version saved is a toast. Someone who may not write the layer reads what it sets instead.
-  - A plugin's page (`/p/{project}/x/{plugin}/{page}`), each a menu item after the project's own areas with the icon
-    and title its manifest gives (`shell/plugin-nav.tsx`; the icons, a fixed Lucide set, are a chunk of their own loaded
+  - A plugin's page (`/p/{project}/x/{plugin}/{page}`), each a menu item with the icon and title its manifest gives, in
+    the fold its manifest names as its `area` (the Business cycle, the Development cycle, Improvement, Knowledge; Apps
+    when it names none), after the fold's own areas (in the Development cycle before Plans, in Apps before Plugins)
+    (`shell/plugin-nav.tsx`, `shell/nav-links.ts`; the icons, a fixed Lucide set, are a chunk of their own loaded
     only when a plugin adds a page, the puzzle standing in meanwhile). A **core plugin's page is native**: a feature
     folder of its own under `components/` and a route under `app/(app)/p/[project]/x/<plugin>/` whose layout calls
     `requirePlugin` (`lib/plugins-server.ts`), so it answers 404 where the project has not enabled the plugin, then the
@@ -2156,8 +2163,8 @@ Shared pieces built on them:
   Reject or Defer; for an overdue card a new deadline after today with Extend, or Retire); once approved, the snapshot
   lists each claim at its rev and status in effect with its hash. Readers see a note that they only read, and no
   control that writes.
-- `components/signals`, a project's Signals (`/p/{project}/signals?key=&tenant=&days=`, in the sidebar's Improvement fold
-  after Goals, `RadioTower`; docs/signals.md), the page the value check links from the evidence it writes. Its
+- `components/signals`, a project's Signals (`/p/{project}/signals?key=&tenant=&days=`, first in the sidebar's Business
+  cycle, `RadioTower`; docs/signals.md), the page the value check links from the evidence it writes. Its
   words are the `signals` namespace; the reads both it and the canvas pages make are `lib/signal-queries.ts`. The keys
   of the registry are one `DataCard` table: the key in mono opening its series, kind, source, what it measures and the
   latest value with its unit and time (one read of each key, its newest signal). A key's series heads with the key and
@@ -2166,8 +2173,8 @@ Shared pieces built on them:
   at each signal (Recharts, loaded on demand), and every series, numbers and feedback alike, is a table of its values,
   the newest first, with when, the tenant and who sent it. It shows values and their series over time and analyses
   nothing.
-- `components/loop`, a project's Problems (`/p/{project}/problems` and `/problems/{code}`, in the sidebar's project
-  group before Goals, `Bandage`; plan problem-oriented-hub): what hurts, before any solution, which goals, claims and
+- `components/loop`, a project's Problems (`/p/{project}/problems` and `/problems/{code}`, in the sidebar's Business
+  cycle after Signals, `Bandage`; plan problem-oriented-hub): what hurts, before any solution, which goals, claims and
   plans point back to and the Loop goes from. Its words are the `problems` namespace; the reads are
   `lib/problem-queries.ts`, since the plans, goal and claim pages name problems too. The list is one `DataCard` table:
   the rank, the code chip and the statement opening the problem over who it hurts, its metric in mono, its status, its
@@ -2335,7 +2342,8 @@ reads as one page from top to bottom: the numbers of the last 24 hours, the work
    calls `requireFeature`, so its pages answer 404 as its API does.
 4. A core plugin's page (section Plugins, `components/plugins`): its components in a feature folder of their own, its
    route under `app/(app)/p/[project]/x/<plugin>/` with a layout that calls `requirePlugin(<plugin>, project, <page>)`,
-   no `PROJECT_NAV` entry (the menu lists it from the plugin's manifest once a project enables it), and its words under
+   no `PROJECT_NAV` entry (the menu lists it from the plugin's manifest once a project enables it, in the fold its
+   page's `area` names), and its words under
    a namespace of its own in both message files.
 5. Add the page to `PAGES` in `e2e/a11y.spec.ts`. Seed data with the `admin`, `member` and `signInAs`
    fixtures from `e2e/support/fixtures.ts`. Specs see the English default; a spec that matches Vietnamese

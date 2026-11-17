@@ -1,6 +1,6 @@
 """The entity graph the hub's web pages read (``evo_agents.hub.kg_entity_graph`` through ``WebSession``).
 
-Checked on a store written here, without a hub: the overview ranks entities by the documents that mention them and
+Checked on the snapshot of a graph built here, without a hub: the overview ranks entities by the documents that mention them and
 keeps the relations between those it shows; the neighbourhood stops at its depth and node limit and says what it
 left out; an entity's detail quotes the documents that mention it with a link and a line, a relation's the documents
 it was read from; and a reader whose grant stops at public never receives a secret entity, relation, document or
@@ -18,10 +18,10 @@ pytest.importorskip("sqlalchemy", reason="the hub's graph needs the hub-server e
 from evo_agents.hub import kg_entity_graph
 from evo_agents.hub.kg_graph import BuiltGraph
 from evo_agents.hub.kg_web import NotVisible, WebSession
+from evo_agents.kg.graph_model import Graph, edge_id, label_columns
+from evo_agents.kg.graph_rows import graph_rows
 from evo_agents.kg.policy import Label, Policy
-from evo_agents.kg.snapshot import Snapshot
-from evo_agents.kg.store import Graph, Store, edge_id
-from evo_agents.kg.store_filters import label_columns
+from evo_agents.kg.snapshot import Snapshot, SnapshotView
 
 PROJECT = "ents"
 PUBLIC = Label(0, 0, "U", frozenset({PROJECT}))
@@ -95,17 +95,19 @@ def _graph() -> Graph:
     return graph
 
 
-@pytest.fixture(params=["store", "snapshot"])
-def store(tmp_path, request):
-    found = Store(tmp_path / "graph.sqlite")
-    found.write(_graph(), state_digest="x", coverage={}, stats={}, policy=None)
+def view_of(graph: Graph, coverage: dict | None = None) -> SnapshotView:
+    """The graph as the hub reads it: the snapshot of its rows (``graph_rows``), for a reader of PROJECT."""
+    rows = graph_rows(graph, coverage=coverage or {}, stats={}, built_at="2026-11-05T00:00:00Z")
+    return Snapshot.from_stored(rows, 1).view(frozenset({PROJECT}))
+
+
+@pytest.fixture
+def store():
     kg_entity_graph.VIEWS.clear()
-    # the hub reads the snapshot of its tables, the CLI a store file: both give the same graph
-    yield found if request.param == "store" else Snapshot.from_store(found, 1).view(frozenset({PROJECT}))
-    found.close()
+    return view_of(_graph())
 
 
-def _session(store: Store, ceiling: Label) -> WebSession:
+def _session(store: SnapshotView, ceiling: Label) -> WebSession:
     built = BuiltGraph(1, "sha", 1, "hash", 8, 12, datetime(2026, 11, 5, tzinfo=UTC))
     return WebSession(PROJECT, Policy(PROJECT, {}), ceiling, "web", store, built, built)
 

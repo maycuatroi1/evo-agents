@@ -34,6 +34,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from starlette.datastructures import MutableHeaders
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 
 from evo_agents import __version__
 from evo_agents.hub import cache, kg_snapshots, wake
@@ -84,7 +85,24 @@ log = logging.getLogger(__name__)
 
 STALL_LOG_SECONDS = 1.0  # the event loop late by this much or more on a tick of ``_watch_loop`` is logged
 QUIET_PATHS = frozenset({"/v1/health", "/v1/health/live"})  # polled by probes: access lines at debug level
+GZIP_SKIP_PREFIXES = ("/mcp", "/v1/gateway", "/v1/blobs")
+GZIP_EXCLUDED_TYPES = (*DEFAULT_EXCLUDED_CONTENT_TYPES, "application/octet-stream")
 _REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
+
+
+class ApiGZip:
+    """GZip responses of at least 1,000 bytes on the hub's JSON and UI routes, leaving streaming and binary paths untouched."""
+
+    def __init__(self, app):
+        self.app = app
+        self._gzip = GZipMiddleware(app, minimum_size=1000, compresslevel=6, exclude_content_types=GZIP_EXCLUDED_TYPES)
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "") if scope["type"] == "http" else ""
+        if not path or path.startswith(GZIP_SKIP_PREFIXES) or path.endswith("/stream"):
+            await self.app(scope, receive, send)
+            return
+        await self._gzip(scope, receive, send)
 
 
 class RequestContext:
@@ -148,6 +166,7 @@ def create_app(config: HubConfig) -> FastAPI:
     from evo_agents.hub.server import mcp
 
     app.state.mcp = mcp.mount(app, config)  # McpGate runs before Authenticate, which leaves /mcp alone
+    app.add_middleware(ApiGZip)
     app.add_middleware(RequestContext)  # added last, so it runs first: refusals get a request id and an access line
     errors.install(app)
     _include_account_routes(app)
@@ -200,22 +219,28 @@ async def _open(app: FastAPI, config: HubConfig):
             "db": target,
             "data_dir": str(config.data_dir),
             "pool": {"min": config.pool_min_size, "max": config.pool_max_size, "timeout_s": config.pool_timeout},
+            "heartbeat_pool": {"max": config.heartbeat_pool_size},
         },
     )
-    github_app = curator_app = None
+    github_app = curator_app = pool = None
     try:
         github_app = GitHubApp.from_config(config)  # a private key that does not open stops the start
         curator_app = GitHubApp.from_config(config, curator=True)
         config.data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         result = await asyncio.to_thread(migrate, config.dsn)
         pool = await open_pool(config)
+        heartbeat_pool = await open_pool(config, heartbeat=True)
     except Exception as exc:
         log.error("hub cannot start", extra={"db": target, "error": f"{type(exc).__name__}: {exc}"})
+        if pool is not None:
+            await pool.close()
         for opened in (github_app, curator_app):
             if opened is not None:
                 await opened.aclose()
         raise
     app.state.pool, app.state.engine = pool, make_engine(pool)  # the engine is disposed of before the pool closes
+    # the workers' heartbeats and claims take their connections from a pool of their own (``db.HEARTBEAT_PATHS``)
+    app.state.heartbeat_pool, app.state.heartbeat_engine = heartbeat_pool, make_engine(heartbeat_pool)
     app.state.github = GitHub(config)
     app.state.github_app = github_app  # None without EVO_HUB_GITHUB_APP_*: no GitHub token is leased
     app.state.curator_app = curator_app  # None without EVO_HUB_CURATOR_APP_*: no token for a run of the Curator
@@ -224,7 +249,9 @@ async def _open(app: FastAPI, config: HubConfig):
     app.state.kg_handles = Handles()  # kg_more continuations, per user and project
     app.state.kg_snapshots.engine = app.state.engine
     kg_snapshots.serving = app.state.kg_snapshots  # what a core plugin's graph read uses (kg_snapshots.held_for)
-    pacing.free_aside()  # a snapshot replaced or dropped is freed in a thread, a part at a time, not on the loop
+    pacing.free_aside(
+        kg_snapshots.requests_waiting
+    )  # a snapshot replaced or dropped is freed in a thread, a part at a time, not on the loop
     if app.state.blobs is None:
         log.warning(
             "blob store not configured: the blob routes answer 503",
@@ -283,6 +310,8 @@ async def _close(app: FastAPI, pool) -> None:
     if app.state.blobs is not None:
         app.state.blobs.close()
     await app.state.engine.dispose()
+    await app.state.heartbeat_engine.dispose()
+    await app.state.heartbeat_pool.close()
     await pool.close()
     log.info("hub stopped, connection pool closed")
 
@@ -318,10 +347,11 @@ def _include_account_routes(app: FastAPI) -> None:
 
 
 def _include_kg_routes(app: FastAPI) -> None:
-    from evo_agents.hub.server import kg, kg_config
+    from evo_agents.hub.server import kg, kg_config, kg_grep
 
     app.include_router(kg.router)
     app.include_router(kg_config.router)
+    app.include_router(kg_grep.router)
 
     from evo_agents.hub.server import kg_web
 
@@ -503,6 +533,7 @@ def _include_curator_routes(app: FastAPI) -> None:
         change_routes,
         digests,
         earlier,
+        evolve,
         history,
         history_search,
         kg_health,
@@ -543,6 +574,8 @@ def _include_curator_routes(app: FastAPI) -> None:
         probe_routes.worker_router,
         probe_runs.worker_router,  # the probe runs' sessions (plan correction-recurrence)
         probe_report.router,  # and their weekly report
+        evolve.router,  # the evolutions of a harness or an agent (plan pareto-curator-evolution)
+        evolve.worker_router,  # and what their runs read and post
         org.router,  # the org chart (plan org-chart)
         autonomy_routes.router,  # the autonomy levels (plan autonomy-levels)
         autonomy_stops.router,  # and their stop S4

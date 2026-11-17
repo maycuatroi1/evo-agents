@@ -187,13 +187,13 @@ PARITY_QUERIES = ("runbook", "KB-01", "note", "acme-contract", "Hợp đồng", 
 def test_search_parity_a_local_store_and_the_hub_api_rank_the_same_nodes_in_the_same_order(hub):
     """a3, code part: the same questions asked of the same corpus built on this machine and on the hub."""
     from evo_agents.kg import evaluate as ev
-    from evo_agents.kg.build import build_project
-    from evo_agents.kg.store_session import StoreSession
+    from tests.kg import built
+    from tests.kg.hub_graph import hub_session
 
     project = hub.harness.project()
-    local = build_project(project)
+    local = built.build(project)
     assert local.ok and local.content_hash == hub.build["content_hash"], "the same corpus builds the same graph"
-    session = StoreSession(project, AGENT)
+    session = hub_session(project, AGENT)
     for query in PARITY_QUERIES:
         for limit in (5, 25):
             arguments = {"query": query, "limit": limit}

@@ -100,10 +100,16 @@ def test_autonomy_policy_has_the_keys_and_defaults_the_member_approved():
         "context.answers": False,
         # plan super-board-parity-2: no model routing; when on, the ladder of Claude Code's models by difficulty
         "routing.enabled": False,
+        "routing.strategy": "surplus-first",
+        "routing.hard_reserve_pct": 10,
+        "routing.five_hour_ceiling_pct": 90,
         "routing.scorer": "haiku",
         "routing.ladder.easy": "haiku",
         "routing.ladder.medium": "sonnet",
         "routing.ladder.hard": "opus",
+        "routing.overflow.easy": None,
+        "routing.overflow.medium": None,
+        "routing.overflow.hard": None,
     }
     assert not [name for name in defaults if "budget" in name or "estimate" in name or "usd" in name]
     assert {key.name: key.default for key in autonomy.REPO_KEYS} == {

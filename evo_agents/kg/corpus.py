@@ -4,7 +4,8 @@ Layout under ``$EVO_KG_HOME/<project>/`` (default ``~/.evo/kg``), mode 0700::
 
     log/<run_id>.jsonl.gz   every message of one connector run, item text replaced by blob refs
     blobs/sha256/ab/cd...   item bodies and fragments
-    corpus.sqlite           the merged state sigma_p, rebuildable from the log; with the runs a hub holds (hub_runs)
+    state.json              the merged state sigma_p, rebuildable from the log, with the runs, cursors, lineages and
+                            held removals it records; written whole under locks/.state.lock
     locks/<source>.lock     one sync per source at a time
     audit.jsonl             one line per sync and per build, counts and ids only (audit.py), mode 0600
 
@@ -30,7 +31,6 @@ import gzip
 import json
 import os
 import re
-import sqlite3
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,55 +40,10 @@ from evo_agents import filelock
 from evo_agents.kg.ids import normalize_time, rev_key, utc_now
 from evo_agents.kg.protocol import canonical_json, sha256, source_of
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS items (
-    item_id TEXT PRIMARY KEY,
-    source TEXT NOT NULL,
-    deleted INTEGER NOT NULL,
-    k_epoch TEXT NOT NULL DEFAULT '',
-    k_time TEXT NOT NULL,
-    k_rev TEXT NOT NULL,
-    k_run TEXT NOT NULL,
-    k_tie TEXT NOT NULL,
-    record TEXT NOT NULL
-) STRICT;
-CREATE INDEX IF NOT EXISTS items_source ON items(source, deleted);
-CREATE TABLE IF NOT EXISTS runs (
-    run_id TEXT PRIMARY KEY,
-    source TEXT NOT NULL,
-    connector TEXT,
-    version TEXT,
-    status TEXT NOT NULL,
-    started_at TEXT,
-    finished_at TEXT,
-    detail TEXT NOT NULL
-) STRICT;
-CREATE TABLE IF NOT EXISTS cursors (
-    source TEXT PRIMARY KEY,
-    cursor TEXT,
-    run_id TEXT NOT NULL
-) STRICT;
-CREATE TABLE IF NOT EXISTS held (
-    run_id TEXT NOT NULL,
-    source TEXT NOT NULL,
-    scope TEXT NOT NULL,
-    reason TEXT NOT NULL,
-    ids TEXT NOT NULL,
-    PRIMARY KEY (run_id, scope)
-) STRICT;
-CREATE TABLE IF NOT EXISTS lineages (
-    source TEXT PRIMARY KEY,
-    lineage TEXT NOT NULL,
-    epoch TEXT NOT NULL,
-    run_id TEXT NOT NULL
-) STRICT;
-CREATE TABLE IF NOT EXISTS hub_runs (
-    run_id TEXT PRIMARY KEY,
-    hub TEXT NOT NULL,
-    at TEXT NOT NULL
-) STRICT;
-"""
-ITEM_COLUMNS = "item_id, source, deleted, k_epoch, k_time, k_rev, k_run, k_tie, record"
+STATE_FILE = "state.json"  # the merged state and what the corpus records of its runs
+# The lock of the state file, beside that of each source (``<source>.lock``): a dot no source id starts with, as the
+# bench's source is named ``corpus``.
+STATE_LOCK = ".state.lock"
 # The epoch of a source's first lineage: below every run ID, above the empty epoch of logs written before epochs.
 BASE_EPOCH = "00000000-0000-0000-0000-000000000000"
 EPOCH = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
@@ -219,23 +174,77 @@ class Corpus:
             path.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(OSError):
             os.chmod(self.root, 0o700)
-        self.db_path = self.root / "corpus.sqlite"
-        self.db = self._open(self.db_path)
+        self.state_path = self.root / STATE_FILE
+        self.state = _empty_state()
+        self.loaded: tuple[int, int, int] | None = None  # (inode, mtime_ns, size) of the state file read last
+        self.depth = 0  # transactions open (``transaction``)
         self.read_digest: str | None = None  # the state digest of the items ``read_state`` read last
+        self._load()
 
-    @staticmethod
-    def _open(path: Path) -> sqlite3.Connection:
-        db = sqlite3.connect(path)
-        db.execute("PRAGMA journal_mode=WAL")
-        db.executescript(SCHEMA)
-        columns = {row[1] for row in db.execute("PRAGMA table_info(items)")}
-        if "k_epoch" not in columns:  # a corpus from before epochs: its records keep the empty one
-            with contextlib.suppress(sqlite3.OperationalError):  # another process added it first
-                db.execute("ALTER TABLE items ADD COLUMN k_epoch TEXT NOT NULL DEFAULT ''")
-        return db
+    def _stat(self) -> tuple[int, int, int] | None:
+        try:
+            st = self.state_path.stat()
+        except FileNotFoundError:
+            return None
+        return st.st_ino, st.st_mtime_ns, st.st_size  # each write is a new file: its inode tells it from the last
+
+    def _load(self, *, always: bool = False) -> None:
+        """Read the state file when another process wrote it since it was read here, or ``always``: a transaction
+        reads it under the lock whatever the stat says, as two writes within a clock tick may leave it the same."""
+        seen = self._stat()
+        if seen == self.loaded and not always:
+            return
+        state = _empty_state()
+        if seen is not None:
+            with open(self.state_path, encoding="utf-8") as fh:
+                state.update(json.load(fh))
+        self.state, self.loaded = state, seen
+
+    def _fresh(self) -> dict:
+        if not self.depth:
+            self._load()
+        return self.state
+
+    @contextlib.contextmanager
+    def transaction(self):
+        """Hold the corpus's write lock, read what other processes wrote, and write the state file at the end of the
+        outermost one; what was changed in one that raises is read back from the file instead."""
+        if self.depth:
+            self.depth += 1
+            try:
+                yield
+            finally:
+                self.depth -= 1
+            return
+        fh = open(self.lock_dir / STATE_LOCK, "a", encoding="utf-8")
+        filelock.lock(fh.fileno())
+        try:
+            self._load(always=True)
+            self.depth = 1
+            try:
+                yield
+            except BaseException:
+                self.state, self.loaded = _empty_state(), None  # what this transaction changed is dropped
+                raise
+            finally:
+                self.depth = 0
+            self._write()
+        finally:
+            self._load()
+            filelock.unlock(fh.fileno())
+            fh.close()
+
+    def _write(self) -> None:
+        tmp = self.state_path.with_name(f".{STATE_FILE}.tmp{os.getpid()}")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(self.state, fh, ensure_ascii=False, separators=(",", ":"))
+        with contextlib.suppress(OSError):
+            os.chmod(tmp, 0o600)
+        os.replace(tmp, self.state_path)
+        self.loaded = self._stat()
 
     def close(self) -> None:
-        self.db.close()
+        """Nothing to do: a corpus holds no file open between its transactions."""
 
     # -- blobs ---------------------------------------------------------------------------------
 
@@ -296,105 +305,79 @@ class Corpus:
 
     # -- merge ---------------------------------------------------------------------------------
 
-    def merge(self, records: Iterable[dict], run_id: str, db: sqlite3.Connection | None = None) -> int:
+    def merge(self, records: Iterable[dict], run_id: str) -> int:
         """Merge item and tombstone records of one run into the state, each with the epoch the run's header names.
         Returns how many changed."""
-        db = db or self.db
-        changed = 0
-        epoch = ""
-        for record in records:
-            kind = record.get("type")
-            if kind == "run":
-                epoch = run_epoch(record)
-            if kind not in ("item", "tombstone"):
-                continue
-            key = order_key(record, run_id, epoch)
-            row = db.execute(
-                "SELECT k_epoch, k_time, k_rev, k_run, k_tie FROM items WHERE item_id = ?", (record["id"],)
-            ).fetchone()
-            if row is not None and tuple(row) >= key:
-                continue
-            db.execute(
-                f"INSERT OR REPLACE INTO items ({ITEM_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    record["id"],
-                    source_of(record["id"]),
-                    1 if kind == "tombstone" else 0,
-                    *key,
-                    json.dumps(record, ensure_ascii=False, sort_keys=True),
-                ),
-            )
-            changed += 1
-        return changed
+        with self.transaction():
+            items = self.state["items"]
+            changed = 0
+            epoch = ""
+            for record in records:
+                kind = record.get("type")
+                if kind == "run":
+                    epoch = run_epoch(record)
+                if kind not in ("item", "tombstone"):
+                    continue
+                key = order_key(record, run_id, epoch)
+                known = items.get(record["id"])
+                if known is not None and tuple(known[0]) >= key:
+                    continue
+                stored = json.loads(json.dumps(record, ensure_ascii=False, sort_keys=True))
+                items[record["id"]] = [list(key), 1 if kind == "tombstone" else 0, stored]
+                changed += 1
+            return changed
 
     def get(self, item_id: str) -> ItemRecord | None:
-        row = self.db.execute(
-            "SELECT item_id, source, deleted, k_run, record FROM items WHERE item_id = ?", (item_id,)
-        ).fetchone()
-        return self._row(row) if row else None
-
-    @staticmethod
-    def _row(row) -> ItemRecord:
-        return ItemRecord(row[0], row[1], bool(row[2]), row[3], json.loads(row[4]))
+        row = self._fresh()["items"].get(item_id)
+        return _item(item_id, row) if row else None
 
     def items(self, source: str | None = None, *, include_deleted: bool = False) -> list[ItemRecord]:
-        query = "SELECT item_id, source, deleted, k_run, record FROM items"
-        clauses, params = [], []
-        if source is not None:
-            clauses.append("source = ?")
-            params.append(source)
-        if not include_deleted:
-            clauses.append("deleted = 0")
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        return [self._row(r) for r in self.db.execute(query + " ORDER BY item_id", params)]
+        return [
+            _item(item_id, row)
+            for item_id, row in sorted(self._fresh()["items"].items())
+            if (include_deleted or not row[1]) and (source is None or source_of(item_id) == source)
+        ]
 
     def read_state(self) -> list[ItemRecord]:
-        """The live items, as ``items`` gives them, read in one statement with the state digest of what it read: a build
+        """The live items, as ``items`` gives them, read at once with the state digest of what it read: a build
         records ``read_digest``, the state it was made of, not the state a sync left after it."""
-        rows = self.db.execute("SELECT item_id, source, deleted, k_run, record FROM items ORDER BY item_id").fetchall()
-        self.read_digest = sha256(canonical_json([[r[0], r[2], json.loads(r[4])] for r in rows]))
-        return [self._row(r) for r in rows if not r[2]]
+        rows = sorted(self._fresh()["items"].items())
+        self.read_digest = _digest(rows)
+        return [_item(item_id, row) for item_id, row in rows if not row[1]]
 
     def sources(self) -> list[str]:
         """The sources that hold at least one live item, by id."""
-        return [
-            row[0] for row in self.db.execute("SELECT DISTINCT source FROM items WHERE deleted = 0 ORDER BY source")
-        ]
+        return sorted({source_of(item_id) for item_id, row in self._fresh()["items"].items() if not row[1]})
 
     def alive_in_scope(self, scope: str) -> list[ItemRecord]:
         source = source_of(scope)
         return [r for r in self.items(source) if r.item_id.startswith(scope)]
 
-    def state_digest(self, db: sqlite3.Connection | None = None) -> str:
-        """Hash of sigma_p: every item ID with its winning record and deletion flag."""
-        db = db or self.db
-        rows = db.execute("SELECT item_id, deleted, record FROM items ORDER BY item_id").fetchall()
-        return sha256(canonical_json([[r[0], r[1], json.loads(r[2])] for r in rows]))
+    def state_digest(self, state: MergedState | None = None) -> str:
+        """Hash of sigma_p: every item ID with its winning record and deletion flag; of ``state`` when given."""
+        if state is not None:
+            return state.digest()
+        return _digest(sorted(self._fresh()["items"].items()))
 
     def alive_digest(self, source: str) -> str:
         """Hash of what one source holds alive: each live item ID of ``source`` with its winning record. Two corpora
         whose merges left the same items alive with the same records give the same hash, whichever runs got there."""
-        rows = self.db.execute(
-            "SELECT item_id, record FROM items WHERE source = ? AND deleted = 0 ORDER BY item_id", (source,)
-        ).fetchall()
-        return sha256(canonical_json([[r[0], json.loads(r[1])] for r in rows]))
+        rows = sorted(self._fresh()["items"].items())
+        return sha256(canonical_json([[i, row[2]] for i, row in rows if not row[1] and source_of(i) == source]))
 
-    def rebuild_state(self, files: list[Path] | None = None) -> sqlite3.Connection:
-        """Recompute sigma_p from the log alone, into an in-memory database."""
-        db = sqlite3.connect(":memory:")
-        db.executescript(SCHEMA)
+    def rebuild_state(self, files: list[Path] | None = None) -> MergedState:
+        """Recompute sigma_p from the log alone, in memory."""
+        state = MergedState()
         for path in files if files is not None else self.log_files():
             run_id, records = self.run_records(path)
             if run_id:
-                self.merge(records, run_id, db)
-        db.commit()
-        return db
+                state.merge(records, run_id)
+        return state
 
     # -- lineages ------------------------------------------------------------------------------
 
     def _lineage(self, source: str) -> tuple[str, str] | None:
-        row = self.db.execute("SELECT lineage, epoch FROM lineages WHERE source = ?", (source,)).fetchone()
+        row = self._fresh()["lineages"].get(source)
         return (row[0], row[1]) if row else None
 
     def epoch_for(self, source: str, lineage: str, run_id: str) -> str:
@@ -408,19 +391,18 @@ class Corpus:
 
     def record_lineage(self, source: str, lineage: str, epoch: str, run_id: str) -> None:
         """Remember what run ``run_id`` of ``source`` read from, in the caller's transaction."""
-        self.db.execute("INSERT OR REPLACE INTO lineages VALUES (?, ?, ?, ?)", (source, lineage, epoch, run_id))
+        with self.transaction():
+            self.state["lineages"][source] = [lineage, epoch, run_id]
 
     def adopt_lineage(self, source: str, lineage: str, epoch: str, run_id: str) -> None:
         """Take what run ``run_id`` of ``source``, a run another machine wrote and this corpus merged, read from and its
         epoch, when that epoch, then that run id, is above the recorded one's; in the caller's transaction. The next run
         here that reads from the same place then takes that epoch, so its records compete with the other machine's
         within one epoch instead of losing to them, and one that reads from elsewhere starts a newer epoch."""
-        self.db.execute(
-            "INSERT INTO lineages VALUES (?, ?, ?, ?) ON CONFLICT(source) DO UPDATE SET lineage = excluded.lineage,"
-            " epoch = excluded.epoch, run_id = excluded.run_id"
-            " WHERE (excluded.epoch, excluded.run_id) > (lineages.epoch, lineages.run_id)",
-            (source, lineage, epoch, run_id),
-        )
+        with self.transaction():
+            known = self.state["lineages"].get(source)
+            if known is None or (epoch, run_id) > (known[1], known[2]):
+                self.state["lineages"][source] = [lineage, epoch, run_id]
 
     def lineage_of(self, source: str) -> str | None:
         """The lineage the corpus records for ``source``, None when it records none."""
@@ -430,60 +412,44 @@ class Corpus:
     # -- cursors, runs, held removals ----------------------------------------------------------
 
     def cursor(self, source: str):
-        row = self.db.execute("SELECT cursor FROM cursors WHERE source = ?", (source,)).fetchone()
-        return json.loads(row[0]) if row and row[0] is not None else None
+        row = self._fresh()["cursors"].get(source)
+        return json.loads(json.dumps(row[0])) if row else None
 
     def record_cursor(self, source: str, cursor, run_id: str) -> None:
         """Keep the cursor run ``run_id`` of ``source`` ended with, unless the source has one of a later run: runs
         merged in any order leave the newest one's. In the caller's transaction."""
-        self.db.execute(
-            "INSERT INTO cursors VALUES (?, ?, ?) ON CONFLICT(source) DO UPDATE SET cursor = excluded.cursor,"
-            " run_id = excluded.run_id WHERE excluded.run_id > cursors.run_id",
-            (source, json.dumps(cursor, ensure_ascii=False), run_id),
-        )
+        with self.transaction():
+            known = self.state["cursors"].get(source)
+            if known is None or run_id > known[1]:
+                self.state["cursors"][source] = [cursor, run_id]
 
     def forget_cursor(self, source: str) -> None:
         """Drop the cursor of ``source``: its next run reads everything again."""
-        with self.db:
-            self.db.execute("DELETE FROM cursors WHERE source = ?", (source,))
+        with self.transaction():
+            self.state["cursors"].pop(source, None)
 
     def set_cursor(self, source: str, cursor, run_id: str) -> None:
         """Make ``cursor`` the cursor of ``source``, whatever run kept the one before: for a source read in the
         builder's own process (``evo_agents.kg.replace.keep_cursor``). In the caller's transaction."""
-        self.db.execute(
-            "INSERT OR REPLACE INTO cursors VALUES (?, ?, ?)", (source, json.dumps(cursor, ensure_ascii=False), run_id)
-        )
+        with self.transaction():
+            self.state["cursors"][source] = [cursor, run_id]
 
     def runs(self, source: str | None = None, limit: int = 20, status: str | None = None) -> list[dict]:
         """Recorded runs, newest first, optionally of one source and with one status (ok or failed)."""
-        query = "SELECT run_id, source, connector, version, status, started_at, finished_at, detail FROM runs"
-        clauses: list[str] = []
-        params: list = []
-        if source:
-            clauses.append("source = ?")
-            params.append(source)
-        if status:
-            clauses.append("status = ?")
-            params.append(status)
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY run_id DESC LIMIT ?"
-        params.append(limit)
-        keys = ("run_id", "source", "connector", "version", "status", "started_at", "finished_at")
-        out = []
-        for row in self.db.execute(query, params):
-            entry = dict(zip(keys, row[:7], strict=True))
-            entry["detail"] = json.loads(row[7])
-            out.append(entry)
-        return out
+        found = [
+            {"run_id": run_id, **row}
+            for run_id, row in sorted(self._fresh()["runs"].items(), reverse=True)
+            if (not source or row["source"] == source) and (not status or row["status"] == status)
+        ]
+        return json.loads(json.dumps(found[:limit]))
 
     def hub_run_ids(self) -> set[str]:
         """The ids of the runs merged from the hub: those whose detail names a hub."""
-        return {row[0] for row in self.db.execute("SELECT run_id FROM runs WHERE json_extract(detail, '$.hub')")}
+        return {run_id for run_id, row in self._fresh()["runs"].items() if row["detail"].get("hub")}
 
     def run_ids(self) -> set[str]:
-        """The ids of the runs the runs table records."""
-        return {row[0] for row in self.db.execute("SELECT run_id FROM runs")}
+        """The ids of the runs recorded."""
+        return set(self._fresh()["runs"])
 
     def record_run(
         self,
@@ -497,43 +463,45 @@ class Corpus:
         version: str | None = None,
         detail: dict | None = None,
     ) -> None:
-        """Write the row of run ``run_id`` in the runs table, replacing any it had, in the caller's transaction:
-        nothing is committed here."""
-        self.db.execute(
-            "INSERT OR REPLACE INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                run_id,
-                source,
-                connector,
-                version,
-                status,
-                started_at,
-                finished_at,
-                json.dumps(detail or {}, ensure_ascii=False),
-            ),
-        )
+        """Record run ``run_id``, replacing what was recorded of it, in the caller's transaction."""
+        with self.transaction():
+            self.state["runs"][run_id] = {
+                "source": source,
+                "connector": connector,
+                "version": version,
+                "status": status,
+                "started_at": started_at,
+                "finished_at": finished_at,
+                "detail": json.loads(json.dumps(detail or {}, ensure_ascii=False)),
+            }
 
     def record_on_hub(self, run_ids: Iterable[str], hub: str) -> None:
-        """Remember that the hub at ``hub`` holds the runs ``run_ids`` (``hub kg push`` saw it say so): a kg home's
-        retention deleted only such logs, before the hub held the corpus. Commits."""
+        """Remember that the hub at ``hub`` holds the runs ``run_ids`` (``hub kg push`` saw it say so)."""
         now = utc_now()
-        with self.db:
-            self.db.executemany("INSERT OR IGNORE INTO hub_runs VALUES (?, ?, ?)", [(r, hub, now) for r in run_ids])
+        with self.transaction():
+            for run_id in run_ids:
+                self.state["hub_runs"].setdefault(run_id, [hub, now])
 
     def runs_on_hub(self) -> set[str]:
         """The runs ``record_on_hub`` recorded."""
-        return {row[0] for row in self.db.execute("SELECT run_id FROM hub_runs")}
+        return set(self._fresh()["hub_runs"])
+
+    def hold(self, run_id: str, source: str, scope: str, reason: str, ids: list[str]) -> None:
+        """Keep the removals the deletion guard held back in run ``run_id`` for ``scope``, in the caller's
+        transaction."""
+        with self.transaction():
+            held = [h for h in self.state["held"] if (h["run_id"], h["scope"]) != (run_id, scope)]
+            held.append({"run_id": run_id, "source": source, "scope": scope, "reason": reason, "ids": list(ids)})
+            self.state["held"] = held
+
+    def drop_held(self, source: str) -> None:
+        """Forget the removals held back for ``source``, in the caller's transaction."""
+        with self.transaction():
+            self.state["held"] = [h for h in self.state["held"] if h["source"] != source]
 
     def held(self, source: str | None = None) -> list[dict]:
-        query = "SELECT run_id, source, scope, reason, ids FROM held"
-        params: list = []
-        if source:
-            query += " WHERE source = ?"
-            params.append(source)
-        return [
-            {"run_id": r[0], "source": r[1], "scope": r[2], "reason": r[3], "ids": json.loads(r[4])}
-            for r in self.db.execute(query + " ORDER BY run_id", params)
-        ]
+        found = [h for h in self._fresh()["held"] if not source or h["source"] == source]
+        return json.loads(json.dumps(sorted(found, key=lambda h: (h["run_id"], h["scope"]))))
 
     @contextlib.contextmanager
     def lock(self, source: str):
@@ -545,6 +513,18 @@ class Corpus:
                 yield
             finally:
                 filelock.unlock(fh.fileno())
+
+
+def _empty_state() -> dict:
+    return {"version": 1, "items": {}, "runs": {}, "cursors": {}, "held": [], "lineages": {}, "hub_runs": {}}
+
+
+def _item(item_id: str, row: list) -> ItemRecord:
+    return ItemRecord(item_id, source_of(item_id), bool(row[1]), row[0][3], json.loads(json.dumps(row[2])))
+
+
+def _digest(rows: list[tuple[str, list]]) -> str:
+    return sha256(canonical_json([[item_id, row[1], row[2]] for item_id, row in rows]))
 
 
 class LogHome(Protocol):

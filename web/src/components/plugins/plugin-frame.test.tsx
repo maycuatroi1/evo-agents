@@ -177,7 +177,7 @@ describe("PluginFrame", () => {
     );
   });
 
-  it("navigates the hub's page within the project with the router, and refuses another project", async () => {
+  it("navigates the hub's page to a project's page with the router, and refuses a path outside /p/", async () => {
     const { frame, posted } = setup();
     send(frame.contentWindow, { bridge: BRIDGE, id: 7, method: "navigate", params: { to: "/p/demo/x/sample/board/items/3" } });
     await waitFor(() =>
@@ -185,8 +185,11 @@ describe("PluginFrame", () => {
     );
     expect(router.push).toHaveBeenCalledWith("/p/demo/x/sample/board/items/3");
     send(frame.contentWindow, { bridge: BRIDGE, id: 8, method: "navigate", params: { to: "/p/lumen/runs" } });
-    await refused(posted, 8, "invalid_params");
-    expect(router.push).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(posted).toHaveBeenCalledWith({ bridge: BRIDGE, id: 8, result: { to: "/p/lumen/runs" } }, "*"));
+    expect(router.push).toHaveBeenLastCalledWith("/p/lumen/runs");
+    send(frame.contentWindow, { bridge: BRIDGE, id: 11, method: "navigate", params: { to: "/admin" } });
+    await refused(posted, 11, "invalid_params");
+    expect(router.push).toHaveBeenCalledTimes(2);
   });
 
   it("shows the page's toast as the hub's, naming the plugin", async () => {

@@ -36,10 +36,11 @@ from datetime import timedelta
 from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import ops_queue, runs, system_spec, tables, triage_rules
+from evo_agents.hub import hub_events, ops_queue, runs, system_spec, tables, triage_rules
 from evo_agents.hub.server import ops_rules, orchestrator, system_store, system_traces
 from evo_agents.hub.server.notifications import notify
 from evo_agents.hub.server.profile_store import by_handle
+from evo_agents.hub.server.runs.service import priority
 
 log = logging.getLogger(__name__)
 
@@ -48,13 +49,14 @@ RECURRING_TIMES, RECURRING_DAYS = 3, 7  # a cause key that closed this many batc
 BREAKER_FAILURES = 2  # ops runs in a row failed of their agent that pause a system's ops
 CAP_HOURS = 24  # the window of limits.ops_daily_usd, and of the ops_cap notice
 ITEMS_SHOWN = 30  # items a summary names
+STEPS_SHOWN = 10  # ready steps a plan.stalled item names
 DIAGNOSIS_CHARS = 300
 KEY = "ops:batch:{id}"  # orchestrator_threads.key of a batch's thread
 ACTIONS_LINE = (
-    "Act with `evo-agents worker ops rerun|redeliver|answer-wait|curator-resume|read|finding` (on the hub runtime, "
-    "the tool ops_action), give work to an agent with `evo-agents worker triage reassign`, and ask the owner at most "
-    "one decision for this batch with `evo-agents worker triage ask-owner`. Never decide for the owner what is "
-    "theirs: credentials, scope, spending over the cap, or what cannot be undone without a backup."
+    "Act with `evo-agents worker ops rerun|redeliver|answer-wait|curator-resume|read|finding|priority|plan-dispatch` "
+    "(on the hub runtime, the tool ops_action), give work to an agent with `evo-agents worker triage reassign`, and "
+    "ask the owner at most one decision for this batch with `evo-agents worker triage ask-owner`. Never decide for "
+    "the owner what is theirs: credentials, scope, spending over the cap, or what cannot be undone without a backup."
 )
 RECURRING_LINE = (
     "Recurring: this cause key closed {times} batches in {days} days. Fix the system rather than run the work again: "
@@ -164,27 +166,32 @@ async def _tell_cap(conn: AsyncConnection, system: OpsSystem, used: float, cap: 
 
 def _items(batch_id: int):
     i, r, ap, d, w = tables.ops_items, tables.runs, tables.agent_profiles, tables.decisions, tables.workers
+    e = tables.hub_events
     return (
         select(
             i.c.id,
             i.c.kind,
             i.c.cause,
+            i.c.subject,
             i.c.run_id,
             i.c.decision_id,
             i.c.worker_id,
             r.c.kind.label("run_kind"),
             r.c.state.label("run_state"),
             r.c.error,
+            r.c.priority,
             ap.c.handle,
             d.c.question,
             d.c.category,
             w.c.name.label("worker"),
+            e.c.payload,
         )
         .select_from(
             i.outerjoin(r, r.c.id == i.c.run_id)
             .outerjoin(ap, ap.c.id == r.c.profile_id)
             .outerjoin(d, d.c.id == i.c.decision_id)
             .outerjoin(w, w.c.id == i.c.worker_id)
+            .outerjoin(e, e.c.id == i.c.event_id)
         )
         .where(i.c.batch_id == batch_id, i.c.state == "pending")
         .order_by(i.c.id)
@@ -193,6 +200,66 @@ def _items(batch_id: int):
 
 def _flat(text: str | None, fallback: str) -> str:
     return runs.clip(" ".join(str(text or fallback).split()), DIAGNOSIS_CHARS)
+
+
+async def _stalled_line(conn: AsyncConnection, project_id: int, row) -> str:
+    """A ``plan.stalled`` item: the plan, its revision and ready steps, its last trace, and the handoff command."""
+    payload = row.payload or {}
+    plan_id = payload.get("plan_id") or row.subject.removeprefix("plan:")
+    steps = [str(step) for step in payload.get("steps") or ()]
+    t, s = tables.system_traces, tables.agent_systems
+    query = (
+        select(t.c.id, t.c.last_at, s.c.slug)
+        .join_from(t, s, s.c.id == t.c.system_id)
+        .where(t.c.project_id == project_id, t.c.plan_id == plan_id)
+        .order_by(t.c.id.desc())
+        .limit(1)
+    )
+    trace = (await conn.execute(query)).first()
+    last = (
+        "no trace"
+        if trace is None
+        else f"last trace #{trace.id} of system {trace.slug}, moved {trace.last_at:%Y-%m-%d %H:%M} UTC"
+    )
+    ready = ", ".join(steps[:STEPS_SHOWN]) + (
+        f" and {len(steps) - STEPS_SHOWN} more" if len(steps) > STEPS_SHOWN else ""
+    )
+    step = f" --step {steps[0]}" if steps else ""
+    what = (
+        f"plan {plan_id} (revision {payload.get('revision', '?')}) has ready steps {ready or 'none'} and no run works "
+        f"on it; {last}"
+    )
+    return (
+        f"- {row.kind}, cause {row.cause}: {what}. Next: `evo-agents hub plan handoff {plan_id}{step}`, then "
+        f"`evo-agents worker ops plan-dispatch {plan_id}`"
+    )
+
+
+async def _queued_line(conn: AsyncConnection, row) -> str:
+    """A ``run.queued_long`` item: the run, the node it waits for, how many runs are ahead of it, its priority."""
+    agent = f", @{row.handle}" if row.handle else ""
+    if row.worker_id is None:
+        node, ahead = "any node of its pool", "?"
+    else:
+        node = f"node #{row.worker_id} ({row.worker or 'gone'})"
+        ahead = str(await priority.ahead(conn, row.run_id, row.worker_id)) if row.run_state == "queued" else "0"
+    what = (
+        f"run #{row.run_id} (chat{agent}) {row.run_state or 'gone'} for a slot of {node}, {ahead} runs ahead of it, "
+        f"priority {row.priority or runs.DEFAULT_PRIORITY}"
+    )
+    return (
+        f"- {row.kind}, cause {row.cause}: {what}. Next: `evo-agents hub inbox --show r{row.run_id}`, then "
+        f"`evo-agents worker ops priority {row.run_id} LEVEL` to move it"
+    )
+
+
+async def item_text(conn: AsyncConnection, project_id: int, row) -> str:
+    """``item_line`` of ``row``, with what the hub reads of a stalled plan or a run queued too long."""
+    if row.kind == hub_events.PLAN_STALLED:
+        return await _stalled_line(conn, project_id, row)
+    if row.kind == hub_events.RUN_QUEUED_LONG and row.run_id is not None:
+        return await _queued_line(conn, row)
+    return item_line(row)
 
 
 def item_line(row) -> str:
@@ -209,8 +276,8 @@ def item_line(row) -> str:
     elif row.worker_id is not None:
         what = f"worker #{row.worker_id} ({row.worker or 'gone'}) reported its health: {row.cause}"
         shown = "evo-agents hub inbox"
-    else:
-        what = f"{row.kind}: {row.cause}"
+    else:  # plan.stalled names its plan, mention.refused its agent, in the subject alone
+        what = f"{row.kind} of {row.subject}: {row.cause}"
         shown = "evo-agents hub inbox"
     return f"- {row.kind}, cause {row.cause}: {what}. Next: `{shown}`"
 
@@ -237,7 +304,7 @@ async def summary(conn: AsyncConnection, batch, times: int) -> str:
     ]
     if times >= RECURRING_TIMES:
         lines.append(RECURRING_LINE.format(times=times, days=RECURRING_DAYS))
-    lines += [item_line(row) for row in rows[:ITEMS_SHOWN]]
+    lines += [await item_text(conn, batch.project_id, row) for row in rows[:ITEMS_SHOWN]]
     if len(rows) > ITEMS_SHOWN:
         lines.append(f"... and {len(rows) - ITEMS_SHOWN} more: `evo-agents hub system ops batches`.")
     return "\n".join([*lines, ACTIONS_LINE])

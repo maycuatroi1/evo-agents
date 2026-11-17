@@ -217,6 +217,15 @@
           "type": "string",
           "description": "One shell command line that exits 0 when the step is done; a worker runs it. A manual check goes in note, and verify checks something machine-readable instead (an answered hub decision, a line in a report file). The hub refuses a new verify of a step not done that is not shell: one that does not parse, or runs a word that is not a command name (Từ, Manual:)."
         },
+        "difficulty": {
+          "type": "string",
+          "enum": [
+            "easy",
+            "medium",
+            "hard"
+          ],
+          "description": "How hard the step is for an agent, when its author knows better than the hub's rules: easy, medium or hard. While the project's policy has routing on, a run of the step that names no model takes the model the Token strategy gives this difficulty; without it, the hub rates the step by its kind and its words."
+        },
         "status": {
           "enum": [
             "done",

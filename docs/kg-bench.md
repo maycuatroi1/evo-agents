@@ -67,20 +67,29 @@ data/SET/tasks.jsonl                 the tasks read from them; fetched.json: rev
 data/SET/questions.jsonl             the last run's tasks as a `kg eval` question set
 repos/OWNER__NAME.git                a bare clone of each repo
 kg/EXTRACTOR/home/                   the EVO_KG_HOME of the bench: a project per repo and base commit
-kg/EXTRACTOR/memo/OWNER__NAME.sqlite the extraction memo of each repo, shared by its snapshots
+kg/EXTRACTOR/memo/OWNER__NAME/      the extraction memo of each repo, shared by its snapshots
+kg/EXTRACTOR/vectors/OWNER__NAME.vectors  the text vectors of each repo, shared by its snapshots (hybrid)
 kg/EXTRACTOR/builds.jsonl            how long each build took
+kg/EXTRACTOR/home/PROJECT/graph.rows the graph: the rows of its build, pickled and zlib-compressed
+kg/EXTRACTOR/home/PROJECT/graph.summary.json  the build's summary, read without the rows (`profile`)
 kg/EXTRACTOR/home/PROJECT/bench.json the marker of a finished build: its size; its mtime is the graph's last use
 ```
+
+- **Graph.** A build runs in memory, as the hub builds, and writes its rows once, to a temporary file renamed over
+  `graph.rows`. A run reads them back into a snapshot and asks it with the hub's engine; no graph database is
+  written. Reading `graph.rows` unpickles it, which can run code: the bench cache is trusted local state, so never
+  point `--cache` at a directory someone else wrote.
 
 - **Snapshot.** A snapshot is the base commit, read straight from the bare clone together with its history. The
   repo's pull requests are never read, because one of them is the fix.
 - **No hub.** The builds and the runs set EVO_KG_HOME to the bench's own home. They never touch the hub, nor this
   machine's own kg home.
 - **Reuse.** A graph is built once and reused while `EXTRACTOR` stays the same. `EXTRACTOR` is a digest of the
-  store's schema, the version of each stage, graphify, the git connector's code and the search index's text. A
+  format of the rows file and the code that makes the rows, the version of each stage, graphify, the git
+  connector's code and the search index's text. A
   release that only changes ranking searches the graphs it already has.
 - **Memo.** Each repo has its own extraction memo, so a file unchanged between two snapshots is not read twice, and
-  parallel builds of different repos never wait on one database.
+  parallel builds of different repos never wait on one another.
 - **Clones.** `--git-url` changes where repos are cloned from, with `{repo}` standing for `OWNER/NAME`. Use it for a
   mirror or for local copies.
 

@@ -3,7 +3,7 @@
 ``agent_account_figures``), and GET /v1/projects/{project}/runs/{run_id}/accounts, the accounts a run took.
 
 The figures of an account: the last usage a run's CLI reported for it (``accounts.last_usage``, kept by
-``rate_limits``), how many runs took it and what they cost in the last 24 hours and 7 days, the runs that hold it now,
+``rate_limits``, or read from Z.ai by ``provider_quota``; its weekly budget's window as its ``seven_day`` one), how many runs took it and what they cost in the last 24 hours and 7 days, the runs that hold it now,
 and the same split by principal, the member each run was made for (``cost_by_principal``: credential_leases.
 principal_id, else the run's dispatcher), over 24 hours, 7 days and the month so far (UTC, ``month_start``). For a
 member another shared the account with (``principal_id``), the figures are those of their own runs alone. A run took an
@@ -35,6 +35,7 @@ from evo_agents.hub.accounts import CHOICES
 from evo_agents.hub.credentials import PROVIDER_KIND
 from evo_agents.hub.gateway_runs import GATEWAY
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.account_budgets import budget_windows, with_budgets
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import RunId
@@ -240,13 +241,16 @@ def _usage(stored) -> AccountUsage | None:
 
 
 async def _usages(conn: AsyncConnection, owned) -> dict[int, Figures]:
+    """The last usage of each account, its weekly budget's window as its seven_day one (``account_budgets``)."""
     a = tables.accounts
     usage = select(a.c.secret_id, a.c.last_usage, a.c.last_usage_at).where(
         a.c.secret_id.in_(owned), a.c.last_usage_at.is_not(None)
     )
+    rows = {row.secret_id: row for row in await conn.execute(usage)}
+    stored = with_budgets({i: row.last_usage for i, row in rows.items()}, await budget_windows(conn, owned))
     return {
-        row.secret_id: Figures(last_usage=_usage(row.last_usage), last_usage_at=row.last_usage_at)
-        for row in await conn.execute(usage)
+        i: Figures(last_usage=_usage(found), last_usage_at=rows[i].last_usage_at if i in rows else None)
+        for i, found in stored.items()
     }
 
 

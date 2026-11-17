@@ -19,6 +19,13 @@ the chat run; the hub runtime's tools call the same code (``hub_tools``):
 - POST /v1/worker/runs/{id}/ops/read: mark a notice of the project read.
 - POST /v1/worker/runs/{id}/ops/finding: write a finding for the Curator, under the project's default label, with the
   batch as its evidence.
+- POST /v1/worker/runs/{id}/ops/priority: give a queued run of the project another priority (``runs.PRIORITIES``), the
+  order a worker claims its queue in (``runs.service.priority.set_priority``); 409 for a run that is not queued. A
+  ``run.queued_long`` item of the batch is the usual cause; a queued run of the project outside the batch is allowed.
+- POST /v1/worker/runs/{id}/ops/plan-dispatch: hand a stalled plan of the batch (a ``plan.stalled`` item) again to the
+  entry agent of the project's default system, as ``plan_systems.dispatch_to_system`` does for a person: in the name
+  of the system's owner, the person at the origin of the ops thread's work, with the same refusals (409 for a plan a
+  trace still runs, an active plan run or step run, no pending step, a plan the Curator made).
 """
 
 from __future__ import annotations
@@ -32,12 +39,13 @@ from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import hub_events, review, runs, tables, triage_rules
-from evo_agents.hub.server import audit, ops_rules, orchestrator_actions, run_waits
+from evo_agents.hub.server import audit, ops_rules, orchestrator, orchestrator_actions, plan_systems, run_waits
 from evo_agents.hub.server.chat_agents import REFUSALS, AgentRun, agent_run
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.orchestrator_actions import Frame, Reason
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
+from evo_agents.hub.server.runs.service.priority import set_priority
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
@@ -73,6 +81,17 @@ class OpsFindingIn(BaseModel):
     severity: review.Severity
     title: str = Field(min_length=1, max_length=200)
     body: str = Field(min_length=1, max_length=8000, description="what is wrong with the system, and the fix")
+    reason: Reason
+
+
+class OpsPriorityIn(BaseModel):
+    run_id: Id = Field(description="a queued run of the project")
+    level: runs.Priority = Field(description="its new priority: urgent, high, medium or low")
+    reason: Reason
+
+
+class OpsPlanIn(BaseModel):
+    plan_id: str = Field(min_length=1, max_length=200, description="a stalled plan of the batch (a plan.stalled item)")
     reason: Reason
 
 
@@ -237,6 +256,44 @@ async def finding(conn: AsyncConnection, run: AgentRun, body: OpsFindingIn) -> O
     return OpsActed(message_id=message_id, finding_id=finding_id)
 
 
+async def priority(conn: AsyncConnection, run: AgentRun, body: OpsPriorityIn) -> OpsActed:
+    """Give queued run ``body.run_id`` of the project the priority ``body.level``."""
+    frame, batch = await ops_frame(conn, run)
+    r = tables.runs
+    found = select(r.c.id).where(r.c.id == body.run_id, r.c.project_id == batch.project_id)
+    if (await conn.execute(found)).first() is None:
+        raise HTTPException(404, f"run {body.run_id} is no run of the project")
+    was = await set_priority(conn, body.run_id, body.level, f"@{run.profile.handle}, the Orchestrator,")
+    count = await handled(conn, batch.id, run_id=body.run_id)
+    line = f"set the priority of queued run #{body.run_id} to {body.level}, from {was}: {body.reason}"
+    message_id = await _done(conn, frame, audit.OPS_PRIORITY, line, f" run:{body.run_id} priority:{was}->{body.level}")
+    return OpsActed(message_id=message_id, run_id=body.run_id, handled=count)
+
+
+async def plan_dispatch(
+    conn: AsyncConnection, run: AgentRun, body: OpsPlanIn, *, public_url: str | None = None
+) -> OpsActed:
+    """Hand stalled plan ``body.plan_id`` of the batch again to the entry agent of the project's default system."""
+    frame, batch = await ops_frame(conn, run)
+    i, p, s = tables.ops_items, tables.projects, tables.agent_systems
+    subject = f"plan:{body.plan_id}"
+    item = select(i.c.id).where(i.c.batch_id == batch.id, i.c.kind == hub_events.PLAN_STALLED, i.c.subject == subject)
+    if (await conn.execute(item.limit(1))).first() is None:
+        raise HTTPException(404, f"plan {body.plan_id} is no stalled plan of this thread's batch")
+    project = (await conn.execute(select(p.c.name).where(p.c.id == batch.project_id))).scalar_one()
+    slug = (await conn.execute(select(s.c.slug).where(s.c.id == frame.thread.system_id))).scalar_one()
+    owner = await orchestrator.machine_person(conn, run.principal.user_id)
+    sent = await plan_systems.dispatch_to_system(conn, owner, project, body.plan_id, slug, public_url)
+    count = await handled(conn, batch.id, kind=hub_events.PLAN_STALLED, subject=subject)
+    line = (
+        f"handed plan {body.plan_id} (revision {sent.plan_revision}) again to the entry agent of system {slug}, "
+        f"run #{sent.run_id} in trace #{sent.trace_id}: {body.reason}"
+    )
+    tail = f" plan:{body.plan_id} run:{sent.run_id} trace:{sent.trace_id}"
+    message_id = await _done(conn, frame, audit.OPS_PLAN_DISPATCH, line, tail)
+    return OpsActed(message_id=message_id, run_id=sent.run_id, handled=count)
+
+
 async def held(conn: AsyncConnection, user, run_id: int) -> AgentRun:
     """The chat run ``run_id`` of the worker of ``user``, its row locked."""
     run = await agent_run(conn, user, run_id)
@@ -289,9 +346,27 @@ async def finding_route(request: Request, run_id: RunId, body: OpsFindingIn, use
         return await finding(conn, await held(conn, user, run_id), body)
 
 
+@worker_router.post("/runs/{run_id}/ops/priority", response_model=OpsActed, responses=_RESPONSES)
+async def priority_route(request: Request, run_id: RunId, body: OpsPriorityIn, user: CurrentUser) -> OpsActed:
+    """Give a queued run of the project another priority, as the Orchestrator's chat run of an ops thread."""
+    async with request.app.state.engine.begin() as conn:
+        return await priority(conn, await held(conn, user, run_id), body)
+
+
+@worker_router.post("/runs/{run_id}/ops/plan-dispatch", response_model=OpsActed, responses=_RESPONSES)
+async def plan_dispatch_route(request: Request, run_id: RunId, body: OpsPlanIn, user: CurrentUser) -> OpsActed:
+    """Hand a stalled plan of this ops thread's batch again to the default system's entry agent, as its Orchestrator's
+    chat run."""
+    public_url = request.app.state.config.public_url
+    async with request.app.state.engine.begin() as conn:
+        return await plan_dispatch(conn, await held(conn, user, run_id), body, public_url=public_url)
+
+
 __all__ = [
     "OpsActed",
     "OpsFindingIn",
+    "OpsPlanIn",
+    "OpsPriorityIn",
     "OpsReadIn",
     "OpsReasonIn",
     "OpsRunIn",
@@ -301,6 +376,8 @@ __all__ = [
     "finding",
     "handled",
     "ops_frame",
+    "plan_dispatch",
+    "priority",
     "read",
     "rerun",
     "worker_router",

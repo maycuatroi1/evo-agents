@@ -381,9 +381,9 @@ def test_every_transfer_to_the_blob_store_names_evo_agents_as_its_user_agent(tmp
         url = f"http://127.0.0.1:{server.server_port}/bucket/key?X-Amz-Signature=x"
         put_bundle(url, RecordingStore.body)
         assert get_bundle(url, len(RecordingStore.body)) == RecordingStore.body
-        graph = tmp_path / "graph.sqlite"
-        graph.write_bytes(b"a graph")
-        put_presigned(url, graph)
+        upload = tmp_path / "upload.bin"
+        upload.write_bytes(b"a file")
+        put_presigned(url, upload)
     finally:
         server.shutdown()
         server.server_close()

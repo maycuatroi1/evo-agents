@@ -15,9 +15,10 @@ import yaml
 from evo_agents.kg import build
 from evo_agents.kg.pipeline.link import Linker
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store_session import StoreSession
+from tests.kg import built
+from tests.kg.built import sync_build
+from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, git, write
-from tests.kg.test_end_to_end import sync_build
 
 SCHEMA = "schemas:schemas/event.yaml"
 VALIDATE = "schemas:shared_schema.py::validate"
@@ -78,7 +79,7 @@ def two_repos(tmp_path, kg_env):
 
 
 def impacted(project, seed):
-    result = StoreSession(project, "agent").call("kg_impact", {"id": seed, "depth": 3})
+    result = hub_session(project, "agent").call("kg_impact", {"id": seed, "depth": 3})
     assert not result.get("isError"), result
     return {row["node"]["id"]: row for row in result["structuredContent"]["impacted"]}
 
@@ -165,7 +166,7 @@ def test_link_version_invalidates_old_cross_repo_edges_without_source_changes(tw
         before = sync_build(two_repos)
         assert CONSUMER in impacted(two_repos, VALIDATE)
         assert SERVICE in impacted(two_repos, "schemas:shared_schema.py")
-    after = build.build_project(two_repos, verify=True)
+    after = built.build(two_repos, verify=True)
     assert after.ok and not after.skipped and after.build_id != before.build_id
     assert after.verify["match"]
     assert CONSUMER not in impacted(two_repos, VALIDATE)

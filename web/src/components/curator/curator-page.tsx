@@ -25,6 +25,7 @@ import { useCuratorViewer } from "./hooks";
 import { nightOutcome, periodBudget, shiftHours } from "./model";
 import { proposalsHref, NightStrip, NoCharter } from "./night-strip";
 import { Fact, Facts, useDay, useMoney, useShiftText } from "./parts";
+import { EvolveCard } from "./evolve-card";
 import { ProbeReport } from "./probe-lazy";
 import { type CuratorStatus, curatorHref, curatorStatusQuery, type NightList, type NightSummary, nightsQuery } from "./queries";
 
@@ -323,6 +324,7 @@ export function CuratorPage({ project, initialError }: { project: string; initia
                 <LastReviewCard project={project} status={found} />
               </div>
               <ProbeReport project={project} />
+              <EvolveCard project={project} />
               <Nights project={project} status={found} />
             </>
           )}

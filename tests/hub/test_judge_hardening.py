@@ -86,10 +86,13 @@ def test_judge_routes_refuse_the_worker_token_without_the_runs_key(world):  # no
         assert world.client.post(f"{route}/verdict", json=body, headers=headers).status_code == 403
     assert one_change(world)["state"] == "judging"  # nothing was judged by the worker token alone
     assert inputs(world, spec["id"]).status_code == 200
-    assert verdict(world, spec["id"]).status_code == 200
+    first = verdict(world, spec["id"])
+    assert first.status_code == 200
     (stored,) = sql(world.db, select(tables.curator_changes.c.judge_key))
     assert stored[0] is None  # the key goes with the verdict
-    assert verdict(world, spec["id"]).status_code == 409
+    # the worker posts again when the answer came too late: it gets the verdict recorded, and records no other
+    again = verdict(world, spec["id"], verdict="fail")
+    assert again.status_code == 200 and again.json() == first.json()
 
 
 # H1: the tier again from the files, and the plan the hub's
@@ -126,6 +129,32 @@ def test_judge_the_paths_of_a_judge_runs_diff_raise_the_tier_and_never_lower_it(
     assert response.status_code == 200, response.text
     assert response.json()["tier"] == 1
     assert proposal_of(world, proposal["id"])["tier"] == 1
+    moved(world.client, world.worker, spec["id"], "running", "verifying", "done")
+
+
+def test_judge_the_graph_read_for_a_verdict_holds_no_lock_on_the_run(world, monkeypatch):  # noqa: F811
+    """The graph read for the tier can wait minutes for a snapshot load; the run row it locked made the worker's
+    heartbeat and claim wait too, each holding a pool connection, until the pool timed out."""
+    from evo_agents.hub.server import change_tiers
+
+    accepted(world)
+    builder(world)
+    moved_on(world)
+    spec = judge_run(world)
+    assert inputs(world, spec["id"]).status_code == 200
+    real = change_tiers.verdict_facts
+    probed = []
+
+    async def reading(*args, **kwargs):
+        r = tables.runs
+        # raises when another transaction holds the row
+        probed.append(sql(world.db, select(r.c.id).where(r.c.id == spec["id"]).with_for_update(nowait=True)))
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(change_tiers, "verdict_facts", reading)
+    response = verdict(world, spec["id"], paths=["tests/test_wait.py", "evo_agents/worker/wait.py"])
+    assert response.status_code == 200, response.text
+    assert probed and response.json()["tier"] == 1
     moved(world.client, world.worker, spec["id"], "running", "verifying", "done")
 
 

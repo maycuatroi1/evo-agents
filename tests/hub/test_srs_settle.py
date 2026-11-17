@@ -37,9 +37,7 @@ from evo_agents.hub import plugin_events, tables
 from evo_agents.hub.kg_graph import BuiltGraph, HubSession, UnknownRefs
 from evo_agents.hub.server import kg
 from evo_agents.hub.server.srs import settle
-from evo_agents.kg.build import build_project
 from evo_agents.kg.policy import Label
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from tests.hub import live
 from tests.hub.live import ADMIN, sql
@@ -73,6 +71,8 @@ from tests.hub.test_ba_agent import (  # noqa: F401 (app_key, client, hub, membe
 from tests.hub.test_chat_runs import created, sent
 from tests.hub.test_runs import PROJECT, moved, plan_body
 from tests.hub.test_srs_findings import billing
+from tests.kg import built as memory
+from tests.kg.hub_graph import graph_of
 from tests.kg.projects import make_project
 
 DAO, EVE = "dao", "eve"  # the author of plan rollout, and the assignee of a task of UC ORD-2
@@ -414,19 +414,16 @@ def test_srs_settle_graph_gives_the_authors_of_the_three_newest_commits_of_a_fil
     _commit_as(app, "lan@lumen.example", "2026-10-04T23:00:00-05:00", "# Guide\n\nTwo.\n")
     _commit_as(app, "mai@lumen.example", "2026-10-05T07:00:00+07:00", "# Guide\n\nThree.\n")
     assert sync_project(project, ["app"])[0].ok
-    report = build_project(project)
+    report = memory.build(project)
     assert report.ok, report.errors
-    store = Store.for_project(project)
+    _, view, _ = graph_of(project)
     built = BuiltGraph(report.build_id, "0" * 64, 0, "c", 0, 0, datetime.now(UTC))
     wide = Label(2, 0, "U", frozenset({project.name}))
-    session = HubSession(project.name, project.policy, wide, "wide", store, built, built)
-    try:
-        lacking, missing, authors = session.unknown(["app:file:docs/guide.md", "app:file:none.md"], ["app:app/x.py"])
-        assert (lacking, missing) == (["app:file:none.md"], ["app:app/x.py"])
-        assert authors == ["nam@lumen.example", "lan@lumen.example", "mai@lumen.example"]  # not t@, the first's
-        assert session.unknown([], ["docs/guide.md"])[2] == authors
-        assert session.unknown([], ["app:app/search.py"])[2] == ["t@example.test"]
-        node = store.node([c for c in store.alive_ids("nodes", report.build_id) if ":commit:" in c][0], report.build_id)
-        assert node["props"]["time"].endswith("Z")
-    finally:
-        store.close()
+    session = HubSession(project.name, project.policy, wide, "wide", view, built, built)
+    lacking, missing, authors = session.unknown(["app:file:docs/guide.md", "app:file:none.md"], ["app:app/x.py"])
+    assert (lacking, missing) == (["app:file:none.md"], ["app:app/x.py"])
+    assert authors == ["nam@lumen.example", "lan@lumen.example", "mai@lumen.example"]  # not t@, the first's
+    assert session.unknown([], ["docs/guide.md"])[2] == authors
+    assert session.unknown([], ["app:app/search.py"])[2] == ["t@example.test"]
+    node = view.node([c for c in view.alive_ids("nodes", report.build_id) if ":commit:" in c][0], report.build_id)
+    assert node["props"]["time"].endswith("Z")

@@ -12,10 +12,10 @@ pytest.importorskip("sqlalchemy")
 from evo_agents.hub import kg_entity_map_run as model
 from evo_agents.hub import review as review_model
 from evo_agents.kg import clusters as kg_clusters
-from evo_agents.kg.build import build_project
-from evo_agents.kg.store import Store
 from tests.hub import pg
 from tests.hub.test_kg_eval_bootstrap import kg_env  # noqa: F401 (a fixture)
+from tests.kg.built import build as build_in_memory
+from tests.kg.built import view_of
 from tests.kg.test_entity_map import CLUSTER, GUIDE, SEARCH_FILE, SERVER, a_map, put_map, setup
 
 EVERYTHING = (100, 100)  # a ceiling above every label of the test graph
@@ -24,13 +24,12 @@ NOW = datetime(2026, 11, 6, tzinfo=UTC)
 
 
 @pytest.fixture
-def store(tmp_path, kg_env):  # noqa: F811
+def graph(tmp_path, kg_env):  # noqa: F811
+    """The view of the test graph the run's sink reads, as the hub gives it (``kg_graph.reading``)."""
     project = setup(tmp_path, kg_env)
     put_map(project, a_map())
-    build_project(project)
-    opened = Store.open_file(project.root / "graph.sqlite")
-    yield opened
-    opened.close()
+    assert build_in_memory(project).ok
+    return view_of(project)
 
 
 # Without the database
@@ -65,8 +64,8 @@ def test_a_build_asks_for_a_run_first_under_the_strategy_then_when_citations_go_
     assert model.wants_run({"entity_map": stale}, had_run=True, last_asked=recent, now=NOW) is None
 
 
-def test_the_outline_holds_the_tree_clusters_entities_documents_and_plans_the_sink_reads(store):
-    found = model.outline(store, EVERYTHING)
+def test_the_outline_holds_the_tree_clusters_entities_documents_and_plans_the_sink_reads(graph):
+    found = model.outline(graph, EVERYTHING)
     counts = found["counts"]
     assert counts["files"] >= 3 and counts["symbols"] >= 4 and counts["entities"] == 3
     app = next(d for d in found["directories"] if (d["repo"], d["path"]) == ("app", "app"))
@@ -84,35 +83,35 @@ def test_the_outline_holds_the_tree_clusters_entities_documents_and_plans_the_si
     assert any(SEARCH_FILE in c["members"] for c in found["clusters"])
 
 
-def test_nothing_above_the_sink_is_outlined_or_counted(store):
+def test_nothing_above_the_sink_is_outlined_or_counted(graph):
     for ceiling in (NOTHING, None):  # None: the sink's grant clears no label
-        found = model.outline(store, ceiling)
+        found = model.outline(graph, ceiling)
         assert set(found["counts"].values()) == {0} and found["clusters"] == found["directories"] == []
-        readable, revs = model.readable(store, ceiling, None)
+        readable, revs = model.readable(graph, ceiling, None)
         assert revs == {} and readable.items == readable.entities == readable.citable == 0
-    readable, _ = model.readable(store, NOTHING, None)
-    assert readable.above == model.readable(store, EVERYTHING, None)[0].items > 0
+    readable, _ = model.readable(graph, NOTHING, None)
+    assert readable.above == model.readable(graph, EVERYTHING, None)[0].items > 0
 
 
-def test_what_changed_since_the_last_map_and_what_no_map_cites(store):
-    readable, revs = model.readable(store, EVERYTHING, None)
+def test_what_changed_since_the_last_map_and_what_no_map_cites(graph):
+    readable, revs = model.readable(graph, EVERYTHING, None)
     assert readable.changed == {"new": len(revs), "changed": 0, "gone": 0} and readable.uncited < readable.citable
     assert "commit" not in readable.classes and "binary" not in readable.classes
-    nothing = model.changed(store, EVERYTHING, revs)
+    nothing = model.changed(graph, EVERYTHING, revs)
     assert nothing["since_map"] and nothing["counts"]["new"] == nothing["counts"]["changed"] == 0
     item = sorted(revs)[0]
     before = {**{k: v for k, v in revs.items() if k != item}, "gone:item": "1", sorted(revs)[1]: "other"}
-    found = model.changed(store, EVERYTHING, before, limit=1)
+    found = model.changed(graph, EVERYTHING, before, limit=1)
     assert found["counts"] == {"new": 1, "changed": 1, "gone": 1, "uncited": readable.uncited}
     assert found["new"] == [{"id": item, "class": found["new"][0]["class"]}] and found["gone"][0]["id"] == "gone:item"
     assert len(found["uncited"]) == 1 and GUIDE not in {
-        u["id"] for u in model.changed(store, EVERYTHING, None)["uncited"]
+        u["id"] for u in model.changed(graph, EVERYTHING, None)["uncited"]
     }
-    assert not model.changed(store, EVERYTHING, None)["since_map"]
+    assert not model.changed(graph, EVERYTHING, None)["since_map"]
 
 
-def test_the_privacy_of_the_prompt_counts_and_classes_never_an_item(store):
-    readable, _ = model.readable(store, EVERYTHING, None)
+def test_the_privacy_of_the_prompt_counts_and_classes_never_an_item(graph):
+    readable, _ = model.readable(graph, EVERYTHING, None)
     text = model.prompt(
         project="demo", run_id=7, sink="claude-code@anthropic", found=readable, why=["a writer asked"], since_map=False
     )

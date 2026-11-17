@@ -263,8 +263,79 @@ def test_a_chat_mention_without_a_fit_worker_says_why_in_the_thread_and_makes_no
     beat(client, old)  # now it runs chat runs
     fits = sent(client, hub["owner"], chat["id"], "@reviewer again")
     assert fits["mentions"][0]["run_id"] is not None
-    busy = sent(client, hub["owner"], chat["id"], "@reviewer once more")  # the pool's one node is busy now
-    assert "old-daemon has no free slot" in busy["mentions"][0]["refusal"]
+    busy = sent(client, hub["owner"], chat["id"], "@reviewer once more")  # the pool's one node is busy: it queues
+    assert busy["mentions"][0]["refusal"] is None and busy["mentions"][0]["run_id"] is not None
+
+
+def test_a_refused_mention_writes_mention_refused(client, hub, hub_db):
+    chat_worker(client, hub["owner"], "old-daemon", kinds=["step", "plan", "review", "judge", "author"])
+    chat = created(client, hub["owner"])
+    mention = sent(client, hub["owner"], chat["id"], "@reviewer look at the diff")
+    assert mention["mentions"][0]["refusal"] is not None
+    e, a = tables.hub_events, tables.agent_profiles
+    (profile_id,) = sql(hub_db, select(a.c.id).where(a.c.handle == "reviewer"))[0]
+    refused = sql(hub_db, select(e.c.payload).where(e.c.kind == "mention.refused"))
+    assert [payload for (payload,) in refused] == [
+        {"v": 1, "profile_id": profile_id, "chat_id": chat["id"], "message_id": mention["id"], "state": "refused"}
+    ], "ids and states only: no body, no reason text"
+
+
+def queued_lines(db) -> list[str]:
+    """The hub's lines that say a run waits for a free slot of a node, in every chat, oldest first."""
+    m = tables.chat_messages
+    query = select(m.c.body).where(m.c.author_user_id.is_(None), m.c.author_profile_id.is_(None))
+    return [body for (body,) in sql(db, query.order_by(m.c.id)) if "is queued for a free slot" in body]
+
+
+def test_a_mention_to_a_full_pool_queues_and_starts_when_a_slot_frees(client, hub, hub_db):
+    small = chat_worker(client, hub["owner"], "mac-mini", checkouts=ONE_REPO)
+    studio = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"])
+    first = sent(client, hub["owner"], chat["id"], "@reviewer fix the flaky wait test")
+    second = sent(client, hub["owner"], chat["id"], "@reviewer look at the diff")  # studio's slot is taken
+    third = sent(client, hub["owner"], chat["id"], "@reviewer and the docs")  # both nodes are busy now
+    assert [m["refusal"] for m in (*first["mentions"], *second["mentions"], *third["mentions"])] == [None] * 3
+    held, other, waits = (item["mentions"][0]["run_id"] for item in (first, second, third))
+    r = tables.runs
+    pinned = sql(hub_db, select(r.c.id, r.c.state, r.c.pinned_worker_id).where(r.c.kind == "chat").order_by(r.c.id))
+    # the third goes where the pick would send a run: the node with a checkout of the most repos of the project
+    assert pinned == [(held, "queued", studio["id"]), (other, "queued", small["id"]), (waits, "queued", studio["id"])]
+    (line,) = queued_lines(hub_db)
+    assert f"run #{waits} of @reviewer" in line and "node studio" in line and "1 run ahead of it" in line
+    answer = thread(client, hub["owner"], chat["id"], third["id"])[-1]
+    assert (answer["author"]["kind"], answer["body"]) == ("hub", line)
+    assert claim(client, studio)["id"] == held
+    moved(client, studio, held, "running", session_id="sess-1")
+    assert claim(client, studio) is None  # its one slot is held
+    ended(client, studio, held)
+    assert claim(client, studio)["id"] == waits
+
+
+def test_an_ask_to_a_full_pool_queues_instead_of_refusing(client, hub, hub_db):
+    from tests.hub.test_agent_delegation import KB_AGENT, kb_node, kb_project  # it imports this module
+
+    kb_project(client, hub, hub_db)
+    studio = chat_worker(client, hub["owner"], "studio")
+    node = kb_node(client, hub["owner"], hub_db)
+    chat = created(client, hub["owner"])
+    _, spec = started(client, hub, studio, chat)
+    asks = []
+    for text in ("Which service signs the export links?", "Where is its key read?"):
+        response = in_chats(client, studio, spec["id"], "agent/asks", {"handle": KB_AGENT, "body": text})
+        assert response.status_code == 201, response.text
+        asks.append(response.json())
+    assert [item["refusal"] for item in asks] == [None, None]  # the second finds kb-node full, and queues
+    first, second = (item["run_id"] for item in asks)
+    r = tables.runs
+    states = sql(hub_db, select(r.c.id, r.c.state, r.c.pinned_worker_id).where(r.c.id.in_([first, second])))
+    assert sorted(states) == [(first, "queued", node["id"]), (second, "queued", node["id"])]
+    (line,) = queued_lines(hub_db)
+    assert f"run #{second} of @{KB_AGENT}" in line and "node kb-node" in line and "1 run ahead of it" in line
+    assert claim(client, node)["id"] == first
+    moved(client, node, first, "running", session_id="sess-kb")
+    assert claim(client, node) is None
+    ended(client, node, first)
+    assert claim(client, node)["id"] == second
 
 
 def test_a_chat_message_hands_work_to_three_agents_at_most(client, hub, hub_db):

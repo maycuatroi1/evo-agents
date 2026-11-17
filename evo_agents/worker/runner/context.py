@@ -73,6 +73,13 @@ def _own_keys(curator: dict | None) -> tuple[str | None, str | None, str | None,
     return tuple(curator.pop(f"{kind}_key", None) for kind in kinds)  # type: ignore[return-value]
 
 
+def _evolve_key(spec: dict, curator: dict | None) -> str | None:
+    """The key of an evolve run, taken out of its spec: its role's (``curator.evolve_key``), else the spec's own."""
+    found = curator.pop("evolve_key", None) if curator is not None else None
+    own = spec.pop("evolve_key", None)
+    return found or own
+
+
 def _curator_of(spec: dict) -> dict | None:
     found = spec.get("curator")
     return found if isinstance(found, dict) else None
@@ -114,9 +121,12 @@ class Run:
         self.proofs: list[dict] | None = None  # a run of one step's proof of each criterion its step names
         self.outcome: Outcome | None = None
         self.curator: dict | None = _curator_of(spec)  # a run of the Curator: its role
-        # A judge run's, a replay run's and a history run's own key: in this object alone, out of the spec its adapter
-        # and records see.
-        self.judge_key, self.replay_key, self.history_key, self.probe_key = _own_keys(self.curator)
+        # A judge run's, a replay run's, a history run's, a probe run's and an evolve run's own key: in this object
+        # alone, out of the spec its adapter and records see.
+        self.judge_key, self.replay_key, self.history_key, self.probe_key, self.evolve_key = (
+            *_own_keys(self.curator),
+            _evolve_key(spec, self.curator),
+        )
         self.listeners: list = []  # what a kind counts of its agent's events: each called with (kind, body)
         self.unsupported_noted: set[str] = set()
         self._background: set[asyncio.Task] = set()

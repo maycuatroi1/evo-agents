@@ -30,7 +30,6 @@ the hub as a proposal (the MCP tool ``kg_propose``), which changes nothing until
 
 from __future__ import annotations
 
-import json
 import math
 import posixpath
 import re
@@ -38,9 +37,10 @@ import time
 from collections import defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_filters import LIVE, SEEN
+if TYPE_CHECKING:
+    from evo_agents.kg.snapshot import SnapshotView
 
 MODELS = ("distmult", "rotate")  # the first is the default
 DIM = 64  # complex dimensions of RotatE, real ones of DistMult
@@ -130,21 +130,17 @@ class LinkGraph:
         return out
 
 
-def read(store: Store, b: int) -> LinkGraph:
-    """Build b's live nodes and edges the store's reader sees."""
+def read(view: SnapshotView, b: int = 0) -> LinkGraph:
+    """The live nodes and edges of a build the view's reader sees (``SnapshotView.sees``), nodes by id and edges by
+    (src, rel, dst); ``b`` is the view's one build."""
     g = LinkGraph()
-    for nid, kind, name, props in store.db.execute(
-        f"SELECT node_id, kind, name, props FROM nodes WHERE {LIVE} AND {SEEN} ORDER BY node_id", {"b": b}
-    ):
-        try:
-            path = (json.loads(props) if props else {}).get("path")
-        except ValueError:
-            path = None
-        g.add_node(nid, kind, name, path if isinstance(path, str) else None)
-    for src, rel, dst, status in store.db.execute(
-        f"SELECT src, rel, dst, status FROM edges WHERE {LIVE} AND {SEEN} ORDER BY src, rel, dst", {"b": b}
-    ):
-        g.add_edge(src, rel, dst, status)
+    for n in view.snap.nodes:  # by id
+        if view.sees(n):
+            path = n["props"].get("path")
+            g.add_node(n["id"], n["kind"], n["name"], path if isinstance(path, str) else None)
+    edges = sorted((e for e in view.snap.edges if view.sees(e)), key=lambda e: (e["src"], e["rel"], e["dst"], e["id"]))
+    for e in edges:
+        g.add_edge(e["src"], e["rel"], e["dst"], e["status"])
     return g
 
 

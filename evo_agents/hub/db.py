@@ -4,7 +4,11 @@ The lifespan of the api and of the worker opens the pool after migrating, then t
 (``make_engine``); on shutdown it disposes of the engine, then closes the pool. The engine keeps no connection of its
 own (``NullPool``): each one it hands out is taken from the pool (``async_creator=pool.getconn``), and closing it
 gives it back, because the pool is made with ``close_returns=True``. The pool's size, timeout and check govern both,
-and a connection is checked before it is handed out, so the pool recovers by itself after Postgres restarts. To
+and a connection is checked before it is handed out, so the pool recovers by itself after Postgres restarts. A
+Postgres that went away without closing its connections (its container killed on a stalled host, its address
+dropped, no reset sent) leaves them open on this side, and a query on one would wait forever: the check gives up after
+``CHECK_TIMEOUT``, and TCP keepalives (``CONNECT_KWARGS``) fail a connection whose peer stopped answering, so the pool
+replaces it and reaches the Postgres that came back. To
 ``NullPool`` each checkout is a new connection, so the dialect's connect hook runs on every one; what it changes on
 the psycopg connection, the engine undoes as it gives the connection back (``make_engine``).
 
@@ -17,6 +21,12 @@ The pool times each connection it hands out (``TimedPool``): one held ``HOLD_LOG
 ``pool connection held`` with its holder, the request path the api's middleware set in ``holder`` and the name of the
 task that took it, and a ``PoolTimeout`` is logged as ``pool timeout`` with the connections out at that moment, each
 with its holder and how long it has held it: what the log says of who emptied the pool.
+
+The api opens a second, small pool beside it (``open_heartbeat_pool``, ``EVO_HUB_HEARTBEAT_POOL_SIZE`` connections)
+for the workers' heartbeats and claims alone (``HEARTBEAT_PATHS``), the check of their token included: whatever holds
+the main pool (a graph's load, a slow page, a burst of requests stalled behind the event loop), a worker still gets a
+connection, made and checked as the main pool's are, so it reconnects after Postgres restarts the same way. Postgres
+must allow the connections of both pools.
 """
 
 from __future__ import annotations
@@ -41,6 +51,16 @@ log = logging.getLogger(__name__)
 
 APPLICATION_NAME = "evo-agents-hub"
 CONNECT_TIMEOUT = 10  # seconds for libpq to establish one connection
+CHECK_TIMEOUT = 5.0  # seconds the check of a pooled connection may take before the pool drops it as dead
+# libpq's TCP keepalives and user timeout: a connection whose peer stopped answering fails within about 25 s, idle or
+# waiting for a reply, instead of waiting forever for a server that is gone
+KEEPALIVES = {"keepalives": 1, "keepalives_idle": 10, "keepalives_interval": 5, "keepalives_count": 3}
+CONNECT_KWARGS = {
+    "application_name": APPLICATION_NAME,
+    "connect_timeout": CONNECT_TIMEOUT,
+    "tcp_user_timeout": 30_000,
+    **KEEPALIVES,
+}
 HOLD_LOG_SECONDS = 2.0  # a pooled connection held this long or longer is logged with its holder (``TimedPool``)
 HOLDERS_LOGGED = 30  # of the connections out when the pool times out, the longest held ones logged
 
@@ -88,6 +108,13 @@ class TimedPool(AsyncConnectionPool):
             log.info("pool connection held", extra={"holder": taken[1], "held_ms": _ms(held)})
         await super().putconn(conn)
 
+    def serving(self, within: float, but: str = "") -> bool:
+        """Whether a connection taken ``within`` seconds ago or later is out, a request in the middle of its
+        transaction, not counting the ones of a holder that names ``but``: what a build's thread running beside the
+        loop (``evo_agents.hub.kg_snapshots``) lets go ahead of itself."""
+        since = monotonic() - within
+        return any(taken >= since and not (but and but in who) for taken, who in list(self._out.values()))
+
     def holders(self) -> list[dict]:
         """The connections out now, the longest held first: each one's holder and how long it has held it."""
         now = monotonic()
@@ -95,27 +122,58 @@ class TimedPool(AsyncConnectionPool):
         return [{"holder": who, "held_ms": _ms(now - taken)} for taken, who in out]
 
 
+async def check_connection(conn) -> None:
+    """The pool's check of a connection before it hands it out, bounded by ``CHECK_TIMEOUT``: a connection to a
+    server that is gone raises instead of hanging, and the pool drops it and connects again."""
+    await asyncio.wait_for(AsyncConnectionPool.check_connection(conn), CHECK_TIMEOUT)
+
+
 def _ms(seconds: float) -> float:
     return round(seconds * 1000, 1)
 
 
-def create_pool(config: HubConfig) -> AsyncConnectionPool:
-    return TimedPool(
+def create_pool(config: HubConfig, *, heartbeat: bool = False) -> AsyncConnectionPool:
+    """The process's pool, or with ``heartbeat`` the api's pool of the heartbeats and claims (``HEARTBEAT_PATHS``),
+    of ``config.heartbeat_pool_size`` connections: its size is all that differs."""
+    size = (1, config.heartbeat_pool_size) if heartbeat else (config.pool_min_size, config.pool_max_size)
+    pool = TimedPool(
         config.dsn,
-        min_size=config.pool_min_size,
-        max_size=config.pool_max_size,
+        min_size=size[0],
+        max_size=size[1],
         timeout=config.pool_timeout,
-        kwargs={"application_name": APPLICATION_NAME, "connect_timeout": CONNECT_TIMEOUT},
-        check=AsyncConnectionPool.check_connection,
-        name="evo-hub",
+        kwargs=CONNECT_KWARGS,
+        check=check_connection,
+        name="evo-hub-heartbeat" if heartbeat else "evo-hub",
         close_returns=True,  # a connection the engine closes goes back to the pool
         open=False,
     )
+    if heartbeat:
+        live.append(pool)
+    else:
+        live[:] = [pool]
+    return pool
 
 
-async def open_pool(config: HubConfig) -> AsyncConnectionPool:
+# the pools made last: the process's one, then the api's pool of the heartbeats and claims
+live: list[TimedPool] = []
+
+# the requests served on the heartbeat pool (``engine_for``)
+HEARTBEAT_PATHS = frozenset({"/v1/worker/heartbeat", "/v1/worker/claim"})
+
+
+def engine_for(state, path: str) -> AsyncEngine:
+    """The engine a request to ``path`` takes its connections from: the heartbeat pool's for HEARTBEAT_PATHS, when
+    the app opened one, else the main pool's."""
+    if path in HEARTBEAT_PATHS:
+        engine = getattr(state, "heartbeat_engine", None)
+        if engine is not None:
+            return engine
+    return state.engine
+
+
+async def open_pool(config: HubConfig, *, heartbeat: bool = False) -> AsyncConnectionPool:
     """An open pool holding its minimum of connections; raises PoolTimeout when Postgres does not answer."""
-    pool = create_pool(config)
+    pool = create_pool(config, heartbeat=heartbeat)
     try:
         await pool.open(wait=True, timeout=config.pool_timeout)
     except BaseException:

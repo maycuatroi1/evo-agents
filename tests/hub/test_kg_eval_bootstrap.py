@@ -1,6 +1,6 @@
 """The question set a project gets from its first graph (``evo_agents.hub.kg_eval_starter``, plan
-kg-data-profile-curator, criterion a2): the questions out of the graph's file alone, as the hub has no checkout, and the
-rule that only a project with no set gets one. The statements run against a fake connection; the database is the
+kg-data-profile-curator, criterion a2): the questions out of the rows of the graph alone, as the hub has no checkout,
+and the rule that only a project with no set gets one. The statements run against a fake connection; the database is the
 tables of ``kg_eval_sets``, which ``tests.hub.test_kg_health`` covers on Postgres."""
 
 import asyncio
@@ -13,11 +13,8 @@ pytest.importorskip("sqlalchemy")
 
 from evo_agents.hub import kg_eval_starter as starter
 from evo_agents.hub.server import kg_eval_sets
-from evo_agents.kg.build import build_project
 from evo_agents.kg.evaluate import QuestionSet, parse_set
-from evo_agents.kg.snapshot import store_rows
-from evo_agents.kg.store import Store
-from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import commit, make_project, write
 
 
@@ -44,7 +41,8 @@ class Conn:
         return SimpleNamespace(first=lambda: None if self.version is None else (self.version,))
 
 
-def graph_of(tmp_path, kg_env):
+def project_of(tmp_path, kg_env):
+    """A project of one repo whose one commit changed a file of the graph, synced and built in memory."""
     project = make_project(tmp_path, kg_env)
     app = tmp_path / "demo-app"
     write(
@@ -52,12 +50,13 @@ def graph_of(tmp_path, kg_env):
         "def rank_results(items):\n    return sorted(items)\n\n\ndef search(query):\n    return 1\n",
     )
     commit(app, "Make search return a constant while the ranker is rebuilt")
-    assert all(r.ok for r in sync_project(project)) and build_project(project).ok
-    store = Store.open_file(project.root / "graph.sqlite", immutable=True)
-    try:
-        return store_rows(store, store.latest_ready())
-    finally:
-        store.close()
+    built.sync_build(project)
+    return project
+
+
+def graph_of(tmp_path, kg_env):
+    """The rows of the build of ``project_of``, as the hub keeps them."""
+    return built.rows_of(project_of(tmp_path, kg_env))
 
 
 def test_the_first_graph_gives_the_questions_from_its_rows_alone(tmp_path, kg_env):

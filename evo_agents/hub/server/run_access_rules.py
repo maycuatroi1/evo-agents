@@ -74,6 +74,7 @@ REFUSED = (
             "/v1/secrets",
             "/v1/shares",
             "/v1/accounts",
+            "/v1/shared-accounts",
             "/v1/account-policies",
             "/v1/agent-accounts",
             "/v1/provider-accounts",

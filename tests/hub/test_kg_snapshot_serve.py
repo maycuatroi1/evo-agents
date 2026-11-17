@@ -18,9 +18,8 @@ if not pg.DSN:
 
 from evo_agents.hub import kg_graph_rows, kg_snapshots
 from evo_agents.hub.kg_graph_rows import MAIN
-from evo_agents.kg.snapshot import Snapshot, store_rows
+from evo_agents.kg.snapshot import Snapshot
 from evo_agents.kg.snapshot_search import SnapshotSearch
-from evo_agents.kg.store import Store
 from tests.hub.live import add_project
 from tests.hub.test_kg import Machine, doc, hub, push  # noqa: F401 (hub is a fixture)
 from tests.hub.test_kg_postgres_build import build, make_engine, project_id
@@ -100,23 +99,26 @@ def test_a_private_chat_item_is_invisible_to_a_member_outside_its_audience(hub_d
     from tests.hub import test_kg_audience as aud
 
     graph = aud.build(tmp_path, monkeypatch, 1, 2)  # chat items, each with the audience of its chat
-    path = tmp_path / "graph.sqlite"
-    path.write_bytes(graph.data)
+    rows = graph.rows
     pid = add_project(hub_db, "aud")
-    store = Store.open_file(path, immutable=True)
-    try:
-        b = store.latest_ready()
-        rows = store_rows(store, b)
-        nodes, units = sorted(store.alive_ids("nodes", b)), sorted(store.alive_ids("units", b))
-        for reader in (frozenset(), frozenset({"chat:1"}), frozenset({"chat:1", aud.GB})):
-            store.reader = reader  # a reader within some chats reads the snapshot as it reads the file
-            view = Snapshot.from_stored(rows).view(reader)
-            assert view.seen(b) == store.seen(b)
-            assert [view.unit(u) for u in units] == [store.unit(u, b) for u in units]
-            assert [view.body(n) for n in nodes] == [store.body(n) for n in nodes]
-            assert [view.degree(n) for n in nodes] == [store.degree(n, b) for n in nodes]
-    finally:
-        store.close()
+    items = ("chat:text:m1", "chat:text:m2", "chat:text:m3", "chat:text:plan")
+    # what a reader within some chats reads of the items: the ones it may read, and the counts of what it sees
+    reads = {
+        frozenset(): ({"chat:text:plan"}, (2, 1, 1)),
+        frozenset({"chat:1"}): ({"chat:text:m2", "chat:text:plan"}, (3, 3, 2)),
+        frozenset({"chat:1", aud.GB}): ({"chat:text:m1", "chat:text:m2", "chat:text:plan"}, (5, 5, 3)),
+    }
+    for reader, (readable, counts) in reads.items():
+        view = Snapshot.from_stored(rows).view(reader)
+        seen = view.seen()
+        assert (seen["nodes"], seen["edges"], seen["units"]) == counts, reader
+        assert (seen["items"], seen["audience"]) == ({"chat": len(readable)}, {"chat"}), reader
+        assert sum(c for *_, c in view.kind_counts()) == counts[0], reader
+        assert sum(c for *_, c in view.shape_counts()) == counts[1], reader
+        assert {n for n in items if view.unit(f"{n}#") is not None} == readable, reader
+        assert {n for n in items if view.body(n) is not None} == readable, reader
+        assert {n for n in items if view.node(n) is not None} == readable, reader
+        assert all(view.degree(n) == 0 for n in items if n not in readable), reader
 
     async def keep():
         engine = make_engine(hub_db)
@@ -168,51 +170,66 @@ def test_each_reader_gets_a_view_of_its_own_over_the_one_snapshot(hub, tmp_path,
     assert second.reader == frozenset({"chat:1"})
 
 
-def test_the_labelled_nodes_of_a_view_are_those_of_the_file(tmp_path, monkeypatch):
+def aud_view_of(tmp_path, monkeypatch):
+    """The graph of aud with the items of chats 1 and 2 (``tests.hub.test_kg_audience``), built in memory, and the
+    ids of what each reader below sees of it: the plan and the source have no audience, #1 is in chat 1 and the grant
+    of aud-b, #2 in chat 1 alone, #3 in chat 2 and the grant, K-9 is mentioned by #1 alone."""
+    from tests.hub import test_kg_audience as aud
+    from tests.kg import built
+
+    project = aud.synced(tmp_path, monkeypatch, 1, 2)
+    assert built.build(project).ok
+    public = {aud.PLAN, "source:chat"}
+    sees = {
+        frozenset(): public,
+        frozenset({"chat:1"}): public | {aud.M2},
+        frozenset({"chat:1", aud.GB}): public | {aud.M1, aud.M2, aud.K9},
+    }
+    return built.snapshot_of(project), sees
+
+
+def test_the_labelled_nodes_of_a_view_say_which_its_reader_sees(tmp_path, monkeypatch):
     from evo_agents.kg.labelled import labelled_nodes
     from tests.hub import test_kg_audience as aud
 
-    graph = aud.build(tmp_path, monkeypatch, 1, 2)
-    path = tmp_path / "graph.sqlite"
-    path.write_bytes(graph.data)
-    store = Store.open_file(path, immutable=True)
-    try:
-        rows = store_rows(store, store.latest_ready())
-        for reader in (frozenset(), frozenset({"chat:1"})):
-            store.reader = reader
-            view = Snapshot.from_stored(rows).view(reader)
-            assert sorted(labelled_nodes(view), key=repr) == sorted(labelled_nodes(store), key=repr)
-            some = next(iter(labelled_nodes(store))).node_id
-            assert list(labelled_nodes(view, node_id=some)) == list(labelled_nodes(store, node_id=some))
-    finally:
-        store.close()
+    snap, sees = aud_view_of(tmp_path, monkeypatch)
+    every = {n["id"] for n in snap.nodes}
+    assert {aud.M1, aud.M2, aud.M3, aud.K7, aud.K9} < every
+    for reader, seen in sees.items():
+        view = snap.view(reader)
+        found = list(labelled_nodes(view))
+        assert {n.node_id for n in found} == every
+        assert {n.node_id for n in found if n.seen} == seen
+        assert all((n.level, n.location) == INTERNAL for n in found)  # the label of the chat source
+        assert [n.within(INTERNAL) for n in found] == [n.seen for n in found]
+        assert not any(n.within(PUBLIC) or n.within(None) for n in found)
+        (one,) = labelled_nodes(view, node_id=aud.M2)
+        assert (one.node_id, one.seen) == (aud.M2, aud.M2 in seen)
+        assert {n.node_id for n in labelled_nodes(view, ("Code",))} == {aud.K7, aud.K9}
 
 
-def test_the_entity_map_reads_of_a_view_are_those_of_the_file(tmp_path, monkeypatch):
+def test_the_entity_map_reads_of_a_view_hold_what_its_reader_sees_under_the_ceiling(tmp_path, monkeypatch):
     from evo_agents.kg import entity_map_reads as reads
     from tests.hub import test_kg_audience as aud
 
-    graph = aud.build(tmp_path, monkeypatch, 1, 2)
-    path = tmp_path / "graph.sqlite"
-    path.write_bytes(graph.data)
-    store = Store.open_file(path, immutable=True)
-    try:
-        b = store.latest_ready()
-        rows = store_rows(store, b)
-        rels = sorted({e["rel"] for e in Snapshot.from_stored(rows).edges})
-        for reader in (frozenset(), frozenset({"chat:1"}), frozenset({"chat:1", aud.GB})):
-            store.reader = reader
-            view = Snapshot.from_stored(rows).view(reader)
-            for ceiling in (None, PUBLIC, INTERNAL, (9, 9)):
-                assert sorted(reads.node_rows(view, b, ceiling)) == sorted(reads.node_rows(store, b, ceiling))
-                assert list(reads.item_rows(view, b, ceiling)) == list(reads.item_rows(store, b, ceiling))
-                for rel in rels:
-                    assert sorted(reads.edge_rows(view, b, ceiling, rel)) == sorted(
-                        reads.edge_rows(store, b, ceiling, rel)
-                    )
-            assert reads.cluster_rows(view, b) == [tuple(r) for r in reads.cluster_rows(store, b)]
-    finally:
-        store.close()
+    snap, sees = aud_view_of(tmp_path, monkeypatch)
+    items = [aud.M1, aud.M2, aud.M3, aud.PLAN]
+    mentions = {(aud.M1, aud.PLAN), (aud.M2, aud.PLAN), (aud.M3, aud.M2)}
+    for reader, seen in sees.items():
+        view = snap.view(reader)
+        for ceiling in (None, PUBLIC, INTERNAL, (9, 9)):
+            clears = ceiling is not None and ceiling >= INTERNAL  # every row is labelled internal
+            assert {r[0] for r in reads.node_rows(view, ceiling)} == (seen if clears else set())
+            assert [r[0] for r in reads.node_rows(view, ceiling, ("Code",))] == (
+                [aud.K9] if clears and aud.K9 in seen else []
+            )
+            found = list(reads.item_rows(view, ceiling))
+            assert [r[0] for r in found] == sorted(items)  # each item, the ones the reader does not see as 0
+            assert {r[0] for r in found if r[3] == 1} == ({i for i in items if i in seen} if clears else set())
+            assert set(reads.edge_rows(view, ceiling, "mentions")) == (
+                {(src, dst) for src, dst in mentions if src in seen and dst in seen} if clears else set()
+            )
+        assert reads.cluster_rows(view) == []  # built without clusters
 
 
 def test_the_coordinator_holds_the_most_recently_read_projects_and_no_finished_load(monkeypatch):
@@ -328,6 +345,54 @@ def test_loads_making_snapshots_leave_the_pool_to_the_workers_heartbeats(hub, tm
     assert len({held.snapshot.content_hash for held in done}) == 1 and "guide" in found(done[0].snapshot, "kiwi")
 
 
+def test_loads_putting_the_rows_together_leave_the_pool_to_the_workers_heartbeats(hub, tmp_path, caplog, monkeypatch):
+    """The rows of a large graph are put together for minutes (``kg_graph_rows.assemble_graph``) after they are read:
+    the connection that read them was still held, idle in its transaction, so the loads that follow an api start
+    took the pool from the heartbeats and claims, which timed out on it."""
+    from psycopg_pool import AsyncConnectionPool
+    from sqlalchemy import literal, select
+
+    from evo_agents.hub.db import make_engine as pooled_engine
+
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the kiwi app works."))
+    assert push(hub, laptop).ok
+    build(hub, caplog)
+    pid = project_id(hub)
+    release, assembling = threading.Event(), threading.Semaphore(0)
+    assembled = kg_graph_rows._assembled
+
+    def slow(*args, **kwargs):
+        assembling.release()
+        assert release.wait(30)
+        return assembled(*args, **kwargs)
+
+    monkeypatch.setattr(kg_graph_rows, "_assembled", slow)
+
+    async def run():
+        pool = AsyncConnectionPool(
+            hub.db.dsn, min_size=0, max_size=kg_snapshots.READS, timeout=2, close_returns=True, open=False
+        )
+        await pool.open()
+        engine = pooled_engine(pool)
+        loads = [asyncio.create_task(kg_snapshots.load(engine, pid)) for _ in range(kg_snapshots.READS)]
+        try:
+            for _ in range(kg_snapshots.READS):
+                assert await asyncio.to_thread(assembling.acquire, True, 30)
+            async with engine.begin() as conn:  # a heartbeat, while the rows are put together
+                beat = await conn.scalar(select(literal(1)))
+            release.set()
+            await asyncio.gather(*loads)
+        finally:
+            release.set()
+            await asyncio.gather(*loads, return_exceptions=True)
+            await engine.dispose()
+            await pool.close()
+        return beat
+
+    assert asyncio.run(run()) == 1
+
+
 def test_reading_a_graph_gives_the_event_loop_back_between_its_rows(hub, tmp_path, caplog, monkeypatch):
     """The rows of a graph are fetched a batch at a time, the loop running other requests between two batches, and
     their JSON is decoded in a thread: the api read and decoded a large graph's hundreds of thousands of rows in one
@@ -340,19 +405,20 @@ def test_reading_a_graph_gives_the_event_loop_back_between_its_rows(hub, tmp_pat
     pid = project_id(hub)
     monkeypatch.setattr(kg_graph_rows, "READ_BATCH", 2, raising=False)
     ticks, seen, loads = [0], [], set()
-    stored = kg_graph_rows._stored
+    pairs, rows_json = kg_graph_rows._row_pairs, kg_graph_rows._ROW_JSON
 
-    def counted(name, values):
-        if name == "kg_nodes":
-            seen.append(ticks[0])
-        return stored(name, values)
+    def counted(name, part):
+        for pair in pairs(name, part):
+            if name == "kg_nodes":
+                seen.append(ticks[0])
+            yield pair
 
     def decoded(text):
         loads.add(threading.current_thread() is threading.main_thread())
-        return json.loads(text)
+        return rows_json.decode(text)
 
-    monkeypatch.setattr(kg_graph_rows, "_stored", counted)
-    monkeypatch.setattr(kg_graph_rows, "json", type("Json", (), {"loads": staticmethod(decoded), "dumps": json.dumps}))
+    monkeypatch.setattr(kg_graph_rows, "_row_pairs", counted)
+    monkeypatch.setattr(kg_graph_rows, "_ROW_JSON", type("Json", (), {"decode": staticmethod(decoded)}))
 
     async def run():
         async def tick():
@@ -374,6 +440,16 @@ def test_reading_a_graph_gives_the_event_loop_back_between_its_rows(hub, tmp_pat
     assert seen[0] < seen[-1]  # the loop ran between the first batch of nodes and the last
     assert loads == {False}  # every row's JSON was decoded off the loop
     assert "guide" in found(Snapshot.from_stored(rows), "kiwi")
+
+
+def test_a_row_read_back_parses_once_into_what_the_build_wrote():
+    """A JSON row as Postgres keeps it (jsonb puts shorter keys first) parses, in one go, into the row ``_json`` wrote
+    with every object's keys sorted: the snapshot reads the same row whichever way the tables were read."""
+    written = ["r", "key", {"rule": "x", "evidence": ["a"], "bounds": {"required": 1, "max": 2}, "id": 3.5}]
+    kept = '["r", "key", {"id": 3.5, "rule": "x", "bounds": {"max": 2, "required": 1}, "evidence": ["a"]}]'
+    back = kg_graph_rows._ROW_JSON.decode(kept)
+    assert back == json.loads(kg_graph_rows._json(written))
+    assert repr(back) == repr(json.loads(kg_graph_rows._json(written)))  # the keys in the same order too
 
 
 def test_a_load_runs_no_garbage_collection_and_leaves_the_snapshot_out_of_later_ones(

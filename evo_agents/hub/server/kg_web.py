@@ -43,7 +43,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from evo_agents.hub import kg_branches, kg_named_graphs
+from evo_agents.hub import kg_branches, kg_named_graphs, kg_snapshots
 from evo_agents.hub.kg_entity_graph import (
     CITATIONS,
     CODE_LINKS,
@@ -61,6 +61,7 @@ from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
 from evo_agents.kg.graph_scope import DEFAULT_GRAPH, GraphScope
+from evo_agents.kg.pacing import pacing
 
 log = logging.getLogger(__name__)
 
@@ -254,7 +255,8 @@ async def read_graph(request: Request, user, project: str, reader):
     else:
         snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     try:
-        data, graph = await asyncio.to_thread(read, project, access.rules.policy, ceiling, graphs, reader, snapshot)
+        with pacing(busy=kg_snapshots.requests_waiting):
+            data, graph = await asyncio.to_thread(read, project, access.rules.policy, ceiling, graphs, reader, snapshot)
     except GraphUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
     except GraphProblem as exc:

@@ -22,9 +22,9 @@ from __future__ import annotations
 
 import yaml
 
+from evo_agents.kg.graph_model import Graph, edge_id
 from evo_agents.kg.pipeline.binding import binding_item, resolve
 from evo_agents.kg.pipeline.stages import edge, item_unit
-from evo_agents.kg.store import Graph, edge_id
 
 CURATION_VERSION = "1"
 CURATION_FACTS = ("same", "deprecate")  # the facts assembly keeps until entity resolution

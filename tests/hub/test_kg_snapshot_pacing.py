@@ -7,6 +7,7 @@ timed out waiting for one."""
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 
 import pytest
@@ -92,8 +93,16 @@ def test_paced_sorted_sorts_as_sorted_does_equal_items_in_their_order(monkeypatc
 
 def test_a_build_paces_only_within_pacing(monkeypatch):
     slept = []
+    sleep = pacing.time.sleep
+
+    def counted(seconds):  # the thread freeing aside, which a test of the api left running, paces on its own
+        if threading.current_thread().name == "kg-free-aside":
+            sleep(seconds)
+        else:
+            slept.append(seconds)
+
     monkeypatch.setattr(pacing, "YIELD_SECONDS", 0)
-    monkeypatch.setattr(pacing.time, "sleep", slept.append)
+    monkeypatch.setattr(pacing.time, "sleep", counted)
     assert list(pacing.paced(range(3))) == [0, 1, 2] and pacing.paced_sorted([2, 1]) == [1, 2]
     assert slept == []  # ``kg build`` and the bench, with no event loop beside them, run at full speed
 
@@ -163,3 +172,153 @@ def test_a_part_that_raises_as_it_is_taken_apart_does_not_stop_the_thread_freein
     object.__setattr__(snap, "review", Part())
     del snap
     assert freed.wait(30)
+
+
+def _sleeps(monkeypatch, into: list) -> None:
+    sleep = pacing.time.sleep
+
+    def counted(seconds):
+        if threading.current_thread().name == "kg-free-aside":
+            sleep(seconds)
+        else:
+            into.append(seconds)
+
+    monkeypatch.setattr(pacing, "YIELD_SECONDS", 0)
+    monkeypatch.setattr(pacing.time, "sleep", counted)
+
+
+def test_paced_sleeps_longer_while_requests_wait_but_never_in_the_thread_of_the_loop(monkeypatch):
+    slept, waiting = [], [True]
+    _sleeps(monkeypatch, slept)
+
+    async def made(busy):
+        with pacing.pacing(busy=busy):
+            in_thread = await asyncio.to_thread(lambda: list(pacing.paced(range(2))))
+            on_loop = list(pacing.paced(range(2)))  # a sleep here would stop every request
+            return in_thread, on_loop
+
+    assert asyncio.run(made(lambda: waiting[0])) == ([0, 1], [0, 1])
+    assert slept == [pacing.BUSY_PAUSE_SECONDS] * 2 + [pacing.PAUSE_SECONDS] * 2
+    slept.clear()
+    waiting[0] = False
+    asyncio.run(made(lambda: waiting[0]))
+    assert slept == [pacing.PAUSE_SECONDS] * 4
+
+
+def test_a_snapshot_is_made_at_the_slow_pace_while_a_request_holds_a_connection_of_the_pool(monkeypatch):
+    """A heartbeat is ten queries, each a turn of the loop that waits for the GIL the thread making a snapshot holds:
+    on the busy host of the hub the thread's 1 ms pauses left it 2 s, held in its transaction."""
+    from types import SimpleNamespace
+
+    from evo_agents.hub import db
+    from tests.hub import pg
+
+    if not pg.DSN:
+        pytest.skip(pg.SKIP_REASON)
+    slept = []
+    _sleeps(monkeypatch, slept)
+    rows = graph_rows(300)
+
+    async def go():
+        pool = db.create_pool(SimpleNamespace(dsn=pg.DSN, pool_min_size=1, pool_max_size=2, pool_timeout=5.0))
+        await pool.open(wait=True, timeout=10)
+        try:
+            assert not kg_snapshots.requests_waiting()
+            await kg_snapshots._made(1, rows)
+            at_rest = list(slept)
+            slept.clear()
+            async with pool.connection():  # a request in the middle of its transaction
+                assert kg_snapshots.requests_waiting()
+                await kg_snapshots._made(1, rows)
+            return at_rest, list(slept)
+        finally:
+            await pool.close()
+
+    at_rest, busy = asyncio.run(go())
+    assert at_rest and set(at_rest) == {pacing.PAUSE_SECONDS}
+    assert busy and set(busy) == {pacing.BUSY_PAUSE_SECONDS}
+
+
+def test_the_rows_a_load_is_done_with_are_freed_by_the_thread_aside_not_on_the_loop(monkeypatch):
+    """The raw rows, once put together, and the assembled rows, once the snapshot is made, were freed on the loop as
+    ``load`` returned: millions of objects, a second or more in which no request ran, a heartbeat's connection held
+    meanwhile."""
+    import contextlib
+
+    freed: list[str] = []
+
+    class Part:
+        def __del__(self):
+            freed.append(threading.current_thread().name)
+
+    class Rows:
+        def __init__(self):
+            self.parts = tuple(Part() for _ in range(2 * pacing.CHUNK))
+
+    class Engine:
+        @contextlib.asynccontextmanager
+        async def connect(self):
+            yield None
+
+    async def rows(conn, project_id):
+        return 7, Rows()
+
+    async def assembled(raw):
+        return Rows()
+
+    async def made(build_id, rows):
+        return kg_snapshots.Held(build_id, None)
+
+    monkeypatch.setattr(pacing, "_aside", None)  # a thread of this test's own, gone with it
+    pacing.free_aside()
+    monkeypatch.setattr(kg_snapshots, "_rows", rows)
+    monkeypatch.setattr(kg_snapshots, "_assembled", assembled)
+    monkeypatch.setattr(kg_snapshots, "_made", made)
+    held = asyncio.run(kg_snapshots.load(Engine(), 1))
+    assert held.build_id == 7
+    deadline = time.monotonic() + 30
+    while (len(freed) < 4 * pacing.CHUNK or pacing.freeing()) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert len(freed) == 4 * pacing.CHUNK and set(freed) == {"kg-free-aside"}
+
+
+def test_the_thread_freeing_aside_paces_slowly_while_requests_wait(monkeypatch):
+    slept = []
+    sleep = pacing.time.sleep
+
+    def counted(seconds):
+        if threading.current_thread().name == "kg-free-aside":
+            slept.append(seconds)
+        sleep(min(seconds, 0.001))
+
+    monkeypatch.setattr(pacing, "YIELD_SECONDS", 0)
+    monkeypatch.setattr(pacing.time, "sleep", counted)
+    monkeypatch.setattr(pacing, "_aside", None)  # a thread of this test's own, gone with it
+    pacing.free_aside(lambda: True)
+    pacing.give_aside([[[object()] * 3 for _ in range(3 * pacing.CHUNK)]])
+    deadline = time.monotonic() + 30
+    while (pacing.freeing() or not slept) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert pacing.BUSY_PAUSE_SECONDS in slept and pacing.PAUSE_SECONDS not in slept
+
+
+def test_the_maps_and_tables_the_end_of_a_snapshot_is_made_of_are_built_a_step_at_a_time(monkeypatch):
+    """After its text index, a snapshot is finished by comprehensions over the where-provenance and the derivations,
+    one entry per element of the graph: millions of them on a large one, a second and more of the GIL kept in one
+    stretch while the claims and heartbeats of the workers waited for the loop. Each entry is a step now."""
+    import dataclasses
+
+    from evo_agents.kg.snapshot import Snapshot
+
+    keys = 3000
+    rows = dataclasses.replace(
+        graph_rows(10),
+        wheres=tuple((f"el{i}", f"u{i}", "1-2") for i in range(keys)),
+        derivations=tuple((f"el{i}", "[]", "[]") for i in range(keys)),
+    )
+    sleeps: list[float] = []
+    _sleeps(monkeypatch, sleeps)
+    with pacing.pacing():
+        Snapshot.from_stored(rows)
+    # one step per row read, and one per entry of each map built from them
+    assert len(sleeps) >= 4 * keys

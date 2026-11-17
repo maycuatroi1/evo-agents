@@ -4,7 +4,9 @@ curator_playbook, and every delta in curator_playbook_deltas, never changed or d
 POST /v1/worker/runs/{id}/playbook takes one delta of the agent of a review run the worker holds (404 for any other
 run), as the member who dispatched it, who must still hold writer on the project, as ``proposals.record_finding``
 takes a finding: ``add`` a new entry (a lens of ``review.LENSES`` or none, its text, and 1 to MAX_EVIDENCE pieces of
-evidence, which the hub resolves as a finding's: 422 for one it cannot find), stored with the project's default label;
+evidence, which the hub resolves as a finding's: 422 for one it cannot find), stored with the project's default label
+and the proposal it holds until (``until_proposal_id``, a proposal of the project: 422 for any other; without it, the
+one its text names, ``playbook.until_proposal``, when the project has it);
 ``helpful`` or ``harmful`` one more on the counter of a live entry, with evidence when given, once each way for one run
 (409 for the second); ``retire`` a live entry, with a note why. The project holds at most MAX_LIVE live entries, and a
 run writes at most MAX_DELTAS deltas (409 past either). Each delta writes a line in the run's log.
@@ -12,7 +14,13 @@ run writes at most MAX_DELTAS deltas (409 past either). Each delta writes a line
 GET /v1/projects/{p}/curator/playbook (reader) lists the entries the caller may read through the sink X-Evo-Sink names
 (else the project's hub sink), the most helpful first, retired ones with ``retired``; the MCP tool curator_playbook and
 ``evo-agents hub curator playbook`` read it. ``for_prompt`` gives the lines of the playbook in a review run's prompt,
-as its owner reads it.
+as its owner reads it, and writes in the run's log which entries they are (``playbook_shown``); once that run is done,
+``exposed`` counts one more on ``prompt_exposures`` of each.
+
+``retire_due`` is the playbook's maintenance, after each review run that is done (``exposed``) and each change of the
+Curator that is merged (``ledger.change_moved``): it retires each live entry ``playbook.due_retires`` names, the one
+that held until a proposal whose change is merged and the one shown in EXPOSURE_LIMIT review runs and never found
+helpful, with a delta ``retire`` of actor CURATOR_ACTOR and no run, as an agent's retire otherwise.
 """
 
 from __future__ import annotations
@@ -55,6 +63,9 @@ class PlaybookDelta(BaseModel):
     text: str | None = Field(None, min_length=1, max_length=playbook.MAX_TEXT_CHARS, description="add: the lesson")
     evidence: list[EvidenceIn] = Field(default_factory=list, max_length=review.MAX_EVIDENCE)
     note: str | None = Field(None, min_length=1, max_length=playbook.MAX_NOTE_CHARS, description="retire: why")
+    until_proposal_id: int | None = Field(
+        None, ge=1, le=MAX_ID, description="add: the proposal it holds until; the merge of its change retires it"
+    )
 
     @model_validator(mode="after")
     def _complete(self):
@@ -63,8 +74,8 @@ class PlaybookDelta(BaseModel):
                 raise ValueError("add takes the text and at least one piece of evidence, and no entry_id")
             self.text = playbook.clean_text(self.text)
         else:
-            if self.entry_id is None or self.text is not None or self.lens is not None:
-                raise ValueError(f"{self.op} takes the entry_id of an entry, and neither text nor lens")
+            if self.entry_id is None or self.text is not None or self.lens is not None or self.until_proposal_id:
+                raise ValueError(f"{self.op} takes the entry_id of an entry, and neither text nor lens nor until")
             if self.op == "retire" and not self.note:
                 raise ValueError("retire takes a note: why the entry no longer holds")
         return self
@@ -82,6 +93,8 @@ class PlaybookEntry(BaseModel):
     updated_run_id: int | None
     retired: bool
     retired_note: str | None
+    until_proposal_id: int | None = Field(None, description="the proposal it holds until; its merge retires it")
+    prompt_exposures: int = Field(0, description="review runs that showed it in their prompt and are done")
     created_at: datetime
     updated_at: datetime
 
@@ -106,6 +119,8 @@ def _entries():
         pb.c.updated_run_id,
         pb.c.retired_at,
         pb.c.retired_note,
+        pb.c.until_proposal_id,
+        pb.c.prompt_exposures,
         pb.c.created_at,
         pb.c.updated_at,
         pb.c.label,
@@ -119,6 +134,18 @@ def _entry(row) -> PlaybookEntry:
 
 async def _count(conn: AsyncConnection, *where) -> int:
     return (await conn.execute(select(func.count()).where(*where))).scalar_one()
+
+
+async def _until(conn: AsyncConnection, project_id: int, body: PlaybookDelta) -> int | None:
+    """The proposal the new entry holds until: the one ``body`` names, which must be of the project (422 otherwise),
+    else the one its text names when the project has it, else None."""
+    p = tables.proposals
+    until = body.until_proposal_id or playbook.until_proposal(body.text)
+    if until is None or await _count(conn, p.c.id == until, p.c.project_id == project_id):
+        return until
+    if body.until_proposal_id is not None:
+        raise HTTPException(422, f"until_proposal_id {until} is not a proposal of this project")
+    return None
 
 
 async def _add(conn, request, run, access, body: PlaybookDelta) -> tuple[int, list[dict]]:
@@ -136,6 +163,7 @@ async def _add(conn, request, run, access, body: PlaybookDelta) -> tuple[int, li
         "label": access.push_label(),
         "created_run_id": run.id,
         "updated_run_id": run.id,
+        "until_proposal_id": await _until(conn, run.project_id, body),
     }
     return (await conn.execute(insert(pb).values(**values).returning(pb.c.id))).scalar_one(), evidence
 
@@ -235,8 +263,75 @@ async def show_playbook(
         return await playbook_view(conn, user, project, sink, lens=lens, retired=retired)
 
 
-async def for_prompt(conn: AsyncConnection, access: ProjectAccess, lenses: list[str]) -> list[str]:
-    """The lines of the playbook in the prompt of a review run of ``lenses``, as its owner (``access``) reads it."""
+async def for_prompt(
+    conn: AsyncConnection, access: ProjectAccess, lenses: list[str], run_id: int | None = None
+) -> list[str]:
+    """The lines of the playbook in the prompt of a review run of ``lenses``, as its owner (``access``) reads it; with
+    ``run_id``, the ids of the entries they show go into the log of that run (``playbook_shown``), which ``exposed``
+    reads once it is done."""
     through = access.rules.hub_sink.sink if access.rules.hub_sink else None
     rows = await entries_of(conn, access, through)
-    return playbook.prompt_lines([row._mapping for row in rows], lenses)
+    shown = playbook.ranked([row._mapping for row in rows], lenses)[: playbook.MAX_SHOWN]
+    if run_id is not None and shown:
+        ids = [int(entry["id"]) for entry in shown]
+        refs = ", ".join(playbook.ref(entry_id) for entry_id in ids)
+        await write_event(conn, run_id, {"text": f"the prompt shows playbook entries {refs}", "playbook_shown": ids})
+    return [playbook.line_of(entry) for entry in shown]
+
+
+# The maintenance
+
+
+async def exposed(conn: AsyncConnection, run_id: int, project_id: int) -> list[int]:
+    """Review run ``run_id`` of project ``project_id`` is done: one more on ``prompt_exposures`` of each entry its
+    prompt showed, as its last ``playbook_shown`` names them, then ``retire_due``; the entries it retired."""
+    e, pb = tables.run_events, tables.curator_playbook
+    last = (
+        select(e.c.body["playbook_shown"])
+        .where(e.c.run_id == run_id, e.c.kind == "system", e.c.body.has_key("playbook_shown"))
+        .order_by(e.c.seq.desc())
+        .limit(1)
+    )
+    shown = (await conn.execute(last)).scalar_one_or_none()
+    ids = [item for item in shown or [] if isinstance(item, int) and not isinstance(item, bool)]
+    if ids:
+        more = update(pb).values(prompt_exposures=pb.c.prompt_exposures + 1)
+        await conn.execute(more.where(pb.c.project_id == project_id, pb.c.id.in_(ids)))
+    return await retire_due(conn, project_id)
+
+
+async def exposure_limit_of(conn: AsyncConnection, project_id: int) -> int:
+    """The review runs that show an entry never found helpful before it is retired: the charter's
+    ``evolve.exposure_limit``, ``playbook.EXPOSURE_LIMIT`` when it says none; 0 retires none that way."""
+    ch = tables.charters
+    query = select(ch.c.body).where(ch.c.project_id == project_id).order_by(ch.c.revision.desc()).limit(1)
+    body = (await conn.execute(query)).scalar_one_or_none() or {}
+    held = (body.get("evolve") or {}).get("exposure_limit") if isinstance(body, dict) else None
+    return held if isinstance(held, int) and not isinstance(held, bool) and held >= 0 else playbook.EXPOSURE_LIMIT
+
+
+async def retire_due(conn: AsyncConnection, project_id: int, exposure_limit: int | None = None) -> list[int]:
+    """Retire each live entry of project ``project_id`` that ``playbook.due_retires`` names, under the rows' locks,
+    with a delta ``retire`` of actor CURATOR_ACTOR and no run: the one that holds until a proposal whose change is
+    merged (its ``until_proposal_id``, else what its text says, for an entry older than the column), and the one shown
+    in ``exposure_limit`` review runs that none found helpful (``exposure_limit_of`` when None). The ids it retired,
+    oldest first."""
+    if exposure_limit is None:
+        exposure_limit = await exposure_limit_of(conn, project_id)
+    pb, d, c = tables.curator_playbook, tables.curator_playbook_deltas, tables.curator_changes
+    live = select(pb.c.id, pb.c.text, pb.c.until_proposal_id, pb.c.prompt_exposures, pb.c.helpful)
+    live = live.where(pb.c.project_id == project_id, pb.c.retired_at.is_(None)).order_by(pb.c.id).with_for_update()
+    entries = [dict(row._mapping) for row in await conn.execute(live)]
+    targets = {until for until in map(playbook.until_of, entries) if until is not None}
+    landed: dict[int, str] = {}
+    if targets:
+        states = select(c.c.proposal_id, c.c.state).where(c.c.project_id == project_id, c.c.proposal_id.in_(targets))
+        landed = {row.proposal_id: row.state for row in await conn.execute(states)}
+    due = playbook.due_retires(entries, landed, exposure_limit)
+    for entry_id, note in due:
+        gone = update(pb).values(retired_at=func.now(), retired_note=note, updated_at=func.now())
+        await conn.execute(gone.where(pb.c.id == entry_id))
+        delta = {"project_id": project_id, "entry_id": entry_id, "op": "retire", "note": note}
+        await conn.execute(insert(d).values(**delta, run_id=None, evidence=[], actor=playbook.CURATOR_ACTOR))
+        log.info("playbook entry retired by the curator", extra={"project_id": project_id, "entry_id": entry_id})
+    return [entry_id for entry_id, _ in due]

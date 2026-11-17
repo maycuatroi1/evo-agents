@@ -255,21 +255,24 @@ async def ruleset_wait(conn: AsyncConnection, project_id: int, repo: str, *, cur
 
 
 async def _waited_for(conn: AsyncConnection) -> list:
-    """The repos of GitHub a planned change waits for whose ruleset is due a check: none within PROTECTION_DAYS, or a
-    last check that did not pass, WAITING_RECHECK ago or more."""
+    """The repos of GitHub a planned change waits for (each repo of a change in several) whose ruleset is due a check:
+    none within PROTECTION_DAYS, or a last check that did not pass, WAITING_RECHECK ago or more."""
     c, pr, rc = tables.curator_changes, tables.project_repos, tables.curator_repo_checks
+    cr = tables.curator_change_repos
+    repo = func.coalesce(cr.c.repo, c.c.repo)
     due = (
         rc.c.project_id.is_(None)
         | (rc.c.checked_at < func.now() - timedelta(days=PROTECTION_DAYS))
         | (rc.c.protected.is_(False) & (rc.c.checked_at < func.now() - WAITING_RECHECK))
     )
     query = (
-        select(c.c.project_id, c.c.repo, pr.c.origin)
+        select(c.c.project_id, repo.label("repo"), pr.c.origin)
         .distinct()
-        .join_from(c, pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == c.c.repo))
-        .outerjoin(rc, (rc.c.project_id == c.c.project_id) & (rc.c.repo == c.c.repo))
+        .join_from(c, cr, cr.c.change_id == c.c.id, isouter=True)
+        .join(pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == repo))
+        .outerjoin(rc, (rc.c.project_id == c.c.project_id) & (rc.c.repo == repo))
         .where(c.c.state == "planned", c.c.forge == "github", due)
-        .order_by(c.c.project_id, c.c.repo)
+        .order_by(c.c.project_id, repo)
         .limit(MAX_CHECKS)
     )
     return (await conn.execute(query)).all()

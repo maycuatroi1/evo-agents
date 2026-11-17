@@ -46,6 +46,7 @@ x-hub-environment: &hub-environment
   EVO_HUB_POOL_MIN_SIZE: ${EVO_HUB_POOL_MIN_SIZE:-}
   EVO_HUB_POOL_MAX_SIZE: ${EVO_HUB_POOL_MAX_SIZE:-}
   EVO_HUB_POOL_TIMEOUT: ${EVO_HUB_POOL_TIMEOUT:-}
+  EVO_HUB_HEARTBEAT_POOL_SIZE: ${EVO_HUB_HEARTBEAT_POOL_SIZE:-}
   EVO_HUB_RUN_LEASE_SECONDS: ${EVO_HUB_RUN_LEASE_SECONDS:-}
   EVO_HUB_DECISION_WAIT_SECONDS: ${EVO_HUB_DECISION_WAIT_SECONDS:-}
   EVO_HUB_WEB_TIME_ZONE: ${EVO_HUB_WEB_TIME_ZONE:-Asia/Ho_Chi_Minh}
@@ -141,8 +142,16 @@ services:
       interval: 30s
       timeout: 5s
       start_period: 60s
+      # Traefik routes to a container only once it is healthy, so the first check after a recreate decides how long
+      # agents.omelet.tech answers "404 page not found": probe every 2 s while starting, then every 30 s.
+      start_interval: 2s
       retries: 3
     stop_grace_period: 15s
+    # The api holds the graph of each project read in memory and makes a new one beside it at each build. Past 75%
+    # of this limit it drops the graphs read least recently, the one being replaced last (kg_snapshots.PRESSURE in
+    # docs/hub.md). Over the limit the kernel kills the api and the restart policy brings it back, rather than the
+    # host swapping.
+    mem_limit: ${EVO_HUB_API_MEMORY:-7g}
 
   worker:
     <<: *hardening
@@ -197,7 +206,7 @@ services:
     mem_limit: ${EVO_HUB_WORKER_KG_MEMORY:-6g}
     healthcheck:
       disable: true
-    stop_grace_period: 40s
+    stop_grace_period: 570s
     depends_on:
       api:
         condition: service_healthy
@@ -310,6 +319,9 @@ services:
       interval: 30s
       timeout: 5s
       start_period: 30s
+      # Traefik routes to a container only once it is healthy, so the first check after a recreate decides how long
+      # agents.omelet.tech answers "404 page not found": probe every 2 s while starting, then every 30 s.
+      start_interval: 2s
       retries: 3
     stop_grace_period: 15s
     depends_on:

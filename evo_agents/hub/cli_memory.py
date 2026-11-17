@@ -69,6 +69,7 @@ COUNTS = {
         ("kept_here", "deleted on the hub only"),
         ("no_directory", "without a directory here"),
         ("indexed", "MEMORY.md line(s) added"),
+        ("unindexed", "MEMORY.md line(s) removed"),
     ),
 }
 

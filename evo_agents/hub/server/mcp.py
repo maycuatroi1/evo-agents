@@ -52,7 +52,7 @@ from evo_agents.hub import problems as problem_model
 from evo_agents.hub import runs
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
-from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS
+from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, routing_line
 from evo_agents.hub.mcp_tools import (
     CHAT_TOOL_NAMES,
     INSTRUCTIONS,
@@ -72,6 +72,7 @@ from evo_agents.hub.server import (
     chat_read,
     decisions,
     digests,
+    evolve,
     history_mcp,
     hub_settings,
     intake,
@@ -130,12 +131,13 @@ NO_PROJECT = (
     "this session has no project: start `evo-agents hub mcp` in a directory of the project or with --project, so it "
     "sends X-Evo-Project"
 )
-KIND_ONLY = {  # what a judge, replay, history or probe run may call is mcp_tools.RUN_TOOLS
+KIND_ONLY = {  # what a judge, replay, history, probe or evolve run may call is mcp_tools.RUN_TOOLS
     "judge": "the Judge reads the proposal, the diff and the checks its run was given, and the code graph; {tool} is "
     "not for a judge run",
     "replay": "a replay run does a past step from its base commit alone; {tool} is not for a replay run",
     "history": "a history run reads the batch in its prompt alone; {tool} is not for a history run",
     "probe": "a probe run does its task from its base commit alone; {tool} is not for a probe run",
+    "evolve": "an evolve run measures its candidates on its tasks alone; {tool} is not for an evolve run",
 }
 
 
@@ -225,6 +227,7 @@ class HubMcp(MCPServer):
             "decision_list": self._decision_list,
             "curator_replay": partial(self._delegated, replays.mcp_answer),
             "curator_probe_report": partial(self._delegated, probe_report.mcp_answer),
+            "curator_evolve": partial(self._delegated, evolve.mcp_answer),
             **{name: partial(self._delegated, partial(history_mcp.answer, name)) for name in history_mcp.NAMES},
         }
 
@@ -477,7 +480,8 @@ class HubMcp(MCPServer):
             sink=caller.sink,
         )
         data = found.model_dump(mode="json", exclude={"text"})
-        return found.text, {**data, "summary": f"handoff of plan {found.plan_id}, {found.tokens} tokens"}
+        text = found.text + routing_line(data)
+        return text, {**data, "summary": f"handoff of plan {found.plan_id}, {found.tokens} tokens"}
 
     async def _plan_step(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         project = self._project(caller, arguments)

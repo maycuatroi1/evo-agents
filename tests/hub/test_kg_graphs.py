@@ -1,7 +1,7 @@
 """Named graphs of a project (``docs/kg.md``, Named graphs): ``evo_agents.kg.graph_scope``, ``evo_agents.hub.
 kg_named_graphs``, the routes of ``evo_agents.hub.server.kg_graphs`` and ``evo-agents hub kg graph``.
 
-Checked here, on the fixture of ``tests.hub.kg_fixture`` (two sources: docs and deals) built on this machine: a kg
+Checked here, on the fixture of ``tests.hub.kg_fixture`` (two sources: docs and deals) built in memory and read through the hub's engine: a kg
 tool call without ``graph`` answers exactly as one with ``graph="default"``; with a named graph, kg_search,
 kg_context, kg_node, kg_path and kg_impact return only the nodes and edges of its sources, and the labels the sink
 clears still filter; an unknown name is an error naming ``evo-agents hub kg graph list``; the tool schemas gain
@@ -22,7 +22,7 @@ pytest.importorskip("sqlalchemy", reason="the hub tables need the hub-server ext
 
 from evo_agents.hub import kg_graphs_cli, kg_named_graphs
 from evo_agents.hub.mcp_tools import KG_TOOLS
-from evo_agents.kg.store_session import StoreSession
+from evo_agents.kg.serve import Session
 from tests.hub import live, pg
 from tests.hub.kg_fixture import (
     AGENT,
@@ -34,6 +34,8 @@ from tests.hub.kg_fixture import (
     Harness,
     registration,
 )
+from tests.kg import built
+from tests.kg.hub_graph import hub_session
 
 NAMED = {"deals-only": frozenset({"deals"}), "docs-only": frozenset({"docs"})}
 NARROWED = ("kg_search", "kg_context", "kg_node", "kg_path", "kg_impact")
@@ -41,16 +43,14 @@ NARROWED = ("kg_search", "kg_context", "kg_node", "kg_path", "kg_impact")
 
 @pytest.fixture(scope="module")
 def project(tmp_path_factory):
-    from evo_agents.kg.build import build_project
-
     harness = Harness(tmp_path_factory.mktemp("kg-graphs"), "kggraphs")
     harness.sync()
-    build_project(harness.project())
+    assert built.build(harness.project()).ok
     return harness.project()
 
 
-def session(project, sink: str = AGENT) -> StoreSession:
-    found = StoreSession(project, sink=sink)
+def session(project, sink: str = AGENT) -> Session:
+    found = hub_session(project, sink)
     found.named_graphs = dict(NAMED)
     return found
 

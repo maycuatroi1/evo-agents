@@ -1,13 +1,13 @@
-"""A project's graph in the hub's tables (0248, plan kg-centralized-on-hub, criterion a3): what a build writes there
-instead of a graph.sqlite file, and what a snapshot of it reads back (``evo_agents.kg.snapshot.Snapshot.from_stored``).
+"""A project's graph in the hub's tables (0248, plan kg-centralized-on-hub, criterion a3): what a build writes there,
+and what a snapshot of it reads back (``evo_agents.kg.snapshot.Snapshot.from_stored``).
 
 A build writes, for one branch (0 is main):
 
 - its corpus items to kg_corpus_items (``merge_corpus``), keyed by source and item id with the item's row hash: the
   items whose row hash is new or changed are upserted, those gone are deleted, and the rest are not touched;
-- its node and edge rows, as a store file holds them, to kg_nodes and kg_edges, and its full-text and code rows to
-  kg_text_rows (``write_graph``): only a row that is new or differs is upserted, and a row the build no longer has is
-  deleted, so a build that changed ten nodes writes ten rows;
+- its node and edge rows (``graph_model.NODE_COLUMNS``, ``EDGE_COLUMNS``) to kg_nodes and kg_edges, and its full-text
+  and code rows to kg_text_rows (``write_graph``): only a row that is new or differs is upserted, and a row the build no
+  longer has is deleted, so a build that changed ten nodes writes ten rows;
 - the rows of its asked index (``evo_agents.kg.asked.Row``) to kg_asked, and its clusters and review items to
   kg_review_rows;
 - its build, content hash and weight of an asked match to kg_graph_heads, and a notice on the channel ``kg_graph`` (``CHANNEL``) naming the
@@ -22,9 +22,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import Text, cast, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -112,44 +113,51 @@ def _json(row) -> str:
 
 def graph_rows(rows: StoreRows) -> dict[str, dict[str, tuple]]:
     """The rows of each table of a build, by their key: what ``write_graph`` compares with the tables."""
-    nodes = {r[0]: tuple(r) for r in rows.nodes}
-    edges = {r[0]: tuple(r) for r in rows.edges}
-    text: dict[str, tuple] = {}
-    for key, row in rows.keyed:
-        text[text_row_key(TEXT, key, list(row))] = (key, _json([TEXT, key, list(row)]))
-    for nid, body in rows.code.items():
-        text[text_row_key(CODE, nid, body)] = (nid, _json([CODE, nid, body]))
-    prov: dict[str, tuple] = {}
-    for unit in rows.units:
-        prov[f"{UNIT}\x1f{unit[0]}"] = (unit[0], _json([UNIT, *unit]))
-    for elem, unit, span in rows.wheres:
-        prov[f"{WHERE}\x1f{elem}\x1f{unit}\x1f{span}"] = (
-            elem,
-            _json([WHERE, elem, unit, span]),
-        )
-    order: dict[str, int] = {}
-    for elem, units, needs in rows.derivations:
-        order[elem] = i = order.get(elem, -1) + 1
-        prov[f"{DERIVED}\x1f{elem}\x1f{i:06d}"] = (elem, _json([DERIVED, elem, units, needs]))
-    asked: dict[str, tuple] = {}
-    for row in rows.asked:
-        asked[text_row_key(ASKED, row[0], list(row))] = (row[0], _json(list(row)))
-    review: dict[str, tuple] = {}
-    for kind, key, value in rows.clusters:
-        review[f"{kind}\x1f{json.dumps(key)}"] = (str(key), _json([kind, key, value]))
-    for item in rows.review:
-        fp = item["fingerprint"]
-        review[f"{REVIEW}\x1f{fp}"] = (fp, _json([REVIEW, fp, item]))
-    vectors = {r[0]: (r[1], r[2], r[3], bytes(r[4])) for r in rows.vectors}
-    return {
-        "kg_nodes": nodes,
-        "kg_edges": edges,
-        "kg_text_rows": text,
-        "kg_provenance": prov,
-        "kg_asked": asked,
-        "kg_review_rows": review,
-        "kg_embeddings": vectors,
-    }
+    return {name: table_rows(rows, name) for name in WRITE_ORDER}
+
+
+def table_rows(rows: StoreRows, name: str) -> dict[str, tuple]:
+    """The rows of table ``name`` (one of ``GRAPH_TABLES``) of a build, by their key. ``write_graph`` makes them one
+    table at a time: those of every table at once, on top of the build's own rows and of a table read back, took
+    as much memory again as the build's rows."""
+    if name == "kg_nodes":
+        return {r[0]: tuple(r) for r in rows.nodes}
+    if name == "kg_edges":
+        return {r[0]: tuple(r) for r in rows.edges}
+    if name == "kg_text_rows":
+        text: dict[str, tuple] = {}
+        for key, row in rows.keyed:
+            text[text_row_key(TEXT, key, list(row))] = (key, _json([TEXT, key, list(row)]))
+        for nid, body in rows.code.items():
+            text[text_row_key(CODE, nid, body)] = (nid, _json([CODE, nid, body]))
+        return text
+    if name == "kg_provenance":
+        prov: dict[str, tuple] = {}
+        for unit in rows.units:
+            prov[f"{UNIT}\x1f{unit[0]}"] = (unit[0], _json([UNIT, *unit]))
+        for elem, unit, span in rows.wheres:
+            prov[f"{WHERE}\x1f{elem}\x1f{unit}\x1f{span}"] = (
+                elem,
+                _json([WHERE, elem, unit, span]),
+            )
+        order: dict[str, int] = {}
+        for elem, units, needs in rows.derivations:
+            order[elem] = i = order.get(elem, -1) + 1
+            prov[f"{DERIVED}\x1f{elem}\x1f{i:06d}"] = (elem, _json([DERIVED, elem, units, needs]))
+        return prov
+    if name == "kg_asked":
+        return {text_row_key(ASKED, row[0], list(row)): (row[0], _json(list(row))) for row in rows.asked}
+    if name == "kg_review_rows":
+        review: dict[str, tuple] = {}
+        for kind, key, value in rows.clusters:
+            review[f"{kind}\x1f{json.dumps(key)}"] = (str(key), _json([kind, key, value]))
+        for item in rows.review:
+            fp = item["fingerprint"]
+            review[f"{REVIEW}\x1f{fp}"] = (fp, _json([REVIEW, fp, item]))
+        return review
+    if name == "kg_embeddings":
+        return {r[0]: (r[1], r[2], r[3], bytes(r[4])) for r in rows.vectors}
+    raise ValueError(f"no graph table {name}")
 
 
 def _row_values(name: str, key: str, row: tuple) -> dict:
@@ -186,6 +194,50 @@ async def _read(conn: AsyncConnection, name: str, project_id: int, branch_id: in
     return found
 
 
+def _read_columns(name: str) -> list:
+    """What ``_read_rows`` selects of table ``name``: the key, then the columns of a row as ``_stored`` gives it."""
+    table = getattr(tables, name)
+    key = table.primary_key.columns.values()[-1]
+    if name == "kg_nodes":
+        return [key, *(table.c[k] for k in (*NODE_KEYS, "label_aud"))]
+    if name == "kg_edges":
+        return [key, *(table.c[k] for k in (*EDGE_KEYS, "label_aud"))]
+    if name == "kg_embeddings":
+        return [key, table.c.node_id, table.c.kind, table.c.aud, table.c.vector]
+    return [key, table.c[ROW_TABLES[name]], cast(table.c.row, Text)]
+
+
+async def _read_rows(conn: AsyncConnection, name: str, project_id: int, branch_id: int) -> dict[str, tuple]:
+    """The rows of table ``name`` of a branch, by key, as ``_assembled`` reads them, fetched as ``_read`` does. A
+    JSON row comes as the text Postgres keeps it in, parsed once in ``_assembled``'s thread: ``_read`` parses it, and
+    writes it again with its keys sorted for ``diff``, on the event loop, which was half the minute or two the rows of
+    a large graph held the api's loop for."""
+    table = getattr(tables, name)
+    columns = _read_columns(name)
+    query = (
+        select(*columns).where(table.c.project_id == project_id, table.c.branch_id == branch_id).order_by(columns[0])
+    )
+    found: dict[str, tuple] = {}
+    async for part in (await conn.stream(query.execution_options(yield_per=READ_BATCH))).partitions():
+        found.update(_row_pairs(name, part))
+    return found
+
+
+def _row_pairs(name: str, part) -> Iterator[tuple[str, tuple]]:
+    """(key, row) of each row of a batch ``_read_rows`` fetched of table ``name``."""
+    if name == "kg_embeddings":
+        return ((r[0], (r[1], r[2], r[3], bytes(r[4]))) for r in part)
+    return ((r[0], tuple(r[1:])) for r in part)
+
+
+def _sorted_object(pairs: list[tuple[str, object]]) -> dict:
+    return dict(sorted(pairs))
+
+
+# a JSON row parsed with every object's keys sorted, as ``_json`` writes it: the same row however it was read
+_ROW_JSON = json.JSONDecoder(object_pairs_hook=_sorted_object)
+
+
 async def _apply(conn: AsyncConnection, name: str, project_id: int, branch_id: int, fresh: dict, changes: Changes):
     table = getattr(tables, name)
     key = table.primary_key.columns.values()[-1]
@@ -210,10 +262,12 @@ async def write_graph(
     """Write the rows of a build to the tables of ``branch_id``, only what changed, then its head, and notify
     ``CHANNEL``; what each table changed (``Changes.counts``). Within the caller's transaction."""
     changed = {}
-    for name, fresh in graph_rows(rows).items():
+    for name in WRITE_ORDER:
+        fresh = table_rows(rows, name)
         changes = diff(await _read(conn, name, project_id, branch_id), fresh)
         await _apply(conn, name, project_id, branch_id, fresh, changes)
         changed[name] = changes.counts()
+        del fresh, changes
     heads = tables.kg_graph_heads
     (level, location), audience = rows.top
     head = {
@@ -239,10 +293,7 @@ async def notify(conn: AsyncConnection, project_id: int, branch_id: int, build_i
     await wake.notify(conn, CHANNEL, payload)
 
 
-async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MAIN) -> StoreRows | None:
-    """The rows a snapshot of a branch is made of, as ``write_graph`` kept them; None before its first build. The
-    rows are fetched a batch at a time (``_read``) and put together in a thread (``_assembled``), so a large graph
-    does not hold the event loop."""
+async def _head(conn: AsyncConnection, project_id: int, branch_id: int):
     heads = tables.kg_graph_heads
     head = (
         await conn.execute(
@@ -256,10 +307,42 @@ async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MA
             ).where(heads.c.project_id == project_id, heads.c.branch_id == branch_id)
         )
     ).one_or_none()
+    return head
+
+
+async def read_head(conn: AsyncConnection, project_id: int, branch_id: int = MAIN) -> StoreRows | None:
+    """The head of a branch and its clusters, without the rows of the graph's other tables: what a build of it reads
+    of the graph it follows (``kg_build.build_graph``), whose whole rows took as much memory as the build's own while
+    it ran. None before its first build."""
+    head = await _head(conn, project_id, branch_id)
     if head is None:
         return None
-    read = {name: await _read(conn, name, project_id, branch_id) for name in GRAPH_TABLES}
+    read = {name: {} for name in GRAPH_TABLES}
+    read["kg_review_rows"] = await _read_rows(conn, "kg_review_rows", project_id, branch_id)
     return await asyncio.to_thread(_assembled, head, read)
+
+
+async def read_graph(conn: AsyncConnection, project_id: int, branch_id: int = MAIN) -> StoreRows | None:
+    """The rows a snapshot of a branch is made of, as ``write_graph`` kept them; None before its first build. The
+    rows are fetched a batch at a time (``_read_rows``) and parsed and put together in a thread (``_assembled``), so a
+    large graph does not hold the event loop."""
+    fetched = await fetch_graph(conn, project_id, branch_id)
+    return None if fetched is None else await assemble_graph(fetched)
+
+
+async def fetch_graph(conn: AsyncConnection, project_id: int, branch_id: int = MAIN) -> tuple | None:
+    """The head and the raw rows of a branch's tables, for ``assemble_graph``; None before its first build. Only this
+    reads: a caller that can give its connection back before the rows are put together (``assemble_graph`` takes
+    minutes on a large graph) does so between the two."""
+    head = await _head(conn, project_id, branch_id)
+    if head is None:
+        return None
+    return head, {name: await _read_rows(conn, name, project_id, branch_id) for name in GRAPH_TABLES}
+
+
+async def assemble_graph(fetched: tuple) -> StoreRows:
+    """The ``StoreRows`` of what ``fetch_graph`` read, put together in a thread; it needs no connection."""
+    return await asyncio.to_thread(_assembled, *fetched)
 
 
 GRAPH_TABLES = (
@@ -272,12 +355,22 @@ GRAPH_TABLES = (
     "kg_review_rows",
 )  # the tables ``read_graph`` reads a branch's rows from
 
+WRITE_ORDER = (
+    "kg_nodes",
+    "kg_edges",
+    "kg_text_rows",
+    "kg_provenance",
+    "kg_asked",
+    "kg_review_rows",
+    "kg_embeddings",
+)  # the order ``write_graph`` writes them in
+
 
 def _assembled(head, read: dict[str, dict[str, tuple]]) -> StoreRows:
     """The ``StoreRows`` of the head of a branch and the rows of its tables (``GRAPH_TABLES``) by key."""
     keyed, code = [], {}
     for _, row in paced(read["kg_text_rows"].items()):
-        kind, key, value = json.loads(row[1])
+        kind, key, value = _ROW_JSON.decode(row[1])
         if kind == TEXT:
             keyed.append((key, tuple(value)))
         else:
@@ -285,11 +378,11 @@ def _assembled(head, read: dict[str, dict[str, tuple]]) -> StoreRows:
     top = ((head.top_label[0], head.top_label[1]), frozenset(head.top_audience))
     units, wheres, derived = [], [], []
     for _, row in paced(sorted(read["kg_provenance"].items())):
-        kind, *values = json.loads(row[1])
+        kind, *values = _ROW_JSON.decode(row[1])
         {UNIT: units, WHERE: wheres, DERIVED: derived}[kind].append(tuple(values))
     clusters, review = [], []
     for _, row in paced(read["kg_review_rows"].items()):
-        kind, key, value = json.loads(row[1])
+        kind, key, value = _ROW_JSON.decode(row[1])
         if kind == REVIEW:
             review.append(value)
         else:
@@ -307,7 +400,7 @@ def _assembled(head, read: dict[str, dict[str, tuple]]) -> StoreRows:
         head.summary,
         tuple((key, *row) for key, row in sorted(read["kg_embeddings"].items())),
         head.vectors,
-        asked_order(tuple(json.loads(row[1])) for row in read["kg_asked"].values()),
+        asked_order(tuple(_ROW_JSON.decode(row[1])) for row in read["kg_asked"].values()),
         head.asked_weight,
         cluster_order(clusters),
         tuple(sorted(review, key=lambda item: item["fingerprint"])),

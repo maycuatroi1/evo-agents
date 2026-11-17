@@ -682,7 +682,10 @@ class Agent:
             return False
         self.routing = found
         chosen = found["model"]
+        await self.reroute_leases(found)
         how = "the scorer rated it" if found["scored"] else f"the scorer did not rate it ({found['error']}), so"
+        if found.get("source") not in (None, "scorer", "fallback"):
+            how = f"the hub rated it ({found.get('reason')})"
         cost = f", for ${found['cost_usd']:.4f}" if found["cost_usd"] is not None else ""
         if chosen:
             run.note(f"Model routing: {how} {found['difficulty']}{cost}; the agent runs on {chosen}.")
@@ -690,6 +693,19 @@ class Agent:
         else:
             run.note(f"Model routing: {how} {found['difficulty']}{cost}; {found['error']}, so the model stays.")
         return chosen is not None
+
+    async def reroute_leases(self, found: dict) -> None:
+        """When the hub left the rating to the scorer (``pending``) and its choices include a gateway model, tell the
+        hub the model the scorer chose and take the run's leases again: the hub moves the run to that model's gateway
+        prefix, or off the gateway, before the agent starts (plan token-and-quota-economy)."""
+        routing = self.run.spec.get("routing") or {}
+        if not routing.get("pending") or not found.get("model"):
+            return
+        if not model_router.any_gateway(routing):
+            return
+        run = self.run
+        await run.reports.report(run.state, routing=found)
+        await run.credentials.swap()
 
     def asked_model(self, context: RunContext) -> str | None:
         """The model the worker starts the agent on: the session's (``profiles.session_model``), else the run's."""

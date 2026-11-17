@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyRound, Pause, Pencil, Play, RefreshCw, Share2, Trash2 } from "lucide-react";
+import { KeyRound, Pause, Pencil, Play, RefreshCw, Share2, Trash2, Wallet } from "lucide-react";
 import type { Route } from "next";
 import { useFormatter, useTranslations } from "next-intl";
 
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { At } from "./account-cells";
+import { budgetable } from "./budget-model";
 import { preloadLogin } from "./login-lazy";
 import { isClaudeAccount } from "./model";
 import { ProviderLogo } from "./provider-logo";
@@ -35,6 +36,8 @@ export type Actions = {
   /** A provider account's Change key and Delete; its Edit opens the provider form instead of weight and priority. */
   onKey?: (account: Account) => void;
   onDelete?: (account: Account) => void;
+  /** The weekly budget of a model account that reports no windows of its own. */
+  onBudget?: (account: Account) => void;
 };
 
 /**
@@ -138,9 +141,9 @@ export function LastUsedCell({ at }: { at: string | null }) {
 
 /**
  * Renew token (a Claude account's), Edit and Pause or Resume of one account; a provider account's Edit opens its form,
- * and it has Change key and Delete besides.
+ * and it has Change key and Delete besides. Budget sets the weekly budget of an account without windows of its own.
  */
-export function ActionButtons({ account, onEdit, onPause, onRenew, onKey, onDelete }: { account: Account } & Actions) {
+export function ActionButtons({ account, onEdit, onPause, onRenew, onKey, onDelete, onBudget }: { account: Account } & Actions) {
   const t = useTranslations("accounts");
   const paused = account.paused_at !== null;
   const provider = Boolean(account.gateway);
@@ -172,6 +175,19 @@ export function ActionButtons({ account, onEdit, onPause, onRenew, onKey, onDele
         <Pencil aria-hidden="true" />
         <span className="hidden sm:inline">{t("edit")}</span>
       </Button>
+      {onBudget && budgetable(account) ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={t("budget.actionLabel", { name: account.name })}
+          onClick={() => onBudget(account)}
+          data-testid="account-budget"
+        >
+          <Wallet aria-hidden="true" />
+          <span className="hidden sm:inline">{t("budget.action")}</span>
+        </Button>
+      ) : null}
       {provider && onKey ? (
         <Button
           type="button"

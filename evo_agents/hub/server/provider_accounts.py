@@ -18,6 +18,9 @@ key. The account keeps its id, so its weight, priority, rotation, the runs that 
 deletes it softly, as DELETE /v1/secrets does a secret: its sealed key and its bindings go, the leases and shares of it
 are revoked, the row stays for the audit lines that name it.
 
+POST /v1/provider-accounts/{name}/quota reads the quota a Z.ai account has left from Z.ai and keeps it as the
+account's last usage (``provider_quota``): the windows read, or an error without the key, with status 200 either way.
+
 POST /v1/provider-accounts/probe tries an endpoint before it is saved, with the key of the body; POST
 /v1/provider-accounts/{name}/probe tries a saved one with its key. Both are the Test connection and Fetch models of
 the page: the hub calls the endpoint (``provider_probe``) and answers whether it took the key, the models it listed and
@@ -33,7 +36,7 @@ its base URL (``provider_store.audit_text``). No route, log line, audit row or e
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Request, Response
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
@@ -49,6 +52,7 @@ from evo_agents.hub.server import audit, gateway_sync, route_autonomy
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.provider_quota import ProviderQuota, refresh_for
 from evo_agents.hub.server.provider_store import (
     NO_KEY_GIVEN,
     ModelsFrom,
@@ -91,7 +95,7 @@ NO_ACCOUNT = "you have no provider account named {name} on this hub: see GET /v1
 AccountName = Annotated[
     str, Path(pattern=f"^{SECRET_NAME.pattern}$", description="unique among the caller's secrets and accounts")
 ]
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
 
 router = APIRouter(
     prefix="/v1/provider-accounts",
@@ -393,3 +397,13 @@ async def probe_provider_account(
     model = body.model or (row.models[0] if row.models else None)
     response.headers.update(NO_STORE)
     return as_probe(await call(request, row.base_url, row.api_format, key, model))
+
+
+@router.post("/{name}/quota", response_model=ProviderQuota, responses=REFUSALS)
+async def quota_of_provider_account(request: Request, name: AccountName, user: CurrentUser, response: Response):
+    """Read the quota the caller's Z.ai account ``name`` has left and keep it as the account's last usage."""
+    sealer_of(request)  # 503 without EVO_HUB_SECRETS_KEY
+    async with request.app.state.engine.begin() as conn:
+        row = await _own(conn, user.user_id, name)
+    response.headers.update(NO_STORE)
+    return await refresh_for(request, row.id)

@@ -1,5 +1,6 @@
-"""What a hook that runs on every grep needs of the bound project, kept between runs: the store's path, the
-directories of the harness and its repos, and the sink's clearance.
+"""What a hook that runs on every grep needs of the bound project, kept between runs: the project's name, which
+the hub knows it by, and the directories of its harness and repos. The graph itself is the hub's
+(``evo_agents.kg.post_search``).
 
 Resolving the project reads harness.yaml and knowledge.yaml with PyYAML, and importing the harness loader and PyYAML
 took about 0.1 s of the hook's start-up on a loaded laptop (2026-10-18), more than its lookup. So the hook resolves a
@@ -25,12 +26,10 @@ REGISTRIES = ("~/.evo/harness/registry.json", "~/.claude/harness/registry.json")
 
 @dataclass
 class Scope:
-    """The store file, (repo name, real directory) of the harness and each repo, longest first, and the sink's
-    (level, location) clearance, None when the sink is not declared."""
+    """The project's name and (repo name, real directory) of the harness and each repo, longest first."""
 
-    store: str
+    project: str
     roots: list[tuple[str, str]]
-    ceiling: tuple[int, int] | None
 
 
 def kg_home(env) -> Path:
@@ -71,7 +70,7 @@ def repo_roots(project) -> list[tuple[str, str]]:
     return sorted(roots, key=lambda r: -len(r[1]))
 
 
-def resolve(start: Path, sink: str, home: Path) -> tuple[Scope | None, list[Path]]:
+def resolve(start: Path, home: Path) -> tuple[Scope | None, list[Path]]:
     """The scope of the project ``start`` resolves to, and the project files it read; (None, []) for none."""
     from evo_agents.kg.project import ProjectError, resolve_project
 
@@ -79,12 +78,7 @@ def resolve(start: Path, sink: str, home: Path) -> tuple[Scope | None, list[Path
         project = resolve_project(None, start, home)
     except ProjectError:
         return None, []
-    try:
-        clearance = project.policy.clearance(sink)
-        ceiling = (clearance.level, clearance.location)
-    except KeyError:
-        ceiling = None
-    scope = Scope(str(project.root / "graph.sqlite"), repo_roots(project), ceiling)
+    scope = Scope(project.name, repo_roots(project))
     return scope, [project.harness.root / MANIFEST, project.knowledge_path]
 
 
@@ -104,13 +98,13 @@ def _write(path: Path, data: dict) -> None:
         os.replace(tmp, path)
 
 
-def scope_for(sink: str, env=None) -> Scope | None:
+def scope_for(env=None) -> Scope | None:
     """The scope of the project the hook's directory (CLAUDE_PROJECT_DIR, else the cwd) resolves to, from CACHE while
     nothing it was resolved from has changed; None when the directory belongs to no project."""
     env = os.environ if env is None else env
     home = kg_home(env)
     start = Path(env.get("CLAUDE_PROJECT_DIR") or os.getcwd()).expanduser().resolve()
-    key = "\0".join((str(start), sink, env.get("EVO_KG_PROJECT", "")))
+    key = "\0".join((str(start), env.get("EVO_KG_PROJECT", "")))
     path = home / CACHE
     cache = _read(path)
     entry = cache.get(key)
@@ -120,17 +114,17 @@ def scope_for(sink: str, env=None) -> Scope | None:
             found = entry.get("scope")
             if not found:
                 return None
-            ceiling = tuple(found["ceiling"]) if found.get("ceiling") else None
-            return Scope(found["store"], [tuple(r) for r in found["roots"]], ceiling)
+            if isinstance(found, dict) and isinstance(found.get("project"), str):  # else an older hook's: read again
+                return Scope(found["project"], [tuple(r) for r in found["roots"]])
     before = watched(home, start)
-    scope, files = resolve(start, sink, home)
+    scope, files = resolve(start, home)
     after = watched(home, start, files)
     if any(after.get(name) != value for name, value in before.items()):
         return scope  # something changed while it was read: keep nothing
     cache.pop(key, None)
     kept = dict(list(cache.items())[-(MAX_ENTRIES - 1) :])
     kept[key] = {
-        "scope": None if scope is None else {"store": scope.store, "roots": scope.roots, "ceiling": scope.ceiling},
+        "scope": None if scope is None else {"project": scope.project, "roots": scope.roots},
         "files": [str(f) for f in files],
         "watched": after,
     }

@@ -406,32 +406,7 @@ async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str
         )
         return
     if new == "merged":
-        actor = extra.get("actor") or "curator"
-        who = "The hub" if actor == "curator" else (extra.get("login") or "A member")
-        what = f"{who} merged pull request #{row.pr_number} into {row.base_branch} as {row.merge_sha}"
-        if extra.get("merge_request"):  # its merge queue on GitLab merged it
-            what = f"{who}'s merge queue merged !{extra['merge_request']} into {extra.get('into')} as {row.merge_sha}"
-        details = {"github_login": extra["login"]} if extra.get("login") else {}
-        if extra.get("agent"):  # the agent of the proposal's thread, for its owner (``curator_threads``)
-            what = f"{extra['agent']} merged pull request #{row.pr_number} into {row.base_branch} as {row.merge_sha}"
-            what += f" for {extra.get('login')} (chat run {extra.get('chat_run')})"
-            details = {"agent": extra["agent"], "chat_run": extra.get("chat_run")}
-        if actor == "curator":
-            details, what = await _replayed_merge(conn, row, details, what)
-        await append(
-            conn,
-            **line,
-            **pull,
-            action="merged",
-            actor=actor,
-            actor_id=extra.get("actor_id"),
-            commit_sha=row.head_sha,
-            before_sha=extra.get("before_sha"),
-            after_sha=row.merge_sha,
-            merged_at=row.merged_at,
-            what=what,
-            details=details or None,
-        )
+        await _merged(conn, row, line, pull, extra)
         return
     if new == "open" and old != "open":
         await append(conn, **line, **pull, action="left_open", actor="curator", what=row.reason or "left open")
@@ -470,6 +445,40 @@ async def change_moved(conn: AsyncConnection, change_id: int, old: str, new: str
             what=what,
             details=details,
         )
+
+
+async def _merged(conn: AsyncConnection, row, line: dict, pull: dict, extra: dict) -> None:
+    """The line of a merge of change ``row``, by the hub, a member or the agent of its proposal's thread, after the
+    playbook entries that held until its proposal landed are retired."""
+    actor = extra.get("actor") or "curator"
+    who = "The hub" if actor == "curator" else (extra.get("login") or "A member")
+    what = f"{who} merged pull request #{row.pr_number} into {row.base_branch} as {row.merge_sha}"
+    if extra.get("merge_request"):  # its merge queue on GitLab merged it
+        what = f"{who}'s merge queue merged !{extra['merge_request']} into {extra.get('into')} as {row.merge_sha}"
+    details = {"github_login": extra["login"]} if extra.get("login") else {}
+    if extra.get("agent"):  # the agent of the proposal's thread, for its owner (``curator_threads``)
+        what = f"{extra['agent']} merged pull request #{row.pr_number} into {row.base_branch} as {row.merge_sha}"
+        what += f" for {extra.get('login')} (chat run {extra.get('chat_run')})"
+        details = {"agent": extra["agent"], "chat_run": extra.get("chat_run")}
+    if actor == "curator":
+        details, what = await _replayed_merge(conn, row, details, what)
+    from evo_agents.hub.server import playbook  # it reads the proposals of the routes that import this module
+
+    await playbook.retire_due(conn, row.project_id)  # the entries that held until this proposal landed
+    await append(
+        conn,
+        **line,
+        **pull,
+        action="merged",
+        actor=actor,
+        actor_id=extra.get("actor_id"),
+        commit_sha=row.head_sha,
+        before_sha=extra.get("before_sha"),
+        after_sha=row.merge_sha,
+        merged_at=row.merged_at,
+        what=what,
+        details=details or None,
+    )
 
 
 async def _replayed_merge(conn: AsyncConnection, row, details: dict, what: str) -> tuple[dict, str]:

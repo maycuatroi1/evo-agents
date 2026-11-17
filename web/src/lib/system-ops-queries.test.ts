@@ -7,7 +7,7 @@ const ops = (over: Partial<SystemOps> = {}): SystemOps => ({
   project: "northwind",
   slug: "orchestrator",
   default: true,
-  ops: { enabled: true, debounce_minutes: 5, max_items: 20 },
+  ops: { enabled: true, debounce_minutes: 5, max_items: 20, plan_stall_minutes: 30 },
   ops_daily_usd: 5,
   paused: false,
   paused_at: null,
@@ -25,7 +25,7 @@ describe("the ops of a system", () => {
     expect(opsAlert(ops({ spent_usd: 4.99 }))).toBeNull();
     expect(opsAlert(ops({ paused: true, spent_usd: 9 }))).toBe("paused");
     expect(opsAlert(ops({ default: false, paused: true }))).toBeNull();
-    expect(opsAlert(ops({ ops: { enabled: false, debounce_minutes: 5, max_items: 20 }, spent_usd: 9 }))).toBeNull();
+    expect(opsAlert(ops({ ops: { enabled: false, debounce_minutes: 5, max_items: 20, plan_stall_minutes: 30 }, spent_usd: 9 }))).toBeNull();
   });
 
   it("refuses values out of the hub's bounds, and fractions where it wants whole numbers", () => {

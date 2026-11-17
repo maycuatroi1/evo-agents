@@ -1,8 +1,8 @@
+import dataclasses
 import io
 import json
 import os
 import re
-import sqlite3
 import stat
 import subprocess
 import sys
@@ -12,14 +12,12 @@ from pathlib import Path
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.hub import spool
-from evo_agents.kg import grep_command, hook_scope, post_search, serve, sessions
-from evo_agents.kg.build import build_project
+from evo_agents.hub import client, kg_grep_hook, spool
+from evo_agents.kg import grep_command, grep_links, hook_scope, post_search, serve, sessions
 from evo_agents.kg.connectors import gitcli
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_session import StoreSession
-from evo_agents.kg.sync import sync_project
+from tests.kg import built as in_memory
+from tests.kg.built import sync_build, view_of
 from tests.kg.hub_graph import hub_session, hub_status, sign_in
 from tests.kg.projects import commit, git, make_project, write
 
@@ -97,14 +95,13 @@ def test_post_tool_reads_the_captured_sample_of_a_text_result(kg_env, monkeypatc
 
 def built(tmp_path, home):
     project = make_project(tmp_path, home, level="public", app_level="customer")
-    sync_project(project)
-    assert build_project(project).ok
+    sync_build(project)
     return project
 
 
 def test_post_tool_joins_across_calls(tmp_path, kg_env, monkeypatch, capsys, unbound):
     project = built(tmp_path, kg_env)
-    session = StoreSession(project, "wide")
+    session = hub_session(project, "wide")
     sid = "11111111-2222-4333-8444-555555555555"
 
     plans = session.call("kg_search", {"query": "demo", "kinds": ["Plan"]})
@@ -135,7 +132,7 @@ def test_post_tool_joins_across_calls(tmp_path, kg_env, monkeypatch, capsys, unb
 
 def test_post_tool_counts_what_a_truncated_result_reveals(tmp_path, kg_env, monkeypatch, capsys, unbound):
     project = built(tmp_path, kg_env)
-    session = StoreSession(project, "wide")
+    session = hub_session(project, "wide")
     monkeypatch.setattr(serve, "CAP_CHARS", 300)
     # The use case comes from the public harness; the symbol implementing it from the customer repo.
     card = session.call("kg_node", {"id": "usecase:KB-01"})
@@ -285,7 +282,7 @@ def test_post_tool_session_ids_never_share_a_file(kg_env, unbound):
 
 def test_post_tool_label_shows_in_session_start(tmp_path, kg_env, monkeypatch, capsys, unbound):
     project = built(tmp_path, kg_env)
-    session = StoreSession(project, "wide")
+    session = hub_session(project, "wide")
     sid = "22222222-3333-4444-8555-666666666666"
     found = session.call("kg_search", {"query": "rank_results"})
     assert post(monkeypatch, capsys, as_claude_code_sends("kg_search", found, sid))[0] == 0
@@ -311,8 +308,7 @@ def test_session_start_and_kg_status_name_the_commit_each_git_source_read(
     commit(app, "later")
     git(app, "update-ref", "refs/remotes/origin/main", "HEAD")  # as a clone that fetched main has it
     git(app, "reset", "--hard", read)  # the checkout one commit behind it
-    sync_project(project)
-    assert build_project(project).ok
+    sync_build(project)
     monkeypatch.setattr(gitcli, "fetch", lambda *a, **kw: pytest.fail("fetched outside a sync"))
 
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
@@ -343,8 +339,7 @@ def test_session_start_and_kg_status_name_the_commit_each_git_source_read(
 def test_a_git_source_without_a_remote_branch_names_only_its_commit(tmp_path, kg_env, monkeypatch, capsys, unbound):
     project = make_project(tmp_path, kg_env)
     read = git(tmp_path / "demo-app", "rev-parse", "HEAD").strip()
-    sync_project(project)
-    assert build_project(project).ok
+    sync_build(project)
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
     sign_in(monkeypatch, project)
     code, out, _ = run_hook(monkeypatch, capsys, "session-start", json.dumps({"source": "startup"}))
@@ -411,9 +406,10 @@ SEARCH_FILE = (
 
 @pytest.fixture
 def linked(tmp_path, kg_env, monkeypatch):
-    """Build the demo project with a test of search(), its policy declaring the Claude Code sink, bound through
-    CLAUDE_PROJECT_DIR. app/search.py: rank_results at line 1, search at 5, which calls it; Server.handle and the
-    test call search; step 1 of plan demo names app/search.py."""
+    """Build the demo project in memory with a test of search(), its policy declaring the Claude Code sink, bound
+    through CLAUDE_PROJECT_DIR, on a hub this machine is signed in to (``tests.kg.hub_graph.GraphHub``, which answers
+    grep-links as the hub does). app/search.py: rank_results at line 1, search at 5, which calls it; Server.handle
+    and the test call search; step 1 of plan demo names app/search.py."""
 
     def make(extra=None, **kw):
         project = make_project(tmp_path, kg_env, **kw)
@@ -425,12 +421,12 @@ def linked(tmp_path, kg_env, monkeypatch):
         knowledge = project.knowledge_path
         knowledge.write_text(knowledge.read_text().replace("  sinks:\n", SINK, 1))
         project = load_project_at(project.harness.root, kg_env)
-        sync_project(project)
-        assert build_project(project).ok
+        sync_build(project)
+        sign_in(monkeypatch, project)
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project.harness.root))
         monkeypatch.delenv("EVO_KG_PROJECT", raising=False)
         monkeypatch.delenv("EVO_KG_GREP_HINTS", raising=False)
-        monkeypatch.setattr(post_search, "BUDGET", 30.0)  # a loaded CI runner can take past 0.35s on a cold store
+        monkeypatch.setattr(post_search, "BUDGET", 30.0)  # a loaded CI runner can take past 1s
         return project
 
     return make
@@ -461,11 +457,16 @@ def grep_tool(cwd, response, **tool_input):
     )
 
 
-def link_lines(note):
-    assert note is not None
-    head, *lines = note.splitlines()
+def note(stdin_text: str, only: str | None = None) -> str | None:
+    """What the hook adds for one event, as the hub answers it."""
+    return kg_grep_hook.note(stdin_text, only=only)
+
+
+def link_lines(found):
+    assert found is not None
+    head, *lines = found.splitlines()
     assert head == post_search.NOTE and "kg_context" in head
-    assert 0 < len(lines) <= post_search.MAX_NODES
+    assert 0 < len(lines) <= grep_links.MAX_NODES
     for line in lines:
         assert LINK_LINE.fullmatch(line), line
     return lines
@@ -475,11 +476,11 @@ def test_post_search_names_callers_tests_and_plan_steps_of_a_matched_definition(
     linked()
     app = tmp_path / "demo-app"
     command = 'grep -rn "def search" .'
-    assert link_lines(post_search.post_search(bash(app, command, "./app/search.py:5:def search(query):\n"))) == [SEARCH]
+    assert link_lines(note(bash(app, command, "./app/search.py:5:def search(query):\n"))) == [SEARCH]
     # Every line of a search in one file is that file's; rg and grep answer each for its own command.
     rg = bash(app, "rg -n 'def search' app/search.py", "5:def search(query):\n")
-    assert link_lines(post_search.post_search(rg, only="rg")) == [SEARCH]
-    assert post_search.post_search(rg, only="grep") is None
+    assert link_lines(note(rg, only="rg")) == [SEARCH]
+    assert note(rg, only="grep") is None
 
 
 def test_post_search_places_a_line_in_the_symbol_that_calls_what_it_holds(linked, tmp_path):
@@ -487,10 +488,10 @@ def test_post_search_places_a_line_in_the_symbol_that_calls_what_it_holds(linked
     app = tmp_path / "demo-app"
     out = "app/search.py:1:def rank_results(items):\napp/search.py:6:    return rank_results([query])\n"
     # The definition first, then the symbol the call sits in: search calls rank_results, which line 6 holds.
-    assert link_lines(post_search.post_search(bash(app, "grep -rn rank_results app", out))) == [RANK, SEARCH]
+    assert link_lines(note(bash(app, "grep -rn rank_results app", out))) == [RANK, SEARCH]
     # A line the symbol around it does not explain stays with the file.
     out = "app/search.py:6:    return sorted_differently([query])\n"
-    assert link_lines(post_search.post_search(bash(app, "grep -rn sorted_differently app", out))) == [SEARCH_FILE]
+    assert link_lines(note(bash(app, "grep -rn sorted_differently app", out))) == [SEARCH_FILE]
 
 
 def test_post_search_does_not_trust_line_numbers_of_a_file_that_moved(linked, tmp_path):
@@ -500,10 +501,10 @@ def test_post_search_does_not_trust_line_numbers_of_a_file_that_moved(linked, tm
     # and line 6, which the graph would put in search, is placed nowhere (the file's line goes, since a symbol of the
     # file already names its tests and steps).
     out = "app/search.py:3:def rank_results(items):\napp/search.py:6:    return rank_results([query])\n"
-    assert link_lines(post_search.post_search(bash(app, "grep -rn rank_results app", out))) == [RANK]
+    assert link_lines(note(bash(app, "grep -rn rank_results app", out))) == [RANK]
     # Where nothing says the file moved, line 6 is search's.
     out = "app/search.py:6:    return rank_results([query])\n"
-    assert link_lines(post_search.post_search(bash(app, "grep -rn rank_results app", out))) == [SEARCH]
+    assert link_lines(note(bash(app, "grep -rn rank_results app", out))) == [SEARCH]
 
 
 def test_post_search_reads_file_lists_counts_headings_and_the_grep_tool(linked, tmp_path):
@@ -512,18 +513,18 @@ def test_post_search_reads_file_lists_counts_headings_and_the_grep_tool(linked, 
     harness = tmp_path / "demo-harness"
     server = "- app:app/server.py: plan steps plan:demo/step:2"
     listed = bash(app, "grep -rl search app tests", "app/server.py\napp/search.py\ntests/test_search.py\n")
-    assert link_lines(post_search.post_search(listed)) == [server, SEARCH_FILE]
+    assert link_lines(note(listed)) == [server, SEARCH_FILE]
     counts = bash(app, "grep -rc search app", "app/__init__.py:0\napp/search.py:2\napp/server.py:0\n")
-    assert link_lines(post_search.post_search(counts)) == [SEARCH_FILE]
+    assert link_lines(note(counts)) == [SEARCH_FILE]
     heading = "app/search.py\n5:def search(query):\n"
-    assert link_lines(post_search.post_search(bash(app, "rg -n --heading search app", heading))) == [SEARCH]
+    assert link_lines(note(bash(app, "rg -n --heading search app", heading))) == [SEARCH]
     files = {"mode": "files_with_matches", "numFiles": 1, "filenames": [str(app / "app" / "search.py")]}
-    assert link_lines(post_search.post_search(grep_tool(harness, files))) == [SEARCH_FILE]
+    assert link_lines(note(grep_tool(harness, files))) == [SEARCH_FILE]
     content = {"mode": "content", "numFiles": 1, "content": f"{app}/app/search.py:5:def search(query):", "numLines": 1}
-    assert link_lines(post_search.post_search(grep_tool(harness, content, path=str(app)))) == [SEARCH]
+    assert link_lines(note(grep_tool(harness, content, path=str(app)))) == [SEARCH]
     # A path relative to where the command runs after its cd.
     cd = bash(harness, "cd ../demo-app && grep -rn 'def search' app | head -5", "app/search.py:5:def search(query):\n")
-    assert link_lines(post_search.post_search(cd, only="grep")) == [SEARCH]
+    assert link_lines(note(cd, only="grep")) == [SEARCH]
 
 
 def test_post_search_reads_past_the_colon_of_a_windows_drive(monkeypatch):
@@ -557,25 +558,38 @@ def test_post_search_says_nothing_when_there_is_nothing_to_add(linked, tmp_path)
         "not json",
         "[]",
     ):
-        assert post_search.post_search(event) is None, event
+        assert note(event) is None, event
 
 
 def test_post_search_hides_what_the_sink_may_not_see(linked, tmp_path):
     linked(app_level="customer")  # the app repo is customer, the sink is cleared for internal
     app = tmp_path / "demo-app"
-    assert (
-        post_search.post_search(bash(app, 'grep -rn "def search" .', "./app/search.py:5:def search(query):\n")) is None
-    )
+    assert note(bash(app, 'grep -rn "def search" .', "./app/search.py:5:def search(query):\n")) is None
+
+
+def test_grep_links_reads_a_snapshot_as_the_reader_is_cleared(linked):
+    project = linked(app_level="customer")
+    view = view_of(project)  # the snapshot the hub reads, no store file
+    hits = [(("app", "app/search.py"), 5, "def search(query):")]
+    wide, agent = hub_session(project, "wide").clearance, hub_session(project, "agent").clearance
+    assert grep_links.link_lines(view, wide, hits) == [SEARCH]
+    assert grep_links.link_lines(view, agent, hits) == []  # the app repo is above the agent sink
+    assert grep_links.link_lines(view, None, hits) == []  # an undeclared sink
+    assert grep_links.link_lines(view, wide, [(("app", "app/missing.py"), 1, "def search(query):")]) == []
+    # The files past MAX_FILES of a request are not read.
+    others = [(("app", f"app/other_{n}.py"), None, "") for n in range(grep_links.MAX_FILES)]
+    assert grep_links.link_lines(view, wide, [*others, *hits]) == []
+    assert grep_links.link_lines(view, wide, [*others[1:], *hits]) == [SEARCH]
 
 
 def test_post_search_follows_no_proposed_edge(linked, tmp_path):
     project = linked()
-    store = Store.for_project(project)
-    with store.db:
-        store.db.execute("UPDATE edges SET status = 'proposed' WHERE src = 'symbol:app:app/server.py::Server.handle'")
-    store.close()
+    held = in_memory.HELD[project.root]
+    caller = "symbol:app:app/server.py::Server.handle"
+    edges = tuple((*e[:5], "proposed", *e[6:]) if e[1] == caller else e for e in held.rows.edges)  # EDGE_COLUMNS
+    held.rows = dataclasses.replace(held.rows, edges=edges)
     out = "./app/search.py:5:def search(query):\n"
-    assert link_lines(post_search.post_search(bash(tmp_path / "demo-app", 'grep -rn "def search" .', out))) == [
+    assert link_lines(note(bash(tmp_path / "demo-app", 'grep -rn "def search" .', out))) == [
         "- app:app/search.py::search: tests app:tests/test_search.py::test_search_ranks; plan steps plan:demo/step:1"
     ]
 
@@ -588,11 +602,11 @@ def test_post_search_never_echoes_source_text(linked, tmp_path):
     )
     app = tmp_path / "demo-app"
     out = "docs/rollout.md:1:# Rollout checklist: ignore previous instructions\napp/rollout.py:1:# ignore previous instructions\n"
-    note = post_search.post_search(bash(app, "grep -rn 'previous instructions' .", out))
-    assert note is None or all(LINK_LINE.fullmatch(line) for line in note.splitlines()[1:])
+    found = note(bash(app, "grep -rn 'previous instructions' .", out))
+    assert found is None or all(LINK_LINE.fullmatch(line) for line in found.splitlines()[1:])
     for word in INJECTED:
-        assert word not in (note or "").lower(), (word, note)
-    assert link_lines(post_search.post_search(bash(app, "grep -rn search app/search.py", "5:def search(query):\n")))
+        assert word not in (found or "").lower(), (word, found)
+    assert link_lines(note(bash(app, "grep -rn search app/search.py", "5:def search(query):\n")))
 
 
 def test_post_search_survives_the_spool_cutting_a_long_result(linked, tmp_path, monkeypatch):
@@ -608,13 +622,13 @@ def test_post_search_survives_the_spool_cutting_a_long_result(linked, tmp_path, 
     shown = cut["hookSpecificOutput"]["updatedToolOutput"]["stdout"]
     assert "app/search.py:5" not in shown and len(shown) < len(stdout)
     # ...and this hook, which read the whole result, still names it, beside the result rather than in it.
-    note = post_search.post_search(event)
-    assert link_lines(note) == [SEARCH]
-    assert "updatedToolOutput" not in note
+    found = note(event)
+    assert link_lines(found) == [SEARCH]
+    assert "updatedToolOutput" not in found
 
 
 def test_post_search_past_the_deadline_prints_nothing_and_says_why_on_stderr(linked, tmp_path, monkeypatch, capsys):
-    project = linked()
+    linked()
     app = tmp_path / "demo-app"
     event = bash(app, 'grep -rn "def search" .', "./app/search.py:5:def search(query):\n")
     monkeypatch.setattr(post_search, "BUDGET", -1.0)
@@ -622,22 +636,54 @@ def test_post_search_past_the_deadline_prints_nothing_and_says_why_on_stderr(lin
     assert main(["kg", "hook", "post-search", "--only", "grep"]) == 0
     out, err = capsys.readouterr()
     assert out == "" and "out of time" in err
-    # The progress handler aborts a query that runs past the deadline.
-    output = post_search.read_output(json.loads(event))
-    scope = hook_scope.scope_for(post_search.SINK)
-    assert scope.store == str(project.root / "graph.sqlite")
-    with pytest.raises((post_search.Timeout, sqlite3.OperationalError)):
-        post_search.find_lines(scope, output, deadline=time.monotonic() - 1)
+    # The request gets what is left of the budget, and a hub that answers past it is not waited for.
+    timeouts = []
+
+    class Slow:
+        def call(self, method, path, body=None, *, timeout=None):
+            timeouts.append(timeout)
+            time.sleep(0.2)
+            raise client.Unreachable("no answer within 0.1s")
+
+    monkeypatch.setattr(post_search, "BUDGET", 0.1)
+    monkeypatch.setattr(client, "Hub", lambda url, token, **kwargs: Slow())
+    monkeypatch.setattr("sys.stdin", io.StringIO(event))
+    assert main(["kg", "hook", "post-search", "--only", "grep"]) == 0
+    out, err = capsys.readouterr()
+    assert out == "" and "out of time after 0.1s" in err
+    assert len(timeouts) == 1 and 0 < timeouts[0] <= 0.1
+
+
+@pytest.mark.parametrize(
+    "trouble",
+    [
+        client.NotSignedIn("not signed in"),
+        client.Unreachable("connection refused", refused=True),
+        client.HubError("no grant", 403),
+        client.HubError("no such project", 404),
+        client.HubError("no graph yet", 409),
+    ],
+)
+def test_post_search_without_a_hub_to_ask_prints_nothing(linked, tmp_path, monkeypatch, capsys, trouble):
+    linked()
+
+    class Refusing:
+        def call(self, method, path, body=None, *, timeout=None):
+            raise trouble
+
+    if isinstance(trouble, client.NotSignedIn):
+        monkeypatch.setattr(client, "load_credentials", lambda: (_ for _ in ()).throw(trouble))
+    monkeypatch.setattr(client, "Hub", lambda url, token, **kwargs: Refusing())
+    monkeypatch.setattr("sys.stdin", io.StringIO(bash(tmp_path / "demo-app", "grep -rn x app", "app/search.py:5:x\n")))
+    assert main(["kg", "hook", "post-search"]) == 0
+    assert capsys.readouterr() == ("", "")
 
 
 @pytest.mark.parametrize("value", ["0", "false", "OFF"])
 def test_post_search_env_var_turns_it_off(linked, tmp_path, monkeypatch, value):
     linked()
     monkeypatch.setenv("EVO_KG_GREP_HINTS", value)
-    assert (
-        post_search.post_search(bash(tmp_path / "demo-app", "grep -rn search app", "app/search.py:5:def search(q):\n"))
-        is None
-    )
+    assert note(bash(tmp_path / "demo-app", "grep -rn search app", "app/search.py:5:def search(q):\n")) is None
 
 
 def test_post_search_unbound_project_prints_nothing(tmp_path, kg_env, monkeypatch, capsys):
@@ -676,7 +722,7 @@ def test_post_search_an_unexpected_error_is_one_line_on_stderr(linked, tmp_path,
     def broken(*args, **kwargs):
         raise RuntimeError("secret text from somewhere")
 
-    monkeypatch.setattr(post_search, "find_lines", broken)
+    monkeypatch.setattr(kg_grep_hook, "ask", broken)
     monkeypatch.setattr("sys.stdin", io.StringIO(bash(tmp_path / "demo-app", "grep -rn x app", "app/search.py:5:x\n")))
     assert main(["kg", "hook", "post-search"]) == 0
     out, err = capsys.readouterr()
@@ -686,7 +732,7 @@ def test_post_search_an_unexpected_error_is_one_line_on_stderr(linked, tmp_path,
 def test_post_search_reads_the_project_from_its_cache_until_a_file_it_read_changes(linked, tmp_path, monkeypatch):
     project = linked()
     event = bash(tmp_path / "demo-app", 'grep -rn "def search" .', "./app/search.py:5:def search(query):\n")
-    assert link_lines(post_search.post_search(event)) == [SEARCH]
+    assert link_lines(note(event)) == [SEARCH]
     assert (project.home / hook_scope.CACHE).is_file()
 
     def no_resolve(*args, **kwargs):
@@ -694,36 +740,51 @@ def test_post_search_reads_the_project_from_its_cache_until_a_file_it_read_chang
 
     with monkeypatch.context() as patched:
         patched.setattr("evo_agents.kg.project.resolve_project", no_resolve)
-        assert link_lines(post_search.post_search(event)) == [SEARCH]
-    # knowledge.yaml no longer declares the sink: the cache is stale, and the sink sees nothing.
+        assert link_lines(note(event)) == [SEARCH]
+    # knowledge.yaml no longer declares the sink: the cache is stale, and the hub answers nothing for the sink.
     knowledge = project.knowledge_path
     knowledge.write_text(knowledge.read_text().replace(SINK, "  sinks:\n", 1))
-    assert post_search.post_search(event) is None
+    assert note(event) is None
     # A directory that belongs to no project is kept too.
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
-    assert post_search.post_search(event) is None
+    assert note(event) is None
     with monkeypatch.context() as patched:
         patched.setattr("evo_agents.kg.project.resolve_project", no_resolve)
-        assert post_search.post_search(event) is None
+        assert note(event) is None
 
 
 def test_post_search_from_the_cache_imports_neither_the_harness_nor_yaml(linked, tmp_path, kg_env):
     project = linked()
     event = bash(tmp_path / "demo-app", 'grep -rn "def search" .', "./app/search.py:5:def search(query):\n")
+    # A hub of its own in the child process, which answers one line and keeps what it was asked.
     code = (
-        "import sys\nfrom evo_agents.cli import main\nfrom evo_agents.kg import post_search\n"
-        "post_search.BUDGET = 30.0\n"  # a loaded CI runner can take past 0.35s on a cold store
+        "import json, sys\nfrom evo_agents.cli import main\nfrom evo_agents.hub import client\n"
+        "asked = []\n"
+        "class Hub:\n"
+        "    def __init__(self, url, token, **kwargs): pass\n"
+        "    def call(self, method, path, body=None, *, timeout=None):\n"
+        "        asked.append([method, path, body])\n"
+        f"        return {{'lines': [{SEARCH!r}]}}\n"
+        "client.load_credentials = lambda: client.Credentials('https://hub.lumenops.example', 'alice', 'evo_test')\n"
+        "client.Hub = Hub\n"
         "main(['kg', 'hook', 'post-search', '--only', 'grep'])\n"
-        "print(','.join(m for m in ('yaml', 'evo_agents.harness', 'evo_agents.kg.project') if m in sys.modules),"
-        " file=sys.stderr)\n"
+        "held = ('yaml', 'evo_agents.harness', 'evo_agents.kg.project', 'sqlite3')\n"
+        "print(json.dumps([[m for m in held if m in sys.modules], asked]), file=sys.stderr)\n"
     )
     env = {**os.environ, "EVO_KG_HOME": str(kg_env), "CLAUDE_PROJECT_DIR": str(project.harness.root)}
     runs = [
         subprocess.run([sys.executable, "-c", code], input=event, capture_output=True, text=True, env=env, check=True)
         for _ in range(2)
     ]
-    assert runs[0].stderr.strip() == "yaml,evo_agents.harness,evo_agents.kg.project"  # the first run resolves
-    assert runs[1].stderr.strip() == ""
+    first, second = (json.loads(run.stderr) for run in runs)
+    assert first[0] == ["yaml", "evo_agents.harness", "evo_agents.kg.project"]  # the first run resolves
+    assert second[0] == []  # no harness, no YAML and no graph file on this machine
+    body = {
+        "sink": post_search.SINK,
+        "files": [{"repo": "app", "path": "app/search.py"}],
+        "hits": [{"file": 0, "line": 5, "text": "def search(query):"}],
+    }
+    assert first[1] == second[1] == [["POST", "/v1/kg/demo/grep-links", body]]
     for run in runs:
         assert json.loads(run.stdout)["hookSpecificOutput"]["additionalContext"].endswith(SEARCH)
 

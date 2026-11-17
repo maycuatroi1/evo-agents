@@ -89,15 +89,23 @@ class HistorySpec(BaseModel):
     naming_share: float = Field(description="the share of the run's caps kept for naming the clusters")
 
 
+class EvolveSpec(BaseModel):
+    """The evolution an evolve run makes (``evo_agents.hub.server.evolve``): its inputs come from GET .../evolve."""
+
+    evolve_id: int
+    target: Literal["git", "agent_config"]
+
+
 class CuratorSpec(BaseModel):
     """What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
     charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
     change, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's
     head, its task and its own key (``evo_agents.hub.server.replays``), for a history run its batches and its own
-    key (``evo_agents.hub.server.history``), and for a probe run its probe, the change's head and its own key
-    (``evo_agents.hub.server.probe_runs``)."""
+    key (``evo_agents.hub.server.history``), for a probe run its probe, the change's head and its own key
+    (``evo_agents.hub.server.probe_runs``), and for an evolve run its evolution and its own key
+    (``evo_agents.hub.server.evolve``)."""
 
-    role: Literal["reviewer", "builder", "judge", "replay", "history", "probe"]
+    role: Literal["reviewer", "builder", "judge", "replay", "history", "probe", "evolve"]
     protected_paths: list[str] = Field(default_factory=list, description="globs of the charter, repo:glob for one repo")
     change_id: int | None = None
     branch: str | None = Field(None, description="curator/..., the one branch a Builder pushes")
@@ -136,6 +144,12 @@ class CuratorSpec(BaseModel):
     probe_key: str | None = Field(
         None,
         description="a probe run's own key, for POST .../probe (X-Evo-Probe-Key); the daemon keeps it as a judge run's",
+    )
+    evolve: EvolveSpec | None = Field(None, description="an evolve run's evolution; null for any other run")
+    evolve_key: str | None = Field(
+        None,
+        description="an evolve run's own key, for GET .../evolve and POST .../evolve/arm, .../candidate and .../report "
+        "(X-Evo-Evolve-Key); the daemon keeps it as a judge run's",
     )
 
 

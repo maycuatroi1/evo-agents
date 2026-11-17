@@ -336,6 +336,11 @@ take the same turn:
    - `round-robin` (the default): each run takes the account whose turn it is;
    - `weighted-round-robin`: each account takes runs in proportion to its `weight`; weight 0 leaves the pool;
    - `fill-first`: the lowest `priority` (then the name) while it is usable;
+   - `quota-pacing`: the account with the most of its weekly (`seven_day`) window left per hour until that window
+     resets, so a quota that resets soon is spent first. A window not reported, or past its reset, counts as unused.
+     An account whose `five_hour` window is at `five_hour_ceiling_pct` (default 90) or over waits while a cooler one
+     exists, and the last `hard_reserve_pct` (default 10) of a weekly window is kept back while another account has
+     more. It applies to env accounts and to provider accounts reached through the gateway alike;
    an account its owner paused, or one cooling down until `cooldown_until`, is skipped;
 3. when every account left cools down, the one whose cooldown ends first, and a `system` event of the run says so;
    when every one is paused, none, and an event says that. An event names the account by its secret's id, never by
@@ -352,6 +357,15 @@ workers, or bound to some workers while the run is not pinned to one of them, is
 (`--account NAME` or `--account-by-rule` on `hub run rerun`, the Rerun dialog on the web) names another one or asks the
 rules (`account_by_rule`). A body without `account` dispatches as before. Audit rows of the dispatch end with
 `account=secret:<id>`.
+
+`account` may also name an account another member shares with the dispatcher, as `<login>/<name>`
+(`--account someone-else/claude-a`; the web lists them apart in the Account select, from `GET /v1/shared-accounts`,
+which gives each env account shared with the caller under a live share for every run, with the projects its shares
+lend it on that its owner binds it to). The hub checks that such a share covers the dispatcher on the run's project
+(404 when none does), and that its owner has not paused it, it has not ended and its owner still binds it to the
+project (422 saying which). It goes on any worker, as a share lends on any. The share still decides every lease (see
+"Leasing under a share"): while it lends nothing, the run takes an account by the rules, its own first, instead of
+waiting for it. A rerun keeps it the same way, checked again.
 
 When the agent of a headless run (a step run, a plan run or an author run of Claude Code) hits its account's usage
 limit, the worker says so: the CLI's `rate_limit_event` with status `rejected`, or a result whose error reads as a
@@ -441,7 +455,18 @@ evo-agents hub account pause claude-a                         # a run that holds
 evo-agents hub account resume claude-a
 evo-agents hub account policy demo --strategy weighted-round-robin --cooldown 1800 --no-failover
 evo-agents hub account policy demo --reset                    # the defaults again
+evo-agents hub account policy demo --strategy quota-pacing --hard-reserve-pct 15 --five-hour-ceiling-pct 80
+evo-agents hub account set claude-a --weekly-budget-usd 50 --weekly-reset-at 2026-11-16T06:00:00Z
+evo-agents hub account set claude-a --no-weekly-budget
 ```
+
+**A weekly budget.** An owner may give an account `weekly_budget_usd` and, if they like, `weekly_reset_at`, the UTC
+instant its weeks start from (Monday 00:00 UTC without one); PATCH `/v1/accounts/{name}` takes both, null drops them,
+and the `account.set` audit row says so. The cost of the runs that took the account since its week began, over the
+budget, is the account's `seven_day` window, reset when the week ends (`server/account_budgets.py`). It replaces a
+`seven_day` window the account reported, shows on `/v1/accounts`, `hub account list|show` and the account pools, and
+quota-pacing weighs it. A budget spent marks the usage `rejected` until the week ends. The cost is an estimate from the
+runs' usage.
 
 ### Adding and renewing a Claude account
 
@@ -653,8 +678,12 @@ by id, never by name or value.
   `PUT .../account-pools/{pool}/accounts` (body `name`, optional `agent`), `DELETE .../accounts/{secret_id}` and
   `PUT /v1/projects/{p}/agents/{handle}/account-pool` (body `account_pool`, null to detach). Reading and changing need the
   admin role on the project or on the hub.
-- CLI: `evo-agents hub account-pool list|show|create|delete|add|remove` and `evo-agents hub agent account-pool HANDLE POOL`
+- CLI: `evo-agents hub account-pool list|show|create|delete|add|remove|policy` and `evo-agents hub agent account-pool HANDLE POOL`
   (`--none` detaches).
+- Policy: a pool has its own `strategy` (round-robin by default) and the quota-pacing thresholds `hard_reserve_pct` and
+  `five_hour_ceiling_pct`, given at creation or changed with `PATCH .../account-pools/{pool}` (admin only, audited as
+  `account-pool.policy`): `evo-agents hub account-pool policy POOL --strategy quota-pacing --five-hour-ceiling-pct 80`.
+  Cooldown and failover stay the defaults.
 - Web: the Account pools group of the Accounts page, a section for each project the visitor administers: its pools as
   cards, each listing its accounts (an X removes one) and the agents that use it, with a menu that adds one of the
   visitor's model accounts or of the project's agents (no name to type); New pool; and a select per agent of the
@@ -694,6 +723,13 @@ accounts keep the sign-in of the section above.
   holds it. `/v1/secrets` does not list it.
 - A provider account is an account like the others: bound to projects and workers, with a weight, a priority, a pause,
   a cooldown and an end, shared through `/v1/secrets/{name}/shares`, picked by the rules of the section Accounts.
+- **Z.ai quota.** For an account of provider `zai`, the hub reads the quota left from GET
+  `<origin>/api/monitor/usage/quota/limit` (the origin of its base URL) with the key as a Bearer token, pinned to the
+  checked public address as a probe is (`server/provider_quota.py`). The five-hour limit becomes the `five_hour` window
+  and the weekly one `seven_day`, each a share used with its UTC reset; a window used up cools the account down until it
+  resets. The result is kept in the account's last usage. `GatewaySync` reads it periodically and after each sweep;
+  `POST /v1/provider-accounts/{name}/quota`, its agent route under `/v1/projects/{project}/agents/{handle}/` and
+  `evo-agents hub provider-account quota NAME [--agent HANDLE]` read it on demand. An error never holds the key.
 
 **The gateway.** The model calls of such accounts go through OmniRoute, the hub's `gateway` service: it runs on a
 network only the api joins, with no port and no domain, and the hub reconciles its connections from the provider
@@ -714,6 +750,13 @@ revoked, and forwards the call with the run's key in its place. On Claude Code, 
 `ANTHROPIC_AUTH_TOKEN` the token, and the run's own config dir holds no Claude login. opencode and Codex read the
 token from `EVO_GATEWAY_TOKEN` (`evo_agents/worker/runtimes/gateway.py`). When the run ends, the sweep reads the key's
 usage into the run's figures, cost included, and revokes the key.
+
+A run that names no model can become a gateway run at its claim, when the project's Token strategy (the policy's
+`routing`, `docs/hub.md`) gives it an overflow model `<prefix>/<model>`: the hub sets the run's gateway prefix only when
+the gateway serves it, the worker's daemon runs gateway runs and the run may use an account of it, so an account pool
+that holds both native and provider accounts leases each run what its model needs: a gateway key, beside which the
+worker drops the Claude login, or the native accounts. The strategy reads the native accounts' quota as `hub accounts`
+shows it, and no model's key leaves the hub.
 
 ### Compared with a proxy
 
@@ -1112,8 +1155,8 @@ routes of its run's project and nothing else, every other path answering 403 and
 - `GET /v1/kg/{project}/init`, which `hub kg init` reads to find the run in flight;
 - `POST /v1/kg/{project}/init/{id}/questions` and `.../decision`, for its own kg_init run alone;
 - `POST /v1/kg/{project}/answers/{job}/replies`, for the questions of its own batch alone;
-- `POST /v1/kg/{project}/tools/{tool}` and `GET /v1/kg/{project}/eval-set`, read through the agents' sink
-  (`claude-code@anthropic`) whatever the request names.
+- `POST /v1/kg/{project}/tools/{tool}`, `POST /v1/kg/{project}/grep-links` and `GET /v1/kg/{project}/eval-set`,
+  read through the agents' sink (`claude-code@anthropic`) whatever the request names.
 
 ## A run that asks for a credential
 

@@ -51,11 +51,8 @@ def harness(base: Path, name: str, sources: list[dict]) -> Path:
 
 
 def add_run(corpus, sid: str, status: str, ago: dt.timedelta) -> None:
-    corpus.db.execute(
-        "INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (uuid7(), sid, "fake", "1", status, stamp(ago), stamp(ago), "{}"),
-    )
-    corpus.db.commit()
+    at = stamp(ago)
+    corpus.record_run(uuid7(), source=sid, connector="fake", status=status, started_at=at, finished_at=at, version="1")
 
 
 @pytest.mark.parametrize(
@@ -147,7 +144,7 @@ def test_sync_due_all_one_failing_project_does_not_stop_the_others(tmp_path, kg_
     assert outcomes["idle"]["ok"] and outcomes["idle"]["runs"] == [] and outcomes["idle"]["build"] is None
     built = {name: project.builds for name, project in hub.hubs.items()}
     assert built == {"alpha": 1, "broken": 0, "idle": 0, "zeta": 1}  # the hub builds what was read
-    assert hub.hubs["zeta"].ingested and not (kg_env / "zeta" / "corpus.sqlite").exists()  # no corpus here
+    assert hub.hubs["zeta"].ingested and not (kg_env / "zeta" / "state.json").exists()  # no corpus here
 
     # Nothing is due an instant later, so nothing runs or builds; broken still fails the exit code.
     assert main(["kg", "sync", "--due", "--all", "--build"]) == 1

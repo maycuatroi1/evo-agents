@@ -24,11 +24,23 @@ they name besides the plan's verify (``knowledge_diff.judge_checks``), and its v
 is judged against them; on GitLab, where the hub reads no pull request, a knowledge.yaml of a change of kind
 ``kg_source`` counts as not read.
 
+``pull_facts`` also reads what the diff breaks for each protected file, or one of ``tiers.HARD_PATHS``, the graph says
+it reaches (``read_api``, ``tier_of``'s ``api``): such a Python file of the pull request's repo at its head, and each
+Python file of the diff it imports from at the merge base and at the head (``api_surface.reached_api``). A reached file
+the hub cannot read that way (another repo's, a file GitHub refuses or does not hold, more than API_READS files to
+read) counts as breaking, tier 3; a reached file that is no Python uses no name of the diff. These facts are not kept:
+a judge run's verdict (``verdict_facts``) has the diff's paths and reads no file, so its reached files stay at most
+tier 2 there, and the job reads them again from GitHub before it merges (``evo_agents.hub.server.changes``).
+
 ``retier`` also gives the tier the change merges with: tier 0 when its kind is one of ``tiers.REPLAY_KINDS``, the
 diff edits a harness alone (``replay.harness_only``) and its replays won at the head of its pull request
 (``replay_verdict``, ``replay.verdict``), unless a rule made it tier 3 (``tiers.replay_tier``); the proposal keeps the
-tier its rules gave. ``merge_tier`` is what the job takes a judged change at before it reads GitHub again: its
-proposal's tier, or 0 when its replays won, with why it waits for its owner otherwise.
+tier its rules gave. A change made tier 3 by harness files the charter lists in ``evolve.evolvable_paths`` alone
+(``tiers.Tier.evolvable``) merges at tier 0 too when that diff edits a harness alone, the Judge passed it (``judged``:
+the change is judged and passed, or ``judged`` says the verdict being recorded passed) and its replays won.
+``merge_tier`` is what the job takes a judged change at before it reads GitHub again: its proposal's tier, or 0 when
+its replays won (for a tier 3 proposal, only when the Judge passed it and its paths are evolvable ones alone), with why
+it waits for its owner otherwise.
 """
 
 from __future__ import annotations
@@ -36,13 +48,14 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 
 from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import knowledge_diff, replay, tables, tiers
+from evo_agents.hub import api_surface, knowledge_diff, replay, tables, tiers
 from evo_agents.hub.kg_graph import GraphUnavailable, Handles, answer
 from evo_agents.hub.server.github import GitHubRefused
 from evo_agents.hub.server.projects import ProjectAccess
@@ -54,6 +67,8 @@ GRAPH_DEPTH = 2  # hops of kg_impact a change's paths are followed
 CACHE = "tiers"  # the directory of the hub's kg data (``kg_root``) the job's graphs are fetched into
 NIGHT_SHIFT = "night_shift"
 UNREADABLE = "of the project could not be read now"
+VERDICT_GRAPH_WAIT = 15.0  # seconds a judge's verdict waits for the graph, well inside the worker's 30 s timeout
+API_READS = 40  # Python files of a diff read at both ends for the API rule; with more, the reached files count unread
 
 
 # What the graph says
@@ -133,11 +148,19 @@ def _member(project_id: int, user_id: int):
 
 
 async def impact_as_owner(
-    engine: AsyncEngine, project_id: int, targets: list[str], reader: GraphReader, *, owner_id: int | None = None
+    engine: AsyncEngine,
+    project_id: int,
+    targets: list[str],
+    reader: GraphReader,
+    *,
+    owner_id: int | None = None,
+    wait: float | None = None,
 ) -> GraphView | None:
     """``kg_impact`` of ``targets`` in the project's latest graph, read as the owner of its night shift (or as member
     ``owner_id``, as the merge queue reads it) through its hub sink, from the snapshot of the hub's tables; None without
-    a target, a night shift, a graph or a data directory (``reader``), or when the graph cannot be read."""
+    a target, a night shift, a graph or a data directory (``reader``), or when the graph cannot be read. In the api the
+    snapshot is the one its coordinator keeps (``kg_snapshots.shared``). With ``wait``, a snapshot still loading after
+    that many seconds makes it None too; its load goes on, for the next read."""
     if not targets or reader.data_dir is None:
         return None
     from evo_agents.hub import kg_snapshots
@@ -149,20 +172,26 @@ async def impact_as_owner(
         row = (await conn.execute(query)).one_or_none()
         access = await owner_access(conn, row.owner_id, row.owner, row.project) if row is not None else None
         graphs = await kg.built_graphs(conn, project_id, kg.GRAPHS_TRIED) if access is not None else []
-    if not graphs:
+    if not graphs or access is None or row is None:
         return None
     sink = access.rules.hub_sink.sink if access.rules.hub_sink else kg.CLI_SINK
     ceiling = access.rules.ceiling(access.max_level, sink)
     arguments = {"paths": targets, "depth": GRAPH_DEPTH}
     owner = (row.owner_id, row.project)
     try:
-        snapshot = _snapshotted(await kg_snapshots.load(engine, project_id), graphs, ceiling)
+        loading = kg_snapshots.shared(engine, project_id, graphs[0].build_id)
+        if wait is not None:
+            loading = asyncio.wait_for(asyncio.shield(asyncio.ensure_future(loading)), wait)
+        snapshot = _snapshotted(await loading, graphs, ceiling)
         result = await asyncio.to_thread(
             answer, Handles(), owner, row.project, access.rules.policy, ceiling, sink,
             graphs, "kg_impact", arguments, snapshot=snapshot,
         )  # fmt: skip
     except GraphUnavailable as exc:
         log.info("the knowledge graph cannot be read for a tier", extra={"project": row.project, "why": str(exc)})
+        return None
+    except TimeoutError:
+        log.warning("the knowledge graph still loads past a tier's wait", extra={"project": row.project, "wait": wait})
         return None
     return _view(result)
 
@@ -229,13 +258,15 @@ async def unknown_paths(
 @dataclass(frozen=True)
 class PullFacts:
     """What the hub read of a change's diff: the paths it touches, the files the graph says they reach, why it cannot
-    tell for some, and for a change of kind kg_source each knowledge.yaml it changes (``repo:path`` ->
-    ``KnowledgeDiff.to_json()``, None when it could not be read; None for another kind)."""
+    tell for some, for a change of kind kg_source each knowledge.yaml it changes (``repo:path`` ->
+    ``KnowledgeDiff.to_json()``, None when it could not be read; None for another kind), and ``api``, of each protected
+    file reached, the names the diff breaks there (``read_api``; None when the hub read no file of the diff)."""
 
     paths: tuple[str, ...] = ()
     impacted: tuple[tuple[str, str], ...] = ()
     unknown: dict = field(default_factory=dict)
     knowledge: dict | None = None
+    api: dict | None = None
 
 
 def named_paths(repo: str, paths: list[str]) -> list[tuple[str, str]]:
@@ -253,12 +284,24 @@ async def _kind(conn: AsyncConnection, proposal_id: int) -> str:
     return (await conn.execute(select(pr.c.kind).where(pr.c.id == proposal_id))).scalar_one()
 
 
-async def _graph_facts(engine: AsyncEngine, change, named: list[tuple[str, str]], reader: GraphReader) -> tuple:
-    graph = await impact_as_owner(engine, change.project_id, [f"{repo}:{path}" for repo, path in named], reader)
+def _charter(project_id: int):
+    c = tables.charters
+    return select(c.c.body).where(c.c.project_id == project_id).order_by(c.c.revision.desc()).limit(1)
+
+
+async def _graph_facts(
+    engine: AsyncEngine, change, named: list[tuple[str, str]], reader: GraphReader, wait: float | None = None
+) -> tuple:
+    """(the files the graph says ``named`` reach, why it cannot tell for some, the proposal's kind, the charter's
+    protected globs); ``wait``, as ``impact_as_owner`` takes it."""
+    targets = [f"{repo}:{path}" for repo, path in named]
+    graph = await impact_as_owner(engine, change.project_id, targets, reader, wait=wait)
     async with engine.begin() as conn:
         unknown = await unknown_paths(conn, change.project_id, named, graph)
         kind = await _kind(conn, change.proposal_id)
-    return tuple(sorted(graph.impacted)) if graph is not None else (), unknown, kind
+        charter = (await conn.execute(_charter(change.project_id))).scalar_one_or_none() or {}
+    protected = [item for item in charter.get("protected_paths") or [] if isinstance(item, str)]
+    return tuple(sorted(graph.impacted)) if graph is not None else (), unknown, kind, protected
 
 
 async def read_knowledge(app, target, repo: str, named: list[tuple[str, str]], *, base: str | None, head: str) -> dict:
@@ -291,24 +334,102 @@ async def read_knowledge(app, target, repo: str, named: list[tuple[str, str]], *
         return dict.fromkeys((f"{repo}:{path}" for path in wanted), None)
 
 
+# What a pull request breaks for the protected files it reaches
+
+
+def reached_files(named: list[tuple[str, str]], impacted, protected: list[str]) -> list[tuple[str, str]]:
+    """Of ``impacted``, the Python files the API rule reads: protected, or one of HARD_PATHS, and not in ``named``,
+    the diff's own paths, which their own rules give tier 3."""
+    edited = set(named)
+    return [
+        (repo, path)
+        for repo, path in impacted
+        if (repo, path) not in edited
+        and tiers.reach_glob(protected, repo, path) is not None
+        and api_surface.module_of(path) is not None
+    ]
+
+
+def _users(source: str | None, edited: list[str]) -> list[str] | None:
+    """The Python files of ``edited`` whose module ``source`` uses at all; None for a source missing or no Python."""
+    if source is None:
+        return None
+    try:
+        return [
+            path
+            for path in edited
+            if (module := api_surface.module_of(path)) and api_surface.used_names(source, module)
+        ]
+    except SyntaxError:
+        return None
+
+
+async def read_api(
+    app, target, repo: str, paths: list[str], reached: list[tuple[str, str]], *, base: str | None, head: str
+) -> dict:
+    """{(repo, path): the names the diff breaks there, or None when they cannot be read} of each of ``reached``, the
+    protected Python files the diff of ``paths`` (``repo``'s) reaches: such a file read at ``head``, and each Python
+    file of the diff it uses read at the merge base of ``base`` and ``head`` and at ``head``."""
+    from evo_agents.hub.server import pulls
+
+    found: dict = dict.fromkeys(reached)
+    here = [path for name, path in reached if name == repo]
+    edited = sorted({path for path in paths if api_surface.module_of(path) is not None})
+    if not edited:  # a diff of no Python file breaks no name
+        return {key: [] for key in reached}
+    if not here:
+        return found
+
+    async def read(token: str) -> dict:
+        def text(path: str, ref: str):
+            return pulls.file_text(app, token, target.owner, target.name, path, ref)
+
+        compared = await pulls.compare(app, token, target.owner, target.name, base, head) if base else {}
+        if compared.get("merge_base") is None:
+            return {}
+        sources = {path: await text(path, head) for path in here}
+        users = {path: _users(source, edited) for path, source in sources.items()}
+        wanted = sorted({item for used in users.values() for item in used or ()})
+        if len(wanted) > API_READS:
+            return {}
+        changes = {path: (await text(path, compared["merge_base"]), await text(path, head)) for path in wanted}
+        return {
+            (repo, path): api_surface.reached_api({key: changes[key] for key in used}, source)
+            for path in here
+            if (used := users[path]) is not None and (source := sources[path]) is not None
+        }
+
+    try:
+        return {**found, **await pulls.with_token(app, target.owner, target.name, "tree", read)}
+    except GitHubRefused as exc:
+        log.info("the API a pull request breaks could not be read", extra={"repo": repo, "why": str(exc)})
+        return found
+
+
 async def pull_facts(
     engine: AsyncEngine, app, change, target, paths: list[str], pull: dict, reader: GraphReader
 ) -> PullFacts:
     """What the graph says of ``paths``, those pull request ``pull`` (as GitHub answers it) of ``change`` changes, and
     for a change of kind kg_source what it does to knowledge.yaml (see the module's docstring)."""
     named = named_paths(change.repo, paths)
-    impacted, unknown, kind = await _graph_facts(engine, change, named, reader)
+    impacted, unknown, kind, protected = await _graph_facts(engine, change, named, reader)
+    base, head = (pull.get("base") or {}).get("sha"), (pull.get("head") or {}).get("sha") or change.head_sha
     knowledge = None
     if kind == tiers.KNOWLEDGE_KIND:
-        base, head = (pull.get("base") or {}).get("sha"), (pull.get("head") or {}).get("sha") or change.head_sha
         knowledge = await read_knowledge(app, target, change.repo, named, base=base, head=head)
-    return PullFacts(tuple(paths), impacted, unknown, knowledge)
+    reached = reached_files(named, impacted, protected)
+    api = await read_api(app, target, change.repo, paths, reached, base=base, head=head) if reached else {}
+    return PullFacts(tuple(paths), impacted, unknown, knowledge, api)
 
 
 async def verdict_facts(engine: AsyncEngine, change, paths: list[str], reader: GraphReader) -> PullFacts:
     """``pull_facts`` of the paths a judge run's diff touches: knowledge.yaml as the pull request showed it when it
-    opened (the change's ``knowledge``), nothing of it on GitLab."""
-    impacted, unknown, kind = await _graph_facts(engine, change, named_paths(change.repo, paths), reader)
+    opened (the change's ``knowledge``), nothing of it on GitLab; no file read for the API rule (``api`` None). The
+    graph is waited for VERDICT_GRAPH_WAIT seconds at most: a snapshot loading for minutes (after the api restarts,
+    or a new build of a large graph) timed the worker's post out at 30 s five times, and the verdict was lost. Past
+    that the graph counts unreadable, which raises the tier (``tiers.tier_of``), never lowers it."""
+    named = named_paths(change.repo, paths)
+    impacted, unknown, kind, _ = await _graph_facts(engine, change, named, reader, wait=VERDICT_GRAPH_WAIT)
     stored = change.knowledge if isinstance(change.knowledge, dict) else {}
     return PullFacts(tuple(paths), impacted, unknown, stored if kind == tiers.KNOWLEDGE_KIND else None)
 
@@ -326,10 +447,11 @@ def _knowledge_others(knowledge: dict | None) -> dict | None:
     return found
 
 
-async def retier(conn: AsyncConnection, change, facts: PullFacts, charter: dict) -> int:
+async def retier(conn: AsyncConnection, change, facts: PullFacts, charter: dict, *, judged: bool | None = None) -> int:
     """The tier of the change's proposal again, from ``facts`` of the diff it really has (its paths first), with the
-    charter's protected paths (``tiers.tier_of``): raised when they give a higher one, with the reasons, never
-    lowered. The tier the change has now: that one, or 0 when its replays won (``_replayed``)."""
+    charter's protected and evolvable paths (``tiers.tier_of``): raised when they give a higher one, with the reasons,
+    never lowered. The tier the change has now: that one, or 0 when its replays won (``_replayed``); ``judged``,
+    whether the Judge passed it (None: the change says, judged and passed)."""
     pr = tables.proposals
     row = (
         await conn.execute(
@@ -348,11 +470,16 @@ async def retier(conn: AsyncConnection, change, facts: PullFacts, charter: dict)
             unknown=facts.unknown,
             knowledge=_knowledge_others(facts.knowledge) if row.kind == tiers.KNOWLEDGE_KIND else None,
             fix_of=row.fix_of,
+            api=facts.api,
+            evolvable=tiers.evolvable_paths(charter),
         )
     except ValueError:
         found = tiers.Tier(3, [f"kind {row.kind} is not a kind of change: tier 3"])
+    if judged is None:
+        judged = bool(getattr(change, "state", None) == "judged" and getattr(change, "passed", None) is True)
+    replayed = partial(_replayed, conn, change, row.kind, paths=facts.paths, fix=row.fix_of, judged=judged)
     if found.tier <= row.tier:
-        return await _replayed(conn, change, row.kind, max(row.tier, change.tier), facts.paths, fix=row.fix_of)
+        return await replayed(max(row.tier, change.tier), evolvable=found.evolvable)
     kept = list(row.tier_reasons or [])
     for reason in found.reasons[1:]:
         if reason not in kept:
@@ -363,7 +490,7 @@ async def retier(conn: AsyncConnection, change, facts: PullFacts, charter: dict)
         "curator change raised",
         extra={"change_id": change.id, "proposal_id": change.proposal_id, "tier": found.tier, "was": row.tier},
     )
-    return await _replayed(conn, change, row.kind, found.tier, facts.paths, fix=row.fix_of)
+    return await replayed(found.tier, evolvable=found.evolvable)
 
 
 # Replays that won
@@ -383,30 +510,60 @@ async def replay_verdict(conn: AsyncConnection, change_id: int, head_sha: str | 
     return {**replay.verdict(rows, head_sha), "replays": len(rows)}
 
 
-async def _replayed(conn: AsyncConnection, change, kind: str, tier: int, paths, *, fix: int | None = None) -> int:
+async def _replayed(
+    conn: AsyncConnection,
+    change,
+    kind: str,
+    tier: int,
+    *,
+    paths,
+    fix: int | None = None,
+    evolvable: bool = False,
+    judged: bool = False,
+) -> int:
     """The tier the change merges with, its rules giving it ``tier`` and its diff touching ``paths``
-    (``tiers.replay_tier``); a fix proposal's (``fix``, the change it fixes) keeps ``tier``."""
-    if fix is not None or tier in (0, 3) or kind not in tiers.REPLAY_KINDS:
+    (``tiers.replay_tier``); a fix proposal's (``fix``, the change it fixes) keeps ``tier``, and a tier 3 one too
+    unless evolvable paths alone gave it (``evolvable``) and the Judge passed it (``judged``)."""
+    lowerable = tier != 3 or (evolvable and judged)
+    if fix is not None or tier == 0 or not lowerable or kind not in tiers.REPLAY_KINDS:
         return tier
     harness = replay.harness_only(path for _, path in named_paths(change.repo, list(paths)))
     if harness is None:
         return tier
     found = await replay_verdict(conn, change.id, change.head_sha)
     won = found["reason"] if found["won"] else None
-    final = tiers.replay_tier(kind, tiers.Tier(tier), harness=harness, won=won).tier
+    found = tiers.Tier(tier, evolvable=evolvable)
+    final = tiers.replay_tier(kind, found, harness=harness, won=won, judged=judged).tier
     if final != tier:
         log.info("curator change tier 0 by its replays", extra={"change_id": change.id, "was": tier})
     return final
 
 
+async def _evolvable(conn: AsyncConnection, change, row) -> bool:
+    """Whether evolvable harness paths alone make tier 3 the change whose proposal is ``row``: its tier lowered to 0 by
+    a ``retier`` the Judge's pass let lower it, or the proposal's paths under the charter now
+    (``tiers.Tier.evolvable``). The paths its pull request really changes decide before the merge (``retier``)."""
+    if change.tier == 0:
+        return True
+    charter = (await conn.execute(_charter(change.project_id))).scalar_one_or_none() or {}
+    protected = [item for item in charter.get("protected_paths") or [] if isinstance(item, str)]
+    paths = [(item.get("repo"), item.get("path")) for item in row.paths or [] if isinstance(item, dict)]
+    named = [(repo, path) for repo, path in paths if isinstance(repo, str) and isinstance(path, str)]
+    return tiers.tier_of(row.kind, named, protected, evolvable=tiers.evolvable_paths(charter)).evolvable
+
+
 async def merge_tier(conn: AsyncConnection, change) -> tuple[int, str]:
     """(the tier the job takes judged ``change`` at before it reads GitHub again, why it waits for its owner): its
     proposal's tier, or 0 when the change's replays won at its head, its files then read again (``retier``); a fix
-    proposal's never 0 by its replays."""
+    proposal's never 0 by its replays, a tier 3 one only when the Judge passed it and evolvable paths alone made it
+    tier 3 (``_evolvable``)."""
     pr = tables.proposals
-    row = (await conn.execute(select(pr.c.kind, pr.c.tier, pr.c.fix_of).where(pr.c.id == change.proposal_id))).one()
+    query = select(pr.c.kind, pr.c.tier, pr.c.fix_of, pr.c.paths).where(pr.c.id == change.proposal_id)
+    row = (await conn.execute(query)).one()
     why = f"tier {row.tier} waits for its owner to merge it"
-    if row.fix_of is not None or row.tier in (0, 3) or row.kind not in tiers.REPLAY_KINDS:
+    if row.fix_of is not None or row.tier == 0 or row.kind not in tiers.REPLAY_KINDS:
+        return row.tier, why
+    if row.tier == 3 and not (change.passed is True and await _evolvable(conn, change, row)):
         return row.tier, why
     found = await replay_verdict(conn, change.id, change.head_sha)
     if found["won"]:

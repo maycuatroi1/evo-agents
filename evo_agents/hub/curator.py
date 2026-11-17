@@ -458,7 +458,8 @@ def outages(ended: list[Ended], now: datetime, steps: tuple[int, ...], most: int
 
 def kind_runtimes(charter: Mapping, kind: str) -> tuple[str, ...]:
     """The runtimes the night shift runs ``kind`` on by the charter: the reviewer's for review and history, the
-    builder's for plan and replay, those of ``probes.models`` for probe. The judge's the hub picks itself (empty)."""
+    builder's for plan, replay and evolve, those of ``probes.models`` for probe. The judge's the hub picks itself
+    (empty)."""
 
     def role(name: str) -> str:
         found = charter.get(name) if isinstance(charter.get(name), Mapping) else {}
@@ -466,7 +467,7 @@ def kind_runtimes(charter: Mapping, kind: str) -> tuple[str, ...]:
 
     if kind in ("review", "history"):
         return (role("reviewer"),)
-    if kind in ("plan", "replay"):
+    if kind in ("plan", "replay", "evolve"):
         return (role("builder"),)
     if kind == "probe":
         models = (charter.get("probes") or {}).get("models") or []

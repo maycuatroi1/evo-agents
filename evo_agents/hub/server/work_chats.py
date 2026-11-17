@@ -25,14 +25,14 @@ hand-off (asked, answered, refused, gave no answer, withheld, escalated) go to t
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 from fastapi import HTTPException
 from sqlalchemy import and_, exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, tables
+from evo_agents.hub import chats, runs, tables
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.chat_access import ChatAccess, chat_access
 from evo_agents.hub.server.chat_direct import direct_chat
@@ -223,30 +223,36 @@ async def placed(
 @dataclass(frozen=True)
 class Asker:
     """Who hands work over: the agent and run that write the question, the person at the origin, the credential
-    kind and the hop of the work."""
+    kind and the hop of the work, and the priority of the run it asks for (runs.PRIORITIES)."""
 
     profile: Profile
     run_id: int
     origin: Principal
     via: str
     hop: int
+    priority: str = runs.DEFAULT_PRIORITY
 
     @property
     def author(self) -> str:
         return f"@{self.profile.handle}"
 
+    def hand(self, chat: ChatAccess, message_id: int, root_id: int, target: Profile, text: str) -> Hand:
+        """The work of ``target`` it asks for with message ``message_id`` in the thread of ``root_id`` of ``chat``."""
+        origin = self.origin
+        hand = Hand(
+            chat, message_id, root_id, target, origin.user_id, origin.login, self.via, self.hop, self.author, text
+        )
+        return replace(hand, priority=self.priority)
+
 
 async def _direct(conn: AsyncConnection, asker: Asker, target: Profile, text: str) -> Handed:
     """The question in the direct chat of the origin with ``target``, as an ask outside a system is."""
-    origin = asker.origin
-    chat_id, _ = await direct_chat(conn, origin, target.handle)
-    chat = await chat_access(conn, origin, chat_id)
+    chat_id, _ = await direct_chat(conn, asker.origin, target.handle)
+    chat = await chat_access(conn, asker.origin, chat_id)
     message_id, _ = await insert_message(
         conn, chat, text, thread_root_id=None, author_profile_id=asker.profile.id, run_id=asker.run_id
     )
-    hand = Hand(
-        chat, message_id, message_id, target, origin.user_id, origin.login, asker.via, asker.hop, asker.author, text
-    )
+    hand = asker.hand(chat, message_id, message_id, target, text)
     child, why = await hand_work(conn, hand)
     return Handed(child, message_id, why, (chat_id, message_id))
 
@@ -272,8 +278,8 @@ async def _in_work(conn: AsyncConnection, chat: ChatAccess, asker: Asker, target
     message_id, _ = await insert_message(
         conn, chat, text, thread_root_id=root, author_profile_id=asker.profile.id, run_id=asker.run_id
     )
-    origin, root = asker.origin, root or message_id
-    hand = Hand(chat, message_id, root, target, origin.user_id, origin.login, asker.via, asker.hop, asker.author, text)
+    root = root or message_id
+    hand = asker.hand(chat, message_id, root, target, text)
     child, why = await hand_work(conn, hand)
     return Handed(child, message_id, why, (chat.chat_id, root))
 
@@ -297,10 +303,7 @@ async def _to_root(conn: AsyncConnection, chat: ChatAccess, trace: Trace, asker:
         run_id=asker.run_id,
         copied_from_id=main_id,
     )
-    origin = asker.origin
-    hand = Hand(
-        root, copy_id, trace.root_id, target, origin.user_id, origin.login, asker.via, asker.hop, asker.author, text
-    )
+    hand = asker.hand(root, copy_id, trace.root_id, target, text)
     child, why = await hand_work(conn, hand)
     return Handed(child, main_id, why, (chat.chat_id, main_id))
 

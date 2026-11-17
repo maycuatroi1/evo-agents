@@ -514,6 +514,7 @@ runs = Table(
     Column("proofs", JSONB(none_as_null=True)),
     _when("spend_at"),  # when run_spend last took in its usage reports; NULL: never yet (0210)
     Column("spend_transcripts", Text),  # a local run's: the transcripts its run_spend was read from (0211)
+    Column("priority", Text, nullable=False, server_default="medium"),  # runs.PRIORITIES: the claim's order (0255)
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),
@@ -834,6 +835,16 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
 curator_probes = tables_curator.probe_tables(metadata)  # the probes of proposals and changes (0130)
+curator_change_repos = tables_curator.change_repos_table(metadata)  # each repo of a change in several (0256)
+curator_evolve_runs, curator_evolve_candidates, curator_evolve_arm_cache = tables_curator.evolve_tables(
+    metadata
+)  # 0256
+Index(  # 0257: one evolve run of a project active at a time, as runs_active_probe_key does
+    "runs_active_evolve_key",
+    runs.c.project_id,
+    unique=True,
+    postgresql_where=(runs.c.kind == "evolve") & runs.c.state.in_(RUN_ACTIVE),
+)
 curator_probe_runs = tables_curator.probe_run_tables(metadata, runs, RUN_ACTIVE)  # 0131, and runs_active_probe_key
 merge_queue, merge_events, merge_samples, merge_breakers = tables_merge.merge_tables(metadata)  # 0081-0084
 merge_checks = tables_merge.check_table(metadata)  # a run's pull request on github.com judged (0187)

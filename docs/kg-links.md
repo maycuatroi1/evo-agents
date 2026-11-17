@@ -2,10 +2,10 @@
 
 The graph holds the edges its sources state (`parsed`) and the names it matched to one target (`resolved`). Where a
 name matched several nodes or none, the build leaves the edge out and the hub's review queue lists the name
-(`ambiguous_match`, `dangling_mention`). `kg links` trains a graph model on the parsed edges of a project's build,
-scores the edges such a name could stand for, and proposes the likely ones. It never writes an edge: a proposal goes
-to the hub as a `link` decision in state `proposed`, and only a writer or the Curator who accepts it puts the edge in
-the next build. Code is `evo_agents/kg/links.py`.
+(`ambiguous_match`, `dangling_mention`). `kg links` trains a graph model on the parsed edges of a build it makes in
+memory of the project's corpus on this machine, scores the edges such a name could stand for, and proposes the
+likely ones. It never writes an edge: a proposal goes to the hub as a `link` decision in state `proposed`, and only a
+writer or the Curator who accepts it puts the edge in the next build. Code is `evo_agents/kg/links.py`.
 
 ```sh
 pip install 'evo-agents[links]'                                   # numpy; the base install does not need it

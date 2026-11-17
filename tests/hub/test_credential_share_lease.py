@@ -348,6 +348,49 @@ def test_credential_share_priority_the_owners_runs_go_first_while_the_account_co
     assert taken_for(hub_db, own) == [(VAR, "team-key", "cooling")]
 
 
+# Picked by hand
+
+
+def test_credential_share_picked_by_hand_as_owner_slash_name_is_listed_taken_under_its_share_and_kept(
+    client, hub, hub_db, shared
+):
+    """A member a share covers lists the account with its owner (GET /v1/shared-accounts) and picks it by hand as
+    <owner>/<name>: the run takes it under its share before an account of their own, and a rerun keeps it. A name no
+    share lends them is 404, an account its owner paused 422, and neither queues a run."""
+    from tests.hub.test_accounts_dispatch import ended, rerun_claimed
+
+    listed = client.get("/v1/shared-accounts", headers=hub["other"]).json()
+    assert [(item["owner"], item["name"], item["pick"], item["projects"]) for item in listed] == [
+        (OWNER, "team-key", f"{OWNER}/team-key", [PROJECT])
+    ]
+    assert [share["id"] for share in listed[0]["shares"]] == [shared["share"]]
+    assert client.get("/v1/shared-accounts", headers=hub["owner"]).json() == []
+    desk = shared["desk"]
+    env_secret(client, hub["other"], "my-key", VAR, sample())  # theirs comes first by the rules
+    body = {"plan_id": PLAN, "steps": [STEPS["notes"]], "account": f"{OWNER}/team-key"}
+    response = client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["other"])
+    assert response.status_code == 201, response.text
+    run_id = response.json()[0]["id"]
+    assert claim(client, desk)["id"] == run_id
+    assert env_of(client, desk, run_id) == {"name": "team-key", "value": shared["value"]}
+    assert taken_for(hub_db, run_id) == [(VAR, "team-key", "manual")]
+    assert share_leases(hub_db, run_id) == [("team-key", user_id(hub_db, OTHER), shared["share"], False)]
+    ended(client, desk, run_id)
+    again = rerun_claimed(client, hub["other"], desk, run_id)
+    assert env_of(client, desk, again)["name"] == "team-key"
+    assert taken_for(hub_db, again) == [(VAR, "team-key", "manual")]
+
+    count = sql(hub_db, select(func.count()).select_from(tables.runs))[0][0]
+    for account, status in ((f"{OWNER}/nothing", 404), (f"{OTHER}x/team-key", 404)):
+        refused = client.post(f"/v1/projects/{PROJECT}/runs", json=dict(body, account=account), headers=hub["other"])
+        assert refused.status_code == status, refused.text
+    paused = client.patch("/v1/accounts/team-key", json={"paused": True}, headers=hub["owner"])
+    assert paused.status_code == 200, paused.text
+    refused = client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["other"])
+    assert refused.status_code == 422 and "paused" in refused.text, refused.text
+    assert sql(hub_db, select(func.count()).select_from(tables.runs))[0][0] == count
+
+
 # Taking back (criterion a3)
 
 

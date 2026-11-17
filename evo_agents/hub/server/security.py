@@ -84,6 +84,7 @@ from starlette.websockets import WebSocketClose
 
 from evo_agents.hub import tables
 from evo_agents.hub.access import ROLES, has_role
+from evo_agents.hub.db import engine_for
 from evo_agents.hub.runs import HELD_STATES, PROTOCOL_HEADER, PROTOCOL_VERSION
 from evo_agents.hub.server import kg_run_access, run_access_rules
 from evo_agents.hub.server.errors import error_response
@@ -633,7 +634,7 @@ class Authenticate:
             if refusal is not None:
                 return refusal
         try:
-            principal = await authenticate(request.app.state.engine, token, kind, config)
+            principal = await authenticate(engine_for(request.app.state, request.url.path), token, kind, config)
         except (
             psycopg.OperationalError,
             sa_exc.OperationalError,

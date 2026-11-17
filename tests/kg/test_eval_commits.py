@@ -4,11 +4,8 @@ files it changed that the graph holds answer, and the commit's own node never do
 import json
 
 from evo_agents.kg import eval_commits
-from evo_agents.kg.build import build_project
 from evo_agents.kg.evaluate import HOLDOUT, TUNE, parse_questions, split_of
-from evo_agents.kg.snapshot import store_rows
-from evo_agents.kg.store import Store
-from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import commit, make_project, write
 
 SEARCH = (
@@ -34,22 +31,12 @@ def history(tmp_path, kg_env):
         app,
         "Bump deps in the lock files and rewrite the old notes",
     )
-    assert all(r.ok for r in sync_project(project))
-    assert build_project(project).ok
+    built.sync_build(project)
     return project
 
 
 def questions_of(project, **kw):
-    store = Store.for_project(project)
-    try:
-        found = eval_commits.commit_questions(store, **kw)
-        rows = eval_commits.rows_questions(store_rows(store, store.latest_ready()), **kw)
-    finally:
-        store.close()
-    assert (rows.questions, rows.commits, rows.left_out) == (found.questions, found.commits, found.left_out), (
-        "the rows of a build ask as its file"
-    )
-    return found
+    return eval_commits.rows_questions(built.rows_of(project), **kw)
 
 
 def test_a_commit_message_asks_and_the_files_it_changed_answer(tmp_path, kg_env):

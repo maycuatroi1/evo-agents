@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resetWhen, sharePercent, UNNAMED, usageStatus, usageWindows, windowLabel } from "./usage-model";
+import { isWeekly, resetWhen, sharePercent, UNNAMED, usageStatus, usageWindows, weeklyPace, windowLabel } from "./usage-model";
 
 const NOW = Date.parse("2026-10-14T04:09:00Z");
 const IN_3H = "2026-10-14T07:00:00Z";
@@ -97,5 +97,35 @@ describe("when a window resets", () => {
     expect(resetWhen(NEXT_TUESDAY, NOW).kind).toBe("weekday");
     expect(resetWhen("2026-10-21T04:09:00Z", NOW).kind).toBe("date");
     expect(resetWhen(PAST, NOW).kind).toBe("past");
+  });
+});
+
+describe("the pace of a weekly window", () => {
+  const NOW_PACE = Date.parse("2026-11-12T12:00:00Z");
+  const HOUR = 60 * 60 * 1000;
+  // Half the week gone: an even pace has used 50%.
+  const window = (percent: number | null, hoursLeft = 84, reset = false) => ({
+    percent,
+    resetsAt: new Date(NOW_PACE + hoursLeft * HOUR).toISOString(),
+    reset,
+  });
+
+  it("is ahead when the week is used faster than it passes, behind when slower, on pace within the slack", () => {
+    expect(weeklyPace(window(70), NOW_PACE)).toEqual({ state: "ahead", points: 20, expected: 50 });
+    expect(weeklyPace(window(20), NOW_PACE)).toEqual({ state: "behind", points: 30, expected: 50 });
+    expect(weeklyPace(window(53), NOW_PACE)).toEqual({ state: "on", points: 3, expected: 50 });
+    expect(weeklyPace(window(5, 168), NOW_PACE)).toEqual({ state: "ahead", points: 5, expected: 0 });
+  });
+
+  it("says nothing without a share, after the reset or with a reset more than a week ahead", () => {
+    expect(weeklyPace(window(null), NOW_PACE)).toBeNull();
+    expect(weeklyPace(window(0, 84, true), NOW_PACE)).toBeNull();
+    expect(weeklyPace(window(10, -1), NOW_PACE)).toBeNull();
+    expect(weeklyPace(window(10, 169), NOW_PACE)).toBeNull();
+    expect(weeklyPace({ percent: 10, resetsAt: null, reset: false }, NOW_PACE)).toBeNull();
+  });
+
+  it("is said of the weekly windows alone", () => {
+    expect(["five_hour", "seven_day", "seven_day_opus", "five_hour_opus"].filter(isWeekly)).toEqual(["seven_day", "seven_day_opus"]);
   });
 });

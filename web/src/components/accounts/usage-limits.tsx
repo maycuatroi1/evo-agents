@@ -2,7 +2,7 @@
 
 import { Gauge } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { useId } from "react";
+import { type ReactNode, useId } from "react";
 
 import { Meter, METER_TEXT } from "@/components/data/meter";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,7 @@ import { useNow } from "@/hooks/use-now";
 import { cn } from "@/lib/utils";
 
 import type { AccountFigures } from "./queries";
-import { resetWhen, usageStatus, type UsageWindowView, usageWindows, windowLabel } from "./usage-model";
+import { isWeekly, resetWhen, usageStatus, type UsageWindowView, usageWindows, weeklyPace, windowLabel } from "./usage-model";
 
 type Format = ReturnType<typeof useFormatter>;
 type T = ReturnType<typeof useTranslations<"accounts.usage">>;
@@ -48,6 +48,20 @@ function resetText(t: T, format: Format, resetsAt: string, now: number | null): 
   return t("resetsAt", { time: format.dateTime(at, when.kind === "weekday" ? WEEKDAY : DATE) });
 }
 
+const PACE_TEXT = { ahead: "text-attention", behind: "text-success", on: "text-fg-subtle" } as const;
+
+/** Whether a weekly window runs ahead of its pace, so the week ends early, or behind it, with quota to spend. */
+function PaceLabel({ window, now }: { window: UsageWindowView; now: number }) {
+  const t = useTranslations("accounts.usage.pace");
+  const pace = weeklyPace(window, now);
+  if (!pace) return null;
+  return (
+    <span className={cn("text-xs", PACE_TEXT[pace.state])} title={t("expected", { percent: pace.expected })} data-testid="account-usage-pace" data-pace={pace.state}>
+      {t(pace.state, { points: pace.points })}
+    </span>
+  );
+}
+
 /** One limit: its name and the share used on a line, the bar, then when it resets. */
 function UsageWindow({ window, now }: { window: UsageWindowView; now: number | null }) {
   const t = useTranslations("accounts.usage");
@@ -66,6 +80,7 @@ function UsageWindow({ window, now }: { window: UsageWindowView; now: number | n
         </span>
       </div>
       {window.percent === null ? null : <Meter value={window.percent} tone={window.tone} labelledBy={id} valueText={figure} />}
+      {now !== null && isWeekly(window.name) ? <PaceLabel window={window} now={now} /> : null}
       {window.resetsAt ? (
         <span className="text-xs text-fg-subtle" title={format.dateTime(new Date(window.resetsAt), { dateStyle: "full", timeStyle: "short" })}>
           {resetText(t, format, window.resetsAt, now)}
@@ -79,18 +94,28 @@ function UsageWindow({ window, now }: { window: UsageWindowView; now: number | n
  * The usage limits of an account, under its row of the Accounts page: when a run last reported them, then a bar per
  * window the hub kept (usage-model.ts says how they read), side by side as the width allows and stacked on a phone. A
  * status the bars do not carry (near its limit, a limit without a window) is a badge beside the time. Before any
- * report, one quiet line says so.
+ * report, one quiet line says so. A weekly window says its pace; `action` sits beside the time.
  */
-export function UsageLimits({ account, pageNow }: { account: Pick<AccountFigures, "name" | "last_usage" | "last_usage_at">; pageNow: number }) {
+export function UsageLimits({
+  account,
+  pageNow,
+  action,
+}: {
+  account: Pick<AccountFigures, "name" | "last_usage" | "last_usage_at">;
+  pageNow: number;
+  /** A control beside the report's time, such as the refresh of a Z.ai account's quota. */
+  action?: ReactNode;
+}) {
   const t = useTranslations("accounts.usage");
   const format = useFormatter();
   const usage = account.last_usage;
   const clock = useNow(usage !== null);
   if (!usage) {
     return (
-      <p className="text-xs text-fg-subtle" data-testid="account-usage" data-status="none">
-        {t("none")}
-      </p>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-subtle" data-testid="account-usage" data-status="none">
+        <p>{t("none")}</p>
+        {action}
+      </div>
     );
   }
   const now = clock ?? pageNow;
@@ -100,7 +125,7 @@ export function UsageLimits({ account, pageNow }: { account: Pick<AccountFigures
   const badge = status !== "allowed" && !windows.some((window) => window.limited);
   return (
     <div role="group" aria-label={t("label", { name: account.name })} className="flex flex-col gap-2.5" data-testid="account-usage" data-status={status}>
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-subtle">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-subtle">
         <Gauge className="size-3.5 shrink-0" aria-hidden="true" />
         <span>
           {reported
@@ -121,7 +146,8 @@ export function UsageLimits({ account, pageNow }: { account: Pick<AccountFigures
             {t(`status.${status}`)}
           </Badge>
         ) : null}
-      </p>
+        {action}
+      </div>
       {windows.length > 0 ? (
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(14rem,100%),1fr))] gap-x-8 gap-y-3">
           {windows.map((window) => (

@@ -139,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
     if argv[:3] == ["kg", "hook", "post-search"]:
         # Claude Code runs this one after every grep: it loads neither the parsers of other commands nor the harness.
-        from evo_agents.kg.post_search import main as post_search
+        from evo_agents.hub.kg_grep_hook import main as post_search  # asks the hub (evo_agents.kg.post_search)
 
         def run() -> int:
             return post_search(argv[3:])

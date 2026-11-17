@@ -8,14 +8,13 @@ longer clears its label, loses it at the next read, with no build, and kg_more n
 it; what is derived from messages of two chats shows only to who is in both; the agent of a chat run that went to the
 worker of another member reads what both people hold; a run's agent of another kind reads as its owner.
 
-The graph is built on a machine from items that carry the audiences the chats of this hub give (the connector of
-``tests.kg.test_audience``) and installed as the project's latest build, in the api's cache, as ``tests.hub.test_mcp``
-installs its graph. Project aud has the graph; project aud-b only has an agent that was in chat one and is in chat two.
+The graph is built in memory, as the hub builds it, from items that carry the audiences the chats of this hub give
+(the connector of ``tests.kg.test_audience``) and installed as the project's latest build, its rows in the hub's graph
+tables, as ``tests.hub.test_mcp`` installs its graph. Project aud has the graph; project aud-b only has an agent that was in chat one and is in chat two.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import timedelta
 from functools import partial
@@ -42,6 +41,7 @@ from evo_agents.kg import serve
 from evo_agents.kg.policy import Label
 from tests.hub.kg_fixture import AGENT, LEVELS
 from tests.hub.test_mcp import MCP_HEADERS, call
+from tests.kg import built as memory
 
 A, B = "aud", "aud-b"
 PLAN, M1, M2, M3 = "chat:text:plan", "chat:text:m1", "chat:text:m2", "chat:text:m3"
@@ -119,9 +119,8 @@ def items(one: int, two: int) -> list[dict]:
     ]
 
 
-def build(root: Path, monkeypatch, one: int, two: int) -> SimpleNamespace:
-    """The graph of aud with the items of chats ``one`` and ``two``, built on a machine."""
-    from evo_agents.kg.build import build_project
+def synced(root: Path, monkeypatch, one: int, two: int):
+    """The project aud with the items of chats ``one`` and ``two``, synced on a machine."""
     from evo_agents.kg.project import load_project_at
     from evo_agents.kg.sync import sync_project
 
@@ -133,10 +132,15 @@ def build(root: Path, monkeypatch, one: int, two: int) -> SimpleNamespace:
     monkeypatch.setenv("EVO_KG_HOME", str(home))
     project = load_project_at(harness, home)
     assert all(result.ok for result in sync_project(project, ["chat"]))
-    report = build_project(project)
-    path = project.root / "graph.sqlite"
-    data = path.read_bytes()
-    return SimpleNamespace(data=data, sha256=hashlib.sha256(data).hexdigest(), report=report)
+    return project
+
+
+def build(root: Path, monkeypatch, one: int, two: int) -> SimpleNamespace:
+    """The graph of aud with the items of chats ``one`` and ``two``, built in memory as the hub builds it."""
+    project = synced(root, monkeypatch, one, two)
+    report = memory.build(project)
+    assert report.ok, report.errors
+    return SimpleNamespace(rows=memory.rows_of(project), report=report)
 
 
 def install(db, cache: Path, graph: SimpleNamespace) -> None:
@@ -145,33 +149,22 @@ def install(db, cache: Path, graph: SimpleNamespace) -> None:
     import asyncio
 
     from evo_agents.hub import kg_graph_rows
-    from evo_agents.kg.snapshot import store_rows
-    from evo_agents.kg.store import Store
     from tests.hub.test_kg_postgres_build import make_engine
 
     report, projects = graph.report, tables.projects
     found = select(
         projects.c.id,
         literal("succeeded"),
-        literal(graph.sha256),
-        literal(len(graph.data)),
         literal(report.content_hash),
         literal(report.nodes),
         literal(report.edges),
         func.now(),
         func.now(),
     ).where(projects.c.name == A)
-    columns = ["project_id", "status", "artifact_sha256", "artifact_size", "content_hash", "nodes", "edges"]
+    columns = ["project_id", "status", "content_hash", "nodes", "edges"]
     built = insert(tables.kg_builds).from_select([*columns, "started_at", "finished_at"], found)
     ((build_id, project_id),) = live.sql(db, built.returning(tables.kg_builds.c.id, tables.kg_builds.c.project_id))
-    path = cache / "graph.sqlite"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(graph.data)
-    store = Store.open_file(path, immutable=True)
-    try:
-        rows = store_rows(store, store.latest_ready())
-    finally:
-        store.close()
+    rows = graph.rows
 
     async def keep():
         engine = make_engine(db)

@@ -5,27 +5,22 @@ import json
 
 from evo_agents.cli import main
 from evo_agents.kg import profile as kg_profile
-from evo_agents.kg.build import build_project
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
+from tests.kg import built as memory
+from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, make_project, write
 
 
 def built(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
     assert all(r.ok for r in sync_project(project))
-    report = build_project(project)
+    report = memory.build(project)
     assert report.ok, report.errors
     return project, report
 
 
 def profile_of(project) -> dict:
-    store = Store.for_project(project)
-    try:
-        return kg_profile.of_coverage(store.summary()["coverage"])
-    finally:
-        store.close()
+    return kg_profile.of_coverage(memory.rows_of(project).summary["coverage"])
 
 
 def test_a_build_writes_a_profile_of_its_corpus(tmp_path, kg_env):
@@ -44,7 +39,7 @@ def test_the_profile_holds_counts_and_shapes_never_a_value(tmp_path, kg_env):
     secret = "nguyen.van.a@example.org 0912345678 patient-zq"
     write(app / "docs/contacts.md", f"# Contacts\n\nWrite to {secret} about case AB-123456.\n")
     commit(app)
-    assert all(r.ok for r in sync_project(project)) and build_project(project, cold=True).ok
+    assert all(r.ok for r in sync_project(project)) and memory.build(project, cold=True).ok
     found = profile_of(project)
     seen = found["sensitive"]
     assert seen["email"]["strings"] >= 1 and seen["phone"]["strings"] >= 1
@@ -57,11 +52,11 @@ def test_the_profile_holds_counts_and_shapes_never_a_value(tmp_path, kg_env):
 def test_the_profile_leaves_the_hash_and_the_answers_unchanged(tmp_path, kg_env, monkeypatch):
     project, report = built(tmp_path, kg_env)
     ask = {"query": "search"}
-    with_profile = StoreSession(project, "wide").call("kg_search", ask)
+    with_profile = hub_session(project, "wide").call("kg_search", ask)
     monkeypatch.setattr("evo_agents.kg.build.build_profile", lambda *a, **k: {})
-    bare = build_project(project, cold=True)
+    bare = memory.build(project, cold=True)
     assert bare.ok and bare.content_hash == report.content_hash
-    assert StoreSession(project, "wide").call("kg_search", ask) == with_profile
+    assert hub_session(project, "wide").call("kg_search", ask) == with_profile
 
 
 def test_kg_profile_reads_the_hub_and_says_when_there_is_none(tmp_path, kg_env, capsys, monkeypatch):

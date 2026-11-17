@@ -42,7 +42,7 @@ class OpError(ValueError):
 
 
 def edge_id(src: str, rel: str, dst: str) -> str:
-    """The id a store gives the edge ``src`` ``rel`` ``dst`` (``evo_agents.kg.store.edge_id``)."""
+    """The id a store gives the edge ``src`` ``rel`` ``dst`` (``evo_agents.kg.graph_model.edge_id``)."""
     return "e:" + sha256(f"{src}\x1f{rel}\x1f{dst}".encode()).hexdigest()[:16]
 
 
@@ -254,11 +254,19 @@ def _labelled(x: dict) -> dict:
     return {**x, "label": Label(lvl, loc, integrity, frozenset(), frozenset(audience))}
 
 
-def apply(rows: StoreRows, ops: list[dict], skipped: list[str] | None = None) -> StoreRows:
+def ops_hash(content_hash: str, ops: list[dict]) -> str:
+    """The content hash of a graph of hash ``content_hash`` with ``ops`` applied."""
+    digest = sha256(json.dumps([content_hash, ops], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return f"sha256:{digest}"
+
+
+def apply(
+    rows: StoreRows, ops: list[dict], skipped: list[str] | None = None, hashed: list[dict] | None = None
+) -> StoreRows:
     """The rows of ``rows`` with ``ops`` (normalized) applied in order; ``rows`` unchanged. Raises OpError for an
     operation that names a node or edge the branch lacks by then, unless ``skipped`` is given: such an operation is
-    then left out and why goes in it. The content hash is that of ``rows`` and the operations, so a branch with no
-    operation hashes as main."""
+    then left out and why goes in it. The content hash is that of ``rows`` and the operations, ``hashed`` in their
+    place when given (``ops_hash``), so a branch with no operation hashes as main."""
     if not ops:
         return rows
     graph = _Graph(rows)
@@ -273,10 +281,9 @@ def apply(rows: StoreRows, ops: list[dict], skipped: list[str] | None = None) ->
     edges = tuple(edge_row(eid, _labelled(e)) for eid, e in sorted(graph.edges.items()))
     keyed = [(k, row) for k, row in rows.keyed if row[0] not in graph.dropped and k not in graph.texts]
     keyed += [(nid, row) for nid, row in graph.texts.items() if nid in graph.nodes]
-    digest = sha256(json.dumps([rows.content_hash, ops], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     return dataclasses.replace(
         rows,
-        content_hash=f"sha256:{digest}",
+        content_hash=ops_hash(rows.content_hash, ops if hashed is None else hashed),
         nodes=nodes,
         edges=edges,
         keyed=tuple(sorted(keyed, key=lambda kr: kr[0])),

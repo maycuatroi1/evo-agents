@@ -1,5 +1,5 @@
 """kg_impact on an in-RAM snapshot (``evo_agents.kg.snapshot``): what depends on a set of nodes, walked back along the
-visible edges into them hop by hop, as ``kg serve`` walks a store (``evo_agents.kg.serve_impact``), reading the
+visible edges into them hop by hop, as ``kg serve`` walks a graph (``evo_agents.kg.serve_impact``), reading the
 in-edges of a node from the CSR partitions of the relations and statuses the walk follows.
 
 A seed is a node id, or ``repo:path`` of a visible file or document. Each node is reached once, through its strongest

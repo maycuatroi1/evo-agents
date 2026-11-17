@@ -7,13 +7,12 @@ from pathlib import Path
 import pytest
 
 from evo_agents.kg import locate, rank
-from evo_agents.kg.bench import rank_train
+from evo_agents.kg.bench import rank_train, rows_file
 from evo_agents.kg.bench.rank_train import Group, Label
-from evo_agents.kg.build import build_project
 from evo_agents.kg.locate import Cand, Pool
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
+from tests.kg.built import build, rows_of
+from tests.kg.hub_graph import hub_session
 from tests.kg.projects import commit, make_project, write
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -160,7 +159,7 @@ def _code_project(tmp_path, home):
     )
     commit(app, "config")
     sync_project(project)
-    report = build_project(project)
+    report = build(project)
     assert report.ok, report.errors
     return project
 
@@ -171,7 +170,7 @@ def test_kg_search_orders_results_by_the_model_only_when_the_setting_is_on(tmp_p
     monkeypatch.setattr(rank, "load", lambda path: rank.Ranker(model, "test"))
 
     def ids_of(on):
-        session = StoreSession(project, "agent")
+        session = hub_session(project, "agent")  # the hub's engine, over the snapshot of the build
         session.rank = on
         found = session.call("kg_search", {"query": "parse_config load_config", "limit": 10})["structuredContent"]
         return [r["id"] for r in found["results"]]
@@ -186,16 +185,14 @@ def test_kg_search_orders_results_by_the_model_only_when_the_setting_is_on(tmp_p
 
 def test_the_files_a_task_holds_are_the_live_file_nodes_of_its_graph(tmp_path, kg_env):
     project = _code_project(tmp_path, kg_env)
-    store = Store.open_existing(project)
-    assert store is not None
-    graph = store.path
-    store.close()
+    kept = tmp_path / "bench-graph"
+    rows_file.write_rows(kept, rows_of(project))
 
     class Lay:
         def project_dir(self, task):
-            return graph.parent
+            return kept
 
-    assert graph.name == "graph.sqlite"
+    assert (kept / rows_file.ROWS).is_file()
     assert {"app/parser.py", "app/loader.py"} <= rank_train._held(Lay(), None)
 
 

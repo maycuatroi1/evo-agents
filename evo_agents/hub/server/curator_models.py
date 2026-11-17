@@ -14,6 +14,7 @@ from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.judge import PLANNED_TIERS, PlannableTier
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.charter_settings import (
+    EvolveSettings,
     HistorySettings,
     ProbeModel,
     ProbeSettings,
@@ -214,6 +215,7 @@ class CharterBody(BaseModel):
     replay: ReplaySettings = Field(default_factory=lambda: ReplaySettings.model_validate({}))
     history: HistorySettings = Field(default_factory=lambda: HistorySettings.model_validate({}))
     probes: ProbeSettings = Field(default_factory=lambda: ProbeSettings.model_validate({}))
+    evolve: EvolveSettings = Field(default_factory=lambda: EvolveSettings.model_validate({}))
     reviewer: Role = Field(default_factory=lambda: Role.model_validate({}))
     builder: Role = Field(default_factory=lambda: Role.model_validate({}))
     judge: Judge = Field(default_factory=lambda: Judge.model_validate({}))

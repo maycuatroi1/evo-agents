@@ -1302,6 +1302,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/kg/{project}/grep-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Grep Links Of
+         * @description What the project's latest graph links to the lines a grep matched (see the module).
+         */
+        post: operations["grep_links_of_v1_kg__project__grep_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/kg/{project}/graph": {
         parameters: {
             query?: never;
@@ -3145,6 +3165,27 @@ export interface paths {
          */
         put: operations["access_v1_projects__project__runs__run_id__access_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Priority
+         * @description Change the priority of a queued run of the project, for a writer of it: a worker claims its queued runs by
+         *     priority, highest first, then the oldest. 409 for a run that is no longer queued.
+         */
+        post: operations["priority_v1_projects__project__runs__run_id__priority_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5139,8 +5180,9 @@ export interface paths {
         put?: never;
         /**
          * Plan Proposal
-         * @description Make an accepted proposal of tier 0 to 2 that has no change yet the Curator's plan, as accepting it does now;
-         *     the project's admins alone may. The change: planned, or left open with why its draft cannot become a plan.
+         * @description Make an accepted proposal of tier 0 to 2 that has no change yet, or a stuck one, the Curator's plan, as
+         *     accepting it does now; the project's admins alone may. The change: planned, or left open with why its draft
+         *     cannot become a plan.
          */
         post: operations["plan_proposal_v1_projects__project__curator_proposals__proposal_id__plan_post"];
         delete?: never;
@@ -5182,7 +5224,10 @@ export interface paths {
         /**
          * Record Verdict
          * @description The verdict of the judge run this worker holds, with the run's own key: the hub passes the change only as
-         *     ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again.
+         *     ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again. The graph read
+         *     for that tier can wait minutes for the project's snapshot to load, so it is read before the transaction that locks
+         *     the run and its change: a request holding those locks makes the worker's heartbeat, claim and events wait on
+         *     them, each holding a pool connection, until the pool is out.
          */
         post: operations["record_verdict_v1_worker_runs__run_id__verdict_post"];
         delete?: never;
@@ -5809,6 +5854,131 @@ export interface paths {
         get: operations["probe_report_v1_projects__project__curator_probe_report_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/evolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Evolutions
+         * @description The project's evolutions, the newest first, each with its state, tasks and front.
+         */
+        get: operations["list_evolutions_v1_projects__project__curator_evolve_get"];
+        put?: never;
+        /**
+         * Start Evolution
+         * @description Start an evolution of a harness's files in a repo (git) or of an agent's configuration (agent_config).
+         */
+        post: operations["start_evolution_v1_projects__project__curator_evolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/evolve/{evolve_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Evolution
+         * @description One evolution, with each candidate (its components, scores, cost and ASI of each task) and its front.
+         */
+        get: operations["show_evolution_v1_projects__project__curator_evolve__evolve_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/evolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Evolve Inputs
+         * @description What the held evolve run evolves: its baseline, its light tasks with their verify, the cached baseline arms.
+         */
+        get: operations["evolve_inputs_v1_worker_runs__run_id__evolve_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/evolve/arm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evolve Arm
+         * @description Keep the result of a baseline arm of one task by its ``evolve.arm_key``; one the cache holds stays as it is.
+         */
+        post: operations["evolve_arm_v1_worker_runs__run_id__evolve_arm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/evolve/candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evolve Candidate
+         * @description Keep a candidate, unique by the digest of its components, and recompute the evolution's Pareto front.
+         */
+        post: operations["evolve_candidate_v1_worker_runs__run_id__evolve_candidate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/evolve/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evolve Report Route
+         * @description End the evolution: of target git, its branch goes on as its proposal's change; of target agent_config, its best
+         *     candidate is pinned as the agent's next version when it holds on the holdout split; why, either way.
+         */
+        post: operations["evolve_report_route_v1_worker_runs__run_id__evolve_report_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9114,9 +9284,31 @@ export interface paths {
         head?: never;
         /**
          * Change Account
-         * @description Change the weight or priority of the caller's account ``name``, or pause or resume it.
+         * @description Change the weight, priority or weekly budget of the caller's account ``name``, or pause or resume it.
          */
         patch: operations["change_account_v1_accounts__name__patch"];
+        trace?: never;
+    };
+    "/v1/shared-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Shared Accounts
+         * @description The env accounts other members share with the caller through a live share for every run, by variable, owner
+         *     and name, as ``_shared_account`` gives each one, with the projects of those shares its owner binds it to; one bound
+         *     to none of them is left out.
+         */
+        get: operations["list_shared_accounts_v1_shared_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/account-policies": {
@@ -9895,7 +10087,12 @@ export interface paths {
         delete: operations["delete_account_pool_v1_projects__project__account_pools__pool__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Set Pool Policy
+         * @description Set the pool's strategy and the thresholds of quota-pacing (an admin of the project or of the hub); a field left
+         *     out stays. The agents of the pool pick their accounts by it from their next choice on.
+         */
+        patch: operations["set_pool_policy_v1_projects__project__account_pools__pool__patch"];
         trace?: never;
     };
     "/v1/projects/{project}/account-pools/{pool}/accounts": {
@@ -9985,6 +10182,27 @@ export interface paths {
          * @description Change what ``body`` gives of the agent's provider account ``name``; the rest, the key included, stays.
          */
         patch: operations["change_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}/provider-accounts/{name}/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quota Of Agent Provider Account
+         * @description Read the quota the agent's Z.ai account ``name`` has left and keep it as the account's last usage; any member
+         *     of the project may.
+         */
+        post: operations["quota_of_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__quota_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/projects/{project}/agents/{handle}/accounts": {
@@ -11649,6 +11867,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/ops/priority": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Priority Route
+         * @description Give a queued run of the project another priority, as the Orchestrator's chat run of an ops thread.
+         */
+        post: operations["priority_route_v1_worker_runs__run_id__ops_priority_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/ops/plan-dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Dispatch Route
+         * @description Hand a stalled plan of this ops thread's batch again to the default system's entry agent, as its Orchestrator's
+         *     chat run.
+         */
+        post: operations["plan_dispatch_route_v1_worker_runs__run_id__ops_plan_dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/work": {
         parameters: {
             query?: never;
@@ -13298,6 +13557,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/provider-accounts/{name}/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Quota Of Provider Account
+         * @description Read the quota the caller's Z.ai account ``name`` has left and keep it as the account's last usage.
+         */
+        post: operations["quota_of_provider_account_v1_provider_accounts__name__quota_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/runnable-models": {
         parameters: {
             query?: never;
@@ -14544,6 +14823,16 @@ export interface components {
             cost_by_principal: components["schemas"]["PrincipalCost"][];
             /** @description a provider account's endpoint and what the model gateway last said of it; null for a secret */
             gateway?: components["schemas"]["GatewayAccount"] | null;
+            /**
+             * Weekly Budget Usd
+             * @description the USD its owner gives it a week, turned into its seven_day window; null for none
+             */
+            weekly_budget_usd?: number | null;
+            /**
+             * Weekly Reset At
+             * @description an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC
+             */
+            weekly_reset_at?: string | null;
         };
         /** AccountAdd */
         AccountAdd: {
@@ -14592,6 +14881,16 @@ export interface components {
              * @description true pauses it, so no new run takes it; false resumes it
              */
             paused?: boolean | null;
+            /**
+             * Weekly Budget Usd
+             * @description the USD it may spend a week, for a model account; null drops it
+             */
+            weekly_budget_usd?: number | null;
+            /**
+             * Weekly Reset At
+             * @description an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC
+             */
+            weekly_reset_at?: string | null;
         };
         /** AccountPolicy */
         AccountPolicy: {
@@ -14601,7 +14900,7 @@ export interface components {
              * @default round-robin
              * @enum {string}
              */
-            strategy: "round-robin" | "weighted-round-robin" | "fill-first";
+            strategy: "round-robin" | "weighted-round-robin" | "fill-first" | "quota-pacing";
             /**
              * Cooldown Seconds
              * @description how long an account cools down after a usage limit that gave no reset time
@@ -14620,6 +14919,18 @@ export interface components {
              * @default 3
              */
             max_failovers: number;
+            /**
+             * Hard Reserve Pct
+             * @description quota-pacing: the share of a weekly window kept back while another account has more
+             * @default 10
+             */
+            hard_reserve_pct: number;
+            /**
+             * Five Hour Ceiling Pct
+             * @description quota-pacing: the five-hour use above which an account waits while a cooler one is ready
+             * @default 90
+             */
+            five_hour_ceiling_pct: number;
             /** Project */
             project: string;
             /**
@@ -14636,7 +14947,7 @@ export interface components {
              * @default round-robin
              * @enum {string}
              */
-            strategy: "round-robin" | "weighted-round-robin" | "fill-first";
+            strategy: "round-robin" | "weighted-round-robin" | "fill-first" | "quota-pacing";
             /**
              * Cooldown Seconds
              * @description how long an account cools down after a usage limit that gave no reset time
@@ -14655,6 +14966,18 @@ export interface components {
              * @default 3
              */
             max_failovers: number;
+            /**
+             * Hard Reserve Pct
+             * @description quota-pacing: the share of a weekly window kept back while another account has more
+             * @default 10
+             */
+            hard_reserve_pct: number;
+            /**
+             * Five Hour Ceiling Pct
+             * @description quota-pacing: the five-hour use above which an account waits while a cooler one is ready
+             * @default 90
+             */
+            five_hour_ceiling_pct: number;
         };
         /** AccountPool */
         AccountPool: {
@@ -14664,6 +14987,22 @@ export interface components {
             project: string;
             /** Name */
             name: string;
+            /**
+             * Strategy
+             * @description how a run picks among its accounts
+             * @default round-robin
+             */
+            strategy: string;
+            /**
+             * Hard Reserve Pct
+             * @default 10
+             */
+            hard_reserve_pct: number;
+            /**
+             * Five Hour Ceiling Pct
+             * @default 90
+             */
+            five_hour_ceiling_pct: number;
             /** Created By */
             created_by: string;
             /**
@@ -15201,6 +15540,13 @@ export interface components {
              * @description why an agent of a system asks an agent off its interacts edges; without it such an ask is refused
              */
             reason?: string | null;
+            /**
+             * Priority
+             * @description the priority of the run it asks for: a worker claims its queued runs by it, urgent first
+             * @default medium
+             * @enum {string}
+             */
+            priority: "urgent" | "high" | "medium" | "low";
         };
         /** AgentAsked */
         AgentAsked: {
@@ -15939,6 +16285,41 @@ export interface components {
              */
             use_cases: components["schemas"]["ApprovedUseCase"][];
         };
+        /** ArmIn */
+        ArmIn: {
+            /**
+             * Task Kind
+             * @enum {string}
+             */
+            task_kind: "replay" | "probe";
+            /** Task Id */
+            task_id: number;
+            /** Base Sha */
+            base_sha?: string | null;
+            /** Baseline Digest */
+            baseline_digest: string;
+            /** Runtime */
+            runtime: string;
+            /** Model */
+            model?: string | null;
+            /**
+             * Result
+             * @description score, cost_usd, turns and trace of the baseline arm
+             */
+            result: {
+                [key: string]: unknown;
+            };
+        };
+        /** ArmOut */
+        ArmOut: {
+            /** Key */
+            key: string;
+            /**
+             * Cached
+             * @description true: the cache held this key already, and keeps what it held
+             */
+            cached: boolean;
+        };
         /**
          * ArmResult
          * @description What one arm of a replay found: whether the step's verify passed on the agent's work, and what the agent took.
@@ -16130,7 +16511,7 @@ export interface components {
             timeout_h: 1 | 2 | 4;
             /**
              * Account
-             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
+             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project
              */
             account?: string | null;
             /**
@@ -17170,6 +17551,15 @@ export interface components {
              */
             sandbox: boolean;
         };
+        /** BudgetInput */
+        BudgetInput: {
+            /** Iterations */
+            iterations: number;
+            /** Max Candidates */
+            max_candidates: number;
+            /** Max Cost Usd */
+            max_cost_usd: number | null;
+        };
         /** Build */
         Build: {
             /** Id */
@@ -17401,6 +17791,91 @@ export interface components {
              * @default false
              */
             trust_publisher: boolean;
+        };
+        /** CandidateIn */
+        CandidateIn: {
+            /** Parents */
+            parents?: number[];
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "seed" | "mutate" | "merge";
+            /**
+             * Iteration
+             * @default 0
+             */
+            iteration: number;
+            /** Components */
+            components: {
+                [key: string]: string | null;
+            };
+            /** Scores */
+            scores?: {
+                [key: string]: number;
+            };
+            /** Cost Usd */
+            cost_usd?: number | null;
+            /** Turns */
+            turns?: number | null;
+            /**
+             * Traces
+             * @description task ref -> its ASI (evolve_eval.short_trace), kept bounded (evolve.asi_of)
+             */
+            traces?: {
+                [key: string]: unknown;
+            } | unknown[];
+        };
+        /** CandidateOut */
+        CandidateOut: {
+            /** Candidate Id */
+            candidate_id: number;
+            /** Frontier */
+            frontier: components["schemas"]["FrontItem"][];
+        };
+        /** CandidateView */
+        CandidateView: {
+            /** Id */
+            id: number;
+            /** Parents */
+            parents: number[];
+            /** Origin */
+            origin: string;
+            /** Iteration */
+            iteration: number;
+            /** Digest */
+            digest: string;
+            /** Scores */
+            scores: {
+                [key: string]: number;
+            };
+            /** Cost Usd */
+            cost_usd: number | null;
+            /** Turns */
+            turns: number | null;
+            /** On Front */
+            on_front: boolean;
+            /**
+             * Components
+             * @description its whole files or axes; null in a list
+             */
+            components?: {
+                [key: string]: string | null;
+            } | null;
+            /**
+             * Asi
+             * @description task ref -> its actionable side information: each failed check's exit code and output tail, the agent's failed tool calls, error and last message, each text cut to its end
+             */
+            asi?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * CanvasBaseline
@@ -18989,6 +19464,11 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Repos
+             * @description a change in several repos: each, in plan order; empty for one in one repo
+             */
+            repos?: components["schemas"]["ChangeRepo"][];
         };
         /** ChangeClose */
         ChangeClose: {
@@ -19080,6 +19560,39 @@ export interface components {
             verdict: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * ChangeRepo
+         * @description One repo of a change that works in several (``evo_agents.hub.server.change_repos``), in plan order.
+         */
+        ChangeRepo: {
+            /** Repo */
+            repo: string;
+            /**
+             * Position
+             * @description its order in the plan, from 1: an owner before the repos that consume it
+             */
+            position: number;
+            /**
+             * Depends On
+             * @description the repos merged before it
+             */
+            depends_on: string[];
+            /** State */
+            state: string;
+            /** Reason */
+            reason: string | null;
+            /** Pr Number */
+            pr_number: number | null;
+            /** Pr Url */
+            pr_url: string | null;
+            /**
+             * Passed
+             * @description its Judge's verdict; null before it
+             */
+            passed: boolean | null;
+            /** Merged At */
+            merged_at: string | null;
         };
         /** Charter */
         Charter: {
@@ -19174,6 +19687,7 @@ export interface components {
             replay?: components["schemas"]["ReplaySettings"];
             history?: components["schemas"]["HistorySettings"];
             probes?: components["schemas"]["ProbeSettings"];
+            evolve?: components["schemas"]["EvolveSettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -19312,6 +19826,7 @@ export interface components {
             replay?: components["schemas"]["ReplaySettings"];
             history?: components["schemas"]["HistorySettings"];
             probes?: components["schemas"]["ProbeSettings"];
+            evolve?: components["schemas"]["EvolveSettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -21520,15 +22035,16 @@ export interface components {
          *     charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
          *     change, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's
          *     head, its task and its own key (``evo_agents.hub.server.replays``), for a history run its batches and its own
-         *     key (``evo_agents.hub.server.history``), and for a probe run its probe, the change's head and its own key
-         *     (``evo_agents.hub.server.probe_runs``).
+         *     key (``evo_agents.hub.server.history``), for a probe run its probe, the change's head and its own key
+         *     (``evo_agents.hub.server.probe_runs``), and for an evolve run its evolution and its own key
+         *     (``evo_agents.hub.server.evolve``).
          */
         CuratorSpec: {
             /**
              * Role
              * @enum {string}
              */
-            role: "reviewer" | "builder" | "judge" | "replay" | "history" | "probe";
+            role: "reviewer" | "builder" | "judge" | "replay" | "history" | "probe" | "evolve";
             /**
              * Protected Paths
              * @description globs of the charter, repo:glob for one repo
@@ -21596,6 +22112,13 @@ export interface components {
              * @description a probe run's own key, for POST .../probe (X-Evo-Probe-Key); the daemon keeps it as a judge run's
              */
             probe_key?: string | null;
+            /** @description an evolve run's evolution; null for any other run */
+            evolve?: components["schemas"]["EvolveSpec"] | null;
+            /**
+             * Evolve Key
+             * @description an evolve run's own key, for GET .../evolve and POST .../evolve/arm, .../candidate and .../report (X-Evo-Evolve-Key); the daemon keeps it as a judge run's
+             */
+            evolve_key?: string | null;
         };
         /** CuratorStatus */
         CuratorStatus: {
@@ -22183,7 +22706,7 @@ export interface components {
             model?: string | null;
             /**
              * Account
-             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
+             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project
              */
             account?: string | null;
             /**
@@ -24080,6 +24603,244 @@ export interface components {
              */
             span_id?: number | null;
         };
+        /**
+         * EvolveBudget
+         * @description What one evolution may spend (``evo_agents.hub.server.evolve``): rounds of its loop, candidates it measures,
+         *     and dollars.
+         */
+        EvolveBudget: {
+            /**
+             * Iterations
+             * @description rounds of its loop
+             * @default 6
+             */
+            iterations: number;
+            /**
+             * Max Candidates
+             * @description candidates it measures at most
+             * @default 12
+             */
+            max_candidates: number;
+            /**
+             * Max Cost Usd
+             * @description the most it may cost; null: the run's own cap
+             */
+            max_cost_usd?: number | null;
+        };
+        /**
+         * EvolveInputs
+         * @description What the worker of an evolve run reads: the evolution, its baseline, its light tasks (select split and active
+         *     probes alone), the baseline arms the project's cache holds, its budget, runtime and model.
+         */
+        EvolveInputs: {
+            /** Evolve Id */
+            evolve_id: number;
+            /** Project */
+            project: string;
+            /** Target */
+            target: string;
+            /** Repo */
+            repo: string | null;
+            /**
+             * Base Sha
+             * @description null: the tip of the repo's default branch
+             */
+            base_sha: string | null;
+            /**
+             * Branch
+             * @description target git: the branch the run pushes its best candidate to
+             */
+            branch: string | null;
+            /** Paths */
+            paths: string[];
+            /** System Id */
+            system_id: number | null;
+            /** Agent */
+            agent: string | null;
+            /**
+             * Baseline
+             * @description target agent_config: instructions and skill; git: {}
+             */
+            baseline: {
+                [key: string]: string | null;
+            };
+            /** Tasks */
+            tasks: components["schemas"]["TaskInput"][];
+            /**
+             * Cached
+             * @description evolve.arm_key -> the result of a baseline arm
+             */
+            cached: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            budget: components["schemas"]["BudgetInput"];
+            /** Runtime */
+            runtime: string;
+            /** Model */
+            model: string | null;
+            /** Evolvable Paths */
+            evolvable_paths: string[];
+        };
+        /** EvolveList */
+        EvolveList: {
+            /** Project */
+            project: string;
+            /** Evolutions */
+            evolutions: components["schemas"]["EvolveView"][];
+        };
+        /**
+         * EvolveSettings
+         * @description Whether and how the Curator evolves a harness or an agent's configuration (``evo_agents.hub.evolve``): the
+         *     paths it may rewrite, what one evolution spends, how many light tasks of the select split and probes it measures
+         *     on, and how many review runs show an entry of the playbook never found helpful before it is retired.
+         */
+        EvolveSettings: {
+            /**
+             * Enabled
+             * @description false: no evolution is started or queued
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Evolvable Paths
+             * @description globs of harness files an evolution may rewrite, repo:glob for one repo; empty: none
+             */
+            evolvable_paths?: string[];
+            budget?: components["schemas"]["EvolveBudget"];
+            /**
+             * Tasks
+             * @description light replay tasks of the select split
+             * @default 8
+             */
+            tasks: number;
+            /**
+             * Probes
+             * @description active probes of its paths
+             * @default 4
+             */
+            probes: number;
+            /**
+             * Exposure Limit
+             * @description review runs that show an entry of the playbook never found helpful before it is retired; null: 30; 0: never for that
+             */
+            exposure_limit?: number | null;
+        };
+        /**
+         * EvolveSpec
+         * @description The evolution an evolve run makes (``evo_agents.hub.server.evolve``): its inputs come from GET .../evolve.
+         */
+        EvolveSpec: {
+            /** Evolve Id */
+            evolve_id: number;
+            /**
+             * Target
+             * @enum {string}
+             */
+            target: "git" | "agent_config";
+        };
+        /**
+         * EvolveStart
+         * @description An evolution to start: of a harness's files in a repo (target git: ``repo`` and ``paths``), or of an agent of
+         *     an agent system (target agent_config: ``system_id`` and ``agent``); ``proposal_id`` names the accepted proposal
+         *     whose planned change takes the branch of a git evolution.
+         */
+        EvolveStart: {
+            /**
+             * Target
+             * @enum {string}
+             */
+            target: "git" | "agent_config";
+            /** Repo */
+            repo?: string | null;
+            /** Paths */
+            paths?: string[];
+            /** System Id */
+            system_id?: number | null;
+            /**
+             * Agent
+             * @description the node's id, or its profile's handle
+             */
+            agent?: string | null;
+            /** Proposal Id */
+            proposal_id?: number | null;
+        };
+        /**
+         * EvolveTaskView
+         * @description A task of an evolution as its owner reads it: never its verify.
+         */
+        EvolveTaskView: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "replay" | "probe";
+            /** Id */
+            id: number;
+            /** Ref */
+            ref: string;
+            /** Repo */
+            repo?: string | null;
+        };
+        /** EvolveView */
+        EvolveView: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /** Run Id */
+            run_id: number | null;
+            /** Target */
+            target: string;
+            /** Repo */
+            repo: string | null;
+            /** Paths */
+            paths: string[];
+            /** System Id */
+            system_id: number | null;
+            /** Agent */
+            agent: string | null;
+            /** State */
+            state: string;
+            /** Runtime */
+            runtime: string | null;
+            /** Model */
+            model: string | null;
+            /** Budget */
+            budget: {
+                [key: string]: unknown;
+            };
+            /** Tasks */
+            tasks: components["schemas"]["EvolveTaskView"][];
+            /** Iterations */
+            iterations: number;
+            /** Frontier */
+            frontier: components["schemas"]["FrontItem"][];
+            /** Best Candidate Id */
+            best_candidate_id: number | null;
+            /** Proposal Id */
+            proposal_id: number | null;
+            /** Change Id */
+            change_id: number | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Candidates
+             * @description its candidates; null in a list
+             */
+            candidates?: components["schemas"]["CandidateView"][] | null;
+        };
         /** FacetCluster */
         FacetCluster: {
             /** Key */
@@ -24394,6 +25155,16 @@ export interface components {
             updated_by: string;
             /** Rank */
             rank: number;
+        };
+        /** FrontItem */
+        FrontItem: {
+            /** Candidate Id */
+            candidate_id: number;
+            /**
+             * Freq
+             * @description on how many tasks it reaches the ceiling of every candidate
+             */
+            freq: number;
         };
         /**
          * GatewayAccount
@@ -24736,6 +25507,59 @@ export interface components {
              * @description the commit each git source the member can see read, by source
              */
             sources?: components["schemas"]["SourceRead"][];
+        };
+        /** GrepFile */
+        GrepFile: {
+            /**
+             * Repo
+             * @description the repo's name in the project, as a file node's props.repo
+             */
+            repo: string;
+            /**
+             * Path
+             * @description the file's path inside the repo, with /
+             */
+            path: string;
+        };
+        /** GrepHit */
+        GrepHit: {
+            /**
+             * File
+             * @description the index of the line's file in files
+             */
+            file: number;
+            /**
+             * Line
+             * @description the line number; null for the file alone (-l)
+             */
+            line?: number | null;
+            /**
+             * Text
+             * @description the matched line
+             * @default
+             */
+            text: string;
+        };
+        /** GrepLinks */
+        GrepLinks: {
+            /**
+             * Sink
+             * @description the sink profile whose clearance applies
+             * @default claude-code@anthropic
+             */
+            sink: string;
+            /** Files */
+            files: components["schemas"]["GrepFile"][];
+            /** Hits */
+            hits: components["schemas"]["GrepHit"][];
+        };
+        /** GrepLinksOut */
+        GrepLinksOut: {
+            /**
+             * Lines
+             * @description the note's lines, one per matched node with something to add
+             */
+            lines: string[];
         };
         /** GroupMessage */
         GroupMessage: {
@@ -25618,6 +26442,13 @@ export interface components {
              * @description why the hold may go on: the ledger and the audit keep it with the admin's login
              */
             reason: string;
+        };
+        /** HoldoutPair */
+        HoldoutPair: {
+            /** Baseline */
+            baseline: number;
+            /** Candidate */
+            candidate: number;
         };
         /** HubIdentity */
         HubIdentity: {
@@ -26669,6 +27500,11 @@ export interface components {
             verify: string[];
             /** Protected Paths */
             protected_paths: string[];
+            /**
+             * Evolvable Paths
+             * @description the charter's evolve.evolvable_paths: a harness file of these is no protected_path sign
+             */
+            evolvable_paths?: string[];
             /**
              * Hidden Checks
              * @description commands run in the worktree; never logged, never shown
@@ -31749,6 +32585,38 @@ export interface components {
              */
             reason?: string | null;
         };
+        /** OpsPlanIn */
+        OpsPlanIn: {
+            /**
+             * Plan Id
+             * @description a stalled plan of the batch (a plan.stalled item)
+             */
+            plan_id: string;
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** OpsPriorityIn */
+        OpsPriorityIn: {
+            /**
+             * Run Id
+             * @description a queued run of the project
+             */
+            run_id: number;
+            /**
+             * Level
+             * @description its new priority: urgent, high, medium or low
+             * @enum {string}
+             */
+            level: "urgent" | "high" | "medium" | "low";
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
         /** OpsReadIn */
         OpsReadIn: {
             /**
@@ -31800,6 +32668,12 @@ export interface components {
              * @description or once it holds this many items
              */
             max_items: number;
+            /**
+             * Plan Stall Minutes
+             * @description a plan a system ran stalls, and a chat run has queued too long, after this many quiet minutes
+             * @default 30
+             */
+            plan_stall_minutes: number;
         };
         /** OpsWaitIn */
         OpsWaitIn: {
@@ -32670,7 +33544,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "evolve" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -33284,6 +34158,21 @@ export interface components {
              * @description the handoff, as evo_agents.hub.handoff builds it; markdown
              */
             text: string;
+            /**
+             * Difficulty
+             * @description the step's difficulty: its own, else as the hub's rules rate it; null without a step
+             */
+            difficulty?: ("easy" | "medium" | "hard") | null;
+            /**
+             * Recommended Model
+             * @description the model the project's Token strategy gives that difficulty now (routing.*)
+             */
+            recommended_model?: string | null;
+            /**
+             * Routing Reason
+             * @description why that difficulty and that model
+             */
+            routing_reason?: string | null;
         };
         /** PlanPatch */
         PlanPatch: {
@@ -33545,7 +34434,7 @@ export interface components {
             session_per_step: boolean;
             /**
              * Account
-             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
+             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project
              */
             account?: string | null;
             /**
@@ -33687,6 +34576,11 @@ export interface components {
              * @description retire: why
              */
             note?: string | null;
+            /**
+             * Until Proposal Id
+             * @description add: the proposal it holds until; the merge of its change retires it
+             */
+            until_proposal_id?: number | null;
         };
         /** PlaybookEntry */
         PlaybookEntry: {
@@ -33717,6 +34611,17 @@ export interface components {
             retired: boolean;
             /** Retired Note */
             retired_note: string | null;
+            /**
+             * Until Proposal Id
+             * @description the proposal it holds until; its merge retires it
+             */
+            until_proposal_id?: number | null;
+            /**
+             * Prompt Exposures
+             * @description review runs that showed it in their prompt and are done
+             * @default 0
+             */
+            prompt_exposures: number;
             /**
              * Created At
              * Format: date-time
@@ -34169,6 +35074,11 @@ export interface components {
              * @description where the web shows the page instead of on a page of its own: decide, a panel of the project's Decisions page; null for a page of its own
              */
             slot?: string | null;
+            /**
+             * Area
+             * @description the area of the project's menu its item sits in: business (the Business cycle), development (the Development cycle), improvement, knowledge or apps; null when the manifest names none, which the web shows in apps
+             */
+            area?: string | null;
         };
         /** PluginPermission */
         PluginPermission: {
@@ -35072,6 +35982,13 @@ export interface components {
              * Format: date-time
              */
             added_at: string;
+            /**
+             * Last Usage
+             * @description its last usage: windows five_hour and seven_day (a weekly budget's among them), 0 to 1
+             */
+            last_usage?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** PoolCandidate */
         PoolCandidate: {
@@ -35144,6 +36061,18 @@ export interface components {
             /** Last Heartbeat At */
             last_heartbeat_at: string | null;
         };
+        /**
+         * PoolPolicy
+         * @description What PATCH .../account-pools/{pool} changes; a field left out stays as it is.
+         */
+        PoolPolicy: {
+            /** Strategy */
+            strategy?: ("round-robin" | "weighted-round-robin" | "fill-first" | "quota-pacing") | null;
+            /** Hard Reserve Pct */
+            hard_reserve_pct?: number | null;
+            /** Five Hour Ceiling Pct */
+            five_hour_ceiling_pct?: number | null;
+        };
         /** PoolRequest */
         PoolRequest: {
             /**
@@ -35214,6 +36143,25 @@ export interface components {
              * @description 1 to 40 characters, unique in the project in any case
              */
             name: string;
+            /**
+             * Strategy
+             * @description how a run picks among the pool's accounts
+             * @default round-robin
+             * @enum {string}
+             */
+            strategy: "round-robin" | "weighted-round-robin" | "fill-first" | "quota-pacing";
+            /**
+             * Hard Reserve Pct
+             * @description quota-pacing: the share of a weekly window kept back while another account has more
+             * @default 10
+             */
+            hard_reserve_pct: number;
+            /**
+             * Five Hour Ceiling Pct
+             * @description quota-pacing: the five-hour use above which an account waits while a cooler one is ready
+             * @default 90
+             */
+            five_hour_ceiling_pct: number;
         };
         /**
          * PrefSet
@@ -35285,6 +36233,18 @@ export interface components {
              * @description what those runs cost since the month began, in USD, an estimate
              */
             cost_month_usd: number;
+        };
+        /**
+         * PriorityChange
+         * @description What POST /v1/projects/{p}/runs/{id}/priority changes of a queued run of the project.
+         */
+        PriorityChange: {
+            /**
+             * Priority
+             * @description the run's new priority: a worker claims urgent first, low last
+             * @enum {string}
+             */
+            priority: "urgent" | "high" | "medium" | "low";
         };
         /** Probe */
         Probe: {
@@ -38307,6 +39267,23 @@ export interface components {
              */
             error: string | null;
         };
+        /**
+         * ProviderQuota
+         * @description What POST .../{name}/quota answers: whether the quota was read and kept, and an error without the key.
+         */
+        ProviderQuota: {
+            /** Ok */
+            ok: boolean;
+            /** @description the usage kept as the account's last */
+            usage?: components["schemas"]["QuotaUsage"] | null;
+            /**
+             * Status
+             * @description Z.ai's HTTP status; null when no answer came
+             */
+            status?: number | null;
+            /** Error */
+            error?: string | null;
+        };
         /** PruneRequest */
         PruneRequest: {
             /**
@@ -38701,6 +39678,49 @@ export interface components {
              * @description HH:MM, 24 hours; the quiet hours run past midnight when it is not after start
              */
             end: string;
+        };
+        /** QuotaUsage */
+        QuotaUsage: {
+            /**
+             * Status
+             * @description allowed, or rejected once a window is used up
+             */
+            status: string;
+            /**
+             * Rate Limit Type
+             * @description with rejected: the window used up
+             */
+            rate_limit_type?: string | null;
+            /**
+             * Resets At
+             * @description with rejected: when that window resets
+             */
+            resets_at?: string | null;
+            /**
+             * Utilization
+             * @description the highest share used among the windows
+             */
+            utilization?: number | null;
+            /**
+             * Windows
+             * @description five_hour and seven_day, as read
+             */
+            windows?: {
+                [key: string]: components["schemas"]["QuotaWindow"];
+            };
+        };
+        /** QuotaWindow */
+        QuotaWindow: {
+            /**
+             * Utilization
+             * @description the share of the window's limit used, 0 to 1
+             */
+            utilization: number;
+            /**
+             * Resets At
+             * @description when it resets, UTC
+             */
+            resets_at?: string | null;
         };
         /** RateLimitAnswer */
         RateLimitAnswer: {
@@ -39741,6 +40761,30 @@ export interface components {
             /** Path */
             path: string;
         };
+        /**
+         * ReportIn
+         * @description The end of an evolution. ``holdout`` (target agent_config) holds the scores of the baseline and of the best
+         *     candidate on tasks of the holdout split, which the hub checks before it pins a new version of the profile.
+         */
+        ReportIn: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "done" | "failed";
+            /** Best Candidate Id */
+            best_candidate_id?: number | null;
+            /** Head Sha */
+            head_sha?: string | null;
+            /** Branch */
+            branch?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Holdout */
+            holdout?: {
+                [key: string]: components["schemas"]["HoldoutPair"];
+            } | null;
+        };
         /** ReportItem */
         ReportItem: {
             /** Fingerprint */
@@ -39764,7 +40808,7 @@ export interface components {
         Rerun: {
             /**
              * Account
-             * @description one of the caller's env secrets bound to the project, by name: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick
+             * @description one of the caller's env secrets bound to the project, by name, or <login>/<name> for one that member shares with the caller: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick
              */
             account?: string | null;
             /**
@@ -40227,6 +41271,55 @@ export interface components {
              * @description why it did not rate or choose
              */
             error?: string | null;
+            /**
+             * Source
+             * @description where the difficulty came from: plan, rule, role, scorer or fallback; absent: the scorer
+             */
+            source?: ("plan" | "rule" | "role" | "scorer" | "fallback") | null;
+            /**
+             * Reason
+             * @description why the hub gave the run its model
+             */
+            reason?: string | null;
+            /**
+             * Strategy
+             * @description the Token strategy that chose it
+             */
+            strategy?: ("surplus-first" | "cost-first" | "quota-burn") | null;
+            /**
+             * Branch
+             * @description the ladder's model, or the overflow's
+             */
+            branch?: ("ladder" | "overflow") | null;
+            /**
+             * Escalated From
+             * @description the difficulty of the failed run before this one, when this one went one level up
+             */
+            escalated_from?: ("easy" | "medium" | "hard") | null;
+            /**
+             * Gateway
+             * @description the gateway prefix of the chosen model; absent: native
+             */
+            gateway?: string | null;
+            /**
+             * Quota
+             * @description what the subscription had left when the hub chose: weekly_left and five_hour_used, 0 to 1
+             */
+            quota?: {
+                [key: string]: number;
+            } | null;
+            /**
+             * Pending
+             * @description true: the hub left the rating to the worker's scorer
+             */
+            pending?: boolean | null;
+            /**
+             * Choices
+             * @description while pending: the model of each difficulty the scorer may name
+             */
+            choices?: {
+                [key: string]: string;
+            } | null;
         };
         /** RuleCount */
         RuleCount: {
@@ -40261,7 +41354,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan, or a Judge of a merge request of the merge queue, on no plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; release: a cut or a fix of the project's release cycle, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "evolve" | "local";
             /** Project */
             project: string;
             /**
@@ -40370,6 +41463,13 @@ export interface components {
              * @enum {string}
              */
             state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled" | "idle" | "ended";
+            /**
+             * Priority
+             * @description the order a worker claims the queued runs in, highest first, then the oldest: an agent's ask sets it, a writer changes it while the run is queued; a plan or step run has medium
+             * @default medium
+             * @enum {string}
+             */
+            priority: "urgent" | "high" | "medium" | "low";
             /** Lease Expires At */
             lease_expires_at: string | null;
             /** Session Id */
@@ -41654,7 +42754,9 @@ export interface components {
         };
         /**
          * RunRouting
-         * @description The routing a claim carries while the project's policy has it on, for a run that names no model.
+         * @description The routing a claim carries while the project's policy has it on, for a run that names no model. When the hub
+         *     rated the run, every rung of the ladder is the model it chose, and ``difficulty`` says what it rated; while the
+         *     rating waits for the scorer (``pending``), the ladder is the strategy's model of each difficulty.
          */
         RunRouting: {
             /**
@@ -41664,6 +42766,41 @@ export interface components {
             scorer: string;
             /** @description the model of each difficulty */
             ladder: components["schemas"]["RoutingLadder"];
+            /**
+             * Difficulty
+             * @description the difficulty the hub rated the run; null: the worker's scorer rates it
+             */
+            difficulty?: ("easy" | "medium" | "hard") | null;
+            /**
+             * Source
+             * @description where the difficulty came from
+             */
+            source?: ("plan" | "rule" | "role" | "scorer" | "fallback") | null;
+            /**
+             * Reason
+             * @description why that model
+             */
+            reason?: string | null;
+            /**
+             * Strategy
+             * @description the Token strategy that chose it
+             */
+            strategy?: ("surplus-first" | "cost-first" | "quota-burn") | null;
+            /**
+             * Branch
+             * @description ladder or overflow
+             */
+            branch?: ("ladder" | "overflow") | null;
+            /**
+             * Escalated From
+             * @description the difficulty of the run before it, which failed, when this one went one level up
+             */
+            escalated_from?: ("easy" | "medium" | "hard") | null;
+            /**
+             * Pending
+             * @description true: the worker's scorer rates the run among the ladder's models
+             */
+            pending?: boolean | null;
         };
         /**
          * RunSkill
@@ -41707,7 +42844,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "evolve";
             /** Project */
             project: string;
             /**
@@ -43253,6 +44390,157 @@ export interface components {
              * @default false
              */
             terms_ack: boolean;
+        };
+        /**
+         * SharedAccount
+         * @description An env account another member shares with the caller, as GET /v1/accounts/{name}?owner= gives it: its figures
+         *     are the caller's own runs alone, its shares those that lend it to the caller, and its projects those of these
+         *     shares its owner binds it to.
+         */
+        SharedAccount: {
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Provider
+             * @description who it signs in to, read from its variable (``account_providers``)
+             * @enum {string}
+             */
+            provider: "claude" | "anthropic" | "openai" | "gitlab" | "github" | "notion" | "lark" | "ssh" | "other";
+            /**
+             * Category
+             * @description model: the runtime's own sign-in, whose runs cost; service: any other
+             * @enum {string}
+             */
+            category: "model" | "service";
+            /**
+             * Projects
+             * @description the projects whose runs may take it
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /**
+             * Pools
+             * @description the worker pools it is bound to, each node of each
+             * @default []
+             */
+            pools: string[];
+            /**
+             * Auth
+             * @description oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given
+             * @enum {string}
+             */
+            auth: "token" | "oauth";
+            /**
+             * Weight
+             * @description 0 to 1000: its share in a weighted-round-robin pool; 0 leaves it
+             */
+            weight: number;
+            /**
+             * Priority
+             * @description 0 to 1000: the lower, the sooner a fill-first pool takes it
+             */
+            priority: number;
+            /**
+             * Paused At
+             * @description when its owner paused it; null while it may be taken
+             */
+            paused_at: string | null;
+            /**
+             * Cooldown Until
+             * @description until when it cools down after a usage limit
+             */
+            cooldown_until: string | null;
+            /**
+             * Cooldown Reason
+             * @description why it cools down
+             */
+            cooldown_reason: string | null;
+            /**
+             * Last Leased At
+             * @description when a run last took it
+             */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @description ready, cooling, paused, expired or needs-relogin (an OAuth account whose refresh token was refused: run oauth-login again), now
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
+            /** @description what a run's CLI last said of its usage; null before any */
+            last_usage: components["schemas"]["AccountUsage"] | null;
+            /**
+             * Last Usage At
+             * @description when a run reported that usage
+             */
+            last_usage_at: string | null;
+            /**
+             * Runs 24H
+             * @description the runs that took it in the last 24 hours
+             */
+            runs_24h: number;
+            /**
+             * Runs 7D
+             * @description the runs that took it in the last 7 days
+             */
+            runs_7d: number;
+            /**
+             * Cost 24H Usd
+             * @description what those runs cost in the last 24 hours, in USD, from their usage; null for a service account
+             */
+            cost_24h_usd: number | null;
+            /**
+             * Cost 7D Usd
+             * @description what those runs cost in the last 7 days, in USD, an estimate; null for a service account
+             */
+            cost_7d_usd: number | null;
+            /**
+             * Held By
+             * @description the runs a worker holds now with it
+             */
+            held_by: components["schemas"]["HeldBy"][];
+            /**
+             * Shares
+             * @description its shares not revoked, newest first
+             */
+            shares: components["schemas"]["CredentialShare"][];
+            /**
+             * Cost By Principal
+             * @description its runs and their cost by the member each was made for; for a member it was shared with, theirs
+             */
+            cost_by_principal: components["schemas"]["PrincipalCost"][];
+            /** @description a provider account's endpoint and what the model gateway last said of it; null for a secret */
+            gateway?: components["schemas"]["GatewayAccount"] | null;
+            /**
+             * Weekly Budget Usd
+             * @description the USD its owner gives it a week, turned into its seven_day window; null for none
+             */
+            weekly_budget_usd?: number | null;
+            /**
+             * Weekly Reset At
+             * @description an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC
+             */
+            weekly_reset_at?: string | null;
+            /**
+             * Owner
+             * @description the login of the member who owns it and shares it
+             */
+            owner: string;
+            /**
+             * Pick
+             * @description how ``account`` of a dispatch names it: <owner>/<name>
+             */
+            pick: string;
         };
         /** Sign */
         Sign: {
@@ -46249,6 +47537,29 @@ export interface components {
              * @description a branch of origin each worktree of the run starts from instead of the repo's default branch, unless its item of repos names a base of its own, which the draft pull request of each branch it pushes goes into; the run fails when a repo's origin lacks it
              */
             base?: string | null;
+        };
+        /**
+         * TaskInput
+         * @description A light task as the trusted daemon runs it, with its verify.
+         */
+        TaskInput: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "replay" | "probe";
+            /** Id */
+            id: number;
+            /** Ref */
+            ref: string;
+            /** Base Sha */
+            base_sha: string | null;
+            /** Prompt */
+            prompt: string;
+            /** Paths */
+            paths: string[];
+            /** Verify */
+            verify: string[];
         };
         /** TaskPull */
         TaskPull: {
@@ -54784,6 +56095,86 @@ export interface operations {
             };
         };
     };
+    grep_links_of_v1_kg__project__grep_links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrepLinks"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrepLinksOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     graph_summary_v1_kg__project__graph_get: {
         parameters: {
             query?: never;
@@ -61444,7 +62835,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "probe" | "release" | "question" | "browser" | "command" | "evolve" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -62207,6 +63598,78 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AccessChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    priority_v1_projects__project__runs__run_id__priority_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PriorityChange"];
             };
         };
         responses: {
@@ -72029,6 +73492,511 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_evolutions_v1_projects__project__curator_evolve_get: {
+        parameters: {
+            query?: {
+                state?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolveList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_evolution_v1_projects__project__curator_evolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvolveStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolveView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_evolution_v1_projects__project__curator_evolve__evolve_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                evolve_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolveView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    evolve_inputs_v1_worker_runs__run_id__evolve_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the evolve run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Evolve-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolveInputs"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    evolve_arm_v1_worker_runs__run_id__evolve_arm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the evolve run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Evolve-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArmIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArmOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    evolve_candidate_v1_worker_runs__run_id__evolve_candidate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the evolve run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Evolve-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    evolve_report_route_v1_worker_runs__run_id__evolve_report_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the evolve run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Evolve-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvolveView"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -85140,6 +87108,35 @@ export interface operations {
             };
         };
     };
+    list_shared_accounts_v1_shared_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_account_policies_v1_account_policies_get: {
         parameters: {
             query?: never;
@@ -88477,6 +90474,79 @@ export interface operations {
             };
         };
     };
+    set_pool_policy_v1_projects__project__account_pools__pool__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the pool's name, 1 to 40 characters */
+                pool: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PoolPolicy"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPool"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     add_account_v1_projects__project__account_pools__pool__accounts_put: {
         parameters: {
             query?: never;
@@ -88886,6 +90956,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderAccount"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    quota_of_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__quota_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+                /** @description unique among the agent's live accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderQuota"];
                 };
             };
             /** @description Unauthorized */
@@ -95570,6 +97720,148 @@ export interface operations {
             };
         };
     };
+    priority_route_v1_worker_runs__run_id__ops_priority_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsPriorityIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    plan_dispatch_route_v1_worker_runs__run_id__ops_plan_dispatch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsPlanIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     set_work_route_v1_worker_runs__run_id__work_post: {
         parameters: {
             query?: never;
@@ -101653,6 +103945,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderProbe"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    quota_of_provider_account_v1_provider_accounts__name__quota_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description unique among the caller's secrets and accounts */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderQuota"];
                 };
             };
             /** @description Unauthorized */

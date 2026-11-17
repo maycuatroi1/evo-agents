@@ -9,14 +9,17 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterable
+from dataclasses import replace
 from pathlib import Path
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from evo_agents import sqlite_legacy
 from evo_agents.hub import tables
-from evo_agents.kg import graph_rows, semantic, store_vectors
+from evo_agents.kg import graph_rows, semantic
+from evo_agents.kg.packed import Packed
 from evo_agents.kg.snapshot import StoreRows
 
 DEFAULT_NEW_MODE = "index"  # a project registered now: vectors written, search by words until the holdout says on
@@ -51,31 +54,46 @@ EMBED_BUDGET_SECONDS = 300.0  # a build embeds for 5 minutes at most, so it free
 
 
 def index(
-    rows: StoreRows, settings: semantic.Settings, cache: semantic.Cache | Path
+    rows: StoreRows, settings: semantic.Settings, cache: semantic.Cache | None
 ) -> tuple[StoreRows, semantic.Indexed]:
     """``rows`` with the vectors ``settings`` asks for (``evo_agents.kg.graph_rows.RowsVectors``), and what was indexed;
-    embedded only when ``cache`` (a HubCache, or the path of a vectors.sqlite) lacks them, for at most
-    EMBED_BUDGET_SECONDS (the model is downloaded first, here, never by a search). Blocking."""
-    graph = graph_rows.RowsVectors(rows)
-    if not isinstance(cache, Path):
-        found = _indexed(graph, settings, cache)
-        return graph.held, found
-    own = store_vectors.FileCache(cache)
+    embedded only when ``cache`` (a HubCache; None: every one) lacks them, for at most
+    EMBED_BUDGET_SECONDS (the model is downloaded first, here, never by a search). A model this call loaded is dropped
+    after: kept in a worker's process, it stayed on top of the next build's peak (some 1.2 GB for bge-m3), which a kg
+    worker's memory cap did not hold. Blocking."""
+    loaded = semantic.is_loaded(settings.model)
     try:
-        found = _indexed(graph, settings, own)
+        graph = graph_rows.RowsVectors(rows)
+        found = _indexed(graph, settings, cache if cache is not None else semantic.MemoryCache())
+        return graph.held, found
     finally:
-        own.close()
-    return graph.held, found
+        if not loaded:
+            semantic.forget_model(settings.model)
+
+
+UNREAD = ("nodes", "edges", "code", "units", "wheres", "derivations", "asked", "clusters", "review")  # by ``index``
+
+
+def set_aside(rows: StoreRows) -> tuple[StoreRows, Packed]:
+    """``rows`` without the parts ``index`` does not read, and those parts packed (``Packed``), for ``taken_back``.
+    Held as they are under the model of the vectors, they made a build's peak: on a corpus of some 25,000 items, about
+    1.6 GB of rows next to the model's 1.3 GB, against some 0.2 GB packed. The caller drops the ``rows`` it gave."""
+    aside = Packed()
+    for name in UNREAD:
+        aside[name] = getattr(rows, name)
+    return replace(rows, **{name: type(getattr(rows, name))() for name in UNREAD}), aside
+
+
+def taken_back(rows: StoreRows, aside: Packed) -> StoreRows:
+    """``rows`` with the parts ``set_aside`` packed in ``aside`` again."""
+    return replace(rows, **{name: aside[name] for name in UNREAD})
 
 
 def _indexed(graph: graph_rows.RowsVectors, settings: semantic.Settings, cache: semantic.Cache) -> semantic.Indexed:
     return semantic.index(graph, settings, cache, budget=EMBED_BUDGET_SECONDS)
 
 
-SEED_FILES = (
-    store_vectors.CACHE_FILE,
-    "graph.sqlite",
-)  # what a project's builds kept vectors in before kg_vector_cache
+SEED_FILES = ("vectors.sqlite", "graph.sqlite")  # what a project's builds kept vectors in before kg_vector_cache
 PUT_ROWS = 1000  # vectors one insert of the cache writes
 
 
@@ -108,11 +126,12 @@ class HubCache:
     def seed(self, root: Path, model: str) -> int:
         """When the cache has no vector of ``model``, take the ones the project's directory ``root`` kept of it, in
         its vectors.sqlite and its graph.sqlite, so the first build after kg_vector_cache embeds nothing again. The
-        files stay. How many vectors it took."""
+        files stay, for step 7 of plan kg-centralized-on-hub to delete (``evo_agents.sqlite_legacy``). How many vectors
+        it took."""
         if self.held(model):
             return 0
-        found: dict[str, bytes] = store_vectors.cache_file_vectors(root / SEED_FILES[0], model)
-        found.update(store_vectors.cached_in_file(root / SEED_FILES[1], model))
+        found = sqlite_legacy.vector_cache_rows(root / SEED_FILES[0], model)
+        found.update(sqlite_legacy.graph_vectors(root / SEED_FILES[1], model))
         self.put(model, sorted(found.items()))
         return len(found)
 

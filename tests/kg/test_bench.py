@@ -12,10 +12,9 @@ from pathlib import Path
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.kg.bench import compare, datasets, graphs, run, tasks
+from evo_agents.kg.bench import compare, datasets, graphs, rows_file, run, tasks
 from evo_agents.kg.bench.datasets import BenchError, Source
 from evo_agents.kg.bench.locbench_repos import LOCBENCH_REPOS
-from evo_agents.kg.build import build_project
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, git, make_project, write
 
@@ -351,7 +350,7 @@ def test_one_pass_asks_each_search_on_the_same_graphs_and_prunes_them(bench, tmp
     assert built == sum(n["build"]["built"] for n in two["benches"].values()) and built >= 2  # pruned, so built again
     lay = graphs.layout(cache)
     assert not any(lay.home.glob("acme__*")) and not any((cache / "repos").glob("*.git"))
-    assert not any((lay.base / "memo").glob("*.sqlite"))
+    assert not any((lay.base / "memo").glob("*")) and not any((lay.base / "vectors").glob("*"))
 
 
 def _open_under(root: Path) -> list[str]:
@@ -525,8 +524,7 @@ def test_run_samples_a_set_with_a_seed_and_names_the_sample(bench, tmp_path):
 
 def test_run_scores_a_local_question_set_such_as_evo_agents_in_tune_and_holdout(tmp_path, kg_env, capsys):
     project = make_project(tmp_path, kg_env)
-    sync_project(project)
-    assert build_project(project).ok
+    sync_project(project)  # no build: a local set builds the project in memory
     out = tmp_path / "local.json"
     argv = ["kg", "bench", "run", "--set", f"evo-agents={FIXTURE}", "--project", str(project.harness.root)]
     assert main([*argv, "--out", str(out)]) == 0
@@ -715,7 +713,7 @@ def test_like_asks_the_tasks_another_summary_asked_and_the_ranking_digest_follow
 
 
 def test_warm_reads_a_graph_once_and_skips_what_is_missing(tmp_path):
-    (tmp_path / "graph.sqlite").write_bytes(b"x" * 1000)
+    (tmp_path / rows_file.ROWS).write_bytes(b"x" * 1000)
     assert graphs.warm(tmp_path) == 1000
     assert graphs.warm(tmp_path / "gone") == 0
 
@@ -748,7 +746,6 @@ def test_bench_profile_reads_the_cache_and_says_so_when_it_is_empty(tmp_path, ca
 def test_run_settings_file_asks_under_query_keys_and_refuses_keys_that_need_a_build(tmp_path, kg_env, capsys):
     project = make_project(tmp_path, kg_env)
     sync_project(project)
-    assert build_project(project).ok
     candidate = tmp_path / "candidate.json"
     candidate.write_text(json.dumps({"settings": {"bm25_name": 3.0, "semantic_weight": 1.0}}))
     out = tmp_path / "tuned.json"

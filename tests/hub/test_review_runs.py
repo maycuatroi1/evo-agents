@@ -1157,7 +1157,11 @@ def test_with_a_knowledge_graph_a_code_path_it_lacks_is_kept_unmatched_and_what_
     assert elsewhere.status_code == 422 and "has no repo nope" in elsewhere.text  # a repo of the project still
 
     made = proposed(client, worker, run_id, kind="fix", paths=[{"repo": "evo-agents", "path": "evo_agents/hub/x.py"}])
-    assert made["tier"] == 3 and "reaches evo-agents:curator.yaml in the knowledge graph" in made["tier_reasons"][-1]
+    assert made["tier"] == 2  # before the pull request's diff, a protected file reached is at most tier 2
+    assert made["tier_reasons"][-1] == (
+        "the change reaches evo-agents:curator.yaml in the knowledge graph, which is protected (curator.yaml); until "
+        "the pull request's diff shows which names it breaks there: at least tier 2"
+    )
     assert made["impacted"] == [
         {"repo": "evo-agents", "path": "curator.yaml"},
         {"repo": "evo-agents", "path": "evo_agents/hub/runs.py"},

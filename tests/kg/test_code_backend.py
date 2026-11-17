@@ -7,12 +7,11 @@ import sys
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.kg.build import build_project
 from evo_agents.kg.extract import graphify as gfy
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.status import render_brief
-from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.hub_graph import sign_in
 from tests.kg.projects import commit, git, write
 
@@ -76,13 +75,9 @@ def no_graphify(monkeypatch):
     gfy.available.cache_clear()
 
 
-def symbol_paths(project, build_id):
-    store = Store.for_project(project)
-    rows = store.db.execute(
-        "SELECT node_id FROM nodes WHERE kind = 'Symbol' AND tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)",
-        {"b": build_id},
-    )
-    return {r[0].split("::")[0].removeprefix("symbol:billing:") for r in rows}
+def symbol_paths(project):
+    symbols = [n["id"] for n in built.nodes_of(project) if n["kind"] == "Symbol"]
+    return {s.split("::")[0].removeprefix("symbol:billing:") for s in symbols}
 
 
 def test_auto_without_graphify_warns_in_build_and_status(tmp_path, kg_env, no_graphify, capsys, monkeypatch):
@@ -90,14 +85,14 @@ def test_auto_without_graphify_warns_in_build_and_status(tmp_path, kg_env, no_gr
     sign_in(monkeypatch, project)  # kg status reads the hub's kg_status
     root = str(project.harness.root)
 
-    report = build_project(project).to_json()  # the hub's build engine; kg build asks the hub
+    report = built.build(project).to_json()  # the hub's build engine; kg build asks the hub
     assert report["ok"] and report["warnings"] == [WARNING]
     code = next(s for s in report["coverage"]["sources"] if s["id"] == "billing")["code"]
     assert code["backend"] == "auto"
     assert code["extractors"] == {"python-ast": 1, "none": 1}
     assert code["fallback"] == 1 and code["fallback_languages"] == {"typescript": 1}
     assert INSTALL in code["warning"]
-    assert symbol_paths(project, report["build_id"]) == {"billing/invoice.py"}
+    assert symbol_paths(project) == {"billing/invoice.py"}
 
     assert main(["kg", "status", "--project", root, "--json"]) == 0  # a warning, not a failure
     status = json.loads(capsys.readouterr().out)
@@ -114,7 +109,7 @@ def test_auto_without_graphify_warns_in_build_and_status(tmp_path, kg_env, no_gr
 
 def test_explicit_graphify_backend_without_graphify_fails_the_build(tmp_path, kg_env, no_graphify, capsys):
     project = make_billing(tmp_path, kg_env, backend="graphify-ast")
-    report = build_project(project)
+    report = built.build(project)
     assert not report.ok and report.build_id is None
     message = (
         "source billing declares code backend graphify-ast, but graphify is not installed;"
@@ -129,7 +124,7 @@ def test_explicit_graphify_backend_without_graphify_fails_the_build(tmp_path, kg
 
 @pytest.mark.parametrize("backend", ["python-ast", "none"])
 def test_a_declared_backend_without_graphify_has_no_warning(tmp_path, kg_env, no_graphify, backend):
-    report = build_project(make_billing(tmp_path, kg_env, backend=backend))
+    report = built.build(make_billing(tmp_path, kg_env, backend=backend))
     assert report.ok and report.warnings == []
     code = next(s for s in report.coverage["sources"] if s["id"] == "billing")["code"]
     assert code["backend"] == backend and code["fallback"] == 0 and code["warning"] is None
@@ -141,12 +136,12 @@ def test_auto_with_graphify_has_no_warning(tmp_path, kg_env, capsys, monkeypatch
     sign_in(monkeypatch, project)
     root = str(project.harness.root)
 
-    report = build_project(project).to_json()
+    report = built.build(project).to_json()
     assert report["ok"] and report["warnings"] == [] and report["coverage"]["warnings"] == []
     code = next(s for s in report["coverage"]["sources"] if s["id"] == "billing")["code"]
     assert code["extractors"] == {"graphify-ast": 1, "python-ast": 1}
     assert code["fallback"] == 0 and code["warning"] is None
-    assert symbol_paths(project, report["build_id"]) == {"billing/invoice.py", "web/checkout.ts"}
+    assert symbol_paths(project) == {"billing/invoice.py", "web/checkout.ts"}
 
     assert main(["kg", "status", "--project", root]) == 0
     out, err = capsys.readouterr()

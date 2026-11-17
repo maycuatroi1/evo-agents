@@ -22,6 +22,7 @@ import { PolicyFormView } from "./policy-form";
 import { ComparePanel, type PolicyLinks, RevisionsPanel } from "./policy-history";
 import { readPolicyView } from "./policy-model";
 import { PolicyView } from "./policy-view";
+import { RoutingPanel } from "./routing-panel";
 
 function usePolicyLinks(): PolicyLinks & { replace: (href: Route) => void } {
   const pathname = usePathname();
@@ -85,6 +86,7 @@ function PolicyBody({ project, policy, revision, admin, reader }: { project: str
         <PolicyView policy={policy} />
       </div>
       <div className="flex min-w-0 flex-col gap-4">
+        <RoutingPanel project={project} policy={policy} editable={admin && revision === null} />
         <RevisionsPanel revisions={list} shown={policy.revision} links={links} />
         {list.length > 0 ? (
           <ComparePanel project={project} revisions={list} from={from} to={to} onChange={(nextFrom, nextTo) => links.replace(links.compare(nextFrom, nextTo))} />

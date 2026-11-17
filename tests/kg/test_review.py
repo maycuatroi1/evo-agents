@@ -2,10 +2,9 @@
 reader sees."""
 
 from evo_agents.kg import review
-from evo_agents.kg.build import build_project
+from evo_agents.kg.graph_model import Clusters, Graph, edge_id
 from evo_agents.kg.search import PASSAGE_MARK
-from evo_agents.kg.store import Graph, Store, edge_id
-from evo_agents.kg.store_clusters import Clusters
+from tests.kg import built
 from tests.kg.projects import commit, make_project, write
 from tests.kg.test_clusters import CUSTOMER, link, needs_engine, node, sync_build
 
@@ -265,16 +264,16 @@ def test_review_build_stores_items_counts_them_and_keeps_fingerprints(tmp_path, 
     assert report.verify["match"], report.verify
     counts = report.coverage["review"]
     assert set(counts) == set(review.RULES)
-    store = Store.for_project(project)
+    store = built.view_of(project)
     items = store.review_items(report.build_id)
     assert sum(counts.values()) == len(items)
     assert all(set(i["evidence"]) <= store.alive_ids("nodes", report.build_id) for i in items)
     first = {i["fingerprint"] for i in items}
     store.close()
 
-    again = build_project(project, force=True, verify=True)
+    again = built.build(project, force=True, verify=True)
     assert again.ok and again.verify["match"] and again.content_hash == report.content_hash
-    store = Store.for_project(project)
+    store = built.view_of(project)
     assert {i["fingerprint"] for i in store.review_items(again.build_id)} == first
     store.close()
 
@@ -285,8 +284,8 @@ def test_the_passages_of_a_long_section_are_searched_but_never_review_items(tmp_
     write(tmp_path / "demo-app" / "docs/long.md", "# Long\n\n" + "Filler sentence. " * 400 + "\n\nThe end.\n")
     commit(tmp_path / "demo-app", "a long section")
     report = sync_build(project)
-    store = Store.for_project(project)
-    keys = [k for (k,) in store.db.execute("SELECT node_id FROM node_fts_rows")]
+    store = built.view_of(project)
+    keys = [k for k, _ in built.rows_of(project).keyed]
     assert any(PASSAGE_MARK in k for k in keys)  # the section is indexed as passages too
     items = store.review_items(report.build_id)
     assert items and all(PASSAGE_MARK not in i["fingerprint"] for i in items)
@@ -424,16 +423,16 @@ def test_a_build_reads_the_conflicting_claims_after_folding_and_keeps_their_fing
         },
     }
     project = entity_setup(tmp_path, kg_env, answers)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     assert report.coverage["review"]["conflicting_claim"] == 1
-    store = Store.for_project(project)
+    store = built.view_of(project)
     (item,) = [i for i in store.review_items(report.build_id) if i["rule"] == "conflicting_claim"]
     store.close()
     subject, *objects = item["evidence"][:3]
     assert subject == "entity:Concept:search-server" and objects == ["entity:Concept:postgres", "entity:Concept:sqlite"]
     assert set(item["evidence"][3:]) == {"app:file:docs/guide.md", "app:file:docs/old.md"}
-    again = build_project(project, force=True)
-    store = Store.for_project(project)
+    again = built.build(project, force=True)
+    store = built.view_of(project)
     assert item["fingerprint"] in {i["fingerprint"] for i in store.review_items(again.build_id)}
     store.close()

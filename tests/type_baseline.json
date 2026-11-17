@@ -779,22 +779,6 @@
                 "code": "reportArgumentType",
                 "range": {
                     "startColumn": 23,
-                    "endColumn": 74,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 23,
-                    "endColumn": 85,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 23,
                     "endColumn": 94,
                     "lineCount": 1
                 }
@@ -9684,56 +9668,6 @@
                 }
             }
         ],
-        "./evo_agents/hub/server/account_pools.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 84,
-                    "endColumn": 92,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 96,
-                    "endColumn": 104,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 85,
-                    "endColumn": 93,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 77,
-                    "endColumn": 85,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 94,
-                    "endColumn": 102,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 109,
-                    "endColumn": 117,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/hub/server/account_views.py": [
             {
                 "code": "reportInvalidTypeForm",
@@ -10132,30 +10066,6 @@
             {
                 "code": "reportArgumentType",
                 "range": {
-                    "startColumn": 66,
-                    "endColumn": 74,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 79,
-                    "endColumn": 87,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 74,
-                    "endColumn": 82,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
                     "startColumn": 85,
                     "endColumn": 107,
                     "lineCount": 1
@@ -10174,14 +10084,6 @@
                 "range": {
                     "startColumn": 33,
                     "endColumn": 36,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 85,
-                    "endColumn": 93,
                     "lineCount": 1
                 }
             }
@@ -21958,14 +21860,6 @@
             {
                 "code": "reportArgumentType",
                 "range": {
-                    "startColumn": 65,
-                    "endColumn": 73,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
                     "startColumn": 93,
                     "endColumn": 99,
                     "lineCount": 1
@@ -21974,22 +21868,6 @@
             {
                 "code": "reportArgumentType",
                 "range": {
-                    "startColumn": 72,
-                    "endColumn": 80,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 67,
-                    "endColumn": 75,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
                     "startColumn": 31,
                     "endColumn": 37,
                     "lineCount": 1
@@ -21998,32 +21876,8 @@
             {
                 "code": "reportArgumentType",
                 "range": {
-                    "startColumn": 78,
-                    "endColumn": 86,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 63,
-                    "endColumn": 71,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
                     "startColumn": 31,
                     "endColumn": 37,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 70,
-                    "endColumn": 78,
                     "lineCount": 1
                 }
             }
@@ -28772,16 +28626,6 @@
                 }
             }
         ],
-        "./evo_agents/kg/corpus.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./evo_agents/kg/entities.py": [
             {
                 "code": "reportMissingImports",
@@ -29186,24 +29030,6 @@
                 "range": {
                     "startColumn": 24,
                     "endColumn": 35,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./evo_agents/kg/retention.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 49,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 60,
-                    "endColumn": 94,
                     "lineCount": 1
                 }
             }

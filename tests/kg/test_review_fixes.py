@@ -1,5 +1,5 @@
 """Fixes of the 2026-11-04 review of kg/: labels of entity props, the ceiling of failed calls, the state a build read,
-the memo committed as it goes, Vietnamese names, kg_status under the sink's clearance, the MCP server against messages
+the memo keeping each entry once written, Vietnamese names, kg_status under the sink's clearance, the MCP server against messages
 it cannot read, and the label filter before the limit."""
 
 import io
@@ -11,17 +11,17 @@ import pytest
 import yaml
 
 from evo_agents.kg import entities, memo, serve, strategy
-from evo_agents.kg.build import build_project, verify_build
+from evo_agents.kg.build import verify_rows
 from evo_agents.kg.corpus import Corpus
+from evo_agents.kg.graph_model import Graph, edge_id, label_columns
 from evo_agents.kg.memo import Memo
 from evo_agents.kg.policy import Label
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Graph, Store, edge_id
-from evo_agents.kg.store_filters import label_columns
-from evo_agents.kg.store_session import StoreSession
+from evo_agents.kg.snapshot import Snapshot
 from evo_agents.kg.sync import sync_project
+from tests.kg.built import build, rows_of, view_of
 from tests.kg.conftest import doc
-from tests.kg.hub_graph import hub_status
+from tests.kg.hub_graph import hub_session, hub_status
 from tests.kg.projects import write
 from tests.kg.test_extract_entities import setup
 
@@ -68,11 +68,6 @@ def with_entities(project, kg_env, script_text, tmp_path):
     return project
 
 
-def latest(project):
-    store = Store.open_file(project.root / "graph.sqlite")
-    return store, store.latest_ready()
-
-
 def test_entity_label_props_come_from_a_derivation_the_label_reads(fake_project, kg_env, tmp_path):
     project, fake = fake_project
     fake.set(
@@ -82,13 +77,9 @@ def test_entity_label_props_come_from_a_derivation_the_label_reads(fake_project,
         ]
     )
     project = with_entities(project, kg_env, SAME_ENTITY, tmp_path)
-    report = build_project(project)
+    report = build(project)
     assert report.ok, report.errors
-    store, b = latest(project)
-    try:
-        node = store.node("entity:Concept:shared", b)
-    finally:
-        store.close()
+    node = view_of(project).node("entity:Concept:shared")
     assert node["label"][0] == 1, "the internal item states it too: the node is internal"
     assert node["props"]["evidence"] == "said in the internal item"
     assert node["props"]["item"] == "docs:doc:b"
@@ -97,13 +88,13 @@ def test_entity_label_props_come_from_a_derivation_the_label_reads(fake_project,
 def test_failed_call_ceiling_counts_failed_and_unreadable_calls(tmp_path, kg_env):
     failing = [sys.executable, "-c", "import sys; sys.exit(3)"]
     project, _ = setup(tmp_path, kg_env, extra={"command": failing, "max_calls": 1})
-    cov = build_project(project).coverage["entities"]
+    cov = build(project).coverage["entities"]
     assert cov["calls"] == 1 and cov["failed"] == 1 and cov["skipped"] == 2 and "max_calls 1" in cov["stopped"]
     assert cov["tokens_in"] > 0, "a call that reported no usage is estimated"
 
     garbled = [sys.executable, "-c", "import sys; sys.stdin.read(); print('no json here')"]
     project, _ = setup(tmp_path / "b", kg_env, extra={"command": garbled, "max_tokens": 1})
-    cov = build_project(project).coverage["entities"]
+    cov = build(project).coverage["entities"]
     assert cov["calls"] == 1 and cov["failed"] == 1 and "max_tokens 1" in cov["stopped"]
 
 
@@ -137,43 +128,77 @@ def test_digest_read_is_the_state_the_build_read(fake_project, monkeypatch):
         return records
 
     monkeypatch.setattr(Corpus, "read_state", read_then_sync)
-    report = build_project(project)
+    report = build(project)
     monkeypatch.setattr(Corpus, "read_state", read)
     assert report.ok and report.seconds > 0
-    store, b = latest(project)
-    try:
-        recorded = store.build_row(b)["state_digest"]
-    finally:
-        store.close()
+    recorded = rows_of(project).summary["stats"]["state_digest"]
     corpus = project.corpus()
     try:
         now = corpus.state_digest()
     finally:
         corpus.close()
     assert recorded != now, "the build read one item: it records that state, so the next build is not skipped"
-    assert not build_project(project).skipped
+    assert not build(project).skipped
 
 
-def test_memo_commit_as_it_goes_keeps_rows_after_a_crash(tmp_path, monkeypatch):
-    path = tmp_path / "memo.sqlite"
-    monkeypatch.setattr(memo, "COMMIT_ROWS", 2)
+def test_memo_keeps_each_entry_once_written_and_skips_one_a_crash_cut(tmp_path):
+    path = tmp_path / "memo"
     m = Memo(path)
     for i in range(3):
         m.run("stage", "1", {"i": str(i)}, lambda i=i: {"out": i})
-    m.run("paid", "1", {"i": "x"}, lambda: {"answer": 1}, commit=True)
-    other = sqlite3.connect(path, timeout=0)  # another build: no write lock left held
-    try:
-        other.execute("BEGIN IMMEDIATE")
-        other.rollback()
-        assert other.execute("SELECT count(*) FROM memo").fetchone()[0] == 4
-    finally:
-        other.close()
-    m.db.close()  # a crash: nothing committed at the end
+    m.run("paid", "1", {"i": "x"}, lambda: {"answer": 1})
+    # a crash: nothing closed. Another build reads every entry, and one half written counts as none.
+    other = Memo(path)
+    assert len(other.keys("stage")) == 3 and len(other.keys("paid")) == 1
+    assert other.run("paid", "1", {"i": "x"}, lambda: {"answer": 2})[0] == {"answer": 1}
+    cut = next((path / "stage").glob("*/*"))
+    cut.write_bytes(cut.read_bytes()[:10])
+    outs = [other.run("stage", "1", {"i": str(i)}, lambda: {"out": "again"})[0]["out"] for i in range(3)]
+    assert outs.count("again") == 1
+    assert other.stats()["stage"] == {"hits": 2, "misses": 1}
 
 
-def test_verify_build_closes_what_it_opened(tmp_path, kg_env):
+def test_memo_takes_the_rows_of_the_memo_sqlite_beside_it_once(tmp_path):
+    import gzip
+
+    inputs = {"item": "a"}
+    key = memo.memo_key("entities", "1", inputs)
+    answer = {"nodes": [{"kind": "Actor", "name": "Ada"}], "usage": {"input_tokens": 7}}
+    old = sqlite3.connect(tmp_path / "memo.sqlite")  # as a version before entry files wrote it
+    old.execute("CREATE TABLE memo (key TEXT PRIMARY KEY, stage TEXT NOT NULL, output BLOB NOT NULL, output_hash TEXT)")
+    data = memo.canonical_json(answer)
+    old.execute("INSERT INTO memo VALUES (?, 'entities', ?, ?)", (key, gzip.compress(data), memo.sha256(data)))
+    old.commit()
+    old.close()
+
+    def paid():
+        raise AssertionError("the model was called again")
+
+    m = Memo(tmp_path / "memo")
+    assert m.run("entities", "1", inputs, paid) == (answer, memo.sha256(data))
+    assert m.keys("entities") == {key} and (tmp_path / "memo" / memo.IMPORTED).exists()
+    (tmp_path / "memo.sqlite").unlink()
+    assert Memo(tmp_path / "memo").run("entities", "1", inputs, paid)[0] == answer
+
+
+def test_memo_traced_entries_and_usages(tmp_path):
+    m = Memo(tmp_path / "memo")
+    out = m.run_traced("link", "1", {"i": "a"}, lambda: ({"to": "b"}, ["k"]), lambda keys: "held-1")
+    assert m.run_traced("link", "1", {"i": "a"}, lambda: ({"to": "c"}, ["k"]), lambda keys: "held-1") == out
+    assert m.run_traced("link", "1", {"i": "a"}, lambda: ({"to": "c"}, ["k"]), lambda keys: "held-2")[0] == {"to": "c"}
+    assert (tmp_path / "memo" / "link+reads").is_dir()
+    m.run("entities", "1", {"i": "a"}, lambda: {"usage": {"input_tokens": 3}})
+    m.run("entities", "1", {"i": "b"}, lambda: {})
+    assert sorted(map(str, memo.usages(tmp_path / "memo", "entities"))) == ["{'input_tokens': 3}", "{}"]
+    held = Memo(None)
+    held.run("entities", "1", {"i": "a"}, lambda: {"x": 1})
+    assert held.keys("entities") == {memo.memo_key("entities", "1", {"i": "a"})}
+    assert held.run("entities", "1", {"i": "a"}, lambda: {"x": 2})[0] == {"x": 1}
+
+
+def test_verify_rows_closes_what_it_opened(tmp_path, kg_env):
     project, _ = setup(tmp_path, kg_env)
-    report = build_project(project)
+    report = build(project)
     opened, closed = [], []
     real_init, real_close = Memo.__init__, Memo.close
 
@@ -187,7 +212,7 @@ def test_verify_build_closes_what_it_opened(tmp_path, kg_env):
 
     Memo.__init__, Memo.close = init, close
     try:
-        assert verify_build(project, report.content_hash, cold=True)["match"]
+        assert verify_rows(project, report.content_hash, cold=True)["match"]
     finally:
         Memo.__init__, Memo.close = real_init, real_close
     assert len(opened) == 2 and set(map(id, closed)) == set(map(id, opened))
@@ -199,12 +224,8 @@ def test_vietnamese_slug_keeps_names_apart(tmp_path, kg_env, fake_project):
     project, fake = fake_project
     fake.set(items=[doc("a")])
     project = with_entities(project, kg_env, VIETNAMESE, tmp_path)
-    assert build_project(project).ok
-    store, b = latest(project)
-    try:
-        edges = [e for e in store.edges_of("entity:Concept:le-van-tam", b, "out") if e["rel"] == "depends_on"]
-    finally:
-        store.close()
+    assert build(project).ok
+    edges = [e for e in view_of(project).edges_of("entity:Concept:le-van-tam", 0, "out") if e["rel"] == "depends_on"]
     assert [e["dst"] for e in edges] == ["entity:Concept:ly-van-tam"]
 
 
@@ -218,7 +239,7 @@ def test_status_clearance_withholds_and_raises_the_label(fake_project, kg_env):
     project = load_project_at(project.harness.root, kg_env)
     fake.set(items=[doc("a", "# A\n\nnamed only in the secret source\n")])
     assert all(r.ok for r in sync_project(project))
-    assert build_project(project).ok
+    assert build(project).ok
     secret["label"] = {"level": "customer", "integrity": "U"}  # labelled above the sink since the build
     path.write_text(yaml.safe_dump(data, sort_keys=False))
     project = load_project_at(project.harness.root, kg_env)
@@ -231,7 +252,7 @@ def test_status_clearance_withholds_and_raises_the_label(fake_project, kg_env):
     assert "secret                 withheld: above the clearance of this sink" in status["content"][0]["text"]
 
     assert all(r.ok for r in sync_project(project))
-    assert build_project(project).ok
+    assert build(project).ok
     status = hub_status(project, "test-session")  # the build holds the secret items: its counts alone
     data = status["structuredContent"]
     assert "coverage" not in data["graph"] and data["graph"]["nodes"] > 0 and not data["reads"]
@@ -248,12 +269,9 @@ def test_mcp_malformed_messages_get_errors_and_the_server_goes_on(fake_project, 
     project, fake = fake_project
     fake.set(items=[doc("a")])
     assert all(r.ok for r in sync_project(project))
-    assert build_project(project).ok
+    assert build(project).ok
 
-    def broken(*args, **kwargs):
-        raise sqlite3.DatabaseError("database disk image is malformed")
-
-    session = StoreSession(project, "test-session")
+    session = hub_session(project, "test-session")
     call = '{"jsonrpc": "2.0", "id": %d, "method": "tools/call", "params": %s}'
     replies = run_stdio(
         monkeypatch,
@@ -276,10 +294,6 @@ def test_mcp_malformed_messages_get_errors_and_the_server_goes_on(fake_project, 
     assert codes[4:6] == [-32602, -32602]
     assert replies[7] == {"jsonrpc": "2.0", "id": 5, "result": {}}
 
-    monkeypatch.setattr(Store, "search_scored", broken)
-    got = session.call("kg_search", {"query": "a"})
-    assert got["isError"] and "could not be read" in got["content"][0]["text"]
-
     class Exploding:
         def call(self, name, args):
             raise RuntimeError("the hub went away")
@@ -298,13 +312,13 @@ def test_filter_before_limit_in_search(fake_project, kg_env):
     shown = [doc(f"s{i}", f"# S{i}\n\nzebra and many other words of a longer text {i}\n") for i in range(3)]
     fake.set(items=hidden + shown)
     assert all(r.ok for r in sync_project(project))
-    assert build_project(project).ok
+    assert build(project).ok
     for args in ({"query": "zebra", "limit": 3}, {"query": "zebra", "limit": 3, "kinds": ["Section"]}):
-        found = StoreSession(project, "test-session").call("kg_search", args)["structuredContent"]["results"]
+        found = hub_session(project, "test-session").call("kg_search", args)["structuredContent"]["results"]
         assert sorted(n["id"] for n in found) == [f"docs:doc:s{i}#s{i}" for i in range(3)], args
 
 
-def test_filter_before_limit_in_edges_of(tmp_path):
+def test_filter_before_limit_in_edges_of():
     low, high = Label(0, 0, "T", frozenset({"p"})), Label(2, 0, "T", frozenset({"p"}))
     graph = Graph()
     unit = {"item_id": "x", "rev": "1", "source": "s", "anchor": "", "hash": None, "span": None}
@@ -321,15 +335,9 @@ def test_filter_before_limit_in_edges_of(tmp_path):
         graph.edges[eid] = {"src": "hub", "rel": "relates_to", "dst": nid, "props": {}, "status": "parsed"}
         graph.edges[eid] |= {"conf": 1.0, "label": label}
         graph.derivations[eid] = [{"units": [u], "needs": ["hub", nid]}]
-    store = Store(tmp_path / "graph.sqlite")
-    try:
-        b = store.write(graph, state_digest="x", coverage={}, stats={}, policy=None)
-        store.ceiling = (0, 0)
-        assert [e["dst"] for e in store.edges_of("hub", b, "out", limit=2)] == ["z8", "z9"]
-        store.ceiling = None
-        assert len(store.edges_of("hub", b, "out", limit=2)) == 2
-    finally:
-        store.close()
+    snap = Snapshot.from_graph(graph)
+    assert [e["dst"] for e in snap.view(ceiling=(0, 0)).edges_of("hub", 0, "out", limit=2)] == ["z8", "z9"]
+    assert len(snap.view().edges_of("hub", 0, "out", limit=2)) == 2
 
 
 def test_harness_walk_leaves_out_symlinks_out_of_the_repo(tmp_path):
@@ -341,3 +349,22 @@ def test_harness_walk_leaves_out_symlinks_out_of_the_repo(tmp_path):
     (root / "docs/link.md").symlink_to(outside)
     (root / "docs/inner.md").symlink_to(root / "docs/a.md")
     assert [rel for _, rel in walk(root)] == ["docs/a.md", "docs/inner.md"]
+
+
+def test_memo_import_skips_a_cut_row_and_marks_nothing_it_could_not_read(tmp_path):
+    import gzip
+
+    key = memo.memo_key("entities", "1", {"item": "a"})
+    old = sqlite3.connect(tmp_path / "memo.sqlite")
+    old.execute("CREATE TABLE memo (key TEXT PRIMARY KEY, stage TEXT NOT NULL, output BLOB NOT NULL, output_hash TEXT)")
+    data = memo.canonical_json({"nodes": []})
+    old.execute("INSERT INTO memo VALUES (?, 'entities', ?, ?)", (key, gzip.compress(data), memo.sha256(data)))
+    cut = memo.memo_key("entities", "1", {"item": "b"})
+    old.execute("INSERT INTO memo VALUES (?, 'entities', ?, 'x')", (cut, gzip.compress(data)[:5]))
+    old.commit()
+    old.close()
+    assert Memo(tmp_path / "memo").keys("entities") == {key}
+
+    (tmp_path / "other.sqlite").write_bytes(b"not a database" * 100)
+    Memo(tmp_path / "other")
+    assert not (tmp_path / "other" / memo.IMPORTED).exists()

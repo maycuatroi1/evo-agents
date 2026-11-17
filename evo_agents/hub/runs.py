@@ -152,8 +152,9 @@ KEEP_GOING_TURNS = 3
 # an agent type of its own (``hub.question_runs``); the login session of a browser identity, which a person drives in
 # the identity's Chromium with no agent (``hub.browser_login``); the weekly probe of a change of the Curator, k sessions
 # with its rule on and k with it off (``hub.probes``); the shell command of a cron job, which the worker runs with no
-# agent (``hub.command_runs``). A session on a member's own machine, which no worker
-# runs, is LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
+# agent (``hub.command_runs``); the Curator's evolution of a harness or an agent's configuration, a loop of candidates
+# scored on the select split of the replay suite and the probes (``hub.evolve``). A session on a member's own machine,
+# which no worker runs, is LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs, announces and claims are in it
 RunKind = Literal[
     "step",
     "plan",
@@ -169,6 +170,7 @@ RunKind = Literal[
     "question",
     "browser",
     "command",
+    "evolve",
 ]
 RUN_KINDS: tuple[str, ...] = get_args(RunKind)
 LOCAL_KIND = "local"
@@ -176,7 +178,7 @@ ShownKind = Literal[RunKind, "local"]
 SHOWN_KINDS: tuple[str, ...] = get_args(ShownKind)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
 # the kinds only the night shift queues, and the Builder
-CURATOR_KINDS = ("review", "judge", "replay", "history", "probe")
+CURATOR_KINDS = ("review", "judge", "replay", "history", "probe", "evolve")
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
 SESSION_PER_STEP = "session_per_step"  # a daemon that runs a plan run with a new agent session for each step
 # a daemon whose author run's agent asks decisions (`evo-agents worker ask`) and waits for all of a turn's answers
@@ -297,6 +299,12 @@ CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "finish",
 # at once; one that waits only for a time or an event of the hub, later than this, is parked at once
 DECISION_WAIT_SECONDS = 10 * 60
 PARKED_DAYS = 7  # a run parked this long is cancelled, and its open decisions expire
+# The priority of a run (runs.priority, schema 0255), highest first, as a task's (tables_tasks.PRIORITIES): a worker
+# claims the queued runs by it first, then by id. A plan or step run, or a run of the reaper or a schedule, has the
+# default.
+Priority = Literal["urgent", "high", "medium", "low"]
+PRIORITIES: tuple[str, ...] = get_args(Priority)
+DEFAULT_PRIORITY = "medium"
 # the longest timeout the runs table takes for a run of a kind other than step (schema 0014): that of a chat, task or
 # question run, which no time cap stops before
 LONGEST_TIMEOUT_MIN = 24 * 60

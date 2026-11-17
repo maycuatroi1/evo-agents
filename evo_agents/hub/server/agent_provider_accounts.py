@@ -7,7 +7,8 @@ provider with ``profile_id`` set, sealed under ``agent_provider_aad`` of the pro
 creates or replaces one whole, PATCH changes what it is given and keeps the id, so weight, priority, rotation, runs
 and shares go on, DELETE deletes it softly. The key is given by ``value`` only: an agent has no env secret of a
 member to copy. ``workers`` are those of an agent's account: one or more, the caller's own or shared ones serving the
-project. Every member of the project reads them, without the key.
+project. Every member of the project reads them, without the key, and may have the hub read the quota a Z.ai one has
+left (POST .../{name}/quota, ``provider_quota``), which it keeps as the account's last usage.
 
 The name space is that of the agent's accounts: a name an env account of the agent holds answers 409, as a PUT of
 an env account answers 409 for a provider account's name. The agent counts both against MAX_ACCOUNTS_PER_AGENT. Each
@@ -18,7 +19,7 @@ secret's id, the provider and the host of the base URL; no route, log line, audi
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
@@ -48,6 +49,7 @@ from evo_agents.hub.server.agent_accounts import (
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
+from evo_agents.hub.server.provider_quota import ProviderQuota, refresh_for
 from evo_agents.hub.server.provider_store import (
     ModelsFrom,
     ProviderAccount,
@@ -71,7 +73,7 @@ from evo_agents.hub.server.worker_models import WORKER_NAME
 log = logging.getLogger(__name__)
 
 PATH = "/{project}/agents/{handle}/provider-accounts"
-REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
+REFUSALS: dict[int | str, dict[str, Any]] = {code: {"model": ErrorBody} for code in (403, 404, 409, 422, 503)}
 Workers = list[Annotated[str, Field(pattern=WORKER_NAME)]]
 Models = list[Annotated[str, Field(min_length=1, max_length=200)]]
 
@@ -295,3 +297,16 @@ async def delete_agent_provider_account(
     log.info("agent provider account deleted", extra={"project": project, "handle": handle})
     gateway_sync.poke(request.app)  # the gateway follows the write
     return Response(status_code=204)
+
+
+@router.post(PATH + "/{name}/quota", response_model=ProviderQuota, responses=REFUSALS)
+async def quota_of_agent_provider_account(
+    request: Request, project: ProjectName, handle: Handle, name: AccountName, user: CurrentUser, response: Response
+) -> ProviderQuota:
+    """Read the quota the agent's Z.ai account ``name`` has left and keep it as the account's last usage; any member
+    of the project may."""
+    sealer_of(request)  # 503 without EVO_HUB_SECRETS_KEY
+    async with request.app.state.engine.begin() as conn:
+        row = await _own(conn, await _readable(conn, user, project, handle), name, handle)
+    response.headers.update(NO_STORE)
+    return await refresh_for(request, row.id)

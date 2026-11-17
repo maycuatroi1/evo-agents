@@ -95,7 +95,8 @@ token budget.
 
 Hooks (`evo-agents hub hook session-start|stop|post-tool-use|user-prompt|local-tool|session-end`, same pins and `|| true` as evo-kg):
 
-- SessionStart pulls the hub's memories of the session directory into Claude Code's memory directory, writes the
+- SessionStart pulls the hub's memories of the session directory into Claude Code's memory directory (a memory the
+  hub deleted leaves with its MEMORY.md line when its file did not change here), writes the
   plan copies of its harness (no commit; a copy edited by hand is left as it is and named), counts the skills
   `evo-agents hub skills sync` would change, and prints one line: hub, project, memories pulled, skills to sync.
 - Stop pushes the memory files that changed since the last sync, so the next session on another machine has them.

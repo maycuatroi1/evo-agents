@@ -447,6 +447,15 @@ def test_prose_credential_a_plan_run_asking_a_credentials_value_in_words_gets_42
             id="tokens-and-value-in-two-sentences",
         ),
         pytest.param({"question": "Key the cache on CACHE_KEY or on PRIMARY_KEY?"}, id="keys-of-data"),
+        pytest.param(  # run 8919: refused four times for "set" next to "Token strategy" and "PUT" next to "run token"
+            {
+                "question": "Will you run the 3 commands in the attached file and reply with the two run ids?",
+                "context": "A run token (evr_...) never reaches the owner's autonomy (PUT /v1/projects/{p}/policy).\n"
+                "1. hub policy set with policy-new.json (turns on the Token strategy)\n"
+                "2. set the token ceiling and the weekly token budget",
+            },
+            id="token-strategy",
+        ),
         pytest.param({"category": "deploy", "question": "Deploy with OPENAI_API_KEY set from the vault?"}, id="deploy"),
         pytest.param(
             {
@@ -489,12 +498,39 @@ def test_prose_credential_the_gate_holds_plan_and_author_runs_alone():
         ("Cost per file rose by 0.9 tokens. Give it a week?", False),
         ("The token budget is 3000; give each step the same value?", False),
         ("Which tokens_per_file value should the plan accept?", False),
+        # run 8919: tokens a model reads and writes, next to a word of giving, ask for no credential
+        ("1. hub policy set with policy-new.json (turns on the Token strategy)", False),
+        ("Should I set the token ceiling to 2M per night?", False),
+        ("Give each step the same token budget?", False),
+        ("Set the plan token-and-quota-economy as done?", False),
+        ("Give the hard step more tokens, or set max output tokens to 32k?", False),
+        ("Đặt trần token 2 triệu và chiến lược token cho mỗi đêm?", False),
+        ("A run token never reaches the policy (PUT /v1/projects/{p}/policy).", False),
+        ("Anh đăng nhập hub rồi chạy lệnh giúp em nhé?", False),
+        # and a credential asked in words still is refused, beside them or alone
+        ("Please paste your token.", True),
+        ("Can you set the token for the Z.ai account?", True),
+        ("Set the token budget to 3000 and paste the bot token here.", True),
+        ("Send me the access token, please.", True),
+        ("Enter your hub password to continue?", True),
+        ("Cung cấp token GitHub cho run nhé?", True),
+        ("Anh đăng nhập rồi nhập mật khẩu của bot vào đây nhé?", True),
     ],
 )
 def test_prose_credential_reads_a_credential_and_its_giving_in_one_sentence(question, refused):
     from evo_agents.hub.credential_requests import prose_credential
 
     assert (prose_credential("scope", question, None) is not None) is refused
+
+
+def test_prose_credential_names_the_two_words_it_read_and_never_the_rest():
+    from evo_agents.hub.credential_requests import prose_credential
+
+    said = prose_credential("scope", "Can you set the token for the northwind-bot account?", None)
+    assert said is not None and '(it read "token" and "set" in one sentence)' in said
+    assert "northwind" not in said
+    named = prose_credential("scope", "Please give me TELEGRAM_BOT_TOKEN.", None)
+    assert named is not None and "it read" not in named and "TELEGRAM_BOT_TOKEN" in named
 
 
 # a3 of plan hub-attention-runtime: a question the run's autonomy leaves to its agent is refused with the card's rule

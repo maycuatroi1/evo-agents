@@ -26,8 +26,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
+from evo_agents.kg.graph_model import edge_id
 from evo_agents.kg.policy import TOP_AUDIENCE
-from evo_agents.kg.store import Store, edge_id
+from evo_agents.kg.snapshot import SnapshotView
 
 SOURCE = "plugin.hub_decisions"
 ITEM = f"{SOURCE}:binding:decisions"
@@ -56,7 +57,7 @@ def subject(kind: str, src: str, rel: str | None, dst: str | None) -> tuple[list
     return nodes, edge
 
 
-def subjects(store: Store, b: int, visible: Callable[[tuple], bool], nodes, edges) -> dict:
+def subjects(store: SnapshotView, b: int, visible: Callable[[tuple], bool], nodes, edges) -> dict:
     """Whether build b holds each node id of ``nodes`` (directly or as an alias) and each (src, rel, dst) of
     ``edges``, and whether the reader sees it: VISIBLE, HIDDEN or ABSENT, by id and by triple. The store reads every
     audience for the while, so a hidden node is told from a missing one; the reader's audience comes back after."""

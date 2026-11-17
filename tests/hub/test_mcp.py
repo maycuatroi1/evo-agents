@@ -1,12 +1,12 @@
 """MCP on the hub (POST /mcp, ``evo_agents.hub.server.mcp``) and the stdio proxy ``evo-agents hub mcp``
 (``evo_agents.hub.mcp_proxy``).
 
-Checked here, as step 8 asks: tools/list names exactly the 44 tools, the kg_* ones with the schemas of ``kg serve``;
+Checked here, as step 8 asks: tools/list names exactly the 45 tools, the kg_* ones with the schemas of ``kg serve``;
 kg_* answer as ``kg serve`` does on the same store (the graph a machine built is the artifact the hub answers from); a
 memory alice writes with memory_write reaches bob's memory_search only when the read rule lets it through; POST /mcp
 without the trailing slash answers 200, never a 307; a request without a Bearer token is 401; a Host outside the
 allow-list is refused; and ``printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\\n' | evo-agents hub mcp`` prints
-the 44 tools against ``hub serve``. Also the failure paths around them: a web session cookie, a revoked token, a
+the 45 tools against ``hub serve``. Also the failure paths around them: a web session cookie, a revoked token, a
 foreign Origin, malformed session headers, an oversized body and Postgres away at the gate; an undeclared sink, a
 missing project, a reader writing, a stale revision and bad arguments at the tools; and for the proxy, a hub that
 does not answer, refuses the token, restarts, or answers too slowly, and credentials that are missing. Neither the
@@ -23,6 +23,7 @@ import hashlib
 import io
 import json
 import logging
+import re
 import socket
 import subprocess
 import sys
@@ -120,6 +121,7 @@ HUB_TOOL_NAMES = [
     "decision_list",
     "curator_replay",
     "curator_probe_report",
+    "curator_evolve",
     "history_sessions",
     "history_search",
     "transcript_lines",
@@ -138,9 +140,9 @@ def doc(key: str, body: str) -> dict:
 # The tool list
 
 
-def test_the_endpoint_has_forty_four_tools_and_the_kg_ones_are_those_of_kg_serve():
+def test_the_endpoint_has_forty_five_tools_and_the_kg_ones_are_those_of_kg_serve():
     names = [tool["name"] for tool in mcp_tools.TOOLS]
-    assert len(names) == len(set(names)) == 44
+    assert len(names) == len(set(names)) == 45
     assert names == [tool["name"] for tool in serve.TOOLS] + HUB_TOOL_NAMES
     assert mcp_tools.TOOLS[:7] == serve.TOOLS  # same objects: names and schemas cannot drift
     for tool in mcp_tools.HUB_TOOLS + mcp_tools.REVIEW_TOOLS + mcp_tools.HISTORY_READ_TOOLS + mcp_tools.CHAT_TOOLS:
@@ -891,9 +893,9 @@ def hub(hub_db, tmp_path, monkeypatch):
 
 
 def build_graph_on_a_machine(root: Path, monkeypatch) -> SimpleNamespace:
-    from evo_agents.kg.build import build_project
     from evo_agents.kg.project import load_project_at
     from evo_agents.kg.sync import sync_project
+    from tests.kg import built
 
     harness, home = root / "alpha-harness", root / "kg-home"
     harness.mkdir(parents=True)
@@ -905,19 +907,14 @@ def build_graph_on_a_machine(root: Path, monkeypatch) -> SimpleNamespace:
     monkeypatch.setenv("EVO_KG_HOME", str(home))
     project = load_project_at(harness, home)
     assert all(result.ok for result in sync_project(project, ["docs", "deals"]))
-    report = build_project(project)
-    path = project.root / "graph.sqlite"
-    data = path.read_bytes()
-    return SimpleNamespace(
-        project=project, path=path, data=data, sha256=hashlib.sha256(data).hexdigest(), report=report
-    )
+    report = built.build(project)
+    assert report.ok, report.errors
+    return SimpleNamespace(project=project, rows=built.rows_of(project), report=report)
 
 
 def install_graph(db, cache: Path, laptop) -> None:
-    """The laptop's graph as the hub's latest successful build of alpha, in the api's cache already."""
-    target = cache / "kg" / "graphs" / PROJECT / f"{laptop.sha256}.sqlite"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(laptop.data)
+    """The laptop's graph as the hub's latest successful build of alpha, its rows in the hub's graph tables; ``cache``
+    is not written."""
     from sqlalchemy import func, insert, literal, select
 
     from evo_agents.hub import tables
@@ -926,34 +923,24 @@ def install_graph(db, cache: Path, laptop) -> None:
     build = select(
         projects.c.id,
         literal("succeeded"),
-        literal(laptop.sha256),
-        literal(len(laptop.data)),
         literal(report.content_hash),
         literal(report.nodes),
         literal(report.edges),
         func.now(),
         func.now(),
     ).where(projects.c.name == PROJECT)
-    columns = ["project_id", "status", "artifact_sha256", "artifact_size", "content_hash", "nodes", "edges"]
+    columns = ["project_id", "status", "content_hash", "nodes", "edges"]
     built = insert(tables.kg_builds).from_select([*columns, "started_at", "finished_at"], build)
     ((build_id, project_id),) = live.sql(db, built.returning(tables.kg_builds.c.id, tables.kg_builds.c.project_id))
-    keep_rows(db, project_id, build_id, target)
+    keep_rows(db, project_id, build_id, laptop.rows)
 
 
-def keep_rows(db, project_id: int, build_id: int, path: Path) -> None:
-    """The rows of the graph file at ``path`` in the hub's graph tables (``kg_graph_rows``) as build ``build_id``."""
+def keep_rows(db, project_id: int, build_id: int, rows) -> None:
+    """The rows of a build (``StoreRows``) in the hub's graph tables (``kg_graph_rows``) as build ``build_id``."""
     import asyncio
 
     from evo_agents.hub import kg_graph_rows
-    from evo_agents.kg.snapshot import store_rows
-    from evo_agents.kg.store import Store
     from tests.hub.test_kg_postgres_build import make_engine
-
-    store = Store.open_file(path, immutable=True)
-    try:
-        rows = store_rows(store, store.latest_ready())
-    finally:
-        store.close()
 
     async def keep():
         engine = make_engine(db)
@@ -1000,11 +987,11 @@ def failed(hub, member: str, name: str, arguments: dict | None = None, **options
 
 
 @needs_pg
-def test_tools_list_names_the_forty_four_tools_and_initialize_names_the_hub(hub):
+def test_tools_list_names_the_forty_five_tools_and_initialize_names_the_hub(hub):
     listed = rpc(hub, "alice", request(1, "tools/list"))
     assert listed.status_code == 200 and listed.headers["content-type"].startswith("application/json")
     tools = listed.json()["result"]["tools"]
-    assert len(tools) == 44
+    assert len(tools) == 45
     assert [t["name"] for t in tools] == [t["name"] for t in mcp_tools.TOOLS]
     assert {t["name"]: t["inputSchema"] for t in tools[:7]} == {t["name"]: t["inputSchema"] for t in serve.TOOLS}
     assert all(t["description"] == m["description"] for t, m in zip(tools, mcp_tools.TOOLS, strict=True))
@@ -1020,7 +1007,7 @@ def test_post_mcp_without_the_slash_answers_in_place_and_other_paths_and_methods
     for path in ("/mcp", "/mcp/"):
         response = rpc(hub, "alice", request(1, "tools/list"), path=path)
         assert response.status_code == 200, (path, response.status_code, response.headers.get("location"))
-        assert len(response.json()["result"]["tools"]) == 44
+        assert len(response.json()["result"]["tools"]) == 45
     got = hub.client.get("/mcp", headers=hub.alice, follow_redirects=False)
     assert got.status_code == 405 and got.headers["allow"] == "POST" and got.json()["error"] == "method_not_allowed"
     assert hub.client.delete("/mcp/", headers=hub.alice).status_code == 405
@@ -1118,16 +1105,31 @@ def plain(result: dict) -> dict:
     return data
 
 
-@needs_pg
-def test_kg_tools_answer_as_kg_serve_does_on_the_same_store(hub):
-    from evo_agents.kg.store_session import StoreSession
+def unnumbered(result: dict) -> dict:
+    """``result`` without the number of the build it read, which the hub gives its snapshot and a build in memory
+    does not share (``tests.kg.built``): the rest of it is the same on the same build."""
+    data = json.loads(json.dumps(result))
+    (data.get("structuredContent") or {}).pop("build", None)
+    for part in data.get("content") or []:
+        if isinstance(part.get("text"), str):
+            part["text"] = unnumbered_text(part["text"])
+    return data
 
-    local = StoreSession(hub.laptop.project, AGENT)  # the machine's store: the file the hub answers from
+
+def unnumbered_text(text: str) -> str:
+    return re.sub(r"\(build \d+([,)])", r"(build\1", text)
+
+
+@needs_pg
+def test_kg_tools_answer_as_the_hubs_engine_does_on_the_same_build(hub):
+    from tests.kg.hub_graph import hub_session
+
+    local = hub_session(hub.laptop.project, AGENT)  # the hub's engine on the build in memory the hub's tables hold
 
     def same(name: str, arguments: dict) -> dict:
         here = plain(local.call(name, dict(arguments)))
         there = plain(tool(hub, "dora", name, arguments))  # dora's grant reaches customer, as the sink does
-        assert there == here, name
+        assert unnumbered(there) == unnumbered(here), name
         return there
 
     found = same("kg_search", {"query": "guide"})
@@ -1193,15 +1195,15 @@ def test_kg_tools_read_through_the_grant_and_the_session_sink(hub):
 
 @needs_pg
 def test_results_over_cap_chars_are_cut_and_kg_more_continues_them_for_their_owner(hub, monkeypatch):
-    from evo_agents.kg.store_session import StoreSession
+    from tests.kg.hub_graph import hub_session
 
     monkeypatch.setattr(serve, "CAP_CHARS", 300)
-    local = StoreSession(hub.laptop.project, AGENT)
+    local = hub_session(hub.laptop.project, AGENT)
     here = local.call("kg_context", {"query": "guide", "budget_tokens": 4000})
     there = ok(hub, "dora", "kg_context", {"query": "guide", "budget_tokens": 4000})
     handle = there["structuredContent"]["handle"]
     assert there["structuredContent"]["truncated"] and here["structuredContent"]["truncated"]
-    assert there["content"][0]["text"] == here["content"][0]["text"].replace(
+    assert unnumbered(there)["content"][0]["text"] == unnumbered(here)["content"][0]["text"].replace(
         here["structuredContent"]["handle"], handle
     )
     assert "unknown or expired handle" in failed(hub, "alice", "kg_more", {"handle": handle})  # not alice's
@@ -1216,8 +1218,8 @@ def test_results_over_cap_chars_are_cut_and_kg_more_continues_them_for_their_own
             if not part["structuredContent"]["remaining"]:
                 return "".join(parts)
 
-    assert whole(there, lambda args: ok(hub, "dora", "kg_more", args)) == whole(
-        here, lambda a: local.call("kg_more", a)
+    assert unnumbered_text(whole(there, lambda args: ok(hub, "dora", "kg_more", args))) == unnumbered_text(
+        whole(here, lambda a: local.call("kg_more", a))
     )
     assert "unknown or expired handle" in failed(hub, "dora", "kg_more", {"handle": handle})  # read to the end
 
@@ -2091,7 +2093,7 @@ def hub_mcp(env: dict, stdin: str, *args: str, cwd: Path | None = None) -> subpr
 
 
 @needs_pg
-def test_printf_tools_list_into_evo_agents_hub_mcp_prints_the_forty_four_tools(hub_db, tmp_path):
+def test_printf_tools_list_into_evo_agents_hub_mcp_prints_the_forty_five_tools(hub_db, tmp_path):
     with live.running_hub(hub_db, tmp_path, EVO_HUB_ADMINS=live.ADMIN) as served:
         token = live.insert_token(hub_db, "alice")
         home = sign_in(tmp_path / "home", served.url, "alice", token)
@@ -2102,7 +2104,7 @@ def test_printf_tools_list_into_evo_agents_hub_mcp_prints_the_forty_four_tools(h
         assert listed.returncode == 0, listed.stderr
         (line,) = listed.stdout.splitlines()
         answer = json.loads(line)
-        assert answer["id"] == 1 and len(answer["result"]["tools"]) == 44
+        assert answer["id"] == 1 and len(answer["result"]["tools"]) == 45
         assert [t["name"] for t in answer["result"]["tools"]] == [t["name"] for t in mcp_tools.TOOLS]
         assert "the hub at" not in listed.stderr  # the hub answered: no outage was reported
         assert '"path": "/mcp"' in served.log() and '"status": 200' in served.log()

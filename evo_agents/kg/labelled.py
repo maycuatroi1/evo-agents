@@ -1,14 +1,11 @@
-"""The nodes of a graph with their labels and whether the store's reader sees them, for a caller that decides with a
-ceiling of its own what a reader may read (the hub's starter questions, ``evo_agents.hub.kg_questions``)."""
+"""The nodes of a snapshot view (``evo_agents.kg.snapshot.SnapshotView``) with their labels and whether the view's
+reader sees them, for a caller that decides with a ceiling of its own what a reader may read (the hub's starter
+questions, ``evo_agents.hub.kg_questions``)."""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_filters import LIVE, SEEN
 
 
 @dataclass(frozen=True)
@@ -17,36 +14,18 @@ class Labelled:
     props: dict
     level: int
     location: int
-    seen: bool  # whether the store's reader (its audience) sees the node
+    seen: bool  # whether the view's reader (its audience) sees the node
 
     def within(self, ceiling: tuple[int, int] | None) -> bool:
         """Whether a reader up to ``ceiling`` (level, location) reads the node; None reads nothing."""
         return ceiling is not None and self.seen and self.level <= ceiling[0] and self.location <= ceiling[1]
 
 
-def labelled_nodes(store: Store, kinds: Sequence[str] = (), node_id: str | None = None) -> Iterator[Labelled]:
-    """The live nodes of the latest ready build of ``store``: of ``kinds``, or the one ``node_id`` names. ``store`` may
-    be a view of a snapshot (``evo_agents.kg.snapshot.SnapshotView``), whose nodes are those of its one build."""
-    snap = getattr(store, "snap", None)
-    if snap is not None:
-        wanted = set(kinds)
-        for n in snap.nodes:
-            if (n["id"] == node_id) if node_id is not None else (not wanted or n["kind"] in wanted):
-                label = n["label"]
-                yield Labelled(n["id"], n["props"], label[0] or 0, label[1] or 0, store.sees(n))
-        return
-    b = store.latest_ready()
-    if b is None:
-        return
-    args: dict = {"b": b}
-    if node_id is not None:
-        where, args["n"] = "node_id = :n", node_id
-    else:
-        where = f"kind IN ({', '.join(f':k{n}' for n in range(len(kinds)))})" if kinds else "1 = 1"
-        args |= {f"k{n}": kind for n, kind in enumerate(kinds)}
-    query = (
-        f"SELECT node_id, props, label_lvl, label_loc, CASE WHEN {SEEN} THEN 1 ELSE 0 END FROM nodes"
-        f" WHERE {where} AND {LIVE}"
-    )
-    for found, props, level, location, seen in store.db.execute(query, args):
-        yield Labelled(found, json.loads(props or "{}"), level or 0, location or 0, bool(seen))
+def labelled_nodes(view, kinds: Sequence[str] = (), node_id: str | None = None) -> Iterator[Labelled]:
+    """The nodes of the one build of ``view`` (a ``SnapshotView``): of ``kinds`` (every kind when empty), or the one
+    ``node_id`` names."""
+    wanted = set(kinds)
+    for n in view.snap.nodes:
+        if (n["id"] == node_id) if node_id is not None else (not wanted or n["kind"] in wanted):
+            label = n["label"]
+            yield Labelled(n["id"], n["props"], label[0] or 0, label[1] or 0, view.sees(n))

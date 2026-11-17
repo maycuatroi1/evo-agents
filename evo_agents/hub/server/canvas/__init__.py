@@ -130,9 +130,15 @@ TABLES = (
 )
 
 # The native pages of the hub's web (web/src/app/(app)/p/[project]/x/canvas, web/src/components/canvas): the canvases,
-# with a canvas's grid of nine cells, a claim's page and a baseline's review under it, in the project's menu.
+# with a canvas's grid of nine cells, a claim's page and a baseline's review under it, in the Business cycle of the
+# project's menu.
 PAGES = {
-    "canvases": {"title": "Lean Canvas", "icon": "table", "description": "The living Lean Canvas of each product"},
+    "canvases": {
+        "title": "Lean Canvas",
+        "icon": "table",
+        "description": "The living Lean Canvas of each product",
+        "area": "business",
+    },
 }
 
 MANIFEST = {

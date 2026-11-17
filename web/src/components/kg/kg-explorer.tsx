@@ -81,7 +81,7 @@ export function KgExplorer({ project, errors }: { project: string; errors: KgExp
   // Builds in progress are the page's live work: the top bar follows their query while it polls.
   const builds = useHubQuery(kgBuildsQuery(browserApi, project), errors.builds, { live: true });
   const graph = useHubQuery(kgGraphQuery(browserApi, project), errors.graph);
-  const summary = useHubQuery(kgClusterSummaryQuery(browserApi, project), null);
+  const summary = useHubQuery({ ...kgClusterSummaryQuery(browserApi, project), enabled: !choosing && view === "clusters" }, null);
 
   const write = useCallback(
     (next: URLSearchParams, push: boolean) => {

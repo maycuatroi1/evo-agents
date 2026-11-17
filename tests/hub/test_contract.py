@@ -307,6 +307,8 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker ops answer-wait",
         "worker ops curator-resume",
         "worker ops finding",
+        "worker ops plan-dispatch",
+        "worker ops priority",
         "worker ops read",
         "worker ops redeliver",
         "worker ops rerun",
@@ -332,7 +334,12 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker wait",
     ]
     added = printed["worker playbook add"]
-    assert [o["flags"] for o in added["options"]] == [["--text"], ["--evidence"], ["--lens"]]
+    assert [o["flags"] for o in added["options"]] == [
+        ["--text"],
+        ["--evidence"],
+        ["--lens"],
+        ["--until-proposal"],
+    ]
     assert [(p["name"], p.get("choices")) for p in printed["worker playbook retire"]["positionals"]] == [
         ("entry", None)
     ]
@@ -576,6 +583,7 @@ def test_the_docs_of_this_repository_pass():
     docs = ROOT / "docs"
     files = [
         ROOT / "README.md",
+        ROOT / "README.vi.md",
         ROOT / "CONTRIBUTING.md",
         docs / "getting-started.md",
         docs / "agents.md",

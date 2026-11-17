@@ -62,6 +62,12 @@ describe("policy form", () => {
     });
   });
 
+  it("keeps the sections the form does not edit, such as the Token strategy's routing", () => {
+    const held = { routing: { enabled: true, strategy: "cost-first" }, loop: { enabled: true }, merge: { pipeline_minutes: 90 } };
+    const form = policyForm({ policy: held, effective: { ...EFFECTIVE, merge: { ...EFFECTIVE.merge, pipeline_minutes: 90 } } });
+    expect(policyBody(form, held, REPOS).body).toEqual(held);
+  });
+
   it("drops a key the admin put back to its default", () => {
     const held = { breaker: { reverts_in_a_row: 3 } };
     const form = policyForm({ policy: held, effective: { ...EFFECTIVE, breaker: { ...EFFECTIVE.breaker, reverts_in_a_row: 3 } } });

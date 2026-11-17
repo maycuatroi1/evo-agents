@@ -31,9 +31,11 @@ request (``pr_pending``) on GitHub, or for its Judge (``judge_pending``) on GitL
 request; judged there, it stays open for its owner, or goes to the merge queue when the project's autonomy policy has
 its repo in mode auto (``merge_gate.curator_judged``; the hub's worker reaches the queue's job through this module).
 The job ``curator.changes`` (``advance``), one pass at a time, compares the change's branch with the default branch
-first (``pulls.compare_files``): a branch with commits of its own that change no file (a Builder that reverted its own
-work) gets no pull request and no Judge, and its change is ``closed`` with the reason "its branch changes nothing"
-(``_changes_nothing``, the audit row EMPTY). Otherwise it opens the pull request with the workers' App, reads its
+first (``pulls.compare_files``): a branch that changes no file gets no pull request and no Judge, and its change is
+``closed`` (``_changes_nothing``, the audit row EMPTY), with the reason "its branch changes nothing" when it has commits
+of its own (a Builder that reverted its own work), or "its branch has no commit of its own" when it has none (a change
+made outside the repo, on the hub's data, or one whose commits are on the default branch already), once no pull request
+of the branch merged or closed by hand settles it (``settle_by_branch``). Otherwise it opens the pull request with the workers' App, reads its
 files and runs ``diff_signs.hack_signs`` on them: a sign fails the change at once and puts its proposal at tier 3. Those
 files also give the proposal its tier again (``change_tiers.retier``: ``tiers.tier_of`` over the paths the pull request
 really changes, what the knowledge graph says of them and, for kind kg_source, what it does to knowledge.yaml key by
@@ -63,8 +65,8 @@ may merge it there (``curator_threads``, through ``merge_read``, ``merge_at_head
 hub's own merge uses too). While the project's night shift is paused the hub merges nothing: a judged change waits for
 it. Every WATCH_EVERY it reads such a pull request again: merged by hand, its change is ``merged`` (when, by whom, at
 which commit), closed without a merge, ``closed`` (``_settle``). A branch merged by hand outside the hub is read the same way
-(``settle_by_branch``): when GitHub refuses to open the pull request of a change (no commits between the default
-branch and its branch, say), and every WATCH_EVERY for a planned change whose plan has no step ready to run, the job
+(``settle_by_branch``): when a change's branch has no commit of its own, or GitHub refuses to open its pull request,
+and every WATCH_EVERY for a planned change whose plan has no step ready to run, the job
 looks for a pull request of the change's branch in any state, and a merged one, else a closed one, settles the change,
 which names it from then on. It also checks rulesets (``protection.check_rulesets``): the one of a repo a planned
 change waits for at its next pass, and every RECHECK_HOURS each one checked before. Each move of a change adds its
@@ -93,7 +95,7 @@ from functools import partial
 from sqlalchemy import exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import approval_heads, diff_signs, guard, judge, tables
+from evo_agents.hub import approval_heads, diff_signs, guard, judge, tables, tiers
 from evo_agents.hub.server import audit, autonomy_gates, change_tiers, merge_gate, skill_release
 from evo_agents.hub.server.change_views import change_of_plan, charter_of, raise_tier, set_change
 from evo_agents.hub.server.change_watch import settle_by_branch, watch_pass
@@ -124,10 +126,11 @@ EMPTY = "curator.empty"  # the hub closed a change whose branch changes nothing:
 
 
 async def _due_changes(engine: AsyncEngine) -> list:
-    c, pr = tables.curator_changes, tables.project_repos
+    c, pr, cr = tables.curator_changes, tables.project_repos, tables.curator_change_repos
+    several = exists().where(cr.c.change_id == c.c.id).label("several")  # a change in several repos (change_repos)
     async with engine.begin() as conn:
         query = (
-            select(c, pr.c.origin)
+            select(c, pr.c.origin, several)
             .join_from(c, pr, (pr.c.project_id == c.c.project_id) & (pr.c.name == c.c.repo), isouter=True)
             .where(c.c.state.in_(("pr_pending", "judged")))
             .order_by(c.c.id)
@@ -159,6 +162,7 @@ def _signs_of(diff, change, charter: dict, body: dict, cut: str | None) -> list[
         repo=change.repo,
         protected=[item for item in charter.get("protected_paths") or [] if isinstance(item, str)],
         verify_commands=judge.verify_commands(body),
+        evolvable=tiers.evolvable_paths(charter),
     )
     if cut is not None:
         signs.insert(0, {"kind": "diff_unreadable", "path": "(the pull request's files)", "line": None, "text": cut})
@@ -226,15 +230,11 @@ async def _pull_opened(engine: AsyncEngine, change, project: str, made: dict, ba
     return "signs" if signs else "opened"
 
 
-async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change_tiers.GraphReader) -> str:
+def opener(engine: AsyncEngine, app: GitHubApp, target: Target, change, title: str, project: str, signed: str):
+    """What opens the pull request of ``change``'s branch on ``target`` with a token: {"pull": the pull request as
+    GitHub answers it, "base": the default branch, "ahead_by": the commits of its own}, the pull request None for a
+    branch that changes no file, with commits of its own or none."""
     from evo_agents.hub.server import pulls
-
-    target = github_target(change.origin)
-    if target is None:
-        async with engine.begin() as conn:
-            await set_change(conn, change.id, state="open", reason="its repo has no origin on GitHub")
-        return "open"
-    title, project, charter, signed, body = await _pull_inputs(engine, change)
 
     async def opened(token: str) -> dict:
         async with engine.connect() as conn:  # the names of the guard leave the title and body on a published repo
@@ -249,8 +249,8 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
         if not isinstance(base, str) or not base:
             raise GitHubRefused(f"GitHub names no default branch of {target.owner}/{target.name}")
         compared = await pulls.compare_files(app, token, target.owner, target.name, base, change.branch)
-        if compared["ahead_by"] and compared["files"] == 0:  # commits of its own, and no file they change
-            return {"pull": None, "base": base}
+        if compared["ahead_by"] is not None and compared["files"] == 0:  # no file: commits that change none, or none
+            return {"pull": None, "base": base, "ahead_by": compared["ahead_by"]}
         made = await pulls.open_pull(
             app,
             token,
@@ -263,6 +263,19 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
         )
         return {"pull": made, "base": base}
 
+    return opened
+
+
+async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change_tiers.GraphReader) -> str:
+    from evo_agents.hub.server import pulls
+
+    target = github_target(change.origin)
+    if target is None:
+        async with engine.begin() as conn:
+            await set_change(conn, change.id, state="open", reason="its repo has no origin on GitHub")
+        return "open"
+    title, project, charter, signed, body = await _pull_inputs(engine, change)
+    opened = opener(engine, app, target, change, title, project, signed)
     try:
         found = await pulls.with_token(app, target.owner, target.name, "open", opened)
     except GitHubRefused as exc:
@@ -273,7 +286,11 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
             await set_change(conn, change.id, reason=reason_line(f"the pull request could not be opened: {exc}"))
         return "refused"
     if found["pull"] is None:
-        return await _changes_nothing(engine, change, project, found["base"])
+        if not found.get("ahead_by"):  # no commit of its own: a pull request merged or closed by hand settles it first
+            settled = await settle_by_branch(engine, app, change, target)
+            if settled is not None:
+                return settled
+        return await _changes_nothing(engine, change, project, found["base"], commits=bool(found.get("ahead_by")))
     made = found["pull"]
     number = made.get("number")
     if not judge.is_sha((made.get("head") or {}).get("sha")) or type(number) is not int:
@@ -289,13 +306,18 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change
     return await _pull_opened(engine, change, project, made, found["base"], signs, facts, charter)
 
 
-async def _changes_nothing(engine: AsyncEngine, change, project: str, base: str) -> str:
-    """Close ``change``, whose branch has commits of its own that change no file against ``base`` (a Builder that
-    reverted its own work, say): no pull request and no Judge for an empty diff. NOTHING, or MOVED for a change no
-    longer waiting for its pull request."""
+async def _changes_nothing(engine: AsyncEngine, change, project: str, base: str, commits: bool = True) -> str:
+    """Close ``change``, whose branch changes no file against ``base``: with ``commits``, commits of its own that change
+    nothing (a Builder that reverted its own work, say); without, no commit of its own at all (a change made on the
+    hub's data, or one already on ``base``), which GitHub would refuse a pull request for. No pull request and no Judge
+    for an empty diff. NOTHING, or MOVED for a change no longer waiting for its pull request."""
     why = (
         f"its branch changes nothing: GitHub finds no file {change.branch} changes against {base}, so the hub "
         "opened no pull request and queued no Judge"
+        if commits
+        else f"its branch has no commit of its own: {change.branch} adds nothing to {base} (the change was made outside "
+        "the repo, or its commits are on the default branch already), so the hub opened no pull request and queued no "
+        "Judge"
     )
     async with engine.begin() as conn:
         locked = await change_of_plan(conn, change.project_id, change.plan_id, lock=True)
@@ -357,7 +379,7 @@ async def _unchanged(conn: AsyncConnection, change) -> bool:
     return row is not None and (row.state, row.head_sha) == (change.state, change.head_sha)
 
 
-async def _reopen(engine: AsyncEngine, change, why: str, kept: str | None = None) -> str:
+async def _reopen(engine: AsyncEngine, change, why: str | None, kept: str | None = None) -> str:
     """Leave a judged change open for a person, saying ``why``; with ``kept``, the outcome of a change left as it is for
     a later pass (its night shift paused, its principal asked). MOVED, and nothing written, for a change that moved on
     since the pass read it."""
@@ -373,15 +395,13 @@ async def _reopen(engine: AsyncEngine, change, why: str, kept: str | None = None
     return kept or "open"
 
 
-async def _write_check(engine: AsyncEngine, app: GitHubApp, change) -> str:
+async def check_run(app: GitHubApp, target: Target, sha: str, passed: bool, verdict: dict, external_id: str) -> int:
+    """Write the Judge's verdict as its check run on commit ``sha`` of ``target`` with the workers' App; its id."""
     from evo_agents.hub.server import pulls
 
-    target = github_target(change.origin)
-    verdict = change.verdict or {}
-    reasons = list(verdict.get("failures") or [])
     conclusion, title, summary = judge.check_run_output(
-        bool(change.passed),
-        reasons,
+        passed,
+        list(verdict.get("failures") or []),
         verdict.get("verify") or [],
         verdict.get("hidden") or [],
         verdict.get("signs") or [],
@@ -393,14 +413,22 @@ async def _write_check(engine: AsyncEngine, app: GitHubApp, change) -> str:
             token,
             target.owner,
             target.name,
-            sha=change.head_sha,
+            sha=sha,
             conclusion=conclusion,
             title=title,
             summary=summary,
-            external_id=f"curator-change:{change.id}",
+            external_id=external_id,
         )
 
-    check_id = await pulls.with_token(app, target.owner, target.name, "check", write)
+    return await pulls.with_token(app, target.owner, target.name, "check", write)
+
+
+async def _write_check(engine: AsyncEngine, app: GitHubApp, change) -> str:
+    target = github_target(change.origin)
+    assert target is not None  # a change has a check run only once its pull request is open on GitHub
+    check_id = await check_run(
+        app, target, change.head_sha, bool(change.passed), change.verdict or {}, f"curator-change:{change.id}"
+    )
     async with engine.begin() as conn:
         await set_change(conn, change.id, check_run_id=check_id)
     return "checked"
@@ -729,6 +757,11 @@ async def _move_on(
         return
     if github_app is None:
         outcomes["no_app"] += 1
+        return
+    if change.several:
+        from evo_agents.hub.server import change_repos  # it reads the pull requests and merges of this module
+
+        outcomes[await change_repos.move_on(engine, github_app, curator_app, change, reader)] += 1
         return
     if change.state == "pr_pending":
         outcomes[await _open_pull(engine, github_app, change, reader)] += 1

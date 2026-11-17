@@ -19,4 +19,4 @@ export const LICENSE: DocLink = { file: "LICENSE" };
 export const INVITE_FORM_URL = `${REPO_URL}/issues/new?template=invite.yml`;
 
 export const GETTING_STARTED: DocLink = { file: "docs/getting-started.md", anchor: "run-your-first-plan" };
-export const LOCAL_GRAPH: DocLink = { file: "docs/getting-started.md", anchor: "try-the-knowledge-graph-locally" };
+export const LOCAL_GRAPH: DocLink = { file: "docs/getting-started.md", anchor: "build-a-project-knowledge-base" };

@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { notificationCountQuery } from "@/components/inbox/queries";
-import { ACTIVE_STATES, type RunList, runsSummaryQuery } from "@/components/runs/queries";
+import { ACTIVE_STATES, IDLE_REFRESH_MS, type RunList, runsSummaryQuery } from "@/components/runs/queries";
 import { workerView } from "@/components/workers/model";
 import { type Worker, workersQuery } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
@@ -12,10 +12,9 @@ import { chatsQuery, LIST_IDLE_MS } from "@/lib/chat-keys";
 import type { NavCount } from "./nav";
 
 /**
- * What the shell counts, read through the same queries as the pages that show the full picture, so a page and the
- * sidebar share one cache entry and one poll: the bell's count (every 10 seconds), the runs summary of the project
- * (every 5 seconds while a run is active, 30 otherwise), the workers list (every 10 seconds) and the visitor's chats
- * (every 30 seconds; the Chats pages ask every 10).
+ * What the shell counts: the bell's count (every 10 seconds), the runs summary of the project (every 30 seconds in
+ * the shell; the Runs and Plans pages poll every 5 seconds while a run is active), the live workers list (every 30
+ * seconds, without revoked workers) and the visitor's chats (every 30 seconds; the Chats pages ask every 10).
  */
 
 /** Runs of the project in an active state (`runs.ACTIVE_STATES`): queued, held by a worker, or waiting on a person. */
@@ -46,7 +45,11 @@ export function useOpenDecisions(): number | null {
 
 /** The project's active runs; null outside a project, until the hub has said, or when the visitor may not list them. */
 export function useActiveRuns(project: string | null): number | null {
-  const { data } = useQuery({ ...runsSummaryQuery(browserApi, project ?? ""), enabled: project !== null });
+  const { data } = useQuery({
+    ...runsSummaryQuery(browserApi, project ?? ""),
+    enabled: project !== null,
+    refetchInterval: IDLE_REFRESH_MS,
+  });
   return project !== null && data ? activeRunCount(data) : null;
 }
 
@@ -65,7 +68,7 @@ export type FleetState = { status: "loading" } | { status: "error" } | { status:
 
 /** The visitor's workers as the fleet line shows them (GET /v1/workers: their own, or every worker for a hub admin). */
 export function useFleet(): FleetState {
-  const { data, isError } = useQuery(workersQuery(browserApi));
+  const { data, isError } = useQuery({ ...workersQuery(browserApi, false), refetchInterval: IDLE_REFRESH_MS });
   if (data) return { status: "ready", fleet: fleetOf(data) };
   return isError ? { status: "error" } : { status: "loading" };
 }

@@ -8,8 +8,9 @@ Dokploy, with a managed database or Cloudflare R2, read [Deploying a hub for a c
 
 - A Linux server with Docker Engine and the Compose plugin v2 or newer, ports 80 and 443 open to the internet. At rest the stack uses about 1.5 GB of memory; each knowledge graph build can take up to 6 GB
   (`EVO_HUB_WORKER_KG_MEMORY`; a large project's build peaked at about 4.7 GB, a small one's takes far less), and two
-  run at once. Give it at least 4 CPUs and 8 GB, or lower `EVO_HUB_WORKER_KG_MEMORY`, `EVO_HUB_WORKER_MEMORY` and
-  `EVO_HUB_WORKER_CPUS` in the `.env` file below on a smaller machine.
+  run at once. The api holds each graph read in memory, up to `EVO_HUB_API_MEMORY` (default `7g`; a small project's
+  graph takes far less). Give it at least 4 CPUs and 8 GB, or lower `EVO_HUB_WORKER_KG_MEMORY`, `EVO_HUB_WORKER_MEMORY`,
+  `EVO_HUB_API_MEMORY` and `EVO_HUB_WORKER_CPUS` in the `.env` file below on a smaller machine.
 - Two DNS names that point at the server, for example `hub.example.org` for the hub and `s3.hub.example.org` for its
   blob store. Workers and the CLI upload and download through the second one.
 - A GitHub account to create the OAuth App people sign in with.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers, Plus, Trash2, X } from "lucide-react";
+import { Layers, Plus, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useMemo, useState } from "react";
 
@@ -27,12 +27,10 @@ import {
 } from "./account-pools-queries";
 import { allAgentAccountsQuery } from "./agent-queries";
 import { signInAgainOn401, useFailure } from "./hooks";
-import { type Provider, ProviderLogo } from "./provider-logo";
+import { PoolAccountItem, PoolPolicyEditor } from "./pool-parts";
 import { accountListQuery } from "./queries";
 
 const POOL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
-const LOGOS = new Set<string>(["claude", "anthropic", "openai", "gitlab", "github", "notion", "lark", "ssh"]);
-const logoOf = (provider: string): Provider => (LOGOS.has(provider) ? (provider as Provider) : "other");
 
 /** An account a pool may take, as the add menu lists it: the visitor's own, or an agent's of the project. */
 type Candidate = { name: string; agent: string | null; provider: string };
@@ -85,6 +83,7 @@ function PoolCard({ project, pool, candidates }: { project: string; pool: Accoun
   const own = candidates.own.filter((candidate) => !held.has(candidate.name));
   const theirs = candidates.theirs.filter((candidate) => !held.has(candidate.name));
   const inUse = pool.agents.length > 0;
+  const [pageNow] = useState(() => Date.now());
   const onPick = (key: string) => {
     const picked = [...own, ...theirs].find((candidate) => candidateKey(candidate) === key);
     if (!picked) return;
@@ -113,33 +112,21 @@ function PoolCard({ project, pool, candidates }: { project: string; pool: Accoun
           <Trash2 aria-hidden="true" />
         </Button>
       </header>
+      <PoolPolicyEditor key={`${pool.strategy}-${pool.hard_reserve_pct}-${pool.five_hour_ceiling_pct}`} project={project} pool={pool} />
       {pool.accounts.length === 0 ? (
         <p className="px-3 py-3 text-sm text-fg-subtle">{t("noAccounts")}</p>
       ) : (
         <ul className="flex flex-col divide-y" aria-label={t("accountsOf", { pool: pool.name })}>
           {pool.accounts.map((account) => (
-            <li key={account.id} className="flex min-h-11 items-center gap-2.5 px-3 py-1.5 text-sm" data-testid="account-pool-account">
-              <ProviderLogo provider={logoOf(account.provider)} className="size-4" />
-              <span className="min-w-0 flex-1 font-mono [overflow-wrap:anywhere]">{account.name}</span>
-              {account.agent ? (
-                <Badge variant="outline" className="shrink-0 font-mono">
-                  @{account.agent}
-                </Badge>
-              ) : null}
-              {account.paused ? <Badge variant="secondary">{t("paused")}</Badge> : null}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="shrink-0 text-muted-foreground"
-                disabled={remove.isPending}
-                aria-label={t("remove", { name: account.name, pool: pool.name })}
-                title={t("remove", { name: account.name, pool: pool.name })}
-                onClick={() => remove.mutate(account.id)}
-                data-testid="account-pool-remove"
-              >
-                <X aria-hidden="true" />
-              </Button>
-            </li>
+            <PoolAccountItem
+              key={account.id}
+              project={project}
+              pool={pool.name}
+              account={account}
+              removing={remove.isPending}
+              onRemove={() => remove.mutate(account.id)}
+              pageNow={pageNow}
+            />
           ))}
         </ul>
       )}

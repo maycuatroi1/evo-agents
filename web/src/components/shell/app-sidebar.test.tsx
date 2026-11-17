@@ -70,7 +70,7 @@ function baseAnswers(): Answers {
 
 let client: QueryClient;
 
-function setup({ openGroups = [], folded = false }: { openGroups?: NavGroup[]; folded?: boolean } = {}) {
+function setup({ openGroups, folded = false }: { openGroups?: NavGroup[]; folded?: boolean } = {}) {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return renderVi(
     <QueryClientProvider client={client}>
@@ -126,15 +126,16 @@ describe("AppSidebar", () => {
       "nav-kg",
       "nav-overview",
       "nav-decide",
-      "nav-plans",
-      "nav-runs",
-      "nav-mergeQueue",
-      "nav-releases",
+      "nav-signals",
       "nav-problems",
       "nav-opportunities",
       "nav-goals",
-      "nav-signals",
+      "nav-plans",
+      "nav-runs",
       "nav-loop",
+      "nav-mergeQueue",
+      "nav-releases",
+      "nav-cronJobs",
       "nav-insights",
       "nav-curator",
       "nav-agents",
@@ -159,7 +160,7 @@ describe("AppSidebar", () => {
     expect(screen.getByTestId("nav-plans")).not.toHaveAttribute("aria-current");
   });
 
-  it("keeps the areas opened less often in closed folds, so the sidebar shows the daily ones and a row per fold", () => {
+  it("opens the project's two cycles and keeps the areas opened less often in closed folds, a row per fold", () => {
     setup();
     const navigation = screen.getByRole("navigation", { name: "Điều hướng chính" });
     expect(within(navigation).getAllByRole("link").map((link) => link.getAttribute("data-testid"))).toEqual([
@@ -171,8 +172,16 @@ describe("AppSidebar", () => {
       "nav-kg",
       "nav-overview",
       "nav-decide",
+      "nav-signals",
+      "nav-problems",
+      "nav-opportunities",
+      "nav-goals",
       "nav-plans",
       "nav-runs",
+      "nav-loop",
+      "nav-mergeQueue",
+      "nav-releases",
+      "nav-cronJobs",
       // Apps holds Plugins alone while no plugin adds a page: a fold of one shows its item on its own row.
       "nav-plugins",
       "nav-workers",
@@ -183,7 +192,8 @@ describe("AppSidebar", () => {
     ]);
     const folds = within(navigation).getAllByRole("button");
     expect(folds.map((fold) => [fold.getAttribute("data-testid"), fold.textContent, fold.getAttribute("aria-expanded")])).toEqual([
-      ["nav-group-delivery", "Bàn giao", "false"],
+      ["nav-group-business", "Chu kỳ kinh doanh", "true"],
+      ["nav-group-development", "Chu kỳ phát triển", "true"],
       ["nav-group-improvement", "Cải tiến", "false"],
       ["nav-group-knowledge", "Tri thức", "false"],
       ["nav-group-settings", "Cài đặt", "false"],
@@ -203,14 +213,35 @@ describe("AppSidebar", () => {
     await user.click(screen.getByTestId("nav-group-improvement"));
     expect(screen.getByTestId("nav-curator")).not.toBeVisible();
     expect(document.cookie).toContain("hub_nav_groups=knowledge");
+    // a cycle, open until closed, is kept closed after a minus
+    await user.click(screen.getByTestId("nav-group-development"));
+    expect(screen.getByTestId("nav-plans")).not.toBeVisible();
+    expect(document.cookie).toContain(`hub_nav_groups=${encodeURIComponent("-development,knowledge")}`);
   });
 
-  it("renders the folds the cookie names open", () => {
-    setup({ openGroups: ["delivery", "settings"] });
-    expect(screen.getByTestId("nav-group-delivery")).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByTestId("nav-releases")).toBeVisible();
+  it("renders the folds the cookie names open, and a cycle the visitor closed closed", () => {
+    nav.pathname = "/p/demo";
+    setup({ openGroups: ["business", "improvement", "settings"] });
+    expect(screen.getByTestId("nav-group-improvement")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("nav-curator")).toBeVisible();
     expect(screen.getByTestId("nav-secrets")).toBeVisible();
-    expect(screen.getByTestId("nav-group-improvement")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("nav-group-knowledge")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("nav-group-development")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("nav-plans")).not.toBeVisible();
+  });
+
+  it("shows the counts of a closed fold's items on its row, in words for screen readers", async () => {
+    const user = userEvent.setup();
+    nav.pathname = "/p/demo";
+    setup({ openGroups: [] });
+    const fold = screen.getByTestId("nav-group-development");
+    await waitFor(() => expect(screen.getByTestId("nav-group-development-activeRuns")).toHaveTextContent("3"));
+    expect(screen.getByTestId("nav-group-development-activeRuns").className).toContain("bg-running-soft");
+    expect(fold).toHaveAccessibleName("Chu kỳ phát triển, 3 run đang hoạt động");
+    // open, Runs shows its own count and the row none
+    await user.click(fold);
+    expect(screen.queryByTestId("nav-group-development-activeRuns")).toBeNull();
+    expect(screen.getByTestId("nav-runs-count")).toHaveTextContent("3");
   });
 
   it("opens the fold of the page shown, and marks its row when the visitor closes it there", async () => {
@@ -232,25 +263,34 @@ describe("AppSidebar", () => {
     const user = userEvent.setup();
     nav.pathname = "/p/demo/signals";
     setup({ folded: true });
-    const fold = screen.getByTestId("nav-group-improvement");
+    const fold = screen.getByTestId("nav-group-business");
     expect(fold).toHaveAttribute("data-active", "true");
     expect(screen.queryByTestId("nav-signals")).toBeNull();
     await user.click(fold);
     const menu = await screen.findByRole("menu");
     expect(within(menu).getAllByRole("menuitem").map((item) => item.getAttribute("data-testid"))).toEqual([
+      "nav-signals",
       "nav-problems",
       "nav-opportunities",
       "nav-goals",
-      "nav-signals",
-      "nav-loop",
-      "nav-insights",
-      "nav-curator",
     ]);
     expect(within(menu).getByTestId("nav-signals")).toHaveAttribute("aria-current", "page");
     expect(within(menu).getByTestId("nav-signals")).toHaveAttribute("href", "/p/demo/signals");
   });
 
-  it("lists the pages of the project's enabled plugins before its Plugins, each with its manifest's title", async () => {
+  it("names the counts of a fold's items on its icon and in its menu on the folded sidebar", async () => {
+    const user = userEvent.setup();
+    nav.pathname = "/p/demo";
+    setup({ folded: true });
+    const fold = screen.getByTestId("nav-group-development");
+    await waitFor(() => expect(fold).toHaveAccessibleName("Chu kỳ phát triển, 3 run đang hoạt động"));
+    await user.click(fold);
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByTestId("nav-runs")).toHaveAccessibleName("Run, 3 run đang hoạt động");
+    expect(within(menu).getByTestId("nav-runs-count")).toHaveTextContent("3");
+  });
+
+  it("lists the pages of the project's enabled plugins in the folds they name, Apps by default, with their titles", async () => {
     const page = (name: string, extra = {}) => ({ name, title: `Page ${name}`, description: "", icon: "kanban", menu: true, native: false, url: `/v1/plugin-ui/x/demo/1.a/${name}.html`, ...extra });
     const plugin = (name: string, extra = {}) => ({
       name,
@@ -276,6 +316,9 @@ describe("AppSidebar", () => {
     api.answers["/v1/projects/demo/plugins"] = [
       plugin("sample"),
       plugin("notes", { tier: "core", pages: [page("entries", { icon: "notebook-pen", native: true, url: null })] }),
+      plugin("ledger", {
+        pages: [page("deliveries", { area: "business" }), page("sprint", { area: "development" }), page("odd", { area: "settings" })],
+      }),
       plugin("off", { enabled: false }),
       plugin("broken", { state: "disabled", disabled_reason: "incompatible" }),
     ];
@@ -294,8 +337,18 @@ describe("AppSidebar", () => {
       "nav-browser",
       "nav-plugin-sample-board",
       "nav-plugin-notes-entries",
+      "nav-plugin-ledger-odd", // settings is a fold of the hub, not of a project: Apps
       "nav-plugins",
     ]);
+    // the Business cycle after its own areas, the Development cycle before its plans
+    expect(ids.slice(ids.indexOf("nav-goals"), ids.indexOf("nav-runs") + 1)).toEqual([
+      "nav-goals",
+      "nav-plugin-ledger-deliveries",
+      "nav-plugin-ledger-sprint",
+      "nav-plans",
+      "nav-runs",
+    ]);
+    expect(screen.getByTestId("nav-plugin-ledger-deliveries")).toBeVisible();
   });
 
   it("leaves out the areas a hub admin turned off and shows the name and logo of the hub's branding", async () => {

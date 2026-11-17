@@ -79,8 +79,8 @@ def test_model_router_claim_carries_routing_only_when_the_policy_has_it_on():
 def test_model_router_skips_a_pinned_run_and_kinds_and_runtimes_it_does_not_route():
     assert model_router.claim_routing(ROUTING, "step", "claude-code", "opus") is None
     assert model_router.claim_routing(ROUTING, "judge", "claude-code", None) is None
-    assert model_router.claim_routing(ROUTING, "chat", "claude-code", None) is None
-    assert model_router.claim_routing(ROUTING, "step", "codex", None) is None
+    assert model_router.claim_routing(ROUTING, "merge", "claude-code", None) is None
+    assert model_router.claim_routing(ROUTING, "step", "hermes", None) is None
     assert model_router.pinned_by_profile(["opus"])
     assert not model_router.pinned_by_profile(["opus", "sonnet"])
     assert not model_router.pinned_by_profile(None)

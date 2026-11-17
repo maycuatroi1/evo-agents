@@ -83,7 +83,7 @@ export async function agentAccountsOf(account: Account, project: string, handle:
  */
 export async function poolAccountsOf(admin: Account, project: string, accounts: string[], { handle = project, pool = "mine" }: { handle?: string; pool?: string } = {}): Promise<void> {
   const api = await apiOf(admin);
-  await call(api.POST("/v1/projects/{project}/account-pools", { params: { path: { project } }, body: { name: pool } }));
+  await call(api.POST("/v1/projects/{project}/account-pools", { params: { path: { project } }, body: { name: pool, strategy: "round-robin", hard_reserve_pct: 10, five_hour_ceiling_pct: 90 } }));
   for (const name of accounts) {
     await call(api.PUT("/v1/projects/{project}/account-pools/{pool}/accounts", { params: { path: { project, pool } }, body: { name } }));
   }

@@ -35,7 +35,16 @@ export function policyRows(accounts: Account[], policies: AccountPolicy[]): Poli
 }
 
 export type AccountForm = { weight: string; priority: string };
-export type PolicyForm = { strategy: Strategy; cooldownMinutes: string; failover: boolean; maxFailovers: string };
+export type PolicyForm = {
+  strategy: Strategy;
+  cooldownMinutes: string;
+  failover: boolean;
+  maxFailovers: string;
+  /** quota-pacing: the share of a weekly window kept back, in percent. */
+  reservePct: string;
+  /** quota-pacing: the five-hour use above which an account waits, in percent. */
+  ceilingPct: string;
+};
 export type Problem = "range" | "whole";
 
 function whole(text: string, min: number, max: number): { value: number | null; problem: Problem | null } {
@@ -63,18 +72,33 @@ export const policyFormOf = (policy: AccountPolicyWrite): PolicyForm => ({
   cooldownMinutes: String(Math.round(policy.cooldown_seconds / 60)),
   failover: policy.failover,
   maxFailovers: String(policy.max_failovers),
+  reservePct: String(policy.hard_reserve_pct),
+  ceilingPct: String(policy.five_hour_ceiling_pct),
 });
+
+/** The bounds of quota-pacing's thresholds (`AccountPolicyWrite`): a reserve may be 0, a ceiling may not. */
+export const RESERVE_PCT = { min: 0, max: 100 };
+export const CEILING_PCT = { min: 1, max: 100 };
+
+type PolicyField = "cooldownMinutes" | "maxFailovers" | "reservePct" | "ceilingPct";
 
 export const COOLDOWN_MINUTES = { min: MIN_COOLDOWN_SECONDS / 60, max: MAX_COOLDOWN_SECONDS / 60 };
 
 /** The problems of a policy's form, by field; none when it may be sent. */
-export function policyProblems(form: PolicyForm): Partial<Record<"cooldownMinutes" | "maxFailovers", Problem>> {
-  const problems: Partial<Record<"cooldownMinutes" | "maxFailovers", Problem>> = {};
+export function policyProblems(form: PolicyForm): Partial<Record<PolicyField, Problem>> {
+  const problems: Partial<Record<PolicyField, Problem>> = {};
   const cooldown = whole(form.cooldownMinutes, COOLDOWN_MINUTES.min, COOLDOWN_MINUTES.max).problem;
   // With failover off the field is hidden, and what it held is sent only when it is a valid number.
   const failovers = form.failover ? whole(form.maxFailovers, 0, MAX_FAILOVERS).problem : null;
   if (cooldown) problems.cooldownMinutes = cooldown;
   if (failovers) problems.maxFailovers = failovers;
+  // The thresholds are fields of quota-pacing alone; under another strategy what they held is kept when valid.
+  if (form.strategy === "quota-pacing") {
+    const reserve = whole(form.reservePct, RESERVE_PCT.min, RESERVE_PCT.max).problem;
+    const ceiling = whole(form.ceilingPct, CEILING_PCT.min, CEILING_PCT.max).problem;
+    if (reserve) problems.reservePct = reserve;
+    if (ceiling) problems.ceilingPct = ceiling;
+  }
   return problems;
 }
 
@@ -84,6 +108,8 @@ export function policyBody(form: PolicyForm): AccountPolicyWrite {
     cooldown_seconds: Number(form.cooldownMinutes.trim()) * 60,
     failover: form.failover,
     max_failovers: whole(form.maxFailovers, 0, MAX_FAILOVERS).value ?? DEFAULT_POLICY.max_failovers,
+    hard_reserve_pct: whole(form.reservePct, RESERVE_PCT.min, RESERVE_PCT.max).value ?? DEFAULT_POLICY.hard_reserve_pct,
+    five_hour_ceiling_pct: whole(form.ceilingPct, CEILING_PCT.min, CEILING_PCT.max).value ?? DEFAULT_POLICY.five_hour_ceiling_pct,
   };
 }
 

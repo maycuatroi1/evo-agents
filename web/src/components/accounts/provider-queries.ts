@@ -23,6 +23,7 @@ export type ProviderProbe = Schemas["ProviderProbe"];
 export type ProbeWrite = Schemas["ProbeWrite"];
 export type ApiFormat = ProviderAccount["api_format"];
 export type GatewayState = Schemas["Health"]["gateway"] | "unknown";
+export type ProviderQuota = Schemas["ProviderQuota"];
 
 /** `provider_accounts.API_FORMATS`, in the order the form offers them. */
 export const API_FORMATS = ["openai", "anthropic", "openai-responses", "gemini"] as const satisfies readonly ApiFormat[];
@@ -92,4 +93,18 @@ export async function probeProvider(api: ApiClient, target: { body: ProbeWrite }
   if ("body" in target) return call(api.POST("/v1/provider-accounts/probe", { body: target.body, headers }));
   const params = { path: { name: target.name } };
   return call(api.POST("/v1/provider-accounts/{name}/probe", { params, body: { model: target.model }, headers }));
+}
+
+/** Whose Z.ai account to read the quota of: the visitor's own, or one of an agent of a project. */
+export type QuotaTarget = { account: string; agent?: { project: string; handle: string } };
+
+/**
+ * Read a Z.ai Coding Plan account's quota from Z.ai again, now, and keep it as the account's usage; `ok` false with the
+ * reason when Z.ai did not answer with one.
+ */
+export async function refreshQuota(api: ApiClient, target: QuotaTarget): Promise<ProviderQuota> {
+  const headers = await csrfHeaders(api);
+  if (!target.agent) return call(api.POST("/v1/provider-accounts/{name}/quota", { params: { path: { name: target.account } }, headers }));
+  const path = { project: target.agent.project, handle: target.agent.handle, name: target.account };
+  return call(api.POST("/v1/projects/{project}/agents/{handle}/provider-accounts/{name}/quota", { params: { path }, headers }));
 }

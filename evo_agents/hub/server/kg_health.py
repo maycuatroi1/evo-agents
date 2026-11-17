@@ -54,9 +54,6 @@ latest measures, newest first, and the successful builds with what each covered 
 from __future__ import annotations
 
 import asyncio
-import ctypes
-import ctypes.util
-import gc
 import hashlib
 import logging
 from collections import Counter
@@ -72,6 +69,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import kg_coverage, kg_health_eval, kg_labels, kg_review, kg_snapshots, tables
 from evo_agents.hub.credentials import github_repo
+from evo_agents.hub.heap import give_back
 from evo_agents.hub.kg_graph import GraphUnavailable, HubSession, reading
 from evo_agents.hub.kg_snapshots import Held
 from evo_agents.hub.server import hub_settings, kg_eval_sets, pulls
@@ -353,18 +351,6 @@ async def load_snapshot(engine: AsyncEngine, row, graphs) -> tuple[Held | None, 
     except Exception as exc:  # the measure of the sources stands without a score and a queue
         log.exception("loading the snapshot of a graph failed", extra={"project": row.project})
         return None, {"why": f"loading the graph failed: {type(exc).__name__}"}
-
-
-def give_back() -> None:
-    """Give the memory freed since back to the system: collect the cycles, then have glibc's malloc return its free
-    pages (malloc_trim), which it keeps otherwise. Nothing more where the C library is not glibc."""
-    gc.collect()
-    found = ctypes.util.find_library("c")
-    if found is None:
-        return
-    trim = getattr(ctypes.CDLL(found), "malloc_trim", None)
-    if trim is not None:
-        trim(0)
 
 
 async def measure_eval(

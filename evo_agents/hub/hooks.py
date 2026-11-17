@@ -2,7 +2,9 @@
 
 SessionStart (startup, resume, clear) does in one process what three commands do for the session's directory:
 
-- ``hub memory pull``: the hub's memories of the directory come into its memory directory;
+- ``hub memory pull --prune``: the hub's memories of the directory come into its memory directory, and a memory the
+  hub deleted (archived) leaves it with its MEMORY.md line when its file did not change here since the last sync; a
+  file changed here stays and is reported (``MemorySync`` with ``keep_changed``), never moved to a conflict copy;
 - ``hub plan export``, when the harness around the directory names ``hub.project`` in its harness.yaml: the copies of
   the project's plans are written and never committed, and a file someone edited by hand stays as it is and is
   reported rather than overwritten (``mirror.export`` with ``keep_edited``);
@@ -303,7 +305,7 @@ def _pull_memories(hub: Hub, login: str, where: Path, line: Line):
     """Pull the memories of ``where``; the MemorySync that did it, whose ``places`` the sweep of digests reuses."""
     from evo_agents.hub.memory import MemorySync
 
-    sync = MemorySync(hub, login, lock_timeout=LOCK_WAIT)
+    sync = MemorySync(hub, login, prune=True, keep_changed=True, lock_timeout=LOCK_WAIT)
     try:
         report = sync.pull(where)
     except Exception as exc:
@@ -315,6 +317,8 @@ def _pull_memories(hub: Hub, login: str, where: Path, line: Line):
     line.project = line.project or _memory_place(sync, where)
     pulled = sum(report.counts.get(key, 0) for key in PULLED)
     line.add(f"{_plural(pulled, 'memory', 'memories')} pulled")
+    if report.counts.get("deleted"):
+        line.add(f"{_plural(report.counts['deleted'], 'memory', 'memories')} the hub deleted removed here")
     if report.conflicts:
         line.add(
             f"{_plural(len(report.conflicts), 'memory conflict')}: the hub's version is kept under the name and this "

@@ -138,18 +138,15 @@ def _record_run(corpus: Corpus, result: SyncResult, connector: str, version: str
     """Insert the run's row; return its finished_at, which the audit line repeats."""
     detail = {k: v for k, v in result.to_json().items() if k not in ("source", "run_id", "status")}
     finished = utc_now()
-    corpus.db.execute(
-        "INSERT OR REPLACE INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (
-            result.run_id,
-            result.source,
-            connector,
-            version,
-            result.status,
-            started,
-            finished,
-            json.dumps(detail, ensure_ascii=False),
-        ),
+    corpus.record_run(
+        result.run_id,
+        source=result.source,
+        connector=connector,
+        status=result.status,
+        started_at=started,
+        finished_at=finished,
+        version=version,
+        detail=detail,
     )
     return finished
 
@@ -157,7 +154,7 @@ def _record_run(corpus: Corpus, result: SyncResult, connector: str, version: str
 def _finish(project: Project, corpus: Corpus, result: SyncResult, connector: str, version, started: str, then=None):
     """Commit the run: ``then()``, what the caller writes with it, and its row in the runs table, in one
     transaction; then its line in the audit log."""
-    with corpus.db:
+    with corpus.transaction():
         if then is not None:
             then()
         finished = _record_run(corpus, result, connector, version, started)
@@ -362,12 +359,9 @@ def sync_source(
         def commit_state() -> None:
             _merge_run(corpus, writer)
             if states:
-                corpus.db.execute(
-                    "INSERT OR REPLACE INTO cursors VALUES (?, ?, ?)",
-                    (source_id, json.dumps(states[-1]["cursor"], ensure_ascii=False), run_id),
-                )
+                corpus.set_cursor(source_id, states[-1]["cursor"], run_id)
             for row in held_rows:
-                corpus.db.execute("INSERT OR REPLACE INTO held VALUES (?, ?, ?, ?, ?)", (*row[:4], json.dumps(row[4])))
+                corpus.hold(*row)
             result.seconds = round(time.monotonic() - started_clock, 3)
 
         _finish(project, corpus, result, connector, version, started, commit_state)
@@ -384,7 +378,7 @@ def merge_pulled(corpus: Corpus, path: Path) -> int:
     if not run_id:
         return 0
     header = records[0]
-    with corpus.db:
+    with corpus.transaction():
         changed = corpus.merge(records, run_id)
         lineage, epoch = header.get("lineage"), run_epoch(header)
         if isinstance(header.get("source"), str) and isinstance(lineage, str) and epoch:
@@ -426,9 +420,9 @@ def accept_removals(project: Project, source_id: str, corpus: Corpus | None = No
                 removed += 1
         writer.write({"type": "run_end", "status": "ok", "removals": removed, "finished_at": utc_now()})
         writer.close()
-        with corpus.db:
+        with corpus.transaction():
             corpus.merge(writer.records, run_id)
-            corpus.db.execute("DELETE FROM held WHERE source = ?", (source_id,))
+            corpus.drop_held(source_id)
     return removed
 
 

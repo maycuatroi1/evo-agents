@@ -71,6 +71,7 @@ DIRECTORY_KINDS = (
     "question",
     "probe",
     "command",
+    "evolve",
 )
 
 

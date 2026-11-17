@@ -12,6 +12,8 @@ event loop beside it (``kg build``, the bench) runs at full speed."""
 
 from __future__ import annotations
 
+import asyncio
+import ctypes
 import heapq
 import logging
 import queue
@@ -30,22 +32,29 @@ YIELD_SECONDS = 0.002  # the longest stretch ``paced`` runs before it gives the 
 # how long it sleeps then: ``time.sleep(0)`` takes the GIL back before a waiting thread wakes, and on a busy host the
 # loop's thread takes a while to wake; a third of the build's time spent asleep kept the hub's loop turning every 10 ms
 PAUSE_SECONDS = 0.001
+# how long it sleeps instead while ``busy`` says requests are in the middle of their transactions: each of their
+# steps is a turn of the loop that waits for the GIL, and a pause of 1 ms left a heartbeat of ten queries 2 s on the
+# hub's busy host; the build then runs at a fifth of its speed, which only lasts as long as the requests do
+BUSY_PAUSE_SECONDS = 0.008
 RUN = 8192  # items ``paced_sorted`` sorts in one go
 
 _on: ContextVar[bool] = ContextVar(
     "evo_kg_paced", default=False
 )  # within ``pacing()``; a thread of ``asyncio.to_thread`` gets it
 _between: ContextVar[Callable[[], None] | None] = ContextVar("evo_kg_paced_between", default=None)
+_busy: ContextVar[Callable[[], bool] | None] = ContextVar("evo_kg_paced_busy", default=None)
 
 
 @contextmanager
-def pacing(between: Callable[[], None] | None = None):
+def pacing(between: Callable[[], None] | None = None, busy: Callable[[], bool] | None = None):
     """``paced`` and ``paced_sorted`` give the GIL up while the block runs, in the threads it starts too, and call
-    ``between`` each time they took it back."""
-    token, step = _on.set(True), _between.set(between)
+    ``between`` each time they took it back. While ``busy()`` is true they sleep BUSY_PAUSE_SECONDS instead of
+    PAUSE_SECONDS, in a thread that is not running an event loop."""
+    token, step, wait = _on.set(True), _between.set(between), _busy.set(busy)
     try:
         yield
     finally:
+        _busy.reset(wait)
         _between.reset(step)
         _on.reset(token)
 
@@ -59,16 +68,25 @@ def paced(items: Iterable[T]) -> Iterator[T]:
 
 
 def _paced(items: Iterable[T]) -> Iterator[T]:
-    clock, between = time.perf_counter, _between.get()
+    clock, between, busy = time.perf_counter, _between.get(), _busy.get()
     last = clock()
     for item in items:
         yield item
         now = clock()
         if now - last >= YIELD_SECONDS:
-            time.sleep(PAUSE_SECONDS)
+            time.sleep(BUSY_PAUSE_SECONDS if busy is not None and busy() and not _in_loop() else PAUSE_SECONDS)
             if between is not None:
                 between()
             last = clock()
+
+
+def _in_loop() -> bool:
+    """Whether this thread runs an event loop: sleeping in it would stop every request."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
 
 
 def paced_sorted(items: Iterable[T], key: Callable[[T], Any] | None = None) -> list[T]:
@@ -91,16 +109,28 @@ ALONE = 2  # ``sys.getrefcount`` of an object only a local variable holds: it an
 log = logging.getLogger(__name__)
 
 _aside: queue.SimpleQueue | None = None  # what ``let_go`` was given, for the thread ``free_aside`` started
+_pending = 0  # what ``let_go`` gave the thread that it has not taken apart yet
+_counting = threading.Lock()
 
 
-def free_aside() -> None:
+def free_aside(busy: Callable[[], bool] | None = None) -> None:
     """From now on ``let_go`` frees what it is given in a thread of its own, paced: in the api, where a snapshot
     replaced or dropped is millions of objects, and freeing them in one go held the GIL, the event loop with it, for
-    seconds. Once per process."""
+    seconds. The thread paces as ``pacing(busy=...)`` does. Once per process."""
     global _aside
     if _aside is None:
         _aside = queue.SimpleQueue()
-        threading.Thread(target=_freeing, args=(_aside,), name="kg-free-aside", daemon=True).start()
+        threading.Thread(target=_freeing, args=(_aside, busy), name="kg-free-aside", daemon=True).start()
+
+
+def give_aside(parts: list) -> None:
+    """Hand ``parts``, a list that holds the only references its caller still has to what it is done with (the rows a
+    snapshot was made of: millions of objects), to the thread ``free_aside`` started: the caller's ``del`` of its own
+    names right after leaves the thread the only holder. Without that thread, nothing happens, and the parts are freed
+    where the caller drops them."""
+    if _aside is not None:
+        _count(1)
+        _aside.put(parts)
 
 
 def let_go(dying: Any) -> None:
@@ -110,11 +140,23 @@ def let_go(dying: Any) -> None:
         held = vars(dying)
         parts = list(held.values())
         held.clear()  # the thread is the only holder of what nothing else holds, once this returns
+        _count(1)
         _aside.put(parts)
 
 
-def _freeing(given: queue.SimpleQueue) -> None:
-    with pacing():
+def freeing() -> bool:
+    """Whether the thread ``free_aside`` started has something given to it still to free."""
+    return _pending > 0
+
+
+def _count(step: int) -> None:
+    global _pending
+    with _counting:
+        _pending += step
+
+
+def _freeing(given: queue.SimpleQueue, busy: Callable[[], bool] | None = None) -> None:
+    with pacing(busy=busy):
         while True:
             parts = given.get()
             time.sleep(HAND_OVER)
@@ -123,6 +165,33 @@ def _freeing(given: queue.SimpleQueue) -> None:
             except Exception:  # the thread goes on: ended, every snapshot dropped after it would stay in memory
                 log.exception("kg free aside failed")
             del parts
+            _count(-1)
+            if given.empty():
+                give_back()
+
+
+def give_back() -> None:
+    """Hand the memory the C allocator keeps free back to the system (glibc's ``malloc_trim``; nothing elsewhere).
+    The allocator keeps what a snapshot freed for the next one, a gigabyte and more after a large graph: the api's
+    resident memory, which its limit and its pressure (``evo_agents.hub.kg_snapshots``) count, would stay as high as
+    if it still held the graph."""
+    trim = _malloc_trim()
+    if trim is not None:
+        start = time.perf_counter()
+        trim(0)
+        log.info("kg memory given back", extra={"trim_ms": round((time.perf_counter() - start) * 1000, 1)})
+
+
+_trim: list = []  # glibc's ``malloc_trim``, or None, once looked up
+
+
+def _malloc_trim():
+    if not _trim:
+        try:
+            _trim.append(ctypes.CDLL("libc.so.6").malloc_trim)
+        except (OSError, AttributeError):
+            _trim.append(None)
+    return _trim[0]
 
 
 def _take_apart(objs: list) -> None:

@@ -183,8 +183,9 @@ class Rerun(HubPlaced):
 
     account: AccountName | None = Field(
         None,
-        description="one of the caller's env secrets bound to the project, by name: the rerun takes it, with no "
-        "failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick",
+        description="one of the caller's env secrets bound to the project, by name, or <login>/<name> for one that "
+        "member shares with the caller: the rerun takes it, with no failover; null keeps the account picked by hand "
+        "for the run rerun, if one was, else the rules pick",
     )
     account_by_rule: bool = Field(
         False, description="true: the rules of the caller's policy pick the account, not the one picked for the run"
@@ -207,6 +208,14 @@ class AccessChange(BaseModel):
     as_me: bool = Field(
         description=AS_ME_HELP + "; false: it stops, and its token ends at once, as a run that never ran as you"
     )
+
+
+class PriorityChange(BaseModel):
+    """What POST /v1/projects/{p}/runs/{id}/priority changes of a queued run of the project."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    priority: runs.Priority = Field(description="the run's new priority: a worker claims urgent first, low last")
 
 
 class OverlapWait(BaseModel):
@@ -295,6 +304,11 @@ class Run(RunPlacement):
     state: runs.ShownState = Field(
         description="idle and ended are a local run's alone: the turn ended and the person has the word; the session "
         "is over, or went silent for a day"
+    )
+    priority: runs.Priority = Field(
+        runs.DEFAULT_PRIORITY,
+        description="the order a worker claims the queued runs in, highest first, then the oldest: an agent's ask sets "
+        "it, a writer changes it while the run is queued; a plan or step run has medium",
     )
     lease_expires_at: datetime | None
     session_id: str | None

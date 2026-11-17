@@ -11,13 +11,17 @@ message that answers the wait. A refusal (the person may not give HANDLE work, H
 
 The brief flags (``--goal``, ``--output``, ``--bounds``, ``--done-when``, ``--ref``) head the prompt of the run asked;
 ``--reason`` says why an agent of an agent system asks an agent off its interacts edges, which the hub refuses
-without one. With none of them, the ask is as before. ``evo-agents worker agent forward --run RUN`` posts the last
+without one. With none of them, the ask is as before. ``--priority`` (runs.PRIORITIES, medium unless given) is the
+priority of the run asked: a worker claims its queued runs by it, and a run asked of an agent whose nodes are all busy
+waits in that queue for a free slot. ``evo-agents worker agent forward --run RUN`` posts the last
 answer of run RUN, of the same trace, verbatim into this run's thread (POST /v1/worker/runs/{id}/agent/forwards).
 """
 
 from __future__ import annotations
 
 import sys
+
+from evo_agents.hub.runs import PRIORITIES
 
 COMMAND = "agent ask"
 ROUTE = "agent/asks"
@@ -54,9 +58,9 @@ def chat_run(command: str, what: str):
 
 
 def ask_payload(args, handle: str, body: str) -> dict:
-    """The body of the ask: the handle and text, and the brief fields and reason only when given."""
+    """The body of the ask: the handle and text, and the brief fields, reason and priority only when given."""
     payload: dict = {"handle": handle, "body": body}
-    for name in BRIEF:
+    for name in (*BRIEF, "priority"):
         value = getattr(args, name, None)
         if value:
             payload[name] = value
@@ -132,6 +136,11 @@ def register_agent(wsub) -> None:
     )
     ask.add_argument(
         "--reason", help="why you ask an agent off your system's interacts edges; such an ask is refused without one"
+    )
+    ask.add_argument(
+        "--priority",
+        choices=PRIORITIES,
+        help="the priority of the run asked, which a worker claims its queued runs by (default: medium)",
     )
     ask.set_defaults(func=cmd_agent_ask)
     forward = asub.add_parser(

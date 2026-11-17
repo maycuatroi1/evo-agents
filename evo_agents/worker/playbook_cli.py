@@ -1,8 +1,10 @@
 """``evo-agents worker playbook add|helpful|harmful|retire``: the deltas of the Curator's playbook of a project
 (``evo_agents.hub.playbook``), which the agent of a review run writes; the playbook is never written anew.
 
-- ``add --text TEXT --evidence SPEC [--evidence SPEC ...] [--lens LENS]``: a new entry, a lesson the playbook lacks,
-  with its evidence (as ``worker finding`` takes it), for one lens or, without ``--lens``, every lens;
+- ``add --text TEXT --evidence SPEC [--evidence SPEC ...] [--lens LENS] [--until-proposal N]``: a new entry, a lesson
+  the playbook lacks, with its evidence (as ``worker finding`` takes it), for one lens or, without ``--lens``, every
+  lens; with ``--until-proposal``, it holds until proposal N lands, and the hub retires it once that change is merged
+  (without it, the hub reads ``until proposal #N`` or ``#N lands`` in the text);
 - ``helpful ID [--evidence SPEC ...] [--note TEXT]`` and ``harmful ID [...]``: one more on the counter of entry ID
   (``pb-3`` or ``3``) when it helped or misled the run; once each way for a run;
 - ``retire ID --note TEXT``: the entry no longer holds; it stays, out of the prompt.
@@ -106,6 +108,8 @@ def cmd_add(args) -> int:
     body = {"text": _text(args.text, "text", playbook.MAX_TEXT_CHARS), "evidence": evidence_items(args.evidence)}
     if args.lens:
         body["lens"] = args.lens
+    if args.until_proposal is not None:
+        body["until_proposal_id"] = args.until_proposal
     return _said(_send("add", body), "added")
 
 
@@ -137,6 +141,12 @@ def register_playbook(wsub) -> None:
     )
     add.add_argument("--evidence", action="append", required=True, metavar="SPEC", help=spec)
     add.add_argument("--lens", choices=list(LENSES), help="the lens it is for (default: every lens)")
+    add.add_argument(
+        "--until-proposal",
+        type=int,
+        metavar="N",
+        help="the proposal it holds until: the hub retires it once that proposal's change is merged",
+    )
     add.set_defaults(func=cmd_add)
     for op, what in (("helpful", "helped"), ("harmful", "misled")):
         tag = psub.add_parser(op, help=f"one more on the counter of an entry that {what} this run; once a run")

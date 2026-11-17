@@ -9,8 +9,8 @@ import pytest
 from evo_agents.cli import main
 from evo_agents.hub.kg_eval import changed_files, plan_questions
 from evo_agents.kg import evaluate as ev
-from evo_agents.kg.build import build_project
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import commit, git, make_project, write
 
 FIXTURE = Path(__file__).parent / "fixtures" / "eval" / "demo.jsonl"
@@ -355,7 +355,7 @@ def demo(tmp_path, kg_env, monkeypatch):
 
     project = make_project(tmp_path, kg_env)
     sync_project(project)
-    assert build_project(project).ok
+    assert built.build(project).ok
     sign_in(monkeypatch, project)
     return project
 

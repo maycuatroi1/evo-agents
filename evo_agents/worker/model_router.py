@@ -5,7 +5,9 @@ A claim carries ``routing`` (the scorer and the ladder) only while the project's
 names no model. ``route`` then:
 
 - does nothing for a run pinned to a model: the run names one, or its agent profile allows exactly one;
-- has the run's runtime rate the run's prompt with one short turn of the scorer: ``claude -p`` on the scorer's model,
+- takes the model the hub chose when the claim says the difficulty the hub rated (plan token-and-quota-economy):
+  every rung of its ladder is that model, and no scorer runs;
+- else has the run's runtime rate the run's prompt with one short turn of the scorer: ``claude -p`` on the scorer's model,
   no tool, no MCP server, no session kept, in an empty directory, with the agent's environment so it uses the run's
   account, cut off after SCORER_TIMEOUT seconds;
 - takes the ladder's model for the difficulty the scorer named, or for FALLBACK (the middle) when the scorer failed or
@@ -45,6 +47,13 @@ def routing_of(spec: Mapping) -> dict | None:
     if profile is not None and model_router.pinned_by_profile(profile.allowed("model")):
         return None
     return dict(routing)
+
+
+def any_gateway(routing: Mapping) -> bool:
+    """Whether a rung of the ladder of a claim's ``routing`` is a gateway model, ``<prefix>/<model>``."""
+    found = routing.get("ladder")
+    ladder = found if isinstance(found, Mapping) else {}
+    return any(model_router.is_gateway_model(model) for model in ladder.values())
 
 
 def scorer_argv(binary: str, scorer: str) -> list[str]:
@@ -120,14 +129,29 @@ async def route(spec: Mapping, env: Mapping[str, str], timeout: float = SCORER_T
     if routing is None:
         return None
     scorer, ladder = str(routing.get("scorer") or ""), routing["ladder"]
+    rated = routing.get("difficulty") if not routing.get("pending") else None
+    hub = {key: routing.get(key) for key in ("source", "reason", "strategy", "branch", "escalated_from")}
+    if rated in model_router.LEVELS:  # the hub rated the run and chose its model
+        model, error = _allowed(spec, ladder.get(rated), None)
+        return model_router.record(scorer, rated, model, None, error, **hub)
     answer, cost, error = await score(scorer, str(spec.get("prompt") or ""), env, timeout)
     difficulty = model_router.difficulty_of(answer)
     if difficulty is None and error is None:
         error = f"the scorer named no difficulty: {(answer or '').strip()[:100]!r}"
-    model = ladder.get(difficulty or model_router.FALLBACK)
+    model, error = _allowed(spec, ladder.get(difficulty or model_router.FALLBACK), error)
+    if not routing.get("pending"):  # a claim of a hub that left all of the rating to the worker
+        return model_router.record(scorer, difficulty, model, cost, error)
+    hub.update(source="scorer" if difficulty else "fallback", reason=f"the scorer rated the prompt {difficulty}")
+    if difficulty is None:
+        hub["reason"] = "the scorer did not rate the prompt"
+    return model_router.record(scorer, difficulty, model, cost, error, **hub, pending=False)
+
+
+def _allowed(spec: Mapping, model, error: str | None) -> tuple[str | None, str | None]:
+    """(``model``, ``error``), or no model and why when the run's agent profile does not allow it."""
     profile = profiles.Profile.of(spec)
     allowed = profile.allowed("model") if profile is not None else None
     if allowed is not None and model not in allowed:
         refused = f"agent profile {profile.label} does not allow the ladder's model {model}"
-        error, model = (f"{error}; {refused}" if error else refused), None
-    return model_router.record(scorer, difficulty, model if isinstance(model, str) else None, cost, error)
+        return None, (f"{error}; {refused}" if error else refused)
+    return (model if isinstance(model, str) else None), error

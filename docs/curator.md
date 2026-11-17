@@ -71,7 +71,9 @@ period under pacing, and the steps below go the same way through it.
 6. **The pull request and the Judge.** The hub opens the pull request (on GitLab the push opens the merge request),
    reads its diff for signs of score hacking, and queues a judge run that runs the plan's verify and the project's
    hidden checks and never reads the Builder's transcript. A branch whose commits change no file gets neither: the
-   hub closes its change, "its branch changes nothing".
+   hub closes its change, "its branch changes nothing". Nor does a branch with no commit of its own, such as the
+   Builder of a memory proposal leaves (the change is on the hub's data): unless a pull request of the branch merged or
+   closed by hand settles it, the hub closes the change, "its branch has no commit of its own".
 7. **The replays.** A change of a skill, an AGENTS.md or a CLAUDE.md is replayed on tasks of the project's own history:
    an agent does a past step again from the code before it, once with the default branch's harness and once with the
    change's, and the step's verify says which did it (Replays, below). The Judge reads none of it.
@@ -166,6 +168,10 @@ env_secrets: [claude-oauth]
 | `probes.k`, `probes.models`, `probes.budget_usd` | 3, the builder, null | the sessions each arm of a probe runs on each model (1 to 10); the runtimes and models the probes run on, each `{runtime, model}` once, at most 10, empty for the builder's, which `charter show --json` then prints; and the most the probe runs of an ISO week in the charter's time zone may cost together, above 0 and at most 7000; null runs no probe (Probes, below) |
 | `reviewer`, `builder`, `judge` | `claude-code`, the runtime's model | the runtime and model of each role (The three roles, below) |
 | `judge.hidden_checks` | none | commands the Judge runs that no Builder sees, at most 50 |
+| `evolve.enabled`, `evolve.evolvable_paths` | false, none | whether a member may start an evolution, and the globs of harness files one may rewrite, `repo:glob` for one repo (Evolving a harness, below) |
+| `evolve.budget` | 6, 12, null | `{iterations, max_candidates, max_cost_usd}`: the rounds of an evolution's loop, the candidates it measures at most, and the most it may cost, null for the run's own cap |
+| `evolve.tasks`, `evolve.probes` | 8, 4 | the light replay tasks of the select split and the active probes of its paths an evolution measures on |
+| `evolve.exposure_limit` | null | review runs that show an entry of the playbook never found helpful before the hub retires it; null for 30, 0 for never (Memory, below) |
 | `git_secret` | null | the owner's `git` secret the Curator's runs use for origins not on GitHub (GitLab); without it no Builder runs there |
 | `env_secrets` | none | the owner's `env` secrets the Curator's runs get, by name; they get no other |
 
@@ -306,8 +312,13 @@ The tier is the highest of these rules, and the proposal lists in words which ru
 - **Its paths**, each `repo:path`. A protected glob of the charter, or CI, lint and test configuration and the copies
   of plans (`tiers.HARD_PATHS`), make it tier 3; a migration or schema path makes it at least tier 2; any path that is
   neither documentation nor a test makes it at least tier 1, knowledge.yaml included, except under `kg_source` (below).
-- **What those paths reach** in the project's knowledge graph, when it has one: a reached path that is protected, or
-  one of `HARD_PATHS`, makes it tier 3 too.
+- **What those paths reach** in the project's knowledge graph, when it has one (`kg_impact`): a reached path that is
+  protected, or one of `HARD_PATHS`, makes it tier 3 too. Once the pull request is open the hub reads what its diff
+  does to the API of each Python file it edits (`api_surface`: the top-level names and their signatures) and raises a
+  reached file to tier 3 only when the diff removes or changes a name that file uses; a reached file the diff breaks
+  nothing of keeps the tier the other rules give, and one the hub could not read stays tier 3. A proposal, whose diff
+  is not known yet, counts a reached protected file at tier 2, so the Builder still builds the branch whose diff
+  decides.
 - **What the graph cannot tell**, when the project has a graph on the hub: a path it has no file for, one the latest
   measure of its health found it lacks, holds older than the default branch has it or holds though the branch deleted
   it (`kg_health`, "The graph's health" in `docs/hub.md`), or any path while the graph cannot be read, makes it at
@@ -346,6 +357,10 @@ global skill, whose kind is tier 2, merges as tier 0 then. The Judge and CI must
 hub merges it only when `auto_merge` holds `0`. Without replays that won (none, too few, or lost), or with any other
 file in the diff, the change keeps the tier these rules give, and the reason it is left open says what its replays came
 to. The proposal shows the tier its rules gave; the change shows 0.
+
+A protected harness file that `evolve.evolvable_paths` names still makes the change tier 3, and the same rule lowers
+such a change to tier 0 when its diff edits a harness alone, the Judge passed it and its replays on the holdout tasks
+won.
 
 | What the change's replays came to (holdout tasks with both arms at the pull request's head) | Tier it merges with |
 | --- | --- |
@@ -410,7 +425,8 @@ pushed counts no skill and no kind, and a run that ended before schema 0087 reco
 data, not no friction.
 
 **The Builder** is a plan run of `curator-<proposal>-<slug>`, a plan the hub made in the same transaction as the
-accepting answer: in the one repo the proposal names, every step pending. Its what, goal, context, verify and
+accepting answer: in the repo the proposal names, every step pending, or in each of its repos (A change in several
+repos, below). Its what, goal, context, verify and
 acceptance stay as the hub made them; a write may change only the progress of its steps. No member dispatches a run of
 it: the night shift alone does, at any hour, not only inside its window. Run plan on its page (`POST
 /v1/projects/{p}/curator/plans/{plan_id}/build`, a writer of the project) asks for its Builder now: the night shift's
@@ -419,7 +435,10 @@ why) while the night shift is paused, past its caps, or the change is not ready;
 agent holds no push credential: the daemon alone pushes, only the branch `curator/...`, and never a default branch
 whatever the plan says. On GitLab the push opens the merge request. An accepted proposal of a tier the charter plans
 that has no change yet, such as one of tier 2 accepted while that tier still recorded the answer alone, becomes its plan
-with `evo-agents hub curator proposal plan ID`, which only an admin of the project may. A proposal's page on the web has
+with `evo-agents hub curator proposal plan ID`, which only an admin of the project may. The same command plans a
+proposal whose change is stuck, `open` or `closed` with no plan, branch or pull request (such as a draft in several
+repos left open before a plan could work in them): that change becomes `planned`, and its ledger says which state it
+replaced. A proposal's page on the web has
 a Change card once accepting it made one: the change's state, the Curator's plan as a link to its page, the branch (a
 link to it on GitHub or GitLab), the pull request once the hub opened it, and the reason the change keeps while it waits
 or stays open, and the tier it merges at; under it a Replays card says whether its replays won and why, sets arm b
@@ -449,15 +468,28 @@ worker's machine that reads the worker token neither reads a hidden check nor wr
 **Signs of score hacking** (`diff_signs.hack_signs`): an assertion removed, a skip or xfail added, a threshold of a test
 changed, an expected value changed, a golden or snapshot file changed, an assertion's failure caught, a plan's verify
 or a file it runs changed, CI or the configuration of lint, types and tests changed, a lint warning silenced, `__eq__`
-overloaded, an exit from a test, a protected path touched, an instruction of a skill, an AGENTS.md or a CLAUDE.md to
+overloaded, an exit from a test, a protected path touched (except a harness file that `evolve.evolvable_paths` names,
+whose added lines are still read for the other signs), an instruction of a skill, an AGENTS.md or a CLAUDE.md to
 test or verify weakened (`instruction_weakened`: a line added that lets an agent skip the tests, the verify, lint or CI,
 unless it forbids skipping them, or more lines about them removed than added), a binary file where tests, CI,
 configuration or a harness live, and a diff too long to read whole. `docs/hub.md`, "The Curator's changes", lists them
 all. One sign fails the change and puts its proposal at tier 3.
 
+**A change in several repos.** An accepted proposal whose paths and draft name several repos of the project, each on
+GitHub, becomes one plan in them all (`judge.curator_repos_plan`), each step in its own repo, on one branch name. The
+hub orders the repos owner before consumer by the seams of the project's graph (`owned_by` and `consumed_by`), or as the
+draft lists them without a seam, and keeps a row for each in `curator_change_repos` with the repos merged before it.
+The Builder waits until the hub checked the ruleset of every repo, then works in them all in one run. The hub opens a
+pull request in each repo, queues a judge run for each, one at a time, and merges a consumer's pull request only after
+its owner's merged (`merge_waits`); the change is judged once every repo's Judge passed, and merged once every pull
+request merged. A step in a repo the plan does not name is refused. The change's page lists its repos in merge order,
+each with its state and pull request, and `--json` of the change prints them as `repos`.
+
 **The watchdog.** After each heartbeat the daemon compares what changed in the worktrees of a run of the Curator with
-the charter's protected paths, and the run's agent time and cost with its caps. A protected file changed, or a cap
-passed, stops the run, which fails, and its owner gets the notice `run_failed`. On Claude Code a run of the Curator uses
+the charter's protected paths, and the run's agent time and cost with its caps. A Builder's watchdog does not stop on a file
+its proposal lists, once the owner accepted that proposal at tier 3 knowing the path, when a glob naming that one file
+(no wildcard) protects it: `repo:path` is left out, and `path` alone is scoped to each other repo of the project. A glob
+with a wildcard stays whole, and so does every glob of a proposal accepted below tier 3. The Judge and the merge gate still show the touch. A protected file changed, or a cap passed, stops the run, which fails, and its owner gets the notice `run_failed`. On Claude Code a run of the Curator uses
 the Claude subscription login alone, never an API key.
 
 ### The lens product
@@ -749,6 +781,42 @@ second). A fix proposal reaches the owner's Inbox as any other, within `max_deci
 fix proposal on its own, never reverts or turns off a rule because of what its probes found, and holds no merge on a
 probe.
 
+## Evolving a harness
+
+An evolution rewrites a harness's files, or an agent's configuration, over a few rounds and keeps the candidates no
+other beats on every task (a Pareto front, as GEPA does), instead of the one edit a Builder makes. A member with the
+writer role starts one when `evolve.enabled` holds:
+
+```sh
+evo-agents hub curator evolve run --project demo --repo lumen-kb-docs --path skills/review/SKILL.md --proposal 12
+evo-agents hub curator evolve run --project demo --system-id 2 --agent reviewer   # an agent's configuration
+evo-agents hub curator evolve status --project demo     # the evolutions, newest first
+evo-agents hub curator evolve show 7 --project demo     # one, its candidates with their ASI, and its front
+```
+
+Of target `git` it rewrites files of a repo that `evolve.evolvable_paths` names; of target `agent_config` the
+instructions and skill axis of an agent an optimizes edge of an agent system reaches. The hub picks its tasks once:
+`evolve.tasks` light replay tasks of the select split and `evolve.probes` active probes of its paths, never a task of
+the holdout split. Its run is a run of kind `evolve`, one active a project, queued as the night shift's other runs:
+at once while the night shift's gate is open to a run a member asks for, otherwise later, with why; the night shift
+never starts an evolution of its own.
+
+The worker runs the loop (`docs/workers.md`, Evolve runs): it measures the baseline once on each task (a baseline arm
+the project's cache holds is not run again), then each round picks a parent from the front by how often it is best,
+asks the model for a mutation of one file or merges two candidates of the front, measures it and posts it. The hub
+keeps each candidate, unique by its digest, and recomputes the front (`evolve.prune_all`, `evolve.front_freq`). The
+evolution ends with its best candidate. Of target `git` the run pushes it to the branch of the accepted proposal it
+names, whose planned change then goes on as a Builder's would: a pull request, the Judge, the merge rules of its tier.
+Without such a proposal the branch stays and the evolution says why; the hub makes no change without an accepted
+proposal. Of target `agent_config` the best candidate becomes the profile's next version only when it holds on the
+holdout split (it wins on the sum of the scores, or regresses on no task, `system_curation.holdout_verdict`) and the
+profile still holds what the evolution started from; the worker reads no holdout task, so until the hub measures the
+holdout split itself an agent's evolution pins nothing and says so.
+
+The Curator's page lists the evolutions with their state, rounds, front and proposal. An evolution's files reach the
+repo through the change flow alone: the Judge, CI and the tier rules still hold, and the evolvable files raise no
+`protected_path` sign of their own (Signs of score hacking, above).
+
 ## The history run
 
 The night's figures count what happened in each session without any model (`docs/hub.md`, "Session facets"); the
@@ -828,6 +896,10 @@ only with new evidence.
 every lens, evidence and counters of helpful and harmful, as Agentic Context Engineering keeps one. It changes by deltas
 alone, never written anew: the agent of a review run adds an entry, counts one helpful or harmful once a run, or retires
 one, each delta kept. The prompt shows the live entries of the night's lenses, the most helpful less harmful first.
+An entry may hold only until a proposal lands (`--until-proposal ID`, or text that says `until proposal #12 lands`):
+the hub retires it, as actor `curator`, once that proposal's change merges. Each review run that ends done counts one
+exposure on each entry its prompt showed, and the hub retires an entry shown in `evolve.exposure_limit` review runs (30
+by default) that none found helpful.
 
 ```sh
 evo-agents worker playbook add --lens cost --text "Count cache reads first" --evidence transcript:ID:40   # a review run's agent
@@ -1003,7 +1075,7 @@ A change ends `merged` or `closed`. Four hands close one, each on its own kind o
 | --- | --- | --- |
 | an admin of the project | one left `open` with no pull request (its proposal named no repo, say) | `evo-agents hub curator change close ID --reason TEXT` (POST `.../curator/changes/{id}/close`) |
 | whoever closes its pull request | one with a pull request | closing the pull request on GitHub without a merge; the hub reads it again within the hour and closes the change |
-| the hub | one waiting for its pull request whose branch has commits of its own that change no file | at the pass of `curator.changes` that would open the pull request: GitHub's comparison of the default branch with the branch lists no file, so the hub opens no pull request, queues no Judge and closes the change, "its branch changes nothing" |
+| the hub | one waiting for its pull request whose branch changes no file, with commits of its own or none | at the pass of `curator.changes` that would open the pull request: GitHub's comparison of the default branch with the branch lists no file, so the hub opens no pull request, queues no Judge and closes the change, "its branch changes nothing", or, for a branch with no commit that no pull request merged or closed by hand settles, "its branch has no commit of its own" |
 | its Builder | its own, while `planned` or `pr_pending` with no pull request, for the member who dispatched the run, an admin of the project | `evo-agents worker curator drop --reason TEXT [--note TEXT]` inside the plan run (POST `/v1/worker/runs/{id}/curator/drop`) |
 
 The Builder's drop is how a decision answered "drop" ends a change: the agent runs it, ends its run as it would, and
@@ -1106,6 +1178,8 @@ evo-agents hub kg health --project demo
 | 0132 | the notice `curator_probe_report` |
 | 0133 | `proposals.fix_of`, `findings.fix_of`, `curator_probes.replaces`: the fix proposals and the replacement probes |
 | 0220 | the lens `agent_system`, the kind `agent_config`, `proposals.system_change`: the change of an agent or a graph a system's curator optimizes |
+| 0256 | `curator_evolve_runs`, `curator_evolve_candidates`, `curator_evolve_arm_cache`: the evolutions, their candidates and the cache of baseline arms; `curator_change_repos`: each repo of a change in several; `curator_playbook.until_proposal_id`, `prompt_exposures` and the actor of a delta |
+| 0257 | runs of kind `evolve`, `runs_active_evolve_key`: at most one active evolve run a project |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
 `curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes`, `curator.replay_suite` and

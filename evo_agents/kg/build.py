@@ -2,27 +2,23 @@
 
 Stages run as memoized tasks: map and structure per item, then one identifier index, then link and
 binding per item. Assembly merges facts, applies entity resolution (only declared ``same_as``),
-evaluates the provenance circuit, computes labels, checks node keys, and writes the store as one build.
-Its coverage names, per source, what the build holds; for a git source that includes the commit read
-(``evo_agents.kg.freshness``).
-A store written by an older schema is rebuilt from the corpus log into a new file that replaces it.
+evaluates the provenance circuit, computes labels and checks node keys; ``build_rows`` gives the graph as the rows
+of one build (``evo_agents.kg.graph_rows``), which the hub keeps. Its coverage names, per source, what the build
+holds; for a git source that includes the commit read (``evo_agents.kg.freshness``).
 
 A build does only what changed. A link task is done again only for an item whose own text or structure changed or
-that read an entry of the identifier index that now holds something else (``Memo.run_traced``), and the store
-rewrites only the rows of the full-text index that changed. A build whose corpus state and inputs (the code, the
-config, the cursors: ``build_inputs``) are those of the store's latest build is not done at all (``unchanged``).
+that read an entry of the identifier index that now holds something else (``Memo.run_traced``). A build whose corpus
+state and inputs (the code, the config, the cursors: ``build_inputs``) are those of the rows of the latest build is
+not done at all (``unchanged_rows``).
 """
 
 from __future__ import annotations
 
 import json
 import re
-import shutil
-import sqlite3
-import tempfile
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -31,12 +27,13 @@ from evo_agents.kg import audit, entities, entity_map, ontology_rules, strategy
 from evo_agents.kg import clusters as kg_clusters
 from evo_agents.kg import review as kg_review
 from evo_agents.kg import search as text_search
-from evo_agents.kg import store as kg_store
 from evo_agents.kg.assembly import Facts, assemble
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.freshness import add_reads
+from evo_agents.kg.graph_model import SCHEMA_VERSION, Clusters, Graph, label_columns
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.memo import Memo
+from evo_agents.kg.packed import Packed
 from evo_agents.kg.pipeline import curation
 from evo_agents.kg.pipeline.binding import BINDING_VERSION
 from evo_agents.kg.pipeline.link import LINK_VERSION, link_traced
@@ -64,9 +61,6 @@ from evo_agents.kg.settings import DEFAULT as DEFAULT_TUNING
 from evo_agents.kg.settings import SettingsError, Tuning
 from evo_agents.kg.settings import read as read_tuning
 from evo_agents.kg.snapshot import Snapshot, StoreRows
-from evo_agents.kg.store import Graph, StaleSchema, Store
-from evo_agents.kg.store_clusters import Clusters
-from evo_agents.kg.store_filters import label_columns
 from evo_agents.kg.text import split_passages
 
 # config: the aliases of tsconfig.json; commit and pr: the files a commit changed, the commit a pull request merged as
@@ -94,8 +88,7 @@ class BuildReport:
     memo: dict = field(default_factory=dict)
     seconds: float = 0.0
     verify: dict | None = None
-    rebuilt_from: str | None = None  # the older store schema this build replaced, if any
-    skipped: bool = False  # nothing changed since build ``build_id``, which stays the latest (``unchanged``)
+    skipped: bool = False  # nothing changed since build ``build_id``, which stays the latest (``unchanged_rows``)
 
     def summary_line(self) -> str:
         if not self.ok:
@@ -105,15 +98,10 @@ class BuildReport:
                 f"build {self.build_id} for {self.project} is current: {self.nodes} nodes, {self.edges} edges;"
                 " the corpus and the config have not changed since, so nothing was built"
             )
-        rebuilt = (
-            f", store rebuilt from the log (schema {self.rebuilt_from} -> {kg_store.SCHEMA_VERSION})"
-            if self.rebuilt_from
-            else ""
-        )
         return (
             f"build {self.build_id} for {self.project}: {self.nodes} nodes, {self.edges} edges, {self.units} units"
             f" in {self.seconds}s (memo {sum(s['hits'] for s in self.memo.values())} hits,"
-            f" {sum(s['misses'] for s in self.memo.values())} misses){rebuilt}"
+            f" {sum(s['misses'] for s in self.memo.values())} misses)"
         )
 
     def to_json(self) -> dict:
@@ -161,6 +149,7 @@ def run_pipeline(
     first, structure_out, code_items = map_items(records, sources, backends, identifiers, memo, body)
     index = build_index(first, identifiers)
     second = link_items(records, structure_out, index, memo, corpus, body)
+    del structure_out
     tuning = tuning_of(project)
     extracted: dict[str, list[dict]] = {}
     entities_coverage = None
@@ -233,7 +222,7 @@ def _map_kinds(name: str | None, harness_root, kinds) -> list[str]:
     return found if entity_map.OTHER in found else [*found, entity_map.OTHER]
 
 
-def _nodes_of(first: dict[str, list[dict]], second: dict[str, list[dict]]) -> dict[str, list[dict]]:
+def _nodes_of(first: Mapping[str, list[dict]], second: Mapping[str, list[dict]]) -> dict[str, list[dict]]:
     """The node facts of each item, of the map stage and the link stage: what a map may cite."""
     return {
         item: [f for f in first.get(item, []) + second.get(item, []) if f.get("t") == "node"]
@@ -278,12 +267,14 @@ def add_units(graph: Graph, records, policy: Policy) -> dict[str, Label]:
 
 def map_items(
     records, sources: dict[str, dict], backends: dict[str, str], identifiers: list[dict], memo: Memo, body
-) -> tuple[dict[str, list[dict]], dict[str, tuple[list[dict], str]], dict[str, list[tuple[dict, str]]]]:
-    """Map and structure, per item: the facts of both by item, the structure facts and their hash by item, and the
-    code items of each source with the extractor that read them."""
+) -> tuple[Packed, dict[str, tuple[Packed, str]], dict[str, list[tuple[dict, str]]]]:
+    """Map and structure, per item: the facts of both by item, the structure facts (in a Packed shared by the items)
+    and their hash by item, and the code items of each source with the extractor that read them. The facts are held
+    packed (``evo_agents.kg.packed``): as objects, those of every item were most of a build's memory."""
     identifiers_digest = sha256(canonical_json(identifiers))
-    first: dict[str, list[dict]] = {}
-    structure_out: dict[str, tuple[list[dict], str]] = {}
+    first = Packed()
+    structured_of = Packed()
+    structure_out: dict[str, tuple[Packed, str]] = {}
     code_items: dict[str, list[tuple[dict, str]]] = defaultdict(list)
     for rec in records:
         r = rec.record
@@ -310,7 +301,9 @@ def map_items(
             )
         else:
             structured, shash = [], "none"
-        structure_out[rec.item_id] = (structured, shash)
+        if structured:
+            structured_of[rec.item_id] = structured
+        structure_out[rec.item_id] = (structured_of, shash)
         first[rec.item_id] = mapped + structured
     return first, structure_out, code_items
 
@@ -346,13 +339,14 @@ def item_rows(records, memo: Memo, body) -> list[tuple[str, str, dict]]:
     return rows
 
 
-def link_items(records, structure_out: dict, index: dict, memo: Memo, corpus: Corpus, body) -> dict[str, list[dict]]:
-    """Link and binding, per item. A link task is traced (``Memo.run_traced``): it runs again when its item or its
-    structure changed, or when an entry of the index it read holds something else. A binding task is keyed by the
-    whole index, whose digest is taken only when the project has bindings."""
+def link_items(records, structure_out: dict, index: dict, memo: Memo, corpus: Corpus, body) -> Packed:
+    """Link and binding, per item, held packed as ``map_items`` holds its facts. A link task is traced
+    (``Memo.run_traced``): it runs again when its item or its structure changed, or when an entry of the index it read
+    holds something else; only then are its structure facts unpacked. A binding task is keyed by the whole index,
+    whose digest is taken only when the project has bindings."""
     held = Held(index)
     idx = None
-    second: dict[str, list[dict]] = {}
+    second = Packed()
     for rec in records:
         r = rec.record
         structured, shash = structure_out[rec.item_id]
@@ -369,7 +363,9 @@ def link_items(records, structure_out: dict, index: dict, memo: Memo, corpus: Co
                 "link",
                 LINK_VERSION,
                 {"item": rec.item_id, "hash": r["hash"], "structure": shash},
-                lambda rec=rec, r=r, st=structured: link_traced(r, corpus.fragments(r), body(rec), st, index),
+                lambda rec=rec, r=r, st=structured: link_traced(
+                    r, corpus.fragments(r), body(rec), st.get(rec.item_id, []), index
+                ),
                 held.digest,
             )
         second[rec.item_id] = out
@@ -494,52 +490,8 @@ def is_structured(record: dict) -> bool:
 
 def memo_path(project: Project) -> Path:
     if project.policy.memo == "shared":
-        return project.home / "_shared" / "memo.sqlite"
-    return project.root / "memo.sqlite"
-
-
-def build_project(
-    project: Project,
-    *,
-    store: Store | None = None,
-    memo: Memo | None = None,
-    verify: bool = False,
-    cold: bool = False,
-    force: bool = False,
-    entity_outbox: list | None = None,
-    entity_inbox: dict | None = None,
-    entity_keys: dict | None = None,
-) -> BuildReport:
-    """Build the project's graph and append one line to its audit log, whether the build succeeds, fails or
-    raises. ``verify`` rebuilds into a temporary store, which adds no line of its own: the outcome is this
-    build's ``verified``. A build into the project's own store is skipped, unless ``force``, when its latest build
-    was made of the same corpus state with the same inputs (``unchanged``): the report names that build, with
-    ``skipped`` set, and the audit log gets no line, since nothing was built. ``entity_outbox``, ``entity_inbox`` and
-    ``entity_keys`` go to the entities step (``run_pipeline``)."""
-    if store is None and not force:
-        report = unchanged(project)
-        if report is not None:
-            if verify:
-                report.verify = verify_build(project, report.content_hash, cold=cold)
-                report.ok = report.verify["match"]
-            _vectors(project, report)
-            return report
-    started_at = utc_now()
-    report = BuildReport(project.name, ok=False)
-    crashed = None
-    try:
-        warm = _build(project, report, store, memo, entity_outbox, entity_inbox, entity_keys)
-        if verify and report.ok:
-            report.verify = verify_build(project, report.content_hash, cold=cold, warm=warm)
-            report.ok = report.verify["match"]
-    except BaseException as exc:
-        crashed = type(exc).__name__
-        raise
-    finally:
-        audit.record_build(project.root, report, started=started_at, finished=utc_now(), exception=crashed)
-    if store is None and report.ok:
-        _vectors(project, report)
-    return report
+        return project.home / "_shared" / "memo"
+    return project.root / "memo"
 
 
 def _semantic_of(tuning):
@@ -550,26 +502,8 @@ def _semantic_of(tuning):
         return None
 
 
-def _vectors(project: Project, report: BuildReport) -> None:
-    """Make the project's graph hold the vectors its ``semantic.json`` asks for (``evo_agents.kg.semantic``), outside
-    the build's content hash; a model that cannot be loaded is a warning, and the graph searches by words."""
-    from evo_agents.kg import store_vectors
-
-    path = project.root / "graph.sqlite"
-    try:
-        settings = tuning_of(project).semantic_settings()
-    except (ValueError, ProjectError) as exc:
-        report.warnings.append(f"semantic: {exc}")
-        return
-    if not path.exists():
-        return
-    found = store_vectors.index_file(path, settings)
-    if found.error:
-        report.warnings.append(found.line())
-
-
 def build_inputs(project: Project, corpus: Corpus) -> str | None:
-    """Digest of what a build makes of the corpus state besides the state: the code (evo-agents' version, the store
+    """Digest of what a build makes of the corpus state besides the state: the code (evo-agents' version, the graph
     schema, each stage's version, the graphify it would use, the clustering's version, parameters and engine), the
     project's knowledge.yaml and ontology, and the cursors its coverage copies (``freshness.add_reads``). None when the ontology does not load, which fails a build."""
     from evo_agents.kg.extract import graphify as gfy
@@ -580,7 +514,7 @@ def build_inputs(project: Project, corpus: Corpus) -> str | None:
         return None
     sources = sorted(s["id"] for s in project.sources() if isinstance(s.get("id"), str))
     parts = {
-        "code": [__version__, kg_store.SCHEMA_VERSION, MAP_VERSION, STRUCTURE_VERSION, LINK_VERSION, BINDING_VERSION],
+        "code": [__version__, SCHEMA_VERSION, MAP_VERSION, STRUCTURE_VERSION, LINK_VERSION, BINDING_VERSION],
         "graphify": gfy.version() if gfy.available() else None,
         "knowledge": project.knowledge,
         "ontology": ontology,
@@ -600,40 +534,6 @@ def build_inputs(project: Project, corpus: Corpus) -> str | None:
     ):
         parts["entity_maps"] = maps  # the maps an agent posted (kg.entity_map): a new one is a new build
     return sha256(json.dumps(parts, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str))
-
-
-def unchanged(project: Project) -> BuildReport | None:
-    """The report of the latest build in the project's store (``graph.sqlite``) when it was made of the corpus state
-    the project has now, with the inputs it has now (``build_inputs``): a build would write that graph again. None
-    otherwise, and when the store is missing, of another schema, or holds no ready build."""
-    corpus = project.corpus()
-    try:
-        state, inputs = corpus.state_digest(), build_inputs(project, corpus)
-    finally:
-        corpus.close()
-    path = project.root / "graph.sqlite"
-    if inputs is None or not path.exists():
-        return None
-    try:
-        store = Store.open_file(path)
-    except (StaleSchema, sqlite3.Error):
-        return None
-    try:
-        b = store.latest_ready()
-        row = store.build_row(b) if b is not None else None
-        if row is None or row["state_digest"] != state or row["stats"].get("inputs") != inputs:
-            return None
-        if entities.unfinished(row["coverage"]):  # items left for a later build: this build goes on with them
-            return None
-        size = row["stats"].get("size") or store.counts(b)
-    finally:
-        store.close()
-    coverage = row["coverage"]
-    report = BuildReport(project.name, ok=True, build_id=b, content_hash=row["content_hash"], skipped=True)
-    report.nodes, report.edges, report.units = size["nodes"], size["edges"], size["units"]
-    report.coverage, report.warnings = coverage, coverage.get("warnings", [])
-    report.issues, report.dangling_edges = coverage.get("issues", []), coverage.get("dangling_edges", 0)
-    return report
 
 
 def _assemble(
@@ -674,11 +574,13 @@ def build_rows(
     entity_outbox: list | None = None,
     entity_inbox: dict | None = None,
     entity_keys: dict | None = None,
+    memo: Memo | None = None,
 ) -> tuple[BuildReport, StoreRows | None]:
-    """Build the project's graph in memory, without a store: the report and the rows a store would hold of the build
-    (``graph_rows``), None when the build failed. The clustering starts from ``warm``, the clusters of the build
+    """Build the project's graph in memory: the report and the rows of the build (``graph_rows``), None when the
+    build failed. The clustering starts from ``warm``, the clusters of the build
     before; the corpus state the build read is the stats' ``state_digest``, for ``unchanged_rows``. The audit log
-    gets its line, as from ``build_project``."""
+    gets its line. The memo is the project's (``memo_path``) unless ``memo`` is given, which
+    the caller closes."""
     from evo_agents.kg.graph_rows import graph_rows
 
     started_at = utc_now()
@@ -686,9 +588,11 @@ def build_rows(
     crashed, rows = None, None
     started = time.monotonic()
     corpus = project.corpus()
-    path = memo_path(project)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    memo = Memo(path)
+    own_memo = memo is None
+    if memo is None:
+        path = memo_path(project)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        memo = Memo(path)
     try:
         found = _assemble(project, report, corpus, memo, lambda: warm, entity_outbox, entity_inbox, entity_keys)
         if found is not None:
@@ -708,7 +612,8 @@ def build_rows(
         crashed = type(exc).__name__
         raise
     finally:
-        memo.close()
+        if own_memo:
+            memo.close()
         corpus.close()
         report.seconds = round(time.monotonic() - started, 3)
         audit.record_build(project.root, report, started=started_at, finished=utc_now(), exception=crashed)
@@ -717,7 +622,7 @@ def build_rows(
 
 def unchanged_rows(project: Project, rows: StoreRows | None) -> BuildReport | None:
     """The report of the build ``rows`` hold (``build_rows``) when it was made of the corpus state the project has now,
-    with the inputs it has now: a build would make those rows again (``unchanged``, for rows kept elsewhere). None
+    with the inputs it has now: a build would make those rows again. None
     otherwise, and without rows or a state they recorded."""
     if rows is None or not rows.summary.get("ready"):
         return None
@@ -738,71 +643,6 @@ def unchanged_rows(project: Project, rows: StoreRows | None) -> BuildReport | No
     report.coverage, report.warnings = coverage, coverage.get("warnings", [])
     report.issues, report.dangling_edges = coverage.get("issues", []), coverage.get("dangling_edges", 0)
     return report
-
-
-def _build(
-    project: Project,
-    report: BuildReport,
-    store: Store | None,
-    memo: Memo | None,
-    entity_outbox: list | None = None,
-    entity_inbox: dict | None = None,
-    entity_keys: dict | None = None,
-) -> Clusters | None:
-    """Build into ``store`` (the project's graph.sqlite when None); the clusters the build started from."""
-    started = time.monotonic()
-    corpus = project.corpus()
-    own_memo, own_store = memo is None, store is None
-    if memo is None:
-        path = memo_path(project)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        memo = Memo(path)
-    try:
-        target = project.root / "graph.sqlite"
-        found = _assemble(
-            project,
-            report,
-            corpus,
-            memo,
-            lambda: previous_clusters(store, target),
-            entity_outbox,
-            entity_inbox,
-            entity_keys,
-        )
-        if found is None:
-            return
-        graph, coverage, warm = found
-        if store is None:
-            found = Store.stored_schema(target)
-            if found not in (None, kg_store.SCHEMA_VERSION):
-                report.rebuilt_from = found
-            store = Store.staging(target) if report.rebuilt_from else Store(target)
-        b = store.write(
-            graph,
-            state_digest=corpus.read_digest,
-            coverage=coverage,
-            stats={"memo": report.memo, "inputs": build_inputs(project, corpus)},
-            policy=project.policy,
-            warm=warm,
-        )
-        if report.rebuilt_from:
-            store = store.install(target)
-        counts = store.counts(b)
-        report.ok = True
-        report.build_id = b
-        report.content_hash = store.build_row(b)["content_hash"]
-        report.nodes, report.edges, report.units = counts["nodes"], counts["edges"], counts["units"]
-        report.dangling_edges = coverage["dangling_edges"]
-        return warm
-    finally:
-        # Since Python 3.11 a connection left open is freed only by the cycle collector (its statement cache refers back
-        # to it), and Windows cannot replace a file a connection holds: the next rebuild would fail on graph.sqlite-wal.
-        if own_store and store is not None:
-            store.close()
-        if own_memo:
-            memo.close()
-        corpus.close()
-        report.seconds = round(time.monotonic() - started, 3)
 
 
 def add_curation(graph: Graph, coverage: dict) -> None:
@@ -843,81 +683,21 @@ def add_review(graph: Graph, coverage: dict, ontology: dict | None = None) -> No
     coverage["review"] = kg_review.counts(graph.review)
 
 
-def previous_clusters(
-    store: Store | None, target: Path, *, before: int | None = None, close: bool = False
-) -> Clusters | None:
-    """The clusters a build starts from: those of the latest ready build of ``store`` (before build ``before``), or,
-    when ``store`` is None or has none and is not ``target`` (a staging store), those of the latest build in
-    ``target``. None without one, and for a file of another schema. ``close`` closes ``store``."""
-    try:
-        if store is not None:
-            b = store.latest_ready(before)
-            if b is not None:
-                return store.clusters(b)
-            if before is not None or store.path == target:
-                return None
-        if not target.exists():
-            return None
-        try:
-            found = Store.open_file(target)
-        except (StaleSchema, sqlite3.Error):
-            return None
-        try:
-            b = found.latest_ready()
-            return found.clusters(b) if b is not None else None
-        finally:
-            found.close()
-    finally:
-        if close and store is not None:
-            store.close()
+def verify_rows(project: Project, expected: str, *, cold: bool = False, warm: Clusters | None = None) -> dict:
+    """Rebuild from the corpus in memory and compare the graph's content hash, the one ``build_rows`` gives its rows,
+    with ``expected`` (property P1). With ``cold`` the memo starts empty too, which also checks that memoized outputs
+    are faithful. ``warm`` is the clusters the checked build started from: a build that started from the clusters of
+    the one before matches only when they are passed."""
+    from evo_agents.kg import content
+
+    return _rebuilt(project, expected, cold, warm, lambda graph, coverage, corpus: content.content_hash(graph))
 
 
-def warm_start_of(project: Project, content_hash: str) -> Clusters | None:
-    """The clusters the project's ready build of ``content_hash`` started from: those it recorded (``Store.warm_start``),
-    else those of the ready build before it in the project's store. None when the store, that build or the one before
-    it is gone."""
-    target = project.root / "graph.sqlite"
-    if not target.exists():
-        return None
-    try:
-        store = Store.open_file(target)
-    except (StaleSchema, sqlite3.Error):
-        return None
-    try:
-        b = store.ready_build_of(content_hash)
-    except sqlite3.Error:
-        store.close()
-        return None
-    if b is None:
-        store.close()
-        return None
-    try:
-        recorded, warm = store.warm_start(b)
-    except sqlite3.Error:  # a file written before cluster_warm came
-        recorded, warm = False, None
-    if recorded:
-        store.close()
-        return warm
-    return previous_clusters(store, target, before=b, close=True)
-
-
-_FIND = object()
-
-
-def verify_build(
-    project: Project, expected: str, *, cold: bool = False, warm: Clusters | None | object = _FIND
-) -> dict:
-    """Rebuild from the corpus into an empty store and compare content hashes (property P1).
-    With ``cold`` the memo starts empty too, which also checks that memoized outputs are faithful. ``warm`` is the
-    clusters the build started from; by default those of the build before the project's ready build of
-    ``expected`` (``warm_start_of``), since cluster ids follow the build before."""
-    if warm is _FIND:
-        warm = warm_start_of(project, expected)
-    tmp = Path(tempfile.mkdtemp(prefix="evo-kg-verify-"))
+def _rebuilt(project: Project, expected: str, cold: bool, warm: Clusters | None, hashed) -> dict:
+    """Rebuild the project's graph offline from the corpus, starting the clustering from ``warm``, and compare
+    ``hashed(graph, coverage, corpus)`` with ``expected``; with ``cold`` the memo starts empty."""
     opened: list = []  # closed whatever happens: an open memo holds its lock, an open corpus its file
     try:
-        store = Store(tmp / "graph.sqlite")
-        opened.append(store)
         memo = Memo(None) if cold else Memo(memo_path(project))
         opened.append(memo)
         entity_memo = Memo(memo_path(project)) if cold else None
@@ -931,10 +711,8 @@ def verify_build(
         add_curation(graph, coverage)
         add_clusters(project, graph, coverage, warm)
         add_review(graph, coverage, project.ontology)
-        b = store.write(graph, state_digest=corpus.read_digest, coverage=coverage, stats={}, policy=project.policy)
-        got = store.build_row(b)["content_hash"]
+        got = hashed(graph, coverage, corpus)
         return {"match": got == expected, "expected": expected, "rebuilt": got, "cold": cold}
     finally:
         for opener in reversed(opened):
             opener.close()
-        shutil.rmtree(tmp, ignore_errors=True)

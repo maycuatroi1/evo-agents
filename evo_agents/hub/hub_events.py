@@ -53,7 +53,19 @@ RUN_PARKED = "run.parked"  # a run of the project was parked for want of an answ
 DECISION_OPENED = "decision.opened"  # a run of the project asked a person a decision
 CURATOR_PAUSED = "curator.paused"  # the circuit breaker paused the project's night shift
 WORKER_HEALTH = "worker.health"  # the health of a worker that serves the project changed
-OPS = (RUN_ENDED, RUN_PARKED, DECISION_OPENED, CURATOR_PAUSED, WORKER_HEALTH)
+PLAN_STALLED = "plan.stalled"  # a plan a system ran has a ready step and nothing that works on it (``ops_stalls``)
+RUN_QUEUED_LONG = "run.queued_long"  # a chat run waited for a slot longer than ops.plan_stall_minutes
+MENTION_REFUSED = "mention.refused"  # a mention or an ask was refused for want of a node that can take its run
+OPS = (
+    RUN_ENDED,
+    RUN_PARKED,
+    DECISION_OPENED,
+    CURATOR_PAUSED,
+    WORKER_HEALTH,
+    PLAN_STALLED,
+    RUN_QUEUED_LONG,
+    MENTION_REFUSED,
+)
 KINDS = (
     CLAIM,
     BASELINE,
@@ -122,9 +134,12 @@ __all__ = [
     "CURATOR_PAUSED",
     "DECISION_OPENED",
     "KINDS",
+    "MENTION_REFUSED",
     "OPS",
+    "PLAN_STALLED",
     "RUN_ENDED",
     "RUN_PARKED",
+    "RUN_QUEUED_LONG",
     "WORKER_HEALTH",
     "PLAN_STEP",
     "SIGNALS",

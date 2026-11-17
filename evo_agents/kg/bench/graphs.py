@@ -4,14 +4,16 @@ Layout under the bench cache::
 
     repos/OWNER__NAME.git              a bare clone of each repo, fetched once, every base commit read from it
     kg/EXTRACTOR/home/                 EVO_KG_HOME of the builds: a project per repo and commit
-    kg/EXTRACTOR/memo/OWNER__NAME.sqlite  the memo of a repo's builds: its commits share most of their work
+    kg/EXTRACTOR/home/PROJECT/graph.rows  the graph: the rows of its build, pickled and compressed (``rows_file``)
+    kg/EXTRACTOR/memo/OWNER__NAME/     the memo of a repo's builds: its commits share most of their work
+    kg/EXTRACTOR/vectors/OWNER__NAME.vectors  the vectors of a repo's snapshots, for hybrid search
     kg/EXTRACTOR/harness/NAME/         the harness of that project: a git source at the base commit, no pulls
     kg/EXTRACTOR/builds.jsonl          the time each build took, which ``estimate`` reads
 
 A snapshot is the commit read straight from the bare clone (the git connector reads a ref, not a working tree), with
 its history up to it as any graph has; the pull requests are not read, since one of them is the fix. EXTRACTOR is a
-digest of what makes the graph (``extractor``): the store's schema, the version of each stage, the graphify used, the
-code of the git connector and the text the search index is made of; not evo-agents' version, so a release that
+digest of what makes the graph (``extractor``): the format of the rows file and the code that makes the rows, the
+version of each stage, the graphify used, the code of the git connector and the text the search index is made of; not evo-agents' version, so a release that
 changes only the ranking finds its graphs built and searches them again. A build that succeeded leaves ``bench.json`` in its project and is not done again.
 
 Room. The graphs are a cache that grows with every snapshot (a graph takes up to 700 MB; the four sets made 400 GB
@@ -39,6 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from evo_agents.kg.bench.datasets import BenchError
+from evo_agents.kg.bench.rows_file import ROWS, forget
 from evo_agents.kg.bench.tasks import SOURCE_ID, Task
 from evo_agents.kg.project import Project, load_project_at
 
@@ -61,23 +64,26 @@ class DiskFull(BenchError):
 
 def extractor() -> str:
     """Digest of what a bench graph is made with; a change of it builds the graphs again (see the module)."""
-    from evo_agents.kg import store, text
+    from evo_agents.kg import graph_rows, text
+    from evo_agents.kg.bench.rows_file import ROWS_FORMAT
     from evo_agents.kg.connectors import git, gitcli
     from evo_agents.kg.extract import graphify as gfy
+    from evo_agents.kg.graph_model import SCHEMA_VERSION
     from evo_agents.kg.pipeline import curation
     from evo_agents.kg.pipeline.binding import BINDING_VERSION
     from evo_agents.kg.pipeline.link import LINK_VERSION
     from evo_agents.kg.pipeline.stages import MAP_VERSION, STRUCTURE_VERSION
 
     parts = [
-        store.SCHEMA_VERSION,
+        SCHEMA_VERSION,
+        ROWS_FORMAT,
         MAP_VERSION,
         STRUCTURE_VERSION,
         LINK_VERSION,
         BINDING_VERSION,
         curation.CURATION_VERSION,
         gfy.version() if gfy.available() else None,
-        *(hashlib.sha256(Path(m.__file__).read_bytes()).hexdigest() for m in (text, git, gitcli)),
+        *(hashlib.sha256(Path(m.__file__).read_bytes()).hexdigest() for m in (text, git, gitcli, graph_rows)),
     ]
     return hashlib.sha256(json.dumps(parts).encode()).hexdigest()[:16]
 
@@ -106,13 +112,13 @@ class Layout:
         return f"{slug(task.repo)}-{task.commit[:12].lower()}"
 
     def memo(self, repo: str) -> Path:
-        """The memo of the repo's builds, its own so that builds of two repos at once never wait on one file."""
-        return self.base / "memo" / f"{slug(repo)}.sqlite"
+        """The memo of the repo's builds, a directory of its own, shared by the repo's snapshots."""
+        return self.base / "memo" / slug(repo)
 
     def vectors(self, repo: str) -> Path:
         """The vectors of the repo's snapshots, by the digest of a row's text: a snapshot embeds only the rows no
         other snapshot of the repo had (with the API backend, that is what is paid for)."""
-        return self.base / "vectors" / f"{slug(repo)}.sqlite"
+        return self.base / "vectors" / f"{slug(repo)}.vectors"
 
     def harness(self, task: Task) -> Path:
         return self.base / "harness" / self.name(task)
@@ -122,7 +128,7 @@ class Layout:
 
     def built(self, task: Task) -> bool:
         root = self.project_dir(task)
-        return (root / MARKER).is_file() and (root / "graph.sqlite").is_file()
+        return (root / MARKER).is_file() and (root / ROWS).is_file()
 
 
 def layout(cache: Path) -> Layout:
@@ -310,11 +316,9 @@ def warm(project: Path) -> int:
     and 100 GB of other graphs before, so its first search would time the disk (docs/kg-bench.md, p95 latency).
     Returns the bytes read."""
     read = 0
-    for name in ("graph.sqlite", "graph.sqlite-wal"):
-        path = project / name
-        with contextlib.suppress(OSError), path.open("rb") as fh:
-            while chunk := fh.read(WARM_CHUNK):
-                read += len(chunk)
+    with contextlib.suppress(OSError), (project / ROWS).open("rb") as fh:
+        while chunk := fh.read(WARM_CHUNK):
+            read += len(chunk)
     return read
 
 
@@ -410,7 +414,7 @@ def build_graph(
         with contextlib.suppress(OSError):
             os.utime(lay.project_dir(task) / MARKER)
         return Built(task, reused=True)
-    from evo_agents.kg.build import build_project
+    from evo_agents.kg.bench import rows_file
     from evo_agents.kg.memo import Memo
     from evo_agents.kg.sync import sync_project
 
@@ -426,10 +430,9 @@ def build_graph(
             if failed:
                 why = failed[0].exception or "; ".join(failed[0].issues[:2]) or failed[0].status
                 return Built(task, False, time.monotonic() - start, f"sync: {why}")
-            lay.memo(task.repo).parent.mkdir(parents=True, exist_ok=True)
             memo = Memo(lay.memo(task.repo))
             try:
-                report = build_project(project, memo=memo)
+                report, _ = rows_file.build(project, lay.project_dir(task), memo=memo)
             finally:
                 memo.close()
             if not report.ok:
@@ -449,6 +452,7 @@ def build_graph(
 
 def prune_graph(lay: Layout, task: Task) -> None:
     """Delete the graph of the task's repo and commit, and its harness: ``run --prune`` keeps only graphs in flight."""
+    forget()  # the snapshot held in memory may be this graph's
     (lay.project_dir(task) / MARKER).unlink(missing_ok=True)
     remove_tree(lay.project_dir(task))
     remove_tree(lay.harness(task))
@@ -457,9 +461,8 @@ def prune_graph(lay: Layout, task: Task) -> None:
 def prune_repo(lay: Layout, repo: str) -> None:
     """Delete the bare clone of ``repo``, the memo of its builds and its cache of vectors."""
     remove_tree(lay.clone(repo))
-    for suffix in ("", "-wal", "-shm"):
-        Path(f"{lay.memo(repo)}{suffix}").unlink(missing_ok=True)
-        Path(f"{lay.vectors(repo)}{suffix}").unlink(missing_ok=True)
+    remove_tree(lay.memo(repo))
+    lay.vectors(repo).unlink(missing_ok=True)
 
 
 def build_seconds(lay: Layout, bench: str) -> float | None:

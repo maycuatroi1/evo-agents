@@ -13,12 +13,12 @@ pytest.importorskip("sqlalchemy", reason="the hub's source of decisions needs th
 from evo_agents.hub import kg_decisions
 from evo_agents.hub.kg_sources import HUB, checked, keep_sources, knowledge_with
 from evo_agents.kg import clusters
-from evo_agents.kg.build import build_project
+from evo_agents.kg.graph_model import edge_id
 from evo_agents.kg.pipeline.curation import curation_item
 from evo_agents.kg.project import load_project_at
-from evo_agents.kg.store import Store, edge_id
-from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
+from tests.kg.built import build, snapshot_of
+from tests.kg.hub_graph import hub_session
 from tests.kg.projects import make_project
 
 RANK = "symbol:app:app/search.py::rank_results"
@@ -36,7 +36,8 @@ def row(number: int, kind: str, src: str, rel: str | None = None, dst: str | Non
 
 
 def curated(tmp_path, home, rows: list):
-    """The demo project built with the hub's source of the decisions ``rows``: (project, store, build, report)."""
+    """The demo project built with the hub's source of the decisions ``rows``: (project, the build as a reader of every
+    audience reads it, build, report)."""
     project = make_project(tmp_path, home)
     sync_project(project)
     path = project.harness.root / "knowledge.yaml"
@@ -46,11 +47,9 @@ def curated(tmp_path, home, rows: list):
     path.write_text(yaml.safe_dump(knowledge_with(knowledge, [source]), sort_keys=True), encoding="utf-8")
     project = load_project_at(project.harness.root, home)
     keep_sources(project, [source])
-    report = build_project(project)
+    report = build(project)
     assert report.ok, report.errors
-    store = Store.for_project(project)
-    store.reader = frozenset({"*"})
-    return project, store, report.build_id, report
+    return project, snapshot_of(project).view(frozenset({"*"})), report.build_id, report
 
 
 DECISIONS = [
@@ -63,18 +62,18 @@ DECISIONS = [
 
 
 def test_curation_merges_links_and_deprecates_at_the_binding_stage(tmp_path, kg_env):
-    _project, store, b, report = curated(tmp_path, kg_env, DECISIONS)
+    _project, view, b, report = curated(tmp_path, kg_env, DECISIONS)
     # A merge is a same_as: the smallest id stays and the other is its alias.
-    assert store.node(OLD, b) is None and store.alias_of(OLD, b) == GUIDE
-    assert OLD in store.node(GUIDE, b)["aliases"]
+    assert view.node(OLD, b) is None and view.alias_of(OLD, b) == GUIDE
+    assert OLD in view.node(GUIDE, b)["aliases"]
     # A link is a declared edge that names its decision.
-    added = next(e for e in store.edges_of(SERVER_PY, b, "out") if e["rel"] == "verifies")
+    added = next(e for e in view.edges_of(SERVER_PY, b, "out") if e["rel"] == "verifies")
     assert added["dst"] == SEARCH_PY and added["status"] == "declared" and added["props"] == {"decision": 2}
-    implements = [e for e in store.edges_of(SERVER_PY, b, "out") if e["rel"] == "implements"]
+    implements = [e for e in view.edges_of(SERVER_PY, b, "out") if e["rel"] == "implements"]
     assert [(e["dst"], e["props"]) for e in implements] == [("usecase:KB-02", {"decision": 5})]
     # A deprecation marks the node or edge it names, with its reason and decision; neither leaves the graph.
-    assert store.node(RANK, b)["props"]["deprecated"] == {"reason": "ranking moved to the index", "decision": 3}
-    calls = next(e for e in store.edges_of(HANDLE, b, "out") if e["rel"] == "calls")
+    assert view.node(RANK, b)["props"]["deprecated"] == {"reason": "ranking moved to the index", "decision": 3}
+    calls = next(e for e in view.edges_of(HANDLE, b, "out") if e["rel"] == "calls")
     assert calls["id"] == edge_id(HANDLE, "calls", SEARCH)
     assert calls["props"]["deprecated"] == {"reason": "the server calls the index now", "decision": 4}
     assert report.coverage["curation"] == {"deprecated": 2, "orphans": 0}
@@ -90,13 +89,13 @@ def test_curation_orphans_are_skipped_and_never_break_the_build(tmp_path, kg_env
         row(5, "deprecate", RANK),
         row(6, "link", SERVER_PY, "implements", "usecase:KB-99"),  # no such requirement: the link makes none
     ]
-    _project, store, b, report = curated(tmp_path, kg_env, rows)
-    assert store.node(gone, b) is None and store.alias_of(gone, b) is None
-    assert not [e for e in store.edges_of(SEARCH_PY, b, "in") if e["rel"] == "verifies"]
-    assert store.node("usecase:KB-99", b) is None
-    assert not [e for e in store.edges_of(SERVER_PY, b, "out") if e["rel"] == "implements"]
+    _project, view, b, report = curated(tmp_path, kg_env, rows)
+    assert view.node(gone, b) is None and view.alias_of(gone, b) is None
+    assert not [e for e in view.edges_of(SEARCH_PY, b, "in") if e["rel"] == "verifies"]
+    assert view.node("usecase:KB-99", b) is None
+    assert not [e for e in view.edges_of(SERVER_PY, b, "out") if e["rel"] == "implements"]
     assert report.coverage["curation"] == {"deprecated": 1, "orphans": 2}
-    assert store.node(RANK, b)["props"]["deprecated"]["decision"] == 5
+    assert view.node(RANK, b)["props"]["deprecated"]["decision"] == 5
 
 
 def test_curation_item_of_unreadable_or_foreign_entries_gives_no_fact():
@@ -109,8 +108,8 @@ def test_curation_item_of_unreadable_or_foreign_entries_gives_no_fact():
 
 
 def test_deprecated_parts_are_left_out_of_search_context_path_and_impact_unless_asked(tmp_path, kg_env):
-    project, _store, _b, _report = curated(tmp_path, kg_env, DECISIONS)
-    session = StoreSession(project, "agent")
+    project, _view, _b, _report = curated(tmp_path, kg_env, DECISIONS)
+    session = hub_session(project, "agent")
 
     def text(name: str, args: dict) -> str:
         found = session.call(name, args)
@@ -131,15 +130,15 @@ def test_deprecated_parts_are_left_out_of_search_context_path_and_impact_unless_
 
 
 def test_search_leaves_deprecated_nodes_out_before_it_cuts_the_list(tmp_path, kg_env):
-    _project, store, b, _report = curated(tmp_path, kg_env, DECISIONS)
-    assert store.search("rank_results", b, limit=1)[0] == RANK  # its name: first, deprecated or not
-    kept = store.search("rank_results", b, limit=1, deprecated=False)
+    _project, view, b, _report = curated(tmp_path, kg_env, DECISIONS)
+    assert view.search("rank_results", b, limit=1)[0] == RANK  # its name: first, deprecated or not
+    kept = view.search("rank_results", b, limit=1, deprecated=False)
     assert kept and RANK not in kept  # the room it took goes to the next node
 
 
 def test_kg_node_states_the_deprecation_and_its_reason(tmp_path, kg_env):
-    project, _store, _b, _report = curated(tmp_path, kg_env, DECISIONS)
-    session = StoreSession(project, "agent")
+    project, _view, _b, _report = curated(tmp_path, kg_env, DECISIONS)
+    session = hub_session(project, "agent")
     found = session.call("kg_node", {"id": RANK})
     text = found["content"][0]["text"]
     assert "deprecated: ranking moved to the index (decision 3)" in text
@@ -149,12 +148,11 @@ def test_kg_node_states_the_deprecation_and_its_reason(tmp_path, kg_env):
 @pytest.mark.skipif(not clusters.available(), reason="graspologic-native is not installed")
 def test_the_review_queue_of_a_build_leaves_out_what_its_decisions_settled(tmp_path, kg_env):
     cluster_md, contracts = "harness:file:CLUSTER.md", "harness:file:contracts.yaml"
-    _project, store, b, _report = curated(tmp_path / "before", kg_env, [row(1, "deprecate", "app:file:app/gone.py")])
-    before = {(i["rule"], i["evidence"][0]) for i in store.review_items(b)}
+    _project, view, b, _report = curated(tmp_path / "before", kg_env, [row(1, "deprecate", "app:file:app/gone.py")])
+    before = {(i["rule"], i["evidence"][0]) for i in view.review_items(b)}
     assert {("unmentioned_document", cluster_md), ("cluster_without_knowledge", contracts)} <= before
-    store.close()
     rows = [row(1, "link", GUIDE, "mentions", cluster_md), row(2, "deprecate", contracts)]
-    _project, store, b, report = curated(tmp_path / "after", kg_env, rows)
-    after = {(i["rule"], i["evidence"][0]) for i in store.review_items(b)}
+    _project, view, b, report = curated(tmp_path / "after", kg_env, rows)
+    after = {(i["rule"], i["evidence"][0]) for i in view.review_items(b)}
     assert after == before - {("unmentioned_document", cluster_md), ("cluster_without_knowledge", contracts)}
     assert sum(report.coverage["review"].values()) == len(after)

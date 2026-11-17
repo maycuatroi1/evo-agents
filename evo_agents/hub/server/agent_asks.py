@@ -102,6 +102,10 @@ class AgentAskIn(BaseModel):
         max_length=system_context.REASON_CHARS,
         description="why an agent of a system asks an agent off its interacts edges; without it such an ask is refused",
     )
+    priority: runs.Priority = Field(
+        runs.DEFAULT_PRIORITY,
+        description="the priority of the run it asks for: a worker claims its queued runs by it, urgent first",
+    )
 
     def brief(self) -> dict:
         return system_context.clean_brief(self.model_dump(include={*system_context.BRIEF_FIELDS, "refs"}))
@@ -175,11 +179,11 @@ async def _system_refusal(
 
 
 async def _hand(
-    conn: AsyncConnection, run: AgentRun, target: Profile, text: str
+    conn: AsyncConnection, run: AgentRun, target: Profile, text: str, priority: str
 ) -> tuple[int | None, int | None, str | None, tuple[int, int] | None]:
     """(the run of ``target`` handed, the question's message, None, the thread it is in), or (None, None, why none,
     None), in a savepoint rolled back on a refusal (``work_chats.hand_over``)."""
-    asker = work_chats.Asker(run.profile, run.run_id, run.principal, run.via, run.hop + 1)
+    asker = work_chats.Asker(run.profile, run.run_id, run.principal, run.via, run.hop + 1, priority)
     handed = await work_chats.hand_over(conn, asker, target, text)
     return handed.child, handed.message_id, handed.why, handed.place
 
@@ -255,7 +259,7 @@ async def ask_agent(
     if refusal is None:
         assert target is not None
         text = question_text(run, run.profile.project, target, said, brief)
-        child, message_id, refusal, place = await _hand(conn, run, target, text)
+        child, message_id, refusal, place = await _hand(conn, run, target, text, body.priority)
     if refusal is None:
         assert target is not None and child is not None  # _hand made the run or gave its refusal
         decision_id = await open_wait(conn, row, run, target, child)

@@ -1,16 +1,16 @@
 """The settings of the night's own runs in a charter (``evo_agents.hub.server.curator``, which writes and shows the
 charter): how the review run looks (``review``), how the Curator's changes are replayed (``replay``), and how the
-history run reads the project's sessions and runs with a cheap model (``history``), and how the probes of the Curator's
-changes run (``probes``). Each cost cap of a night is checked against the night's budget with the charter
+history run reads the project's sessions and runs with a cheap model (``history``), how the probes of the Curator's
+changes run (``probes``), and how the Curator evolves a harness or an agent's configuration (``evolve``). Each cost cap of a night is checked against the night's budget with the charter
 (``CharterBody``); the probes' budget is a week's."""
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from evo_agents.hub import curator, history, probes, replay, review, runs
+from evo_agents.hub import curator, evolve, history, playbook, probes, replay, review, runs
 from evo_agents.hub.server.runs.models import ModelName
 
 
@@ -143,3 +143,57 @@ class ProbeSettings(BaseModel):
         if repeated:
             raise ValueError(f"probes.models names each runtime and model once: {', '.join(repeated)} is named twice")
         return models
+
+
+EVOLVE_ITERATIONS = (6, 50)  # rounds of an evolution's loop: the default, the most
+EVOLVE_CANDIDATES = (12, 200)  # candidates it measures: the default, the most
+MAX_EVOLVE_PROBES = 20
+MAX_EXPOSURE_LIMIT = 1000
+PathGlob = Annotated[str, Field(min_length=1, max_length=curator.MAX_PATH_CHARS, pattern=r"^[^\x00-\x1f\x7f]+$")]
+
+
+class EvolveBudget(BaseModel):
+    """What one evolution may spend (``evo_agents.hub.server.evolve``): rounds of its loop, candidates it measures,
+    and dollars."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    iterations: int = Field(EVOLVE_ITERATIONS[0], ge=1, le=EVOLVE_ITERATIONS[1], description="rounds of its loop")
+    max_candidates: int = Field(
+        EVOLVE_CANDIDATES[0], ge=1, le=EVOLVE_CANDIDATES[1], description="candidates it measures at most"
+    )
+    max_cost_usd: float | None = Field(
+        None, gt=0, le=curator.MAX_NIGHT_BUDGET_USD, description="the most it may cost; null: the run's own cap"
+    )
+
+
+class EvolveSettings(BaseModel):
+    """Whether and how the Curator evolves a harness or an agent's configuration (``evo_agents.hub.evolve``): the
+    paths it may rewrite, what one evolution spends, how many light tasks of the select split and probes it measures
+    on, and how many review runs show an entry of the playbook never found helpful before it is retired."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(False, description="false: no evolution is started or queued")
+    evolvable_paths: list[PathGlob] = Field(
+        default_factory=list,
+        max_length=curator.MAX_PROTECTED_PATHS,
+        description="globs of harness files an evolution may rewrite, repo:glob for one repo; empty: none",
+    )
+    budget: EvolveBudget = Field(default_factory=lambda: EvolveBudget.model_validate({}))
+    tasks: int = Field(
+        evolve.DEFAULT_TASKS, ge=0, le=replay.MAX_TASKS, description="light replay tasks of the select split"
+    )
+    probes: int = Field(evolve.DEFAULT_PROBES, ge=0, le=MAX_EVOLVE_PROBES, description="active probes of its paths")
+    exposure_limit: int | None = Field(
+        None,
+        ge=0,
+        le=MAX_EXPOSURE_LIMIT,
+        description=f"review runs that show an entry of the playbook never found helpful before it is retired; null: "
+        f"{playbook.EXPOSURE_LIMIT}; 0: never for that",
+    )
+
+    @field_validator("evolvable_paths")
+    @classmethod
+    def _once(cls, values: list[str]) -> list[str]:
+        return list(dict.fromkeys(values))

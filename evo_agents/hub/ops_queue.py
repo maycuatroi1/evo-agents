@@ -3,7 +3,7 @@ the project by cause, so that one short run of the Orchestrator of the project's
 instead of a person reading each in the Inbox.
 
 Config. The queue reads its config from the key ``ops`` of the spec of the project's default system (``ops_config``:
-enabled, debounce_minutes, max_items; ``system_spec.ops_of``); a project without one, or whose spec has no ``ops``,
+enabled, debounce_minutes, max_items, plan_stall_minutes; ``system_spec.ops_of``); a project without one, or whose spec has no ``ops``,
 has its queue off. The first pass after the queue is turned on puts its cursor (ops_cursors) at the newest event of the
 project, so the queue never reads what happened before; a pass while it is off drops the cursor.
 
@@ -14,8 +14,8 @@ parked for an answer, whose ``decision.opened`` is the item, a worker whose heal
 fault is the login of a runtime its runs do not use or that the hub leases them an account of: ``idle_logins``) goes
 nowhere. Any other becomes an item of the open batch of its cause key (``cause_key``: kind, cause, and the worker or
 the plan, as ``inbox.fold_same_cause`` folds failed runs, or the machine for a worker's low disk alone, which the
-workers of one machine share), which the first item opens and which closes
-``debounce_minutes`` after it opened, or at once when it holds ``max_items`` pending items. An item tier 0 handled
+workers of one machine share; the plan of ``plan.stalled``, the worker a ``run.queued_long`` run waits for, the agent
+of ``mention.refused``), which the first item opens and which closes ``debounce_minutes`` after it opened, or at once when it holds ``max_items`` pending items. An item tier 0 handled
 before its batch closed leaves it (``settle``), and so does a run.ended item whose run came back before it closed (a
 run lost while its worker was silent and given back, or retried); a batch that closes with no pending item left is ``empty`` and opens
 no run, one with some is ``ready`` for the step that opens the Orchestrator's run. Nothing here calls a model.
@@ -53,7 +53,7 @@ LEASE_VARS: dict[str, tuple[str, ...]] = {
 LEASE_ENV_VARS = tuple(sorted({name for names in LEASE_VARS.values() for name in names}))
 LEASE_DAYS = 7  # the days a run that took such an account speaks for its worker
 # The kinds whose event names a run, which ``cause_of`` skips when the run is one of an ops thread.
-RUN_KINDS = (hub_events.RUN_ENDED, hub_events.RUN_PARKED, hub_events.DECISION_OPENED)
+RUN_KINDS = (hub_events.RUN_ENDED, hub_events.RUN_PARKED, hub_events.DECISION_OPENED, hub_events.RUN_QUEUED_LONG)
 # The failure causes of the worker's machine, not of the work: their runs gather by worker, not by plan.
 WORKER_CAUSES = (
     "checkout",
@@ -142,6 +142,14 @@ async def cause_of(conn: AsyncConnection, event: hub_events.HubEvent, project_id
         )
     if kind == hub_events.CURATOR_PAUSED:
         return Cause(kind, str(payload.get("cause_class") or "unknown"), "curator")
+    if kind == hub_events.PLAN_STALLED:
+        return Cause(kind, "stalled", f"plan:{payload.get('plan_id')}")
+    if kind == hub_events.RUN_QUEUED_LONG:
+        worker_id = payload.get("worker_id")
+        subject = f"worker:{worker_id}" if worker_id is not None else "-"
+        return Cause(kind, "queued", subject, run_id=payload.get("run_id"), worker_id=worker_id)
+    if kind == hub_events.MENTION_REFUSED:
+        return Cause(kind, "refused", f"agent:{payload.get('profile_id')}")
     if kind == hub_events.WORKER_HEALTH:
         worker_id = payload.get("worker_id")
         wrong = health_causes(payload)
@@ -342,12 +350,13 @@ class OpsConfig:
     enabled: bool = False
     debounce_minutes: int = system_spec.OPS["debounce_minutes"][0]
     max_items: int = system_spec.OPS["max_items"][0]
+    plan_stall_minutes: int = system_spec.OPS["plan_stall_minutes"][0]
 
 
 def read_ops(spec: dict | None) -> OpsConfig:
     """The ops config a system spec holds: ops off for a spec with no ``ops``, a value out of bounds defaulted."""
     found = system_spec.ops_of(spec)
-    return OpsConfig(found["enabled"], found["debounce_minutes"], found["max_items"])
+    return OpsConfig(found["enabled"], found["debounce_minutes"], found["max_items"], found["plan_stall_minutes"])
 
 
 def default_system():

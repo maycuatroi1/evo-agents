@@ -12,6 +12,8 @@ import type { ApiSource } from "@/lib/queries";
  */
 type Schemas = components["schemas"];
 export type Account = Schemas["Account"];
+/** An account another member shares with the visitor: its figures are the visitor's runs alone, `owner` its owner. */
+export type SharedAccount = Schemas["SharedAccount"];
 export type AccountState = Account["state"];
 /** What an account of the visitor's and an account of an agent have in common: what the shared cells read. */
 export type AccountFigures = Omit<Account, "projects" | "auth" | "shares" | "cost_by_principal" | "pools"> & Partial<Pick<Account, "auth">>;
@@ -22,7 +24,7 @@ export type AccountPolicyWrite = Schemas["AccountPolicyWrite"];
 export type Strategy = AccountPolicy["strategy"];
 
 /** `accounts.STRATEGIES` of the API, in its order. */
-export const STRATEGIES = ["round-robin", "weighted-round-robin", "fill-first"] as const satisfies readonly Strategy[];
+export const STRATEGIES = ["round-robin", "weighted-round-robin", "fill-first", "quota-pacing"] as const satisfies readonly Strategy[];
 /** `accounts.MAX_WEIGHT`, `MAX_PRIORITY`, `MIN_COOLDOWN_SECONDS`, `MAX_COOLDOWN_SECONDS` and `MAX_FAILOVERS`. */
 export const MAX_WEIGHT = 1000;
 export const MAX_PRIORITY = 1000;
@@ -35,6 +37,8 @@ export const DEFAULT_POLICY: AccountPolicyWrite = {
   cooldown_seconds: 3600,
   failover: true,
   max_failovers: 3,
+  hard_reserve_pct: 10,
+  five_hour_ceiling_pct: 90,
 };
 
 /** The variable a Claude account sets: the token of `claude setup-token` (docs/credentials.md, section "Accounts"). */
@@ -47,6 +51,7 @@ export const accountKeys = {
   secrets: ["accounts", "secrets"] as const,
   workers: ["accounts", "workers"] as const,
   pools: ["accounts", "pools"] as const,
+  shared: ["accounts", "shared"] as const,
 };
 
 /** The visitor's own accounts with their figures, by variable and name, without their values. */
@@ -54,6 +59,14 @@ export const accountListQuery = (api: ApiSource) =>
   queryOptions({
     queryKey: accountKeys.list,
     queryFn: ({ signal }) => call(api().GET("/v1/accounts", { signal })),
+    refetchInterval: 30_000,
+  });
+
+/** The accounts other members share with the visitor, by variable, owner and name, with the visitor's figures. */
+export const sharedAccountListQuery = (api: ApiSource) =>
+  queryOptions({
+    queryKey: accountKeys.shared,
+    queryFn: ({ signal }) => call(api().GET("/v1/shared-accounts", { signal })),
     refetchInterval: 30_000,
   });
 

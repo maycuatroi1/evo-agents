@@ -9,8 +9,8 @@ open items of each rule of the review queue (``kg_review_<rule>``, ``evo_agents.
 A build's coverage (``kg_builds.coverage``) holds, for each source of the build, its items and mentions and how many of
 those resolved, stayed ambiguous or dangled, with their shares, and for a git source the commit it read
 (``evo_agents.kg.freshness``: the same field ``kg status`` shows); the same over every source; the dangling edges; the
-Python functions and methods outside tests that no call edge reaches (``evo_agents.kg.health.call_reach``); and whether
-the build was skipped because nothing had changed. When the build ran the entities step, the counts of that step
+Python functions and methods outside tests that no call edge reaches (``evo_agents.kg.graph_rows.call_reach``); and
+whether the build was skipped because nothing had changed. When the build ran the entities step, the counts of that step
 (ENTITY_COUNTS, with its model, sink and why it stopped), never an item's text; ``kg_build`` adds the hash and count of
 the requests it deferred to a run that has Claude Code (``entity_requests``, ``evo_agents.hub.kg_entity_relay``).
 
@@ -99,7 +99,7 @@ def _mentions(entry: Mapping) -> dict:
 
 def build_coverage(coverage: Mapping | None, reach: Mapping | None, *, skipped: bool) -> dict:
     """What ``kg_builds.coverage`` keeps of a build's coverage (``evo_agents.kg.build``), with ``reach``, the call
-    reach of its graph (``evo_agents.kg.health.call_reach``)."""
+    reach of its graph (``evo_agents.kg.graph_rows.call_reach``)."""
     coverage = coverage if isinstance(coverage, Mapping) else {}
     sources = []
     for entry in coverage.get("sources") or []:

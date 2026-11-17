@@ -25,7 +25,6 @@ import urllib.request
 
 import pytest
 
-from evo_agents.kg.build import build_project
 from evo_agents.kg.serve import CAP_CHARS
 from evo_agents.kg.sessions import READ_META
 from evo_agents.kg.sync import sync_project
@@ -33,6 +32,7 @@ from tests.hub import live, pg
 from tests.hub.test_handoff import rollout
 from tests.hub.test_mcp import sign_in
 from tests.hub.test_plans import PROJECT, registration
+from tests.kg import built
 from tests.kg.projects import make_project
 
 pytestmark = [
@@ -114,7 +114,7 @@ def test_claude_code_shows_the_model_the_text_the_cli_prints(hub_db, tmp_path, m
     (tmp_path / "kg").mkdir()
     project = make_project(tmp_path / "kg", kg_home, level="public", app_level="customer")
     sync_project(project)
-    assert build_project(project).ok
+    assert built.build(project).ok
     bound = ["--project", str(project.harness.root), "--backend", "auto", "--sink", "wide"]
 
     with live.running_hub(hub_db, tmp_path, EVO_HUB_ADMINS=live.ADMIN) as served:

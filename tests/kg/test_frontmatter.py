@@ -2,13 +2,14 @@
 
 import pytest
 
-from evo_agents.kg.build import build_project, multiple_definitions
+from evo_agents.kg.build import multiple_definitions
+from evo_agents.kg.graph_model import Graph
 from evo_agents.kg.pipeline.stages import frontmatter, structure_item
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.status import multiple_lines
-from evo_agents.kg.store import Graph, Store
 from evo_agents.kg.sync import sync_project
 from evo_agents.kg.text import split_markdown
+from tests.kg import built
 from tests.kg.hub_graph import hub_status
 from tests.kg.projects import make_project, write
 
@@ -28,16 +29,13 @@ def structure(text: str, identifiers=USECASE) -> list[dict]:
 def sync_build(project, **kw):
     results = sync_project(project)
     assert all(r.ok for r in results), [r.issues for r in results]
-    report = build_project(project, **kw)
+    report = built.build(project, **kw)
     assert report.ok, report.errors
     return report
 
 
-def live_edges(store: Store, b: int) -> dict[tuple, str]:
-    rows = store.db.execute(
-        "SELECT src, rel, dst, status FROM edges WHERE tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)", {"b": b}
-    )
-    return {(src, rel, dst): status for src, rel, dst, status in rows}
+def live_edges(project) -> dict[tuple, str]:
+    return {(e["src"], e["rel"], e["dst"]): e["status"] for e in built.edges_of(project)}
 
 
 @pytest.mark.parametrize(
@@ -136,7 +134,7 @@ def test_frontmatter_status_lists_codes_defined_twice(tmp_path, kg_env):
     write(root / "specs/export-old.md", "---\nid: KB-06\n---\n\n# Export, old\n")
     write(root / "specs/broken.md", "---\nid: [KB-07\n---\n\n# Broken\n")
     report = sync_build(project, verify=True, cold=True)
-    edges = live_edges(Store.for_project(project), report.build_id)
+    edges = live_edges(project)
 
     def doc(name: str) -> str:
         return f"harness:file:specs/{name}.md"
@@ -175,12 +173,12 @@ def test_frontmatter_follows_identifier_changes(tmp_path, kg_env):
     root = project.harness.root
     write(root / "screens.md", "---\nid: SCR-9\n---\n\n# Results screen\n")
     first = sync_build(project)
-    store = Store.for_project(project)
+    store = built.view_of(project)
     assert store.node("screen:SCR-9", first.build_id) is None
 
     write(root / "knowledge.yaml", (root / "knowledge.yaml").read_text() + SCREEN)
     project = load_project_at(root, project.home)
-    second = build_project(project, verify=True, cold=True)
+    second = built.build(project, verify=True, cold=True)
     assert second.ok, second.errors
-    edges = live_edges(Store.for_project(project), second.build_id)
+    edges = live_edges(project)
     assert edges[("harness:file:screens.md", "defines", "screen:SCR-9")] == "parsed"

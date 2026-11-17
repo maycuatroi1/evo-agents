@@ -112,9 +112,9 @@
   },
   "product": {
     "meta": {
-      "title": "evo-agents | Coding agent trên máy của bạn",
-      "description": "Chạy Claude Code, Codex CLI hoặc opencode trên nhiều repo. Giao kế hoạch, theo dõi công việc trên trình duyệt và chọn những việc agent cần bạn duyệt.",
-      "imageAlt": "Một lượt chạy demo với các bước đã xong và một câu hỏi đang chờ trả lời."
+      "title": "evo-agents | Knowledge base và không gian làm việc plugin cho đội ngũ AI agent",
+      "description": "Gom mã nguồn, tài liệu, đặc tả và tin nhắn vào một Hub có phân quyền, mở rộng chu trình sản phẩm bằng plugin và chạy Claude Code, Codex CLI hoặc opencode trên máy của bạn.",
+      "imageAlt": "Màn Knowledge Graph Explorer kết nối các thực thể dự án với tệp mã nguồn."
     },
     "header": {
       "nav": "evo-agents trên GitHub",
@@ -122,36 +122,36 @@
       "source": "Mã nguồn"
     },
     "hero": {
-      "title": "Chạy coding agent trên nhiều repo, bằng máy của bạn.",
+      "title": "Knowledge base dùng chung và không gian làm việc mở rộng bằng plugin cho đội ngũ dùng AI agent.",
       "start": "Bắt đầu",
       "signIn": "Đăng nhập bằng GitHub",
       "openHub": "Mở hub",
-      "imageAlt": "Trang Monitor hiển thị các agent đang làm việc và một câu hỏi chờ trả lời.",
-      "demo": "Hub demo với dự án, người và máy hư cấu."
+      "imageAlt": "Màn Knowledge Graph Explorer nối các thực thể trích xuất với tệp mã nguồn xuyên suốt các kho Git.",
+      "demo": "Knowledge graph của dự án evo-agents với tài khoản và tên máy đã ẩn danh."
     },
     "claims": {
-      "lede": "Giao một kế hoạch cho Claude Code, Codex CLI hoặc opencode. Với <readme>evo-agents</readme>, bạn theo dõi công việc trên các repo, trả lời câu hỏi hoặc tiếp quản phiên làm việc ngay trên trình duyệt.",
-      "planRuns": "Giao cả kế hoạch, kèm thứ tự các bước và cách kiểm tra. <verify>Worker chạy lại các lệnh kiểm tra</verify> trước khi ghi nhận bước đã xong, kèm commit và kết quả.",
-      "graph": "Agent dùng chung <context>kế hoạch và memory giữa các phiên</context>. <graph>Knowledge graph</graph> giúp tìm code, tài liệu và mối liên hệ giữa các repo.",
-      "decisions": "Xem việc nào đang chạy, việc nào cần bạn. Bạn <policy>chọn những việc agent cần hỏi trước</policy>, rồi trả lời trong <inbox>Inbox</inbox> hoặc qua Telegram nếu đã cấu hình.",
-      "machines": "Một <worker>worker</worker> chạy agent trên laptop, máy bàn hoặc server bạn kết nối, dùng tài khoản coding agent của bạn. Bạn cũng có thể <host>tự vận hành hub</host>.",
+      "lede": "Gom mã nguồn, tài liệu, hội thoại và đặc tả về một Hub. Với <readme>evo-agents</readme>, nhóm mở rộng không gian làm việc theo từng vai trò bằng plugin và giao việc có kiểm chứng cho Claude Code, Codex CLI hoặc opencode.",
+      "graph": "Lập chỉ mục các kho Git, tệp nén tài liệu, Docs lưu phiên bản và tin nhắn nhóm trong <graph>knowledge graph có phân quyền</graph>, giúp các agent dùng chung <context>kế hoạch, kỹ năng và bộ nhớ xuyên suốt các phiên</context>.",
+      "plugins": "Mở rộng Business cycle và Development cycle với Lean Canvas, SRS, Tasks, CRM, Marketing và Editorial. Vận hành cả <plugins>module core lẫn plugin cô lập</plugins> cài từ <market>kho plugin có chữ ký số</market>.",
+      "planRuns": "Nối hệ thống nhiều agent vào các đồ thị chuyên biệt và giao trọn kế hoạch nhiều bước. <verify>Worker tự chạy lại lệnh kiểm tra</verify> trong Git worktree tách rời trước khi ghi nhận hoàn tất.",
+      "machines": "Mỗi <worker>worker</worker> chạy trên máy bạn kết nối với thông tin xác thực niêm phong, còn <policy>thiết lập phê duyệt</policy> chỉ dừng lượt chạy khi cần bạn quyết định ở Inbox hoặc Telegram. Bạn cũng có thể <host>tự vận hành hub riêng</host>.",
       "access": "Dùng hub của nhóm, xin lời mời vào hub này, hoặc <host>tự cài hub riêng</host>.",
       "status": "evo-agents chưa tới phiên bản 1.0; lệnh và định dạng có thể đổi giữa các bản. Xem <roadmap>roadmap</roadmap> để biết phần nào đã dùng được, phần nào còn đang làm."
     },
     "needs": {
-      "title": "Bớt việc điều phối agent",
+      "title": "Xoay quanh tri thức chung và chu trình sản phẩm",
       "rows": {
-        "plans": {
-          "title": "Giao cả kế hoạch"
-        },
         "context": {
-          "title": "Giữ context của dự án"
+          "title": "Knowledge base tập trung"
         },
-        "control": {
-          "title": "Biết việc nào cần bạn"
+        "plugins": {
+          "title": "Mở rộng theo vai trò bằng plugin"
+        },
+        "plans": {
+          "title": "Hệ multi-agent và chạy kế hoạch"
         },
         "machines": {
-          "title": "Dùng máy của bạn"
+          "title": "Máy của bạn và cổng phê duyệt"
         }
       }
     },
@@ -159,19 +159,19 @@
       "title": "Giao một việc cụ thể",
       "exampleLabel": "Ví dụ yêu cầu",
       "example": "Thêm tính năng lưu giỏ hàng ở trang thanh toán. Sửa cả API và frontend, thêm test cho việc khôi phục giỏ hàng sau khi đăng nhập.",
-      "description": "Hub lưu kế hoạch và hiển thị tiến độ. Worker chạy agent trên máy bạn kết nối.",
+      "description": "Hub lưu knowledge base, tài liệu chu trình sản phẩm và các kế hoạch. Worker chạy agent trên máy bạn kết nối.",
       "steps": {
         "describe": {
           "title": "Mô tả thay đổi",
-          "body": "Chọn Plan mới ở trang Plans của dự án. Agent trên worker sẽ viết các bước thực hiện."
+          "body": "Chọn Plan mới ở trang Plans của dự án, hoặc trao đổi trực tiếp với hệ agent ở màn Home chat."
         },
         "review": {
           "title": "Đọc kế hoạch rồi chạy",
-          "body": "Kiểm tra phạm vi và các test, chỉnh lại nếu cần, rồi chọn Chạy plan."
+          "body": "Kiểm tra phạm vi và các lệnh test đã phác thảo, chỉnh lại nếu cần, rồi chọn Chạy plan."
         },
         "follow": {
-          "title": "Theo dõi công việc",
-          "body": "Đọc output và kết quả test trên trình duyệt. Bạn có thể nhắn agent hoặc dừng lượt chạy tại đó."
+          "title": "Theo dõi và phê duyệt",
+          "body": "Xem tiến độ cùng kết quả test trên trình duyệt, trả lời các câu hỏi cần duyệt trong Inbox hoặc Telegram."
         }
       }
     },
@@ -185,13 +185,13 @@
         "installLabel": "lệnh cài đặt",
         "loginLabel": "lệnh đăng nhập",
         "guide": "Kết nối dự án và worker",
-        "next": "Kết nối dự án và worker, rồi tạo kế hoạch đầu tiên."
+        "next": "Kết nối các kho Git và máy worker, rồi giao kế hoạch đầu tiên."
       },
       "local": {
-        "title": "Thử riêng knowledge graph",
-        "prerequisites": "Cần Python 3.11+, uv và Git.",
-        "guide": "Thử chạy cục bộ",
-        "body": "Lập chỉ mục một repo Git rồi tìm code trong đó. Không cần đăng nhập hub hay có tài khoản model."
+        "title": "Khởi tạo từ tài liệu hoặc tệp nén",
+        "prerequisites": "Thao tác ngay trên trình duyệt khi đã có tài khoản hub, kể cả khi chưa nối kho Git.",
+        "guide": "Dựng knowledge base cho dự án",
+        "body": "Mở mục New project from data trên hub rồi thả tệp .zip hoặc .tar.gz chứa tài liệu và bảng tính để xem thực thể và đặt câu hỏi trong chat."
       }
     },
     "footer": {
@@ -261,7 +261,8 @@
     "org": "Sơ đồ tổ chức",
     "browser": "Trình duyệt",
     "groups": {
-      "delivery": "Bàn giao",
+      "business": "Chu kỳ kinh doanh",
+      "development": "Chu kỳ phát triển",
       "improvement": "Cải tiến",
       "knowledge": "Tri thức",
       "apps": "Ứng dụng",
@@ -4898,6 +4899,12 @@
         "session": "Phiên, {model}",
         "weekly": "Hằng tuần, {model}",
         "unnamed": "Giới hạn sử dụng"
+      },
+      "pace": {
+        "ahead": "Nhanh hơn nhịp tuần {points} điểm: quota tuần sẽ hết sớm",
+        "behind": "Chậm hơn nhịp tuần {points} điểm: còn quota để dùng",
+        "on": "Đúng nhịp tuần",
+        "expected": "Theo nhịp đều, đến giờ đã dùng {percent}%"
       }
     },
     "runsTitle": "{day, plural, other {# run}} trong 24 giờ, {week, plural, other {# run}} trong 7 ngày",
@@ -5079,12 +5086,14 @@
       "strategy": {
         "round-robin": "Round robin",
         "weighted-round-robin": "Weighted round robin",
-        "fill-first": "Fill first"
+        "fill-first": "Fill first",
+        "quota-pacing": "Điều tiết quota"
       },
       "strategyHint": {
         "round-robin": "Lần lượt từng tài khoản.",
         "weighted-round-robin": "Lần lượt, mỗi tài khoản theo trọng số của nó.",
-        "fill-first": "Dùng tài khoản ưu tiên thấp nhất tới khi chạm giới hạn, rồi tới cái tiếp theo."
+        "fill-first": "Dùng tài khoản ưu tiên thấp nhất tới khi chạm giới hạn, rồi tới cái tiếp theo.",
+        "quota-pacing": "Account còn nhiều quota tuần nhất, giữ lại một phần dự trữ và để account gần giới hạn 5 giờ nghỉ."
       },
       "defaults": "Mặc định",
       "custom": "Của bạn",
@@ -5099,7 +5108,8 @@
       "resetText": "Mặc định được áp dụng trở lại.",
       "resetFailed": "Không đặt lại được policy cho {project}",
       "empty": "Gắn một tài khoản vào một dự án để đặt cách các run của nó chọn tài khoản.",
-      "loadFailed": "Không đọc được policy của bạn."
+      "loadFailed": "Không đọc được policy của bạn.",
+      "pacingSummary": "Dự trữ {reserve}%, trần 5 giờ {ceiling}%"
     },
     "policyForm": {
       "title": "Policy cho {project}",
@@ -5174,7 +5184,16 @@
         "cancel": "Huỷ",
         "newPool": "Pool mới",
         "poolCount": "{count} pool",
-        "loadFailed": "Không đọc được pool của dự án này."
+        "loadFailed": "Không đọc được pool của dự án này.",
+        "policy": {
+          "strategyOf": "Chiến lược của {pool}",
+          "reserve": "Dự trữ",
+          "ceiling": "Trần 5 giờ",
+          "save": "Lưu",
+          "saved": "Đã lưu policy của {pool}",
+          "failed": "Không lưu được policy của {pool}",
+          "problem": "Nhập phần trăm nguyên: dự trữ {reserve}, trần {ceiling}."
+        }
       }
     },
     "variables": "{provider}, {count, plural, other {# biến}}",
@@ -5184,6 +5203,18 @@
     "apiValueHint": "Số tiền các run này tốn nếu tính theo giá API. Gói đăng ký Claude không tính tiền theo từng run.",
     "sharing": {
       "overCeiling": "Vượt ngưỡng: run được chia sẻ phải chờ"
+    },
+    "sharedWithYou": {
+      "title": "Được chia sẻ với bạn",
+      "description": "Tài khoản thành viên khác chia sẻ cho bạn. Run của bạn lấy chúng theo quy tắc khi không còn tài khoản riêng nào sẵn sàng, hoặc bạn chọn tay trong form chạy. Số run và chi phí ở đây chỉ tính run của bạn.",
+      "caption": "Tài khoản được chia sẻ với bạn, theo chủ sở hữu",
+      "owner": "Chủ sở hữu",
+      "ownedBy": "của {owner}, {variable}",
+      "terms": "Điều kiện share",
+      "yourRuns": "Run của bạn 24 giờ / 7 ngày",
+      "yourCost": "Chi phí của bạn 24 giờ / 7 ngày",
+      "empty": "Chưa thành viên nào chia sẻ tài khoản cho bạn.",
+      "loadFailed": "Không tải được tài khoản được chia sẻ với bạn. Trang sẽ thử lại sau ít phút."
     },
     "costByPrincipal": {
       "title": "Chi phí theo member",
@@ -5451,6 +5482,39 @@
         "invalid": "Hub từ chối một giá trị: kiểm tra base URL, mô hình và dự án.",
         "unavailable": "Hub không gọi được endpoint. Kiểm tra base URL rồi thử lại."
       }
+    },
+    "pacing": {
+      "reserve": "Dự trữ tuần, tính theo phần trăm",
+      "reserveHint": "Phần quota tuần của một account được giữ lại khi account khác còn nhiều hơn: {min} đến {max}.",
+      "ceiling": "Trần 5 giờ, tính theo phần trăm",
+      "ceilingHint": "Khi dùng quá mức này trong 5 giờ, account chờ trong lúc có account khác rảnh hơn: {min} đến {max}."
+    },
+    "budget": {
+      "action": "Ngân sách",
+      "actionLabel": "Ngân sách tuần của {name}",
+      "title": "Ngân sách tuần của {name}",
+      "description": "Hub vẽ chi phí các run tuần này của account so với ngân sách thành cửa sổ tuần của nó, thứ mà điều tiết quota và Token strategy đọc.",
+      "label": "Ngân sách tuần, tính bằng đô la Mỹ",
+      "placeholder": "ví dụ 50",
+      "hint": "Mỗi tuần của nó dài 7 ngày tính từ mốc đã đặt, mặc định là thứ Hai 00:00 UTC. Để trống để bỏ ngân sách.",
+      "problems": {
+        "number": "Nhập một số tiền bằng đô la, tối đa đến cent.",
+        "range": "Nhập một số tiền lớn hơn 0, tối đa {max}."
+      },
+      "save": "Lưu",
+      "saving": "Đang lưu",
+      "cancel": "Hủy",
+      "saved": "Đã lưu ngân sách tuần của {name}",
+      "dropped": "Đã bỏ ngân sách tuần của {name}",
+      "savedText": "Cửa sổ tuần của nó hiện ở lần đọc tiếp theo."
+    },
+    "zai": {
+      "refresh": "Làm mới",
+      "refreshLabel": "Đọc lại quota của {name} từ Z.ai",
+      "refreshed": "Đã đọc quota của {name} từ Z.ai",
+      "noQuota": "Z.ai không trả quota cho {name}",
+      "noQuotaText": "Các thanh giữ quota đọc lần trước.",
+      "failed": "Không đọc được quota của {name}"
     }
   },
   "runs": {
@@ -6668,6 +6732,40 @@
         "cancel": "Huỷ",
         "revoked": "Run #{id} không còn chạy như bạn",
         "revokedText": "Token của run đã hết hiệu lực; lần gọi hub kế tiếp của agent nhận 401."
+      },
+      "routing": {
+        "title": "Token strategy",
+        "escalated": "Đã nâng mức",
+        "difficulty": "Độ khó",
+        "levels": {
+          "easy": "Dễ",
+          "medium": "Vừa",
+          "hard": "Khó"
+        },
+        "source": {
+          "rules": "Luật của hub đã đánh giá",
+          "scorer": "Model chấm điểm {scorer} đã đánh giá",
+          "fallback": "Chưa đánh giá: mặc định là vừa",
+          "pending": "Để model chấm điểm của worker đánh giá"
+        },
+        "escalatedFrom": "Nâng một mức sau một run thất bại: từ {from} lên {to}",
+        "model": "Model",
+        "noModel": "Không có: profile của agent không cho phép model của thang",
+        "why": "Vì sao chọn model này",
+        "branch": {
+          "ladder": "Model của subscription: quota tuần còn dư để dùng",
+          "overflow": "Hạ chi phí: model dự phòng rẻ hơn"
+        },
+        "strategies": {
+          "surplus-first": "Chiến lược: ưu tiên phần dư",
+          "cost-first": "Chiến lược: ưu tiên chi phí",
+          "quota-burn": "Chiến lược: đốt quota"
+        },
+        "reason": "Lý do của hub",
+        "quota": "Quota lúc chọn",
+        "weeklyLeft": "Còn {percent}% của tuần",
+        "fiveHourUsed": "Đã dùng {percent}% của cửa sổ 5 giờ",
+        "error": "Vấn đề"
       }
     },
     "diff": {
@@ -6857,7 +6955,12 @@
       "hint": "Tài khoản chọn ở đây đi theo run, không chuyển sang tài khoản khác. Tự động để quy tắc của bạn cho dự án chọn khi một worker nhận run, và chuyển tiếp khi một tài khoản chạm giới hạn.",
       "none": "Chưa tài khoản nào của bạn được gắn với dự án {project}, nên quy tắc chọn trong credential sẵn có của worker. Gắn một tài khoản ở trang Secret.",
       "rerunHint": "Mặc định, lần chạy lại dùng tài khoản đã chọn tay cho run #{id}, hoặc theo quy tắc nếu không chọn. Tài khoản chọn tay được giữ, không chuyển sang tài khoản khác.",
-      "expired": "{name} ({variable}), đã hết hạn"
+      "expired": "{name} ({variable}), đã hết hạn",
+      "sharedGroup": "Được chia sẻ với bạn",
+      "shared": "{owner}/{name} ({variable})",
+      "shared_paused": "{owner}/{name} ({variable}), chủ tài khoản đang tạm dừng",
+      "shared_cooling": "{owner}/{name} ({variable}), đang nghỉ: quy tắc chọn tài khoản khác tới khi nó được cho mượn lại",
+      "shared_expired": "{owner}/{name} ({variable}), đã hết hạn"
     },
     "agent": {
       "label": "Agent",
@@ -7484,6 +7587,67 @@
       "forbidden": "Cần vai trò admin của dự án để viết policy.",
       "conflict": "Đã có người lưu một revision trong lúc này. Tải lại trang để sửa bản mới nhất.",
       "refused": "Hub từ chối policy này."
+    },
+    "routing": {
+      "title": "Token strategy",
+      "on": "Bật",
+      "off": "Tắt",
+      "offText": "Tắt: run không nêu model sẽ dùng model mặc định của agent hoặc của runtime.",
+      "edit": "Sửa",
+      "editTitle": "Token strategy",
+      "description": "Cách hub chọn model cho run không nêu model: hub đánh giá run dễ, vừa hay khó rồi giao model của thang, hoặc model dự phòng khi subscription chỉ còn phần dự trữ.",
+      "enabled": "Chọn model cho từng run",
+      "enabledHint": "Khi tắt, run không nêu model dùng model mặc định. Run đã nêu model thì giữ model đó.",
+      "strategy": "Chiến lược",
+      "strategies": {
+        "surplus-first": "Ưu tiên phần dư",
+        "cost-first": "Ưu tiên chi phí",
+        "quota-burn": "Đốt quota"
+      },
+      "strategyHints": {
+        "surplus-first": "Dùng model của thang khi subscription còn nhiều hơn phần dự trữ của tuần; quá mức đó, run dễ và vừa dùng model dự phòng.",
+        "cost-first": "Run dễ và vừa dùng model dự phòng rẻ hơn; run khó dùng model của thang.",
+        "quota-burn": "Khi subscription còn nhiều hơn phần dự trữ, mọi run dùng model khó của thang để tiêu phần dư của tuần."
+      },
+      "reserve": "Dự trữ tuần, tính theo phần trăm",
+      "reserveHint": "Phần quota tuần của subscription giữ cho run khó: 0 đến 100.",
+      "ceiling": "Trần 5 giờ, tính theo phần trăm",
+      "ceilingHint": "Khi dùng quá mức này của cửa sổ 5 giờ, run dễ và vừa dùng model dự phòng: 1 đến 100.",
+      "thresholds": "Dự trữ và trần",
+      "thresholdsValue": "Dự trữ {reserve}% của tuần, trần 5 giờ {ceiling}%",
+      "scorer": "Model chấm điểm",
+      "scorerHint": "Model của lượt ngắn đánh giá prompt mà luật không đánh giá được; off: run đó được tính là vừa.",
+      "scorerOff": "Tắt: run mà luật không đánh giá được được tính là vừa",
+      "difficulty": "Độ khó",
+      "modelsCaption": "Model của từng độ khó, trên thang và ở phần dự phòng",
+      "levels": {
+        "easy": "Dễ",
+        "medium": "Vừa",
+        "hard": "Khó"
+      },
+      "ladder": {
+        "title": "Thang",
+        "hint": "Model của subscription cho từng độ khó: model riêng của runtime như sonnet, hoặc model gateway dạng prefix/model."
+      },
+      "overflow": {
+        "title": "Dự phòng",
+        "hint": "Model rẻ hơn mà run dùng khi đã quá phần dự trữ; để trống: run giữ model của thang."
+      },
+      "problems": {
+        "whole": "Nhập một số nguyên từ {min} đến {max}.",
+        "range": "Nhập một số từ {min} đến {max}.",
+        "required": "Nhập một model.",
+        "model": "Model của runtime như sonnet, hoặc model gateway dạng prefix/model, tối đa {max} ký tự."
+      },
+      "note": "Đổi Token strategy",
+      "save": "Lưu",
+      "saving": "Đang lưu",
+      "cancel": "Hủy",
+      "saved": "Đã lưu Token strategy thành revision {revision}",
+      "unchanged": "Không có gì thay đổi",
+      "forbidden": "Chỉ admin của dự án được đổi policy.",
+      "conflict": "Có người đã đổi policy trong lúc này: đóng lại, đọc lại rồi chọn lại.",
+      "refused": "Hub đã từ chối Token strategy này."
     }
   },
   "inbox": {
@@ -8208,7 +8372,9 @@
         "moved": "Cập nhật lần cuối",
         "reasonTitle": "{state, select, planned {Vì sao còn chờ} open {Vì sao để mở} closed {Vì sao đã đóng} other {Vì sao còn chờ}}",
         "tier": "Merge ở",
-        "tierValue": "Tầng {tier}"
+        "tierValue": "Tầng {tier}",
+        "repos": "Các repo, theo thứ tự merge",
+        "repoAfter": "Merge sau {repos}"
       },
       "dropped": "Bị bỏ vì lặp lại <link>đề xuất #{id}</link>.",
       "droppedPlain": "Bị bỏ vì lặp lại một đề xuất đã bị từ chối.",
@@ -9077,6 +9243,33 @@
     "periods": {
       "day": "ngày",
       "week": "tuần"
+    },
+    "evolve": {
+      "title": "Tiến hoá",
+      "sub": "Các lần chạy viết lại file của harness hoặc cấu hình của agent, giữ các ứng viên trên mặt Pareto",
+      "unreadable": "Không đọc được các lần tiến hoá.",
+      "retry": "Thử lại",
+      "caption": "Các lần tiến hoá của Curator, mới nhất trước",
+      "noProposal": "Không có đề xuất",
+      "target": {
+        "git": "File của harness",
+        "agent": "Cấu hình agent"
+      },
+      "state": {
+        "queued": "Đang chờ",
+        "running": "Đang chạy",
+        "done": "Xong",
+        "failed": "Thất bại"
+      },
+      "head": {
+        "id": "Tiến hoá",
+        "subject": "Viết lại gì",
+        "state": "Trạng thái",
+        "iterations": "Vòng lặp",
+        "front": "Trên mặt Pareto",
+        "proposal": "Đề xuất",
+        "moved": "Cập nhật lần cuối"
+      }
     }
   },
   "releases": {

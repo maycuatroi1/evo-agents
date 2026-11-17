@@ -19,6 +19,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server import agent_placement, gateway_accounts, kg_shared_pool, pool_accounts, worker_placement
 from evo_agents.hub.server.runs.models import available
 from evo_agents.hub.server.runs.service import browsers, plugin_environments, plugin_runtimes
+from evo_agents.hub.server.runs.service.priority import claim_order
 from evo_agents.hub.server.runs.service.profiles import claim_clause, run_packs, runtime_rule
 from evo_agents.hub.server.runs.service.views import lost_here, steady
 from evo_agents.hub.server.runs.service.worker_fit import unit_admits, writes
@@ -39,14 +40,14 @@ def _served(worker_id: int, owner_id: int):
 
 
 def _claimable(conditions: list[Condition]):
-    """The oldest queued run that meets every one of ``conditions`` (``_claim_conditions``, ``Claimer.conditions``),
-    locked, passing over one another claim holds locked. Each row is the run's id, the runtime it asked for, its kind,
-    its profile's runtime axis, its project's id, its profile's environment axis and the agent packs its profile
-    attaches."""
+    """The first queued run by priority, then the oldest (``priority.claim_order``), that meets every one of
+    ``conditions`` (``_claim_conditions``, ``Claimer.conditions``), locked, passing over one another claim holds
+    locked. Each row is the run's id, the runtime it asked for, its kind, its profile's runtime axis, its project's id,
+    its profile's environment axis and the agent packs its profile attaches."""
     r = tables.runs
     rules = (runtime_rule(), r.c.project_id, runtime_rule("environment"), run_packs())
     query = select(r.c.id, r.c.runtime, r.c.kind, *rules).where(*(clause for _, clause in conditions))
-    return query.order_by(r.c.id).limit(1).with_for_update(of=r, skip_locked=True)
+    return query.order_by(*claim_order(r)).limit(1).with_for_update(of=r, skip_locked=True)
 
 
 def _claim_conditions(
@@ -71,6 +72,7 @@ def _claim_conditions(
     release_runs: bool = False,
     browser_runs: bool = False,
     command_runs: bool = False,
+    evolve_runs: bool = False,
     step_sessions: bool = False,
     clones: bool = False,
     steady: bool = True,
@@ -93,7 +95,9 @@ def _claim_conditions(
     them; a question run likewise, with a daemon that says it runs question runs (``question_runs``). A release run needs a checkout of its one repo and a daemon that says it runs release runs
     (``release_runs``). A login session (kind browser) has no repo and needs a daemon that says it runs them
     (``browser_runs``). A command run (``evo_agents.hub.command_runs``) asks for no runtime, needs a checkout of its
-    repo when it has one and a daemon that says it runs command runs (``command_runs``). A plan run with a session per step needs a daemon that says it runs one (``step_sessions``).
+    repo when it has one and a daemon that says it runs command runs (``command_runs``). An evolve run
+    (``evo_agents.hub.server.evolve``) needs a checkout of its repo when it has one and a daemon that says it runs
+    evolve runs (``evolve_runs``). A plan run with a session per step needs a daemon that says it runs one (``step_sessions``).
     A worker whose daemon clones the repos it lacks (``clones``, runs.CLONES_CHECKOUTS) needs no checkout of any of
     them: those checkout rules hold only for an older one. A worker set to take runs dispatched from the web
     only (``web_only``) passes over the others, those dispatched before schema 0011 included. What the run's agent
@@ -134,7 +138,7 @@ def _claim_conditions(
                 true(),
             ),  # pinned to the worker the hub picked, which works without a repo it lacks
             (
-                r.c.kind.in_(("task", "question", "command")),
+                r.c.kind.in_(("task", "question", "command", "evolve")),
                 or_(r.c.repos.is_(None), exists().select_from(needed).where(has_needed)),
             ),
             else_=own_repo,
@@ -149,7 +153,7 @@ def _claim_conditions(
     said = {"review": review_runs, "judge": judge_runs, "replay": replay_runs, "history": history_runs}
     said |= {"probe": probe_runs}
     said |= {"author": author_runs, "chat": chat_runs, "release": release_runs, "browser": browser_runs}
-    said |= {"command": command_runs}
+    said |= {"command": command_runs, "evolve": evolve_runs}
     left_out = [kind for kind, runs_it in said.items() if not runs_it]  # the kinds its daemon does not say it runs
     if left_out:
         conditions.append(("kinds", r.c.kind.not_in(left_out)))
@@ -326,7 +330,7 @@ def _conditions(at: ClaimShape) -> tuple[Condition, ...]:
     that the run resumes one it parked (``resumes_here``), then ``_claim_conditions``, then ``_gates``."""
     drained = [("draining", resumes_here(at.worker_id))] if at.drained else []
     said = {kind: kind in at.run_kinds for kind in ("review", "judge", "replay", "history", "probe", "author", "chat")}
-    said |= {kind: kind in at.run_kinds for kind in ("task", "question", "release", "browser", "command")}
+    said |= {kind: kind in at.run_kinds for kind in ("task", "question", "release", "browser", "command", "evolve")}
     conditions = _claim_conditions(
         at.worker_id,
         at.owner_id,

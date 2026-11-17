@@ -19,13 +19,13 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { AccountDialog } from "./account-dialog";
-import { LazyAccountSharing, LazyModelsTab, LazyPolicies, LazyServicesTab } from "./account-tabs-lazy";
+import { LazyAccountSharing, LazyModelsTab, LazyPolicies, LazyServicesTab, LazySharedWithYou } from "./account-tabs-lazy";
 import { useChangeAccount, useFailure } from "./hooks";
 import { LazyLoginDialog, preloadLogin } from "./login-lazy";
 import { sharedVariables } from "./model";
 import type { ProviderCardData } from "./provider-cards";
 import type { ProviderStart } from "./provider-dialog";
-import { LazyProviderDeleteDialog, LazyProviderDialog, LazyProviderKeyDialog, preloadProvider } from "./provider-lazy";
+import { LazyBudgetDialog, LazyProviderDeleteDialog, LazyProviderDialog, LazyProviderKeyDialog, preloadProvider } from "./provider-lazy";
 import { catalogQuery, providerAccountsQuery } from "./provider-queries";
 import { ProvidersTab } from "./providers-tab";
 import { type Account, accountListQuery } from "./queries";
@@ -63,7 +63,8 @@ const toggled = <T,>(current: Dialog<T>, open: boolean): Dialog<T> => (current ?
 /**
  * The visitor's accounts (docs/credentials.md, section "Accounts"), in tabs: Providers, a card per provider their
  * model accounts call with its keys, their usage and cost, and its models; Models, every model their runs may ask
- * for; Service credentials; Rotation, the policy of each project; Sharing, the shares and what they spent. Add
+ * for; Service credentials; Rotation, the policy of each project; Sharing, the shares and what they spent. Both the
+ * Providers and the Sharing tab list the accounts other members share with the visitor, each with its owner. Add
  * provider opens the catalog: Claude signs in on a worker, any other provider is a key and a base URL. Never a value.
  */
 export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | null }) {
@@ -78,6 +79,7 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
   const [provider, setProvider] = useState<Dialog<ProviderStart>>(null);
   const [keyOf, setKeyOf] = useState<Dialog<Account>>(null);
   const [deleting, setDeleting] = useState<Dialog<Account>>(null);
+  const [budget, setBudget] = useState<Dialog<Account>>(null);
   const [now] = useState(() => Date.now());
   const failureOf = useFailure();
   const { mutateAsync } = useChangeAccount();
@@ -120,7 +122,8 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
   const onPause = useCallback((account: Account) => void pause(account), [pause]);
   const onKey = useCallback((account: Account) => setKeyOf(opened(account)), []);
   const onDelete = useCallback((account: Account) => setDeleting(opened(account)), []);
-  const actions = { onEdit: edit, onPause, onRenew: renew, onKey, onDelete };
+  const onBudget = useCallback((account: Account) => setBudget(opened(account)), []);
+  const actions = { onEdit: edit, onPause, onRenew: renew, onKey, onDelete, onBudget };
   const shared = useMemo(() => sharedVariables(accounts ?? []), [accounts]);
 
   return (
@@ -156,6 +159,7 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
             </TabsList>
             <TabsContent value="providers" data-testid="accounts-panel-providers">
               <ProvidersTab accounts={list} now={now} onCatalog={openCatalog} onAdd={addTo} {...actions} />
+              <LazySharedWithYou now={now} hideEmpty />
             </TabsContent>
             <TabsContent value="models" data-testid="accounts-panel-models">
               <LazyModelsTab accounts={list} onCatalog={openCatalog} />
@@ -191,6 +195,9 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
       ) : null}
       {deleting ? (
         <LazyProviderDeleteDialog key={deleting.value.name} account={deleting.value} open={deleting.open} onOpenChange={(open) => setDeleting((current) => toggled(current, open))} />
+      ) : null}
+      {budget ? (
+        <LazyBudgetDialog key={budget.value.name} account={budget.value} open={budget.open} onOpenChange={(open) => setBudget((current) => toggled(current, open))} />
       ) : null}
       <AccountDialog account={editing.account} open={editing.open} onOpenChange={(open) => setEditing((current) => ({ ...current, open }))} />
     </>

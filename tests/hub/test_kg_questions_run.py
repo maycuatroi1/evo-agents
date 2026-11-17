@@ -12,9 +12,9 @@ pytest.importorskip("sqlalchemy")
 
 from evo_agents.hub import kg_questions as model
 from evo_agents.hub import review as review_model
-from evo_agents.kg.store import Store
 from tests.hub import pg
-from tests.hub.test_kg_eval_bootstrap import graph_of, kg_env  # noqa: F401 (kg_env is a fixture)
+from tests.hub.test_kg_eval_bootstrap import kg_env, project_of  # noqa: F401 (kg_env is a fixture)
+from tests.kg import built
 
 EVERYTHING = (100, 100)  # a ceiling above every label of the test graph
 NOTHING = (-1, -1)  # one below every label
@@ -34,71 +34,70 @@ def test_a_project_needs_questions_without_a_set_or_with_few_commit_questions_on
 
 
 @pytest.fixture
-def store(tmp_path, kg_env):  # noqa: F811
-    opened = Store.open_file(graph_of(tmp_path, kg_env))
-    yield opened
-    opened.close()
+def graph(tmp_path, kg_env):  # noqa: F811
+    """The view of the test graph the agents' sink reads, as the hub gives it (``kg_graph.reading``)."""
+    return built.view_of(project_of(tmp_path, kg_env))
 
 
-def documents(store) -> list:
-    return [node for node in model._nodes(store, EVERYTHING) if node.cls not in model.LEFT_OUT]
+def documents(graph) -> list:
+    return [node for node in model._nodes(graph, EVERYTHING) if node.cls not in model.LEFT_OUT]
 
 
-def written(store) -> list[dict]:
+def written(graph) -> list[dict]:
     """One question a document of the graph, answered by its file."""
-    return [{"question": f"Where is {n.node_id} explained?", "files": [f"{n.repo}:{n.path}"]} for n in documents(store)]
+    return [{"question": f"Where is {n.node_id} explained?", "files": [f"{n.repo}:{n.path}"]} for n in documents(graph)]
 
 
-def test_the_sink_reads_the_documents_its_label_clears_by_class(store):
-    found = model.readable(store, EVERYTHING)
-    assert found.documents == len(documents(store)) > 3 and found.above == 0
+def test_the_sink_reads_the_documents_its_label_clears_by_class(graph):
+    found = model.readable(graph, EVERYTHING)
+    assert found.documents == len(documents(graph)) > 3 and found.above == 0
     assert {"code", "prose"} <= set(found.classes) and not set(found.classes) & model.LEFT_OUT
     assert sum(found.classes.values()) == found.documents
 
 
-def test_a_label_above_the_sink_reads_nothing_and_no_ceiling_reads_nothing(store):
+def test_a_label_above_the_sink_reads_nothing_and_no_ceiling_reads_nothing(graph):
     for ceiling in (NOTHING, None):  # None: the sink's grant clears no label
-        found = model.readable(store, ceiling)
-        assert (found.documents, found.classes) == (0, {}) and found.above == len(documents(store))
+        found = model.readable(graph, ceiling)
+        assert (found.documents, found.classes) == (0, {}) and found.above == len(documents(graph))
 
 
-def test_questions_answered_by_files_and_nodes_of_the_graph_are_kept_with_ids(store):
-    questions = written(store)
-    node = documents(store)[0].node_id
+def test_questions_answered_by_files_and_nodes_of_the_graph_are_kept_with_ids(graph):
+    questions = written(graph)
+    node = documents(graph)[0].node_id
     questions[0] = {"question": "Which file ranks the results?", "nodes": [node], "id": "mine-1"}
-    checked = model.check(store, EVERYTHING, questions, model.readable(store, EVERYTHING))
+    checked = model.check(graph, EVERYTHING, questions, model.readable(graph, EVERYTHING))
     assert checked.problems == []
     assert len(checked.entries) == len(questions) and checked.entries[0]["id"] == "mine-1"
     assert all(e["id"].startswith(model.ID_PREFIX) for e in checked.entries[1:])
     assert {e["type"] for e in checked.entries} == {model.QUESTION_TYPE}
-    assert set(checked.classes) == set(model.readable(store, EVERYTHING).classes)
+    assert set(checked.classes) == set(model.readable(graph, EVERYTHING).classes)
 
 
-def test_an_answer_not_in_the_graph_is_refused_without_naming_it(store):
-    questions = written(store)
+def test_an_answer_not_in_the_graph_is_refused_without_naming_it(graph):
+    questions = written(graph)
     questions[1] = {"question": "Where is the ledger?", "files": ["app:secret/ledger.py"]}
     questions[2] = {"question": "Which node?", "nodes": ["app:file:secret/ledger.py"]}
-    checked = model.check(store, EVERYTHING, questions, model.readable(store, EVERYTHING))
+    checked = model.check(graph, EVERYTHING, questions, model.readable(graph, EVERYTHING))
     assert "question 2: an answer file is not in the graph you read" in checked.problems
     assert "question 3: an answer node is not in the graph you read" in checked.problems
     assert not any("ledger" in p for p in checked.problems)
 
 
-def test_an_answer_above_the_label_of_the_sink_is_refused_as_absent(store):
-    found = model.readable(store, EVERYTHING)
-    checked = model.check(store, NOTHING, written(store), found)
+def test_an_answer_above_the_label_of_the_sink_is_refused_as_absent(graph):
+    found = model.readable(graph, EVERYTHING)
+    checked = model.check(graph, NOTHING, written(graph), found)
     assert checked.entries == [] and checked.problems[0] == "question 1: an answer file is not in the graph you read"
-    node = documents(store)[0].node_id
-    hidden = model.check(store, NOTHING, [{"question": "Which node?", "nodes": [node]}], model.Readable())
+    node = documents(graph)[0].node_id
+    hidden = model.check(graph, NOTHING, [{"question": "Which node?", "nodes": [node]}], model.Readable())
     assert hidden.problems == ["question 1: an answer node is not in the graph you read"]
-    paths = {n.path for n in documents(store)} | {n.node_id for n in documents(store)}
+    paths = {n.path for n in documents(graph)} | {n.node_id for n in documents(graph)}
     assert not any(path in problem for path in paths for problem in checked.problems + hidden.problems)
 
 
-def test_too_few_questions_a_class_left_out_a_repeat_or_no_answer_are_refused(store):
-    found = model.readable(store, EVERYTHING)
-    code = [q for q, n in zip(written(store), documents(store), strict=True) if n.cls == "code"]
-    checked = model.check(store, EVERYTHING, code + [code[0], {"question": "Why?"}, "text"], found)
+def test_too_few_questions_a_class_left_out_a_repeat_or_no_answer_are_refused(graph):
+    found = model.readable(graph, EVERYTHING)
+    code = [q for q, n in zip(written(graph), documents(graph), strict=True) if n.cls == "code"]
+    checked = model.check(graph, EVERYTHING, code + [code[0], {"question": "Why?"}, "text"], found)
     assert f"{len(code)} questions are good, {found.documents} are needed" in checked.problems
     assert any(p.startswith("no question answered by a document of class") and "prose" in p for p in checked.problems)
     assert f"question {len(code) + 1} repeats the id or the text of an earlier one" in checked.problems
@@ -106,12 +105,12 @@ def test_too_few_questions_a_class_left_out_a_repeat_or_no_answer_are_refused(st
     assert f"question {len(code) + 3} is not an object" in checked.problems
 
 
-def test_the_privacy_of_the_prompt_counts_and_classes_never_an_item(store):
-    found = model.readable(store, EVERYTHING)
+def test_the_privacy_of_the_prompt_counts_and_classes_never_an_item(graph):
+    found = model.readable(graph, EVERYTHING)
     text = model.prompt(project="demo", init_id=7, sink="claude-code@anthropic", found=found, why="no eval set")
     assert f"{found.documents} documents" in text and "code (" in text
     assert "--run 7 --questions FILE" in text and f"at least {found.documents} questions" in text
-    for node in documents(store):
+    for node in documents(graph):
         assert node.path not in text and node.node_id not in text
 
 

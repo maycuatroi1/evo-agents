@@ -1,4 +1,4 @@
-"""Secrets in text (``evo_agents.kg.scrub``, ``evo_agents.kg.store_secrets``), what the hub's scrub reads with, and
+"""Secrets in text (``evo_agents.kg.scrub``, ``evo_agents.sqlite_legacy.graph_text_rows``), what the hub's scrub reads with, and
 ``evo-agents kg scrub`` and ``kg prune``, which have the hub scrub and prune a project: a machine keeps no corpus, memo
 or graph of its own to clean. Nothing these read answers a value."""
 
@@ -14,10 +14,10 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub import kg_cli
+from evo_agents.hub.server.kg_scrub import graph_secrets
 from evo_agents.kg import scrub as scrub_module
 from evo_agents.kg.redact import redact_file
 from evo_agents.kg.scrub import might_hold_secret, run_summary, secrets_in_json
-from evo_agents.kg.store_secrets import graph_secrets
 from evo_agents.kg.sync import sync_project
 from tests.kg.conftest import doc
 from tests.kg.test_redact import COMPOSE, LITERAL, PEM, REDACTED, SERVICE_ACCOUNT, SETTINGS
@@ -59,19 +59,33 @@ def test_secrets_in_json_reads_keys_and_the_text_in_strings():
     assert secrets_in_json(json.dumps({"password": "${DB_PASSWORD}", "name": "token"})) == {}
 
 
-def test_graph_secrets_counts_the_rows_of_a_graph_file_holding_one(tmp_path):
-    path = tmp_path / "graph.sqlite"
+def old_graph_file(
+    path: Path, texts: list[tuple[str, str]], props: list[tuple[str, str]], *, edges: bool = True
+) -> Path:
+    """A graph file as builds wrote before the hub kept graphs in its tables: ``texts`` in its full-text index,
+    ``props`` in its nodes, and an empty edges table unless ``edges`` is false. The hub's tests build theirs here,
+    where the raw SQL guard of the hub does not look."""
+    path.unlink(missing_ok=True)
     db = sqlite3.connect(path)
     db.execute("CREATE TABLE node_fts (name TEXT, body TEXT)")
-    db.execute("CREATE TABLE nodes (name TEXT, props TEXT)")  # no edges table: a store of another schema
-    db.executemany(
-        "INSERT INTO node_fts VALUES (?, ?)", [("settings", f"export JWT_SECRET={LITERAL}\n"), ("readme", "Install.")]
-    )
-    db.executemany("INSERT INTO nodes VALUES (?, ?)", [("db", json.dumps({"password": LITERAL})), ("a", "{}")])
+    db.execute("CREATE TABLE nodes (name TEXT, props TEXT)")
+    if edges:
+        db.execute("CREATE TABLE edges (props TEXT)")
+    db.executemany("INSERT INTO node_fts VALUES (?, ?)", texts)
+    db.executemany("INSERT INTO nodes VALUES (?, ?)", props)
     db.commit()
     db.close()
+    return path
+
+
+def test_graph_secrets_counts_the_rows_of_a_graph_file_holding_one(tmp_path):
+    path = old_graph_file(
+        tmp_path / "old-graph.db",
+        [("settings", f"export JWT_SECRET={LITERAL}\n"), ("readme", "Install.")],
+        [("db", json.dumps({"password": LITERAL})), ("a", "{}")],
+        edges=False,  # a store of another schema
+    )
     assert graph_secrets(path) == (2, {"password": 1, "secret": 1})
-    assert graph_secrets(path, immutable=True) == (2, {"password": 1, "secret": 1})
 
 
 def asked(monkeypatch, command: str) -> list:
@@ -103,7 +117,7 @@ def test_kg_prune_counts_on_the_hub_unless_told_to_delete(monkeypatch):
 
 
 def test_scrub_runs_without_the_hub():
-    code = "import sys, evo_agents.kg.scrub, evo_agents.kg.store_secrets\n"
+    code = "import sys, evo_agents.kg.scrub, evo_agents.sqlite_legacy\n"
     code += "print(sorted(m for m in sys.modules if m.startswith(('evo_agents.hub', 'fastapi', 'sqlalchemy'))))"
     root = Path(__file__).resolve().parents[2]
     env = {**os.environ, "PYTHONPATH": str(root)}

@@ -28,6 +28,7 @@ from evo_agents.hub.handoff import (
     commits_of,
     decisions_of,
     estimate_tokens,
+    routing_line,
 )
 from evo_agents.hub.mirror import read_plan
 from evo_agents.hub.plans import PlanProblem, step_key
@@ -299,6 +300,10 @@ def test_the_route_builds_the_handoff_of_the_plan_the_hub_holds(hub, hub_db):
         "tokens": built.tokens,
         "cut": False,
         "text": built.text,
+        # the step's difficulty and model by the project's Token strategy (plan token-and-quota-economy)
+        "difficulty": "hard",
+        "recommended_model": "opus",
+        "routing_reason": found["routing_reason"],
     }
     assert get_handoff(reader, step="3", budget_tokens=1000).json() == found  # same revision and budget, same text
     default = get_handoff(reader).json()
@@ -343,7 +348,8 @@ def test_the_command_and_the_mcp_tool_give_the_route_s_text(hub, monkeypatch, ca
         ),
         ({"step": "3"}, {"step": 3}, ["--step", "3"]),
     ):
-        text = get_handoff(reader, **options).json()["text"]
+        route = get_handoff(reader, **options).json()
+        text = route["text"] + routing_line(route)  # with --step, the line of the step's difficulty and model
 
         tool = mcp(reader, {"plan_id": "rollout", **arguments})
         assert not tool.get("isError"), tool
@@ -358,7 +364,7 @@ def test_the_command_and_the_mcp_tool_give_the_route_s_text(hub, monkeypatch, ca
         assert run_cli(["rollout", "--project", PROJECT, "--json", *argv]) == 0
         printed = json.loads(capsys.readouterr().out)
         assert_json_keys("hub plan handoff", printed)
-        assert printed["text"] == text
+        assert printed == route  # --json prints the route's answer as it is
 
     assert run_cli(["rollout", "--project", PROJECT, "--budget-tokens", "10"]) == 1
     assert f"--budget-tokens is {MIN_BUDGET_TOKENS} to {MAX_BUDGET_TOKENS}, not 10" in capsys.readouterr().err

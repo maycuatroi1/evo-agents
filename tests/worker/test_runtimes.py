@@ -962,7 +962,29 @@ def test_claude_writes_to_the_agent_when_a_background_command_ends_and_the_cli_o
     assert outcome.completed and outcome.summary == "DONE"
 
 
-def test_claude_ends_at_a_result_once_result_json_is_written_whatever_runs_in_the_background(tmp_path):
+def test_claude_ends_at_a_result_once_result_json_is_written_and_nothing_runs_in_the_background(tmp_path):
+    result_file = tmp_path / "worktree" / runs.RESULT_FILE
+
+    async def behaviour(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(INIT)
+        result_file.parent.mkdir(parents=True, exist_ok=True)
+        result_file.write_text('{"verify_commands": ["true"], "summary": "done"}', encoding="utf-8")
+        cli.print(_text("DONE"))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    adapter = _claude(tmp_path, behaviour, timers=SLOW)
+    events, outcome = asyncio.run(_collect(adapter))
+    assert adapter.cli.log[-2:] == [("result", "DONE"), ("end_input",)]
+    assert outcome.completed and outcome.summary == "DONE"
+
+
+def test_claude_keeps_the_input_open_for_a_background_command_after_the_agent_wrote_an_interim_result_json(tmp_path):
+    """Run #8661 of evo-agents wrote its result file during its own session while two test commands ran in the
+    background: the input ended at that turn's result, and every tool call of the turn Claude Code opened when the
+    commands ended was refused. The input stays open until they end, and the file of an earlier turn ends nothing."""
     result_file = tmp_path / "worktree" / runs.RESULT_FILE
 
     async def behaviour(cli: FakeCLI) -> None:
@@ -970,18 +992,73 @@ def test_claude_ends_at_a_result_once_result_json_is_written_whatever_runs_in_th
         cli.print(INIT)
         _print(cli, background_start())
         result_file.parent.mkdir(parents=True, exist_ok=True)
-        result_file.write_text('{"verify_commands": ["true"], "summary": "done"}', encoding="utf-8")
-        cli.print(_text("DONE"))
-        cli.print(_result("DONE"))
+        result_file.write_text('{"summary": "tests still run"}', encoding="utf-8")
+        cli.print(_text("STARTED"))
+        cli.print(_result("STARTED"))
+        await cli.go.wait()
+        _print(cli, background_end())
+        cli.print(INIT)  # Claude Code opens a turn by itself, for the notification
+        cli.print(_text("READ"))  # the agent's tool calls of this turn go through: the input is still open
+        cli.print(_result("READ"))
         await cli.input_closed.wait()
-        _print(cli, background_end(status="killed"))  # Claude Code stops the command once its input ends
         cli.exit()
 
+    async def during(adapter, events) -> None:
+        await _turn_ended(adapter, events)
+        await asyncio.sleep(0.2)
+        assert ("end_input",) not in adapter.cli.log, "the input stays open while the command runs"
+        assert adapter.background.pending
+        adapter.cli.go.set()
+
     adapter = _claude(tmp_path, behaviour, timers=SLOW)
+    events, outcome = asyncio.run(_collect(adapter, during))
+    assert adapter.cli.log == [
+        ("control", "initialize"),
+        ("user", PROMPT),
+        ("result", "STARTED"),
+        ("result", "READ"),
+        ("end_input",),
+    ]
+    assert not adapter.background.pending
+    assert outcome.completed and outcome.summary == "READ"
+
+
+def _finished_with_a_server_left(result_file):
+    """The agent writes its result file and ends its turn while a command it started, a server say, runs on."""
+
+    async def behaviour(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(INIT)
+        _print(cli, background_start())
+        result_file.parent.mkdir(parents=True, exist_ok=True)
+        result_file.write_text('{"summary": "done"}', encoding="utf-8")
+        cli.print(_text("DONE"))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()  # it never ends by itself
+        _print(cli, background_end(status="killed"))
+        cli.exit()
+
+    return behaviour
+
+
+def test_claude_completes_a_run_that_wrote_its_result_when_its_time_cap_ends_a_wait_for_a_background_command(tmp_path):
+    behaviour = _finished_with_a_server_left(tmp_path / "worktree" / runs.RESULT_FILE)
+    budget = {"max_usd": None, "max_seconds": 0.5, "spent_usd": 0.0, "spent_seconds": 0}
+    adapter = _claude(tmp_path, behaviour, timers=SLOW, budget=budget)
     events, outcome = asyncio.run(_collect(adapter))
+    assert ("control", "interrupt") not in adapter.cli.log
     assert adapter.cli.log[-2:] == [("result", "DONE"), ("end_input",)]
-    assert adapter.background.ended[BG_TASK]["status"] == "stopped"
-    assert outcome.completed and outcome.summary == "DONE"
+    assert outcome.completed and outcome.summary == "DONE" and outcome.cap is None and outcome.error is None
+
+
+def test_claude_with_no_time_cap_ends_a_wait_for_a_background_command_after_the_result_at_the_finished_wait(tmp_path):
+    behaviour = _finished_with_a_server_left(tmp_path / "worktree" / runs.RESULT_FILE)
+    adapter = _claude(tmp_path, behaviour, timers={**SLOW, "background_wait": None, "finished_wait": 0.3})
+    began = time.monotonic()
+    events, outcome = asyncio.run(_collect(adapter))
+    assert time.monotonic() - began >= 0.3, "the session waited for the command first"
+    assert adapter.cli.log[-2:] == [("result", "DONE"), ("end_input",)]
+    assert outcome.completed and outcome.summary == "DONE" and outcome.cap is None
 
 
 def test_claude_keeps_the_input_open_for_a_background_command_when_a_previous_run_left_its_result_json(tmp_path):
@@ -2175,6 +2252,50 @@ def test_the_heartbeat_reports_the_models_of_available_runtimes_within_the_hubs_
     assert kept == long[: len(kept)] and 0 < len(kept) < 200
     assert len(json.dumps(kept).encode()) <= adapter_module.MAX_MODELS_BYTES
     assert adapter_module.clean_models([]) is None and adapter_module.clean_models(["", " "]) is None
+
+
+class _Probed(Adapter):
+    runtime = "claude-code"
+    binary = "claude"
+
+    @classmethod
+    def detect(cls) -> Detection:
+        return adapter_module.probe_binary(cls.binary, timeout=0.01)
+
+    @classmethod
+    def models(cls):
+        return None
+
+
+def test_a_version_that_times_out_keeps_the_runtime_the_last_look_found(monkeypatch):
+    """A loaded machine whose --version gives no answer in time keeps the runtime available, as the last look found
+    it; a runtime never seen available, or a --version that fails, is reported unavailable as before."""
+    monkeypatch.setattr(adapter_module.shutil, "which", lambda binary, path=None: f"/usr/bin/{binary}")
+
+    def slow(argv, **kwargs):
+        raise subprocess.TimeoutExpired(argv, kwargs.get("timeout"))
+
+    monkeypatch.setattr(adapter_module.subprocess, "run", slow)
+    last = {"claude-code": {"available": True, "version": "2.1.312", "reason": None, "models": ["opus"]}}
+    found = adapter_module.detect_runtimes({"claude-code": _Probed}, previous=last)
+    assert found["claude-code"] == last["claude-code"] and found["claude-code"] is not last["claude-code"]
+    assert adapter_module.detect_adapters({"acp-x": _Probed}, previous={"acp-x": last["claude-code"]}) == {
+        "acp-x": last["claude-code"]
+    }
+
+    first = adapter_module.detect_runtimes({"claude-code": _Probed})["claude-code"]
+    assert first["available"] is False and "gave no answer" in first["reason"]
+    gone = {"claude-code": {"available": False, "version": None, "reason": "claude is not on PATH"}}
+    assert adapter_module.detect_runtimes({"claude-code": _Probed}, previous=gone)["claude-code"]["available"] is False
+
+    monkeypatch.setattr(
+        adapter_module.subprocess,
+        "run",
+        lambda argv, **kwargs: subprocess.CompletedProcess(argv, 1, stdout="", stderr="broken"),
+    )
+    failed = adapter_module.detect_runtimes({"claude-code": _Probed}, previous=last)["claude-code"]
+    assert failed["available"] is False and failed["reason"] == "claude --version exited 1"
+    assert "timed_out" not in failed
 
 
 # The selftest command

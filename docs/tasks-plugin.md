@@ -187,9 +187,9 @@ Under `/v1/x/tasks/{project}/`:
 | `GET people` | the members a task may name, by login, with their role |
 | `POST import` | `{"data": <evo-tasks/1>, "dry_run": true \| false}` |
 
-The web shows them on the plugin's pages, at `/p/{project}/x/tasks/board` in the project's menu (Tasks): the board of
-a sprint by status, the backlog by sprint, the caller's own tasks, a task whole with its links, history and comments,
-and the import, reached from the board's tabs.
+The web shows them on the plugin's pages, at `/p/{project}/x/tasks/board` in the Development cycle of the project's menu
+(Tasks): the board of a sprint by status, the backlog by sprint, the caller's own tasks, a task whole with its links,
+history and comments, and the import, reached from the board's tabs.
 
 ## Importing: evo-tasks/1
 

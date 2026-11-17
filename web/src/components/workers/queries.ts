@@ -50,14 +50,16 @@ export const workerKeys = {
 };
 
 /**
- * Every worker the visitor may see, revoked ones included: the page filters them, and counts each status. Each
+ * Every worker the visitor may see (revoked ones included by default, omitted in the shell's fleet summary). Each
  * answer read in the browser is also an observation of the workers' heartbeats (heartbeats.ts).
  */
-export const workersQuery = (api: ApiSource) =>
+export const workersQuery = (api: ApiSource, revoked = true) =>
   queryOptions({
-    queryKey: workerKeys.list,
+    queryKey: revoked ? workerKeys.list : ([...workerKeys.list, "live"] as const),
     queryFn: async ({ signal }) => {
-      const workers = await call(api().GET("/v1/workers", { params: { query: { revoked: true } }, signal }));
+      const workers = await call(
+        api().GET("/v1/workers", { ...(revoked ? { params: { query: { revoked: true } } } : {}), signal }),
+      );
       recordHeartbeats(workers, Date.now());
       return workers;
     },

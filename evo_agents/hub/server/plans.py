@@ -72,7 +72,7 @@ from evo_agents.hub.plans import (
     update_summary,
     verify_refusal,
 )
-from evo_agents.hub.server import audit, plan_problems
+from evo_agents.hub.server import audit, plan_problems, system_traces
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import CODES, ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
@@ -430,6 +430,9 @@ async def handoff(
         access = await project_access(conn, user, project)
         _reader(access)
         held = await _visible(conn, access, plan_id, sink)
+        from evo_agents.hub.server.token_strategy import recommend  # it reads the gateway, which reaches plans
+
+        routed = await recommend(conn, access.project_id, user.user_id, held.body, step) if step else {}
     try:
         built = await asyncio.to_thread(
             build_handoff, held.body, project=project, revision=held.revision, step=step, budget_tokens=budget_tokens
@@ -445,6 +448,7 @@ async def handoff(
         tokens=built.tokens,
         cut=built.cut,
         text=built.text,
+        **routed,
     )
 
 
@@ -615,7 +619,10 @@ async def _store(
     target = f"{access.name}/{body['id']}@{revision}"
     await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
     before = None if held is None else held.body
-    await plan_step_status.emit(conn, access.project_id, body["id"], revision, before, body)
+    marked = await plan_step_status.emit(conn, access.project_id, body["id"], revision, before, body)
+    acting = getattr(user, "acts_for_run", None)
+    if marked and held is not None and acting is not None:  # a run of a trace marked a step: the trace works on it
+        await system_traces.take_plan(conn, acting, body["id"])
     return Held(body["id"], area, label, stored, revision, digest, created_at, updated_at, user.login)
 
 

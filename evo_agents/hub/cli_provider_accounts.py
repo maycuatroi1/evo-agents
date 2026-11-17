@@ -8,7 +8,9 @@ shell's history would see it: it is read from stdin when stdin is not a terminal
 ``--from-secret NAME`` takes the value of one of the member's env secrets, which the hub copies without sending it
 here. ``set`` changes what it is given and keeps the rest, the key included unless ``--key`` or ``--from-secret``;
 ``pause``, ``resume`` and ``delete`` do what they say; ``test`` asks the endpoint with the stored key and prints
-whether it took it and how many models it lists, ``models`` prints them. No command prints a key.
+whether it took it and how many models it lists, ``models`` prints them. ``quota NAME`` has the hub read what a Z.ai
+account has left of its five-hour and weekly windows and keep it as the account's last usage (``--agent HANDLE``: an
+account of an agent of ``--project``). No command prints a key.
 """
 
 from __future__ import annotations
@@ -46,6 +48,7 @@ ACCOUNT_KEYS = (
     "updated_at",
 )
 PROBE_KEYS = ("ok", "status", "count", "models", "error")
+QUOTA_KEYS = ("ok", "usage", "status", "error")
 EXIT_USAGE = 2
 EXIT_FAILED = 1
 NO_KEY = (
@@ -233,6 +236,40 @@ def cmd_test(args) -> int:
     return EXIT_FAILED
 
 
+def _quota_path(args) -> str:
+    if not args.agent:
+        return _path(args.name, "/quota")
+    from evo_agents.hub.cli_agents import project_of
+
+    project, handle = quote(project_of(args), safe=""), quote(args.agent.removeprefix("@"), safe="")
+    return f"/v1/projects/{project}/agents/{handle}/provider-accounts/{quote(args.name, safe='')}/quota"
+
+
+def _window_line(name: str, window: dict) -> str:
+    share = f"{window['utilization'] * 100:.0f}%"
+    resets = window.get("resets_at")
+    return f"  {name}: {share} used" + (f", resets {resets}" if resets else "")
+
+
+@client_command
+def cmd_quota(args) -> int:
+    if args.project and not args.agent:
+        return _usage("--project goes with --agent")
+    hub, _ = signed_in()
+    found = hub.call("POST", _quota_path(args), {}) or {}
+    if args.json:
+        print_json(found)
+        return 0 if found["ok"] else EXIT_FAILED
+    if not found["ok"]:
+        print(f"{args.name}: the quota was not read: {found['error']}", file=sys.stderr)
+        return EXIT_FAILED
+    usage = found["usage"]
+    print(f"{args.name}: {usage['status']}")
+    for name, window in sorted(usage["windows"].items()):
+        print(_window_line(name, window))
+    return 0
+
+
 def _write_flags(parser, *, add: bool) -> None:
     parser.add_argument("name", metavar="NAME", help="unique among your secrets, such as openrouter-main")
     parser.add_argument("--base-url", metavar="URL", help="the https root of its API; the catalog's when left out")
@@ -304,3 +341,11 @@ def register_provider_accounts(hsub) -> None:
         command.add_argument("--model", metavar="MODEL", help="a model to ask when the endpoint lists none")
         json_option(command, returns_object(*PROBE_KEYS, schema="ProviderProbe"))
         command.set_defaults(func=cmd_test, list_models=listing)
+    quota = psub.add_parser(
+        "quota", help="have the hub read what a Z.ai account has left of its five-hour and weekly windows, and keep it"
+    )
+    quota.add_argument("name", metavar="NAME")
+    quota.add_argument("--agent", metavar="HANDLE", help="an account of this agent, not yours")
+    quota.add_argument("--project", metavar="PROJECT", help="the agent's project (default: the harness's)")
+    json_option(quota, returns_object(*QUOTA_KEYS, schema="ProviderQuota"))
+    quota.set_defaults(func=cmd_quota)

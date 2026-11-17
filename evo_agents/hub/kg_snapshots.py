@@ -17,15 +17,18 @@ import dataclasses
 import gc
 import json
 import logging
+import os
 import time
 import weakref
 from dataclasses import dataclass
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import kg_branches, tables
-from evo_agents.hub.kg_graph_rows import CHANNEL, MAIN, read_graph
+from evo_agents.hub import db, kg_branches, tables
+from evo_agents.hub.kg_graph_rows import CHANNEL, MAIN, assemble_graph, fetch_graph
+from evo_agents.kg import pacing as kg_pacing
 from evo_agents.kg import settings as kg_settings
 from evo_agents.kg.pacing import pacing
 from evo_agents.kg.snapshot import Snapshot, SnapshotView, StoreRows
@@ -62,13 +65,38 @@ async def load(engine: AsyncEngine, project_id: int) -> Held | None:
             async with read_slot():
                 timing.phase("slot")
                 async with engine.connect() as conn:
-                    found = await _rows(conn, project_id)
+                    fetched = await _rows(conn, project_id)
+                if fetched is not None:  # still in the slot, so the raw rows of at most READS loads wait in memory
+                    build_id, raw = fetched
+                    del fetched
+                    rows = await _assembled(raw)
+                    kg_pacing.give_aside([raw])  # freed in a thread: on the loop it held every request a second
+                    del raw
+                    fetched = build_id, rows
+                    del rows
             timing.phase("rows")
-            if found is None:
+            if fetched is None:
                 return None
-            held = await _made(*found)
+            held = await _made(*fetched)
+            kg_pacing.give_aside([fetched[1]])
+            del fetched
             timing.phase("made")
             return held
+
+
+async def shared(engine: AsyncEngine, project_id: int, build_id: int | None = None) -> Held | None:
+    """The project's snapshot for a request that reads it once: in the api, the one its coordinator keeps
+    (``serving``), loaded once however many requests ask for it at once, or newer than build ``build_id`` once its
+    load ends (``SnapshotCoordinator.current``); elsewhere, as in a job's process, one read now (``load``). A
+    request that loaded a snapshot of its own made one copy of the graph each: a worker posting a judge's verdict
+    again after 30 seconds had the api make four copies of its largest graph at once, gigabytes each, until it was
+    restarted."""
+    coordinator = serving
+    if coordinator is None or coordinator.engine is None:
+        return await load(engine, project_id)
+    if build_id is None:
+        return await coordinator.get(project_id)
+    return await coordinator.current(project_id, build_id)
 
 
 async def load_on(conn: AsyncConnection, project_id: int) -> Held | None:
@@ -76,7 +104,7 @@ async def load_on(conn: AsyncConnection, project_id: int) -> Held | None:
     connection back first uses ``load``."""
     with uncollected():
         found = await _rows(conn, project_id)
-        return None if found is None else await _made(*found)
+        return None if found is None else await _made(found[0], await _assembled(found[1]))
 
 
 _loads = 0  # loads of the process running now, in ``uncollected``
@@ -130,7 +158,7 @@ def uncollected():
 
 def settle() -> None:
     """While loads run, once about SETTLE objects were made since the last full collection: collect everything and
-    freeze what is left (``uncollected``). Called by a load's paced thread (``pacing``). Each collection of the middle
+    freeze what is left (``uncollected``). Called by a load's paced thread (``tend``). Each collection of the middle
     generation is one after ``threshold1`` of the youngest, each after ``threshold0`` objects made."""
     if _loads and gc.get_count()[2] * _thresholds[0] * _thresholds[1] >= SETTLE:
         start = time.perf_counter()
@@ -140,6 +168,47 @@ def settle() -> None:
 
 
 _thresholds = gc.get_threshold()  # the collector's thresholds before the first of the loads running now
+
+
+def tend() -> None:
+    """What a load's paced thread calls between two steps: ``settle``, and a look at the api's memory
+    (``SnapshotCoordinator.pressed``)."""
+    settle()
+    if serving is not None:
+        serving.pressed()
+
+
+REQUEST_WINDOW = 1.0  # seconds a connection taken counts as a request in the middle of its transaction
+
+
+def requests_waiting() -> bool:
+    """Whether requests of the api are in the middle of their transactions, the load's own connection aside: each step
+    of one is a turn of the loop that needs the GIL a paced thread holds (``evo_agents.kg.pacing``). The heartbeat
+    pool's requests count too: a worker's heartbeat or claim in its transaction waits for the loop as any other."""
+    return any(pool.serving(REQUEST_WINDOW, but="task:kg-snapshot") for pool in db.live)
+
+
+PRESSURE = 0.75  # share of the api's memory limit past which it drops the snapshots it holds (``SnapshotCoordinator``)
+PRESS_EVERY = 1.0  # seconds between two looks at the api's memory while a load runs
+
+
+def memory_limit() -> int | None:
+    """The memory limit of the process's cgroup in bytes (v2, else v1); None without one."""
+    for path in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            text = Path(path).read_text().strip()
+        except OSError:
+            continue
+        return int(text) if text.isdigit() and int(text) < 2**60 else None  # "max", or v1's way to say none
+    return None
+
+
+def resident() -> int:
+    """The process's resident memory in bytes; 0 where /proc does not tell it."""
+    try:
+        return int(Path("/proc/self/statm").read_text().split()[1]) * os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError, IndexError):
+        return 0
 
 
 STALL = 0.1  # seconds the loop's watch sleeps between two looks at the clock
@@ -183,15 +252,23 @@ async def timed(project_id: int):
         log.info("kg snapshot load timed", extra={"project_id": project_id, "phases": timing.phases})
 
 
-async def _rows(conn: AsyncConnection, project_id: int) -> tuple[int | None, StoreRows] | None:
-    """(the build that wrote the rows of the project's main branch, those rows); None before its first build."""
+async def _rows(conn: AsyncConnection, project_id: int) -> tuple[int | None, tuple] | None:
+    """(the build that wrote the rows of the project's main branch, those rows as ``fetch_graph`` read them, still to
+    be put together by ``assemble_graph``, which needs no connection); None before its first build."""
     heads = tables.kg_graph_heads
     build_id = await conn.scalar(
         select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
     )
-    with pacing(settle):
-        rows = await read_graph(conn, project_id)
+    with pacing(tend, requests_waiting):
+        rows = await fetch_graph(conn, project_id)
     return None if rows is None else (build_id, rows)
+
+
+async def _assembled(fetched: tuple) -> StoreRows:
+    """The rows ``_rows`` fetched, put together in a paced thread, with no connection held: it takes minutes on a large
+    graph, and a connection held meanwhile, idle in its transaction, is one the heartbeats and claims wait for."""
+    with pacing(tend, requests_waiting):
+        return await assemble_graph(fetched)
 
 
 async def _made(build_id: int | None, rows: StoreRows) -> Held:
@@ -200,7 +277,7 @@ async def _made(build_id: int | None, rows: StoreRows) -> Held:
     thread that kept the GIL until forced to switch left the event loop one step every 5 ms meanwhile, every pooled
     connection held in a transaction the loop could not finish, and the workers' heartbeats and claims timed out
     waiting for one."""
-    with pacing(settle):
+    with pacing(tend, requests_waiting):
         return Held(build_id, await asyncio.to_thread(Snapshot.from_stored, *hub_build(rows, build_id)))
 
 
@@ -244,6 +321,12 @@ HELD_BRANCHES = 8  # draft branches whose snapshot the api keeps, the most recen
 FRESH_WAIT = 5.0  # seconds a read that found a newer build waits for its snapshot before the older one answers
 
 
+def _over() -> bool:
+    """Whether the api's resident memory is past PRESSURE of its limit; never without a limit."""
+    limit = memory_limit()
+    return limit is not None and resident() > limit * PRESSURE
+
+
 async def _branch_key(conn: AsyncConnection, project_id: int, name: str) -> tuple:
     """What a draft branch's snapshot is made of: the branch, its status and operations, and main's rows now. Raises
     kg_branches.BranchError 404 for a branch the project lacks."""
@@ -265,6 +348,9 @@ class SnapshotCoordinator:
         self._tasks: set[asyncio.Task] = set()
         self._branches: dict[tuple[int, str], tuple[tuple, Held]] = {}  # (project, branch): (its key, snapshot)
         self._asked: dict[int, int] = {}  # project: the newest build ``current`` loaded again for
+        self._dropped: list[weakref.ref[Snapshot]] = []  # the snapshots replaced or dropped, until they are freed
+        self._loop: asyncio.AbstractEventLoop | None = None  # the api's, set by the first load
+        self._looked = 0.0  # when ``pressed`` last looked at the memory
         if listener is not None:
             listener.on(CHANNEL, self.notified)
 
@@ -333,21 +419,24 @@ class SnapshotCoordinator:
         found = self._branches.pop((project_id, name), None)
         if found is None or found[0] != key:
             heads = tables.kg_graph_heads
-            with uncollected(), pacing(settle):
+            with uncollected(), pacing(tend, requests_waiting):
                 async with read_slot(), self.engine.connect() as conn:
                     build_id = await conn.scalar(
                         select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
                     )
                     _, _, rows = await kg_branches.graph(conn, project_id, name)
+                if found is not None:
+                    self._watch(found[1].snapshot)
                 found = key, await _made(build_id, rows)
         self._branches[(project_id, name)] = found
         while len(self._branches) > HELD_BRANCHES:
-            del self._branches[next(iter(self._branches))]
+            self._watch(self._branches.pop(next(iter(self._branches)))[1].snapshot)
         return found[1]
 
     def _load(self, project_id: int, fresh: bool = False) -> asyncio.Task:
         """The task loading the project's snapshot; ``fresh``: one that reads the tables after this call, queued
         behind a load already running, which may have read them before the build that notified."""
+        self._loop = asyncio.get_running_loop()
         task = self._loading.get(project_id)
         if task is None or task.done() or fresh:
             build = self._build(project_id, None if task is None or task.done() else task)
@@ -369,18 +458,79 @@ class SnapshotCoordinator:
         if held is None:
             return None
         self._keep(project_id, held)
-        log.info("kg snapshot loaded", extra={"project_id": project_id, "build_id": held.build_id})
+        log.info(
+            "kg snapshot loaded",
+            extra={
+                "project_id": project_id,
+                "build_id": held.build_id,
+                "lingering": self.lingering(),
+                "resident_mb": resident() >> 20,
+            },
+        )
+        self._ease()
         return held
 
     def _keep(self, project_id: int, held: Held) -> None:
         """Hold ``held`` as the project's snapshot, the most recently read, and drop the least recently read ones
         past HELD_PROJECTS: a notification for a dropped project is ignored, and its next read loads it again."""
-        self._held.pop(project_id, None)
+        old = self._held.pop(project_id, None)
         self._held[project_id] = held  # one assignment: a reader sees the old snapshot or the new one
+        if old is not None and old.snapshot is not held.snapshot:
+            self._watch(old.snapshot)
         while len(self._held) > HELD_PROJECTS:
             dropped = next(iter(self._held))
-            del self._held[dropped]
+            self._watch(self._held.pop(dropped).snapshot)
             self._asked.pop(dropped, None)
+
+    def pressed(self) -> None:
+        """From a load's paced thread (``tend``), once a PRESS_EVERY at most: past PRESSURE of the api's memory limit,
+        drop a snapshot on the loop (``_ease``)."""
+        now = time.monotonic()
+        if self._loop is None or now - self._looked < PRESS_EVERY:
+            return
+        self._looked = now
+        if _over():
+            self._loop.call_soon_threadsafe(self._ease)
+
+    def _ease(self) -> None:
+        """Past PRESSURE of the api's memory limit, drop one snapshot: a draft branch's, then the projects read least
+        recently, and only then the old snapshot of a project whose load runs, whose readers then wait for the new
+        one. A large graph is gigabytes and the api makes the new one beside the old: with two of
+        them, or one loaded again, the api was over its limit and the kernel killed it, every graph lost. One at a
+        time, the next only once the one before is freed (``lingering``, ``kg_pacing.freeing``), so what it frees is
+        counted before more is dropped. The project read last keeps its snapshot unless it loads: dropped, the one just
+        loaded would be loaded again at its next read."""
+        if not _over() or self.lingering() or kg_pacing.freeing():
+            return
+        loading = [p for p in self._held if p in self._loading]
+        resting = [p for p in self._held if p not in self._loading]
+        if self._branches:
+            key = next(iter(self._branches))
+            self._watch(self._branches.pop(key)[1].snapshot)
+            dropped = {"project_id": key[0], "branch": key[1]}
+        elif resting[:-1] or loading:
+            project_id = (resting[:-1] or loading)[0]
+            self._watch(self._held.pop(project_id).snapshot)
+            self._asked.pop(project_id, None)
+            dropped = {"project_id": project_id, "loading": project_id in self._loading}
+        else:
+            return
+        limit = memory_limit() or 0
+        log.warning(
+            "kg snapshot dropped for memory",
+            extra={**dropped, "resident_mb": resident() >> 20, "limit_mb": limit >> 20},
+        )
+
+    def _watch(self, dropped: Snapshot) -> None:
+        if isinstance(dropped, Snapshot):
+            self._dropped.append(weakref.ref(dropped))
+
+    def lingering(self) -> int:
+        """The snapshots this coordinator replaced or dropped that are still in memory: a reader holds one until it is
+        done, so a few for a while; more after each build means something holds them for good, and the api grows by a
+        whole graph each time (``evo_agents.kg.snapshot.SnapshotView.ranker``). Logged with each load."""
+        self._dropped = [ref for ref in self._dropped if ref() is not None]
+        return len(self._dropped)
 
     def notified(self, payload: str | None) -> None:
         """A listener's handler: rebuild the snapshot a notification names, or each held one after a reconnection."""

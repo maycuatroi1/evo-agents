@@ -9,12 +9,14 @@ import { LIVE_REFRESH_MS, type RequestedRuntime, type Run, runKey } from "./quer
 
 /**
  * The account a member picks by hand for a run (docs/credentials.md, section "Accounts"): one of their own env
- * secrets bound to the project, which the run takes for its variable and keeps, with no failover. Left to the rules,
+ * secrets bound to the project, or one another member shares with them for it, named `<owner>/<name>`, which the run
+ * takes for its variable and keeps, with no failover (a shared one while its share lends it). Left to the rules,
  * the member's policy for the project picks one when a worker leases the run. A rerun keeps the account picked by
  * hand for the run it reruns, unless the member names another one or asks the rules.
  */
 type Schemas = components["schemas"];
 export type Account = Schemas["Account"];
+export type SharedAccount = Schemas["SharedAccount"];
 export type RerunRequest = Schemas["Rerun"];
 export type RunAccount = Schemas["RunAccount"];
 export type RunAccountEvent = Schemas["RunAccountEvent"];
@@ -30,6 +32,14 @@ export const accountsQuery = (api: ApiSource) =>
     staleTime: 30_000,
   });
 
+/** The accounts other members share with the visitor, each with the projects its shares lend it on. */
+export const sharedAccountsQuery = (api: ApiSource) =>
+  queryOptions({
+    queryKey: ["accounts", "shared"] as const,
+    queryFn: ({ signal }) => call(api().GET("/v1/shared-accounts", { signal })),
+    staleTime: 30_000,
+  });
+
 /** The accounts run `id` took, by variable, with each usage limit it hit; read again while the run is active. */
 export const runAccountsQuery = (api: ApiSource, project: string, id: number, active: boolean) =>
   queryOptions({
@@ -42,6 +52,13 @@ export const runAccountsQuery = (api: ApiSource, project: string, id: number, ac
 /** The visitor's accounts a run of `project` may take, by name. */
 export function projectAccounts(accounts: Account[], project: string): Account[] {
   return accounts.filter((account) => account.projects.includes(project)).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The accounts shared with the visitor that a run of `project` may take, by owner and name. */
+export function projectSharedAccounts(accounts: SharedAccount[], project: string): SharedAccount[] {
+  return accounts
+    .filter((account) => account.projects.includes(project))
+    .sort((a, b) => a.owner.localeCompare(b.owner) || a.name.localeCompare(b.name));
 }
 
 /**

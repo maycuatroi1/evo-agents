@@ -47,6 +47,10 @@ class OpsSettings(BaseModel):
     enabled: bool = Field(description="the project's operations events go to the queue of its default system")
     debounce_minutes: int = Field(description="a batch closes this long after it opened")
     max_items: int = Field(description="or once it holds this many items")
+    plan_stall_minutes: int = Field(
+        system_spec.OPS["plan_stall_minutes"][0],
+        description="a plan a system ran stalls, and a chat run has queued too long, after this many quiet minutes",
+    )
 
 
 class DefaultSystem(BaseModel):

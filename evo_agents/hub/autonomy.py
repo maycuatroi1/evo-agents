@@ -29,9 +29,11 @@ document not archived). It has no estimate and no budget (the member's answer 1 
 the confirmed answers that match its work (``evo_agents.hub.server.context_answers``). The revision that sets it true is
 the first week of the trial that compares the 28 days after with the 28 before.
 
-``routing`` (plan super-board-parity-2, criterion a6) is off by default: ``routing.enabled`` true has the worker rate a
-Claude Code run that names no model easy, medium or hard, with one short turn of ``routing.scorer`` on the run's
-prompt, and start its agent on the model ``routing.ladder`` gives that difficulty (``evo_agents.worker.model_router``).
+``routing`` (plans super-board-parity-2, criterion a6, and token-and-quota-economy) is off by default:
+``routing.enabled`` true has the hub rate a run that names no model easy, medium or hard by rules that cost no token
+(a free prompt they cannot rate gets one short turn of ``routing.scorer`` on the worker, unless it is ``off``), and
+give it the model of ``routing.ladder`` or of ``routing.overflow`` for that difficulty by ``routing.strategy`` and the
+quota its subscription has left (``evo_agents.hub.model_router``).
 
 Standard library only: the server checks bodies with it, and the client may import it.
 """
@@ -65,6 +67,8 @@ TIME_OF_DAY = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")  # loop.brainstorm.ti
 TIME_ZONE = re.compile(r"[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}")  # loop.timezone, as an IANA name
 USE_CASE_MODES = ("always", "never", "auto")  # loop.use_cases (loop.model.USE_CASE_MODES)
 MAX_TIME_ZONE_CHARS = 64
+ROUTING_STRATEGIES = ("surplus-first", "cost-first", "quota-burn")  # routing.strategy (model_router.STRATEGIES)
+GATEWAY_MODEL = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}/[^/\s][^\s]*")  # routing.*: <prefix>/<model>
 
 # Why a value is wrong, or None when it is right.
 Check = Callable[[Any], str | None]
@@ -162,6 +166,14 @@ def _globs(value) -> str | None:
     return f"a list of at most {MAX_RISK_PATHS} globs, each of 1 to {MAX_GLOB_CHARS} characters"
 
 
+def _model(value) -> str | None:
+    """A runtime's own model (``haiku``) or a gateway model, ``<prefix>/<model>``."""
+    why = _line(200)(value)
+    if why is None and "/" in value and not GATEWAY_MODEL.fullmatch(value):
+        return "a runtime's model such as sonnet, or a gateway model as <prefix>/<model>"
+    return why
+
+
 # The keys
 
 LOOP_KEYS = (  # plan loop-engine: the Loop of the project, off by default; no estimate and no budget
@@ -202,17 +214,44 @@ CONTEXT_KEYS = (  # plan active-context-answers: off by default; the revision th
         "work",
     ),
 )
-ROUTING_KEYS = (  # plan super-board-parity-2, criterion a6: off by default; a run's model chosen by its difficulty
+ROUTING_KEYS = (  # plans super-board-parity-2 (a6) and token-and-quota-economy: off by default
     Key(
         "routing.enabled",
         False,
         _flag,
-        "true: the worker rates a run that names no model easy, medium or hard and runs it on the ladder's model",
+        "true: the hub rates a run that names no model easy, medium or hard and gives it the strategy's model",
     ),
-    Key("routing.scorer", "haiku", _line(200), "the model of the short turn that rates a run's difficulty"),
-    Key("routing.ladder.easy", "haiku", _line(200), "the model of a run rated easy"),
-    Key("routing.ladder.medium", "sonnet", _line(200), "the model of a run rated medium, and of one the scorer failed"),
-    Key("routing.ladder.hard", "opus", _line(200), "the model of a run rated hard"),
+    Key(
+        "routing.strategy",
+        "surplus-first",
+        _one_of(*ROUTING_STRATEGIES),
+        "surplus-first: the ladder while the subscription is out of its reserve; cost-first: the overflow for easy "
+        "and medium; quota-burn: the ladder's hard model while the subscription is out of its reserve",
+    ),
+    Key(
+        "routing.hard_reserve_pct",
+        10,
+        _whole(0, 100),
+        "the percent of the subscription's week kept for hard runs; below it easy and medium take the overflow",
+    ),
+    Key(
+        "routing.five_hour_ceiling_pct",
+        90,
+        _whole(1, 100),
+        "the percent of the five-hour window past which easy and medium runs take the overflow",
+    ),
+    Key(
+        "routing.scorer",
+        "haiku",
+        _model,
+        "the model of the short turn that rates a free prompt the rules cannot; off: none, such a run is medium",
+    ),
+    Key("routing.ladder.easy", "haiku", _model, "the model of a run rated easy"),
+    Key("routing.ladder.medium", "sonnet", _model, "the model of a run rated medium, and of one nothing rated"),
+    Key("routing.ladder.hard", "opus", _model, "the model of a run rated hard"),
+    Key("routing.overflow.easy", None, _optional(_model), "the model of an easy run past the subscription's reserve"),
+    Key("routing.overflow.medium", None, _optional(_model), "the model of a medium run past the reserve"),
+    Key("routing.overflow.hard", None, _optional(_model), "the model of a hard run once the subscription is used up"),
 )
 KEYS = (
     Key(

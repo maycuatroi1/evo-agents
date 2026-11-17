@@ -147,7 +147,7 @@ class KgHub:
             "listed": end.get("listed"),
             "held": end.get("held"),
         }
-        with self.corpus.db:
+        with self.corpus.transaction():
             self.corpus.merge(records_of(path), run_id)
         return {"run_id": run_id, "status": "ingested", "created": True, "build": None, "queued": False}
 

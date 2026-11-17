@@ -117,6 +117,7 @@ def test_plugin_page_is_framed_from_its_ticket_only_where_the_project_enabled_it
         "native": False,
         "url": None,
         "slot": None,
+        "area": None,
     }
 
     enable(hub)

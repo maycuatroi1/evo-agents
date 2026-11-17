@@ -4,30 +4,27 @@ entity the question matches gives its place to the documents that mention it, th
 before, walk or no walk (the walk gives ``implemented_by`` no weight)."""
 
 import json
+from dataclasses import replace
 
 import pytest
 
 from evo_agents.cli import main
 from evo_agents.kg import ppr, search
 from evo_agents.kg import settings as kg_settings
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_session import StoreSession
-from tests.kg.test_walk import ALPHA, BETA, QUASAR, entity_project, walk_on
+from tests.kg import built
+from tests.kg.test_walk import ALPHA, BETA, QUASAR, ask, entity_project, walk_on
 
 CODE = "app:file:app/search.py"
 
 
 def link_code(project, entity=QUASAR, target=CODE, rel="implemented_by", conf=0.9, lvl=None):
     """An edge ``rel`` from ``entity`` to ``target`` in the latest build, labelled as one of the entity's mentions."""
-    store = Store.for_project(project)
-    assert store.nodes([target], store.latest_ready()), target
-    with store.db:
-        store.db.execute(
-            "INSERT INTO edges SELECT ?, ?, ?, ?, props, 'extracted', ?, COALESCE(?, label_lvl), label_loc, label_int,"
-            " content, tx_from, tx_to, label_aud FROM edges WHERE dst = ? AND rel = 'mentions' AND tx_to IS NULL"
-            " LIMIT 1",
-            (f"{entity}|{rel}|{target}", entity, rel, target, conf, lvl, entity),
-        )
+    held = built.HELD[project.root]
+    assert target in {r[0] for r in held.rows.nodes}, target
+    like = next(r for r in held.rows.edges if r[3] == entity and r[2] == "mentions")
+    lvl = like[7] if lvl is None else lvl
+    row = (f"{entity}|{rel}|{target}", entity, rel, target, like[4], "extracted", conf, lvl, *like[8:])
+    held.rows = replace(held.rows, edges=(*held.rows.edges, row))
 
 
 def set_code(project, on: bool):
@@ -36,7 +33,7 @@ def set_code(project, on: bool):
 
 
 def call(project, tool, args, sink="agent"):
-    found = StoreSession(project, sink).call(tool, args)
+    found = ask(project, tool, args, sink)
     assert not found.get("isError"), found
     return found
 
@@ -126,7 +123,7 @@ def test_on_an_entity_never_brings_code_the_reader_does_not_see(tmp_path, kg_env
     project = entity_project(tmp_path, kg_env)
     link_code(project)
     set_code(project, True)
-    hide(project, "UPDATE edges SET label_lvl = 2 WHERE src = ? AND rel = 'implemented_by'", QUASAR)
+    hide(project, edges={(QUASAR, "implemented_by", CODE)})
     assert CODE in results(call(project, "kg_search", {"query": "quasar"}, sink="wide"))
     for tool in ("kg_search", "kg_context"):
         found = call(project, tool, {"query": "quasar"})
@@ -137,7 +134,7 @@ def test_code_of_an_entity_follows_its_documents_up_to_entity_code():
     entity = "entity:Component:ranker"
     code = [f"repo:file:src/{i}.py" for i in range(search.ENTITY_CODE + 2)]
 
-    class Store:
+    class Graph:
         def edges_of(self, node_id, b, direction, limit):
             if direction == "in":
                 return [{"src": "doc:a", "rel": "mentions", "dst": node_id, "conf": 0.9}]
@@ -150,8 +147,8 @@ def test_code_of_an_entity_follows_its_documents_up_to_entity_code():
             return {i: {"id": i, "kind": "File"} for i in ids}
 
     hits = [{"id": entity}]
-    assert search.through_entities(Store(), 0, hits, lambda _: True)[0] == [{"id": "doc:a", "kind": "File"}, *hits]
-    out, why = search.through_entities(Store(), 0, hits, lambda _: True, code=True)
+    assert search.through_entities(Graph(), 0, hits, lambda _: True)[0] == [{"id": "doc:a", "kind": "File"}, *hits]
+    out, why = search.through_entities(Graph(), 0, hits, lambda _: True, code=True)
     want = ["doc:a", *reversed(code)][: 1 + search.ENTITY_CODE]  # by confidence, the highest first
     assert [n["id"] for n in out] == [*want, entity]
     assert all(why[i] == [entity] for i in want)

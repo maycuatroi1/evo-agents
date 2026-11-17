@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
 from evo_agents.hub import guard, ops_events, proofs, runs, spend_store, tables
-from evo_agents.hub.server import browser_install, update_now, worker_placement
+from evo_agents.hub.server import browser_install, token_strategy, update_now, worker_placement
 from evo_agents.hub.server.run_reattach import reattach_lost
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
 from evo_agents.hub.server.runs.models import (
@@ -338,6 +338,8 @@ async def apply_state_report(app_state, user: Principal, run_id: int, body: Stat
         row = await _reported_run(conn, run_id, worker_id)
         state, _, _, cancel_requested_at, kind, _ = row
         columns = _reported_columns(body)
+        if "routing" in columns:  # what the hub rated stays, and a scorer's choice moves the run's gateway prefix
+            columns["routing"] = await token_strategy.reported(conn, run_id, columns["routing"])
         if state == body.state:  # a resend, or news without a move: kept, and nothing moves
             news = {name: value for name, value in columns.items() if name in SAME_COLUMNS}
             if news and state in runs.HELD_STATES:  # a column the report leaves out keeps its value; a run that
@@ -495,6 +497,7 @@ def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> 
         "release",
         "question",
         "browser",
+        "evolve",
     ):
         if body.state == "review":
             article = "an" if kind[:1] in "aeiou" else "a"

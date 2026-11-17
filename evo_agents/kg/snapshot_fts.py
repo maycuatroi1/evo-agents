@@ -1,7 +1,7 @@
 """An in-RAM inverted index that scores as SQLite's FTS5 ``bm25`` does: what ``evo_agents.kg.snapshot_text`` reads
 the full-text rows of a snapshot with, in place of ``node_fts``, ``node_fts_aud``, ``node_tri`` and ``code_fts``.
 
-- Tokens are cut as the store's tokenizers cut them: ``unicode61 remove_diacritics 2`` keeps runs of letters and
+- Tokens are cut as FTS5's tokenizers cut them: ``unicode61 remove_diacritics 2`` keeps runs of letters and
   digits, lower-cased, accents removed (``words``); with ``tokenchars '_-$'`` (``code_fts``) those three join a word
   too (``code_words``); the trigram tokenizer (``node_tri``) reads every three characters of a text.
 - A query is the subset of FTS5's syntax ``evo_agents.kg.search`` writes: quoted phrases, a phrase's last word as a
@@ -18,10 +18,12 @@ import re
 import unicodedata
 from array import array
 from bisect import bisect_left
+from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 
-from evo_agents.kg.pacing import paced
+from evo_agents.kg.pacing import paced, paced_sorted
 
 K1 = 1.2
 B = 0.75
@@ -29,18 +31,25 @@ _WORD = re.compile(r"[^\W_]+")
 _CODE_WORD = re.compile(r"[\w$-]+")
 
 
+@lru_cache(maxsize=1 << 16)
 def _bare(token: str) -> str:
+    """``token`` lower-cased, accents removed; the words of a language repeat, so each is worked out once."""
     decomposed = unicodedata.normalize("NFD", token.lower())
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
 
 
 def words(text: str) -> list[str]:
-    """The tokens ``unicode61 remove_diacritics 2`` cuts ``text`` into."""
+    """The tokens ``unicode61 remove_diacritics 2`` cuts ``text`` into. An ASCII text is lower-cased whole, which
+    moves no boundary between tokens, and cut in one call: most of a graph's text is."""
+    if text.isascii():
+        return _WORD.findall(text.lower())
     return [t for t in (_bare(w) if not w.isascii() else w.lower() for w in _WORD.findall(text)) if t]
 
 
 def code_words(text: str) -> list[str]:
     """The tokens of ``code_fts``'s tokenizer: ``_``, ``-`` and ``$`` inside a word."""
+    if text.isascii():
+        return _CODE_WORD.findall(text.lower())
     return [t for t in (_bare(w) if not w.isascii() else w.lower() for w in _CODE_WORD.findall(text)) if t]
 
 
@@ -62,7 +71,7 @@ class Phrase:
 
 
 class QueryError(ValueError):
-    """A query this index cannot read: FTS5 would fail on it too, and the store's read gives nothing."""
+    """A query this index cannot read: FTS5 would fail on it too, and a search of it gives nothing."""
 
 
 def parse(query: str) -> tuple[list[Phrase], tuple]:
@@ -146,31 +155,52 @@ class Table:
     column holds it, each row's tokens and the table's. ``tokenize`` cuts a text as the table's tokenizer does."""
 
     def __init__(self, rows: Sequence[Sequence[str]], tokenize: Callable[[str], list[str]]):
-        self.rows = tuple(tuple(r) for r in rows)
+        self.rows = tuple(tuple(r) for r in paced(rows))
         self.tokenize = tokenize
-        self.columns = len(self.rows[0]) if self.rows else 0
-        postings: dict[str, dict[int, list[int]]] = {}
+        self.columns = columns = len(self.rows[0]) if self.rows else 0
+        # per token, one flat array of records: a row holding it, then how often each column does, rows ascending.
+        # A graph's tables hold millions of (token, row) pairs: a dict and a tuple per pair made the snapshot millions
+        # of objects, minutes of the api's CPU to build on the hub, and gigabytes to keep.
+        postings: dict[str, array] = {}
         sizes = array("I")
         for n, row in enumerate(paced(self.rows)):
             size = 0
+            held: dict[str, list[int]] = {}
             for c, text in enumerate(row):
                 tokens = tokenize(text or "")
                 size += len(tokens)
-                for t in tokens:
-                    held = postings.setdefault(t, {})
-                    counts = held.get(n)
+                for t, f in Counter(tokens).items():
+                    counts = held.get(t)
                     if counts is None:
-                        counts = held[n] = [0] * self.columns
-                    counts[c] += 1
+                        counts = held[t] = [0] * columns
+                    counts[c] = f
+            for t, counts in held.items():
+                found = postings.get(t)
+                if found is None:
+                    found = postings[t] = array("I")
+                found.append(n)
+                found.extend(counts)
             sizes.append(size)
-        # each token's counts popped as it is copied, so the lists are freed a token at a time, not in one go
-        self.postings = {t: {n: tuple(c) for n, c in postings.pop(t).items()} for t in paced(list(postings))}
-        self.vocabulary = sorted(self.postings)
+        self.postings = postings
+        self.vocabulary = paced_sorted(postings)
         self.sizes = sizes
         self.total = sum(sizes)
 
     def __len__(self) -> int:
         return len(self.rows)
+
+    def _held(self, token: str) -> dict[int, tuple]:
+        """Each row holding ``token``: how often each of its columns holds it."""
+        found = self.postings.get(token)
+        if found is None:
+            return {}
+        width = self.columns + 1
+        return {found[i]: tuple(found[i + 1 : i + width]) for i in range(0, len(found), width)}
+
+    def _rows_of(self, token: str) -> array:
+        """The rows holding ``token``, ascending."""
+        found = self.postings.get(token)
+        return array("I") if found is None else found[:: self.columns + 1]
 
     def _tokens(self, prefix: str) -> list[str]:
         start = bisect_left(self.vocabulary, prefix)
@@ -190,7 +220,7 @@ class Table:
             found = self._tokens(tokens[0]) if phrase.prefix else [tokens[0]] if tokens[0] in self.postings else []
             out: dict[int, tuple] = {}
             for t in found:
-                for n, counts in self.postings[t].items():
+                for n, counts in self._held(t).items():
                     have = out.get(n)
                     out[n] = counts if have is None else tuple(a + b for a, b in zip(have, counts, strict=True))
             return out
@@ -201,12 +231,12 @@ class Table:
         last = self._tokens(tokens[-1]) if prefix else [tokens[-1]]
         candidates: set[int] | None = None
         for t in tokens[:-1]:
-            rows = set(self.postings.get(t, ()))
+            rows = set(self._rows_of(t))
             candidates = rows if candidates is None else candidates & rows
         assert candidates is not None, "a phrase of several tokens has a first"
         ends = set()
         for t in last:
-            ends.update(self.postings.get(t, ()))
+            ends.update(self._rows_of(t))
         out = {}
         for n in candidates & ends:
             counts = tuple(self._occurrences(self.tokenize(text or ""), tokens, prefix) for text in self.rows[n])

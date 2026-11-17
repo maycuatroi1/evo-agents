@@ -39,6 +39,10 @@ TICKET_TTL = 12 * 3600  # seconds a ticket lasts past the hour it was made in
 TICKET_STEP = 3600  # tickets made within one hour are the same
 TICKET = re.compile(r"([0-9]{1,12})\.([0-9a-f]{32})")  # <expires>.<mac>
 PURPOSE = "plugin-ui"  # of the ticket's HMAC under the session secret (security.keyed_digest)
+# The areas of a project's menu a page's item may sit in (plugin.schema.json, $defs.page.area): the Business cycle,
+# the Development cycle and the folds after them. A value the manifest does not give, or one this release does not
+# know (a manifest stored by a release that did not check it), is none, which the web shows in apps.
+AREAS = ("business", "development", "improvement", "knowledge", "apps")
 
 
 class PluginPage(BaseModel):
@@ -58,6 +62,12 @@ class PluginPage(BaseModel):
         default=None,
         description="where the web shows the page instead of on a page of its own: decide, a panel of the project's "
         "Decisions page; null for a page of its own",
+    )
+    area: str | None = Field(
+        default=None,
+        description="the area of the project's menu its item sits in: business (the Business cycle), development "
+        "(the Development cycle), improvement, knowledge or apps; null when the manifest names none, which the web "
+        "shows in apps",
     )
 
 
@@ -121,6 +131,7 @@ def pages_of(
                 native=native,
                 url=page_url(secret, plugin, project, sha256, entry) if framed and entry else None,
                 slot=item.get("slot"),
+                area=item.get("area") if item.get("area") in AREAS else None,
             )
         )
     return found

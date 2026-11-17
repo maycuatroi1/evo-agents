@@ -1,7 +1,7 @@
 """What a session of the kg_* tools may see: its clearance and audience, the visible set V_o of a build, and the graph
 it reads as that audience (``evo_agents.kg.serve``). A session reads the graph its subclass gives (``_graph``): the
-hub's snapshot of its tables (``evo_agents.hub.kg_graph.HubSession``), or a graph file of the tests and benches
-(``evo_agents.kg.store_session``); this one reads none."""
+hub's snapshot of its tables (``evo_agents.hub.kg_graph.HubSession``), or a snapshot of the rows of a build for
+the tests and benches (``evo_agents.kg.bench.rows_file.RowsSession``); this one reads none."""
 
 from __future__ import annotations
 
@@ -36,10 +36,8 @@ class SessionView:
         self.deprecated = False  # this call shows the deprecated nodes and edges too (``seen``)
         # kg_search ranks by meaning too (evo_agents.kg.semantic): None as the graph's mode says, True or False always
         self.semantic: bool | None = None
-        self.plain = False  # kg_search ranks by plain BM25 alone, the public benches' baseline (Store.plain_search)
+        self.plain = False  # kg_search ranks by plain BM25 alone, the public benches' baseline (``plain_search``)
         self.plain_files: tuple | None = None  # (clone, commit): with ``plain``, rank whole files (kg.filebm25)
-        # what the current call opened, closed when it answers (``evo_agents.kg.store_session``)
-        self._opened: list | None = None
         # kg_search orders files by the learned model (evo_agents.kg.rank): None as the setting says, True or False always
         self.rank: bool | None = None
         self.explorer: Explorer | None = None  # kg_search explores (``evo_agents.kg.explore``): agents on the hub only
@@ -62,7 +60,8 @@ class SessionView:
     # -- visibility -----------------------------------------------------------------------------
 
     def visible(self, label: tuple) -> bool:
-        """Whether an element labelled ``label`` (level, location, integrity and, from the store, audience) shows."""
+        """Whether an element labelled ``label`` (level, location, integrity and, from the build's rows, audience)
+        shows."""
         if self.sees_all:
             return True
         level, location, *_rest = label

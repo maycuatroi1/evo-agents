@@ -10,6 +10,7 @@ import { When } from "@/components/data/when";
 import { projectHref } from "@/components/shell/nav";
 import { cn } from "@/lib/utils";
 
+import { ChangeRepos } from "./change-repos";
 import { branchUrl } from "./forge";
 import { safeUrl } from "./ledger-model";
 import type { RepoInfo } from "./model";
@@ -138,6 +139,7 @@ export function ChangeFacts({ project, change, repos }: { project: string; chang
           </span>
         </Fact>
       </dl>
+      <ChangeRepos change={change} />
       <ReasonNote change={change} />
     </div>
   );

@@ -111,6 +111,13 @@ class PlanHandoff(BaseModel):
     tokens: int = Field(description="the text's size as the hub estimates it: UTF-8 bytes / 3, rounded up")
     cut: bool = Field(description="whether anything was cut or left out to stay within the budget")
     text: str = Field(description="the handoff, as evo_agents.hub.handoff builds it; markdown")
+    difficulty: Literal["easy", "medium", "hard"] | None = Field(
+        None, description="the step's difficulty: its own, else as the hub's rules rate it; null without a step"
+    )
+    recommended_model: str | None = Field(
+        None, description="the model the project's Token strategy gives that difficulty now (routing.*)"
+    )
+    routing_reason: str | None = Field(None, description="why that difficulty and that model")
 
 
 class PlanPut(BaseModel):

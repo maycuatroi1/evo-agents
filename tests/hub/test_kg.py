@@ -1,15 +1,14 @@
 """Knowledge graphs on the hub: machines push the logs of their connector runs, the worker merges and builds, the api
 answers kg_* from the latest build.
 
-Checked here: pushing a run twice ingests it once; two machines pushing in either order give one content hash,
-which a verifying build (``build_project(verify=True)``) on the worker's store and a build of both corpora find too; a run labelled above the
+Checked here: pushing a run twice ingests it once; two machines pushing in either order give one content hash, which a
+verifying build (``verify_rows``) of the worker's corpus and a build of both corpora find too; a run labelled above the
 hub sink is 422 with no kg_ingests row, no job and no staged object left; committing a run while blobs are missing is
-422; a run of hundreds of blobs goes in commits small enough to be answered within their timeouts on a store as
-slow as R2, a commit whose answer is lost is found on the hub and not sent again, and a run that fails on the way is
-pushed again sending only what the hub lacks; three builds queued in a row never run two at once and queue at most
-one; deleting the worker's cache and building again gives the same content hash; an artifact whose SHA-256 does not
-match is never opened; with the blob store down, kg_* answer from the cached graph. Also the failure paths around
-them.
+422; a run of hundreds of blobs goes in commits small enough to be answered within their timeouts on a store as slow as
+R2, a commit whose answer is lost is found on the hub and not sent again, and a run that fails on the way is pushed
+again sending only what the hub lacks; three builds queued in a row never run two at once and queue at most one;
+deleting the worker's cache and building again gives the same content hash; an artifact whose SHA-256 does not match is
+never opened; with the blob store down, kg_* answer from the cached graph. Also the failure paths around them.
 
 The api runs in this process (TestClient), the worker too (procrastinate's worker on this process's loop, the
 ``hub.kg_build`` task of ``evo_agents.hub.worker``), and the blob store is moto's server in this process
@@ -42,7 +41,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import Text, cast, column, create_engine, delete, func, insert, select, table, update
+from sqlalchemy import Text, cast, column, delete, func, insert, select, table, update
 
 from evo_agents.hub import kg_build as hub_kg_build
 from evo_agents.hub import kg_push, tables
@@ -56,13 +55,12 @@ from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import HubContext, connector, queue
 from evo_agents.kg import build as kg_build_module
 from evo_agents.kg import serve
-from evo_agents.kg.build import build_project
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.sessions import READ_META
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_session import StoreSession
 from evo_agents.kg.sync import sync_project
+from tests.kg import built as memory
+from tests.kg.hub_graph import hub_session
 
 PROJECT = "alpha"
 AGENT = "claude-code@anthropic"
@@ -430,10 +428,8 @@ def test_pushing_the_same_run_twice_ingests_it_once(hub, tmp_path):
     assert first.ok and first.pushed == [run_id]
     corpus = laptop.project().corpus()
     assert corpus.runs_on_hub() == {run_id}  # the hub holds the run
-    local = create_engine(f"sqlite:///{corpus.db_path}")  # the laptop's corpus, not a hub table: Core on table()
-    with local.begin() as conn:
-        conn.execute(delete(table("hub_runs")))
-    local.dispose()
+    with corpus.transaction():  # the laptop forgets what the hub holds
+        corpus.state["hub_runs"].clear()
     before = jobs(hub.db)
 
     again = push(hub, laptop)  # the hub lists the run: nothing is sent
@@ -605,11 +601,11 @@ def test_two_machines_pushing_in_either_order_give_the_same_content_hash(hub, tm
     assert backward["status"] == "succeeded" and backward["runs"] == 3
     assert backward["content_hash"] == forward["content_hash"]
 
-    # build --verify on the worker's store rebuilds into an empty store and finds the same hash
+    # a verifying build of the worker's corpus builds it again and finds the same hash, with an empty memo too
     monkeypatch.setenv("EVO_KG_HOME", str(hub.worker_dir / "kg" / "home"))
-    report = build_project(worker_project(hub.worker_dir, PROJECT), verify=True)
+    report = memory.build(worker_project(hub.worker_dir, PROJECT), verify=True)
     assert report.ok and report.verify["match"] and report.content_hash == forward["content_hash"]
-    cold = build_project(worker_project(hub.worker_dir, PROJECT), verify=True, cold=True)
+    cold = memory.build(worker_project(hub.worker_dir, PROJECT), verify=True, cold=True)
     assert cold.ok and cold.verify["match"] and cold.verify["cold"]
 
     # and a machine holding both corpora builds the same graph locally
@@ -619,11 +615,10 @@ def test_two_machines_pushing_in_either_order_give_the_same_content_hash(hub, tm
         shutil.copy(log, corpus.log_dir / log.name)
         run_id, records = corpus.run_records(log)
         corpus.merge(records, run_id)
-    corpus.db.commit()
     for machine in (laptop, desktop):
         shutil.copytree(machine.home / PROJECT / "blobs", corpus.root / "blobs", dirs_exist_ok=True)
     corpus.close()
-    local = build_project(both.project())
+    local = memory.build(both.project())
     assert local.ok and local.content_hash == forward["content_hash"]
     assert (local.nodes, local.edges) == (forward["nodes"], forward["edges"])
 
@@ -1174,9 +1169,9 @@ def test_hub_tools_give_the_local_server_s_answers(hub, tmp_path):
     laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it, see guide."))
     assert push(hub, laptop).ok
     run_jobs(hub.db, hub.s3, hub.worker_dir)
-    report = build_project(laptop.project())
+    report = memory.build(laptop.project())
     assert report.content_hash == latest(hub)["content_hash"]
-    local = StoreSession(laptop.project(), AGENT)
+    local = hub_session(laptop.project(), AGENT)
 
     def same(tool: str, arguments: dict) -> dict:
         here = local.call(tool, dict(arguments))
@@ -1296,7 +1291,7 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
         env = pg.clean_env(HOME=str(home), EVO_KG_HOME=str(laptop.home))
         harness = str(laptop.harness)
 
-        built_here = build_project(load_project_at(laptop.harness, laptop.home))  # to compare with the hub's below
+        built_here = memory.build(load_project_at(laptop.harness, laptop.home))  # to compare with the hub's below
         assert built_here.ok
         pushed = ok(pg.cli(["hub", "kg", "push", "--project", harness], env=env))
         assert pushed.stdout.startswith("project alpha: pushed 1 run(s)")
@@ -1323,9 +1318,10 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
         remote = ok(pg.cli(["kg", "query", "kg_status", "--backend", "hub", "--project", PROJECT, "--json"], env=env))
         remote = json.loads(remote.stdout)
         assert remote["backend"] == "hub" and (remote["graph"]["nodes"], remote["graph"]["edges"]) == (
-            local["nodes"],
-            local["edges"],
+            built_here.nodes,
+            built_here.edges,
         )
+        assert (local["nodes"], local["edges"]) == (built_here.nodes, built_here.edges)
         assert remote["graph"]["content_hash"] == local["content_hash"] == answer["build"]["content_hash"]
         assert answer["build"]["content_hash"] == built_here.content_hash, "the hub builds what this machine builds"
 
@@ -1350,7 +1346,7 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
 
         on_the_hub = f"project {PROJECT} on the hub: build"
         assert on_the_hub in shown(served_hub[2])["text"]
-        local = StoreSession(load_project_at(laptop.harness, laptop.home), AGENT).call("kg_search", {"query": "guide"})
+        local = hub_session(load_project_at(laptop.harness, laptop.home), AGENT).call("kg_search", {"query": "guide"})
         hub_found, (local_found,) = shown(served_hub[3]), local["content"]
         assert hub_found["text"].splitlines()[1:] == local_found["text"].splitlines()[1:]  # the first names the build
         assert hub_found["_meta"][READ_META]["results_read"]
@@ -1768,10 +1764,9 @@ def test_the_graph_holds_the_plans_at_the_revision_and_label_the_hub_has(hub, tm
     (result,) = sync_project(project, plans=kg_plans.reader(member))
     assert result.ok, result.issues
     assert member.paths == [f"/v1/projects/{PROJECT}/plans", f"/v1/projects/{PROJECT}/plans/rollout"]
-    report = build_project(project)
+    report = memory.build(project)
     assert report.ok, report.errors
-    store = Store.for_project(project)
-    step = store.node("plan:rollout/step:1", report.build_id)
+    step = memory.view_of(project).node("plan:rollout/step:1")
     assert step["props"]["status"] == "done"  # the hub's revision, not the copy's
     assert step["label"][0] == 1  # internal, the hub's label of the plan, above the source's public
     record = project.corpus().get("harness:file:plans/active/rollout.yaml").record
@@ -1782,7 +1777,7 @@ def test_the_graph_holds_the_plans_at_the_revision_and_label_the_hub_has(hub, tm
     member.paths.clear()
     (again,) = sync_project(project, plans=kg_plans.reader(member))
     assert again.ok and member.paths == [f"/v1/projects/{PROJECT}/plans"]  # known revision, current copy: one call
-    assert build_project(project).skipped  # an unchanged revision changes no item, so nothing is built
+    assert memory.build(project).skipped  # an unchanged revision changes no item, so nothing is built
 
     assert push(hub, SimpleNamespace(project=lambda: project), "alice").ok  # the hub builds what the machine read
     run_jobs(hub.db, hub.s3, hub.worker_dir)
@@ -1792,13 +1787,13 @@ def test_the_graph_holds_the_plans_at_the_revision_and_label_the_hub_has(hub, tm
     monkeypatch.setattr(hub_client, "hub_dir", lambda: tmp_path / "signed-out")  # no hub login on this machine
     (offline,) = sync_project(project, plans=kg_plans.reader())
     assert offline.ok and not offline.warnings
-    assert build_project(project).skipped  # the copy is the revision the cursor holds: the same item, labels and all
+    assert memory.build(project).skipped  # the copy is the revision the cursor holds: the same item, labels and all
     copy.write_text(render(body, PROJECT, first["revision"], first["digest"]))  # an older copy, checked out by hand
     # Checked out after the revision: a file's time counts whole seconds (epoch_to_iso), the revision's does not, and
     # the test can get here within the second of the revision.
     later = time.time() + 1
     os.utime(copy, (later, later))
     assert sync_project(project, plans=kg_plans.reader())[0].ok
-    report = build_project(project)
-    step = Store.for_project(project).node("plan:rollout/step:1", report.build_id)
+    assert memory.build(project).ok
+    step = memory.view_of(project).node("plan:rollout/step:1")
     assert step["props"]["status"] == "pending" and step["label"][0] == 0  # the copy, with the source's label

@@ -360,6 +360,21 @@ def test_hack_a_protected_path_of_the_charter_is_a_sign_even_renamed_away():
     assert other_repo == []  # repo:glob protects that repo's path alone
 
 
+def test_hack_an_evolvable_harness_file_is_no_protected_path_sign_but_its_lines_are_still_read():
+    skill = file_diff("skills/demo/SKILL.md", "+Read the plan first.")
+    code = file_diff("tools/run.py", "+x = 1")
+    protected, evolvable = ["skills/demo/**", "tools/**"], ["skills/demo/**", "tools/**"]
+
+    def found(*files: str, globs=evolvable) -> list[str]:
+        return kinds(diff_signs.hack_signs(diff_of(*files), repo=REPO, protected=protected, evolvable=globs))
+
+    assert found(skill, globs=[]) == ["protected_path"]
+    assert found(skill) == []
+    assert found(code) == ["protected_path"]  # an evolvable glob lowers no file that is no harness file
+    weakened = file_diff("skills/demo/SKILL.md", "+You may skip the tests when they are slow.")
+    assert "instruction_weakened" in found(weakened)
+
+
 def test_hack_a_diff_that_cannot_be_read_is_a_sign_but_an_image_is_not():
     binary = (
         "diff --git a/evo_agents/x.so b/evo_agents/x.so\nBinary files a/evo_agents/x.so and b/evo_agents/x.so differ"

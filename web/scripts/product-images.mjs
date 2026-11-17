@@ -21,7 +21,7 @@ const outDir = path.join(webDir, "public", "product");
 const manifestFile = path.join(webDir, "src", "components", "product", "images.json");
 
 /** The shots the page shows, and where each phone crop starts: under the top bar, at the part the page talks about. */
-export const PAGES = { monitor: 52, "plan-run": 52, "run-spool": 160, "kg-search": 212 };
+export const PAGES = { "kg-entities": 52, "project-plugins": 52, "agent-system": 52, "plan-run": 52 };
 const SCHEMES = ["light", "dark"];
 const SIDEBAR = 240; // the 1440 px shots' sidebar, cut off: the page shows the work, not the hub's navigation
 const PHONE_HEIGHT = 600;
@@ -33,10 +33,10 @@ const MARK = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="6 6 36 36" width=
 
 const OG = { width: 1200, height: 630, margin: 71, panelTop: 100, background: "#f4f4f5", border: "#e4e4e7" };
 /**
- * The decision of the plan-run shot (light), from its heading to its answer button, scaled to the panel's width under
- * a strip of white: the heading starts on the row under the message box's border.
+ * The Knowledge Graph Explorer shot (light), from its tabs and entity canvas across the main workspace, scaled to the
+ * panel's width under a strip of white.
  */
-const OG_SOURCE = { file: "plan-run-1440-light.png", region: { left: 252, top: 299, width: 1176, height: 569 }, pad: 18 };
+const OG_SOURCE = { file: "kg-entities-1440-light.png", region: { left: 252, top: 52, width: 1176, height: 569 }, pad: 18 };
 
 function png(image) {
   return image.png({ palette: true, quality: 90, effort: 10, dither: 0, compressionLevel: 9 }).toBuffer();

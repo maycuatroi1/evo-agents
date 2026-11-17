@@ -8,6 +8,10 @@ are ``tests.hub.test_curator_changes``'s."""
 
 from __future__ import annotations
 
+import asyncio
+import functools
+import time
+
 import pytest
 
 from tests.hub import pg
@@ -19,7 +23,7 @@ import psycopg
 import yaml
 from sqlalchemy import column, func, insert, select, table, update
 
-from evo_agents.hub import knowledge_diff, tables
+from evo_agents.hub import kg_snapshots, knowledge_diff, tables
 from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import change_tiers, kg
 from evo_agents.hub.server import proposals as proposal_routes
@@ -304,14 +308,14 @@ def test_tier_a_proposal_while_the_projects_graph_cannot_be_read_is_at_least_tie
     "unmatched, impacted, tier, why",
     [
         (["evo-agents:tests/test_wait.py"], [], 1, "the knowledge graph has no file evo-agents:tests/test_wait.py"),
-        ([], [("evo-agents", "curator.yaml")], 3, "the change reaches evo-agents:curator.yaml in the knowledge graph"),
+        ([], [("evo-agents", "curator.yaml")], 0, None),  # protected, but no Python: it uses no name the diff breaks
         ([], [("evo-agents", "docs/x.md")], 0, None),
     ],
 )
 def test_tier_again_from_a_pull_requests_files_reads_the_graph(world, monkeypatch, unmatched, impacted, tier, why):
     asked = []
 
-    async def impact(engine, project_id, targets, reader):
+    async def impact(engine, project_id, targets, reader, **_):
         asked.append(sorted(targets))
         return change_tiers.GraphView(frozenset(unmatched), frozenset(impacted))
 
@@ -331,7 +335,7 @@ def test_tier_again_from_a_pull_requests_files_reads_the_graph(world, monkeypatc
 def test_tier_again_from_a_judge_runs_paths_reads_the_graph_and_never_lowers_it(world, monkeypatch):
     seen = {"unmatched": frozenset()}
 
-    async def impact(engine, project_id, targets, reader):
+    async def impact(engine, project_id, targets, reader, **_):
         return change_tiers.GraphView(seen["unmatched"], frozenset())
 
     proposal = accepted(world)
@@ -404,6 +408,17 @@ def test_tier_the_job_reads_kg_impact_as_the_night_shifts_owner_from_the_snapsho
         impact(["evo-agents:b.py"], change_tiers.GraphReader()) is None and len(asked) == 2
     )  # no data directory: not asked
     assert impact([]) is None and len(asked) == 2
+
+    async def loading(engine, project_id, build_id=None):
+        await asyncio.sleep(30)  # the minutes a large graph's snapshot takes to load
+
+    monkeypatch.setattr(kg_snapshots, "shared", loading)
+    began = time.monotonic()
+    waited = world.client.portal.call(
+        functools.partial(change_tiers.impact_as_owner, wait=0.2), state.engine, project_id(world), ["evo-agents:b.py"],
+        reader,
+    )  # fmt: skip
+    assert waited is None and time.monotonic() - began < 5 and len(asked) == 2  # a judge's verdict waits no longer
 
 
 # Schema 0057

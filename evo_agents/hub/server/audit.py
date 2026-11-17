@@ -113,6 +113,7 @@ WORKER_UNSHARE = "worker.unshare"
 RUN_CAUSE = (
     "run.cause"  # a plugin classified the cause of a failed run, or a writer restored it: "<project> run:<id> ..."
 )
+RUN_PRIORITY = "run.priority"  # a writer changed a queued run's priority: "<project> run:<id> priority=<was>-><new>"
 RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step
 RUN_DISPATCH_PLAN = "run.dispatch_plan"  # a member queued a plan run: "<project>/<plan> run:<id>", no step
 # a member handed a plan to a system's entry agent (``plan_systems``): "<project>/<plan> run:<id> system:<slug>
@@ -135,6 +136,8 @@ OPS_ANSWER_WAIT = "ops.answer_wait"  # ... or answered a stuck wait of the batch
 OPS_CURATOR_RESUME = "ops.curator_resume"  # ... or resumed the Curator its breaker paused
 OPS_READ = "ops.read"  # ... or marked a notice of the project read
 OPS_FINDING = "ops.finding"  # ... or wrote a finding for the Curator
+OPS_PRIORITY = "ops.priority"  # ... or gave a queued run of the project another priority
+OPS_PLAN_DISPATCH = "ops.plan_dispatch"  # ... or handed a stalled plan again to the default system's entry agent
 WORK_SET = "work.set"  # the entry agent of a system set the title, goal or done-when of a trace's work (work_cards)
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
@@ -222,6 +225,7 @@ ACCOUNT_POOL_DELETE = "account-pool.delete"  # an admin deleted a pool no agent 
 ACCOUNT_POOL_ADD = "account-pool.add"  # an admin added an account to it
 ACCOUNT_POOL_REMOVE = "account-pool.remove"  # an admin took an account out of it
 ACCOUNT_POOL_ATTACH = "account-pool.attach"  # an admin attached it to an agent, or detached it (none)
+ACCOUNT_POOL_POLICY = "account-pool.policy"  # an admin set its strategy and thresholds (" strategy=<s> ...")
 # The lists of the core plugin guard (evo_agents.core_plugins.guard), in the project; the target is
 # "<project> guard-term:<id>" or "<project> guard-target:<id>", never the term itself.
 GUARD_TERM_ADD = "guard-term.add"  # an admin added a private name of the project

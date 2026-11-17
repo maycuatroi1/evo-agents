@@ -44,8 +44,12 @@ def test_model_router_policy_section_is_off_by_default_and_checked():
     made = autonomy.effective(None, {})["routing"]
     assert made == {
         "enabled": False,
+        "strategy": "surplus-first",
+        "hard_reserve_pct": 10,
+        "five_hour_ceiling_pct": 90,
         "scorer": "haiku",
         "ladder": {"easy": "haiku", "medium": "sonnet", "hard": "opus"},
+        "overflow": {"easy": None, "medium": None, "hard": None},
     }
     assert autonomy.problems(ON, {}) == []
     wrong = autonomy.problems({"routing": {"enabled": "yes", "ladder": {"hard": "", "giant": "x"}}}, {})
@@ -65,7 +69,10 @@ def test_model_router_claim_carries_the_ladder_only_while_routing_is_on(client, 
     put_policy(client, hub, ON)
     routed = dispatched(client, hub["owner"], [2])[0]
     spec = claim(client, worker)
-    assert (spec["id"], spec["model"], spec["routing"]) == (routed["id"], None, {"scorer": "haiku", "ladder": LADDER})
+    assert (spec["id"], spec["model"]) == (routed["id"], None)
+    # the hub rated the run (a prescribed step: hard) and every rung of the claim is the model it chose
+    assert spec["routing"]["ladder"] == dict.fromkeys(LADDER, LADDER["hard"])
+    assert (spec["routing"]["difficulty"], spec["routing"]["source"]) == ("hard", "rule")
     moved(client, worker, routed["id"], "cancelled")
 
     # a run the dispatch pinned to a model is not rated
@@ -81,14 +88,16 @@ def test_model_router_reports_record_the_difficulty_its_cost_and_the_model_used(
     run = dispatched(client, hub["owner"], [2])[0]
     claim(client, worker)
     moved(client, worker, run["id"], "running", model_used="claude-opus-5-5", routing=ROUTED)
-    assert of_run(hub_db, run["id"], "model_used", "routing") == [("claude-opus-5-5", ROUTED)]
+    [(used, kept)] = of_run(hub_db, run["id"], "model_used", "routing")
+    assert used == "claude-opus-5-5" and ROUTED.items() <= kept.items()
+    assert (kept["source"], kept["strategy"]) == ("rule", "surplus-first"), "the report keeps what the hub rated"
     shown = client.get(f"/v1/projects/{PROJECT}/runs/{run['id']}", headers=hub["reader"]).json()
-    assert (shown["model_used"], shown["routing"]) == ("claude-opus-5-5", ROUTED)
+    assert (shown["model_used"], shown["routing"]) == ("claude-opus-5-5", kept)
     assert shown["model"] is None, "the run keeps what the dispatch asked; the routing's choice is in routing"
 
     # a report without them keeps what an earlier one said; the final one may name the model again
     moved(client, worker, run["id"], "failed", error="it stopped", model_used="claude-opus-5-5-20261001")
-    assert of_run(hub_db, run["id"], "model_used", "routing") == [("claude-opus-5-5-20261001", ROUTED)]
+    assert of_run(hub_db, run["id"], "model_used", "routing") == [("claude-opus-5-5-20261001", kept)]
 
 
 def test_model_router_refuses_a_routing_record_that_does_not_read(client, hub, hub_db):

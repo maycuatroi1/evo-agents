@@ -59,14 +59,11 @@ from urllib.parse import quote
 from evo_agents.hub import claude_oauth, cli_shares, setup_token
 from evo_agents.hub.access import has_role
 from evo_agents.hub.accounts import (
-    MAX_COOLDOWN_SECONDS,
-    MAX_FAILOVERS,
     MAX_PRIORITY,
     MAX_WEIGHT,
-    MIN_COOLDOWN_SECONDS,
     RENEW_WITHIN_DAYS,
-    STRATEGIES,
 )
+from evo_agents.hub.cli_account_policy import register_policy
 from evo_agents.hub.cli_bindings import (
     BOTH,
     SECRET_COLUMNS,
@@ -94,6 +91,7 @@ from evo_agents.hub.credentials import (
 from evo_agents.hub.curator import money
 
 EXIT_USAGE = 2
+MAX_BUDGET_USD = 1_000_000  # evo_agents.hub.server.accounts.MAX_BUDGET_USD
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
@@ -355,6 +353,8 @@ ACCOUNT_KEYS = (
     "state",
     "last_usage",
     "last_usage_at",
+    "weekly_budget_usd",
+    "weekly_reset_at",
     "runs_24h",
     "runs_7d",
     "cost_24h_usd",
@@ -364,24 +364,15 @@ ACCOUNT_KEYS = (
     "cost_by_principal",
     "gateway",
 )
-# The keys of a policy in `hub account policy --json`.
-POLICY_KEYS = ("strategy", "cooldown_seconds", "failover", "max_failovers", "project", "updated_at")
-POLICY_FLAGS = ("strategy", "cooldown_seconds", "failover", "max_failovers")
 
 
 def _account_path(name: str) -> str:
     return f"/v1/accounts/{quote(name, safe='')}"
 
 
-def _policy_path(project: str) -> str:
-    return f"/v1/account-policies/{quote(project, safe='')}"
-
-
 BOUNDS = {
     "weight": (0, MAX_WEIGHT, "--weight"),
     "priority": (0, MAX_PRIORITY, "--priority"),
-    "cooldown_seconds": (MIN_COOLDOWN_SECONDS, MAX_COOLDOWN_SECONDS, "--cooldown"),
-    "max_failovers": (0, MAX_FAILOVERS, "--max-failovers"),
 }
 
 
@@ -509,6 +500,20 @@ def _usage_text(usage: dict | None) -> str:
     return f"{usage.get('rate_limit_type') or 'usage'}{_percent(usage.get('utilization'))} ({usage['status']})"
 
 
+def _windows_text(usage: dict | None) -> str:
+    """The windows of a last usage: ``five_hour 20%, seven_day 45% (resets 2026-11-23 00:00)``; empty for none."""
+    windows = usage.get("windows") if isinstance(usage, dict) else None
+    if not isinstance(windows, dict):
+        return ""
+    parts = []
+    for name, window in sorted(windows.items()):
+        if not isinstance(window, dict):
+            continue
+        resets = f" (resets {when(window['resets_at'])})" if window.get("resets_at") else ""
+        parts.append(f"{name}{_percent(window.get('utilization'))}{resets}")
+    return ", ".join(parts)
+
+
 def _state_text(account: dict) -> str:
     state = account["state"]
     if state == "cooling":
@@ -552,6 +557,11 @@ def _print_account(a: dict) -> None:
     print(f"  Expires: {_expiry(a, datetime.now(UTC))[0]}.")
     print(f"  Weight {a['weight']}, priority {a['priority']}; last taken {when(a['last_leased_at'])} UTC.")
     print(f"  Last usage: {usage}{reported}.")
+    if windows := _windows_text(a["last_usage"]):
+        print(f"  Windows: {windows}.")
+    if a.get("weekly_budget_usd") is not None:
+        start = f", weeks from {when(a['weekly_reset_at'])} UTC" if a.get("weekly_reset_at") else ", weeks from Monday"
+        print(f"  Weekly budget: {money(a['weekly_budget_usd'])}{start}.")
     if a["cost_24h_usd"] is None:  # a service account: the cost of a run is its model account's
         print(f"  Runs: {a['runs_24h']} in 24 hours, {a['runs_7d']} in 7 days.")
     else:
@@ -563,11 +573,34 @@ def _print_account(a: dict) -> None:
         print(f" ({money(row['cost_month_usd'])}), {row['runs_7d']} in 7 days ({money(row['cost_7d_usd'])}).")
 
 
+def _budget_body(args) -> dict:
+    """The weekly budget fields ``account set`` was given: a number, or null for --no-weekly-budget; ValueError for a
+    reset time that is no ISO 8601 instant."""
+    body: dict = {}
+    if args.no_weekly_budget:
+        body["weekly_budget_usd"] = None
+    elif args.weekly_budget_usd is not None:
+        body["weekly_budget_usd"] = args.weekly_budget_usd
+    if args.weekly_reset_at is not None:
+        moment = datetime.fromisoformat(args.weekly_reset_at.replace("Z", "+00:00"))
+        moment = moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+        body["weekly_reset_at"] = moment.astimezone(UTC).isoformat()
+    return body
+
+
 @client_command
 def cmd_account_set(args) -> int:
     body = {key: getattr(args, key) for key in ("weight", "priority") if getattr(args, key) is not None}
+    if args.no_weekly_budget and args.weekly_budget_usd is not None:
+        return _usage_error("give --weekly-budget-usd or --no-weekly-budget, not both")
+    if args.weekly_budget_usd is not None and not 0 < args.weekly_budget_usd <= MAX_BUDGET_USD:
+        return _usage_error(f"--weekly-budget-usd is above 0 and at most {MAX_BUDGET_USD}")
+    try:
+        body |= _budget_body(args)
+    except ValueError:
+        return _usage_error("--weekly-reset-at is an ISO 8601 instant, such as 2026-11-16T00:00:00Z")
     if not body:
-        return _usage_error("give --weight, --priority or both")
+        return _usage_error("give --weight, --priority, --weekly-budget-usd, --no-weekly-budget or --weekly-reset-at")
     if (refusal := _out_of_bounds(body)) is not None:
         return _usage_error(refusal)
     return _change_account(args, body)
@@ -581,39 +614,6 @@ def cmd_account_pause(args) -> int:
 @client_command
 def cmd_account_resume(args) -> int:
     return _change_account(args, {"paused": False})
-
-
-def _print_policy(policy: dict) -> None:
-    failover = f"on, at most {policy['max_failovers']} time(s)" if policy["failover"] else "off"
-    origin = f"set {when(policy['updated_at'])} UTC" if policy["updated_at"] else "the defaults"
-    print(
-        f"Project {policy['project']} ({origin}): strategy {policy['strategy']}, cooldown "
-        f"{policy['cooldown_seconds']} s, failover {failover}."
-    )
-
-
-@client_command
-def cmd_account_policy(args) -> int:
-    given = {key: getattr(args, key) for key in POLICY_FLAGS if getattr(args, key) is not None}
-    if args.reset and given:
-        return _usage_error("--reset drops the policy: give it alone")
-    if (refusal := _out_of_bounds(given)) is not None:
-        return _usage_error(refusal)
-    hub, _ = signed_in()
-    path = _policy_path(args.project)
-    if args.reset:
-        hub.call("DELETE", path)
-        policy = hub.call("GET", path)
-    elif given:
-        now = hub.call("GET", path)
-        policy = hub.call("PUT", path, {**{key: now[key] for key in POLICY_FLAGS}, **given})
-    else:
-        policy = hub.call("GET", path)
-    if args.json:
-        print_json(policy)
-    else:
-        _print_policy(policy)
-    return 0
 
 
 # `hub account login`: a Claude account from `claude setup-token`
@@ -950,36 +950,23 @@ def register_accounts(hsub) -> None:
         metavar="N",
         help=f"0 to {MAX_PRIORITY}: the lower, the sooner a fill-first pool takes it",
     )
+    changed.add_argument(
+        "--weekly-budget-usd",
+        type=float,
+        metavar="USD",
+        help="what a week of the account holds, for a provider with no quota API: its runs' cost over it is its "
+        "seven_day window",
+    )
+    changed.add_argument("--no-weekly-budget", action="store_true", help="drop the account's weekly budget")
+    changed.add_argument(
+        "--weekly-reset-at",
+        metavar="WHEN",
+        help="an ISO 8601 instant (UTC when no zone) its budget weeks start from, every 7 days; default Monday 00:00 UTC",
+    )
     _named(asub, "pause", "keep new runs off an account; a run that holds it keeps it", cmd_account_pause)
     _named(asub, "resume", "let new runs take a paused account again", cmd_account_resume)
     _register_login(asub)
     _register_oauth_login(asub)
     cli_shares.register_share_commands(asub, "account")
 
-    policy = asub.add_parser(
-        "policy", help="show your policy for a project; with a flag, set it over the policy as it is now"
-    )
-    policy.add_argument("project", metavar="PROJECT")
-    policy.add_argument("--strategy", choices=STRATEGIES, help="how a run picks among your accounts")
-    policy.add_argument(
-        "--cooldown",
-        dest="cooldown_seconds",
-        type=int,
-        metavar="SECONDS",
-        help="how long an account cools down after a usage limit that gave no reset time",
-    )
-    policy.add_argument(
-        "--failover",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="whether a run that hits a usage limit goes on with another account",
-    )
-    policy.add_argument(
-        "--max-failovers",
-        type=int,
-        metavar="N",
-        help=f"0 to {MAX_FAILOVERS}: at most how many times a run moves on",
-    )
-    policy.add_argument("--reset", action="store_true", help="drop your policy: the defaults hold again")
-    json_option(policy, returns_object(*POLICY_KEYS, schema="AccountPolicy"))
-    policy.set_defaults(func=cmd_account_policy)
+    register_policy(asub)

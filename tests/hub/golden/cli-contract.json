@@ -34,6 +34,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -127,6 +129,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -220,6 +224,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -273,6 +279,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -306,7 +314,8 @@
           "choices": [
             "round-robin",
             "weighted-round-robin",
-            "fill-first"
+            "fill-first",
+            "quota-pacing"
           ]
         },
         {
@@ -329,6 +338,22 @@
         {
           "flags": [
             "--max-failovers"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--hard-reserve-pct"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--five-hour-ceiling-pct"
           ],
           "value": "integer",
           "required": false,
@@ -359,7 +384,9 @@
           "failover",
           "max_failovers",
           "project",
-          "updated_at"
+          "updated_at",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
         ],
         "schema": "AccountPolicy"
       }
@@ -405,6 +432,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -451,6 +480,30 @@
           "value": "integer",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--weekly-budget-usd"
+          ],
+          "value": "number",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-weekly-budget"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--weekly-reset-at"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": {
@@ -474,6 +527,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -667,6 +722,8 @@
           "state",
           "last_usage",
           "last_usage_at",
+          "weekly_budget_usd",
+          "weekly_reset_at",
           "runs_24h",
           "runs_7d",
           "cost_24h_usd",
@@ -775,7 +832,10 @@
           "created_by",
           "created_at",
           "accounts",
-          "agents"
+          "agents",
+          "strategy",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
         ],
         "schema": "AccountPool"
       }
@@ -801,6 +861,36 @@
         },
         {
           "flags": [
+            "--strategy"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "round-robin",
+            "weighted-round-robin",
+            "fill-first",
+            "quota-pacing"
+          ]
+        },
+        {
+          "flags": [
+            "--hard-reserve-pct"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--five-hour-ceiling-pct"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -817,7 +907,10 @@
           "created_by",
           "created_at",
           "accounts",
-          "agents"
+          "agents",
+          "strategy",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
         ],
         "schema": "AccountPool"
       }
@@ -873,7 +966,85 @@
           "created_by",
           "created_at",
           "accounts",
-          "agents"
+          "agents",
+          "strategy",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
+        ],
+        "schema": "AccountPool"
+      }
+    },
+    "hub account-pool policy": {
+      "positionals": [
+        {
+          "name": "pool",
+          "metavar": "POOL",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--strategy"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "round-robin",
+            "weighted-round-robin",
+            "fill-first",
+            "quota-pacing"
+          ]
+        },
+        {
+          "flags": [
+            "--hard-reserve-pct"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--five-hour-ceiling-pct"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "name",
+          "created_by",
+          "created_at",
+          "accounts",
+          "agents",
+          "strategy",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
         ],
         "schema": "AccountPool"
       }
@@ -930,7 +1101,10 @@
           "created_by",
           "created_at",
           "accounts",
-          "agents"
+          "agents",
+          "strategy",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
         ],
         "schema": "AccountPool"
       }
@@ -972,7 +1146,10 @@
           "created_by",
           "created_at",
           "accounts",
-          "agents"
+          "agents",
+          "strategy",
+          "hard_reserve_pct",
+          "five_hour_ceiling_pct"
         ],
         "schema": "AccountPool"
       }
@@ -3509,7 +3686,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -6030,7 +6208,8 @@
           "merged_at",
           "merge_sha",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "repos"
         ],
         "schema": "Change"
       }
@@ -6147,6 +6326,7 @@
           "replay",
           "history",
           "probes",
+          "evolve",
           "reviewer",
           "builder",
           "judge",
@@ -6214,6 +6394,7 @@
           "replay",
           "history",
           "probes",
+          "evolve",
           "reviewer",
           "builder",
           "judge",
@@ -6312,6 +6493,206 @@
           "rejected"
         ],
         "schema": "EarlierView"
+      }
+    },
+    "hub curator evolve run": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--repo"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--path"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--system-id"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--proposal"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "target",
+          "repo",
+          "paths",
+          "system_id",
+          "agent",
+          "state",
+          "runtime",
+          "model",
+          "budget",
+          "tasks",
+          "iterations",
+          "frontier",
+          "best_candidate_id",
+          "proposal_id",
+          "change_id",
+          "reason",
+          "created_at",
+          "updated_at",
+          "candidates"
+        ],
+        "schema": "EvolveView"
+      }
+    },
+    "hub curator evolve show": {
+      "positionals": [
+        {
+          "name": "evolution",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "run_id",
+          "target",
+          "repo",
+          "paths",
+          "system_id",
+          "agent",
+          "state",
+          "runtime",
+          "model",
+          "budget",
+          "tasks",
+          "iterations",
+          "frontier",
+          "best_candidate_id",
+          "proposal_id",
+          "change_id",
+          "reason",
+          "created_at",
+          "updated_at",
+          "candidates"
+        ],
+        "schema": "EvolveView"
+      }
+    },
+    "hub curator evolve status": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--state"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "queued",
+            "running",
+            "done",
+            "failed"
+          ]
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "evolutions"
+        ],
+        "schema": "EvolveList"
       }
     },
     "hub curator figures": {
@@ -7850,7 +8231,8 @@
           "merged_at",
           "merge_sha",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "repos"
         ],
         "schema": "Change"
       }
@@ -18059,7 +18441,10 @@
           "budget_tokens",
           "tokens",
           "cut",
-          "text"
+          "text",
+          "difficulty",
+          "recommended_model",
+          "routing_reason"
         ],
         "schema": "PlanHandoff"
       }
@@ -20886,6 +21271,53 @@
         "schema": "ProviderAccount"
       }
     },
+    "hub provider-account quota": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "ok",
+          "usage",
+          "status",
+          "error"
+        ],
+        "schema": "ProviderQuota"
+      }
+    },
     "hub provider-account resume": {
       "positionals": [
         {
@@ -21573,7 +22005,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -21692,7 +22125,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -21870,7 +22304,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -21989,7 +22424,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -22343,7 +22779,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -22462,7 +22899,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -22581,7 +23019,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -22643,6 +23082,7 @@
             "question",
             "browser",
             "command",
+            "evolve",
             "local"
           ]
         },
@@ -23083,7 +23523,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run",
         "with": {
@@ -23102,6 +23543,139 @@
             "schema": "SystemDispatched"
           }
         }
+      }
+    },
+    "hub run priority": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "level",
+          "metavar": "LEVEL",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "urgent",
+            "high",
+            "medium",
+            "low"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "kind",
+          "project",
+          "plan_id",
+          "step_key",
+          "title",
+          "plan_revision",
+          "dispatched_by",
+          "dispatched_via",
+          "worker_id",
+          "worker",
+          "pinned_worker_id",
+          "requested_runtime",
+          "runtime",
+          "model",
+          "mode",
+          "approval",
+          "timeout_min",
+          "run_seconds",
+          "attempt",
+          "max_attempts",
+          "parent_run_id",
+          "resume_of_run_id",
+          "state",
+          "lease_expires_at",
+          "session_id",
+          "repo",
+          "branch",
+          "repos",
+          "commit_sha",
+          "diffstat",
+          "verify",
+          "evidence",
+          "usage",
+          "budget",
+          "error",
+          "log_sha256",
+          "diff_sha256",
+          "last_seq",
+          "cancel_requested_at",
+          "takeover_requested_at",
+          "handback_requested_at",
+          "queued_at",
+          "leased_at",
+          "started_at",
+          "waiting_since",
+          "parked_at",
+          "finished_at",
+          "request",
+          "finish_requested_at",
+          "steady_wait",
+          "overlap_wait",
+          "warning",
+          "failure_cause",
+          "session_per_step",
+          "browser",
+          "browser_identities",
+          "profile",
+          "profile_id",
+          "profile_version",
+          "environment",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
+          "chat_id",
+          "chat_message_id",
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title",
+          "principal",
+          "autonomy",
+          "selector",
+          "tolerations",
+          "spend",
+          "plan_progress",
+          "as_owner",
+          "as_owner_since",
+          "model_used",
+          "routing",
+          "spawned_by_run_id",
+          "priority"
+        ],
+        "schema": "Run"
       }
     },
     "hub run rerun": {
@@ -23242,7 +23816,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -23419,7 +23994,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -23538,7 +24114,8 @@
           "as_owner_since",
           "model_used",
           "routing",
-          "spawned_by_run_id"
+          "spawned_by_run_id",
+          "priority"
         ],
         "schema": "Run"
       }
@@ -28138,6 +28715,20 @@
           "value": "string",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--priority"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "urgent",
+            "high",
+            "medium",
+            "low"
+          ]
         }
       ],
       "json": null
@@ -28959,6 +29550,63 @@
       ],
       "json": null
     },
+    "worker ops plan-dispatch": {
+      "positionals": [
+        {
+          "name": "plan",
+          "metavar": "PLAN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker ops priority": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "level",
+          "metavar": "LEVEL",
+          "value": "string",
+          "required": true,
+          "repeatable": false,
+          "choices": [
+            "urgent",
+            "high",
+            "medium",
+            "low"
+          ]
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "worker ops read": {
       "positionals": [
         {
@@ -29131,6 +29779,14 @@
             "kg_questions",
             "kg_entity_map"
           ]
+        },
+        {
+          "flags": [
+            "--until-proposal"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": null
@@ -29882,7 +30538,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.67.2"
+      "version": "0.70.3"
     },
     "paths": {
       "/v1/health": {
@@ -36595,6 +37251,110 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/SourceForgotten"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/kg/{project}/grep-links": {
+        "post": {
+          "tags": [
+            "kg"
+          ],
+          "summary": "Grep Links Of",
+          "description": "What the project's latest graph links to the lines a grep matched (see the module).",
+          "operationId": "grep_links_of_v1_kg__project__grep_links_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrepLinks"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GrepLinksOut"
                   }
                 }
               }
@@ -46167,6 +46927,7 @@
                       "question",
                       "browser",
                       "command",
+                      "evolve",
                       "local"
                     ],
                     "type": "string"
@@ -47371,6 +48132,111 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AccessChange"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/priority": {
+        "post": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Priority",
+          "description": "Change the priority of a queued run of the project, for a writer of it: a worker claims its queued runs by\npriority, highest first, then the oldest. 409 for a run that is no longer queued.",
+          "operationId": "priority_v1_projects__project__runs__run_id__priority_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriorityChange"
                 }
               }
             }
@@ -58193,7 +59059,7 @@
             "curator"
           ],
           "summary": "Plan Proposal",
-          "description": "Make an accepted proposal of tier 0 to 2 that has no change yet the Curator's plan, as accepting it does now;\nthe project's admins alone may. The change: planned, or left open with why its draft cannot become a plan.",
+          "description": "Make an accepted proposal of tier 0 to 2 that has no change yet, or a stuck one, the Curator's plan, as\naccepting it does now; the project's admins alone may. The change: planned, or left open with why its draft\ncannot become a plan.",
           "operationId": "plan_proposal_v1_projects__project__curator_proposals__proposal_id__plan_post",
           "parameters": [
             {
@@ -58392,7 +59258,7 @@
             "worker protocol"
           ],
           "summary": "Record Verdict",
-          "description": "The verdict of the judge run this worker holds, with the run's own key: the hub passes the change only as\n``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again.",
+          "description": "The verdict of the judge run this worker holds, with the run's own key: the hub passes the change only as\n``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again. The graph read\nfor that tier can wait minutes for the project's snapshot to load, so it is read before the transaction that locks\nthe run and its change: a request holding those locks makes the worker's heartbeat, claim and events wait on\nthem, each holding a pool connection, until the pool is out.",
           "operationId": "record_verdict_v1_worker_runs__run_id__verdict_post",
           "parameters": [
             {
@@ -62719,6 +63585,784 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/evolve": {
+        "post": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Start Evolution",
+          "description": "Start an evolution of a harness's files in a repo (git) or of an agent's configuration (agent_config).",
+          "operationId": "start_evolution_v1_projects__project__curator_evolve_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvolveStart"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvolveView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "List Evolutions",
+          "description": "The project's evolutions, the newest first, each with its state, tasks and front.",
+          "operationId": "list_evolutions_v1_projects__project__curator_evolve_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^(queued|running|done|failed)$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "State"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "default": 20,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvolveList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/evolve/{evolve_id}": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Evolution",
+          "description": "One evolution, with each candidate (its components, scores, cost and ASI of each task) and its front.",
+          "operationId": "show_evolution_v1_projects__project__curator_evolve__evolve_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "evolve_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Evolve Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvolveView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/evolve": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Evolve Inputs",
+          "description": "What the held evolve run evolves: its baseline, its light tasks with their verify, the cached baseline arms.",
+          "operationId": "evolve_inputs_v1_worker_runs__run_id__evolve_get",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Evolve-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Evolve-Key"
+              },
+              "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvolveInputs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/evolve/arm": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Evolve Arm",
+          "description": "Keep the result of a baseline arm of one task by its ``evolve.arm_key``; one the cache holds stays as it is.",
+          "operationId": "evolve_arm_v1_worker_runs__run_id__evolve_arm_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Evolve-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Evolve-Key"
+              },
+              "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArmIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ArmOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/evolve/candidate": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Evolve Candidate",
+          "description": "Keep a candidate, unique by the digest of its components, and recompute the evolution's Pareto front.",
+          "operationId": "evolve_candidate_v1_worker_runs__run_id__evolve_candidate_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Evolve-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Evolve-Key"
+              },
+              "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CandidateOut"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/evolve/report": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Evolve Report Route",
+          "description": "End the evolution: of target git, its branch goes on as its proposal's change; of target agent_config, its best\ncandidate is pinned as the agent's next version when it holds on the holdout split; why, either way.",
+          "operationId": "evolve_report_route_v1_worker_runs__run_id__evolve_report_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Evolve-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Evolve-Key"
+              },
+              "description": "the evolve run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvolveView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -82953,7 +84597,7 @@
             "accounts"
           ],
           "summary": "Change Account",
-          "description": "Change the weight or priority of the caller's account ``name``, or pause or resume it.",
+          "description": "Change the weight, priority or weekly budget of the caller's account ``name``, or pause or resume it.",
           "operationId": "change_account_v1_accounts__name__patch",
           "parameters": [
             {
@@ -83026,6 +84670,42 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/shared-accounts": {
+        "get": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "List Shared Accounts",
+          "description": "The env accounts other members share with the caller through a live share for every run, by variable, owner\nand name, as ``_shared_account`` gives each one, with the projects of those shares its owner binds it to; one bound\nto none of them is left out.",
+          "operationId": "list_shared_accounts_v1_shared_accounts_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/SharedAccount"
+                    },
+                    "type": "array",
+                    "title": "Response List Shared Accounts V1 Shared Accounts Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
                   }
                 }
               }
@@ -87830,6 +89510,110 @@
             }
           }
         },
+        "patch": {
+          "tags": [
+            "account pools"
+          ],
+          "summary": "Set Pool Policy",
+          "description": "Set the pool's strategy and the thresholds of quota-pacing (an admin of the project or of the hub); a field left\nout stays. The agents of the pool pick their accounts by it from their next choice on.",
+          "operationId": "set_pool_policy_v1_projects__project__account_pools__pool__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "pool",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
+                "description": "the pool's name, 1 to 40 characters",
+                "title": "Pool"
+              },
+              "description": "the pool's name, 1 to 40 characters"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolPolicy"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountPool"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
         "delete": {
           "tags": [
             "account pools"
@@ -88538,6 +90322,124 @@
           "responses": {
             "204": {
               "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/agents/{handle}/provider-accounts/{name}/quota": {
+        "post": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Quota Of Agent Provider Account",
+          "description": "Read the quota the agent's Z.ai account ``name`` has left and keep it as the account's last usage; any member\nof the project may.",
+          "operationId": "quota_of_agent_provider_account_v1_projects__project__agents__handle__provider_accounts__name__quota_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the agent's live accounts",
+                "title": "Name"
+              },
+              "description": "unique among the agent's live accounts"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProviderQuota"
+                  }
+                }
+              }
             },
             "401": {
               "content": {
@@ -98050,6 +99952,196 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/ops/priority": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Priority Route",
+          "description": "Give a queued run of the project another priority, as the Orchestrator's chat run of an ops thread.",
+          "operationId": "priority_route_v1_worker_runs__run_id__ops_priority_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsPriorityIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpsActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/ops/plan-dispatch": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Plan Dispatch Route",
+          "description": "Hand a stalled plan of this ops thread's batch again to the default system's entry agent, as its Orchestrator's\nchat run.",
+          "operationId": "plan_dispatch_route_v1_worker_runs__run_id__ops_plan_dispatch_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsPlanIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OpsActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/work": {
         "post": {
           "tags": [
@@ -106105,6 +108197,102 @@
           }
         }
       },
+      "/v1/provider-accounts/{name}/quota": {
+        "post": {
+          "tags": [
+            "provider-accounts"
+          ],
+          "summary": "Quota Of Provider Account",
+          "description": "Read the quota the caller's Z.ai account ``name`` has left and keep it as the account's last usage.",
+          "operationId": "quota_of_provider_account_v1_provider_accounts__name__quota_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "unique among the caller's secrets and accounts",
+                "title": "Name"
+              },
+              "description": "unique among the caller's secrets and accounts"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProviderQuota"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/runnable-models": {
         "get": {
           "tags": [
@@ -112598,6 +114786,31 @@
                 }
               ],
               "description": "a provider account's endpoint and what the model gateway last said of it; null for a secret"
+            },
+            "weekly_budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weekly Budget Usd",
+              "description": "the USD its owner gives it a week, turned into its seven_day window; null for none"
+            },
+            "weekly_reset_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weekly Reset At",
+              "description": "an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC"
             }
           },
           "type": "object",
@@ -112733,6 +114946,33 @@
               ],
               "title": "Paused",
               "description": "true pauses it, so no new run takes it; false resumes it"
+            },
+            "weekly_budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weekly Budget Usd",
+              "description": "the USD it may spend a week, for a model account; null drops it"
+            },
+            "weekly_reset_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weekly Reset At",
+              "description": "an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC"
             }
           },
           "additionalProperties": false,
@@ -112746,7 +114986,8 @@
               "enum": [
                 "round-robin",
                 "weighted-round-robin",
-                "fill-first"
+                "fill-first",
+                "quota-pacing"
               ],
               "title": "Strategy",
               "description": "how a run picks among the accounts",
@@ -112773,6 +115014,22 @@
               "title": "Max Failovers",
               "description": "at most how many times a run moves on",
               "default": 3
+            },
+            "hard_reserve_pct": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "title": "Hard Reserve Pct",
+              "description": "quota-pacing: the share of a weekly window kept back while another account has more",
+              "default": 10
+            },
+            "five_hour_ceiling_pct": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "Five Hour Ceiling Pct",
+              "description": "quota-pacing: the five-hour use above which an account waits while a cooler one is ready",
+              "default": 90
             },
             "project": {
               "type": "string",
@@ -112807,7 +115064,8 @@
               "enum": [
                 "round-robin",
                 "weighted-round-robin",
-                "fill-first"
+                "fill-first",
+                "quota-pacing"
               ],
               "title": "Strategy",
               "description": "how a run picks among the accounts",
@@ -112834,6 +115092,22 @@
               "title": "Max Failovers",
               "description": "at most how many times a run moves on",
               "default": 3
+            },
+            "hard_reserve_pct": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "title": "Hard Reserve Pct",
+              "description": "quota-pacing: the share of a weekly window kept back while another account has more",
+              "default": 10
+            },
+            "five_hour_ceiling_pct": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "Five Hour Ceiling Pct",
+              "description": "quota-pacing: the five-hour use above which an account waits while a cooler one is ready",
+              "default": 90
             }
           },
           "additionalProperties": false,
@@ -112853,6 +115127,22 @@
             "name": {
               "type": "string",
               "title": "Name"
+            },
+            "strategy": {
+              "type": "string",
+              "title": "Strategy",
+              "description": "how a run picks among its accounts",
+              "default": "round-robin"
+            },
+            "hard_reserve_pct": {
+              "type": "integer",
+              "title": "Hard Reserve Pct",
+              "default": 10
+            },
+            "five_hour_ceiling_pct": {
+              "type": "integer",
+              "title": "Five Hour Ceiling Pct",
+              "default": 90
             },
             "created_by": {
               "type": "string",
@@ -114183,6 +116473,18 @@
               ],
               "title": "Reason",
               "description": "why an agent of a system asks an agent off its interacts edges; without it such an ask is refused"
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority",
+              "description": "the priority of the run it asks for: a worker claims its queued runs by it, urgent first",
+              "default": "medium"
             }
           },
           "type": "object",
@@ -115969,6 +118271,95 @@
           "title": "ApprovedUseCases",
           "description": "The use cases of the version of a document approved last, identifiers only."
         },
+        "ArmIn": {
+          "properties": {
+            "task_kind": {
+              "type": "string",
+              "enum": [
+                "replay",
+                "probe"
+              ],
+              "title": "Task Kind"
+            },
+            "task_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Task Id"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{7,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha"
+            },
+            "baseline_digest": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Baseline Digest"
+            },
+            "runtime": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Runtime"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "result": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Result",
+              "description": "score, cost_usd, turns and trace of the baseline arm"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "task_kind",
+            "task_id",
+            "baseline_digest",
+            "runtime",
+            "result"
+          ],
+          "title": "ArmIn"
+        },
+        "ArmOut": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "cached": {
+              "type": "boolean",
+              "title": "Cached",
+              "description": "true: the cache held this key already, and keeps what it held"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "cached"
+          ],
+          "title": "ArmOut"
+        },
         "ArmResult": {
           "properties": {
             "passed": {
@@ -116374,15 +118765,15 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Account",
-              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
+              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project"
             },
             "profile": {
               "anyOf": [
@@ -118673,6 +121064,36 @@
           "title": "BrowserReport",
           "description": "The Chromium a daemon starts for a browser run, as its heartbeat says."
         },
+        "BudgetInput": {
+          "properties": {
+            "iterations": {
+              "type": "integer",
+              "title": "Iterations"
+            },
+            "max_candidates": {
+              "type": "integer",
+              "title": "Max Candidates"
+            },
+            "max_cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Cost Usd"
+            }
+          },
+          "type": "object",
+          "required": [
+            "iterations",
+            "max_candidates",
+            "max_cost_usd"
+          ],
+          "title": "BudgetInput"
+        },
         "Build": {
           "properties": {
             "id": {
@@ -119250,6 +121671,248 @@
             "contact"
           ],
           "title": "BuyIn"
+        },
+        "CandidateIn": {
+          "properties": {
+            "parents": {
+              "items": {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 1.0
+              },
+              "type": "array",
+              "maxItems": 2,
+              "title": "Parents"
+            },
+            "origin": {
+              "type": "string",
+              "enum": [
+                "seed",
+                "mutate",
+                "merge"
+              ],
+              "title": "Origin"
+            },
+            "iteration": {
+              "type": "integer",
+              "maximum": 1000.0,
+              "minimum": 0.0,
+              "title": "Iteration",
+              "default": 0
+            },
+            "components": {
+              "patternProperties": {
+                "^[^\\x00-\\x1f\\x7f]+$": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "propertyNames": {
+                "maxLength": 500,
+                "minLength": 1
+              },
+              "type": "object",
+              "maxProperties": 50,
+              "minProperties": 1,
+              "title": "Components"
+            },
+            "scores": {
+              "patternProperties": {
+                "^(replay|probe):[0-9]{1,19}$": {
+                  "type": "number",
+                  "maximum": 1000000000.0,
+                  "minimum": -1000000000.0
+                }
+              },
+              "type": "object",
+              "maxProperties": 200,
+              "title": "Scores"
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd"
+            },
+            "turns": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Turns"
+            },
+            "traces": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "items": {},
+                  "type": "array"
+                }
+              ],
+              "title": "Traces",
+              "description": "task ref -> its ASI (evolve_eval.short_trace), kept bounded (evolve.asi_of)"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "origin",
+            "components"
+          ],
+          "title": "CandidateIn"
+        },
+        "CandidateOut": {
+          "properties": {
+            "candidate_id": {
+              "type": "integer",
+              "title": "Candidate Id"
+            },
+            "frontier": {
+              "items": {
+                "$ref": "#/components/schemas/FrontItem"
+              },
+              "type": "array",
+              "title": "Frontier"
+            }
+          },
+          "type": "object",
+          "required": [
+            "candidate_id",
+            "frontier"
+          ],
+          "title": "CandidateOut"
+        },
+        "CandidateView": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "parents": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Parents"
+            },
+            "origin": {
+              "type": "string",
+              "title": "Origin"
+            },
+            "iteration": {
+              "type": "integer",
+              "title": "Iteration"
+            },
+            "digest": {
+              "type": "string",
+              "title": "Digest"
+            },
+            "scores": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object",
+              "title": "Scores"
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd"
+            },
+            "turns": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Turns"
+            },
+            "on_front": {
+              "type": "boolean",
+              "title": "On Front"
+            },
+            "components": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Components",
+              "description": "its whole files or axes; null in a list"
+            },
+            "asi": {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object",
+              "title": "Asi",
+              "description": "task ref -> its actionable side information: each failed check's exit code and output tail, the agent's failed tool calls, error and last message, each text cut to its end"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "parents",
+            "origin",
+            "iteration",
+            "digest",
+            "scores",
+            "cost_usd",
+            "turns",
+            "on_front",
+            "created_at"
+          ],
+          "title": "CandidateView"
         },
         "CanvasBaseline": {
           "properties": {
@@ -123145,6 +125808,14 @@
               "type": "string",
               "format": "date-time",
               "title": "Updated At"
+            },
+            "repos": {
+              "items": {
+                "$ref": "#/components/schemas/ChangeRepo"
+              },
+              "type": "array",
+              "title": "Repos",
+              "description": "a change in several repos: each, in plan order; empty for one in one repo"
             }
           },
           "type": "object",
@@ -123385,6 +126056,102 @@
           ],
           "title": "ChangeReplay"
         },
+        "ChangeRepo": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "position": {
+              "type": "integer",
+              "title": "Position",
+              "description": "its order in the plan, from 1: an owner before the repos that consume it"
+            },
+            "depends_on": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Depends On",
+              "description": "the repos merged before it"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "pr_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pr Number"
+            },
+            "pr_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pr Url"
+            },
+            "passed": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Passed",
+              "description": "its Judge's verdict; null before it"
+            },
+            "merged_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merged At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "position",
+            "depends_on",
+            "state",
+            "reason",
+            "pr_number",
+            "pr_url",
+            "passed",
+            "merged_at"
+          ],
+          "title": "ChangeRepo",
+          "description": "One repo of a change that works in several (``evo_agents.hub.server.change_repos``), in plan order."
+        },
         "Charter": {
           "properties": {
             "goals": {
@@ -123571,6 +126338,9 @@
             },
             "probes": {
               "$ref": "#/components/schemas/ProbeSettings"
+            },
+            "evolve": {
+              "$ref": "#/components/schemas/EvolveSettings"
             },
             "reviewer": {
               "$ref": "#/components/schemas/Role"
@@ -123851,6 +126621,9 @@
             },
             "probes": {
               "$ref": "#/components/schemas/ProbeSettings"
+            },
+            "evolve": {
+              "$ref": "#/components/schemas/EvolveSettings"
             },
             "reviewer": {
               "$ref": "#/components/schemas/Role"
@@ -128623,7 +131396,8 @@
                 "judge",
                 "replay",
                 "history",
-                "probe"
+                "probe",
+                "evolve"
               ],
               "title": "Role"
             },
@@ -128801,6 +131575,29 @@
               ],
               "title": "Probe Key",
               "description": "a probe run's own key, for POST .../probe (X-Evo-Probe-Key); the daemon keeps it as a judge run's"
+            },
+            "evolve": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EvolveSpec"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "an evolve run's evolution; null for any other run"
+            },
+            "evolve_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evolve Key",
+              "description": "an evolve run's own key, for GET .../evolve and POST .../evolve/arm, .../candidate and .../report (X-Evo-Evolve-Key); the daemon keeps it as a judge run's"
             }
           },
           "type": "object",
@@ -128808,7 +131605,7 @@
             "role"
           ],
           "title": "CuratorSpec",
-          "description": "What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the\ncharter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the\nchange, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's\nhead, its task and its own key (``evo_agents.hub.server.replays``), for a history run its batches and its own\nkey (``evo_agents.hub.server.history``), and for a probe run its probe, the change's head and its own key\n(``evo_agents.hub.server.probe_runs``)."
+          "description": "What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the\ncharter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the\nchange, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's\nhead, its task and its own key (``evo_agents.hub.server.replays``), for a history run its batches and its own\nkey (``evo_agents.hub.server.history``), for a probe run its probe, the change's head and its own key\n(``evo_agents.hub.server.probe_runs``), and for an evolve run its evolution and its own key\n(``evo_agents.hub.server.evolve``)."
         },
         "CuratorStatus": {
           "properties": {
@@ -130253,15 +133050,15 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Account",
-              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
+              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project"
             },
             "profile": {
               "anyOf": [
@@ -134543,6 +137340,636 @@
           "title": "EvidenceIn",
           "description": "One piece of evidence, as ``review.parse_evidence`` reads it from the command line."
         },
+        "EvolveBudget": {
+          "properties": {
+            "iterations": {
+              "type": "integer",
+              "maximum": 50.0,
+              "minimum": 1.0,
+              "title": "Iterations",
+              "description": "rounds of its loop",
+              "default": 6
+            },
+            "max_candidates": {
+              "type": "integer",
+              "maximum": 200.0,
+              "minimum": 1.0,
+              "title": "Max Candidates",
+              "description": "candidates it measures at most",
+              "default": 12
+            },
+            "max_cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Cost Usd",
+              "description": "the most it may cost; null: the run's own cap"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "EvolveBudget",
+          "description": "What one evolution may spend (``evo_agents.hub.server.evolve``): rounds of its loop, candidates it measures,\nand dollars."
+        },
+        "EvolveInputs": {
+          "properties": {
+            "evolve_id": {
+              "type": "integer",
+              "title": "Evolve Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha",
+              "description": "null: the tip of the repo's default branch"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "target git: the branch the run pushes its best candidate to"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Paths"
+            },
+            "system_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "System Id"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent"
+            },
+            "baseline": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object",
+              "title": "Baseline",
+              "description": "target agent_config: instructions and skill; git: {}"
+            },
+            "tasks": {
+              "items": {
+                "$ref": "#/components/schemas/TaskInput"
+              },
+              "type": "array",
+              "title": "Tasks"
+            },
+            "cached": {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object",
+              "title": "Cached",
+              "description": "evolve.arm_key -> the result of a baseline arm"
+            },
+            "budget": {
+              "$ref": "#/components/schemas/BudgetInput"
+            },
+            "runtime": {
+              "type": "string",
+              "title": "Runtime"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "evolvable_paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Evolvable Paths"
+            }
+          },
+          "type": "object",
+          "required": [
+            "evolve_id",
+            "project",
+            "target",
+            "repo",
+            "base_sha",
+            "branch",
+            "paths",
+            "system_id",
+            "agent",
+            "baseline",
+            "tasks",
+            "cached",
+            "budget",
+            "runtime",
+            "model",
+            "evolvable_paths"
+          ],
+          "title": "EvolveInputs",
+          "description": "What the worker of an evolve run reads: the evolution, its baseline, its light tasks (select split and active\nprobes alone), the baseline arms the project's cache holds, its budget, runtime and model."
+        },
+        "EvolveList": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "evolutions": {
+              "items": {
+                "$ref": "#/components/schemas/EvolveView"
+              },
+              "type": "array",
+              "title": "Evolutions"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "evolutions"
+          ],
+          "title": "EvolveList"
+        },
+        "EvolveSettings": {
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "title": "Enabled",
+              "description": "false: no evolution is started or queued",
+              "default": false
+            },
+            "evolvable_paths": {
+              "items": {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Evolvable Paths",
+              "description": "globs of harness files an evolution may rewrite, repo:glob for one repo; empty: none"
+            },
+            "budget": {
+              "$ref": "#/components/schemas/EvolveBudget"
+            },
+            "tasks": {
+              "type": "integer",
+              "maximum": 20.0,
+              "minimum": 0.0,
+              "title": "Tasks",
+              "description": "light replay tasks of the select split",
+              "default": 8
+            },
+            "probes": {
+              "type": "integer",
+              "maximum": 20.0,
+              "minimum": 0.0,
+              "title": "Probes",
+              "description": "active probes of its paths",
+              "default": 4
+            },
+            "exposure_limit": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exposure Limit",
+              "description": "review runs that show an entry of the playbook never found helpful before it is retired; null: 30; 0: never for that"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "EvolveSettings",
+          "description": "Whether and how the Curator evolves a harness or an agent's configuration (``evo_agents.hub.evolve``): the\npaths it may rewrite, what one evolution spends, how many light tasks of the select split and probes it measures\non, and how many review runs show an entry of the playbook never found helpful before it is retired."
+        },
+        "EvolveSpec": {
+          "properties": {
+            "evolve_id": {
+              "type": "integer",
+              "title": "Evolve Id"
+            },
+            "target": {
+              "type": "string",
+              "enum": [
+                "git",
+                "agent_config"
+              ],
+              "title": "Target"
+            }
+          },
+          "type": "object",
+          "required": [
+            "evolve_id",
+            "target"
+          ],
+          "title": "EvolveSpec",
+          "description": "The evolution an evolve run makes (``evo_agents.hub.server.evolve``): its inputs come from GET .../evolve."
+        },
+        "EvolveStart": {
+          "properties": {
+            "target": {
+              "type": "string",
+              "enum": [
+                "git",
+                "agent_config"
+              ],
+              "title": "Target"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            },
+            "paths": {
+              "items": {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Paths"
+            },
+            "system_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "System Id"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the node's id, or its profile's handle"
+            },
+            "proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal Id"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "target"
+          ],
+          "title": "EvolveStart",
+          "description": "An evolution to start: of a harness's files in a repo (target git: ``repo`` and ``paths``), or of an agent of\nan agent system (target agent_config: ``system_id`` and ``agent``); ``proposal_id`` names the accepted proposal\nwhose planned change takes the branch of a git evolution."
+        },
+        "EvolveTaskView": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "replay",
+                "probe"
+              ],
+              "title": "Kind"
+            },
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "ref": {
+              "type": "string",
+              "title": "Ref"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "id",
+            "ref"
+          ],
+          "title": "EvolveTaskView",
+          "description": "A task of an evolution as its owner reads it: never its verify."
+        },
+        "EvolveView": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Paths"
+            },
+            "system_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "System Id"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "runtime": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "budget": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Budget"
+            },
+            "tasks": {
+              "items": {
+                "$ref": "#/components/schemas/EvolveTaskView"
+              },
+              "type": "array",
+              "title": "Tasks"
+            },
+            "iterations": {
+              "type": "integer",
+              "title": "Iterations"
+            },
+            "frontier": {
+              "items": {
+                "$ref": "#/components/schemas/FrontItem"
+              },
+              "type": "array",
+              "title": "Frontier"
+            },
+            "best_candidate_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Best Candidate Id"
+            },
+            "proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal Id"
+            },
+            "change_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change Id"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "candidates": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/CandidateView"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Candidates",
+              "description": "its candidates; null in a list"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "run_id",
+            "target",
+            "repo",
+            "paths",
+            "system_id",
+            "agent",
+            "state",
+            "runtime",
+            "model",
+            "budget",
+            "tasks",
+            "iterations",
+            "frontier",
+            "best_candidate_id",
+            "proposal_id",
+            "change_id",
+            "reason",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "EvolveView"
+        },
         "FacetCluster": {
           "properties": {
             "key": {
@@ -135266,6 +138693,25 @@
           ],
           "title": "Found"
         },
+        "FrontItem": {
+          "properties": {
+            "candidate_id": {
+              "type": "integer",
+              "title": "Candidate Id"
+            },
+            "freq": {
+              "type": "integer",
+              "title": "Freq",
+              "description": "on how many tasks it reaches the ceiling of every candidate"
+            }
+          },
+          "type": "object",
+          "required": [
+            "candidate_id",
+            "freq"
+          ],
+          "title": "FrontItem"
+        },
         "GatewayAccount": {
           "properties": {
             "provider": {
@@ -135975,6 +139421,117 @@
           ],
           "title": "GraphSummary"
         },
+        "GrepFile": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Repo",
+              "description": "the repo's name in the project, as a file node's props.repo"
+            },
+            "path": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Path",
+              "description": "the file's path inside the repo, with /"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "path"
+          ],
+          "title": "GrepFile"
+        },
+        "GrepHit": {
+          "properties": {
+            "file": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "File",
+              "description": "the index of the line's file in files"
+            },
+            "line": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line",
+              "description": "the line number; null for the file alone (-l)"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 400,
+              "title": "Text",
+              "description": "the matched line",
+              "default": ""
+            }
+          },
+          "type": "object",
+          "required": [
+            "file"
+          ],
+          "title": "GrepHit"
+        },
+        "GrepLinks": {
+          "properties": {
+            "sink": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Sink",
+              "description": "the sink profile whose clearance applies",
+              "default": "claude-code@anthropic"
+            },
+            "files": {
+              "items": {
+                "$ref": "#/components/schemas/GrepFile"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Files"
+            },
+            "hits": {
+              "items": {
+                "$ref": "#/components/schemas/GrepHit"
+              },
+              "type": "array",
+              "maxItems": 5000,
+              "title": "Hits"
+            }
+          },
+          "type": "object",
+          "required": [
+            "files",
+            "hits"
+          ],
+          "title": "GrepLinks"
+        },
+        "GrepLinksOut": {
+          "properties": {
+            "lines": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Lines",
+              "description": "the note's lines, one per matched node with something to add"
+            }
+          },
+          "type": "object",
+          "required": [
+            "lines"
+          ],
+          "title": "GrepLinksOut"
+        },
         "GroupMessage": {
           "properties": {
             "id": {
@@ -136508,6 +140065,15 @@
               ],
               "title": "Db"
             },
+            "heartbeat_db": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "unavailable"
+              ],
+              "title": "Heartbeat Db",
+              "description": "the same check on the pool of the workers' heartbeats and claims"
+            },
             "r2": {
               "type": "string",
               "enum": [
@@ -136555,6 +140121,17 @@
               "type": "array",
               "title": "Failed",
               "description": "components that did not answer"
+            },
+            "pools": {
+              "additionalProperties": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "type": "object",
+              "title": "Pools",
+              "description": "per pool (api, heartbeat): max, size (connections held), available, waiting (requests)"
             }
           },
           "type": "object",
@@ -136563,6 +140140,7 @@
             "version",
             "schema",
             "db",
+            "heartbeat_db",
             "r2",
             "gateway",
             "broker",
@@ -137998,6 +141576,29 @@
             "reason"
           ],
           "title": "HoldPass"
+        },
+        "HoldoutPair": {
+          "properties": {
+            "baseline": {
+              "type": "number",
+              "maximum": 1000000000.0,
+              "minimum": -1000000000.0,
+              "title": "Baseline"
+            },
+            "candidate": {
+              "type": "number",
+              "maximum": 1000000000.0,
+              "minimum": -1000000000.0,
+              "title": "Candidate"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "baseline",
+            "candidate"
+          ],
+          "title": "HoldoutPair"
         },
         "HubIdentity": {
           "properties": {
@@ -140509,6 +144110,14 @@
               },
               "type": "array",
               "title": "Protected Paths"
+            },
+            "evolvable_paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Evolvable Paths",
+              "description": "the charter's evolve.evolvable_paths: a harness file of these is no protected_path sign"
             },
             "hidden_checks": {
               "items": {
@@ -152537,6 +156146,66 @@
           "type": "object",
           "title": "OpsPause"
         },
+        "OpsPlanIn": {
+          "properties": {
+            "plan_id": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Plan Id",
+              "description": "a stalled plan of the batch (a plan.stalled item)"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plan_id",
+            "reason"
+          ],
+          "title": "OpsPlanIn"
+        },
+        "OpsPriorityIn": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Run Id",
+              "description": "a queued run of the project"
+            },
+            "level": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Level",
+              "description": "its new priority: urgent, high, medium or low"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "level",
+            "reason"
+          ],
+          "title": "OpsPriorityIn"
+        },
         "OpsReadIn": {
           "properties": {
             "notification_id": {
@@ -152617,6 +156286,12 @@
               "type": "integer",
               "title": "Max Items",
               "description": "or once it holds this many items"
+            },
+            "plan_stall_minutes": {
+              "type": "integer",
+              "title": "Plan Stall Minutes",
+              "description": "a plan a system ran stalls, and a chat run has queued too long, after this many quiet minutes",
+              "default": 30
             }
           },
           "type": "object",
@@ -154634,6 +158309,7 @@
                 "question",
                 "browser",
                 "command",
+                "evolve",
                 "local"
               ],
               "title": "Kind"
@@ -155967,6 +159643,47 @@
               "type": "string",
               "title": "Text",
               "description": "the handoff, as evo_agents.hub.handoff builds it; markdown"
+            },
+            "difficulty": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "easy",
+                    "medium",
+                    "hard"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Difficulty",
+              "description": "the step's difficulty: its own, else as the hub's rules rate it; null without a step"
+            },
+            "recommended_model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended Model",
+              "description": "the model the project's Token strategy gives that difficulty now (routing.*)"
+            },
+            "routing_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Routing Reason",
+              "description": "why that difficulty and that model"
             }
           },
           "type": "object",
@@ -156486,15 +160203,15 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Account",
-              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
+              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts), or <login>/<name>: an account that member shares with the caller for the project (GET /v1/shared-accounts). The run takes it for its variable and keeps it, with no failover to another account, while a shared one's share lends it; null: the account is picked by the rules of the caller's policy for the project"
             },
             "profile": {
               "anyOf": [
@@ -156819,6 +160536,20 @@
               ],
               "title": "Note",
               "description": "retire: why"
+            },
+            "until_proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until Proposal Id",
+              "description": "add: the proposal it holds until; the merge of its change retires it"
             }
           },
           "type": "object",
@@ -156906,6 +160637,24 @@
                 }
               ],
               "title": "Retired Note"
+            },
+            "until_proposal_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until Proposal Id",
+              "description": "the proposal it holds until; its merge retires it"
+            },
+            "prompt_exposures": {
+              "type": "integer",
+              "title": "Prompt Exposures",
+              "description": "review runs that showed it in their prompt and are done",
+              "default": 0
             },
             "created_at": {
               "type": "string",
@@ -157885,6 +161634,18 @@
               ],
               "title": "Slot",
               "description": "where the web shows the page instead of on a page of its own: decide, a panel of the project's Decisions page; null for a page of its own"
+            },
+            "area": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area",
+              "description": "the area of the project's menu its item sits in: business (the Business cycle), development (the Development cycle), improvement, knowledge or apps; null when the manifest names none, which the web shows in apps"
             }
           },
           "type": "object",
@@ -159757,6 +163518,19 @@
               "type": "string",
               "format": "date-time",
               "title": "Added At"
+            },
+            "last_usage": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Usage",
+              "description": "its last usage: windows five_hour and seven_day (a weekly budget's among them), 0 to 1"
             }
           },
           "type": "object",
@@ -159912,6 +163686,57 @@
             "last_heartbeat_at"
           ],
           "title": "PoolNode"
+        },
+        "PoolPolicy": {
+          "properties": {
+            "strategy": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "round-robin",
+                    "weighted-round-robin",
+                    "fill-first",
+                    "quota-pacing"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Strategy"
+            },
+            "hard_reserve_pct": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 100.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hard Reserve Pct"
+            },
+            "five_hour_ceiling_pct": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 100.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Five Hour Ceiling Pct"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "PoolPolicy",
+          "description": "What PATCH .../account-pools/{pool} changes; a field left out stays as it is."
         },
         "PoolRequest": {
           "properties": {
@@ -160092,6 +163917,34 @@
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$",
               "title": "Name",
               "description": "1 to 40 characters, unique in the project in any case"
+            },
+            "strategy": {
+              "type": "string",
+              "enum": [
+                "round-robin",
+                "weighted-round-robin",
+                "fill-first",
+                "quota-pacing"
+              ],
+              "title": "Strategy",
+              "description": "how a run picks among the pool's accounts",
+              "default": "round-robin"
+            },
+            "hard_reserve_pct": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "title": "Hard Reserve Pct",
+              "description": "quota-pacing: the share of a weekly window kept back while another account has more",
+              "default": 10
+            },
+            "five_hour_ceiling_pct": {
+              "type": "integer",
+              "maximum": 100.0,
+              "minimum": 1.0,
+              "title": "Five Hour Ceiling Pct",
+              "description": "quota-pacing: the five-hour use above which an account waits while a cooler one is ready",
+              "default": 90
             }
           },
           "additionalProperties": false,
@@ -160255,6 +164108,28 @@
             "cost_month_usd"
           ],
           "title": "PrincipalCost"
+        },
+        "PriorityChange": {
+          "properties": {
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority",
+              "description": "the run's new priority: a worker claims urgent first, low last"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "priority"
+          ],
+          "title": "PriorityChange",
+          "description": "What POST /v1/projects/{p}/runs/{id}/priority changes of a queued run of the project."
         },
         "Probe": {
           "properties": {
@@ -166984,6 +170859,54 @@
           "title": "ProviderProbe",
           "description": "What the endpoint answered a call with the key: never the key, nor more than a line of its words."
         },
+        "ProviderQuota": {
+          "properties": {
+            "ok": {
+              "type": "boolean",
+              "title": "Ok"
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/QuotaUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the usage kept as the account's last"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "Z.ai's HTTP status; null when no answer came"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ok"
+          ],
+          "title": "ProviderQuota",
+          "description": "What POST .../{name}/quota answers: whether the quota was read and kept, and an error without the key."
+        },
         "PruneRequest": {
           "properties": {
             "project": {
@@ -167952,6 +171875,92 @@
             "end"
           ],
           "title": "QuietHours"
+        },
+        "QuotaUsage": {
+          "properties": {
+            "status": {
+              "type": "string",
+              "title": "Status",
+              "description": "allowed, or rejected once a window is used up"
+            },
+            "rate_limit_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rate Limit Type",
+              "description": "with rejected: the window used up"
+            },
+            "resets_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resets At",
+              "description": "with rejected: when that window resets"
+            },
+            "utilization": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Utilization",
+              "description": "the highest share used among the windows"
+            },
+            "windows": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/QuotaWindow"
+              },
+              "type": "object",
+              "title": "Windows",
+              "description": "five_hour and seven_day, as read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "title": "QuotaUsage"
+        },
+        "QuotaWindow": {
+          "properties": {
+            "utilization": {
+              "type": "number",
+              "title": "Utilization",
+              "description": "the share of the window's limit used, 0 to 1"
+            },
+            "resets_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resets At",
+              "description": "when it resets, UTC"
+            }
+          },
+          "type": "object",
+          "required": [
+            "utilization"
+          ],
+          "title": "QuotaWindow"
         },
         "RateLimitAnswer": {
           "properties": {
@@ -170522,6 +174531,92 @@
           ],
           "title": "RepoPath"
         },
+        "ReportIn": {
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "done",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "best_candidate_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Best Candidate Id"
+            },
+            "head_sha": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{7,64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Head Sha"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "holdout": {
+              "anyOf": [
+                {
+                  "patternProperties": {
+                    "^(replay|probe):[0-9]{1,19}$": {
+                      "$ref": "#/components/schemas/HoldoutPair"
+                    }
+                  },
+                  "type": "object",
+                  "maxProperties": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Holdout"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "title": "ReportIn",
+          "description": "The end of an evolution. ``holdout`` (target agent_config) holds the scores of the baseline and of the best\ncandidate on tasks of the holdout split, which the hub checks before it pins a new version of the profile."
+        },
         "ReportItem": {
           "properties": {
             "fingerprint": {
@@ -170592,15 +174687,15 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
                 }
               ],
               "title": "Account",
-              "description": "one of the caller's env secrets bound to the project, by name: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick"
+              "description": "one of the caller's env secrets bound to the project, by name, or <login>/<name> for one that member shares with the caller: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick"
             },
             "account_by_rule": {
               "type": "boolean",
@@ -171590,6 +175685,152 @@
               ],
               "title": "Error",
               "description": "why it did not rate or choose"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "plan",
+                    "rule",
+                    "role",
+                    "scorer",
+                    "fallback"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source",
+              "description": "where the difficulty came from: plan, rule, role, scorer or fallback; absent: the scorer"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why the hub gave the run its model"
+            },
+            "strategy": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "surplus-first",
+                    "cost-first",
+                    "quota-burn"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Strategy",
+              "description": "the Token strategy that chose it"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "ladder",
+                    "overflow"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "the ladder's model, or the overflow's"
+            },
+            "escalated_from": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "easy",
+                    "medium",
+                    "hard"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Escalated From",
+              "description": "the difficulty of the failed run before this one, when this one went one level up"
+            },
+            "gateway": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Gateway",
+              "description": "the gateway prefix of the chosen model; absent: native"
+            },
+            "quota": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Quota",
+              "description": "what the subscription had left when the hub chose: weekly_left and five_hour_used, 0 to 1"
+            },
+            "pending": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pending",
+              "description": "true: the hub left the rating to the worker's scorer"
+            },
+            "choices": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 1
+                  },
+                  "propertyNames": {
+                    "enum": [
+                      "easy",
+                      "medium",
+                      "hard"
+                    ]
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Choices",
+              "description": "while pending: the model of each difficulty the scorer may name"
             }
           },
           "type": "object",
@@ -171679,6 +175920,7 @@
                 "question",
                 "browser",
                 "command",
+                "evolve",
                 "local"
               ],
               "title": "Kind",
@@ -171921,6 +176163,18 @@
               ],
               "title": "State",
               "description": "idle and ended are a local run's alone: the turn ended and the person has the word; the session is over, or went silent for a day"
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority",
+              "description": "the order a worker claims the queued runs in, highest first, then the oldest: an agent's ask sets it, a writer changes it while the run is queued; a plan or step run has medium",
+              "default": "medium"
             },
             "lease_expires_at": {
               "anyOf": [
@@ -174568,6 +178822,117 @@
             "ladder": {
               "$ref": "#/components/schemas/RoutingLadder",
               "description": "the model of each difficulty"
+            },
+            "difficulty": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "easy",
+                    "medium",
+                    "hard"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Difficulty",
+              "description": "the difficulty the hub rated the run; null: the worker's scorer rates it"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "plan",
+                    "rule",
+                    "role",
+                    "scorer",
+                    "fallback"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source",
+              "description": "where the difficulty came from"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why that model"
+            },
+            "strategy": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "surplus-first",
+                    "cost-first",
+                    "quota-burn"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Strategy",
+              "description": "the Token strategy that chose it"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "ladder",
+                    "overflow"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "ladder or overflow"
+            },
+            "escalated_from": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "easy",
+                    "medium",
+                    "hard"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Escalated From",
+              "description": "the difficulty of the run before it, which failed, when this one went one level up"
+            },
+            "pending": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pending",
+              "description": "true: the worker's scorer rates the run among the ladder's models"
             }
           },
           "type": "object",
@@ -174576,7 +178941,7 @@
             "ladder"
           ],
           "title": "RunRouting",
-          "description": "The routing a claim carries while the project's policy has it on, for a run that names no model."
+          "description": "The routing a claim carries while the project's policy has it on, for a run that names no model. When the hub\nrated the run, every rung of the ladder is the model it chose, and ``difficulty`` says what it rated; while the\nrating waits for the scorer (``pending``), the ladder is the strategy's model of each difficulty."
         },
         "RunSkill": {
           "properties": {
@@ -174648,7 +179013,8 @@
                 "release",
                 "question",
                 "browser",
-                "command"
+                "command",
+                "evolve"
               ],
               "title": "Kind"
             },
@@ -178291,6 +182657,322 @@
             "projects"
           ],
           "title": "ShareWrite"
+        },
+        "SharedAccount": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "env_var": {
+              "type": "string",
+              "title": "Env Var",
+              "description": "the variable it sets"
+            },
+            "provider": {
+              "type": "string",
+              "enum": [
+                "claude",
+                "anthropic",
+                "openai",
+                "gitlab",
+                "github",
+                "notion",
+                "lark",
+                "ssh",
+                "other"
+              ],
+              "title": "Provider",
+              "description": "who it signs in to, read from its variable (``account_providers``)"
+            },
+            "category": {
+              "type": "string",
+              "enum": [
+                "model",
+                "service"
+              ],
+              "title": "Category",
+              "description": "model: the runtime's own sign-in, whose runs cost; service: any other"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects whose runs may take it"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it is bound to; empty for any worker of its owner"
+            },
+            "pools": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Pools",
+              "description": "the worker pools it is bound to, each node of each",
+              "default": []
+            },
+            "auth": {
+              "type": "string",
+              "enum": [
+                "token",
+                "oauth"
+              ],
+              "title": "Auth",
+              "description": "oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight",
+              "description": "0 to 1000: its share in a weighted-round-robin pool; 0 leaves it"
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priority",
+              "description": "0 to 1000: the lower, the sooner a fill-first pool takes it"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At",
+              "description": "when its owner paused it; null while it may be taken"
+            },
+            "cooldown_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Until",
+              "description": "until when it cools down after a usage limit"
+            },
+            "cooldown_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Reason",
+              "description": "why it cools down"
+            },
+            "last_leased_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Leased At",
+              "description": "when a run last took it"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "cooling",
+                "paused",
+                "expired",
+                "needs-relogin"
+              ],
+              "title": "State",
+              "description": "ready, cooling, paused, expired or needs-relogin (an OAuth account whose refresh token was refused: run oauth-login again), now"
+            },
+            "last_usage": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AccountUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what a run's CLI last said of its usage; null before any"
+            },
+            "last_usage_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Usage At",
+              "description": "when a run reported that usage"
+            },
+            "runs_24h": {
+              "type": "integer",
+              "title": "Runs 24H",
+              "description": "the runs that took it in the last 24 hours"
+            },
+            "runs_7d": {
+              "type": "integer",
+              "title": "Runs 7D",
+              "description": "the runs that took it in the last 7 days"
+            },
+            "cost_24h_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost 24H Usd",
+              "description": "what those runs cost in the last 24 hours, in USD, from their usage; null for a service account"
+            },
+            "cost_7d_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost 7D Usd",
+              "description": "what those runs cost in the last 7 days, in USD, an estimate; null for a service account"
+            },
+            "held_by": {
+              "items": {
+                "$ref": "#/components/schemas/HeldBy"
+              },
+              "type": "array",
+              "title": "Held By",
+              "description": "the runs a worker holds now with it"
+            },
+            "shares": {
+              "items": {
+                "$ref": "#/components/schemas/CredentialShare"
+              },
+              "type": "array",
+              "title": "Shares",
+              "description": "its shares not revoked, newest first"
+            },
+            "cost_by_principal": {
+              "items": {
+                "$ref": "#/components/schemas/PrincipalCost"
+              },
+              "type": "array",
+              "title": "Cost By Principal",
+              "description": "its runs and their cost by the member each was made for; for a member it was shared with, theirs"
+            },
+            "gateway": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GatewayAccount"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a provider account's endpoint and what the model gateway last said of it; null for a secret"
+            },
+            "weekly_budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weekly Budget Usd",
+              "description": "the USD its owner gives it a week, turned into its seven_day window; null for none"
+            },
+            "weekly_reset_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weekly Reset At",
+              "description": "an instant its budget's weeks start from, every 7 days; null: Monday 00:00 UTC"
+            },
+            "owner": {
+              "type": "string",
+              "title": "Owner",
+              "description": "the login of the member who owns it and shares it"
+            },
+            "pick": {
+              "type": "string",
+              "title": "Pick",
+              "description": "how ``account`` of a dispatch names it: <owner>/<name>"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "env_var",
+            "provider",
+            "category",
+            "projects",
+            "workers",
+            "auth",
+            "weight",
+            "priority",
+            "paused_at",
+            "cooldown_until",
+            "cooldown_reason",
+            "last_leased_at",
+            "expires_at",
+            "state",
+            "last_usage",
+            "last_usage_at",
+            "runs_24h",
+            "runs_7d",
+            "cost_24h_usd",
+            "cost_7d_usd",
+            "held_by",
+            "shares",
+            "cost_by_principal",
+            "owner",
+            "pick"
+          ],
+          "title": "SharedAccount",
+          "description": "An env account another member shares with the caller, as GET /v1/accounts/{name}?owner= gives it: its figures\nare the caller's own runs alone, its shares those that lend it to the caller, and its projects those of these\nshares its owner binds it to."
         },
         "Sign": {
           "properties": {
@@ -185358,6 +190040,67 @@
           ],
           "title": "TaskIn"
         },
+        "TaskInput": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "replay",
+                "probe"
+              ],
+              "title": "Kind"
+            },
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "ref": {
+              "type": "string",
+              "title": "Ref"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha"
+            },
+            "prompt": {
+              "type": "string",
+              "title": "Prompt"
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Paths"
+            },
+            "verify": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Verify"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "id",
+            "ref",
+            "base_sha",
+            "prompt",
+            "paths",
+            "verify"
+          ],
+          "title": "TaskInput",
+          "description": "A light task as the trusted daemon runs it, with its verify."
+        },
         "TaskPull": {
           "properties": {
             "repo": {
@@ -190624,8 +195367,8 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"
@@ -190743,8 +195486,8 @@
               "anyOf": [
                 {
                   "type": "string",
-                  "maxLength": 64,
-                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                  "maxLength": 165,
+                  "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9_-]{0,99}/)?[a-z0-9][a-z0-9._-]{0,63}$"
                 },
                 {
                   "type": "null"

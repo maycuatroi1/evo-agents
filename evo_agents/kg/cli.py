@@ -315,8 +315,8 @@ def cmd_hook_post_tool(args) -> int:
 
 def cmd_hook_post_search(args) -> int:
     """PostToolUse hook for Grep and rg or grep in Bash: what the graph links to the matched lines, as
-    additionalContext (``evo_agents.kg.post_search``)."""
-    from evo_agents.kg.post_search import run
+    additionalContext, as the hub answers it (``evo_agents.kg.post_search``)."""
+    from evo_agents.hub.kg_grep_hook import run
 
     return run(args)
 

@@ -362,3 +362,10 @@ def test_compose_runs_the_kg_builds_on_two_workers_of_their_own_and_the_rest_on_
     assert {"EVO_HUB_WORKER_MEMORY", "EVO_HUB_WORKER_KG_MEMORY"} <= listed_in_env_example()
     assert kg["networks"] == {"default": {}, "platform": {}}, "a build calls no model: not on the gateway's network"
     assert worker["networks"] == {**kg["networks"], "gateway": {}}
+
+
+def test_compose_caps_the_api_memory_with_a_variable_of_the_env_file():
+    """The api holds the graphs it reads in memory: without a limit, a leak once took the whole host's memory."""
+    api = compose()["services"]["api"]
+    assert api["mem_limit"] == "${EVO_HUB_API_MEMORY:-7g}"
+    assert "EVO_HUB_API_MEMORY" in listed_in_env_example()

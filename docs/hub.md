@@ -101,7 +101,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle`; `PUT /v1/skills/global/{name}/audience`, for hub admins |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
-| knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, `DELETE .../sources/{source}`, and the web's `.../graph`, `.../shape`, `.../nodes`, `.../node`, `.../neighbourhood`, `.../entity-graph`, `.../entity-graph/around`, `.../entity`, `.../relation`, `.../clusters`, `.../cluster`, `.../whole`, `.../review`, `POST .../review/{fingerprint}/dismiss`, `.../decisions` (`GET`, `POST`), `POST .../decisions/{number}/{accept,reject,undo}`; the worker on duty's are under worker protocol |
+| knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, `POST .../grep-links` (the note after a grep, `docs/kg.md`, After grep), `DELETE .../sources/{source}`, and the web's `.../graph`, `.../shape`, `.../nodes`, `.../node`, `.../neighbourhood`, `.../entity-graph`, `.../entity-graph/around`, `.../entity`, `.../relation`, `.../clusters`, `.../cluster`, `.../whole`, `.../review`, `POST .../review/{fingerprint}/dismiss`, `.../decisions` (`GET`, `POST`), `POST .../decisions/{number}/{accept,reject,undo}`; the worker on duty's are under worker protocol |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}`; worker pools: `GET` and `POST /v1/worker-pools`, `GET` and `PATCH /v1/worker-pools/{name}`, `GET` and `POST .../{name}/tokens`, `POST .../{name}/tokens/{id}/revoke`; for a pool node's token, `GET /v1/worker/skills` and `GET /v1/worker/skills/global/{name}/bundle` (`docs/workers.md`, Pools) |
 | secrets | `GET /v1/secrets`, `PUT`, `PATCH` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
@@ -737,9 +737,11 @@ hub once (`projects.systems_seeded_at`): `orchestrator`, named "Orchestrator", a
 on a profile the hub creates for it, `@<project>-orchestrator`, with its ops off.
 
 `ops` of the spec says how the Orchestrator of the default system handles the project's operations events (plan
-hub-steward): `enabled` (false), `debounce_minutes` (5, from 0 to 1440) and `max_items` (20, from 1 to 1000). A spec
-with no `ops` reads as ops off and is stored as it is. With ops on, the hub reads the project's operations events
-(`run.ended`, `decision.opened`, `curator.paused`, `worker.health`) after a cursor of its own, and puts each that no
+hub-steward): `enabled` (false), `debounce_minutes` (5, from 0 to 1440), `max_items` (20, from 1 to 1000) and
+`plan_stall_minutes` (30, from 1 to 1440; a spec without it reads 30). A spec with no `ops` reads as ops off and is
+stored as it is. With ops on, the hub reads the project's operations events (`run.ended`, `decision.opened`,
+`curator.paused`, `worker.health`, `plan.stalled`, `run.queued_long`, `mention.refused`) after a cursor of its own,
+and puts each that no
 rule of tier 0 handled in the open batch of its cause key (kind, cause, then the worker for a cause of the
 environment, else the plan; a worker's `disk_low` alone keys by its machine, `host:<hostname>`, since the workers of
 one machine share its drive); a batch closes `debounce_minutes` after it opened or once it holds `max_items`, and one
@@ -747,15 +749,38 @@ whose items tier 0 all handled closes empty, with no run. `evo-agents hub system
 --project P` reads the ops of a system and its batches; pausing (admin) holds closed batches, and the queue still
 gathers.
 
+The same pass every minute writes two of those events, with no model (plan orchestrator-keeps-plans-moving):
+`plan.stalled` for an active plan a trace names (`system_traces.plan_id`) that has a ready step (pending or
+in_progress, every depends_on done), no plan run or step run active, no trace of it with a run queued, held, in
+review or parked, and neither a new revision nor a move of one of its traces for `plan_stall_minutes`; once a stall,
+again after a new revision or a new run. A plan of the Curator never stalls here. `run.queued_long` says a chat run
+still waits for a slot `plan_stall_minutes` after it was queued, once a run. `mention.refused` says a mention or an
+ask found no node that can take its run; one an ops thread's run made writes none, or its refusal would wake it
+again. Each payload holds ids and states only, and tier 0 handles none of them. A trace with no plan takes the plan
+a brief of an ask in it refs (`plan:<id>`), or the plan of a step a run of it marks with plan_step, at the plan's
+revision then; a trace that has a plan keeps it.
+
 Ops threads. For each closed batch with items left, the hub opens one thread in the chat `Ops: <slug>` of the default
 system, as the person who wrote the system, and mentions its Orchestrator with a summary of the batch: each item, its
-cause, a short diagnosis, and the `evo-agents hub inbox` command that shows it. No transcript goes in. The batch is
+cause, a short diagnosis, and the `evo-agents hub inbox` command that shows it. A `plan.stalled` item names the plan,
+its revision, its ready steps, its last trace and the `evo-agents hub plan handoff PLAN --step KEY` command that tells
+what the steps before them did; a `run.queued_long` item names the run, the node whose slot it waits for, how many
+queued runs that node takes before it, and its priority. No transcript goes in. The batch is
 then `running` until the runs of its thread end, and `done` after. A cause key that closed 3 batches in 7 days is
 `recurring`, and the summary asks the Orchestrator to fix the system (a finding for the Curator, or a task) instead of
 running the work again. In the thread the Orchestrator acts with `evo-agents worker ops ...` on a worker
 (`docs/workers.md`, Ops threads) or the tool `ops_action` on the hub runtime (Hub runtime): run a failed run again,
-hand it to a healthy worker, answer a stuck wait, resume the Curator its breaker paused, mark a notice read, or write
-a finding. It may also reassign the work to an agent of the system and ask the owner at most one decision a batch.
+hand it to a healthy worker, answer a stuck wait, resume the Curator its breaker paused, mark a notice read, write
+a finding, give a queued run of the project another priority (`evo-agents worker ops priority RUN LEVEL`, LEVEL one of
+`urgent`, `high`, `medium`, `low`: the order a worker claims its queue in; 409 for a run that is not queued), or hand
+a stalled plan of the batch again to the entry agent of the default system (`evo-agents worker ops plan-dispatch
+PLAN`). `plan-dispatch` does what `POST .../plans/{plan_id}/system-dispatch` does for a person (A plan run in a
+system), in the name of the system's owner, the person at the origin of the thread's work, with the same refusals:
+409 while a trace of the plan has a run that has not ended, while a plan run or a step run of it is active, when it
+has no pending step, and for a plan the Curator made; a plan that is no `plan.stalled` item of the batch gets 404.
+Each action posts a `Decision:` line in the thread, writes an audit row (`ops.priority`, `ops.plan_dispatch`, and
+`run.dispatch_system` for the dispatch itself) and marks the items it handled `handled_by` orchestrator. It may also
+reassign the work to an agent of the system and ask the owner at most one decision a batch.
 It never decides for the owner what is theirs: credentials, scope, spending over the cap, or what cannot be undone
 without a backup.
 
@@ -1200,7 +1225,7 @@ The tools do what the worker's commands do, through the same code:
 | `agent_forward` | `evo-agents worker agent forward` |
 | `escalate` | `evo-agents worker escalate` |
 | `orchestrator_answer`, `orchestrator_reassign`, `orchestrator_ask_owner` | `evo-agents worker triage answer`, `triage reassign`, `triage ask-owner` |
-| `ops_action` (`action`: `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read`, `finding`), in an ops thread only | `evo-agents worker ops rerun`, `redeliver`, `answer-wait`, `curator-resume`, `read`, `finding` |
+| `ops_action` (`action`: `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read`, `finding`, `priority`, `plan_dispatch`), in an ops thread only | `evo-agents worker ops rerun`, `redeliver`, `answer-wait`, `curator-resume`, `read`, `finding`, `priority`, `plan-dispatch` |
 | `memory_write` | a memory of the project, under the rules of `memory_write` |
 
 A tool that is refused answers the model with the reason, and the turn goes on. Repos, branches, pull requests and
@@ -1296,6 +1321,12 @@ could hand no Orchestrator run or whose Orchestrator ended without an answer. An
 budget does not refuse it, and the work the Orchestrator reassigns keeps its hop. An agent with no `orchestrates` edge
 keeps the triage it had; one with only an `escalates` edge escalates to that Orchestrator and has no other thread.
 
+The Orchestrator of a project's default system also gets the ops threads (Agent systems, Ops threads): the batches of
+the project's operations events, `plan.stalled`, `run.queued_long` and `mention.refused` among them. It keeps a plan
+moving with `evo-agents worker ops plan-dispatch PLAN`, which hands a stalled plan again to the system's entry agent,
+and orders the queue with `evo-agents worker ops priority RUN LEVEL`. Neither adds a node or a slot, and neither
+decides for the owner what is theirs; `limits.ops_daily_usd` still caps what its ops threads spend.
+
 Runs that still wait on each other (each open wait of an ask, `decisions.awaits_run_id`, points from the run that
 holds it to the last run of the chain of resumed runs it awaits) are found by the reaper on each pass
 (`wait_cycles.py`). It breaks each cycle once, at the run below, the one at the deepest hop: that run's wait is
@@ -1339,10 +1370,10 @@ minute) or `refused`, with a reason and the run it started. The outcome stays em
 that a fire queued carries `runs.cron_job_id`. The hub uses that link to count a job as busy and to sum, in the list,
 what its runs cost in the last 24 hours.
 
-In the web app, a project's Cron jobs page (`/p/{project}/cron-jobs`, in the Delivery fold) lists the jobs with their
-schedule in words, next fire, last fire and its run, and cost over 24 hours. A writer makes a job there; its owner
-edits it; its owner or an admin of the project runs it now, pauses, resumes or deletes it. A job's fires open in a
-sheet (`?job=<name>`).
+In the web app, a project's Cron jobs page (`/p/{project}/cron-jobs`, in the Development cycle of the menu) lists the
+jobs with their schedule in words, next fire, last fire and its run, and cost over 24 hours. A writer makes a job there;
+its owner edits it; its owner or an admin of the project runs it now, pauses, resumes or deletes it. A job's fires open
+in a sheet (`?job=<name>`).
 
 ### Firing
 
@@ -1493,8 +1524,10 @@ runs), at most three agents a message, the fourth and on refused in the thread. 
 project, dispatched by the person who mentioned it, and pinned to a worker of that person, or one another member
 shares with them in the project (their own first), that the profile allows,
 online, with a free slot (its held runs and the runs queued for it count) and a daemon that runs chat runs, the one with
-a checkout of more of the project's repos first; the person must be a writer on the profile's project. No such worker,
-and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that declares
+a checkout of more of the project's repos first; the person must be a writer on the profile's project. When the ready
+nodes of the agent's pool only lack a free slot, the run queues for the one it would have picked, the hub says in the
+thread how many runs are ahead of it, and it starts when that node has a slot (`docs/workers.md`, Handing work to
+another agent). Any other lack, and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that declares
 `chat_runs: run_as`, such as @ba of the core plugin srs, goes instead to a worker of the member the project enabled the
 type under, whoever mentioned it, and the session stays the mentioner's (`docs/plugins.md`, Agent types). The mention
 keeps the run it made (`run_id`) or why it made none. Each (thread, agent, person) is one session: a message to the
@@ -1966,7 +1999,10 @@ UTF-8 bytes / 3, which is more than a tokenizer counts for English or Vietnamese
 goal, the steps it depends on and the steps not done go first, then the other steps done with their Decision lines,
 then the rest of the evidence; a part is left out whole, never cut in the middle of a Decision line, and a note at the
 end names what was left out and points to `plan_show`. The same revision and budget give the same text, and reading
-it needs what reading the plan needs: a grant on the project and a sink that clears the plan's label.
+it needs what reading the plan needs: a grant on the project and a sink that clears the plan's label. With `--step`,
+the answer also has the step's `difficulty`, the model the project's Token strategy would give it now
+(`recommended_model`, from the policy's `routing` whether it is on or not, and the reader's own model accounts) and
+`routing_reason`; the CLI and the MCP tool add a line `Difficulty: ...; recommended model: ...` after the text.
 
 A copy looks like this:
 
@@ -2211,14 +2247,32 @@ evo-agents hub run finish 42                                  # end the chat: th
 ```
 
 A run dispatched without `--model` (and without a profile that allows exactly one model) runs on the model its runtime
-picks, unless the project's policy has the section `routing` on (`evo-agents hub policy`, off by default). Then the
-claim of a step, plan, author or task run on claude-code carries the policy's scorer and ladder, and the worker rates
-the run easy, medium or hard before its agent starts, with one short turn of the scorer model on the run's prompt, and
-runs it on the ladder's model for that difficulty (`docs/workers.md`, Model routing). The hub calls no model at the
-dispatch. A model `--model` names that the profile's allowlist leaves out is refused (422) as before, and the Judge of
-the merge queue and of the Curator keeps the model `evo_agents/hub/judges.py` gives it. `run show --json` has the
-run's `routing`, what the routing did (the difficulty, whether the scorer rated it, its cost and the model it chose),
-and for every run `model_used`, the model its runtime used, also with routing off.
+picks, unless the project's policy has the section `routing` on (`evo-agents hub policy`, off by default). Then the hub
+applies the project's Token strategy to a step, plan, author, task, chat or question run on claude-code, opencode,
+codex or any, at its claim and before its credentials are leased (`evo_agents/hub/server/token_strategy.py`):
+
+- It rates the run easy, medium or hard with no model call. A step with `difficulty` in the plan has it. A step about a
+  migration or security, the plan's last step when it merges or deploys, and a prescribed step (no `acceptance`) are
+  hard. A step that changes documents alone, or exports, is easy, and any other step medium. A plan run is hard, an
+  author run medium, a short question easy. A free prompt is rated by its words, then by the name of its agent; one
+  that says neither is left to the worker's scorer (`routing.scorer`), or is medium when the scorer is `off`.
+- A run of a step whose last run failed on easy or medium, or a retry of such a run, goes one level up.
+- `routing.strategy` takes the model: `surplus-first` (the default) runs the `ladder` while the subscription has more
+  than `hard_reserve_pct` (10) of its week left and its five-hour window is under `five_hour_ceiling_pct` (90), and
+  past that gives easy and medium runs the `overflow` model; `cost-first` always gives easy and medium runs the
+  overflow; `quota-burn` gives every run the ladder's hard model while the subscription is out of its reserve. The
+  quota is the run's account pool's, or its dispatcher's env model accounts, as `hub accounts` reads them.
+- A model is the runtime's own name (`haiku`, `sonnet`, `opus`) or a gateway model, `<prefix>/<model>`. A gateway model
+  gives the run a gateway key (`runs.gateway_provider`) when the gateway serves its prefix, the worker's daemon runs
+  gateway runs and the run may use an account of it; else the run takes the ladder's model. A pool with native and
+  provider accounts so leases each run what its model needs. A runtime's own name is Claude Code's, so a run on
+  opencode or codex keeps its own model, and a model the profile's allowlist leaves out is not taken.
+
+The hub keeps what it decided as the run's `routing` (the difficulty, `source`, `reason`, `strategy`, `branch`,
+`escalated_from`, `gateway` and `quota`); the worker's reports keep it and add what the scorer did. A model `--model`
+names that the profile's allowlist leaves out is refused (422) as before, and the Judge of the merge queue and of the
+Curator keeps the model `evo_agents/hub/judges.py` gives it. `run show --json` has the run's `routing`, and for every
+run `model_used`, the model its runtime used, also with routing off.
 
 `run author` queues an author run (`POST /v1/projects/{project}/author-runs`): one run, on a node of the pool of its
 agent that has the project's harness checked out, whose agent writes an execution plan from REQUEST
@@ -2665,7 +2719,10 @@ its kind (`evo_agents/hub/tiers.py`); a protected path of the charter, CI, lint 
 that loosen a test, change a plan's verify or change CI are tier 3, always. In a project with a graph on the hub, a
 path the graph has no file for, one the latest measure of its health found missing, stale or deleted (each source's
 `off`, below), or any path while the graph cannot be read, makes it at least tier 1, the reason saying which
-(`evo_agents/hub/server/change_tiers.py`). A proposal like one the owner rejected in
+(`evo_agents/hub/server/change_tiers.py`). A protected file the graph says a path reaches (`kg_impact`) makes a
+proposal at least tier 2; once its pull request is open, tier 3 only when the diff removes or changes the signature of
+a module-level name that file uses (`evo_agents/hub/api_surface.py`, at most 40 files read a pull request), or the hub
+could not read it. A proposal like one the owner rejected in
 the last 30 days is dropped unless its evidence doubled. When the review run ends, its tier 2 proposals with the most
 evidence become Inbox items of the owner (notifications of kind `proposal`), up to the charter's
 `max_decisions_per_day` a day; the others wait in the list. The project's admins answer:
@@ -2752,8 +2809,9 @@ id starts with `curator-` is made this way alone (a member's put of one is 409).
 Curator's plan or a plan run of it (409): the night shift alone runs it, at any hour. `evo-agents hub curator proposal plan ID`
 (`POST .../curator/proposals/{id}/plan`, the project's admins alone, audited as curator.plan) does the same for an
 accepted proposal of a tier the charter plans that has no change yet, such as one of tier 2 accepted while that tier
-still recorded the answer alone; one not accepted, of a tier the charter does not plan or with a change already is 409
-with the reason.
+still recorded the answer alone, or whose change is stuck (`open` or `closed` with no plan, branch or pull request:
+that change becomes `planned` in place); one not accepted, of a tier the charter does not plan or with a live change
+already is 409 with the reason, and so is a stuck one whose draft still cannot become a plan.
 
 Each night, after its review run, the night shift queues the judge run of a change waiting for one, else the Builder
 of a planned change: a plan run of its plan, pinned to the worker on duty, with the night's caps. A change on GitHub
@@ -2773,7 +2831,8 @@ branch changes nothing" (audit row `curator.empty`, ledger line `closed` by the 
 GitHub with the workers' App (on GitLab the push opened the merge request) and reads its files for the signs of score
 hacking (`diff_signs.hack_signs`): an assertion removed, a skip or xfail added, a threshold of a test changed, a plan's
 verify or a file it runs changed, CI or the configuration of lint and tests changed, a lint warning silenced, `__eq__`
-overloaded, an exit in a test, a protected path of the charter touched, and the gaps a security review found: an
+overloaded, an exit in a test, a protected path of the charter touched (a harness file the charter's
+`evolve.evolvable_paths` names raises no such sign, its added lines still read for the others), and the gaps a security review found: an
 assertion compared with its own file's lines alone (moved to another file, or under a guard that never runs, it is
 removed), an expected value changed on a line of its own, a golden, snapshot or data file of the tests changed, an
 assertion's failure caught, a skip aliased or imported on its own, an exit through `getattr(os, "_exit")` and the like,
@@ -2832,6 +2891,17 @@ run reads, and posts its verdict with `POST /v1/worker/runs/{id}/verdict`, both 
 keeps its SHA-256 (`curator_changes.judge_key`, schema 0019) and forgets it with the verdict, so the worker token alone,
 which code on the worker's machine can read, gets 403 there. A worker token gets 403 on the charter's routes, as on
 every route of a project.
+
+**A change in several repos** (schema 0256, `evo_agents/hub/server/change_repos.py`). An accepted proposal whose paths
+and draft name several repos of the project, each on GitHub, becomes one plan in them all (`judge.curator_repos_plan`),
+the repos ordered owner before consumer by the seams of the project's graph, and a row of `curator_change_repos` for
+each, with the repos merged before it. The change itself keeps the first repo. The Builder waits until the ruleset of
+each repo was checked; after it the hub opens a pull request in each repo, queues the judge runs one repo at a time (each
+judge run's inputs and verdict are of its own repo), and merges a repo's pull request only once each repo it depends on
+merged (`merge_waits`). The change is judged when every repo's Judge passed and merged when every pull request merged.
+A write of the plan that drops or adds a repo, or a step in a repo the plan does not name, is refused (409). The
+change's view lists its repos (`repos`: each with its position, `depends_on`, state, pull request and verdict; empty for
+a change in one repo).
 
 ## The Curator's replays
 
@@ -3011,6 +3081,28 @@ evo-agents hub curator probe retire 3 --note "replaced by a hook"
 evo-agents hub curator probe report --weeks 2 --json    # keys weeks, unprobed, fixes, replacements
 ```
 
+## The Curator's evolutions
+
+What `docs/curator.md`, Evolving a harness, describes (schemas 0256 and 0257, `evo_agents/hub/evolve.py`,
+`evo_agents/hub/server/evolve.py`, `evolve_runs.py`, `evolve_report.py`). A writer of the project starts an evolution
+with `POST /v1/projects/{p}/curator/evolve` (`target` `git` with `repo` and `paths`, each one of the charter's
+`evolve.evolvable_paths`, or `agent_config` with `system_id` and `agent`; `proposal_id` names the accepted proposal
+whose planned change takes the branch), 409 while `evolve.enabled` is false; any reader lists them with `GET
+.../curator/evolve` (newest first, by `state`) and reads one with its candidates with `GET .../curator/evolve/{id}`.
+The CLI is `evo-agents hub curator evolve run|status|show`, and the Curator's page shows them.
+
+The hub picks the tasks once: `evolve.tasks` light replay tasks of the select split and `evolve.probes` active probes
+of its paths, never a holdout task; an owner's view never holds a verify. Its run, of kind `evolve`, is queued as the
+night shift's runs are, with the cost cap of `evolve.budget.max_cost_usd`, at most one active a project
+(`runs_active_evolve_key`); while the night shift's gate is shut the evolution stays `queued` with why. The worker
+reads its inputs and posts with the run's own key alone (`X-Evo-Evolve-Key`, kept as a SHA-256): a baseline arm goes
+into `curator_evolve_arm_cache` under `evolve.arm_key` and is read again by the next evolution; a candidate into
+`curator_evolve_candidates`, unique by its digest, after which the hub recomputes the front; the report ends it. A
+`git` evolution's branch becomes the planned change of its proposal, which goes on as a Builder's would; an
+`agent_config` evolution's best candidate becomes the profile's next version only when its holdout results hold
+(`system_curation.holdout_verdict`), and the worker, which reads no holdout task, sends none yet, so such an evolution
+ends done with nothing pinned and says why. A run that ends before its report fails its evolution.
+
 ## The Curator's history run
 
 Each night, after its review run, the night shift reads the project's sessions and runs with a cheap model, which
@@ -3160,8 +3252,16 @@ them). The prompt of a review run shows the live entries of its lenses and those
 harmful first, 40 at most; `GET .../curator/playbook` (reader), the MCP tool `curator_playbook` and `evo-agents hub
 curator playbook` list them.
 
+The hub keeps the playbook itself too (schema 0256). An entry added with `until_proposal_id` (`--until-proposal ID`),
+or whose text says `until proposal #12 lands`, holds only until that proposal's change merges: the merge retires it.
+The prompt of a review run records the entries it showed (a run event `playbook_shown`), and when the run ends done
+each of them counts one more `prompt_exposures`; an entry shown in the charter's `evolve.exposure_limit` review runs
+(30 by default, 0 for never) that no run found helpful is retired. Both retires are deltas `retire` of actor `curator`
+with no run.
+
 ```sh
 evo-agents worker playbook add --lens cost --text "Count cache reads before tokens" --evidence transcript:ID:40
+evo-agents worker playbook add --text "Pin the runner" --until-proposal 12 --evidence run:41:7
 evo-agents worker playbook helpful pb-3 --evidence run:41:7      # once a run
 evo-agents worker playbook retire pb-2 --note "the figures count it now"
 evo-agents hub curator playbook --project demo                   # the live entries, the most helpful first
@@ -3510,8 +3610,9 @@ to the strongest claim: the project whose harness root it is, whatever lists it 
 kg bind --project <name> <dir>` bound it to, among those listing it; else the one project listing it. Anything else, two
 projects with one harness root among it, is refused rather than guessed, and a memory synced with one project never
 moves to another by itself. When both sides changed a file, the hub's version keeps the name and this machine's lands
-next to it as `<name>.conflict-<host>.md`. Deletions cross only with `--prune`. `evo-agents hub memory search "a
-phrase"` searches what you see. The plugin pulls at SessionStart and pushes at Stop; in the session of a run's
+next to it as `<name>.conflict-<host>.md`. Deletions cross only with `--prune`; a pull with it also removes the
+MEMORY.md line of each file it deletes. `evo-agents hub memory search "a phrase"` searches what you see. The plugin
+pulls at SessionStart, pruning only files that did not change here, and pushes at Stop; in the session of a run's
 agent on a worker (`EVO_RUN_ID` set) Stop pushes nothing, since nobody reviews that unattended session.
 
 **Audience of memories.** A memory derived from chat messages carries the audience of those chats
@@ -4185,7 +4286,40 @@ before it died is collected, not frozen, and no collection walks more than what 
 collection at the end walked the whole new snapshot instead, 9 seconds of a stalled loop for the largest graph. A
 snapshot has no reference cycle, so one replaced is freed though frozen; in the api it is freed by a thread of its own,
 a part at a time with the GIL given up in between (`evo_agents.kg.pacing.free_aside`, from `Snapshot.__del__`), as
-freeing it in one go where it was dropped held the loop for seconds too.
+freeing it in one go where it was dropped held the loop for seconds too. A freeze also takes the objects of the requests running at that
+moment, and a reference cycle among them is never collected: one that holds a snapshot keeps the whole graph. So
+nothing a reader holds forms a cycle with a snapshot or its view: a view makes a ranker for each search
+(`SnapshotView.ranker`), as a view that kept the ranker holding it was such a cycle, and the api grew by a graph at
+each build until the host ran out of memory. Each `kg snapshot loaded` line counts the snapshots the api replaced or
+dropped that are still in memory (`lingering`): a reader holds one until it is done, so it is 0 or a few, and a count
+that grows with the builds is a snapshot held for good. The compose file caps the api's memory with
+`EVO_HUB_API_MEMORY`, default `7g`.
+
+The api keeps its snapshots within that limit (`SnapshotCoordinator._ease`). A large graph's snapshot is gigabytes,
+and a build's new snapshot is made beside the old one: on a hub whose largest graph's snapshot took about 4.4 GB, two
+large graphs held, or the largest loaded again beside itself, went over a 7 GB limit; the kernel killed the api, and
+the first load after each restart climbed by a gigabyte a minute, as a leak would. So while a load runs, its thread looks
+at the api's resident memory once a second (`kg_snapshots.tend`, `PRESS_EVERY`), and past 75% of the cgroup's limit
+(`PRESSURE`) the loop drops one snapshot: a draft branch's first, then the projects read least recently, and only then
+the old snapshot of a project being loaded again, whose readers then wait for the new one; the project read last keeps
+its snapshot otherwise. It drops the next only once the one before is freed (`lingering`, `pacing.freeing`), and each
+drop is logged as `kg snapshot dropped for memory` with `resident_mb` and `limit_mb`; `kg snapshot loaded` gives
+`resident_mb` too. The thread that frees snapshots aside hands what the C allocator kept back to the system once it
+has nothing left to free (`pacing.give_back`, glibc's `malloc_trim`): the allocator kept a gigabyte of a freed graph,
+counted in the api's memory as if it were still held. A snapshot holds one object for each value its rows repeat
+(`snapshot.Shared`): an edge's ends are the node ids, its relation, status and label one object each. With it and the
+full-text index's flat postings the same graph's snapshot takes about 2.9 GB. Loaded again eight times in a row under a
+7 GB limit, each load peaked at about 5.0 GB, under the 5.4 GB of 75%, so the old snapshot was kept and its readers did
+not wait; between loads the api went back to 3.4 to 4.2 GB, not growing, and `malloc_trim` took 0.1 to 0.6 seconds
+(`kg memory given back`, `trim_ms`). At 7g that holds only while the largest graph is about all the api holds: with
+other graphs read beside it, a build of the largest can still drop its old snapshot, and its readers then wait the whole
+load, two to three minutes, after each build. With a limit of twice the largest snapshot and some, a build swaps that
+graph without its readers waiting.
+
+A load gives its connection back as soon as the rows are read (`kg_graph_rows.fetch_graph`): the rows are put
+together (`assemble_graph`, minutes on a large graph, in a paced thread) and the snapshot made with none held. Before,
+the connection that read the rows stayed out, idle in its transaction, while they were put together, so the loads that
+follow an api start (`READS` of them at once) held the pool's connections from the heartbeats and claims.
 
 What holds the pool is in the api's log. The pool times each connection it gives out (`evo_agents.hub.db.TimedPool`):
 one held 2 seconds or more is logged as `pool connection held` with its `holder`, the method and path of the request
@@ -4194,6 +4328,25 @@ request that timed out waiting is logged as `pool timeout` with its own holder, 
 out at that moment, longest held first, each with its holder and `held_ms`. A turn of the event loop that took a
 second or more is logged as `event loop stalled` with `stalled_ms`: a burst of timeouts with no long hold in `out`
 but stalls beside it is the loop starved, not the pool too small.
+
+The workers' heartbeats and claims do not take their connections from that pool: the api opens a second one for them
+alone (`db.HEARTBEAT_PATHS`, `EVO_HUB_HEARTBEAT_POOL_SIZE`, default 3), and the check of a worker's token on those
+two paths reads through it too (`db.engine_for`). Each heartbeat or claim holds a connection for a few queries, and
+a claim waiting for a run holds none. With one pool, bursts of `PoolTimeout` on both paths still came with the
+graph loads after the loads gave their connections back: the requests caught in their transactions while the loop
+was slow held the main pool, and a worker that cannot heartbeat loses its runs' leases. Now whatever holds the main
+pool, a worker still gets a connection within `EVO_HUB_POOL_TIMEOUT`
+(`tests/hub/test_heartbeat_pool.py`). The heartbeat pool is made as the main one is, its check, timeout and
+keepalives the same, so it reconnects after Postgres restarts too. `/v1/health` checks both: `heartbeat_db` is the
+`db` check on the heartbeat pool and fails the status as `db` does, and `pools` gives, for `api` and `heartbeat`, the
+largest size, the connections held, those free and the requests waiting for one. A paced load
+(`kg_snapshots.requests_waiting`) yields to the requests of both pools.
+
+The pool reconnects by itself after Postgres restarts. When Postgres goes away without closing its connections (its
+container killed on a stalled host, so no reset reaches the api), the pooled connections stay open with nobody
+answering: the check before a connection is handed out gives up after 5 seconds (`db.CHECK_TIMEOUT`) and the pool
+drops it and connects again, and libpq's TCP keepalives and user timeout (`db.CONNECT_KWARGS`, the LISTEN connection
+too) fail a connection whose peer stopped answering in about 25 seconds. Meanwhile `/v1/health` answers 503.
 
 Each load of the api also logs `kg snapshot load timed`, with the seconds of its phases (`slot`: waiting for a read
 slot, `rows`: reading the tables, `made`: making the snapshot) and, per phase, the longest time the event loop ran
@@ -4804,7 +4957,8 @@ process sees the same count; without Redis, or while it fails, each process coun
 ## Data access
 
 The api and the worker each hold one psycopg 3 connection pool and a SQLAlchemy 2.1 engine on it
-(`evo_agents/hub/db.py`). The engine keeps no connection of its own (`NullPool`): it takes each one from the pool
+(`evo_agents/hub/db.py`); the api holds a second, small one with its own engine for the workers' heartbeats and
+claims (`app.state.heartbeat_engine`, the pool section of the snapshots above). The engine keeps no connection of its own (`NullPool`): it takes each one from the pool
 (`async_creator=pool.getconn`), and the pool is made with `close_returns=True`, so a connection the engine closes goes
 back to it. The pool's size, timeout and health check govern both. To `NullPool` each checkout is a new connection, so
 the psycopg dialect's connect hook, which adds a handler that logs the server's notices, runs on every checkout of the
@@ -4928,6 +5082,7 @@ environment, never in a committed file.
 | `EVO_HUB_TRANSCRIPT_DAYS` | api, worker | days a session's transcript is kept after its latest part before the daily `hub.prune_transcripts` deletes its content; default `365`, from `30` to `3650`; `GET .../transcripts/usage` says it |
 | `EVO_HUB_SIGNAL_DAYS` | api, worker | days a signal is kept after it was measured before the daily `hub.prune_signals` deletes it; a batch item measured earlier is refused; default `400`, from `30` to `3650` (`docs/signals.md`) |
 | `EVO_HUB_POOL_MIN_SIZE`, `EVO_HUB_POOL_MAX_SIZE`, `EVO_HUB_POOL_TIMEOUT` | api, worker | the connection pool: its smallest and largest size and the seconds a request waits for a connection; defaults `1`, `10` and `10` |
+| `EVO_HUB_HEARTBEAT_POOL_SIZE` | api | the largest size of the api's second pool, for the workers' heartbeats and claims alone (`POST /v1/worker/heartbeat` and `/claim`, the check of their token included); it waits `EVO_HUB_POOL_TIMEOUT` too; default `3`, at least `1`. Postgres must allow `EVO_HUB_POOL_MAX_SIZE` plus this for the api, beside the worker's pool |
 | `EVO_HUB_RUN_LEASE_SECONDS` | api | how long a claim and each heartbeat of a worker daemon lease a run for before the reaper finds it lost; default `300`, from `5` to `3600`, and well above the daemon's heartbeat of 15 seconds (the end-to-end tests shorten it) |
 | `EVO_HUB_DECISION_WAIT_SECONDS` | worker | how long a run waits for its owner's answer, holding its worker's slot, before the reaper parks it; default `600` (10 minutes), from `1` to `604800` (the end-to-end tests shorten it) |
 | `EVO_HUB_SECRETS_KEY` | api, worker | 32 random bytes in base64url that seal the credentials of worker runs (`docs/credentials.md`); without it writing a secret answers 503 and runs get no lease. It is not in the database or its dumps |
@@ -4953,6 +5108,7 @@ environment, never in a committed file.
 | `EVO_HUB_REDIS_URL` | api, worker, deliver | optional: the Redis the cache and the shared rate limits use, `redis://`, `rediss://` or `unix://`, such as `redis://:<password>@evo-agents-hub-redis:6379/0` with the profile `bus`; unset, each process caches in its memory (section Cache) |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_KG_EMBEDDINGS`, `OPENROUTER_API_KEY` | api, worker | where graph rows and `kg_search` queries are embedded: `openrouter` calls OpenRouter's embeddings API (`baai/bge-m3`, batches of 64, four requests at once) with the key and loads no model; empty uses the local `BAAI/bge-m3` on the worker's CPUs (docs/kg-semantic.md) |
+| `EVO_HUB_API_MEMORY` | compose | memory of the `api` service, default `7g`: it holds the graph of each project read and makes a new one beside it at each build, and past 75% of it drops the graphs read least recently; over it the kernel kills the api and it restarts |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | limits of `worker`, default `2` and `4g`; the CPUs are also each `worker-kg`'s |
 | `EVO_HUB_WORKER_KG_MEMORY` | compose | memory of each of the two `worker-kg`, which run the graph builds, default `6g` (a large project's build peaked at about 4.7 GB) |
 | `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |

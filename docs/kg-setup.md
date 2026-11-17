@@ -1,6 +1,6 @@
 # Building a knowledge graph
 
-For a first local graph, follow [Getting started](getting-started.md#try-the-knowledge-graph-locally).
+For a first project graph, follow [Getting started](getting-started.md#build-a-project-knowledge-base).
 This reference covers source configuration, sync, storage and connectors.
 
 `evo-agents harness init` starts a harness. Run in a repo's directory, or in a directory whose direct subdirectories

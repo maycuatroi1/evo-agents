@@ -651,7 +651,7 @@ def extraction(lay: graphs.Layout, task: Task, documents: int) -> dict | None:
         project = graphs.project_of(lay, task)
         path = memo_path(project)
         settings = kg_settings.read(project.root).entities
-    if not settings or not path.is_file():
+    if not settings or not path.is_dir():
         return None
     answers = tokens_in = tokens_out = 0
     usd = 0.0

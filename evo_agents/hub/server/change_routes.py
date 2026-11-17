@@ -12,9 +12,9 @@ from fastapi import APIRouter, HTTPException, Path, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import findings, judge, runs, security_pass, tables
+from evo_agents.hub import findings, judge, runs, security_pass, tables, tiers
 from evo_agents.hub.access import has_role
-from evo_agents.hub.server import audit, change_tiers
+from evo_agents.hub.server import audit, change_repos, change_tiers
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
@@ -35,6 +35,7 @@ from evo_agents.hub.server.change_views import (
     security_dimension,
     security_findings,
     set_change,
+    with_repos,
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
@@ -65,7 +66,8 @@ ChangeId = Annotated[int, Path(ge=1, le=MAX_ID)]
 async def _held_judge(conn: AsyncConnection, user: Principal, run_id: int, key: str | None):
     """(run row, change row) of the judge run ``run_id`` the worker of ``user`` holds, whose change waits for its
     verdict, asked with the key the run's claim handed its daemon; 404 for any other run, 409 for a change that waits
-    for no verdict of it, 403 without the key."""
+    for no verdict of it, 403 without the key. The change of a run judging one repo of a change in several is as that
+    repo has it (``change_repos.in_focus``)."""
     worker_id = (await worker_of(conn, user))[0]
     r = tables.runs
     row = (
@@ -89,10 +91,30 @@ async def _held_judge(conn: AsyncConnection, user: Principal, run_id: int, key: 
             f"({judge.JUDGE_KEY_HEADER}), which its claim handed the daemon; the worker token alone reads no hidden "
             "check and writes no verdict",
         )
-    return row, change
+    return row, await change_repos.in_focus(conn, change)  # a change in several repos: the repo it judges now
 
 
-async def _plan_verify(conn: AsyncConnection, row) -> list[str]:
+async def _judged_by(conn: AsyncConnection, user: Principal, run_id: int) -> Change | None:
+    """The change judge run ``run_id``, held by the worker of ``user``, already judged, for a verdict ``_held_judge``
+    refuses with 409: the post that recorded it answered after the worker stopped waiting, and the worker's retry gets
+    that verdict again instead of a 409 that fails the run. None for any other run or change."""
+    worker_id = (await worker_of(conn, user))[0]
+    r = tables.runs
+    query = select(r.c.worker_id, r.c.state, r.c.kind, r.c.project_id, r.c.plan_id).where(r.c.id == run_id)
+    row = (await conn.execute(query)).one_or_none()
+    if row is None or row.worker_id != worker_id or row.state not in runs.HELD_STATES or row.kind != "judge":
+        return None
+    change = await change_of_plan(conn, row.project_id, row.plan_id)
+    verdict = getattr(change, "verdict", None)
+    if change is None or change.state != "judged" or not isinstance(verdict, dict) or verdict.get("run_id") != run_id:
+        return None
+    log.info("verdict posted again", extra={"run_id": run_id, "change_id": change.id})
+    return await change_view(conn, change.id)
+
+
+async def _plan_verify(conn: AsyncConnection, row, change) -> list[str]:
+    """The verify commands of the plan revision judge run ``row`` judges: of the steps of the repo it judges alone, for
+    a change in several repos."""
     rev = tables.plan_revisions
     body = (
         await conn.execute(
@@ -101,6 +123,8 @@ async def _plan_verify(conn: AsyncConnection, row) -> list[str]:
             )
         )
     ).scalar_one_or_none()
+    if getattr(change, "repo_row_id", None) is not None:
+        body = change_repos.repo_body(body, change.repo)
     return judge.verify_commands(body or {})
 
 
@@ -123,7 +147,7 @@ async def judge_inputs(
                 )
             )
         ).one()
-        verify = await _plan_verify(conn, row)
+        verify = await _plan_verify(conn, row, change)
         knowledge = change_tiers.judge_knowledge(change)
         checks = f", {len(knowledge['checks'])} check(s) of knowledge.yaml" if knowledge else ""
         await write_event(
@@ -146,6 +170,7 @@ async def judge_inputs(
         proposal=dict(proposal._mapping),
         verify=verify,
         protected_paths=[item for item in charter.get("protected_paths") or [] if isinstance(item, str)],
+        evolvable_paths=tiers.evolvable_paths(charter),
         hidden_checks=hidden,
         knowledge=knowledge,
     )
@@ -156,10 +181,32 @@ async def record_verdict(
     request: Request, run_id: RunId, body: VerdictIn, user: CurrentUser, judge_key: JudgeKey = None
 ) -> Change:
     """The verdict of the judge run this worker holds, with the run's own key: the hub passes the change only as
-    ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again."""
-    async with request.app.state.engine.begin() as conn:
-        row, change = await _held_judge(conn, user, run_id, judge_key)
-        expected = await _plan_verify(conn, row) + change_tiers.judge_checks(change)
+    ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again. The graph read
+    for that tier can wait minutes for the project's snapshot to load, so it is read before the transaction that locks
+    the run and its change: a request holding those locks makes the worker's heartbeat, claim and events wait on
+    them, each holding a pool connection, until the pool is out."""
+    state = request.app.state
+    facts = None
+    if body.paths and not body.signs:
+        async with state.engine.begin() as conn:
+            try:
+                _, held = await _held_judge(conn, user, run_id, judge_key)
+            except HTTPException as exc:
+                judged = await _judged_by(conn, user, run_id) if exc.status_code == 409 else None
+                if judged is None:
+                    raise
+                return judged
+        reader = change_tiers.GraphReader(state.blobs, state.config.data_dir)
+        facts = await change_tiers.verdict_facts(state.engine, held, body.paths, reader)
+    async with state.engine.begin() as conn:
+        try:
+            row, change = await _held_judge(conn, user, run_id, judge_key)
+        except HTTPException as exc:
+            judged = await _judged_by(conn, user, run_id) if exc.status_code == 409 else None
+            if judged is None:
+                raise
+            return judged
+        expected = await _plan_verify(conn, row, change) + change_tiers.judge_checks(change)
         hidden_count = change.hidden_count
         if hidden_count is None:
             charter = await charter_of(conn, row.project_id)
@@ -219,13 +266,13 @@ async def record_verdict(
         if signs:
             await raise_tier(conn, change, signs)
             values["tier"] = 3
-        elif body.paths:
+        elif facts is not None:
             charter = await charter_of(conn, row.project_id)
-            state = request.app.state
-            reader = change_tiers.GraphReader(state.blobs, state.config.data_dir)
-            facts = await change_tiers.verdict_facts(state.engine, change, body.paths, reader)
             values["tier"] = await change_tiers.retier(conn, change, facts, charter)
-        await set_change(conn, change.id, **values)
+        if getattr(change, "repo_row_id", None) is not None:  # on its repo's row; the change judged once each is
+            await change_repos.judged_repo(conn, change, values)
+        else:
+            await set_change(conn, change.id, **values)
         text = f"The Judge {'passed' if passed else 'failed'} the Curator's change #{change.id}"
         text += "." if passed else f": {'; '.join(failures)}."
         await write_event(conn, run_id, {"text": text, "change_id": change.id, "passed": passed})
@@ -256,12 +303,13 @@ async def list_changes(request: Request, project: ProjectName, user: CurrentUser
         from evo_agents.hub.server.runs.service.views import visible_plans
 
         readable = set(await visible_plans(conn, access, None))
-    through = plan_routes._sink(access, None) or ""  # no hub sink: no sink lets it through
-    shown = [
-        Change(**{key: value for key, value in row._mapping.items() if key != "proposal_label"})
-        for row in rows
-        if access.visible(row.proposal_label, through) and (row.plan_id is None or row.plan_id in readable)
-    ]
+        through = plan_routes._sink(access, None) or ""  # no hub sink: no sink lets it through
+        shown = [
+            Change(**{key: value for key, value in row._mapping.items() if key != "proposal_label"})
+            for row in rows
+            if access.visible(row.proposal_label, through) and (row.plan_id is None or row.plan_id in readable)
+        ]
+        shown = await with_repos(conn, shown)
     return ChangeList(project=access.name, changes=shown)
 
 

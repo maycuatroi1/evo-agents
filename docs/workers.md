@@ -383,12 +383,12 @@ or busy depending on whether it holds runs.
 
 | State | Meaning |
 | --- | --- |
-| `queued` | waiting for a worker to claim it |
+| `queued` | waiting for a worker to claim it; a worker claims its queued runs by `priority` (`urgent`, `high`, `medium`, `low`), then the oldest |
 | `leased` | claimed; the worker prepares the checkout |
 | `running` | the agent works headless |
 | `interactive` | a person drives the agent in a terminal (takeover, or interactive mode from the start) |
 | `verifying` | the agent has finished; the daemon runs its verify commands again |
-| `waiting` | a plan run whose agent ended its turn with a decision open; the worker keeps the run and the session |
+| `waiting` | a plan run whose agent ended its turn with a decision open; the worker keeps the run and the session, and gives its slot up at the reaper's next pass when a run is queued for that node and the node is full |
 | `review` | verified; waits for the owner to approve |
 | `parked` | a run that waited 10 minutes for an answer, or waits only for a time or an event of the hub; the worker let it go and kept the session and worktrees |
 | `done` | approved, or verified with approval `auto` |
@@ -397,7 +397,8 @@ or busy depending on whether it holds runs.
 | `cancelled` | stopped on the owner's request |
 
 The worker holds a run, and extends its lease, while it is `leased`, `running`, `interactive`, `verifying` or
-`waiting`; a waiting run keeps its slot. A run in any state before `done` is active, `parked` included, and a step has
+`waiting`; a waiting run keeps its slot for 10 minutes, unless work is queued for its node: a run pinned to a full
+node, as a chat run of a busy pool is, parks the waiting runs of that node at the reaper's next pass. A run in any state before `done` is active, `parked` included, and a step has
 at most one active run, as a plan has at most one active plan run. `done`, `failed`, `lost` and `cancelled` are final:
 running the step again (rerun, or the next attempt) creates a new run, and so does resuming a parked plan run. The one
 exception is a lost run re-attached to the worker that comes back for it ([Re-attach](#re-attach)).
@@ -417,7 +418,7 @@ does not name. The `worker` is the worker that holds the run, the `owner` is the
 | `verifying` | `done` (approval `auto`, every verify command exited 0), `review` (approval `review`) | worker |
 | `running` | `waiting` (the agent's turn ended with a decision open) | worker |
 | `waiting` | `running` (the answer reached the agent) | worker |
-| `waiting` | `parked` (no answer within 10 minutes, or a wait for a time or an event at once) | reaper |
+| `waiting` | `parked` (no answer within 10 minutes; at once for a wait for a time or an event, or when a run queued for its full node waits for its slot) | reaper |
 | `review` | `done` (approve), `cancelled` | owner |
 | `parked` | `done` (the owner answered, and the run that resumes it is queued) | owner |
 | `parked` | `done` (a wait of the run woke, and the run that resumes it is queued) | reaper |
@@ -924,6 +925,15 @@ is optional, and an ask with none works as before:
 | `--done-when TEXT` | `done_when` | when its work is finished |
 | `--ref REF` (repeat) | `refs` | where it starts from: repo:path, a run, a URL |
 | `--reason TEXT` | `reason` | why an agent of a system asks off its `interacts` edges |
+| `--priority LEVEL` | `priority` | `urgent`, `high`, `medium` (the default) or `low`: the order a worker claims the run in |
+
+When every ready node of the agent's pool only lacks a free slot, the run asked is queued, not refused: it is pinned
+to the node the pick would choose (the node of the thread's last turn of the agent, else the one with a checkout of
+the most repos of the project), the hub says in the thread how many runs are ahead of it, and it starts when that node
+has a slot. A person's mention of the agent queues the same way, with priority `medium`. A writer of the project
+changes the priority of a queued run with `evo-agents hub run priority RUN LEVEL` (`POST
+/v1/projects/{p}/runs/{id}/priority`, `{priority}`; 409 once the run left the queue); plan and step runs keep
+`medium`.
 
 The brief heads the prompt of the run asked ("# Your brief from @handle (run #N)") and follows the question in the
 chat. The trace's span keeps which fields came (`evo.brief_fields`). The System section of a system agent's
@@ -1042,10 +1052,11 @@ Answer and reassign close the thread. The hub runtime's tools `orchestrator_answ
 #### Ops threads
 
 The Orchestrator of a project's default system also gets ops threads: one thread a batch of the project's operations
-queue, in the chat `Ops: <slug>` (`docs/hub.md`, Agent systems). Its chat run there has six more commands, each for
-the items of that thread's batch only. They take `--reason TEXT` (`-` reads stdin) for the `Decision:` line, write an
-audit row, and mark the batch's items they handled as handled by the Orchestrator. A chat run in no ops thread gets
-404, another agent's 403, and a batch the hub already settled 409.
+queue, in the chat `Ops: <slug>` (`docs/hub.md`, Agent systems). Its chat run there has eight more commands, each for
+the items of that thread's batch only, but `priority`, which takes any queued run of the project. They take
+`--reason TEXT` (`-` reads stdin) for the `Decision:` line, write an audit row, and mark the batch's items they handled
+as handled by the Orchestrator. A chat run in no ops thread gets 404, another agent's 403, and a batch the hub already
+settled 409.
 
 | Command | Route | What |
 | --- | --- | --- |
@@ -1055,10 +1066,13 @@ audit row, and mark the batch's items they handled as handled by the Orchestrato
 | `evo-agents worker ops curator-resume --reason TEXT` | `POST .../ops/curator-resume` | let the Curator's schedules run again that its breaker paused, never those a person paused. Audit `ops.curator_resume` |
 | `evo-agents worker ops read NOTICE --reason TEXT` | `POST .../ops/read` | mark a notice of the project read. Audit `ops.read` |
 | `evo-agents worker ops finding --lens LENS --severity low\|medium\|high --title TEXT --body TEXT --reason TEXT` | `POST .../ops/finding` | write a finding for the Curator under the project's default label, with the batch as its evidence: the fix for a recurring cause. Audit `ops.finding` |
+| `evo-agents worker ops priority RUN LEVEL --reason TEXT` | `POST .../ops/priority` | give a queued run of the project another priority (`urgent`, `high`, `medium`, `low`), the order a worker claims its queue in: the answer to a `run.queued_long` item. 404 for a run of another project, 409 for a run that is not queued. Audit `ops.priority` |
+| `evo-agents worker ops plan-dispatch PLAN --reason TEXT` | `POST .../ops/plan-dispatch` | hand a stalled plan of the batch (a `plan.stalled` item) again to the entry agent of the default system, as `POST .../plans/{plan_id}/system-dispatch` does for a person, in the name of the system's owner and with its refusals (409 while a trace of the plan has a run that has not ended, a plan run or step run of it is active, it has no pending step, or the Curator made it). Audit `ops.plan_dispatch` and `run.dispatch_system` |
 
 In an ops thread, `triage reassign` works as above and `triage ask-owner` at most once a batch; `triage answer` is
 refused (409), since an ops thread is about a batch, not one agent. The hub runtime's tool `ops_action`, with
-`action` one of `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read` and `finding`, does the same for an
+`action` one of `rerun`, `redeliver`, `answer_wait`, `curator_resume`, `read`, `finding`, `priority` (with `run_id`
+and `level`) and `plan_dispatch` (with `plan_id`), does the same for an
 Orchestrator that runs on the hub.
 
 ### Curator proposals the agent answers
@@ -1339,8 +1353,8 @@ whatever checkouts it has, even none. The
 oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
-from), with the run's `kind`, `model` and `routing` (the scorer and the ladder when the policy has model routing on,
-see [Model routing](#model-routing); null otherwise), or `{"run": null}` when the wait ends empty, and the daemon claims again at
+from), with the run's `kind`, `model` and `routing` (what the hub's Token strategy chose when the policy has model
+routing on, see [Model routing](#model-routing); null otherwise), or `{"run": null}` when the wait ends empty, and the daemon claims again at
 once. A plan run is claimed only by a worker with a checkout of every repo in its `repos`; its answer has no step key
 and no repo, but `repos`, the prompt of `build_plan_prompt`, `plan`, `{revision, body}` at the hub's current
 revision, which the daemon writes to `.evo-run/plan.yaml`, and `session_per_step`. A run the night shift queued has
@@ -1405,7 +1419,10 @@ declared to the worker ([Runtimes of plugins](#runtimes-of-plugins)), each `{ava
 is required, `reason` says why a runtime that is there cannot take runs, and only an available runtime is claimed
 for. `models` lists the models an available runtime offers on the machine, when the runtime lets them be read (see
 [Runtime adapters](#runtime-adapters)): at most 200, each one line of at most 200 characters, so the web can suggest
-them for a dispatch; it is left out (null) otherwise, and a run's `model` is never checked against it.
+them for a dispatch; it is left out (null) otherwise, and a run's `model` is never checked against it. A runtime
+whose `--version` gives no answer within 15 seconds (a loaded machine) keeps what the daemon's last look found when
+that look had it available, so a slow machine does not drop the agents of its pool for "no runtime"; a runtime the
+daemon has not yet seen available since it started is reported unavailable with that reason.
 `checkouts` is keyed `<project>/<repo>`, as the project and its repo are named on the hub, each `{path, branch}` with
 the path required. The hub keeps both as sent, every key present (a missing one is null), and `GET /v1/workers/{id}`
 shows them in that shape. `free_slots` is what the daemon counts free, at most the worker's slots; the hub shows it,
@@ -2182,7 +2199,7 @@ killed once the agent has ended, or 20 seconds after an interrupt it did not end
 
 | Runtime | Through | Credential | Full permissions | A message of the owner | Interrupt | The turn ends |
 | --- | --- | --- | --- | --- | --- | --- |
-| `claude-code` | `claude-agent-sdk`: `ClaudeSDKClient` over `claude` on PATH, session id made by the daemon (`--session-id`, or `--resume` for a run that goes on with a session) | the machine's login of `claude`, or `CLAUDE_CODE_OAUTH_TOKEN` from an `env` lease, a `claude setup-token` token ([credentials.md](credentials.md)). With that lease the daemon's `ANTHROPIC_API_KEY`, which Claude Code would take first, is left out of the agent's environment unless a lease sets it too (the launcher and the pane's script unset it), and a `system` event says so once a run; the terminal UI starts without `--remote-control`, which such a token cannot open, and says so too | `permission_mode="bypassPermissions"` (`--dangerously-skip-permissions`) | `query()`; Claude Code takes it at the next tool boundary and may fold it into the same `result` | the SDK's `interrupt()`, then the input stream ends | at its `result`, unless a command the agent started in the background still runs: then the input stays open and the CLI's own turn after the command ends goes on with the agent (the adapter writes to it when no turn opens within 15 seconds), until it ends, or up to the run's time cap when it has one (the run's timeout otherwise); otherwise, and once the agent wrote `.evo-run/result.json` in this session (one a previous run left in the worktree does not count), the input stream ends and the CLI exits once it has done what it was given; `stop_at_turn_boundary` ends the input stream at once, and the turn in progress still finishes |
+| `claude-code` | `claude-agent-sdk`: `ClaudeSDKClient` over `claude` on PATH, session id made by the daemon (`--session-id`, or `--resume` for a run that goes on with a session) | the machine's login of `claude`, or `CLAUDE_CODE_OAUTH_TOKEN` from an `env` lease, a `claude setup-token` token ([credentials.md](credentials.md)). With that lease the daemon's `ANTHROPIC_API_KEY`, which Claude Code would take first, is left out of the agent's environment unless a lease sets it too (the launcher and the pane's script unset it), and a `system` event says so once a run; the terminal UI starts without `--remote-control`, which such a token cannot open, and says so too | `permission_mode="bypassPermissions"` (`--dangerously-skip-permissions`) | `query()`; Claude Code takes it at the next tool boundary and may fold it into the same `result` | the SDK's `interrupt()`, then the input stream ends | at its `result`, unless a command the agent started in the background still runs: then the input stays open and the CLI's own turn after the command ends goes on with the agent (the adapter writes to it when no turn opens within 15 seconds), until it ends, or up to the run's time cap when it has one (the run's timeout otherwise); otherwise, the input stream ends (a `.evo-run/result.json` the agent wrote in the turn ends nothing while such a command runs; once it is written, the time cap ends that wait without failing the run, or 30 minutes do in a run without one) and the CLI exits once it has done what it was given; `stop_at_turn_boundary` ends the input stream at once, and the turn in progress still finishes |
 | `codex` | `openai-codex` over `codex app-server --listen stdio://`, with `codex` on PATH | the machine's login of `codex` (`$CODEX_HOME`), and the variables `env` leases set in the agent's environment | sandbox `danger-full-access` and approval policy `never` (`--dangerously-bypass-approvals-and-sandbox`) | `turn/steer` during the turn; a new turn on the same thread when the turn no longer takes it | `turn/interrupt` | at `turn/completed`, with its status |
 | `opencode` | HTTP and the event stream of `opencode serve`, started per run on 127.0.0.1 at a free port, with a random `OPENCODE_SERVER_PASSWORD` and stdin `/dev/null` | the providers the owner set up in opencode, and the variables `env` leases set in the agent's environment, such as a provider's API key | each `permission.asked` of the session answered `once`, as `opencode run --auto` does, so the owner's explicit denials still hold; sessions get `opencode run`'s rules (no question, no plan mode) | `POST /session/:id/prompt_async`, taken at the next step boundary | `POST /session/:id/abort` | when the session goes idle with every prompt it was sent |
 
@@ -2343,23 +2360,27 @@ hands it no run.
 A run's model is the one the dispatch named (`--model`), else the one its agent profile allows when it allows exactly
 one, else the runtime's own choice as [Runtime adapters](#runtime-adapters) says. When the project's policy has the
 section `routing` on (`routing.enabled`, false by default; `docs/hub.md`, Workers and runs), a run that is pinned
-neither way has its model chosen by its difficulty, on the worker, before its agent starts:
+neither way has its model chosen by the project's Token strategy:
 
-- The claim of a step, plan, author or task run on claude-code carries `routing`: `{"scorer": "haiku", "ladder":
-  {"easy": "haiku", "medium": "sonnet", "hard": "opus"}}` as the policy sets them; null for any other run, and for a
-  run with a model. The hub calls no model at the dispatch. The Judge of the merge queue and of the Curator keeps the
-  rules of `evo_agents/hub/judges.py`, and the Curator's other runs the model of the charter.
-- The daemon skips a run its agent profile pins to one model. For any other, once the run's account is ready and before
-  the first headless agent starts, it runs `claude --print --model <scorer> --output-format json --max-turns 1` with
-  no tool, no MCP server and no session kept, in an empty directory and the agent's environment, asking for one word,
-  easy, medium or hard, about the start of the run's prompt (12,000 characters). The turn is cut off after 120
-  seconds.
-- The run takes the ladder's model for that difficulty. When the scorer fails, times out or names no difficulty, it
-  takes the medium one. A ladder model the run's profile does not allow is not taken, and the session keeps the model
-  it would have had. Nothing here fails the run, and a run that starts in the terminal UI is not rated.
+- The hub rates the run at its claim with no model call and picks the strategy's model (`docs/hub.md`). The claim of a
+  step, plan, author, task, chat or question run on claude-code, opencode, codex or any carries `routing`: the
+  `scorer`, a `ladder` whose every rung is the chosen model, the `difficulty`, and `source`, `reason`, `strategy`,
+  `branch` and `escalated_from`. The daemon takes that model and runs no scorer. A gateway model's lease is a gateway
+  key, and the daemon drops the Claude login beside it as for any gateway run.
+- A free prompt the hub's rules cannot rate comes with `pending: true` and a ladder of the strategy's model for each
+  difficulty, the medium one leased first. The daemon then runs the scorer: once the run's account is ready and before
+  the first headless agent starts, `claude --print --model <scorer> --output-format json --max-turns 1` with no tool,
+  no MCP server and no session kept, in an empty directory and the agent's environment, asking for one word, easy,
+  medium or hard, about the start of the run's prompt (12,000 characters), cut off after 120 seconds. The run takes
+  the ladder's model for that difficulty, or the medium one when the scorer fails, times out or names no difficulty.
+  When a rung is a gateway model, the daemon reports the routing and takes the run's leases again, so the hub moves
+  the run to that model's gateway prefix, or off the gateway, before the agent starts.
+- A claim of an older hub (`{"scorer", "ladder"}` alone) is scored as before. A ladder model the run's profile does
+  not allow is not taken, and the session keeps the model it would have had. Nothing here fails the run, and a run
+  that starts in the terminal UI is not rated.
 - The run's log gets a note (`Model routing: ...`), and the reports of the run carry `routing`: `scorer`,
   `difficulty`, `scored` (false when the scorer gave none), `model` (null when it took none), `cost_usd` of the
-  scorer's turn and `error`. The hub keeps it as the run's `routing` (schema 0185).
+  scorer's turn and `error`, with what the hub decided. The hub keeps it as the run's `routing` (schema 0185).
 
 Every run, routed or not, reports `model_used`: the model the runtime said it used (the model of Claude Code's init
 message, opencode's `provider/model`), else the one the daemon asked for, else none. The hub keeps it as the run's
@@ -3125,7 +3146,10 @@ nothing, end the turn with what it did), with half the run's cost cap and half i
 stands, its turns cap, and none of the hub's MCP tools; `evo-agents worker step`, `plan`, `ask` and the others refuse
 inside it. When its turn is over, or is cut short, which the arm notes as its error, the daemon runs the step's verify
 in the repository as code it does not trust, as a judge run runs its checks (on `/bin/sh -s`, in a session of its own,
-without the worker's variables or any credential, every process it left killed), and posts the arm: passed when every
+without the worker's variables or any credential, every process it left killed), and posts the arm. A verify was
+written where the step ran, a developer's machine with the project's repos side by side (`~/github/<repo>`): each path
+of it into a repo of the project, under `~`, `$HOME` or a home directory, runs on the arm's repository for the task's
+repo and on this worker's checkout for another repo, fetched once first (`replay_files.localized`). Passed when every
 command exited 0, the commit and files of the harness, the exit codes, the cost of the session, its turns, its tool
 calls and those that failed, its largest context and the agent's time. The run ends `done` with both arms' usage
 added up, pushing nothing (`gitops.check_push` refuses every push of a replay run); its directory goes with the
@@ -3181,6 +3205,43 @@ ran on. The run's events carry the verify's exit code and time alone, never its 
 a later run reads a run's events. The run ends `done` with every session's usage, pushing nothing
 (`gitops.check_push` refuses every push of a probe run); its directory goes with the cleanup of runs older than 7
 days. A run that ends before every session posted is queued again by the hub, two runs in all.
+
+### An evolve run on the machine
+
+An evolve run (kind `evolve`) is the Curator's evolution of a harness's files in a repo (target `git`) or of an
+agent's instructions and skill (target `agent_config`), measured on light tasks (`docs/curator.md`, Evolving a harness;
+`docs/hub.md`, "The Curator's evolutions"). Only a daemon with `evolve` in its heartbeat's `run_kinds` gets one. Its
+claim names the evolution and its target, and hands the daemon the run's own key, which only the run's object holds and
+which it sends with `GET /v1/worker/runs/{id}/evolve` and `POST .../evolve/arm`, `.../candidate` and `.../report`
+(`X-Evo-Evolve-Key`). The inputs name the baseline (for `git`, each path read at the base commit of the checkout when
+the hub sends none, a skill's directory whole), the light tasks of the select split and the active probes, each with
+its prompt, base commit and verify, the baseline arms the project's cache holds, the budget, the runtime and the model.
+The preflight looks for the program of each verify on the PATH those commands run with, and for `git` checks that it
+can push to the repo.
+
+The evolution works in the run's directory. Its tree, `evolution/`, is what the proposer agent reads: `iterations/<n>/`
+with the parent's whole files under `candidate/` (and the conflicts of a merge under `merge/`), `frontier.json`,
+`evolution_summary.jsonl` and `eval_traces/<candidate>/<task>.json`, each task's prompt, score, verify exit codes and
+output, failed tool calls, turns and cost. It holds no verify command and no holdout task. Each task of each candidate
+runs in a directory of its own under `evals/`: a new repository of the task's repo at its base commit with the
+candidate's files placed (a skill also under `.claude/skills/`; an agent's instructions as CLAUDE.md and AGENTS.md),
+a new agent session on the task's prompt with what is left of the run's caps, none of the hub's tools and no remote;
+then the worker runs the verify itself as code it does not trust, as a judge run runs its checks, its paths into a
+developer's checkout written as where each repo is here, as a replay run does. A candidate's score on a task is the
+share of its verify commands that exited 0. Each candidate goes to the hub with its ASI (actionable side information)
+of each task: each failed check's exit code and the end of its output, the agent's last failed tool calls, error and
+last message, each text cut to 4000 characters; `curator evolve show` returns it, and a mutation's prompt holds its
+parent's ASI of each task it did not pass.
+
+The loop measures the baseline first, taking from the cache each arm the hub holds and posting the others
+(`evolve.arm_key`). Each round then either merges two candidates of the front (every third round, over their nearest
+common ancestor, the files both changed apart resolved by the agent) or mutates one: a parent drawn by how often it is
+best on a task, its files rewritten by the proposer. It posts each new candidate, unique by its digest, prunes the
+front, and stops when the iterations, candidates or cost of the budget run out. For `git` the best candidate, when it
+differs from the baseline, is committed on top of the base commit in a worktree of the checkout and pushed to the
+run's `curator/...` branch, never forced and never a default branch; the report names the best candidate, the commit
+and the branch, and the run ends `done`. A run that fails reports so. The watchdog of the Curator's runs compares no
+protected path for it, only its caps: its repositories are its own.
 
 ### A history run on the machine
 

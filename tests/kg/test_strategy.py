@@ -8,10 +8,10 @@ import yaml
 from evo_agents.cli import main
 from evo_agents.kg import claude_code, entities, init_run, strategy
 from evo_agents.kg import settings as kg_settings
-from evo_agents.kg.build import build_project
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.schema import HUB_KINDS, HUB_RELATIONS
 from evo_agents.kg.sync import sync_project
+from tests.kg import built
 from tests.kg.projects import make_project, write
 from tests.kg.test_entities_claude_code import fake_claude  # noqa: F401 (a fixture)
 from tests.kg.test_extract_entities import entity_nodes
@@ -118,7 +118,7 @@ def test_apply_adds_the_identifiers_and_ontology_it_lacks_and_keeps_comments(tmp
     assert (path.with_name("knowledge.yaml.before-strategy")).read_text() == before
     again = strategy.plan(strategy.load_file(chosen), after)
     assert again.identifiers == [] and again.ontology == {} and done.identifiers
-    report = build_project(after)  # the project still builds with what the strategy wrote
+    report = built.build(after)  # the project still builds with what the strategy wrote
     assert report.ok, report.errors
 
 
@@ -142,9 +142,9 @@ def test_a_strategy_that_needs_a_connector_the_project_lacks_changes_nothing(tmp
 def test_the_code_strategy_builds_the_graph_a_project_without_one_gets(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
     assert all(r.ok for r in sync_project(project))
-    plain = build_project(project)
+    plain = built.build(project)
     strategy.apply(strategy.builtins()["code"], project)
-    coded = build_project(project)
+    coded = built.build(project)
     assert coded.ok and coded.content_hash == plain.content_hash
     assert coded.nodes == plain.nodes and coded.edges == plain.edges
 
@@ -212,7 +212,7 @@ def test_multi_hop_sends_nothing_until_the_project_declares_the_llm_sink(tmp_pat
     kg_settings.write(project.root, kg_settings.of({"semantic_mode": "off"}, kg_settings.read(project.root)))
     project = load_project_at(project.harness.root, kg_env)
     assert all(r.ok for r in sync_project(project))
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     cov = report.coverage["entities"]
     assert calls() == [] and cov["calls"] == 0 and cov["refused_count"] >= 1
@@ -221,7 +221,7 @@ def test_multi_hop_sends_nothing_until_the_project_declares_the_llm_sink(tmp_pat
     data["policy"]["sinks"].append({"id": "llm", "kind": "llm-backend", "clearance": {"level": "internal"}})
     project.knowledge_path.write_text(yaml.safe_dump(data, sort_keys=False))
     project = load_project_at(project.harness.root, kg_env)
-    report = build_project(project)
+    report = built.build(project)
     assert report.ok, report.errors
     cov = report.coverage["entities"]
     assert cov["calls"] == len(calls()) >= 1 and cov["model"] == "claude-haiku-5-5" and cov["sink"] == "llm"

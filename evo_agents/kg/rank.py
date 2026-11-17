@@ -28,6 +28,7 @@ import hashlib
 import math
 import os
 import re
+from bisect import bisect_left
 from collections import Counter, deque
 from datetime import datetime
 from functools import lru_cache
@@ -45,7 +46,6 @@ PER_FILE = 6  # the nodes of each of them it orders, locate's best first
 SLOTS = 3  # the first places of the reading the model fills; locate's order follows
 PAGERANK_STEPS = 15
 PAGERANK_DAMPING = 0.85
-AGE_COMMITS = 64  # the commits of a file read for the time of its last change: the newest the edge index gives first
 MAX_HOPS = 4  # a file this many hops or more from every anchor, or with no anchor at all
 KIND_CODE = {"Symbol": 0, "File": 1, "Document": 2, "Section": 3}
 
@@ -301,39 +301,57 @@ def _time(text) -> float | None:
 
 def _graph_counts(store, file_ids: list[str]) -> dict[str, dict]:
     """Per File node of ``file_ids``: the imports that reach it, the symbols it defines, the commits that changed it
-    and the time of the last of the first AGE_COMMITS of them (a file of thousands of commits would cost a search
-    tens of milliseconds more to read them all)."""
+    and the time of the newest of them, from the edges of the snapshot of ``store`` (a ``SnapshotView``)."""
     out: dict[str, dict] = {i: {"imports_in": 0, "defines": 0, "commits": 0, "last": None} for i in file_ids}
     if not file_ids:
         return out
-    marks = ", ".join("?" for _ in file_ids)
-    for dst, rel, n in store.db.execute(
-        f"SELECT dst, rel, count(*) FROM edges WHERE dst IN ({marks}) AND rel IN ('imports', 'changes')"
-        " AND tx_to IS NULL GROUP BY dst, rel",
-        file_ids,
-    ):
-        out[dst]["imports_in" if rel == "imports" else "commits"] = n
-    for src, n in store.db.execute(
-        f"SELECT src, count(*) FROM edges WHERE src IN ({marks}) AND rel = 'defines' AND tx_to IS NULL GROUP BY src",
-        file_ids,
-    ):
-        out[src]["defines"] = n
-    for file_id in file_ids:
-        if out[file_id]["commits"]:
-            (last,) = store.db.execute(
-                "SELECT max(json_extract(n.props, '$.time')) FROM (SELECT src FROM edges WHERE dst = ? AND"
-                " rel = 'changes' AND tx_to IS NULL LIMIT ?) e JOIN nodes n ON n.node_id = e.src AND n.tx_to IS NULL",
-                (file_id, AGE_COMMITS),
-            ).fetchone()
-            out[file_id]["last"] = _time(last)
+    return _snapshot_counts(store.snap, out)
+
+
+def _snapshot_counts(snap, out: dict[str, dict]) -> dict[str, dict]:
+    """``_graph_counts`` of a snapshot: its live edges, a commit's time from its node. The time is the newest of all the
+    commits that changed the file."""
+    for file_id, counts in out.items():
+        i = snap.index.get(file_id)
+        if i is None:
+            continue
+        times = []
+        for (rel, _), part in snap.partitions.items():
+            if rel == "imports":
+                counts["imports_in"] += len(part.into(i))
+            elif rel == "defines":
+                counts["defines"] += len(part.out_of(i))
+            elif rel == "changes":
+                edges = part.into(i)
+                counts["commits"] += len(edges)
+                times += [snap.nodes[snap.src[e]]["props"].get("time") for e in edges]
+        counts["last"] = _time(max((t for t in times if isinstance(t, str)), default=None))
     return out
 
 
 def _asked(store, ids: list[str]) -> dict[str, float]:
     try:
-        return store._asked_priors(ids)
-    except Exception:  # noqa: BLE001 - a graph without the asked index, or a store of another kind
+        return store.ranker._asked_priors(ids)  # the snapshot's asked rows (``snapshot_text.Ranker``)
+    except Exception:  # noqa: BLE001 - a graph without the asked index, or a reader of another kind
         return {}
+
+
+def _snapshot_lines(snap, file_ids: list[str]) -> dict[str, int]:
+    """``_file_lines`` of a snapshot: its node ids are sorted, so a file's symbols are one run of them."""
+    out: dict[str, int] = {}
+    for file_id in file_ids:
+        repo, sep, path = file_id.partition(":file:")
+        if not sep:
+            continue
+        prefix = f"symbol:{repo}:{path}::"
+        ends = []
+        for k in range(bisect_left(snap.ids, prefix), bisect_left(snap.ids, prefix + "\uffff")):
+            end = snap.nodes[k]["props"].get("end_line")
+            if isinstance(end, int) and not isinstance(end, bool):
+                ends.append(end)
+        if ends:
+            out[file_id] = max(ends)
+    return out
 
 
 def _link_counts(pool: locate.Pool, base: dict[str, float], params) -> tuple[dict[str, Counter], dict, Counter]:
@@ -480,19 +498,7 @@ def _file_lines(store, file_ids: list[str]) -> dict[str, int]:
     out: dict[str, int] = {}
     if store is None:
         return out
-    for file_id in file_ids:
-        repo, sep, path = file_id.partition(":file:")
-        if not sep:
-            continue
-        prefix = f"symbol:{repo}:{path}::"
-        (last,) = store.db.execute(
-            "SELECT max(json_extract(props, '$.end_line')) FROM nodes WHERE node_id >= ? AND node_id < ?"
-            " AND tx_to IS NULL",
-            (prefix, prefix + "\uffff"),
-        ).fetchone()
-        if isinstance(last, int):
-            out[file_id] = last
-    return out
+    return _snapshot_lines(store.snap, file_ids)
 
 
 def node_rows(

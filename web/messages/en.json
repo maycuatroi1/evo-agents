@@ -112,9 +112,9 @@
   },
   "product": {
     "meta": {
-      "title": "evo-agents | Coding agents on your own machines",
-      "description": "Run Claude Code, Codex CLI or opencode across your repositories. Hand off a plan, follow progress in your browser and choose which actions need your approval.",
-      "imageAlt": "A demo plan run with completed steps and a decision waiting for an answer."
+      "title": "evo-agents | Knowledge base and plugin workspace for AI agent teams",
+      "description": "Bring repositories, documents, specs and chats into one permission-aware hub, extend product cycles with plugins, and run Claude Code, Codex CLI or opencode on machines you control.",
+      "imageAlt": "The Knowledge Graph Explorer connecting project entities to source files."
     },
     "header": {
       "nav": "evo-agents on GitHub",
@@ -122,36 +122,36 @@
       "source": "Source code"
     },
     "hero": {
-      "title": "Run coding agents across your repositories, on machines you control.",
+      "title": "A shared knowledge base and plugin workspace for AI agent teams.",
       "start": "Get started",
       "signIn": "Sign in with GitHub",
       "openHub": "Open the hub",
-      "imageAlt": "The Monitor shows live agent runs and a pending decision.",
-      "demo": "Demo hub with fictional projects, people and machines."
+      "imageAlt": "The Knowledge Graph Explorer connecting extracted entities to source files across repositories.",
+      "demo": "Knowledge graph of evo-agents with anonymized accounts and machines."
     },
     "claims": {
-      "lede": "Give Claude Code, Codex CLI or opencode a plan. <readme>evo-agents</readme> runs the work across your repos while you follow progress, answer questions or take over in your browser.",
-      "planRuns": "Hand off a plan with dependencies and checks. <verify>The worker runs the checks again</verify> before recording a step as done, with commits and results attached.",
-      "graph": "Agents share <context>plans and memories between sessions</context>. A <graph>searchable knowledge graph</graph> connects code and documents across your repos.",
-      "decisions": "See what is running and what needs you. <policy>Your approval settings</policy> determine when an agent must ask; answer in the <inbox>Inbox</inbox> or through Telegram when configured.",
-      "machines": "A <worker>worker</worker> runs the agent on a laptop, desktop or server you connect, using your coding-agent accounts. You can <host>host the hub yourself</host>, too.",
-      "access": "Use your team's hub, request an invite to this one, or <host>host your own</host>.",
+      "lede": "Bring codebases, documents, chats and specs into one hub. <readme>evo-agents</readme> extends your workspace across product roles with plugins and dispatches verified work to Claude Code, Codex CLI or opencode.",
+      "graph": "Index Git repos, uploaded archives, versioned Docs and chats in one <graph>permission-aware knowledge graph</graph>, while agents share <context>plans, skills and memories across sessions</context>.",
+      "plugins": "Extend the Business cycle and Development cycle with Lean Canvas, SRS, Tasks, CRM, Marketing and Editorial. Run <plugins>core and sandboxed isolated plugins</plugins> installed from <market>signed markets</market>.",
+      "planRuns": "Wire multi-agent systems to named graphs and hand off multi-step plans. <verify>Workers re-run verification checks</verify> in isolated Git worktrees before recording completion.",
+      "machines": "A <worker>worker</worker> runs on hardware you connect with sealed credentials, while <policy>your approval settings</policy> pause risky actions for Inbox or Telegram review. You can <host>host the hub yourself</host>, too.",
+      "access": "Use your team’s hub, request an invite to this one, or <host>host your own</host>.",
       "status": "evo-agents is pre-1.0: commands and formats can change between releases. Check the <roadmap>roadmap</roadmap> for current capabilities and unfinished work."
     },
     "needs": {
-      "title": "Less time coordinating agents",
+      "title": "Built around shared context and product cycles",
       "rows": {
-        "plans": {
-          "title": "Hand off a whole plan"
-        },
         "context": {
-          "title": "Keep project context"
+          "title": "Centralized knowledge base"
         },
-        "control": {
-          "title": "See what needs you"
+        "plugins": {
+          "title": "Workspace extended by plugins"
+        },
+        "plans": {
+          "title": "Multi-agent systems and plans"
         },
         "machines": {
-          "title": "Use your own machines"
+          "title": "Your machines and approvals"
         }
       }
     },
@@ -159,19 +159,19 @@
       "title": "Give it a piece of work",
       "exampleLabel": "Example request",
       "example": "Add saved carts to checkout. Cover the API and frontend, and include tests for restoring a cart after sign-in.",
-      "description": "The hub holds your plans and shows progress. A worker runs the agent on a machine you connect.",
+      "description": "The hub holds your knowledge base, product cycle artifacts and plans. Workers run agents on machines you connect.",
       "steps": {
         "describe": {
           "title": "Describe the change",
-          "body": "Choose New plan on your project's Plans page. An agent on your worker drafts the steps."
+          "body": "Choose New plan on your project’s Plans page, or ask an agent system in Home chat."
         },
         "review": {
           "title": "Review and run",
-          "body": "Check the scope and tests, adjust what you need, then choose Run plan."
+          "body": "Check the drafted steps and verification commands, adjust scope if needed, then choose Run plan."
         },
         "follow": {
-          "title": "Follow the work",
-          "body": "Read the output and test results in your browser. Send the agent a message or stop the run there."
+          "title": "Follow and approve",
+          "body": "Read traces and test results in your browser, and answer approval decisions in Inbox or Telegram."
         }
       }
     },
@@ -185,13 +185,13 @@
         "installLabel": "install command",
         "loginLabel": "sign-in command",
         "guide": "Set up a project and worker",
-        "next": "Connect a project and worker, then create your first plan."
+        "next": "Connect your repositories and a worker, then dispatch your first plan."
       },
       "local": {
-        "title": "Try the graph on its own",
-        "prerequisites": "You need Python 3.11+, uv and Git.",
-        "guide": "Try the local walkthrough",
-        "body": "Index a Git repo and search its code. You do not need a hub login or model account."
+        "title": "Start from documents or archives",
+        "prerequisites": "Works in the browser with a hub account, even before connecting a Git repository.",
+        "guide": "Build a project knowledge base",
+        "body": "Open New project from data on the hub and drop a .zip or .tar.gz archive of documents and spreadsheets to explore entities and ask questions in chat."
       }
     },
     "footer": {
@@ -261,7 +261,8 @@
     "org": "Org chart",
     "browser": "Browser",
     "groups": {
-      "delivery": "Delivery",
+      "business": "Business cycle",
+      "development": "Development cycle",
       "improvement": "Improvement",
       "knowledge": "Knowledge",
       "apps": "Apps",
@@ -4898,6 +4899,12 @@
         "session": "Session, {model}",
         "weekly": "Weekly, {model}",
         "unnamed": "Usage limit"
+      },
+      "pace": {
+        "ahead": "Ahead of its weekly pace by {points} points: the week runs out early",
+        "behind": "Behind its weekly pace by {points} points: quota to spend",
+        "on": "On its weekly pace",
+        "expected": "An even pace would have used {percent}% by now"
       }
     },
     "runsTitle": "{day, plural, one {# run} other {# runs}} in 24 hours, {week, plural, one {# run} other {# runs}} in 7 days",
@@ -5079,12 +5086,14 @@
       "strategy": {
         "round-robin": "Round robin",
         "weighted-round-robin": "Weighted round robin",
-        "fill-first": "Fill first"
+        "fill-first": "Fill first",
+        "quota-pacing": "Quota pacing"
       },
       "strategyHint": {
         "round-robin": "Each account in turn.",
         "weighted-round-robin": "In turn, each as often as its weight says.",
-        "fill-first": "The lowest priority until it hits its limit, then the next."
+        "fill-first": "The lowest priority until it hits its limit, then the next.",
+        "quota-pacing": "The account with the most of its week left, keeping a reserve and resting one near its five-hour limit."
       },
       "defaults": "Defaults",
       "custom": "Yours",
@@ -5099,7 +5108,8 @@
       "resetText": "The defaults hold again.",
       "resetFailed": "Couldn't reset the policy for {project}",
       "empty": "Bind an account to a project to set how its runs pick one.",
-      "loadFailed": "Could not read your policies."
+      "loadFailed": "Could not read your policies.",
+      "pacingSummary": "Reserve {reserve}%, five-hour ceiling {ceiling}%"
     },
     "policyForm": {
       "title": "Policy for {project}",
@@ -5174,7 +5184,16 @@
         "cancel": "Cancel",
         "newPool": "New pool",
         "poolCount": "{count, plural, one {# pool} other {# pools}}",
-        "loadFailed": "Could not read the pools of this project."
+        "loadFailed": "Could not read the pools of this project.",
+        "policy": {
+          "strategyOf": "Strategy of {pool}",
+          "reserve": "Reserve",
+          "ceiling": "5-hour ceiling",
+          "save": "Save",
+          "saved": "Policy of {pool} saved",
+          "failed": "Couldn't save the policy of {pool}",
+          "problem": "Enter whole percents: a reserve of {reserve}, a ceiling of {ceiling}."
+        }
       }
     },
     "variables": "{provider}, {count, plural, one {# variable} other {# variables}}",
@@ -5184,6 +5203,18 @@
     "apiValueHint": "What these runs would cost at API prices. A Claude subscription is not billed per run.",
     "sharing": {
       "overCeiling": "Over its ceiling: shared runs wait"
+    },
+    "sharedWithYou": {
+      "title": "Shared with you",
+      "description": "Accounts other members share with you. Your runs take one by the rules when none of your own is ready, or pick it by hand in a dispatch form. Runs and cost here are yours alone.",
+      "caption": "Accounts shared with you, by owner",
+      "owner": "Owner",
+      "ownedBy": "owned by {owner}, {variable}",
+      "terms": "Share terms",
+      "yourRuns": "Your runs 24 h / 7 d",
+      "yourCost": "Your cost 24 h / 7 d",
+      "empty": "No member shares an account with you.",
+      "loadFailed": "Couldn't load the accounts shared with you. The page tries again shortly."
     },
     "costByPrincipal": {
       "title": "Cost by member",
@@ -5451,6 +5482,39 @@
         "invalid": "The hub refused a value: check the base URL, the models and the projects.",
         "unavailable": "The hub could not reach the endpoint. Check the base URL and try again."
       }
+    },
+    "pacing": {
+      "reserve": "Weekly reserve, in percent",
+      "reserveHint": "The share of an account's week kept back while another has more: {min} to {max}.",
+      "ceiling": "Five-hour ceiling, in percent",
+      "ceilingHint": "Above this five-hour use an account waits while a cooler one is ready: {min} to {max}."
+    },
+    "budget": {
+      "action": "Budget",
+      "actionLabel": "Weekly budget of {name}",
+      "title": "Weekly budget of {name}",
+      "description": "The hub draws what this account's runs cost this week over its budget as its weekly window, which quota pacing and the Token strategy read.",
+      "label": "Weekly budget, in US dollars",
+      "placeholder": "e.g. 50",
+      "hint": "Its weeks run 7 days from the instant set for it, Monday 00:00 UTC unless one was. Leave it empty to drop the budget.",
+      "problems": {
+        "number": "Enter an amount in dollars, with cents at most.",
+        "range": "Enter an amount above 0, up to {max}."
+      },
+      "save": "Save",
+      "saving": "Saving",
+      "cancel": "Cancel",
+      "saved": "Weekly budget of {name} saved",
+      "dropped": "Weekly budget of {name} dropped",
+      "savedText": "Its weekly window shows on the next read."
+    },
+    "zai": {
+      "refresh": "Refresh",
+      "refreshLabel": "Read the quota of {name} from Z.ai again",
+      "refreshed": "Quota of {name} read from Z.ai",
+      "noQuota": "Z.ai gave no quota for {name}",
+      "noQuotaText": "Its bars keep the last quota read.",
+      "failed": "Couldn't read the quota of {name}"
     }
   },
   "runs": {
@@ -6668,6 +6732,40 @@
         "cancel": "Cancel",
         "revoked": "Run #{id} no longer acts as you",
         "revokedText": "Its token has ended; the agent's next call to the hub gets a 401."
+      },
+      "routing": {
+        "title": "Token strategy",
+        "escalated": "Stepped up",
+        "difficulty": "Difficulty",
+        "levels": {
+          "easy": "Easy",
+          "medium": "Medium",
+          "hard": "Hard"
+        },
+        "source": {
+          "rules": "Rated by the hub's rules",
+          "scorer": "Rated by the scorer {scorer}",
+          "fallback": "Not rated: medium by default",
+          "pending": "Left to the worker's scorer"
+        },
+        "escalatedFrom": "One level up after a failed run: {from} to {to}",
+        "model": "Model",
+        "noModel": "None: the agent's profile does not allow the ladder's model",
+        "why": "Why this model",
+        "branch": {
+          "ladder": "The subscription's model: the weekly quota has a surplus to spend",
+          "overflow": "Cost step-down: the overflow's cheaper model"
+        },
+        "strategies": {
+          "surplus-first": "Strategy: surplus first",
+          "cost-first": "Strategy: cost first",
+          "quota-burn": "Strategy: quota burn"
+        },
+        "reason": "Hub's reason",
+        "quota": "Quota when chosen",
+        "weeklyLeft": "{percent}% of the week left",
+        "fiveHourUsed": "{percent}% of the five-hour window used",
+        "error": "Problem"
       }
     },
     "diff": {
@@ -6857,7 +6955,12 @@
       "hint": "An account picked here stays with the run, with no failover to another one. Auto lets your policy for the project pick when a worker takes the run, and move on when an account hits its limit.",
       "none": "None of your accounts is bound to project {project}, so your policy picks among the workers' own credentials. Bind one on the Secrets page.",
       "rerunHint": "By default the rerun takes the account picked by hand for run #{id}, or the rules when none was. An account picked by hand is kept, with no failover.",
-      "expired": "{name} ({variable}), expired"
+      "expired": "{name} ({variable}), expired",
+      "sharedGroup": "Shared with you",
+      "shared": "{owner}/{name} ({variable})",
+      "shared_paused": "{owner}/{name} ({variable}), paused by its owner",
+      "shared_cooling": "{owner}/{name} ({variable}), cooling down: the rules pick until it is lent again",
+      "shared_expired": "{owner}/{name} ({variable}), expired"
     },
     "agent": {
       "label": "Agent",
@@ -7484,6 +7587,67 @@
       "forbidden": "Writing the policy needs the admin role on the project.",
       "conflict": "Someone saved a revision meanwhile. Reload the page to edit the newest.",
       "refused": "The hub refused this policy."
+    },
+    "routing": {
+      "title": "Token strategy",
+      "on": "On",
+      "off": "Off",
+      "offText": "Off: a run that names no model takes its agent's or the runtime's default.",
+      "edit": "Edit",
+      "editTitle": "Token strategy",
+      "description": "How the hub picks the model of a run that names none: it rates the run easy, medium or hard and gives it the ladder's model, or the overflow's once the subscription is down to its reserve.",
+      "enabled": "Pick the model of each run",
+      "enabledHint": "Off, a run that names no model takes its default. A run that names one keeps it.",
+      "strategy": "Strategy",
+      "strategies": {
+        "surplus-first": "Surplus first",
+        "cost-first": "Cost first",
+        "quota-burn": "Quota burn"
+      },
+      "strategyHints": {
+        "surplus-first": "The ladder's model while the subscription has more than its reserve of the week left; past that, easy and medium runs take the overflow.",
+        "cost-first": "Easy and medium runs take the overflow's cheaper model; hard runs take the ladder's.",
+        "quota-burn": "While the subscription has more than its reserve left, every run takes the ladder's hard model, to spend the week's surplus."
+      },
+      "reserve": "Weekly reserve, in percent",
+      "reserveHint": "The share of the subscription's week kept for hard runs: 0 to 100.",
+      "ceiling": "Five-hour ceiling, in percent",
+      "ceilingHint": "Past this use of the five-hour window, easy and medium runs take the overflow: 1 to 100.",
+      "thresholds": "Reserve and ceiling",
+      "thresholdsValue": "Reserve {reserve}% of the week, five-hour ceiling {ceiling}%",
+      "scorer": "Scorer",
+      "scorerHint": "The model of the short turn that rates a prompt the rules cannot; off: such a run is medium.",
+      "scorerOff": "Off: a run the rules cannot rate is medium",
+      "difficulty": "Difficulty",
+      "modelsCaption": "The model of each difficulty, on the ladder and in the overflow",
+      "levels": {
+        "easy": "Easy",
+        "medium": "Medium",
+        "hard": "Hard"
+      },
+      "ladder": {
+        "title": "Ladder",
+        "hint": "The subscription's model of each difficulty: a runtime's own, such as sonnet, or a gateway model as prefix/model."
+      },
+      "overflow": {
+        "title": "Overflow",
+        "hint": "The cheaper model a run takes past the reserve; empty: it keeps the ladder's."
+      },
+      "problems": {
+        "whole": "Enter a whole number from {min} to {max}.",
+        "range": "Enter a number from {min} to {max}.",
+        "required": "Enter a model.",
+        "model": "A runtime's model such as sonnet, or a gateway model as prefix/model, up to {max} characters."
+      },
+      "note": "Token strategy changed",
+      "save": "Save",
+      "saving": "Saving",
+      "cancel": "Cancel",
+      "saved": "Token strategy saved as revision {revision}",
+      "unchanged": "Nothing changed",
+      "forbidden": "Only an admin of the project changes its policy.",
+      "conflict": "Someone changed the policy meanwhile: close, read it again and choose again.",
+      "refused": "The hub refused the Token strategy."
     }
   },
   "inbox": {
@@ -8208,7 +8372,9 @@
         "moved": "Last moved",
         "reasonTitle": "{state, select, planned {Why it waits} open {Why it stays open} closed {Why it closed} other {Why it waits}}",
         "tier": "Merges at",
-        "tierValue": "Tier {tier}"
+        "tierValue": "Tier {tier}",
+        "repos": "Repos, in merge order",
+        "repoAfter": "Merges after {repos}"
       },
       "dropped": "Dropped as a repeat of <link>proposal #{id}</link>.",
       "droppedPlain": "Dropped as a repeat of a rejected proposal.",
@@ -9077,6 +9243,33 @@
     "periods": {
       "day": "day",
       "week": "week"
+    },
+    "evolve": {
+      "title": "Evolutions",
+      "sub": "Runs that rewrite a harness's files or an agent's configuration and keep the candidates on their Pareto front",
+      "unreadable": "The evolutions could not be read.",
+      "retry": "Try again",
+      "caption": "The Curator's evolutions, newest first",
+      "noProposal": "No proposal",
+      "target": {
+        "git": "Harness files",
+        "agent": "Agent configuration"
+      },
+      "state": {
+        "queued": "Queued",
+        "running": "Running",
+        "done": "Done",
+        "failed": "Failed"
+      },
+      "head": {
+        "id": "Evolution",
+        "subject": "What it rewrites",
+        "state": "State",
+        "iterations": "Iterations",
+        "front": "On the front",
+        "proposal": "Proposal",
+        "moved": "Last moved"
+      }
     }
   },
   "releases": {

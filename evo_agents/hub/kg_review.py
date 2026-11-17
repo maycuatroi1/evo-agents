@@ -18,15 +18,16 @@ from collections.abc import Callable
 
 from evo_agents.hub import kg_map
 from evo_agents.kg import review
-from evo_agents.kg.store import Store, edge_id
+from evo_agents.kg.graph_model import edge_id
+from evo_agents.kg.snapshot import SnapshotView
 
 NO_REVIEW = "this build has no review queue: it has no clusters"
 
 Visible = Callable[[tuple], bool]
-Degrees = Callable[[Store, list[str], int], dict[str, int]]  # visible edges of each node of ids at build b
+Degrees = Callable[[SnapshotView, list[str], int], dict[str, int]]  # visible edges of each node of ids at build b
 
 
-def visible_items(store: Store, b: int, visible: Visible) -> list[dict]:
+def visible_items(store: SnapshotView, b: int, visible: Visible) -> list[dict]:
     """The stored items of build b the reader sees, cut to what they see, as ``review.visible_item`` makes them."""
     items = store.review_items(b)
     if not items:
@@ -51,12 +52,12 @@ def visible_items(store: Store, b: int, visible: Visible) -> list[dict]:
     return out
 
 
-def _edge_visible(store: Store, b: int, visible: Visible, src: str, rel: str, dst: str) -> bool:
+def _edge_visible(store: SnapshotView, b: int, visible: Visible, src: str, rel: str, dst: str) -> bool:
     label = store.edge_label(edge_id(src, rel, dst), b)
     return label is not None and visible(label)
 
 
-def queue(store: Store, b: int, visible: Visible, degrees: Degrees) -> dict:
+def queue(store: SnapshotView, b: int, visible: Visible, degrees: Degrees) -> dict:
     """Build b's review queue as the reader sees it: ``items``, most important first within each rule (RULES order),
     each with its nodes (id, kind, name), cluster and cluster label; and ``reason`` when there is none to show."""
     stored = store.review_items(b)
@@ -92,7 +93,7 @@ def queue(store: Store, b: int, visible: Visible, degrees: Degrees) -> dict:
     return {"computed": True, "reason": None, "items": out}
 
 
-def open_counts(store: Store, b: int, visible: Visible, dismissed: set[str]) -> dict[str, int]:
+def open_counts(store: SnapshotView, b: int, visible: Visible, dismissed: set[str]) -> dict[str, int]:
     """Per rule, the items of build b the reader sees that no one dismissed."""
     items = [item for item in visible_items(store, b, visible) if item["fingerprint"] not in dismissed]
     return review.counts(items)

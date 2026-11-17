@@ -431,10 +431,6 @@ async def _charter_body(conn: AsyncConnection, project_id: int) -> dict:
     return (await conn.execute(query)).scalar_one_or_none() or {}
 
 
-async def _protected(conn: AsyncConnection, project_id: int) -> list[str]:
-    return list((await _charter_body(conn, project_id)).get("protected_paths") or [])
-
-
 async def planned_tiers_of(conn: AsyncConnection, project_id: int) -> tuple[int, ...]:
     """The tiers whose accepted proposals become the Curator's plans in the project, as its newest charter says
     (``judge.planned_tiers``): tiers 0 to 2 for a project without a charter or a charter that names none."""
@@ -612,14 +608,16 @@ async def _record_proposal(request: Request, body: ProposalIn, held) -> Proposal
         graph = await graph_view(request, run.owner, access, [f"{repo}:{path}" for repo, path in paths])
         impacted = sorted(graph.impacted) if graph is not None else None
         unknown = await change_tiers.unknown_paths(conn, run.project_id, paths, graph)
+        charter = await _charter_body(conn, run.project_id)
         tier = tiers.tier_of(
             body.kind,
             paths,
-            await _protected(conn, run.project_id),
+            list(charter.get("protected_paths") or []),
             impacted or [],
             unknown=unknown,
             fix_of=body.fix_of,
-        )
+            evolvable=tiers.evolvable_paths(charter),
+        )  # no diff yet (api None): a protected file reached makes it at most tier 2
         fingerprint = tiers.fingerprint(body.kind, paths, body.title)
         rejected = await _rejected_like(conn, run.project_id, fingerprint)
         dropped = rejected is not None and tiers.drops(count, rejected.evidence_count)

@@ -2,7 +2,7 @@
  * The screenshots the product page shows, cut by scripts/product-images.mjs from the demo's shots in docs/images into
  * public/product/: a wide one for a window 768 px wide or more, a phone one below, each light and dark.
  */
-export type ProductImage = "monitor" | "plan-run" | "run-spool" | "kg-search";
+export type ProductImage = "kg-entities" | "project-plugins" | "agent-system" | "plan-run";
 export type ImageSize = "wide" | "phone";
 export type Scheme = "light" | "dark";
 

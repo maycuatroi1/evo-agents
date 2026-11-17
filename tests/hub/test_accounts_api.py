@@ -327,6 +327,8 @@ def test_a_policy_is_the_members_own_for_a_project(client, hub, hub_db):
         "cooldown_seconds": 3600,
         "failover": True,
         "max_failovers": 3,
+        "hard_reserve_pct": 10,
+        "five_hour_ceiling_pct": 90,
         "updated_at": None,
     }
     assert client.get("/v1/account-policies", headers=hub["owner"]).json() == []

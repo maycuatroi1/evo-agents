@@ -288,6 +288,7 @@ class HubConfig:
     pool_min_size: int = 1
     pool_max_size: int = 10
     pool_timeout: float = 10.0  # seconds to wait for a pooled connection before failing the request
+    heartbeat_pool_size: int = 3  # connections of the api's own pool for the workers' heartbeats and claims (``db``)
     admins: frozenset[str] = frozenset()  # lowercased GitHub logins from EVO_HUB_ADMINS
     github_client_id: str | None = None  # public: the CLI asks for it to start the device flow
     github_client_secret: str | None = None  # the web flow's code exchange; never logged or returned
@@ -935,6 +936,7 @@ def load_config(
         pool_min_size=pool_min,
         pool_max_size=pool_max,
         pool_timeout=_number(env, "EVO_HUB_POOL_TIMEOUT", 10.0, kind=float, minimum=0.1),
+        heartbeat_pool_size=_number(env, "EVO_HUB_HEARTBEAT_POOL_SIZE", 3, minimum=1),
         admins=_admins(env),
         github_client_id=_text(env, "EVO_HUB_GITHUB_CLIENT_ID"),
         github_client_secret=_secret(env, "EVO_HUB_GITHUB_CLIENT_SECRET"),

@@ -7,14 +7,15 @@ import { DataTable, dataTableColumns } from "@/components/data/data-table";
 
 import { StateCell } from "./account-cells";
 import { AccountCell, type Actions, ActionButtons, CostCell, HeldByCell, NARROW_HIDDEN, RunsCell } from "./account-columns";
-import { isClaudeAccount } from "./model";
+import { hasUsage, isZaiAccount } from "./budget-model";
 import type { Account } from "./queries";
 import { UsageLimits } from "./usage-limits";
+import { ZaiRefresh } from "./zai-refresh";
 
 /**
  * The model accounts: the runtime's own sign-in. Each row has its state (a pill only when something is wrong), the
  * projects and workers it serves, its runs, what they cost ("API value" for a Claude subscription), the runs holding
- * it, and its usage limits as bars under the row.
+ * it, and its usage limits as bars under the row (a weekly budget's too, and a Z.ai account's with Refresh).
  */
 export function ModelTable({
   accounts,
@@ -26,6 +27,7 @@ export function ModelTable({
   onRenew,
   onKey,
   onDelete,
+  onBudget,
 }: { accounts: Account[]; shared: Set<string>; now: number; caption?: string } & Actions) {
   const t = useTranslations("accounts");
   const columns = useMemo(() => {
@@ -80,14 +82,26 @@ export function ModelTable({
         header: () => <span className="sr-only">{t("columns.actions")}</span>,
         meta: { actions: true },
         cell: (info) => (
-          <ActionButtons account={info.row.original} onEdit={onEdit} onPause={onPause} onRenew={onRenew} onKey={onKey} onDelete={onDelete} />
+          <ActionButtons
+            account={info.row.original}
+            onEdit={onEdit}
+            onPause={onPause}
+            onRenew={onRenew}
+            onKey={onKey}
+            onDelete={onDelete}
+            onBudget={onBudget}
+          />
         ),
       }),
     ]);
-  }, [t, shared, now, onEdit, onPause, onRenew, onKey, onDelete]);
-  // A Claude account's usage limits, or any account's a run reported, under its row at every width.
+  }, [t, shared, now, onEdit, onPause, onRenew, onKey, onDelete, onBudget]);
+  // A Claude or Z.ai account's usage limits, a budget's, or any account's a run reported, under its row at every width;
+  // a Z.ai account's with Refresh, which reads its quota from Z.ai again.
   const usage = useCallback(
-    (account: Account) => (account.last_usage || isClaudeAccount(account) ? <UsageLimits account={account} pageNow={now} /> : null),
+    (account: Account) =>
+      hasUsage(account) ? (
+        <UsageLimits account={account} pageNow={now} action={isZaiAccount(account) ? <ZaiRefresh account={account.name} /> : null} />
+      ) : null,
     [now],
   );
   return (

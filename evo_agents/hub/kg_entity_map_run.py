@@ -100,18 +100,16 @@ def _build(store) -> int | None:
 def nodes(store, ceiling: tuple[int, int] | None, kinds=()) -> Iterator[Node]:
     """The live nodes of the latest ready build of ``store`` (of ``kinds``, every kind when empty) that a reader up to
     ``ceiling`` (level, location) and the store's audience sees."""
-    b = _build(store)
-    if b is None:
+    if _build(store) is None:
         return
-    for node_id, kind, name, props in entity_map_reads.node_rows(store, b, ceiling, kinds):
+    for node_id, kind, name, props in entity_map_reads.node_rows(store, ceiling, kinds):
         yield Node(node_id, kind, name or "", json.loads(props or "{}"))
 
 
 def _edges(store, ceiling, rel: str) -> Iterator[tuple[str, str]]:
-    b = _build(store)
-    if b is None:
+    if _build(store) is None:
         return
-    yield from entity_map_reads.edge_rows(store, b, ceiling, rel)
+    yield from entity_map_reads.edge_rows(store, ceiling, rel)
 
 
 def _class(props: Mapping) -> str:
@@ -122,14 +120,13 @@ def _class(props: Mapping) -> str:
 def item_revs(store, ceiling) -> tuple[dict[str, str], dict[str, str], int]:
     """(the revision of each item a reader up to ``ceiling`` sees, by item id; the class of each; the items above
     it). Assets and commits are left out: a map reads nothing of them."""
-    b = _build(store)
-    if b is None:
+    if _build(store) is None:
         return {}, {}, 0
     # the class of every item, those above the ceiling too, so that assets and commits stay out of ``above``
     classes = {n.node_id: _class(n.props) for n in nodes(store, ALL) if "item_kind" in n.props}
     revs: dict[str, str] = {}
     above = 0
-    for item, rev, hashed, visible in entity_map_reads.item_rows(store, b, ceiling):
+    for item, rev, hashed, visible in entity_map_reads.item_rows(store, ceiling):
         cls = classes.get(item, "other")
         if cls in LEFT_OUT:
             continue
@@ -299,10 +296,9 @@ def _clusters(store, visible: Mapping[str, Node]) -> list[dict]:
     """The clusters of the build that hold a File or Symbol the reader sees: their id, level, the code and other
     nodes the reader sees in each, and a few of its code members. Never a cluster's own label, which is made of the
     words of every member, those the reader does not see too."""
-    b = _build(store)
-    if b is None:
+    if _build(store) is None:
         return []
-    rows = entity_map_reads.cluster_rows(store, b)
+    rows = entity_map_reads.cluster_rows(store)
     found: dict[str, dict] = {}
     for cluster, level, node_id in rows:
         node = visible.get(node_id)

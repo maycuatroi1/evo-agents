@@ -721,7 +721,7 @@ def _prefetch(config, todo, memo, inbox, spend, halted, kinds, rels, jobs, keys=
     are left to the step's loop, which skips them the same way."""
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
-    have = {row[0] for row in memo.db.execute("SELECT key FROM memo WHERE stage = 'entities'")}
+    have = memo.keys("entities")
     pending = iter([t for t in todo if t[4] not in have and not isinstance(inbox.get(t[4]), dict)])
     out: dict = {}
     running: dict = {}
@@ -779,8 +779,9 @@ def _assemble(config, answers, first, out, cov, project, memo, semantic_settings
     ]
     groups = links.group(stated)
     threshold = config.get("synonym_threshold", links.DEFAULT_SYNONYM_THRESHOLD)
-    cache = project.root / links.VECTOR_CACHE if getattr(project, "root", None) is not None else None
-    pairs, status = links.synonyms(groups, semantic_settings, memo, cache, threshold, offline=offline)
+    # the name vectors live in memory for this build: the memo keeps the pairs by the names, so a build of the same
+    # names embeds nothing
+    pairs, status = links.synonyms(groups, semantic_settings, memo, None, threshold, offline=offline)
     merging = step is not None and merge.merge_on(config)
     made: list[tuple[str, dict, list[str]]] = []  # the MERGE_REL edges: (item, the edge's ends and props, units)
     if merging:

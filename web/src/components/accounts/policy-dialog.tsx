@@ -11,9 +11,13 @@ import { Switch } from "@/components/ui/switch";
 import { FormDialog, NumberField } from "./form-parts";
 import { type Failure, useFailure, usePutPolicy } from "./hooks";
 import { COOLDOWN_MINUTES, type PolicyForm, policyBody, policyFormOf, policyProblems, type PolicyRow, type Problem } from "./model";
+import { PacingFields } from "./pacing-fields";
 import { MAX_FAILOVERS, STRATEGIES, type Strategy } from "./queries";
 
-/** The visitor's policy for one project, set whole: strategy, default cooldown, failover and how many at most. */
+/**
+ * The visitor's policy for one project, set whole: strategy, default cooldown, failover and how many at most, and
+ * quota-pacing's reserve and ceiling while that is the strategy.
+ */
 export function PolicyDialog({ policy, open, onOpenChange }: { policy: PolicyRow | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   if (!policy) return null;
   return <PolicyFormDialog key={`${policy.project}-${String(open)}`} policy={policy} open={open} onOpenChange={onOpenChange} />;
@@ -115,6 +119,9 @@ function PolicyFormDialog({ policy, open, onOpenChange }: { policy: PolicyRow; o
           onChange={(maxFailovers) => setForm((current) => ({ ...current, maxFailovers }))}
           testId="policy-max-failovers"
         />
+      ) : null}
+      {form.strategy === "quota-pacing" ? (
+        <PacingFields id={ids} values={form} problems={problems} onChange={(values) => setForm((current) => ({ ...current, ...values }))} />
       ) : null}
     </FormDialog>
   );

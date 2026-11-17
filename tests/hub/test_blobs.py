@@ -516,11 +516,12 @@ def test_presign_get_hands_out_a_short_lived_url_to_one_blob_and_no_route_reads_
 def test_health_is_503_naming_r2_while_the_moto_server_is_stopped(hub):
     healthy = hub.client.get("/v1/health")
     assert healthy.status_code == 200
-    assert healthy.json() == {
+    assert {k: v for k, v in healthy.json().items() if k != "pools"} == {
         "status": "ok",
         "version": __version__,
         "schema": HEAD,
         "db": "ok",
+        "heartbeat_db": "ok",
         "r2": "ok",
         "gateway": "off",
         "cache": "off",
@@ -538,11 +539,12 @@ def test_health_is_503_naming_r2_while_the_moto_server_is_stopped(hub):
     down = hub.client.get("/v1/health")
     assert time.monotonic() - started < 10
     assert down.status_code == 503 and down.headers["content-type"].startswith("application/json")
-    assert down.json() == {
+    assert {k: v for k, v in down.json().items() if k != "pools"} == {
         "status": "unavailable",
         "version": __version__,
         "schema": HEAD,
         "db": "ok",
+        "heartbeat_db": "ok",
         "r2": "unavailable",
         "gateway": "off",
         "cache": "off",

@@ -14,6 +14,7 @@ import type { components } from "@/lib/api/schema";
 import { whoamiQuery } from "@/lib/queries";
 
 import { type Account, accountKeys } from "./queries";
+import { SharedWithYou } from "./shared-with-you";
 import { usageWindows } from "./usage-model";
 
 type PrincipalCost = components["schemas"]["PrincipalCost"];
@@ -128,7 +129,10 @@ function CostByPrincipal({ accounts, shared }: { accounts: Account[]; shared: bo
   );
 }
 
-/** The shares of the visitor's accounts, then what the members they went to spent, once there is a share or a cost. */
+/**
+ * The shares of the visitor's accounts, then what the members they went to spent, once there is a share or a cost;
+ * then the accounts other members share with the visitor, each with its owner.
+ */
 export function AccountSharing({ accounts, now }: { accounts: Account[]; now: number }) {
   const t = useTranslations("accounts.sharing");
   const queryClient = useQueryClient();
@@ -152,6 +156,7 @@ export function AccountSharing({ accounts, now }: { accounts: Account[]; now: nu
     <>
       <SharesSection targets={targets} shares={shares} onChanged={onChanged} extra={extra} now={now} testId="account-shares" />
       <CostByPrincipal accounts={accounts} shared={shares.length > 0} />
+      <SharedWithYou now={now} />
     </>
   );
 }

@@ -3,7 +3,8 @@ attributes (``tables.account_pools``, ``tables.account_pool_members``): queries 
 
 An account pool is a named set of accounts that an admin of a project (or of the hub) keeps for the agents of the
 project (``evo_agents.hub.server.account_pools``). account_pools holds each pool: its project, its name (unique in the
-project in any case) and who made it. account_pool_members lists its accounts, each a secret (``secrets``) of kind env
+project in any case), who made it, and its policy (0258): the strategy its agents' runs pick accounts by and the
+thresholds of quota-pacing (``evo_agents.hub.accounts``). account_pool_members lists its accounts, each a secret (``secrets``) of kind env
 or provider: who added it and when. ``agent_profiles.account_pool_id`` names the one account pool of an agent; many
 agents may name the same pool, and a pool in use cannot be deleted.
 
@@ -21,6 +22,7 @@ from sqlalchemy import (
     Index,
     MetaData,
     PrimaryKeyConstraint,
+    SmallInteger,
     Table,
     Text,
     func,
@@ -41,6 +43,9 @@ def account_pool_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("name", Text, nullable=False),
         Column("created_by", BigInteger, nullable=False),
         _stamp("created_at"),
+        Column("strategy", Text, nullable=False, server_default="round-robin"),  # 0258: the pool's own policy
+        Column("hard_reserve_pct", SmallInteger, nullable=False, server_default="10"),
+        Column("five_hour_ceiling_pct", SmallInteger, nullable=False, server_default="90"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="account_pools_project_id_fkey"),
         ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="RESTRICT", name="account_pools_created_by_fkey"),
         PrimaryKeyConstraint("id", name="account_pools_pkey"),

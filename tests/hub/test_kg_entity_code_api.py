@@ -1,7 +1,7 @@
 """The code of an entity the hub's web pages read (``evo_agents.hub.kg_entity_graph.code_links`` through
 ``WebSession``).
 
-Checked on the store of ``test_kg_entity_graph_api`` with code added: Alice is implemented by a Directory, a File and a
+Checked on the graph of ``test_kg_entity_graph_api`` with code added: Alice is implemented by a Directory, a File and a
 Symbol (also named by her alias, ``refers_to``) and by a secret Symbol; Acme by the File. An entity's detail lists its
 code by package with the reason, the confidence and the link at the commit the source read (a Symbol's file's, with
 its line); a node of the graphs counts its code; ``code`` adds the code nodes of the entities shown; and a reader
@@ -15,10 +15,8 @@ import pytest
 pytest.importorskip("sqlalchemy", reason="the hub's graph needs the hub-server extra, evo-ak[hub-server]")
 
 from evo_agents.hub import kg_entity_graph
-from evo_agents.kg.snapshot import Snapshot
-from evo_agents.kg.store import Store
-from evo_agents.kg.store_filters import label_columns
-from tests.hub.test_kg_entity_graph_api import PROJECT, PUBLIC, SECRET, _edge, _graph, _ids, _node, _session
+from evo_agents.kg.graph_model import label_columns
+from tests.hub.test_kg_entity_graph_api import PUBLIC, SECRET, _edge, _graph, _ids, _node, _session, view_of
 
 REPO = "r"
 BRANCH = "https://github.com/o/r/blob/main/"
@@ -77,15 +75,11 @@ def _with_code():
     return graph
 
 
-@pytest.fixture(params=["store", "snapshot"])
-def store(tmp_path, request):
-    found = Store(tmp_path / "graph.sqlite")
+@pytest.fixture
+def store():
     coverage = {"sources": [{"id": "code", "read": {"blob": {"branch": BRANCH, "commit": COMMIT}}}]}
-    found.write(_with_code(), state_digest="x", coverage=coverage, stats={}, policy=None)
     kg_entity_graph.VIEWS.clear()
-    # the hub reads the snapshot of its tables, the CLI a store file: both give the same graph
-    yield found if request.param == "store" else Snapshot.from_store(found, 1).view(frozenset({PROJECT}))
-    found.close()
+    return view_of(_with_code(), coverage)
 
 
 def test_an_entity_lists_its_code_by_package_with_reason_confidence_and_link_at_the_commit(store):

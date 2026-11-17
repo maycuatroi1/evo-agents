@@ -38,7 +38,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from starlette.requests import Request
 
-from evo_agents.hub import kg_snapshots, outputs, system_context
+from evo_agents.hub import kg_snapshots, outputs, runs, system_context
 from evo_agents.hub.jobs import JobQueue
 from evo_agents.hub.kg_graph import Handles
 from evo_agents.hub.memory import AGENT_SINK
@@ -95,6 +95,8 @@ OPS_ACTIONS = {  # ops_action's actions: (the body, the action of ops_actions)
     "curator_resume": (ops_actions.OpsReasonIn, ops_actions.curator_resume),
     "read": (ops_actions.OpsReadIn, ops_actions.read),
     "finding": (ops_actions.OpsFindingIn, ops_actions.finding),
+    "priority": (ops_actions.OpsPriorityIn, ops_actions.priority),
+    "plan_dispatch": (ops_actions.OpsPlanIn, ops_actions.plan_dispatch),
 }
 TOOLS = [
     _function(
@@ -172,7 +174,9 @@ TOOLS = [
         "ops_action",
         "As the Orchestrator, in an ops thread the hub opened to you for a batch: rerun or redeliver a failed run of "
         "it (run_id), answer a stuck wait (decision_id, text), resume the Curator its breaker paused, mark a notice "
-        "read (notification_id), or write a finding for the Curator (lens, severity, title, body).",
+        "read (notification_id), write a finding for the Curator (lens, severity, title, body), give a queued run of "
+        "the project another priority (run_id, level), or hand a stalled plan of the batch again to the default "
+        "system's entry agent (plan_id).",
         {
             "action": {"type": "string", "enum": list(OPS_ACTIONS)},
             "reason": _TEXT,
@@ -184,6 +188,8 @@ TOOLS = [
             "severity": {"type": "string", "enum": ["low", "medium", "high"]},
             "title": _TEXT,
             "body": _TEXT,
+            "level": {"type": "string", "enum": list(runs.PRIORITIES)},
+            "plan_id": _TEXT,
         },
         ["action", "reason"],
     ),
@@ -413,7 +419,8 @@ async def ops_action(turn: Turn, arguments: dict) -> str:
     async with turn.engine.begin() as conn:
         run = await _agent_run(conn, turn)
         await held_row(conn, turn.run_id, None, lock=True, kinds=("chat",))
-        acted = await act(conn, run, body)
+        extra = {"public_url": turn.config.public_url} if act is ops_actions.plan_dispatch else {}
+        acted = await act(conn, run, body, **extra)
     return f"done: the Decision line is message #{acted.message_id}; {acted.model_dump_json(exclude_none=True)}"
 
 

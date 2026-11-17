@@ -153,6 +153,11 @@ def lacks_agent_home(row, profile, runtime: str = "any") -> bool:
     return bool(usable) and usable[0] == CLAUDE
 
 
+# The one reason a node cannot take a run now that passes on its own: a chat run of a pool whose ready nodes only lack
+# a slot queues on the first of them (``chat_runs._pool_worker``) rather than being refused.
+NO_FREE_SLOT = "has no free slot"
+
+
 def worker_problems(
     row, profile, via: str, kind: str = "chat", runtime: str = "any", *, selector=(), tolerations=(), pinned=False
 ) -> list[str]:
@@ -169,7 +174,7 @@ def worker_problems(
         (row.drained_at is not None, "is draining"),
         (not takes_kind(row, kind), f"runs evo-agents {row.agent_version or '?'}, which takes no {kind} run"),
         (row.dispatch_from == "web" and via != "web", "takes runs dispatched from the web only"),
-        (row.holding >= row.slots, "has no free slot"),  # its runs and the runs queued for it
+        (row.holding >= row.slots, NO_FREE_SLOT),  # its runs and the runs queued for it
         (row.others > 0, "holds a run of another member, and a shared worker runs one member's runs at a time"),
         # a daemon that clones the repos it lacks (runs.CLONES_CHECKOUTS) claims with no checkout, as Claimer.stops says
         (

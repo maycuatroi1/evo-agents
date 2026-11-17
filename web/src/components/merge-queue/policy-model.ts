@@ -219,11 +219,16 @@ export type PolicyResult = { body: Tree; problems: null } | { body: null; proble
 
 /**
  * The body the form makes of `held` (the policy's newest body), or the problems of its fields. A repo the project no
- * longer lists is dropped, as the hub would refuse it; one on github.com may not be set to auto.
+ * longer lists is dropped, as the hub would refuse it; one on github.com may not be set to auto. A section the form
+ * does not edit (loop, context, the Token strategy's routing) is kept as `held` has it, since a write replaces the
+ * whole body.
  */
 export function policyBody(form: PolicyForm, held: Tree, repos: Record<string, RepoFacts>): PolicyResult {
   const problems: PolicyProblems = { global: {}, repos: {} };
   const body: Tree = {};
+  for (const [key, value] of Object.entries(held)) {
+    if (key !== "repos" && !(SECTION_NAMES as readonly string[]).includes(key)) body[key] = value;
+  }
   for (const spec of KEYS) {
     const parsed = parseField(spec, form.global[spec.path] ?? "");
     if ("problem" in parsed) problems.global[spec.path] = parsed.problem;

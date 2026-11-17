@@ -321,11 +321,12 @@ def test_curator_plan_an_accepted_tier_0_proposal_becomes_a_plan_on_a_branch_of_
 
 
 def test_curator_plan_a_draft_that_cannot_become_a_plan_is_left_open_with_why(world):
-    two = [{"repo": "evo-agents", "path": "tests/test_wait.py"}, {"repo": "lumen-identity", "path": "tests/test_x.py"}]
+    two = [{"repo": "evo-agents", "path": "tests/test_wait.py"}, {"repo": "lumen-kb-docs", "path": "docs/x.md"}]
     accepted(world, paths=two)
     change = one_change(world)
     assert change["state"] == "open" and change["plan_id"] is None and change["branch"] is None
-    assert "works in one repo, and the proposal names evo-agents, lumen-identity" in change["reason"]
+    assert "works in one repo, and the proposal names evo-agents, lumen-kb-docs" in change["reason"]
+    assert "works on GitHub alone, and lumen-kb-docs is not there" in change["reason"]
     assert fire(world.client, NIGHT).get("builder") is None  # nothing of it runs
 
 
@@ -670,6 +671,8 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
         "history_key": None,
         "probe": None,  # a probe run's alone
         "probe_key": None,
+        "evolve": None,  # an evolve run's alone
+        "evolve_key": None,
         "merge_result": False,  # a merge check's alone
         "signs_passed": False,  # a merge queue Judge's alone
     }
@@ -696,6 +699,76 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
         "pull_requests": "write",
         **ci_reads,
     }
+
+
+KNOWLEDGE_GLOB = "evo-agents-harness:knowledge.yaml"
+GLOBS = ["curator.yaml", ".github/workflows/**", KNOWLEDGE_GLOB]
+LISTED = [
+    {"repo": "evo-agents", "path": "tests/test_wait.py"},
+    {"repo": "evo-agents-harness", "path": "knowledge.yaml"},
+]
+
+
+def listing(world, globs=GLOBS, paths=LISTED, state: str = "accepted", tier: int = 3) -> list[str]:
+    """The charter protects ``globs``, the proposal lists ``paths``, in ``state`` at ``tier``; the protected paths of
+    the claim of the Builder the night shift then queues."""
+    written(world.client, world.headers["owner"], curator_charter(protected_paths=globs))
+    sql(world.db, update(tables.proposals).values(paths=paths, state=state, tier=tier))
+    assert protect(world).status_code == 200
+    assert fire(world.client, NIGHT)["builder"] == 1
+    spec = claim(world.client, world.worker)
+    assert spec["curator"]["role"] == "builder"
+    return spec["curator"]["protected_paths"]
+
+
+def test_curator_plan_a_builder_is_not_stopped_on_a_protected_file_its_accepted_proposal_lists(world):
+    accepted(world)
+    # the one file the proposal lists is left out; the protected paths it does not list stay
+    assert listing(world) == ["curator.yaml", ".github/workflows/**"]
+
+
+def test_curator_plan_a_builder_keeps_a_wildcard_glob_and_a_listed_file_of_other_repos_protected(world):
+    from evo_agents.worker.runner.transitions import protected_hit
+
+    accepted(world)
+    globs = [".github/workflows/**", "knowledge.yaml", "evo-agents:docs/*.md"]
+    paths = [
+        {"repo": "evo-agents", "path": ".github/workflows/ci.yml"},
+        {"repo": "evo-agents-harness", "path": "knowledge.yaml"},
+        {"repo": "evo-agents", "path": "docs/hub.md"},
+    ]
+    left = listing(world, globs=globs, paths=paths)
+    # a glob with a wildcard stays whole; one file with no repo is scoped to each other repo of the project
+    repos = [name for (name,) in sql(world.db, select(tables.project_repos.c.name).order_by("name"))]
+    scoped = [f"{repo}:knowledge.yaml" for repo in repos if repo != "evo-agents-harness"]
+    assert "evo-agents:knowledge.yaml" in scoped
+    assert left == [".github/workflows/**", *scoped, "evo-agents:docs/*.md"]
+    # a sibling of the listed file, and the same file in another repo, still stop the run; the listed file does not
+    assert protected_hit("evo-agents", [".github/workflows/deploy.yml"], left) is not None
+    assert protected_hit("evo-agents", ["knowledge.yaml"], left) is not None
+    assert protected_hit("evo-agents-harness", ["knowledge.yaml"], left) is None
+
+
+def test_curator_plan_a_builder_of_a_proposal_not_accepted_at_tier_3_keeps_every_protected_path(world):
+    accepted(world)
+    assert listing(world, state="open") == GLOBS
+
+
+def test_curator_plan_a_builder_of_a_proposal_accepted_below_tier_3_keeps_every_protected_path(world):
+    accepted(world)  # the path was protected after the owner accepted the proposal
+    assert listing(world, tier=0) == GLOBS
+
+
+def test_curator_plan_the_judge_keeps_every_protected_path_the_proposal_lists(world):
+    accepted(world)
+    written(world.client, world.headers["owner"], curator_charter(protected_paths=GLOBS))
+    sql(world.db, update(tables.proposals).values(paths=LISTED, tier=3))
+    builder(world)
+    assert moved_on(world) == {"opened": 1}
+    spec = judge_run(world)
+    assert spec["curator"]["role"] == "judge"
+    assert spec["curator"]["protected_paths"] == GLOBS
+    assert inputs(world, spec["id"]).json()["protected_paths"] == GLOBS
 
 
 @contextmanager
@@ -1422,7 +1495,7 @@ def test_curator_plan_changes_and_protection_on_the_command_line(world, tmp_path
 
 
 def test_close_an_admin_closes_a_change_left_open_with_no_pull_request(world, tmp_path, monkeypatch, capsys):
-    two = [{"repo": "evo-agents", "path": "tests/test_wait.py"}, {"repo": "lumen-identity", "path": "tests/test_x.py"}]
+    two = [{"repo": "evo-agents", "path": "tests/test_wait.py"}, {"repo": "lumen-kb-docs", "path": "docs/x.md"}]
     accepted(world, paths=two)  # it cannot become the Curator's plan: its change is open, with no plan, no branch
     change = one_change(world)
     assert (change["state"], change["plan_id"], change["branch"], change["pr_number"]) == ("open", None, None, None)
@@ -1500,6 +1573,18 @@ def test_changes_a_branch_that_changes_nothing_gets_no_pull_request_nor_judge_an
     assert f"The hub closed the Curator's change #{change['id']}: its branch changes nothing" in events_text(
         world, builder_id
     )
+
+
+def test_changes_a_branch_with_no_commit_of_its_own_closes_its_change_instead_of_asking_github_again(world):
+    accepted(world)
+    builder(world, files=[])
+    world.github.push(MINE, "evo-agents", BRANCH, "0" * 40, files=[])  # a change made on the hub: 0 commits pushed
+    assert moved_on(world) == {"nothing": 1}
+    change = one_change(world)
+    assert (change["state"], change["pr_number"]) == ("closed", None)
+    assert change["reason"].startswith(f"its branch has no commit of its own: {BRANCH} adds nothing to main")
+    assert calls(world.github, "POST", "/pulls") == []
+    assert moved_on(world) == {}
 
 
 def test_changes_a_comparison_that_says_nothing_of_the_files_still_opens_the_pull_request(world, monkeypatch):
