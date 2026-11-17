@@ -15,6 +15,7 @@ One hub serves every test of the module (they only read), built as in ``tests.hu
 from __future__ import annotations
 
 import json
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -274,6 +275,9 @@ def test_a_view_is_counted_once_per_reader_and_never_shared_across_readers(hub, 
     assert len(counted) == 2  # another clearance, another view
     assert CONTRACT not in json.dumps(ivan)
     assert cluster_map(hub, "wendy") == first and len(counted) == 2
+    gzipped = hub.client.get("/v1/openapi.json", headers={"Accept-Encoding": "gzip"})
+    assert gzipped.status_code == 200 and gzipped.headers.get("content-encoding") == "gzip"
+    assert gzipped.json()["openapi"].startswith("3.")
 
 
 def test_the_view_cache_keeps_the_latest_views():
@@ -295,3 +299,21 @@ def test_the_view_cache_keeps_the_latest_views():
     assert cache.get("a", make("a")) is a and made == ["a", "b", "c"]
     cache.get("b", make("b"))
     assert made == ["a", "b", "c", "b"]
+
+    entered, release = threading.Event(), threading.Event()
+    results: list[kg_map.View] = []
+
+    def slow():
+        entered.set()
+        assert release.wait(5)
+        made.append("shared")
+        return kg_map.View(reason="shared")
+
+    threads = [threading.Thread(target=lambda: results.append(cache.get("shared", slow))) for _ in range(4)]
+    for t in threads:
+        t.start()
+    assert entered.wait(5)
+    release.set()
+    for t in threads:
+        t.join(5)
+    assert len(results) == 4 and len({id(r) for r in results}) == 1 and made.count("shared") == 1

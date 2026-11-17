@@ -98,7 +98,7 @@ from evo_agents.hub.kg_ingest import (
     read_run_log,
     refusal,
 )
-from evo_agents.hub.kg_snapshots import Held
+from evo_agents.hub.kg_snapshots import Held, requests_waiting
 from evo_agents.hub.kg_source_state import SourceState, source_state
 from evo_agents.hub.kg_sources import reads_chats
 from evo_agents.hub.memory import AGENT_SINK
@@ -110,6 +110,7 @@ from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.kg.graph_scope import DEFAULT_GRAPH
+from evo_agents.kg.pacing import pacing
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve_view import ToolError
 from evo_agents.kg.tools import SIGNATURES
@@ -858,23 +859,24 @@ async def tool_result(
     else:
         snapshot = await snapshot_view(state, access.project_id, graphs, ceiling)
     try:
-        result = await asyncio.to_thread(
-            answer,
-            state.kg_handles,
-            (user.user_id, project),
-            project,
-            rules.policy,
-            ceiling,
-            sink,
-            graphs,
-            tool,
-            arguments,
-            explore,
-            tuning,
-            whole,
-            named,
-            snapshot,
-        )
+        with pacing(busy=requests_waiting):
+            result = await asyncio.to_thread(
+                answer,
+                state.kg_handles,
+                (user.user_id, project),
+                project,
+                rules.policy,
+                ceiling,
+                sink,
+                graphs,
+                tool,
+                arguments,
+                explore,
+                tuning,
+                whole,
+                named,
+                snapshot,
+            )
     except GraphUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
     if run_id is not None and narrow is None:

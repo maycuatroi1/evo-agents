@@ -112,6 +112,9 @@ def test_a_private_chat_item_is_invisible_to_a_member_outside_its_audience(hub_d
         view = Snapshot.from_stored(rows).view(reader)
         seen = view.seen()
         assert (seen["nodes"], seen["edges"], seen["units"]) == counts, reader
+        assert (seen["items"], seen["audience"]) == ({"chat": len(readable)}, {"chat"}), reader
+        assert sum(c for *_, c in view.kind_counts()) == counts[0], reader
+        assert sum(c for *_, c in view.shape_counts()) == counts[1], reader
         assert {n for n in items if view.unit(f"{n}#") is not None} == readable, reader
         assert {n for n in items if view.body(n) is not None} == readable, reader
         assert {n for n in items if view.node(n) is not None} == readable, reader

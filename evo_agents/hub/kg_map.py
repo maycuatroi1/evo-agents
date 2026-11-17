@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import Generic, TypeVar
 
 from evo_agents.kg import clusters as kg_clusters
+from evo_agents.kg.pacing import paced
 from evo_agents.kg.snapshot import SnapshotView
 
 WHOLE_NODES = 20_000  # most nodes the whole-graph view takes
@@ -58,14 +59,14 @@ def view(store: SnapshotView, b: int, visible: Visible) -> View:
     if stored is None:
         coverage = store.build_row(b)["coverage"].get("clusters") or {}
         return View(reason=coverage.get("reason") or NO_CLUSTERS)
-    nodes = [n for n in store.cluster_nodes(b) if n["cluster"] in stored.clusters and visible(n["label"])]
+    nodes = [n for n in paced(store.cluster_nodes(b)) if n["cluster"] in stored.clusters and visible(n["label"])]
     if not nodes:
         return View(reason=NO_VISIBLE)
-    member = {n["id"]: n for n in nodes}
+    member = {n["id"]: n for n in paced(nodes)}
     out = View(nodes=nodes)
     for level, key in ((1, "cluster"), (2, "sub")):
         groups: dict[str, list[dict]] = defaultdict(list)
-        for n in nodes:
+        for n in paced(nodes):
             if n[key] is not None and n[key] in stored.clusters:
                 groups[n[key]].append(n)
         names = kg_clusters.labels({cid: [(n["name"], n["path"]) for n in ms] for cid, ms in groups.items()})
@@ -79,11 +80,11 @@ def view(store: SnapshotView, b: int, visible: Visible) -> View:
                 "kinds": dict(sorted(Counter(n["kind"] for n in ms).items())),
             }
     pairs: Counter = Counter()
-    for a, z, edge, src, dst, count in store.member_links(b, kg_clusters.STRUCTURAL):
+    for a, z, edge, src, dst, count in paced(store.member_links(b, kg_clusters.STRUCTURAL)):
         if a in member and z in member and visible(edge) and visible(src) and visible(dst):
             pairs[(a, z) if a < z else (z, a)] += count
     links: Counter = Counter()
-    for (a, z), w in pairs.items():
+    for (a, z), w in paced(pairs.items()):
         for level, key in ((1, "cluster"), (2, "sub")):
             ca, cz = member[a][key], member[z][key]
             if ca in out.clusters and cz in out.clusters and ca != cz:
@@ -96,11 +97,12 @@ def view(store: SnapshotView, b: int, visible: Visible) -> View:
 class ViewCache(Generic[V]):
     """The last ``kept`` views, by a key that names the artifact read and the reader's view of it (the clearance, the
     audience and whether the build holds nothing above them). A view is never changed once made, so callers share it.
-    Two calls missing the same key both count it; the second one's result is kept."""
+    Concurrent misses of the same key wait on one computation instead of racing on the GIL."""
 
     def __init__(self, kept: int = VIEWS_KEPT):
         self.kept = kept
         self._views: OrderedDict[Hashable, V] = OrderedDict()
+        self._inflight: dict[Hashable, list] = {}
         self._lock = threading.Lock()
 
     def get(self, key: Hashable, make: Callable[[], V]) -> V:
@@ -109,13 +111,29 @@ class ViewCache(Generic[V]):
             if found is not None:
                 self._views.move_to_end(key)
                 return found
-        made = make()
-        with self._lock:
-            self._views[key] = made
-            self._views.move_to_end(key)
-            while len(self._views) > self.kept:
-                self._views.popitem(last=False)
-        return made
+            slot = self._inflight.get(key)
+            if slot is None:
+                slot = self._inflight[key] = [threading.Lock(), 0]
+            slot[1] += 1
+        try:
+            with slot[0]:
+                with self._lock:
+                    found = self._views.get(key)
+                    if found is not None:
+                        self._views.move_to_end(key)
+                        return found
+                made = make()
+                with self._lock:
+                    self._views[key] = made
+                    self._views.move_to_end(key)
+                    while len(self._views) > self.kept:
+                        self._views.popitem(last=False)
+                    return made
+        finally:
+            with self._lock:
+                slot[1] -= 1
+                if slot[1] == 0 and self._inflight.get(key) is slot:
+                    del self._inflight[key]
 
     def clear(self) -> None:
         with self._lock:

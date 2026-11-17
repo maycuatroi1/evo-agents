@@ -38,6 +38,7 @@ from pathlib import PurePosixPath
 
 from evo_agents.hub.kg_map import ViewCache
 from evo_agents.kg.freshness import Links
+from evo_agents.kg.pacing import paced
 from evo_agents.kg.snapshot import SnapshotView
 
 ENTITY_PREFIX = "entity:"
@@ -75,24 +76,24 @@ VIEWS: ViewCache[EntityView] = ViewCache()
 def view(store: SnapshotView, b: int, seen: Seen) -> EntityView:
     """The reader's entity view of build b."""
     nodes, edges = store.entity_graph(b, ENTITY_PREFIX)
-    shown = {n["id"]: n for n in nodes if seen(n)}
-    mentions = [e for e in edges if e["rel"] == MENTIONS and e["dst"] in shown and seen(e)]
-    documents = store.nodes({e["src"] for e in mentions}, b)
+    shown = {n["id"]: n for n in paced(nodes) if seen(n)}
+    mentions = [e for e in paced(edges) if e["rel"] == MENTIONS and e["dst"] in shown and seen(e)]
+    documents = store.nodes({e["src"] for e in paced(mentions)}, b)
     docs: dict[str, list[dict]] = defaultdict(list)
-    for e in mentions:
+    for e in paced(mentions):
         doc = documents.get(e["src"])
         if doc is not None and seen(doc):
             docs[e["dst"]].append(e)
     relations: dict[str, dict] = {}
     adjacent: dict[str, list[str]] = defaultdict(list)
-    for e in edges:
+    for e in paced(edges):
         if e["rel"] != MENTIONS and e["src"] in shown and e["dst"] in shown and e["src"] != e["dst"] and seen(e):
             relations[e["id"]] = e
             adjacent[e["src"]].append(e["id"])
             adjacent[e["dst"]].append(e["id"])
     code, targets = _code(store, b, seen, shown)
     pointers: dict[str, int] = defaultdict(int)
-    for by_target in code.values():
+    for by_target in paced(code.values()):
         for tid in by_target:
             pointers[tid] += 1
     return EntityView(
@@ -109,17 +110,17 @@ def view(store: SnapshotView, b: int, seen: Seen) -> EntityView:
 def _code(store: SnapshotView, b: int, seen: Seen, shown: dict[str, dict]) -> tuple[dict, dict]:
     """The code each seen entity points to: the seen edges of CODE_RELS to a seen code node, ``implemented_by``
     first, then by confidence."""
-    found = [e for e in store.entity_code(b, CODE_RELS, ENTITY_PREFIX) if e["src"] in shown and seen(e)]
-    nodes = store.nodes({e["dst"] for e in found}, b)
+    found = [e for e in paced(store.entity_code(b, CODE_RELS, ENTITY_PREFIX)) if e["src"] in shown and seen(e)]
+    nodes = store.nodes({e["dst"] for e in paced(found)}, b)
     targets: dict[str, dict] = {}
     code: dict[str, dict[str, list[dict]]] = defaultdict(dict)
-    for e in found:
+    for e in paced(found):
         t = nodes.get(e["dst"])
         if t is None or t["kind"] not in CODE_KINDS or not seen(t):
             continue
         targets[t["id"]] = t
         code[e["src"]].setdefault(t["id"], []).append(e)
-    for by_target in code.values():
+    for by_target in paced(code.values()):
         for edges in by_target.values():
             edges.sort(key=lambda e: (e["rel"] != IMPLEMENTED_BY, -(e["conf"] or 0.0), e["id"]))
     return dict(code), targets
