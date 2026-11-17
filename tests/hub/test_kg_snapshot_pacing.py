@@ -172,3 +172,68 @@ def test_a_part_that_raises_as_it_is_taken_apart_does_not_stop_the_thread_freein
     object.__setattr__(snap, "review", Part())
     del snap
     assert freed.wait(30)
+
+
+def _sleeps(monkeypatch, into: list) -> None:
+    sleep = pacing.time.sleep
+
+    def counted(seconds):
+        if threading.current_thread().name == "kg-free-aside":
+            sleep(seconds)
+        else:
+            into.append(seconds)
+
+    monkeypatch.setattr(pacing, "YIELD_SECONDS", 0)
+    monkeypatch.setattr(pacing.time, "sleep", counted)
+
+
+def test_paced_sleeps_longer_while_requests_wait_but_never_in_the_thread_of_the_loop(monkeypatch):
+    slept, waiting = [], [True]
+    _sleeps(monkeypatch, slept)
+
+    async def made(busy):
+        with pacing.pacing(busy=busy):
+            in_thread = await asyncio.to_thread(lambda: list(pacing.paced(range(2))))
+            on_loop = list(pacing.paced(range(2)))  # a sleep here would stop every request
+            return in_thread, on_loop
+
+    assert asyncio.run(made(lambda: waiting[0])) == ([0, 1], [0, 1])
+    assert slept == [pacing.BUSY_PAUSE_SECONDS] * 2 + [pacing.PAUSE_SECONDS] * 2
+    slept.clear()
+    waiting[0] = False
+    asyncio.run(made(lambda: waiting[0]))
+    assert slept == [pacing.PAUSE_SECONDS] * 4
+
+
+def test_a_snapshot_is_made_at_the_slow_pace_while_a_request_holds_a_connection_of_the_pool(monkeypatch):
+    """A heartbeat is ten queries, each a turn of the loop that waits for the GIL the thread making a snapshot holds:
+    on the busy host of the hub the thread's 1 ms pauses left it 2 s, held in its transaction."""
+    from types import SimpleNamespace
+
+    from evo_agents.hub import db
+    from tests.hub import pg
+
+    if not pg.DSN:
+        pytest.skip(pg.SKIP_REASON)
+    slept = []
+    _sleeps(monkeypatch, slept)
+    rows = graph_rows(300)
+
+    async def go():
+        pool = db.create_pool(SimpleNamespace(dsn=pg.DSN, pool_min_size=1, pool_max_size=2, pool_timeout=5.0))
+        await pool.open(wait=True, timeout=10)
+        try:
+            assert not kg_snapshots.requests_waiting()
+            await kg_snapshots._made(1, rows)
+            at_rest = list(slept)
+            slept.clear()
+            async with pool.connection():  # a request in the middle of its transaction
+                assert kg_snapshots.requests_waiting()
+                await kg_snapshots._made(1, rows)
+            return at_rest, list(slept)
+        finally:
+            await pool.close()
+
+    at_rest, busy = asyncio.run(go())
+    assert at_rest and set(at_rest) == {pacing.PAUSE_SECONDS}
+    assert busy and set(busy) == {pacing.BUSY_PAUSE_SECONDS}

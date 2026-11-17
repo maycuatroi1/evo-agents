@@ -102,6 +102,13 @@ class TimedPool(AsyncConnectionPool):
             log.info("pool connection held", extra={"holder": taken[1], "held_ms": _ms(held)})
         await super().putconn(conn)
 
+    def serving(self, within: float, but: str = "") -> bool:
+        """Whether a connection taken ``within`` seconds ago or later is out, a request in the middle of its
+        transaction, not counting the ones of a holder that names ``but``: what a build's thread running beside the
+        loop (``evo_agents.hub.kg_snapshots``) lets go ahead of itself."""
+        since = monotonic() - within
+        return any(taken >= since and not (but and but in who) for taken, who in list(self._out.values()))
+
     def holders(self) -> list[dict]:
         """The connections out now, the longest held first: each one's holder and how long it has held it."""
         now = monotonic()
@@ -120,7 +127,7 @@ def _ms(seconds: float) -> float:
 
 
 def create_pool(config: HubConfig) -> AsyncConnectionPool:
-    return TimedPool(
+    pool = TimedPool(
         config.dsn,
         min_size=config.pool_min_size,
         max_size=config.pool_max_size,
@@ -131,6 +138,12 @@ def create_pool(config: HubConfig) -> AsyncConnectionPool:
         close_returns=True,  # a connection the engine closes goes back to the pool
         open=False,
     )
+    live.append(pool)
+    del live[:-1]
+    return pool
+
+
+live: list[TimedPool] = []  # the pool made last: the api's one
 
 
 async def open_pool(config: HubConfig) -> AsyncConnectionPool:
