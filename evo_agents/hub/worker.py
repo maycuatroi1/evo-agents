@@ -6,8 +6,9 @@ process takes only the queue ``jobs.LEASE`` (recovering runs, delivering notific
 at a time, so those run every minute even while long jobs fill the ``concurrency`` slots; a third takes only
 ``jobs.HUB_QUEUE``, the turns of the hub runtime, HUB_CONCURRENCY at a time; a fourth only ``jobs.DELIVERY_QUEUE``,
 the deliveries to plugins, DELIVERY_CONCURRENCY at a time, so what a commit queues for a plugin goes out within
-seconds. On the first signal it takes no new job and waits up to SHUTDOWN_GRACE for the running ones; procrastinate
-aborts what is still running after that, and a second signal kills the process. Stopped by a signal, it exits 0;
+seconds. On the first signal it takes no new job and waits up to SHUTDOWN_GRACE for the running ones (KG_SHUTDOWN_GRACE
+on a worker of the queue kg alone, so a deploy lets the build it runs finish); procrastinate aborts what is still running
+after that, and a second signal kills the process. Stopped by a signal, it exits 0;
 stopped by anything else, such as losing Postgres, it exits 1, so the container is restarted and the failure shows. It
 needs the blob store: what it builds lives in R2, and it removes the uploads nobody committed. ``--data-dir`` is its
 cache, which can be deleted at any time.
@@ -185,6 +186,11 @@ log = logging.getLogger(__name__)
 
 APPLICATION_NAME = "evo-agents-hub-worker"
 SHUTDOWN_GRACE = 25.0  # seconds running jobs get after SIGTERM; the container needs a longer stop grace period
+# The grace of a worker of the queue kg alone (worker-kg): above the median build (about 440 s), so the deploy each merge
+# to main makes lets the running build finish instead of recording it STOPPED and building again from scratch. A build
+# still running after it is aborted, recorded STOPPED and queued again. worker-kg's stop_grace_period (570 s in
+# deploy/hub/docker-compose.yml) must stay above it, or Docker kills the build first.
+KG_SHUTDOWN_GRACE = 540.0
 PING_MAX_SECONDS = 30.0
 JOB_RETENTION = timedelta(days=14)
 STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT)
@@ -732,6 +738,12 @@ def connector(config: HubConfig, concurrency: int) -> PsycopgConnector:
     )
 
 
+def shutdown_grace(queues: list[str] | None) -> float:
+    """Seconds the running jobs get after SIGTERM: KG_SHUTDOWN_GRACE when ``queues`` are the kg queue alone,
+    SHUTDOWN_GRACE otherwise (every queue, or one with short jobs a deploy should not wait for)."""
+    return KG_SHUTDOWN_GRACE if queues and set(queues) == {jobs.KG_QUEUE} else SHUTDOWN_GRACE
+
+
 async def workers(**options) -> None:
     """Four procrastinate workers on the one App: one with ``options``, one on jobs.LEASE alone, so recovering runs
     and delivering notifications never wait behind a long job, one on jobs.HUB_QUEUE alone, HUB_CONCURRENCY turns
@@ -786,7 +798,8 @@ async def work(**options) -> bool:
         received.append(signal.Signals(signum).name)
         for each in STOP_SIGNALS:  # a second signal kills the process
             loop.remove_signal_handler(each)
-        log.info("stop requested", extra={"signal": received[0], "grace_s": SHUTDOWN_GRACE})
+        grace = options.get("shutdown_graceful_timeout", SHUTDOWN_GRACE)
+        log.info("stop requested", extra={"signal": received[0], "grace_s": grace})
         task.cancel()  # procrastinate stops taking jobs and waits for the running ones
 
     for each in STOP_SIGNALS:
@@ -885,7 +898,7 @@ async def run(
                     name=name,
                     concurrency=concurrency,
                     queues=queues,
-                    shutdown_graceful_timeout=SHUTDOWN_GRACE,
+                    shutdown_graceful_timeout=shutdown_grace(queues),
                     listen_notify=True,
                     additional_context={"hub": context},
                 )
