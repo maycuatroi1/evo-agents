@@ -50,11 +50,14 @@ def is_json(response) -> bool:
 def test_health_reports_version_schema_and_db(client, tmp_path):
     response = client.get("/v1/health")
     assert response.status_code == 200
-    assert response.json() == {
+    body = response.json()
+    assert set(body.pop("pools")) == {"api", "heartbeat"}
+    assert body == {
         "status": "ok",
         "version": __version__,
         "schema": HEAD,
         "db": "ok",
+        "heartbeat_db": "ok",
         "r2": "unconfigured",  # without EVO_HUB_S3_*; tests/hub/test_blobs.py checks R2 itself
         "gateway": "off",  # without EVO_HUB_GATEWAY_SECRET; tests/hub/test_gateway.py checks the gateway
         "broker": "off",  # without EVO_HUB_BROKER_URL; tests/hub/test_event_bus.py checks the broker
@@ -72,16 +75,19 @@ def test_health_is_503_with_a_json_body_while_postgres_is_down(client, hub_db):
         response = client.get("/v1/health")
         assert time.monotonic() - started < 10
         assert response.status_code == 503 and is_json(response)
-        assert response.json() == {
+        body = response.json()
+        body.pop("pools")
+        assert body == {
             "status": "unavailable",
             "version": __version__,
             "schema": None,
             "db": "unavailable",
+            "heartbeat_db": "unavailable",
             "r2": "unconfigured",
             "gateway": "off",
             "broker": "off",
             "cache": "off",
-            "failed": ["db"],
+            "failed": ["db", "heartbeat_db"],
         }
         live = client.get("/v1/health/live")  # the container stays up while the database is away
         assert live.status_code == 200 and live.json() == {"status": "ok"}

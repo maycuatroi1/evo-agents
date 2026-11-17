@@ -473,12 +473,15 @@ def whole_graph(
     engine: AsyncEngine, loop: asyncio.AbstractEventLoop, project_id: int
 ) -> Callable[[], StoreRows | None]:
     """A call that reads all the rows of the graph the hub keeps of ``project_id`` (``kg_graph_rows.read_graph``) on
-    ``loop``, the hub's, from the thread of a build: ``build_graph`` reads them only when it builds nothing."""
+    ``loop``, the hub's, from the thread of a build: ``build_graph`` reads them only when it builds nothing. The
+    connection goes back to the pool once the rows are fetched: putting them together takes minutes on a large graph
+    and needs none."""
 
     def read() -> StoreRows | None:
         async def rows() -> StoreRows | None:
             async with engine.connect() as conn:
-                return await kg_graph_rows.read_graph(conn, project_id)
+                fetched = await kg_graph_rows.fetch_graph(conn, project_id)
+            return None if fetched is None else await kg_graph_rows.assemble_graph(fetched)
 
         return asyncio.run_coroutine_threadsafe(rows(), loop).result()
 

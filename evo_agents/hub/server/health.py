@@ -10,6 +10,11 @@ without EVO_HUB_BROKER_URL, else ``ok`` when the broker takes a connection and `
 the status ``ok``: the hub still delivers through Postgres and its jobs. ``cache`` is the shared cache
 (``evo_agents.hub.cache``): ``off`` without EVO_HUB_REDIS_URL, each process keeping its own, else ``ok`` when Redis
 answers a PING and ``error`` when it does not, which leaves the status ``ok`` too: the hub reads Postgres instead.
+``heartbeat_db`` is the same check on the api's pool of the workers' heartbeats and claims (``db.HEARTBEAT_PATHS``),
+and fails the status as ``db`` does: workers that cannot reach it hold no run. ``pools`` gives, for the main pool
+(``api``) and the heartbeat pool (``heartbeat``), its largest size, the connections it holds, those free and the
+requests waiting for one: a main pool with none free and requests waiting beside a heartbeat pool that serves is a
+heavy request holding the main one.
 ``/v1/health/live``
 only says the process serves requests: it is the container healthcheck, and a database or R2 outage must not
 get the container restarted.
@@ -44,6 +49,9 @@ class Health(BaseModel):
     version: str = Field(description="evo-agents package version")
     schema_revision: str | None = Field(alias="schema", description="Alembic revision applied to the database")
     db: Literal["ok", "unavailable"]
+    heartbeat_db: Literal["ok", "unavailable"] = Field(
+        description="the same check on the pool of the workers' heartbeats and claims"
+    )
     r2: Literal["ok", "unavailable", "unconfigured"] = Field(description="the blob store, by a HeadBucket")
     gateway: Literal["ok", "error", "off"] = Field(description="the model gateway, by its health check")
     broker: Literal["ok", "error", "off"] = Field(
@@ -53,6 +61,10 @@ class Health(BaseModel):
         description="the shared cache's Redis, by a PING; its error leaves the status ok"
     )
     failed: list[str] = Field(default_factory=list, description="components that did not answer")
+    pools: dict[str, dict[str, int]] = Field(
+        default_factory=dict,
+        description="per pool (api, heartbeat): max, size (connections held), available, waiting (requests)",
+    )
 
 
 class Live(BaseModel):
@@ -74,11 +86,12 @@ async def health(request: Request, response: Response):
     broker = asyncio.ensure_future(bus.check(broker_url)) if broker_url is not None else None
     shared = getattr(request.app.state, "cache", None)
     cached = asyncio.ensure_future(shared.check()) if shared is not None else None
-    try:
-        schema, db = await schema_revision(request.app.state.engine, HEALTH_TIMEOUT), "ok"
-    except (psycopg.Error, sa_exc.DBAPIError, OSError, TimeoutError) as exc:  # PoolTimeout arrives as a DBAPIError
-        log.warning("health check failed: database unavailable", extra={"error": type(exc).__name__})
-        schema, db = None, "unavailable"
+    state = request.app.state
+    heartbeat_engine = getattr(state, "heartbeat_engine", None)
+    beats = asyncio.ensure_future(_revision(heartbeat_engine, "heartbeat pool")) if heartbeat_engine else None
+    schema = await _revision(state.engine, "database")
+    db = "ok" if schema is not None else "unavailable"
+    heartbeat_db = db if beats is None else "ok" if await beats is not None else "unavailable"
     r2_status = "unconfigured" if r2 is None else await r2
     if r2_status == "unavailable":
         log.warning("health check failed: blob store unavailable", extra={"bucket": store.bucket})
@@ -87,23 +100,51 @@ async def health(request: Request, response: Response):
         log.warning("health check failed: model gateway unavailable", extra={"url": gateway.url})
     broker_status = "off" if broker is None else await broker  # an error is logged, and fails nothing
     cache_status = "off" if cached is None else await cached  # ...and so is the cache's
-    statuses = (("db", db), ("r2", r2_status), ("gateway", gateway_status))
+    statuses = (("db", db), ("heartbeat_db", heartbeat_db), ("r2", r2_status), ("gateway", gateway_status))
     failed = [name for name, status in statuses if status in ("unavailable", "error")]
     body = Health(
         status="unavailable" if failed else "ok",
         version=__version__,
         schema=schema,
         db=db,
+        heartbeat_db=heartbeat_db,
         r2=r2_status,
         gateway=gateway_status,
         broker=cast(Literal["ok", "error", "off"], broker_status),
         cache=cache_status,
         failed=failed,
+        pools=_pools(state),
     )
     if failed:
         return JSONResponse(body.model_dump(by_alias=True), status_code=503, headers=NO_STORE)
     response.headers.update(NO_STORE)
     return body
+
+
+async def _revision(engine, what: str) -> str | None:
+    """The schema revision read through ``engine``, or None when its pool or Postgres does not answer in time."""
+    try:
+        return await schema_revision(engine, HEALTH_TIMEOUT)
+    except (psycopg.Error, sa_exc.DBAPIError, OSError, TimeoutError) as exc:  # PoolTimeout arrives as a DBAPIError
+        log.warning(f"health check failed: {what} unavailable", extra={"error": type(exc).__name__})
+        return None
+
+
+def _pools(state) -> dict[str, dict[str, int]]:
+    """The figures of the api's pools, those it opened."""
+    found = {}
+    for name, attr in (("api", "pool"), ("heartbeat", "heartbeat_pool")):
+        pool = getattr(state, attr, None)
+        if pool is None:
+            continue
+        stats = pool.get_stats()
+        found[name] = {
+            "max": pool.max_size,
+            "size": stats.get("pool_size", 0),
+            "available": stats.get("pool_available", 0),
+            "waiting": stats.get("requests_waiting", 0),
+        }
+    return found
 
 
 @router.get("/health/live", response_model=Live)

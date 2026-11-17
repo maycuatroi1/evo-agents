@@ -183,8 +183,9 @@ REQUEST_WINDOW = 1.0  # seconds a connection taken counts as a request in the mi
 
 def requests_waiting() -> bool:
     """Whether requests of the api are in the middle of their transactions, the load's own connection aside: each step
-    of one is a turn of the loop that needs the GIL a paced thread holds (``evo_agents.kg.pacing``)."""
-    return bool(db.live) and db.live[0].serving(REQUEST_WINDOW, but="task:kg-snapshot")
+    of one is a turn of the loop that needs the GIL a paced thread holds (``evo_agents.kg.pacing``). The heartbeat
+    pool's requests count too: a worker's heartbeat or claim in its transaction waits for the loop as any other."""
+    return any(pool.serving(REQUEST_WINDOW, but="task:kg-snapshot") for pool in db.live)
 
 
 PRESSURE = 0.75  # share of the api's memory limit past which it drops the snapshots it holds (``SnapshotCoordinator``)
