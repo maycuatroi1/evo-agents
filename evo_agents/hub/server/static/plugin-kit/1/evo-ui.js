@@ -128,7 +128,7 @@
   }
 
   /**
-   * Opens `to` in the hub: a path that starts with "/" as it is (only one under /p/<this project>/ is allowed), one
+   * Opens `to` in the hub: a path that starts with "/" as it is (only one under /p/<a project>/ is allowed), one
    * that starts with "?" as this page and sub path with that query, anything else as a sub path of this page.
    */
   function navigate(to) {

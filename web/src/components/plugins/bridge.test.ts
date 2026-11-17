@@ -200,23 +200,35 @@ describe("bridge evo-plugin/1", () => {
     expect(context.kit).toBe(1);
   });
 
-  it("navigates the hub's page only within the same project, without asking for a grant", async () => {
+  it("navigates the hub's page to a page of this project or another one, without asking for a grant", async () => {
     const page = host();
     expect(await ask(page, request("navigate", { to: "/p/demo/x/sample/board/items/3?tab=done" }), [])).toEqual({
       to: "/p/demo/x/sample/board/items/3?tab=done",
     });
     expect(await ask(page, request("navigate", { to: "/p/demo/runs/12#log" }), [])).toEqual({ to: "/p/demo/runs/12#log" });
+    expect(await ask(page, request("navigate", { to: "/p/northwind/x/sample/board?tab=open" }), [])).toEqual({
+      to: "/p/northwind/x/sample/board?tab=open",
+    });
     expect(page.navigate).toHaveBeenNthCalledWith(1, "/p/demo/x/sample/board/items/3?tab=done");
     expect(page.navigate).toHaveBeenNthCalledWith(2, "/p/demo/runs/12#log");
+    expect(page.navigate).toHaveBeenNthCalledWith(3, "/p/northwind/x/sample/board?tab=open");
     expect(page.reads).toBe(0);
     const refused = [
-      "/p/northwind/runs", // another project
       "/p/demo", // not under the project's pages
-      "/p/demo/../lumen/runs",
-      "/p/demo/%2e%2e/lumen",
+      "/p/northwind",
+      "/p/", // no project
+      "/p//runs",
+      "/p/Northwind/runs", // not a project's name
+      "/p/-demo/runs",
+      "/p/de%6do/runs",
+      "/p/demo/%2e%2e/lumen", // leaves the project's pages once normalised
+      "/p/demo/../../admin",
+      "/p/%2e%2e/admin",
       "/admin",
+      "/x/sample/board",
       "https://evil.test/p/demo/runs",
       "//evil.test/p/demo/runs",
+      "javascript:alert(1)//p/demo/runs",
       "/p/demo/\\evil.test",
       "/p/demo//runs",
       "runs",
@@ -227,10 +239,11 @@ describe("bridge evo-plugin/1", () => {
     for (const to of refused) {
       const error = await refusal(ask(page, request("navigate", { to }), []));
       expect(error.code).toBe("invalid_params");
-      expect(error.message).toBe("to is a path of this project's pages, such as /p/demo/runs");
+      expect(error.message).toBe("to is a path of a project's pages, such as /p/demo/runs");
     }
-    expect(page.navigate).toHaveBeenCalledTimes(2);
+    expect(page.navigate).toHaveBeenCalledTimes(3);
     expect(navigateTarget("/p/demo/a/./b/../c", "demo")).toBe("/p/demo/a/c");
+    expect(navigateTarget("/p/demo/../lumen/runs", "demo")).toBe("/p/lumen/runs");
   });
 
   it("shows a toast of a known tone with a bounded text", async () => {

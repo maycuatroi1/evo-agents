@@ -1558,9 +1558,11 @@ refuses.
 
 **The bridge's sub path, navigation and toasts.** A page has a sub path: `/p/<project>/x/<id>/<page>/<sub>?<query>`
 frames the same page, and `context` gives it as `location` (`{path, query}`), with an event `{"bridge", "event":
-"location", "location"}` when it changes. Two methods need no permission: `navigate` (`to`: a path of this project's
-part of the hub, `/p/<project>/...`, which the web opens) and `toast` (`text`, 500 characters at most, and `tone` `info`,
-`success` or `error`, which the web shows).
+"location", "location"}` when it changes. Two methods need no permission: `navigate` (`to`: a path of a project's part
+of the hub, `/p/<project>/...`, this project's or another one's, which the web opens with its router; the page opened
+checks the viewer's access as any visit does, so a project the viewer cannot read shows its 403 or not-found page, and
+anything else, another origin, an absolute URL or a path outside `/p/<project>/`, is refused with `invalid_params`) and
+`toast` (`text`, 500 characters at most, and `tone` `info`, `success` or `error`, which the web shows).
 
 **The hub's UI kit.** `GET /v1/plugin-ui/kit/1/evo-ui.css` and `/v1/plugin-ui/kit/1/evo-ui.js` serve the kit 1 to any
 origin, cached for an hour, so a page looks like the hub without bringing a style of its own: the hub's tokens, light
