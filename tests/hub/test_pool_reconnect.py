@@ -87,7 +87,8 @@ async def answered(request, seconds: float):
             await asyncio.sleep(0.5)
 
 
-def test_the_pool_reconnects_by_itself_after_postgres_goes_away_without_closing_its_connections(monkeypatch):
+@pytest.mark.parametrize("heartbeat", [False, True], ids=["main", "heartbeat"])
+def test_the_pool_reconnects_by_itself_after_postgres_goes_away_without_closing_its_connections(monkeypatch, heartbeat):
     monkeypatch.setattr(db, "CHECK_TIMEOUT", 1.0, raising=False)
     info = psycopg.conninfo.conninfo_to_dict(pg.DSN)
 
@@ -95,8 +96,8 @@ def test_the_pool_reconnects_by_itself_after_postgres_goes_away_without_closing_
         relay = Blackhole(info.get("host") or "127.0.0.1", int(info.get("port") or 5432))
         port = await relay.start()
         dsn = psycopg.conninfo.make_conninfo(pg.DSN, host="127.0.0.1", port=port)
-        config = SimpleNamespace(dsn=dsn, pool_min_size=2, pool_max_size=2, pool_timeout=3.0)
-        pool = db.create_pool(config)
+        config = SimpleNamespace(dsn=dsn, pool_min_size=2, pool_max_size=2, pool_timeout=3.0, heartbeat_pool_size=2)
+        pool = db.create_pool(config, heartbeat=heartbeat)  # the heartbeat pool is made and checked the same way
         await pool.open(wait=True, timeout=10)
         engine = db.make_engine(pool)
 

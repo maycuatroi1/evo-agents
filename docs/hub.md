@@ -4329,6 +4329,19 @@ out at that moment, longest held first, each with its holder and `held_ms`. A tu
 second or more is logged as `event loop stalled` with `stalled_ms`: a burst of timeouts with no long hold in `out`
 but stalls beside it is the loop starved, not the pool too small.
 
+The workers' heartbeats and claims do not take their connections from that pool: the api opens a second one for them
+alone (`db.HEARTBEAT_PATHS`, `EVO_HUB_HEARTBEAT_POOL_SIZE`, default 3), and the check of a worker's token on those
+two paths reads through it too (`db.engine_for`). Each heartbeat or claim holds a connection for a few queries, and
+a claim waiting for a run holds none. With one pool, bursts of `PoolTimeout` on both paths still came with the
+graph loads after the loads gave their connections back: the requests caught in their transactions while the loop
+was slow held the main pool, and a worker that cannot heartbeat loses its runs' leases. Now whatever holds the main
+pool, a worker still gets a connection within `EVO_HUB_POOL_TIMEOUT`
+(`tests/hub/test_heartbeat_pool.py`). The heartbeat pool is made as the main one is, its check, timeout and
+keepalives the same, so it reconnects after Postgres restarts too. `/v1/health` checks both: `heartbeat_db` is the
+`db` check on the heartbeat pool and fails the status as `db` does, and `pools` gives, for `api` and `heartbeat`, the
+largest size, the connections held, those free and the requests waiting for one. A paced load
+(`kg_snapshots.requests_waiting`) yields to the requests of both pools.
+
 The pool reconnects by itself after Postgres restarts. When Postgres goes away without closing its connections (its
 container killed on a stalled host, so no reset reaches the api), the pooled connections stay open with nobody
 answering: the check before a connection is handed out gives up after 5 seconds (`db.CHECK_TIMEOUT`) and the pool
@@ -4944,7 +4957,8 @@ process sees the same count; without Redis, or while it fails, each process coun
 ## Data access
 
 The api and the worker each hold one psycopg 3 connection pool and a SQLAlchemy 2.1 engine on it
-(`evo_agents/hub/db.py`). The engine keeps no connection of its own (`NullPool`): it takes each one from the pool
+(`evo_agents/hub/db.py`); the api holds a second, small one with its own engine for the workers' heartbeats and
+claims (`app.state.heartbeat_engine`, the pool section of the snapshots above). The engine keeps no connection of its own (`NullPool`): it takes each one from the pool
 (`async_creator=pool.getconn`), and the pool is made with `close_returns=True`, so a connection the engine closes goes
 back to it. The pool's size, timeout and health check govern both. To `NullPool` each checkout is a new connection, so
 the psycopg dialect's connect hook, which adds a handler that logs the server's notices, runs on every checkout of the
@@ -5068,6 +5082,7 @@ environment, never in a committed file.
 | `EVO_HUB_TRANSCRIPT_DAYS` | api, worker | days a session's transcript is kept after its latest part before the daily `hub.prune_transcripts` deletes its content; default `365`, from `30` to `3650`; `GET .../transcripts/usage` says it |
 | `EVO_HUB_SIGNAL_DAYS` | api, worker | days a signal is kept after it was measured before the daily `hub.prune_signals` deletes it; a batch item measured earlier is refused; default `400`, from `30` to `3650` (`docs/signals.md`) |
 | `EVO_HUB_POOL_MIN_SIZE`, `EVO_HUB_POOL_MAX_SIZE`, `EVO_HUB_POOL_TIMEOUT` | api, worker | the connection pool: its smallest and largest size and the seconds a request waits for a connection; defaults `1`, `10` and `10` |
+| `EVO_HUB_HEARTBEAT_POOL_SIZE` | api | the largest size of the api's second pool, for the workers' heartbeats and claims alone (`POST /v1/worker/heartbeat` and `/claim`, the check of their token included); it waits `EVO_HUB_POOL_TIMEOUT` too; default `3`, at least `1`. Postgres must allow `EVO_HUB_POOL_MAX_SIZE` plus this for the api, beside the worker's pool |
 | `EVO_HUB_RUN_LEASE_SECONDS` | api | how long a claim and each heartbeat of a worker daemon lease a run for before the reaper finds it lost; default `300`, from `5` to `3600`, and well above the daemon's heartbeat of 15 seconds (the end-to-end tests shorten it) |
 | `EVO_HUB_DECISION_WAIT_SECONDS` | worker | how long a run waits for its owner's answer, holding its worker's slot, before the reaper parks it; default `600` (10 minutes), from `1` to `604800` (the end-to-end tests shorten it) |
 | `EVO_HUB_SECRETS_KEY` | api, worker | 32 random bytes in base64url that seal the credentials of worker runs (`docs/credentials.md`); without it writing a secret answers 503 and runs get no lease. It is not in the database or its dumps |

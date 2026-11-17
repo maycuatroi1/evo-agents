@@ -140065,6 +140065,15 @@
               ],
               "title": "Db"
             },
+            "heartbeat_db": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "unavailable"
+              ],
+              "title": "Heartbeat Db",
+              "description": "the same check on the pool of the workers' heartbeats and claims"
+            },
             "r2": {
               "type": "string",
               "enum": [
@@ -140112,6 +140121,17 @@
               "type": "array",
               "title": "Failed",
               "description": "components that did not answer"
+            },
+            "pools": {
+              "additionalProperties": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "type": "object",
+              "title": "Pools",
+              "description": "per pool (api, heartbeat): max, size (connections held), available, waiting (requests)"
             }
           },
           "type": "object",
@@ -140120,6 +140140,7 @@
             "version",
             "schema",
             "db",
+            "heartbeat_db",
             "r2",
             "gateway",
             "broker",

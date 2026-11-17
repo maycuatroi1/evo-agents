@@ -200,22 +200,28 @@ async def _open(app: FastAPI, config: HubConfig):
             "db": target,
             "data_dir": str(config.data_dir),
             "pool": {"min": config.pool_min_size, "max": config.pool_max_size, "timeout_s": config.pool_timeout},
+            "heartbeat_pool": {"max": config.heartbeat_pool_size},
         },
     )
-    github_app = curator_app = None
+    github_app = curator_app = pool = None
     try:
         github_app = GitHubApp.from_config(config)  # a private key that does not open stops the start
         curator_app = GitHubApp.from_config(config, curator=True)
         config.data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         result = await asyncio.to_thread(migrate, config.dsn)
         pool = await open_pool(config)
+        heartbeat_pool = await open_pool(config, heartbeat=True)
     except Exception as exc:
         log.error("hub cannot start", extra={"db": target, "error": f"{type(exc).__name__}: {exc}"})
+        if pool is not None:
+            await pool.close()
         for opened in (github_app, curator_app):
             if opened is not None:
                 await opened.aclose()
         raise
     app.state.pool, app.state.engine = pool, make_engine(pool)  # the engine is disposed of before the pool closes
+    # the workers' heartbeats and claims take their connections from a pool of their own (``db.HEARTBEAT_PATHS``)
+    app.state.heartbeat_pool, app.state.heartbeat_engine = heartbeat_pool, make_engine(heartbeat_pool)
     app.state.github = GitHub(config)
     app.state.github_app = github_app  # None without EVO_HUB_GITHUB_APP_*: no GitHub token is leased
     app.state.curator_app = curator_app  # None without EVO_HUB_CURATOR_APP_*: no token for a run of the Curator
@@ -285,6 +291,8 @@ async def _close(app: FastAPI, pool) -> None:
     if app.state.blobs is not None:
         app.state.blobs.close()
     await app.state.engine.dispose()
+    await app.state.heartbeat_engine.dispose()
+    await app.state.heartbeat_pool.close()
     await pool.close()
     log.info("hub stopped, connection pool closed")
 
