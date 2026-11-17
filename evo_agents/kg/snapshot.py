@@ -316,8 +316,8 @@ class Snapshot:
         return replace(
             snap,
             units=MappingProxyType({r[0]: tuple(r) for r in paced(rows.units)}),
-            where=MappingProxyType({k: tuple(v) for k, v in where.items()}),
-            derivations=MappingProxyType({k: tuple(v) for k, v in derived.items()}),
+            where=MappingProxyType({k: tuple(v) for k, v in paced(where.items())}),
+            derivations=MappingProxyType({k: tuple(v) for k, v in paced(derived.items())}),
             bodies=MappingProxyType(bodies),
             summary=MappingProxyType(dict(rows.summary)),
             asked=tuple(rows.asked),
@@ -419,9 +419,9 @@ def rows_vectors(rows: StoreRows) -> snapshot_text.Vectors | None:
     unpack = struct.Struct(f"<{found.dim}e").unpack
     return snapshot_text.Vectors(
         found,
-        tuple(r[1] for r in rows.vectors),
-        tuple(r[2] for r in rows.vectors),
-        tuple(r[3] for r in rows.vectors),
+        tuple(r[1] for r in paced(rows.vectors)),
+        tuple(r[2] for r in paced(rows.vectors)),
+        tuple(r[3] for r in paced(rows.vectors)),
         tuple(array("f", unpack(bytes(r[4]))) for r in paced(rows.vectors)),
     )
 
