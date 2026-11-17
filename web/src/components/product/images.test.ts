@@ -36,7 +36,7 @@ describe("the product page's images", () => {
   });
 
   it("have each page's crops at the size the markup gives them", () => {
-    const images: ProductImage[] = ["monitor", "plan-run", "run-spool", "kg-search"];
+    const images: ProductImage[] = ["kg-entities", "project-plugins", "agent-system", "plan-run"];
     for (const image of images) {
       for (const size of SIZES) {
         for (const scheme of SCHEMES) {
