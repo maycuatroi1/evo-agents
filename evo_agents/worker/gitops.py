@@ -747,6 +747,15 @@ async def merge_base(cwd: Path, first: str, second: str) -> str | None:
     return out.strip() if code == 0 and out.strip() else None
 
 
+async def work_base(cwd: Path, base: str) -> str:
+    """Where the work at ``cwd`` that started at ``base`` begins: where HEAD meets origin's default branch when the
+    work rebased or merged onto a newer one, so what that branch brought is not counted as the work's; else ``base``."""
+    fork = await merge_base(cwd, "HEAD", "refs/remotes/origin/HEAD")
+    if fork and fork != base and await is_ancestor(cwd, base, fork):
+        return fork
+    return base
+
+
 DIFF_TEXT_LIMIT = 8 * 1024 * 1024  # the most of a judged diff read; a longer one is not judged in part
 
 

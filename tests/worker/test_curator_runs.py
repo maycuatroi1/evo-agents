@@ -536,3 +536,26 @@ def test_watchdog_leaves_a_builder_alone_when_a_hook_writes_under_a_protected_gl
     pushed = machine.origin("alpha", "ls-tree", "-r", "--name-only", BRANCH).splitlines()
     assert "tests/test_wait.py" in pushed
     assert not any(name in pushed for name in HOOK_FILES), "what a hook wrote stays out of the branch"
+
+
+def test_curator_watch_leaves_out_what_a_rebase_onto_the_default_branch_brings(machine):  # noqa: F811
+    path, base = machine.checkouts["alpha"], machine.seeds["alpha"]
+    other = machine.tmp / "alpha-main"
+    git("clone", "--quiet", str(machine.origins["alpha"]), str(other))
+    (other / "deploy").mkdir()
+    (other / "deploy" / ".env.example").write_text("KG=1\n", encoding="utf-8")
+    git("add", "deploy", cwd=other)
+    git("commit", "--quiet", "-m", "main changes a protected file", cwd=other)
+    git("push", "--quiet", "origin", "HEAD", cwd=other)
+    git("fetch", "--quiet", "origin", cwd=path)
+    git("rebase", "--quiet", "refs/remotes/origin/HEAD", cwd=path)  # the run rebases onto the newer default branch
+    (path / "worker.py").write_text("GRACE = 540\n", encoding="utf-8")
+    git("add", "worker.py", cwd=path)
+    git("commit", "--quiet", "-m", "the run's own change", cwd=path)
+
+    async def paths():
+        return await gitops.changed_paths(path, await gitops.work_base(path, base))
+
+    assert asyncio.run(paths()) == ["worker.py"]
+    (path / "deploy" / ".env.example").write_text("KG=2\n", encoding="utf-8")  # the run itself touches it: still seen
+    assert asyncio.run(paths()) == ["deploy/.env.example", "worker.py"]

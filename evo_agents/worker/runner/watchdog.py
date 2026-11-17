@@ -7,8 +7,9 @@ the budget stopped fails the run, and the log's last note names the cap (``cap``
 
 A run of the Curator (``spec["curator"]``: a review run, a judge run, or a Builder, the plan run of a plan the Curator
 made) is watched: after each heartbeat the daemon compares each of its worktrees with the charter's protected paths,
-and its agent time and cost with its caps (``Watchdog.watch``); a protected file changed, or a cap passed, stops the
-run, which fails naming why, and the hub tells its owner (notice run_failed).
+and its agent time and cost with its caps (``Watchdog.watch``); a worktree that rebased onto a newer default branch
+is compared from where it meets that branch, so a protected file the default branch changed is not the run's. A
+protected file changed, or a cap passed, stops the run, which fails naming why, and the hub tells its owner (notice run_failed).
 """
 
 from __future__ import annotations
@@ -58,7 +59,7 @@ class Watchdog:
             if not protected or not worktree.is_dir():
                 continue
             try:
-                paths = await gitops.changed_paths(worktree, base)
+                paths = await gitops.changed_paths(worktree, await gitops.work_base(worktree, base))
             except gitops.GitError as exc:
                 log.warning("the watchdog could not read a worktree", extra={"run_id": run.id, "error": str(exc)})
                 continue
