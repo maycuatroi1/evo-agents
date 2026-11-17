@@ -14,7 +14,6 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub import kg_cli
-from evo_agents.hub.server.kg_scrub import graph_secrets
 from evo_agents.kg import scrub as scrub_module
 from evo_agents.kg.redact import redact_file
 from evo_agents.kg.scrub import might_hold_secret, run_summary, secrets_in_json
@@ -79,6 +78,9 @@ def old_graph_file(
 
 
 def test_graph_secrets_counts_the_rows_of_a_graph_file_holding_one(tmp_path):
+    pytest.importorskip("fastapi", reason="the hub's scrub needs the hub-server extra, evo-ak[hub-server]")
+    from evo_agents.hub.server.kg_scrub import graph_secrets
+
     path = old_graph_file(
         tmp_path / "old-graph.db",
         [("settings", f"export JWT_SECRET={LITERAL}\n"), ("readme", "Install.")],

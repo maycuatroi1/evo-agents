@@ -4,13 +4,17 @@ past a kg worker's memory cap."""
 
 from dataclasses import replace
 
-from evo_agents.hub import kg_semantic
-from evo_agents.kg import build, semantic
-from evo_agents.kg.packed import Packed
-from evo_agents.kg.snapshot import StoreRows
-from tests.kg import built
-from tests.kg.built import sync_build
-from tests.kg.test_hybrid import FAKE, Words, with_garage
+import pytest
+
+pytest.importorskip("sqlalchemy", reason="a hub build needs the hub-server extra, evo-ak[hub-server]")
+
+from evo_agents.hub import kg_semantic  # noqa: E402
+from evo_agents.kg import build, semantic  # noqa: E402
+from evo_agents.kg.packed import Packed  # noqa: E402
+from evo_agents.kg.snapshot import StoreRows  # noqa: E402
+from tests.kg import built  # noqa: E402
+from tests.kg.built import sync_build  # noqa: E402
+from tests.kg.test_hybrid import FAKE, Words, with_garage  # noqa: E402
 
 
 def rows_of(project) -> StoreRows:

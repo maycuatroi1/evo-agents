@@ -10,14 +10,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from evo_agents.cli import main
-from evo_agents.hub import kg_semantic
-from evo_agents.kg import graph_rows, semantic
-from tests.kg import built
-from tests.kg.built import rows_of, sync_build, view_of
-from tests.kg.hub_graph import hub_session
-from tests.kg.projects import commit, write
-from tests.kg.test_store import make_searchable
+pytest.importorskip("sqlalchemy", reason="the hub's semantic mode needs the hub-server extra, evo-ak[hub-server]")
+
+from evo_agents.cli import main  # noqa: E402
+from evo_agents.hub import kg_semantic  # noqa: E402
+from evo_agents.kg import graph_rows, semantic  # noqa: E402
+from tests.kg import built  # noqa: E402
+from tests.kg.built import rows_of, sync_build, view_of  # noqa: E402
+from tests.kg.hub_graph import hub_session  # noqa: E402
+from tests.kg.projects import commit, write  # noqa: E402
+from tests.kg.test_store import make_searchable  # noqa: E402
 
 FIXTURE = Path(__file__).parent / "fixtures" / "eval" / "demo.jsonl"
 FAKE = "fake/words"
