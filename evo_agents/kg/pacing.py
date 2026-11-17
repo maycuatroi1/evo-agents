@@ -113,14 +113,24 @@ _pending = 0  # what ``let_go`` gave the thread that it has not taken apart yet
 _counting = threading.Lock()
 
 
-def free_aside() -> None:
+def free_aside(busy: Callable[[], bool] | None = None) -> None:
     """From now on ``let_go`` frees what it is given in a thread of its own, paced: in the api, where a snapshot
     replaced or dropped is millions of objects, and freeing them in one go held the GIL, the event loop with it, for
-    seconds. Once per process."""
+    seconds. The thread paces as ``pacing(busy=...)`` does. Once per process."""
     global _aside
     if _aside is None:
         _aside = queue.SimpleQueue()
-        threading.Thread(target=_freeing, args=(_aside,), name="kg-free-aside", daemon=True).start()
+        threading.Thread(target=_freeing, args=(_aside, busy), name="kg-free-aside", daemon=True).start()
+
+
+def give_aside(parts: list) -> None:
+    """Hand ``parts``, a list that holds the only references its caller still has to what it is done with (the rows a
+    snapshot was made of: millions of objects), to the thread ``free_aside`` started: the caller's ``del`` of its own
+    names right after leaves the thread the only holder. Without that thread, nothing happens, and the parts are freed
+    where the caller drops them."""
+    if _aside is not None:
+        _count(1)
+        _aside.put(parts)
 
 
 def let_go(dying: Any) -> None:
@@ -145,8 +155,8 @@ def _count(step: int) -> None:
         _pending += step
 
 
-def _freeing(given: queue.SimpleQueue) -> None:
-    with pacing():
+def _freeing(given: queue.SimpleQueue, busy: Callable[[], bool] | None = None) -> None:
+    with pacing(busy=busy):
         while True:
             parts = given.get()
             time.sleep(HAND_OVER)

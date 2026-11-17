@@ -237,3 +237,66 @@ def test_a_snapshot_is_made_at_the_slow_pace_while_a_request_holds_a_connection_
     at_rest, busy = asyncio.run(go())
     assert at_rest and set(at_rest) == {pacing.PAUSE_SECONDS}
     assert busy and set(busy) == {pacing.BUSY_PAUSE_SECONDS}
+
+
+def test_the_rows_a_load_is_done_with_are_freed_by_the_thread_aside_not_on_the_loop(monkeypatch):
+    """The raw rows, once put together, and the assembled rows, once the snapshot is made, were freed on the loop as
+    ``load`` returned: millions of objects, a second or more in which no request ran, a heartbeat's connection held
+    meanwhile."""
+    import contextlib
+
+    freed: list[str] = []
+
+    class Part:
+        def __del__(self):
+            freed.append(threading.current_thread().name)
+
+    class Rows:
+        def __init__(self):
+            self.parts = tuple(Part() for _ in range(2 * pacing.CHUNK))
+
+    class Engine:
+        @contextlib.asynccontextmanager
+        async def connect(self):
+            yield None
+
+    async def rows(conn, project_id):
+        return 7, Rows()
+
+    async def assembled(raw):
+        return Rows()
+
+    async def made(build_id, rows):
+        return kg_snapshots.Held(build_id, None)
+
+    monkeypatch.setattr(pacing, "_aside", None)  # a thread of this test's own, gone with it
+    pacing.free_aside()
+    monkeypatch.setattr(kg_snapshots, "_rows", rows)
+    monkeypatch.setattr(kg_snapshots, "_assembled", assembled)
+    monkeypatch.setattr(kg_snapshots, "_made", made)
+    held = asyncio.run(kg_snapshots.load(Engine(), 1))
+    assert held.build_id == 7
+    deadline = time.monotonic() + 30
+    while (len(freed) < 4 * pacing.CHUNK or pacing.freeing()) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert len(freed) == 4 * pacing.CHUNK and set(freed) == {"kg-free-aside"}
+
+
+def test_the_thread_freeing_aside_paces_slowly_while_requests_wait(monkeypatch):
+    slept = []
+    sleep = pacing.time.sleep
+
+    def counted(seconds):
+        if threading.current_thread().name == "kg-free-aside":
+            slept.append(seconds)
+        sleep(min(seconds, 0.001))
+
+    monkeypatch.setattr(pacing, "YIELD_SECONDS", 0)
+    monkeypatch.setattr(pacing.time, "sleep", counted)
+    monkeypatch.setattr(pacing, "_aside", None)  # a thread of this test's own, gone with it
+    pacing.free_aside(lambda: True)
+    pacing.give_aside([[[object()] * 3 for _ in range(3 * pacing.CHUNK)]])
+    deadline = time.monotonic() + 30
+    while (pacing.freeing() or not slept) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert pacing.BUSY_PAUSE_SECONDS in slept and pacing.PAUSE_SECONDS not in slept
