@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { countText, HOME_NAV, HUB_NAV, isActive, NAV_GROUPS, navRows, parseNavGroups, PROJECT_NAV, projectHref } from "./nav";
+import {
+  countText,
+  HOME_NAV,
+  HUB_NAV,
+  isActive,
+  NAV_GROUPS,
+  navRows,
+  parseNavGroups,
+  pluginArea,
+  PROJECT_NAV,
+  projectHref,
+} from "./nav";
 import { activeRunCount, fleetOf } from "./nav-counts";
 
 describe("nav", () => {
@@ -40,16 +51,16 @@ describe("nav", () => {
       ["systems", null],
       ["kg", null],
       ["decide", null],
-      ["plans", null],
-      ["runs", null],
-      ["mergeQueue", "delivery"],
-      ["releases", "delivery"],
-      ["cronJobs", "delivery"],
-      ["problems", "improvement"],
-      ["opportunities", "improvement"],
-      ["goals", "improvement"],
-      ["signals", "improvement"],
-      ["loop", "improvement"],
+      ["signals", "business"],
+      ["problems", "business"],
+      ["opportunities", "business"],
+      ["goals", "business"],
+      ["plans", "development"],
+      ["runs", "development"],
+      ["loop", "development"],
+      ["mergeQueue", "development"],
+      ["releases", "development"],
+      ["cronJobs", "development"],
       ["insights", "improvement"],
       ["curator", "improvement"],
       ["agents", "knowledge"],
@@ -76,9 +87,8 @@ describe("nav", () => {
     expect(HUB_NAV.filter((item) => item.adminOnly).map((item) => item.label)).toEqual(["admin"]);
   });
 
-  it("never folds an item with a count, and keeps the items of a fold next to each other", () => {
+  it("keeps the items of a fold next to each other", () => {
     for (const list of [HOME_NAV, PROJECT_NAV, HUB_NAV]) {
-      expect(list.filter((item) => item.group && item.count)).toEqual([]);
       const groups = list.map((item) => item.group ?? null);
       for (const group of Object.keys(NAV_GROUPS)) {
         const at = groups.flatMap((name, index) => (name === group ? [index] : []));
@@ -90,24 +100,36 @@ describe("nav", () => {
   it("rows a section: items on their own, a fold at its first item, and a fold of one as its item", () => {
     const rows = navRows([
       { id: 1 },
-      { id: 2, group: "delivery" as const },
-      { id: 3, group: "delivery" as const },
+      { id: 2, group: "development" as const },
+      { id: 3, group: "development" as const },
       { id: 4 },
       { id: 5, group: "apps" as const },
     ]);
     expect(rows).toEqual([
       { kind: "item", item: { id: 1 } },
-      { kind: "group", group: "delivery", items: [{ id: 2, group: "delivery" }, { id: 3, group: "delivery" }] },
+      { kind: "group", group: "development", items: [{ id: 2, group: "development" }, { id: 3, group: "development" }] },
       { kind: "item", item: { id: 4 } },
       { kind: "item", item: { id: 5, group: "apps" } },
     ]);
   });
 
-  it("reads the open folds from the cookie, leaving out names it does not know", () => {
-    expect(parseNavGroups(undefined)).toEqual([]);
-    expect(parseNavGroups("")).toEqual([]);
-    expect(parseNavGroups(encodeURIComponent("apps,knowledge,apps,bogus"))).toEqual(["apps", "knowledge"]);
-    expect(parseNavGroups("%E0%A4%A")).toEqual([]);
+  it("reads the open folds from the cookie: the two cycles until closed, with those opened, leaving out unknown names", () => {
+    const cycles = ["business", "development"];
+    expect(parseNavGroups(undefined)).toEqual(cycles);
+    expect(parseNavGroups("")).toEqual(cycles);
+    expect(parseNavGroups(encodeURIComponent("apps,knowledge,apps,bogus"))).toEqual([...cycles, "knowledge", "apps"]);
+    // a cycle the visitor closed; a fold of an older web (delivery) is no fold any more
+    expect(parseNavGroups(encodeURIComponent("-business,improvement,-bogus,delivery"))).toEqual(["development", "improvement"]);
+    expect(parseNavGroups("%E0%A4%A")).toEqual(cycles);
+  });
+
+  it("puts a plugin's page in the fold its manifest names, and in Apps when it names none a project's menu has", () => {
+    expect(pluginArea("business")).toBe("business");
+    expect(pluginArea("development")).toBe("development");
+    expect(pluginArea(null)).toBe("apps");
+    expect(pluginArea(undefined)).toBe("apps");
+    expect(pluginArea("settings")).toBe("apps"); // a fold of the hub, not of a project
+    expect(pluginArea("sales")).toBe("apps");
   });
 
   it("writes a count up to 99, then 99+", () => {

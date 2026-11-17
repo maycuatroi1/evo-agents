@@ -9,7 +9,7 @@ import { browserApi } from "@/lib/api/browser";
 import { menuPages, shownPage } from "@/lib/plugin-pages";
 import { pluginPageHref, projectPluginsQuery } from "@/lib/plugin-queries";
 
-import { isActive } from "./nav";
+import { isActive, type NavGroup, pluginArea } from "./nav";
 
 /**
  * The icon a page names, from a set of its own chunk (plugin-icons.tsx): a hub without plugins never loads it, and the
@@ -17,12 +17,24 @@ import { isActive } from "./nav";
  */
 const PluginIcon = dynamic(() => import("./plugin-icons"), { ssr: false, loading: () => <Puzzle aria-hidden="true" /> });
 
-/** A menu item a plugin's page adds: what the sidebar draws (app-sidebar.tsx), in its Apps fold. */
-export type PluginNavLink = { key: string; testId: string; name: string; icon: React.ReactNode; href: Route; active: boolean };
+/**
+ * A menu item a plugin's page adds: what the sidebar draws (app-sidebar.tsx), in the fold its manifest names as its
+ * area (the Business cycle, the Development cycle...), Apps when it names none.
+ */
+export type PluginNavLink = {
+  key: string;
+  testId: string;
+  name: string;
+  icon: React.ReactNode;
+  href: Route;
+  active: boolean;
+  group: NavGroup;
+};
 
 /**
- * The items of the pages a project's enabled plugins add to its menu (web/DESIGN.md, Plugins), after the project's own
- * areas: each with the icon and the title its manifest gives, in the plugins' order. A plugin the project has not
+ * The items of the pages a project's enabled plugins add to its menu (web/DESIGN.md, Plugins), each in the fold its
+ * manifest names, after the project's own areas there: each with the icon and the title its manifest gives, in the
+ * plugins' order. A plugin the project has not
  * enabled, or the hub turned off, adds nothing; nor does a page that asks for no menu item. A refusal (no grant) or a
  * failure leaves the menu without them.
  */
@@ -43,6 +55,7 @@ export function usePluginNavLinks(project: string | null, pathname: string): Plu
       icon: <PluginIcon name={page.icon} />,
       href,
       active: isActive(pathname, href, false),
+      group: pluginArea(page.area),
     };
   });
 }

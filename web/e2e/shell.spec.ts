@@ -234,15 +234,16 @@ test.describe("shell", () => {
       "nav-kg",
       "nav-overview",
       "nav-decide",
-      "nav-plans",
-      "nav-runs",
-      "nav-mergeQueue",
-      "nav-releases",
+      "nav-signals",
       "nav-problems",
       "nav-opportunities",
       "nav-goals",
-      "nav-signals",
+      "nav-plans",
+      "nav-runs",
       "nav-loop",
+      "nav-mergeQueue",
+      "nav-releases",
+      "nav-cronJobs",
       "nav-insights",
       "nav-curator",
       "nav-agents",
@@ -262,11 +263,12 @@ test.describe("shell", () => {
     await expect(links).toHaveCount(expected.length);
     const order = await links.evaluateAll((items) => items.map((link) => link.getAttribute("data-testid")));
     expect(order).toEqual(expected);
-    // The areas opened less often sit in closed folds: the sidebar shows the daily ones and a row per fold.
-    await expect(sidebar.getByRole("link")).toHaveCount(16);
+    // The project's two cycles are open; the areas opened less often sit in closed folds, a row per fold.
+    await expect(sidebar.getByRole("link")).toHaveCount(24);
     const folds = sidebar.locator('[data-testid^="nav-group-"]');
     expect(await folds.evaluateAll((items) => items.map((fold) => fold.getAttribute("data-testid")))).toEqual([
-      "nav-group-delivery",
+      "nav-group-business",
+      "nav-group-development",
       "nav-group-improvement",
       "nav-group-knowledge",
       "nav-group-settings",

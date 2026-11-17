@@ -138,10 +138,15 @@ TABLES = (
 )
 
 # The native pages of the hub's web (web/src/app/(app)/p/[project]/x/tasks, web/src/components/tasks): the board, with
-# a task's page and the form of a new task under it, in the project's menu; the backlog, the caller's own tasks and the
-# import, reached from the board's tabs.
+# a task's page and the form of a new task under it, in the Development cycle of the project's menu; the backlog, the
+# caller's own tasks and the import, reached from the board's tabs.
 PAGES = {
-    "board": {"title": "Tasks", "icon": "kanban", "description": "The tasks of a sprint by status"},
+    "board": {
+        "title": "Tasks",
+        "icon": "kanban",
+        "description": "The tasks of a sprint by status",
+        "area": "development",
+    },
     "backlog": {"title": "Backlog", "icon": "list-checks", "menu": False},
     "mine": {"title": "My work", "icon": "clipboard-list", "menu": False},
     "import": {"title": "Import tasks", "icon": "kanban", "menu": False},

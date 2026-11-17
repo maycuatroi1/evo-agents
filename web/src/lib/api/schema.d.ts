@@ -5224,7 +5224,10 @@ export interface paths {
         /**
          * Record Verdict
          * @description The verdict of the judge run this worker holds, with the run's own key: the hub passes the change only as
-         *     ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again.
+         *     ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again. The graph read
+         *     for that tier can wait minutes for the project's snapshot to load, so it is read before the transaction that locks
+         *     the run and its change: a request holding those locks makes the worker's heartbeat, claim and events wait on
+         *     them, each holding a pool connection, until the pool is out.
          */
         post: operations["record_verdict_v1_worker_runs__run_id__verdict_post"];
         delete?: never;
@@ -35071,6 +35074,11 @@ export interface components {
              * @description where the web shows the page instead of on a page of its own: decide, a panel of the project's Decisions page; null for a page of its own
              */
             slot?: string | null;
+            /**
+             * Area
+             * @description the area of the project's menu its item sits in: business (the Business cycle), development (the Development cycle), improvement, knowledge or apps; null when the manifest names none, which the web shows in apps
+             */
+            area?: string | null;
         };
         /** PluginPermission */
         PluginPermission: {
@@ -54260,86 +54268,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    grep_links_of_v1_kg__project__grep_links_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GrepLinks"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GrepLinksOut"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
                     "application/json": components["schemas"]["evo_agents__hub__server__memories__Conflict"];
                 };
             };
@@ -56109,6 +56037,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceForgotten"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    grep_links_of_v1_kg__project__grep_links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrepLinks"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrepLinksOut"];
                 };
             };
             /** @description Unauthorized */

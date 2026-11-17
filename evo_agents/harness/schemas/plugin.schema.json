@@ -608,6 +608,16 @@
           "enum": [
             "decide"
           ]
+        },
+        "area": {
+          "description": "The area of the project's menu its item sits in: business (the Business cycle: what to deliver, to whom and why, beside signals, problems, opportunities and goals), development (the Development cycle: how it gets built, beside plans, runs and the Loop), improvement, knowledge or apps; apps when left out. A release that does not know the key puts the item in apps.",
+          "enum": [
+            "business",
+            "development",
+            "improvement",
+            "knowledge",
+            "apps"
+          ]
         }
       }
     },

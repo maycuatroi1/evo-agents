@@ -2,11 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
-import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useId, useState } from "react";
+import { useId, useState } from "react";
 
 import { HubMark } from "@/components/brand";
 import {
@@ -42,6 +41,7 @@ import {
   HUB_NAV,
   isActive,
   NAV_GROUPS,
+  NAV_GROUPS_OPEN,
   type NavCount,
   type NavGroup,
   navRows,
@@ -51,9 +51,10 @@ import {
   writeNavGroups,
 } from "./nav";
 import { useNavCounts } from "./nav-counts";
+import { foldCounts, type NavLink, withPluginPages } from "./nav-links";
 import { usePluginNavLinks } from "./plugin-nav";
 import { ProjectSwitcher, useSelectedProject } from "./project-switcher";
-import { NAV_SHORTCUTS, ShortcutKeys, type ShortcutId } from "./shortcuts";
+import { NAV_SHORTCUTS, ShortcutKeys } from "./shortcuts";
 import { UserMenu } from "./user-menu";
 
 /** The tone of each count: a person is needed (attention), an agent is working (running). */
@@ -69,19 +70,27 @@ const COUNT_DOT: Record<NavCount, string> = {
   unreadChats: "bg-attention-solid",
 };
 
-/** A link of the sidebar as it draws it: an area of nav.ts, or a page a plugin adds. */
-type NavLink = {
-  key: string;
-  testId: string;
-  name: string;
-  icon: ReactNode;
-  href: Route;
-  active: boolean;
-  shortcut?: ShortcutId;
-  count?: NavCount;
-  value: number | null;
-  group?: NavGroup;
-};
+/** A count at the end of a row in its tone, drawn for the eye, and as a dot on the icon when the sidebar is folded. */
+function CountMarks({ count, value, testId }: { count: NavCount; value: number; testId: string }) {
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        data-testid={testId}
+        className={cn(
+          "inline-flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full px-1.25 text-[11px] leading-none font-medium tabular-nums group-data-[collapsible=icon]:hidden",
+          COUNT_TONE[count],
+        )}
+      >
+        {countText(value)}
+      </span>
+      <span
+        aria-hidden="true"
+        className={cn("absolute top-1 right-1 hidden size-1.5 rounded-full group-data-[collapsible=icon]:block", COUNT_DOT[count])}
+      />
+    </>
+  );
+}
 
 /**
  * One nav item of the kit: icon and label, surface-selected with a brand icon when it is the page shown, and its count
@@ -113,27 +122,7 @@ function NavItem({ link, onNavigate }: { link: NavLink; onNavigate: () => void }
               className="hidden group-data-[collapsible=icon]:hidden! md:group-hover/menu-item:inline-flex md:group-has-[:focus-visible]/menu-item:inline-flex"
             />
           ) : null}
-          {count !== undefined && shown !== null ? (
-            <>
-              <span
-                aria-hidden="true"
-                data-testid={`${link.testId}-count`}
-                className={cn(
-                  "inline-flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full px-1.25 text-[11px] leading-none font-medium tabular-nums group-data-[collapsible=icon]:hidden",
-                  COUNT_TONE[count],
-                )}
-              >
-                {countText(shown)}
-              </span>
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "absolute top-1 right-1 hidden size-1.5 rounded-full group-data-[collapsible=icon]:block",
-                  COUNT_DOT[count],
-                )}
-              />
-            </>
-          ) : null}
+          {count !== undefined && shown !== null ? <CountMarks count={count} value={shown} testId={`${link.testId}-count`} /> : null}
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -150,9 +139,10 @@ type FoldProps = {
 
 /**
  * A fold of the sidebar (nav.ts, NAV_GROUPS): a row with the fold's icon, label and a chevron that opens its items
- * below, indented on a guide line. Closed while it holds the page shown, the row is marked as that page's. On the folded
- * desktop sidebar the row is an icon that opens the items in a menu beside it, the page shown marked there. The items
- * stay in the page while the fold is closed, hidden, so a page or a test can find each one.
+ * below, indented on a guide line. Closed while it holds the page shown, the row is marked as that page's; closed, it
+ * shows the counts of its items, said in words after its label. On the folded desktop sidebar the row is an icon, with
+ * the dot of its items' counts, that opens the items in a menu beside it, the page shown marked there. The items stay
+ * in the page while the fold is closed, hidden, so a page or a test can find each one.
  */
 function NavFold({ group, links, open, onOpenChange, onNavigate }: FoldProps) {
   const t = useTranslations("nav");
@@ -161,6 +151,11 @@ function NavFold({ group, links, open, onOpenChange, onNavigate }: FoldProps) {
   const label = t(`groups.${group}`);
   const holdsPage = links.some((link) => link.active);
   const itemsId = useId();
+  const counts = foldCounts(links);
+  const marks = counts.map(({ count, value }) => (
+    <CountMarks key={count} count={count} value={value} testId={`nav-group-${group}-${count}`} />
+  ));
+  const said = [label, ...counts.map(({ count, value }) => t(`counts.${count}`, { count: value }))].join(", ");
 
   if (state === "collapsed" && !isMobile) {
     return (
@@ -169,9 +164,15 @@ function NavFold({ group, links, open, onOpenChange, onNavigate }: FoldProps) {
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton isActive={holdsPage} data-testid={`nav-group-${group}`}>
+                <SidebarMenuButton
+                  isActive={holdsPage}
+                  aria-label={counts.length ? said : undefined}
+                  data-testid={`nav-group-${group}`}
+                  className="relative"
+                >
                   <Icon aria-hidden="true" />
                   <span>{label}</span>
+                  {marks}
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
             </TooltipTrigger>
@@ -188,12 +189,14 @@ function NavFold({ group, links, open, onOpenChange, onNavigate }: FoldProps) {
                 <Link
                   href={link.href}
                   aria-current={link.active ? "page" : undefined}
+                  aria-label={link.count && link.value ? `${link.name}, ${t(`counts.${link.count}`, { count: link.value })}` : undefined}
                   onClick={onNavigate}
                   data-testid={link.testId}
                   className="cursor-pointer aria-[current=page]:bg-sidebar-accent aria-[current=page]:[&>svg:first-child]:text-brand"
                 >
                   {link.icon}
                   <span className="min-w-0 flex-1 truncate">{link.name}</span>
+                  {link.count && link.value ? <CountMarks count={link.count} value={link.value} testId={`${link.testId}-count`} /> : null}
                 </Link>
               </DropdownMenuItem>
             ))}
@@ -210,12 +213,15 @@ function NavFold({ group, links, open, onOpenChange, onNavigate }: FoldProps) {
         isActive={!open && holdsPage}
         aria-expanded={open}
         aria-controls={itemsId}
+        aria-label={!open && counts.length ? said : undefined}
         data-state={open ? "open" : "closed"}
         onClick={() => onOpenChange(!open)}
         data-testid={`nav-group-${group}`}
+        className="relative"
       >
         <Icon aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate">{label}</span>
+        {open ? null : marks}
         <ChevronRight
           aria-hidden="true"
           className="text-fg-subtle transition-transform duration-fast ease-standard group-data-[state=open]/menu-button:rotate-90 motion-reduce:transition-none"
@@ -241,11 +247,12 @@ function NavFold({ group, links, open, onOpenChange, onNavigate }: FoldProps) {
  * shown, is left out. 240 px wide, folding to 56 px of icons on desktop (the header button, Ctrl or Cmd + B) and a
  * sheet under 768 px.
  *
- * The areas a visitor opens less often sit in folds (nav.ts, NAV_GROUPS). A fold is open while the visitor opened it
- * (`openGroups`, from the cookie, kept as they change it) or while it holds the page shown, unless they closed it on
- * that page; leaving the page closes a fold they did not open themselves, so the sidebar stays short.
+ * The areas sit in folds (nav.ts, NAV_GROUPS). A fold is open while the visitor opened it, or for the project's two
+ * cycles until they close it (`openGroups`, from the cookie, kept as they change it), or while it holds the page shown,
+ * unless they closed it on that page; leaving the page closes a fold they did not open themselves, so the sidebar stays
+ * short.
  */
-export function AppSidebar({ openGroups = [] }: { openGroups?: readonly NavGroup[] }) {
+export function AppSidebar({ openGroups = NAV_GROUPS_OPEN }: { openGroups?: readonly NavGroup[] }) {
   const t = useTranslations("nav");
   const tApp = useTranslations("app");
   const pathname = usePathname();
@@ -294,18 +301,19 @@ export function AppSidebar({ openGroups = [] }: { openGroups?: readonly NavGroup
     ...HOME_NAV.filter((item) => shown(item)).map(hubLink),
     ...(project ? PROJECT_NAV.filter((item) => item.top && shown(item, project)).map((item) => projectLink(item, project)) : []),
   ];
+  const ownItems = project ? PROJECT_NAV.filter((item) => !item.top && shown(item, project)) : [];
   const projectLinks: NavLink[] = project
-    ? PROJECT_NAV.filter((item) => !item.top && shown(item, project)).flatMap((item) => {
-        const link = projectLink(item, project);
-        // the pages the project's plugins add come after its own areas, before its Plugins, in its fold
-        if (item.label !== "plugins") return [link];
-        return [...pluginLinks.map((page) => ({ ...page, value: null, group: item.group })), link];
-      })
+    ? withPluginPages(
+        ownItems,
+        ownItems.map((item) => projectLink(item, project)),
+        pluginLinks,
+      )
     : [];
   const hubLinks = HUB_NAV.filter((item) => (!item.adminOnly || me?.admin) && shown(item)).map(hubLink);
 
-  // The fold of the page shown; a plugin's page is known by its path before the plugins are read, so it renders open.
-  const pluginFold = PROJECT_NAV.find((item) => item.label === "plugins")?.group;
+  // The fold of the page shown; a plugin's page is known by its path before the plugins are read, so Apps, where a page
+  // that names no area sits, renders open.
+  const pluginFold: NavGroup = "apps";
   const pageFold =
     [...projectLinks, ...hubLinks].find((link) => link.active && link.group)?.group ??
     (project && pathname.startsWith(`${projectHref(project)}/x/`) ? pluginFold : undefined);

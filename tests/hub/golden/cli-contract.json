@@ -59059,7 +59059,7 @@
             "curator"
           ],
           "summary": "Plan Proposal",
-          "description": "Make an accepted proposal of tier 0 to 2 that has no change yet the Curator's plan, as accepting it does now;\nthe project's admins alone may. The change: planned, or left open with why its draft cannot become a plan.",
+          "description": "Make an accepted proposal of tier 0 to 2 that has no change yet, or a stuck one, the Curator's plan, as\naccepting it does now; the project's admins alone may. The change: planned, or left open with why its draft\ncannot become a plan.",
           "operationId": "plan_proposal_v1_projects__project__curator_proposals__proposal_id__plan_post",
           "parameters": [
             {
@@ -59258,7 +59258,7 @@
             "worker protocol"
           ],
           "summary": "Record Verdict",
-          "description": "The verdict of the judge run this worker holds, with the run's own key: the hub passes the change only as\n``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again.",
+          "description": "The verdict of the judge run this worker holds, with the run's own key: the hub passes the change only as\n``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again. The graph read\nfor that tier can wait minutes for the project's snapshot to load, so it is read before the transaction that locks\nthe run and its change: a request holding those locks makes the worker's heartbeat, claim and events wait on\nthem, each holding a pool connection, until the pool is out.",
           "operationId": "record_verdict_v1_worker_runs__run_id__verdict_post",
           "parameters": [
             {
@@ -63816,7 +63816,7 @@
             "curator"
           ],
           "summary": "Show Evolution",
-          "description": "One evolution, with each candidate (its components, scores and cost) and its front.",
+          "description": "One evolution, with each candidate (its components, scores, cost and ASI of each task) and its front.",
           "operationId": "show_evolution_v1_projects__project__curator_evolve__evolve_id__get",
           "parameters": [
             {
@@ -121772,7 +121772,7 @@
                 }
               ],
               "title": "Traces",
-              "description": "what the proposer read of each failure"
+              "description": "task ref -> its ASI (evolve_eval.short_trace), kept bounded (evolve.asi_of)"
             }
           },
           "additionalProperties": false,
@@ -121883,6 +121883,15 @@
               ],
               "title": "Components",
               "description": "its whole files or axes; null in a list"
+            },
+            "asi": {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object",
+              "title": "Asi",
+              "description": "task ref -> its actionable side information: each failed check's exit code and output tail, the agent's failed tool calls, error and last message, each text cut to its end"
             },
             "created_at": {
               "type": "string",
@@ -161604,6 +161613,18 @@
               ],
               "title": "Slot",
               "description": "where the web shows the page instead of on a page of its own: decide, a panel of the project's Decisions page; null for a page of its own"
+            },
+            "area": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Area",
+              "description": "the area of the project's menu its item sits in: business (the Business cycle), development (the Development cycle), improvement, knowledge or apps; null when the manifest names none, which the web shows in apps"
             }
           },
           "type": "object",
