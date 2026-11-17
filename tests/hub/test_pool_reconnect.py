@@ -14,7 +14,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 import psycopg
-from sqlalchemy import text
+from sqlalchemy import literal, select
 from sqlalchemy.exc import OperationalError
 
 from evo_agents.hub import db
@@ -103,7 +103,7 @@ def test_the_pool_reconnects_by_itself_after_postgres_goes_away_without_closing_
 
         async def select_one():
             async with engine.begin() as conn:
-                return (await conn.execute(text("select 1"))).scalar_one()
+                return (await conn.execute(select(literal(1)))).scalar_one()
 
         try:
             assert await select_one() == 1
