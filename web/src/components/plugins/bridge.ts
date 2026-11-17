@@ -12,8 +12,8 @@
  * A request is `{bridge: "evo-plugin/1", id, method, params}`; the answer `{bridge, id, result}` or
  * `{bridge, id, error: {code, message, status?}}`. The web also posts `{bridge, event: "theme", theme}` when the
  * viewer's theme changes, and `{bridge, event: "location", location}` when the page's sub path or query changes.
- * `navigate` and `toast` act on the page around the frame: the first only within the same project, the second with the
- * hub's own toast, the plugin named under its text.
+ * `navigate` and `toast` act on the page around the frame: the first only to a page of a project (/p/<project>/),
+ * this one or another, the second with the hub's own toast, the plugin named under its text.
  */
 
 export const BRIDGE = "evo-plugin/1";
@@ -98,7 +98,7 @@ export type Host = {
   /** What the project grants the plugin now, read again from the hub; nothing once it is not on there. */
   granted: () => Promise<readonly string[]>;
   hub: HubReader;
-  /** Opens `to`, a path of the hub's web under /p/<project>/ that `navigateTarget` checked, with the web's router. */
+  /** Opens `to`, a path of the hub's web under /p/<any project>/ that `navigateTarget` checked, with the web's router. */
   navigate: (to: string) => void;
   /** Shows `text` as the hub's toast, naming the plugin. */
   toast: (text: string, tone: PluginToastTone) => void;
@@ -259,16 +259,23 @@ function routeCall(params: Record<string, unknown>): RouteCall {
   return { method: method as RouteMethod, path, query: query as Record<string, string>, body: params.body };
 }
 
+/** A path under a project's pages, /p/<project>/, the project's name as the hub's admin.PROJECT_NAME takes it. */
+const PROJECT_PAGES = /^\/p\/[a-z0-9][a-z0-9-]{0,99}\//;
+
 /**
- * The path `to` names in the hub's web, normalised (`..` resolved, as a browser would), when it is one of project
- * `project`'s pages: under /p/<project>/, with its query and fragment. Anything else, another project, another origin,
- * a path outside /p/, is refused with invalid_params.
+ * The path `to` names in the hub's web, normalised (`..` resolved, as a browser would), when it is a page of a
+ * project: under /p/<project>/, with its query and fragment. The project may be another one than `project`, the one
+ * framing the page; that page checks the viewer's access as it would for any visit, so a project the viewer cannot
+ * read shows its 403 or not-found page. Anything else, another origin, a path outside /p/<project>/, is refused with
+ * invalid_params, whose message names a page of `project` as the example.
  */
 export function navigateTarget(to: unknown, project: string): string {
-  const prefix = `/p/${encodeURIComponent(project)}/`;
-  const refused = new BridgeError("invalid_params", `to is a path of this project's pages, such as ${prefix}runs`);
+  const refused = new BridgeError(
+    "invalid_params",
+    `to is a path of a project's pages, such as /p/${encodeURIComponent(project)}/runs`,
+  );
   if (typeof to !== "string" || to.length > MAX_NAVIGATE_CHARS || /[\\\u0000-\u001f\u007f]/.test(to)) throw refused;
-  if (!to.startsWith(prefix)) throw refused;
+  if (!PROJECT_PAGES.test(to)) throw refused;
   const base = "http://hub.invalid";
   let url: URL;
   try {
@@ -276,7 +283,7 @@ export function navigateTarget(to: unknown, project: string): string {
   } catch {
     throw refused;
   }
-  if (url.origin !== base || !url.pathname.startsWith(prefix) || url.pathname.includes("//")) throw refused;
+  if (url.origin !== base || !PROJECT_PAGES.test(url.pathname) || url.pathname.includes("//")) throw refused;
   return url.pathname + url.search + url.hash;
 }
 
