@@ -23,7 +23,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 
-from evo_agents.kg.pacing import paced
+from evo_agents.kg.pacing import paced, paced_sorted
 
 K1 = 1.2
 B = 0.75
@@ -155,7 +155,7 @@ class Table:
     column holds it, each row's tokens and the table's. ``tokenize`` cuts a text as the table's tokenizer does."""
 
     def __init__(self, rows: Sequence[Sequence[str]], tokenize: Callable[[str], list[str]]):
-        self.rows = tuple(tuple(r) for r in rows)
+        self.rows = tuple(tuple(r) for r in paced(rows))
         self.tokenize = tokenize
         self.columns = columns = len(self.rows[0]) if self.rows else 0
         # per token, one flat array of records: a row holding it, then how often each column does, rows ascending.
@@ -182,7 +182,7 @@ class Table:
                 found.extend(counts)
             sizes.append(size)
         self.postings = postings
-        self.vocabulary = sorted(postings)
+        self.vocabulary = paced_sorted(postings)
         self.sizes = sizes
         self.total = sum(sizes)
 

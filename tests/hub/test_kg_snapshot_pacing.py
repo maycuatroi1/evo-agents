@@ -300,3 +300,25 @@ def test_the_thread_freeing_aside_paces_slowly_while_requests_wait(monkeypatch):
     while (pacing.freeing() or not slept) and time.monotonic() < deadline:
         time.sleep(0.01)
     assert pacing.BUSY_PAUSE_SECONDS in slept and pacing.PAUSE_SECONDS not in slept
+
+
+def test_the_maps_and_tables_the_end_of_a_snapshot_is_made_of_are_built_a_step_at_a_time(monkeypatch):
+    """After its text index, a snapshot is finished by comprehensions over the where-provenance and the derivations,
+    one entry per element of the graph: millions of them on a large one, a second and more of the GIL kept in one
+    stretch while the claims and heartbeats of the workers waited for the loop. Each entry is a step now."""
+    import dataclasses
+
+    from evo_agents.kg.snapshot import Snapshot
+
+    keys = 3000
+    rows = dataclasses.replace(
+        graph_rows(10),
+        wheres=tuple((f"el{i}", f"u{i}", "1-2") for i in range(keys)),
+        derivations=tuple((f"el{i}", "[]", "[]") for i in range(keys)),
+    )
+    sleeps: list[float] = []
+    _sleeps(monkeypatch, sleeps)
+    with pacing.pacing():
+        Snapshot.from_stored(rows)
+    # one step per row read, and one per entry of each map built from them
+    assert len(sleeps) >= 4 * keys
