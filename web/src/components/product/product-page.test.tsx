@@ -42,7 +42,7 @@ for (const locale of ["en", "vi"] as const) {
       for (const need of NEEDS) expect(screen.getByTestId(`need-${need.key}`)).toHaveTextContent(messages.product.needs.rows[need.key].title);
       expect(screen.getByText(messages.product.hero.demo)).toBeInTheDocument();
       for (const image of within(screen.getByTestId("product-demo")).getAllByRole("img", { hidden: true })) {
-        expect(image.getAttribute("src")).toMatch(/^\/product\/monitor-wide-(light|dark)\.png$/);
+        expect(image.getAttribute("src")).toMatch(/^\/product\/kg-entities-wide-(light|dark)\.png$/);
         expect(image).toHaveAttribute("alt", messages.product.hero.imageAlt);
       }
       expect(container.textContent).not.toMatch(/Counts as of|Số liệu tính đến|Hacker News|kg_search|10,000|10\.000/);

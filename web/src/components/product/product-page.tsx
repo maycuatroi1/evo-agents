@@ -70,7 +70,7 @@ function Hero({ signInHref, member }: Pick<Props, "signInHref" | "member">) {
         </div>
       </div>
       <figure className="min-w-0">
-        <Screenshot image="monitor" alt={t("imageAlt")} testId="product-demo" />
+        <Screenshot image="kg-entities" alt={t("imageAlt")} testId="product-demo" />
         <figcaption className="mt-3 text-xs text-muted-foreground">{t("demo")}</figcaption>
       </figure>
     </section>

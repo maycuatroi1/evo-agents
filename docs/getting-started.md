@@ -2,8 +2,8 @@
 
 Choose a starting point:
 
+- [Build a project knowledge base](#build-a-project-knowledge-base) from uploaded archives or Git repositories on a hub.
 - [Run your first plan](#run-your-first-plan) with a team hub and a worker.
-- [Try the knowledge graph locally](#try-the-knowledge-graph-locally) without a hub or model account.
 
 ## Run your first plan
 
@@ -14,7 +14,7 @@ You'll need:
   To run your own hub, follow the [deployment guide](hub-deployment.md).
 - Python 3.11+, [uv](https://docs.astral.sh/uv/), Git and tmux on the worker machine.
 - Claude Code, Codex CLI or opencode installed and authenticated, and Git access to the project's repos.
-- macOS or Linux for the worker daemon; use WSL on Windows. The CLI and local graph also run on Windows directly.
+- macOS or Linux for the worker daemon; use WSL on Windows. The CLI also runs on Windows directly.
 
 The worker runs code with the access of its operating-system account. On a shared machine, use the
 [credential setup for workers](workers.md#a-machine-others-administer) before dispatching work.
@@ -71,8 +71,9 @@ worker's version lock if you need it to stay on one release ([worker updates](wo
 Open the project's **Plans** page and choose **New plan**. Describe a small change and how you want it checked.
 An agent on your worker writes the plan. Read it, adjust the scope if needed, then choose **Run plan**.
 
-Open the run to see its steps, log and verification results. **Monitor** follows several runs at once. Decisions
-that require your answer appear in **Inbox**, according to your [autonomy settings](autonomy.md).
+Open the run to see its steps, log and verification results. **Today** and the project's **Runs** page follow active
+runs across your projects. Decisions that require your answer appear in **Inbox**, according to your
+[autonomy settings](autonomy.md).
 
 For dispatch commands, logs, stopping a run and credential setup, see [Operations](operations.md).
 
@@ -102,24 +103,33 @@ After signing in with `evo-agents hub login`, start a session in your project's 
 project. Review the hook trust prompt when your agent first loads them. The [agent guide](agents.md) describes the
 MCP tools, hooks and data they send to the hub.
 
-## Try the knowledge graph locally
+## Build a project knowledge base
 
-You need Python 3.11+, uv and Git. No hub login or model account is needed for this walkthrough. In a Git repo with
-at least one commit, run:
+Every project's knowledge graph builds and runs on the hub. You can populate it from documents in the browser or from
+Git repositories on your machine:
+
+1. **From documents or spreadsheets (browser only).** Sign in to the hub, open **New project from data**
+   (`/projects/new`) or a project's **Knowledge graph -> Upload data** tab, and drop a `.zip` or `.tar.gz` archive.
+   The hub extracts documents, spreadsheets and text into the graph so you can explore entities and ask questions in
+   **Home** chat right away.
+2. **From Git repositories (CLI).** With Python 3.11+, uv, Git and `evo-agents hub login` completed, run inside a
+   Git repository (or a folder of repositories):
 
 ```sh
 uv tool install 'evo-ak[graphify]'
 cd /path/to/your-repo
 evo-agents harness init
 evo-agents harness validate
+evo-agents hub project register
 evo-agents kg sync --build
 evo-agents kg status
 evo-agents kg query kg_search "README"
 ```
 
-Replace the path and search text with your repo and a file or symbol it contains. A successful build reports its
-sources and coverage; the search returns matching node IDs. `harness init` writes configuration into the directory
-and leaves existing configuration untouched. The graph itself lives under `~/.evo/kg/`, outside your repo.
+Replace the path and search text with your repo and a file or symbol it contains. `kg sync --build` runs the
+configured connectors, pushes their runs to the hub and builds the graph there; `kg status` reports source coverage
+and freshness, and `kg query` searches the hub's snapshot. `harness init` writes configuration into the directory and
+leaves existing configuration untouched.
 
 Git sources index committed code. With an origin remote, the generated configuration reads the remote default
 branch; review `knowledge.yaml` if you want to index another branch. A folder of Git repos works too: each repo

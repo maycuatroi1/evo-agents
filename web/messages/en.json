@@ -112,9 +112,9 @@
   },
   "product": {
     "meta": {
-      "title": "evo-agents | Coding agents on your own machines",
-      "description": "Run Claude Code, Codex CLI or opencode across your repositories. Hand off a plan, follow progress in your browser and choose which actions need your approval.",
-      "imageAlt": "A demo plan run with completed steps and a decision waiting for an answer."
+      "title": "evo-agents | Knowledge base and plugin workspace for AI agent teams",
+      "description": "Bring repositories, documents, specs and chats into one permission-aware hub, extend product cycles with plugins, and run Claude Code, Codex CLI or opencode on machines you control.",
+      "imageAlt": "The Knowledge Graph Explorer connecting project entities to source files."
     },
     "header": {
       "nav": "evo-agents on GitHub",
@@ -122,36 +122,36 @@
       "source": "Source code"
     },
     "hero": {
-      "title": "Run coding agents across your repositories, on machines you control.",
+      "title": "A shared knowledge base and plugin workspace for AI agent teams.",
       "start": "Get started",
       "signIn": "Sign in with GitHub",
       "openHub": "Open the hub",
-      "imageAlt": "The Monitor shows live agent runs and a pending decision.",
-      "demo": "Demo hub with fictional projects, people and machines."
+      "imageAlt": "The Knowledge Graph Explorer connecting extracted entities to source files across repositories.",
+      "demo": "Knowledge graph of evo-agents with anonymized accounts and machines."
     },
     "claims": {
-      "lede": "Give Claude Code, Codex CLI or opencode a plan. <readme>evo-agents</readme> runs the work across your repos while you follow progress, answer questions or take over in your browser.",
-      "planRuns": "Hand off a plan with dependencies and checks. <verify>The worker runs the checks again</verify> before recording a step as done, with commits and results attached.",
-      "graph": "Agents share <context>plans and memories between sessions</context>. A <graph>searchable knowledge graph</graph> connects code and documents across your repos.",
-      "decisions": "See what is running and what needs you. <policy>Your approval settings</policy> determine when an agent must ask; answer in the <inbox>Inbox</inbox> or through Telegram when configured.",
-      "machines": "A <worker>worker</worker> runs the agent on a laptop, desktop or server you connect, using your coding-agent accounts. You can <host>host the hub yourself</host>, too.",
-      "access": "Use your team's hub, request an invite to this one, or <host>host your own</host>.",
+      "lede": "Bring codebases, documents, chats and specs into one hub. <readme>evo-agents</readme> extends your workspace across product roles with plugins and dispatches verified work to Claude Code, Codex CLI or opencode.",
+      "graph": "Index Git repos, uploaded archives, versioned Docs and chats in one <graph>permission-aware knowledge graph</graph>, while agents share <context>plans, skills and memories across sessions</context>.",
+      "plugins": "Extend the Business cycle and Development cycle with Lean Canvas, SRS, Tasks, CRM, Marketing and Editorial. Run <plugins>core and sandboxed isolated plugins</plugins> installed from <market>signed markets</market>.",
+      "planRuns": "Wire multi-agent systems to named graphs and hand off multi-step plans. <verify>Workers re-run verification checks</verify> in isolated Git worktrees before recording completion.",
+      "machines": "A <worker>worker</worker> runs on hardware you connect with sealed credentials, while <policy>your approval settings</policy> pause risky actions for Inbox or Telegram review. You can <host>host the hub yourself</host>, too.",
+      "access": "Use your team’s hub, request an invite to this one, or <host>host your own</host>.",
       "status": "evo-agents is pre-1.0: commands and formats can change between releases. Check the <roadmap>roadmap</roadmap> for current capabilities and unfinished work."
     },
     "needs": {
-      "title": "Less time coordinating agents",
+      "title": "Built around shared context and product cycles",
       "rows": {
-        "plans": {
-          "title": "Hand off a whole plan"
-        },
         "context": {
-          "title": "Keep project context"
+          "title": "Centralized knowledge base"
         },
-        "control": {
-          "title": "See what needs you"
+        "plugins": {
+          "title": "Workspace extended by plugins"
+        },
+        "plans": {
+          "title": "Multi-agent systems and plans"
         },
         "machines": {
-          "title": "Use your own machines"
+          "title": "Your machines and approvals"
         }
       }
     },
@@ -159,19 +159,19 @@
       "title": "Give it a piece of work",
       "exampleLabel": "Example request",
       "example": "Add saved carts to checkout. Cover the API and frontend, and include tests for restoring a cart after sign-in.",
-      "description": "The hub holds your plans and shows progress. A worker runs the agent on a machine you connect.",
+      "description": "The hub holds your knowledge base, product cycle artifacts and plans. Workers run agents on machines you connect.",
       "steps": {
         "describe": {
           "title": "Describe the change",
-          "body": "Choose New plan on your project's Plans page. An agent on your worker drafts the steps."
+          "body": "Choose New plan on your project’s Plans page, or ask an agent system in Home chat."
         },
         "review": {
           "title": "Review and run",
-          "body": "Check the scope and tests, adjust what you need, then choose Run plan."
+          "body": "Check the drafted steps and verification commands, adjust scope if needed, then choose Run plan."
         },
         "follow": {
-          "title": "Follow the work",
-          "body": "Read the output and test results in your browser. Send the agent a message or stop the run there."
+          "title": "Follow and approve",
+          "body": "Read traces and test results in your browser, and answer approval decisions in Inbox or Telegram."
         }
       }
     },
@@ -185,13 +185,13 @@
         "installLabel": "install command",
         "loginLabel": "sign-in command",
         "guide": "Set up a project and worker",
-        "next": "Connect a project and worker, then create your first plan."
+        "next": "Connect your repositories and a worker, then dispatch your first plan."
       },
       "local": {
-        "title": "Try the graph on its own",
-        "prerequisites": "You need Python 3.11+, uv and Git.",
-        "guide": "Try the local walkthrough",
-        "body": "Index a Git repo and search its code. You do not need a hub login or model account."
+        "title": "Start from documents or archives",
+        "prerequisites": "Works in the browser with a hub account, even before connecting a Git repository.",
+        "guide": "Build a project knowledge base",
+        "body": "Open New project from data on the hub and drop a .zip or .tar.gz archive of documents and spreadsheets to explore entities and ask questions in chat."
       }
     },
     "footer": {

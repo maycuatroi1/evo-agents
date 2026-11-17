@@ -11,16 +11,20 @@ const WORKER: DocLink = { file: "docs/workers.md", anchor: "the-daemon" };
 /** Each rich-text link resolves to a public reference, never a private harness or a removed README heading. */
 export const CLAIMS: Record<ClaimKey, Record<string, DocLink>> = {
   lede: { readme: README },
-  planRuns: { verify: { file: "docs/workers.md", anchor: "plan-runs" } },
   graph: {
     context: { file: "docs/hub.md", anchor: "memories-skills-and-knowledge-graphs" },
     graph: { file: "docs/kg-setup.md" },
   },
-  decisions: {
-    policy: { file: "docs/autonomy.md" },
-    inbox: { file: "docs/workers.md", anchor: "decisions-and-notices" },
+  plugins: {
+    plugins: { file: "docs/plugins.md" },
+    market: { file: "docs/market.md" },
   },
-  machines: { worker: WORKER, host: HOST },
+  planRuns: { verify: { file: "docs/workers.md", anchor: "plan-runs" } },
+  machines: {
+    worker: WORKER,
+    policy: { file: "docs/autonomy.md" },
+    host: HOST,
+  },
   access: { host: HOST },
   status: { roadmap: ROADMAP },
 };

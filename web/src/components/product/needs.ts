@@ -7,8 +7,8 @@ export type Need = { key: NeedKey; claim: ClaimKey };
 
 /** Reader benefits, with each description linked to the documentation that supports it. */
 export const NEEDS: Need[] = [
-  { key: "plans", claim: "planRuns" },
   { key: "context", claim: "graph" },
-  { key: "control", claim: "decisions" },
+  { key: "plugins", claim: "plugins" },
+  { key: "plans", claim: "planRuns" },
   { key: "machines", claim: "machines" },
 ];

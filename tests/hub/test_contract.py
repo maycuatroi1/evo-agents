@@ -583,6 +583,7 @@ def test_the_docs_of_this_repository_pass():
     docs = ROOT / "docs"
     files = [
         ROOT / "README.md",
+        ROOT / "README.vi.md",
         ROOT / "CONTRIBUTING.md",
         docs / "getting-started.md",
         docs / "agents.md",

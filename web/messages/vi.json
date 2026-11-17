@@ -112,9 +112,9 @@
   },
   "product": {
     "meta": {
-      "title": "evo-agents | Coding agent trên máy của bạn",
-      "description": "Chạy Claude Code, Codex CLI hoặc opencode trên nhiều repo. Giao kế hoạch, theo dõi công việc trên trình duyệt và chọn những việc agent cần bạn duyệt.",
-      "imageAlt": "Một lượt chạy demo với các bước đã xong và một câu hỏi đang chờ trả lời."
+      "title": "evo-agents | Knowledge base và không gian làm việc plugin cho đội ngũ AI agent",
+      "description": "Gom mã nguồn, tài liệu, đặc tả và tin nhắn vào một Hub có phân quyền, mở rộng chu trình sản phẩm bằng plugin và chạy Claude Code, Codex CLI hoặc opencode trên máy của bạn.",
+      "imageAlt": "Màn Knowledge Graph Explorer kết nối các thực thể dự án với tệp mã nguồn."
     },
     "header": {
       "nav": "evo-agents trên GitHub",
@@ -122,36 +122,36 @@
       "source": "Mã nguồn"
     },
     "hero": {
-      "title": "Chạy coding agent trên nhiều repo, bằng máy của bạn.",
+      "title": "Knowledge base dùng chung và không gian làm việc mở rộng bằng plugin cho đội ngũ dùng AI agent.",
       "start": "Bắt đầu",
       "signIn": "Đăng nhập bằng GitHub",
       "openHub": "Mở hub",
-      "imageAlt": "Trang Monitor hiển thị các agent đang làm việc và một câu hỏi chờ trả lời.",
-      "demo": "Hub demo với dự án, người và máy hư cấu."
+      "imageAlt": "Màn Knowledge Graph Explorer nối các thực thể trích xuất với tệp mã nguồn xuyên suốt các kho Git.",
+      "demo": "Knowledge graph của dự án evo-agents với tài khoản và tên máy đã ẩn danh."
     },
     "claims": {
-      "lede": "Giao một kế hoạch cho Claude Code, Codex CLI hoặc opencode. Với <readme>evo-agents</readme>, bạn theo dõi công việc trên các repo, trả lời câu hỏi hoặc tiếp quản phiên làm việc ngay trên trình duyệt.",
-      "planRuns": "Giao cả kế hoạch, kèm thứ tự các bước và cách kiểm tra. <verify>Worker chạy lại các lệnh kiểm tra</verify> trước khi ghi nhận bước đã xong, kèm commit và kết quả.",
-      "graph": "Agent dùng chung <context>kế hoạch và memory giữa các phiên</context>. <graph>Knowledge graph</graph> giúp tìm code, tài liệu và mối liên hệ giữa các repo.",
-      "decisions": "Xem việc nào đang chạy, việc nào cần bạn. Bạn <policy>chọn những việc agent cần hỏi trước</policy>, rồi trả lời trong <inbox>Inbox</inbox> hoặc qua Telegram nếu đã cấu hình.",
-      "machines": "Một <worker>worker</worker> chạy agent trên laptop, máy bàn hoặc server bạn kết nối, dùng tài khoản coding agent của bạn. Bạn cũng có thể <host>tự vận hành hub</host>.",
+      "lede": "Gom mã nguồn, tài liệu, hội thoại và đặc tả về một Hub. Với <readme>evo-agents</readme>, nhóm mở rộng không gian làm việc theo từng vai trò bằng plugin và giao việc có kiểm chứng cho Claude Code, Codex CLI hoặc opencode.",
+      "graph": "Lập chỉ mục các kho Git, tệp nén tài liệu, Docs lưu phiên bản và tin nhắn nhóm trong <graph>knowledge graph có phân quyền</graph>, giúp các agent dùng chung <context>kế hoạch, kỹ năng và bộ nhớ xuyên suốt các phiên</context>.",
+      "plugins": "Mở rộng Business cycle và Development cycle với Lean Canvas, SRS, Tasks, CRM, Marketing và Editorial. Vận hành cả <plugins>module core lẫn plugin cô lập</plugins> cài từ <market>kho plugin có chữ ký số</market>.",
+      "planRuns": "Nối hệ thống nhiều agent vào các đồ thị chuyên biệt và giao trọn kế hoạch nhiều bước. <verify>Worker tự chạy lại lệnh kiểm tra</verify> trong Git worktree tách rời trước khi ghi nhận hoàn tất.",
+      "machines": "Mỗi <worker>worker</worker> chạy trên máy bạn kết nối với thông tin xác thực niêm phong, còn <policy>thiết lập phê duyệt</policy> chỉ dừng lượt chạy khi cần bạn quyết định ở Inbox hoặc Telegram. Bạn cũng có thể <host>tự vận hành hub riêng</host>.",
       "access": "Dùng hub của nhóm, xin lời mời vào hub này, hoặc <host>tự cài hub riêng</host>.",
       "status": "evo-agents chưa tới phiên bản 1.0; lệnh và định dạng có thể đổi giữa các bản. Xem <roadmap>roadmap</roadmap> để biết phần nào đã dùng được, phần nào còn đang làm."
     },
     "needs": {
-      "title": "Bớt việc điều phối agent",
+      "title": "Xoay quanh tri thức chung và chu trình sản phẩm",
       "rows": {
-        "plans": {
-          "title": "Giao cả kế hoạch"
-        },
         "context": {
-          "title": "Giữ context của dự án"
+          "title": "Knowledge base tập trung"
         },
-        "control": {
-          "title": "Biết việc nào cần bạn"
+        "plugins": {
+          "title": "Mở rộng theo vai trò bằng plugin"
+        },
+        "plans": {
+          "title": "Hệ multi-agent và chạy kế hoạch"
         },
         "machines": {
-          "title": "Dùng máy của bạn"
+          "title": "Máy của bạn và cổng phê duyệt"
         }
       }
     },
@@ -159,19 +159,19 @@
       "title": "Giao một việc cụ thể",
       "exampleLabel": "Ví dụ yêu cầu",
       "example": "Thêm tính năng lưu giỏ hàng ở trang thanh toán. Sửa cả API và frontend, thêm test cho việc khôi phục giỏ hàng sau khi đăng nhập.",
-      "description": "Hub lưu kế hoạch và hiển thị tiến độ. Worker chạy agent trên máy bạn kết nối.",
+      "description": "Hub lưu knowledge base, tài liệu chu trình sản phẩm và các kế hoạch. Worker chạy agent trên máy bạn kết nối.",
       "steps": {
         "describe": {
           "title": "Mô tả thay đổi",
-          "body": "Chọn Plan mới ở trang Plans của dự án. Agent trên worker sẽ viết các bước thực hiện."
+          "body": "Chọn Plan mới ở trang Plans của dự án, hoặc trao đổi trực tiếp với hệ agent ở màn Home chat."
         },
         "review": {
           "title": "Đọc kế hoạch rồi chạy",
-          "body": "Kiểm tra phạm vi và các test, chỉnh lại nếu cần, rồi chọn Chạy plan."
+          "body": "Kiểm tra phạm vi và các lệnh test đã phác thảo, chỉnh lại nếu cần, rồi chọn Chạy plan."
         },
         "follow": {
-          "title": "Theo dõi công việc",
-          "body": "Đọc output và kết quả test trên trình duyệt. Bạn có thể nhắn agent hoặc dừng lượt chạy tại đó."
+          "title": "Theo dõi và phê duyệt",
+          "body": "Xem tiến độ cùng kết quả test trên trình duyệt, trả lời các câu hỏi cần duyệt trong Inbox hoặc Telegram."
         }
       }
     },
@@ -185,13 +185,13 @@
         "installLabel": "lệnh cài đặt",
         "loginLabel": "lệnh đăng nhập",
         "guide": "Kết nối dự án và worker",
-        "next": "Kết nối dự án và worker, rồi tạo kế hoạch đầu tiên."
+        "next": "Kết nối các kho Git và máy worker, rồi giao kế hoạch đầu tiên."
       },
       "local": {
-        "title": "Thử riêng knowledge graph",
-        "prerequisites": "Cần Python 3.11+, uv và Git.",
-        "guide": "Thử chạy cục bộ",
-        "body": "Lập chỉ mục một repo Git rồi tìm code trong đó. Không cần đăng nhập hub hay có tài khoản model."
+        "title": "Khởi tạo từ tài liệu hoặc tệp nén",
+        "prerequisites": "Thao tác ngay trên trình duyệt khi đã có tài khoản hub, kể cả khi chưa nối kho Git.",
+        "guide": "Dựng knowledge base cho dự án",
+        "body": "Mở mục New project from data trên hub rồi thả tệp .zip hoặc .tar.gz chứa tài liệu và bảng tính để xem thực thể và đặt câu hỏi trong chat."
       }
     },
     "footer": {
