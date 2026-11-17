@@ -175,6 +175,54 @@ def _partitions(count: int, src: array, dst: array, groups: dict[tuple[str, str]
     return MappingProxyType(out)
 
 
+def _graph_counts(nodes: list[dict], edges: list[dict], src: array, dst: array) -> tuple[tuple, tuple, tuple]:
+    """(node_counts, edge_counts, shape) grouped by label, so kind_counts, shape_counts and seen walk labels, not rows."""
+    node_counts = tuple((*k, c) for k, c in Counter((n["kind"], n["label"]) for n in paced(nodes)).items())
+    edge_counts = tuple(Counter(e["label"][3] for e in paced(edges)).items())
+    shapes = Counter(
+        (
+            nodes[src[i]]["kind"],
+            e["rel"],
+            nodes[dst[i]]["kind"],
+            e["label"],
+            nodes[src[i]]["label"],
+            nodes[dst[i]]["label"],
+        )
+        for i, e in enumerate(paced(edges))
+    )
+    return node_counts, edge_counts, tuple((*k, c) for k, c in shapes.items())
+
+
+def _unit_counts(units) -> tuple[tuple, tuple, tuple, frozenset[str]]:
+    """(unit_counts, item_counts, mixed_items, audience_sources) of live units for ``SnapshotView.seen``."""
+    parsed: dict[str | None, frozenset[str]] = {None: frozenset()}
+    unit_auds: Counter = Counter()
+    by_item: dict[tuple[str, str], set[frozenset[str]]] = defaultdict(set)
+    audience_sources: set[str] = set()
+    for r in paced(units):
+        raw = r[7]
+        aud = parsed.get(raw)
+        if aud is None:
+            aud = parsed[raw] = stored_audience(raw)
+        unit_auds[aud] += 1
+        by_item[(r[5], r[1])].add(aud)
+        if raw is not None:
+            audience_sources.add(r[5])
+    single: Counter = Counter()
+    mixed: list[tuple[str, tuple[frozenset[str], ...]]] = []
+    for (source, _), auds in paced(by_item.items()):
+        if len(auds) == 1:
+            single[(source, next(iter(auds)))] += 1
+        else:
+            mixed.append((source, tuple(auds)))
+    return (
+        tuple(unit_auds.items()),
+        tuple((*k, c) for k, c in single.items()),
+        tuple(mixed),
+        frozenset(audience_sources),
+    )
+
+
 _EMPTY = MappingProxyType({})
 
 
@@ -215,6 +263,13 @@ class Snapshot:
     asked_weight: float | None = None  # the weight of an asked match the build recorded
     found: Clusters | None = None  # the build's clusters
     review: tuple[dict, ...] = ()  # the build's review items
+    node_counts: tuple[tuple, ...] = ()  # (kind, label, count) for kind_counts and seen
+    edge_counts: tuple[tuple, ...] = ()  # (audience, count) for seen
+    shape: tuple[tuple, ...] = ()  # (src_kind, rel, dst_kind, e_label, s_label, d_label, count) for shape_counts
+    unit_counts: tuple[tuple, ...] = ()  # (audience, count) for seen
+    item_counts: tuple[tuple, ...] = ()  # (source, audience, count) of single-audience items for seen
+    mixed_items: tuple[tuple, ...] = ()  # (source, audiences) of multi-audience items for seen
+    audience_sources: frozenset[str] = frozenset()  # sources with at least one unit carrying an audience
 
     def __del__(self) -> None:
         let_go(self)  # in the api, freed a part at a time in a thread of its own (``pacing.free_aside``)
@@ -264,6 +319,7 @@ class Snapshot:
             for label in labels:
                 audience = audience_join(audience, label[3])
             top = ((max((x[0] for x in labels), default=0), max((x[1] for x in labels), default=0)), audience)
+        node_counts, edge_counts, shape = _graph_counts(read, held, src, dst)
         return cls(
             content_hash=content_hash,
             ids=ids,
@@ -280,6 +336,9 @@ class Snapshot:
             build=build,
             top_label=top[0],
             top_audience=top[1],
+            node_counts=node_counts,
+            edge_counts=edge_counts,
+            shape=shape,
         )
 
     @classmethod
@@ -313,9 +372,11 @@ class Snapshot:
         for elem, units, needs in paced(rows.derivations):
             derived[elem].append((units, needs))
         bodies = {key: (row[4], row[5] if len(row) > 5 else None) for key, row in paced(rows.keyed)}
+        units = MappingProxyType({r[0]: tuple(r) for r in paced(rows.units)})
+        unit_counts, item_counts, mixed_items, audience_sources = _unit_counts(units.values())
         return replace(
             snap,
-            units=MappingProxyType({r[0]: tuple(r) for r in paced(rows.units)}),
+            units=units,
             where=MappingProxyType({k: tuple(v) for k, v in paced(where.items())}),
             derivations=MappingProxyType({k: tuple(v) for k, v in paced(derived.items())}),
             bodies=MappingProxyType(bodies),
@@ -324,6 +385,10 @@ class Snapshot:
             asked_weight=rows.asked_weight,
             found=rows_clusters(rows.clusters),
             review=tuple(rows.review),
+            unit_counts=unit_counts,
+            item_counts=item_counts,
+            mixed_items=mixed_items,
+            audience_sources=audience_sources,
         )
 
     def view(
@@ -434,6 +499,7 @@ class SnapshotView:
     def __init__(self, snap: Snapshot, reader: frozenset[str], ceiling: tuple[int, int] | None, tuning):
         self.snap, self.reader, self.ceiling, self.tuning = snap, reader, ceiling, tuning
         self._edge_ids: dict[str, dict] | None = None
+        self._seen: tuple[frozenset[str], dict] | None = None
         self.asked_clearance: tuple[int, int] | None = None  # search reads the asked rows within it
         self.asked_weight: float | None = None  # the weight of an asked match in place of the build's (an eval)
 
@@ -621,18 +687,16 @@ class SnapshotView:
 
     def kind_counts(self, b: int = 0) -> list[tuple[str, int, int, str, int]]:
         counts: dict[tuple, int] = defaultdict(int)
-        for n in self.snap.nodes:
-            if self.sees(n):
-                counts[(n["kind"], *n["label"][:3])] += 1
+        for kind, label, count in self.snap.node_counts:
+            if audience_below(label[3], self.reader):
+                counts[(kind, *label[:3])] += count
         return [(*key, count) for key, count in counts.items()]
 
     def shape_counts(self, b: int = 0) -> list[tuple]:
         counts: dict[tuple, int] = defaultdict(int)
-        nodes, index = self.snap.nodes, self.snap.index
-        for e in self.snap.edges:
-            s, d = nodes[index[e["src"]]], nodes[index[e["dst"]]]
-            if self.sees(e) and self.sees(s) and self.sees(d):
-                counts[(s["kind"], e["rel"], d["kind"], *(tuple(x["label"][:3]) for x in (e, s, d)))] += 1
+        for s_kind, rel, d_kind, e_lbl, s_lbl, d_lbl, count in self.snap.shape:
+            if all(audience_below(x[3], self.reader) for x in (e_lbl, s_lbl, d_lbl)):
+                counts[(s_kind, rel, d_kind, e_lbl[:3], s_lbl[:3], d_lbl[:3])] += count
         return [(*key, count) for key, count in counts.items()]
 
     def build_row(self, build_id: int = 0) -> dict:
@@ -675,18 +739,24 @@ class SnapshotView:
         """The nodes the reader sees whose id starts with ``prefix`` and the edges it sees into one of them, by id
         ."""
         held = self._prefixed(prefix)
-        nodes = [dict(self.snap.nodes[i]) for i in held if self.sees(self.snap.nodes[i])]
-        found = {e for p in self.snap.partitions.values() for i in held for e in p.into(i)}
-        edges = sorted((self.snap.edges[e] for e in found if self.sees(self.snap.edges[e])), key=lambda e: e["id"])
-        return nodes, [dict(e) for e in edges]
+        nodes = [dict(self.snap.nodes[i]) for i in paced(held) if self.sees(self.snap.nodes[i])]
+        found = {e for p in self.snap.partitions.values() for i in paced(held) for e in p.into(i)}
+        edges = paced_sorted(
+            (self.snap.edges[e] for e in paced(found) if self.sees(self.snap.edges[e])), key=lambda e: e["id"]
+        )
+        return nodes, [dict(e) for e in paced(edges)]
 
     def entity_code(self, b: int, rels, prefix: str = "entity:") -> list[dict]:
         """The edges the reader sees with one of ``rels`` out of a node whose id starts with ``prefix``, by id
         ."""
         held, rels = self._prefixed(prefix), set(rels)
-        found = {e for (rel, _), p in self.snap.partitions.items() if rel in rels for i in held for e in p.out_of(i)}
-        edges = sorted((self.snap.edges[e] for e in found if self.sees(self.snap.edges[e])), key=lambda e: e["id"])
-        return [dict(e) for e in edges]
+        found = {
+            e for (rel, _), p in self.snap.partitions.items() if rel in rels for i in paced(held) for e in p.out_of(i)
+        }
+        edges = paced_sorted(
+            (self.snap.edges[e] for e in paced(found) if self.sees(self.snap.edges[e])), key=lambda e: e["id"]
+        )
+        return [dict(e) for e in paced(edges)]
 
     def changed_by(self, file_id: str, limit: int) -> list[str]:
         i = self.snap.index.get(file_id)
@@ -784,7 +854,7 @@ class SnapshotView:
         if found is None:
             return []
         out = []
-        for nid, (top, sub) in sorted(found.members.items()):
+        for nid, (top, sub) in paced(sorted(found.members.items())):
             i = self.snap.index.get(nid)
             if i is None or not self.sees(self.snap.nodes[i]):
                 continue
@@ -809,34 +879,32 @@ class SnapshotView:
         found = self.snap.found
         if found is None:
             return []
+        members = found.members
+        nodes, edges, src, dst = self.snap.nodes, self.snap.edges, self.snap.src, self.snap.dst
         rows: Counter = Counter()
-        for e in self.snap.edges:
-            if e["rel"] in skip_rels or not self.sees(e):
+        for (rel, _), part in self.snap.partitions.items():
+            if rel in skip_rels:
                 continue
-            i, j = self.snap.index.get(e["src"]), self.snap.index.get(e["dst"])
-            if i is None or j is None:
-                continue
-            s, d = self.snap.nodes[i], self.snap.nodes[j]
-            if not (self.sees(s) and self.sees(d)):
-                continue
-            a, z = self._owner(s), self._owner(d)
-            if a == z or a not in found.members or z not in found.members:
-                continue
-            rows[(a, z, e["label"], s["label"], d["label"])] += 1
+            for k in paced(part.out_edges):
+                e = edges[k]
+                s, d = nodes[src[k]], nodes[dst[k]]
+                if not (self.sees(e) and self.sees(s) and self.sees(d)):
+                    continue
+                a, z = self._owner(s), self._owner(d)
+                if a == z or a not in members or z not in members:
+                    continue
+                rows[(a, z, e["label"], s["label"], d["label"])] += 1
         return [(*key, count) for key, count in rows.items()]
 
     def live_graph(self, b: int = 0) -> tuple[list[dict], list[tuple]]:
         """The nodes the reader sees, by id, with their owner, and the edges the reader sees as (source, type, target,
         label), by source, type and target."""
-        nodes = sorted(
-            (
-                {"id": n["id"], "kind": n["kind"], "name": n["name"], "owner": self._owner(n), "label": n["label"]}
-                for n in self.snap.nodes
-                if self.sees(n)
-            ),
-            key=lambda n: n["id"],
-        )
-        edges = sorted((e["src"], e["rel"], e["dst"], e["label"]) for e in self.snap.edges if self.sees(e))
+        nodes = [
+            {"id": n["id"], "kind": n["kind"], "name": n["name"], "owner": self._owner(n), "label": n["label"]}
+            for n in paced(self.snap.nodes)
+            if self.sees(n)
+        ]
+        edges = paced_sorted((e["src"], e["rel"], e["dst"], e["label"]) for e in paced(self.snap.edges) if self.sees(e))
         return nodes, edges
 
     def review_items(self, b: int = 0) -> list[dict]:
@@ -855,17 +923,26 @@ class SnapshotView:
 
     def seen(self, b: int = 0) -> dict:
         """What the snapshot holds within the reader's audience, whatever the level."""
-        units = [r for r in self.snap.units.values() if within(self.reader, r[7])]
-        items: dict[str, set] = defaultdict(set)
-        for r in units:
-            items[r[5]].add(r[1])
-        return {
-            "nodes": sum(1 for n in self.snap.nodes if self.sees(n)),
-            "edges": sum(1 for e in self.snap.edges if self.sees(e)),
-            "units": len(units),
-            "items": {source: len(ids) for source, ids in items.items()},
-            "audience": {r[5] for r in self.snap.units.values() if r[7] is not None},
+        if self._seen is not None and self._seen[0] == self.reader:
+            cached = self._seen[1]
+            return {**cached, "items": dict(cached["items"]), "audience": set(cached["audience"])}
+        snap, reader = self.snap, self.reader
+        items: dict[str, int] = defaultdict(int)
+        for source, aud, count in snap.item_counts:
+            if audience_below(aud, reader):
+                items[source] += count
+        for source, auds in snap.mixed_items:
+            if any(audience_below(a, reader) for a in auds):
+                items[source] += 1
+        out = {
+            "nodes": sum(c for _, label, c in snap.node_counts if audience_below(label[3], reader)),
+            "edges": sum(c for aud, c in snap.edge_counts if audience_below(aud, reader)),
+            "units": sum(c for aud, c in snap.unit_counts if audience_below(aud, reader)),
+            "items": dict(items),
+            "audience": set(snap.audience_sources),
         }
+        self._seen = (reader, out)
+        return {**out, "items": dict(out["items"]), "audience": set(out["audience"])}
 
     def walk_edges(self, ids: list[str], b: int = 0):
         """The edges the walk of ``evo_agents.kg.ppr`` reads for ``ids``: those out of one of them, then those into

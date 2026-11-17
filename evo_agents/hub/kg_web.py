@@ -147,9 +147,9 @@ class WebSession(HubSession):
         return [{"src_kind": k[0], "rel": k[1], "dst_kind": k[2], "count": count} for k, count in ordered]
 
     def _map_view(self, store: SnapshotView, b: int) -> kg_map.View:
-        """The clusters of build b as this reader sees them, kept by the artifact and by everything ``visible``
+        """The clusters of build b as this reader sees them, kept by the build's content and by everything ``visible``
         compares with (``evo_agents.hub.kg_map.ViewCache``); call after ``_visible_store``, which sets ``sees_all``."""
-        key = (self.project.name, self.graph.sha256, b, self.sees_all, self.clearance, self.audience)
+        key = (self.project.name, self.graph.content_hash, b, self.sees_all, self.clearance, self.audience)
         return kg_map.VIEWS.get(key, lambda: kg_map.view(store, b, self.visible))
 
     def cluster_map(self, with_nodes: bool = True) -> dict:
@@ -196,7 +196,7 @@ class WebSession(HubSession):
     def _entity_view(self, store: SnapshotView, b: int) -> kg_entity_graph.EntityView:
         """The entities, relations and mentions of build b this reader sees (``evo_agents.hub.kg_entity_graph``), kept
         as ``_map_view`` keeps the clusters; call after ``_visible_store``."""
-        key = (self.project.name, self.graph.sha256, b, self.sees_all, self.clearance, self.audience)
+        key = (self.project.name, self.graph.content_hash, b, self.sees_all, self.clearance, self.audience)
         return kg_entity_graph.VIEWS.get(key, lambda: kg_entity_graph.view(store, b, self.seen))
 
     def _describe(self, label: tuple) -> dict:

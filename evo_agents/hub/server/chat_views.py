@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Text, func, select
+from sqlalchemy import Text, case, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs, chats, tables
@@ -623,15 +623,18 @@ def summaries_query(user_id: int):
     """The chats person ``user_id`` is in, the latest active first, with what ``ChatSummary`` shows."""
     c, m, u, cm = tables.chats, tables.chat_members, tables.users, tables.chat_messages
     mine = m.alias("mine")
-    last = select(func.max(cm.c.created_at)).where(cm.c.chat_id == c.c.id).scalar_subquery()
-    unread = (
-        select(func.count())
-        .where(
-            cm.c.chat_id == c.c.id,
-            cm.c.seq > mine.c.last_read_seq,
-            cm.c.author_user_id.is_distinct_from(user_id),
-        )
-        .scalar_subquery()
+    last = select(cm.c.created_at).where(cm.c.chat_id == c.c.id).order_by(cm.c.seq.desc()).limit(1).scalar_subquery()
+    unread = case(
+        (mine.c.last_read_seq >= c.c.event_seq, 0),
+        else_=(
+            select(func.count())
+            .where(
+                cm.c.chat_id == c.c.id,
+                cm.c.seq > mine.c.last_read_seq,
+                cm.c.author_user_id.is_distinct_from(user_id),
+            )
+            .scalar_subquery()
+        ),
     )
     return (
         select(

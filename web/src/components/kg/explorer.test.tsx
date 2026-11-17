@@ -206,11 +206,25 @@ describe("knowledge graph explorer", () => {
   });
 
   it("opens on the Entities view when the graph has entities and the URL names no view, scope or search", async () => {
-    withQueries(<KgExplorer project="demo" errors={errors} />, ENTITIES);
+    const requested: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      requested.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      return Response.json({});
+    });
+    const client = makeQueryClient();
+    client.setQueryData(entityKeys.graph("demo", 150), ENTITIES);
+    client.setQueryData(kgKeys.builds("demo"), BUILDS);
+    client.setQueryData(kgKeys.graph("demo"), SUMMARY);
+    renderVi(
+      <QueryClientProvider client={client}>
+        <KgExplorer project="demo" errors={errors} />
+      </QueryClientProvider>,
+    );
     expect(screen.getByTestId("kg-view-entities")).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByTestId("kg-cluster-row")).toBeNull();
     // an entity without relations is listed in the rail, not drawn
     expect((await screen.findAllByTestId("kg-entity-isolated-row")).map((row) => row.textContent)).toEqual([expect.stringContaining("Ada Lovelace")]);
+    expect(requested.filter((url) => url.includes("/clusters"))).toEqual([]);
     await userEvent.click(screen.getByTestId("kg-view-clusters"));
     expect(pushed.at(-1)).toBe("/p/demo/kg?view=clusters");
   });

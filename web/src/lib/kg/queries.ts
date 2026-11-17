@@ -99,6 +99,7 @@ export const kgGraphQuery = (api: ApiSource, project: string) =>
   queryOptions({
     queryKey: kgKeys.graph(project),
     queryFn: ({ signal }) => call(api().GET("/v1/kg/{project}/graph", { params: { path: { project } }, signal })),
+    staleTime: 60_000,
   });
 
 /** The search of the rail; with `graph`, only the nodes of that named graph's sources (`?graph=`). */
@@ -122,6 +123,7 @@ export const kgGraphsQuery = (api: ApiSource, project: string) =>
   queryOptions({
     queryKey: kgKeys.graphs(project),
     queryFn: ({ signal }) => call(api().GET("/v1/kg/{project}/graphs", { params: { path: { project } }, signal })),
+    staleTime: 60_000,
   });
 
 export const kgNodeQuery = (api: ApiSource, project: string, id: string) =>

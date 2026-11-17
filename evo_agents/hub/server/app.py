@@ -34,6 +34,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from starlette.datastructures import MutableHeaders
+from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 
 from evo_agents import __version__
 from evo_agents.hub import cache, kg_snapshots, wake
@@ -84,7 +85,24 @@ log = logging.getLogger(__name__)
 
 STALL_LOG_SECONDS = 1.0  # the event loop late by this much or more on a tick of ``_watch_loop`` is logged
 QUIET_PATHS = frozenset({"/v1/health", "/v1/health/live"})  # polled by probes: access lines at debug level
+GZIP_SKIP_PREFIXES = ("/mcp", "/v1/gateway", "/v1/blobs")
+GZIP_EXCLUDED_TYPES = (*DEFAULT_EXCLUDED_CONTENT_TYPES, "application/octet-stream")
 _REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{1,128}")
+
+
+class ApiGZip:
+    """GZip responses of at least 1,000 bytes on the hub's JSON and UI routes, leaving streaming and binary paths untouched."""
+
+    def __init__(self, app):
+        self.app = app
+        self._gzip = GZipMiddleware(app, minimum_size=1000, compresslevel=6, exclude_content_types=GZIP_EXCLUDED_TYPES)
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "") if scope["type"] == "http" else ""
+        if not path or path.startswith(GZIP_SKIP_PREFIXES) or path.endswith("/stream"):
+            await self.app(scope, receive, send)
+            return
+        await self._gzip(scope, receive, send)
 
 
 class RequestContext:
@@ -148,6 +166,7 @@ def create_app(config: HubConfig) -> FastAPI:
     from evo_agents.hub.server import mcp
 
     app.state.mcp = mcp.mount(app, config)  # McpGate runs before Authenticate, which leaves /mcp alone
+    app.add_middleware(ApiGZip)
     app.add_middleware(RequestContext)  # added last, so it runs first: refusals get a request id and an access line
     errors.install(app)
     _include_account_routes(app)
