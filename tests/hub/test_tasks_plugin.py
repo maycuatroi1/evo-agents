@@ -405,6 +405,7 @@ def test_tasks_manifest_adds_the_board_to_the_menu_and_its_other_pages_without(c
     pages = {page["name"]: page for page in plugin["pages"]}
     assert list(pages) == ["board", "backlog", "mine", "import"]
     assert (pages["board"]["title"], pages["board"]["icon"], pages["board"]["menu"]) == ("Tasks", "kanban", True)
+    assert pages["board"]["area"] == "development"  # the Development cycle of the menu, beside plans and runs
     assert all(page["native"] and page["url"] is None for page in pages.values())
     assert [name for name, page in pages.items() if page["menu"]] == ["board"]
 

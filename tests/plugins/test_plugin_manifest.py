@@ -256,12 +256,18 @@ def test_plugin_pages_isolated_name_an_html_entry_under_pages_and_core_ones_are_
     core = manifest(id="srs", tier="core", permissions=None, config=None, contributes={})
     native = read_manifest({**core, "contributes": {"pages": [{"name": "docs", "title": "SRS", "menu": False}]}})
     assert native.pages()[0]["name"] == "docs" and native.per_project()  # a page alone: a project enables it
+    from evo_agents.hub.server.plugin_pages import pages_of
+
+    # the area of the menu a page names; one a stored manifest names that this release does not know is none (apps)
+    placed = {**core, "contributes": {"pages": [{"name": "docs", "area": "business"}, {"name": "old", "area": "x"}]}}
+    assert [page.area for page in pages_of(placed, "srs", "demo", "", True, None)] == ["business", None]
     cases = [
         (manifest(contributes={"pages": [{"name": "board"}]}), "names its entry, an HTML file of its bundle"),
         ({**core, "contributes": {"pages": [board]}}, "a core plugin's page is native"),
         (manifest(contributes={"pages": [{**board, "entry": "pages/a/../../x.html"}]}), "without empty, . or .."),
         (manifest(contributes={"pages": [{**board, "entry": "web/board.html"}]}), "does not match"),
         (manifest(contributes={"pages": [{**board, "icon": "rocket"}]}), "must be one of"),
+        (manifest(contributes={"pages": [{**board, "area": "sales"}]}), "must be one of"),
         (manifest(contributes={"pages": [{**board, "title": "x" * 61}]}), "longer than"),
     ]
     for data, problem in cases:

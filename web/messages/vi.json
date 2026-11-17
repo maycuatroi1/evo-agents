@@ -261,7 +261,8 @@
     "org": "Sơ đồ tổ chức",
     "browser": "Trình duyệt",
     "groups": {
-      "delivery": "Bàn giao",
+      "business": "Chu kỳ kinh doanh",
+      "development": "Chu kỳ phát triển",
       "improvement": "Cải tiến",
       "knowledge": "Tri thức",
       "apps": "Ứng dụng",

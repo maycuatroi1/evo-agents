@@ -259,7 +259,7 @@ incompatible, and turns it off if a hub upgrade drops it. This release serves ve
 | `tables` | `name` | a table of the hub's schema the plugin owns | (core only) |
 | `loop_rules` | `name`, `python`, `on`, `emits`, `schedule`, `kinds` (each `kind`, `run` `task` or `job`, `agent_type` for a task) | an async function of `{project, project_id, rule, event, now, items, goals}` that answers the work items and moves a rule of the Loop makes (section Loop rules) | (core only) |
 | `kg_sources` | `name` (at most one) | an async function of `{source, project}` that answers the kg/1 items and code patterns of the source `plugin.<id>` of each build of the project's knowledge graph, and optionally its cursor (`evo_agents.hub.kg_sources`). An item's label is its row's, as the hub stores labels: one naming another project in `projects` leaves the item out, and its `audience` is kept, so only a reader who is every principal of it sees the item | (core only) |
-| `pages` | `name`, `title`, `icon`, `menu`, `entry` | a native page of the hub's web, at `/p/<project>/x/<id>/<name>`; with `ui` in the manifest and an `entry`, an HTML file of the plugin's package, framed in the sandbox as an isolated plugin's (section Pages) | an HTML file of the bundle under `pages/`, framed in a sandbox (section Pages) |
+| `pages` | `name`, `title`, `icon`, `menu`, `area`, `entry` | a native page of the hub's web, at `/p/<project>/x/<id>/<name>`; with `ui` in the manifest and an `entry`, an HTML file of the plugin's package, framed in the sandbox as an isolated plugin's (section Pages) | an HTML file of the bundle under `pages/`, framed in a sandbox (section Pages) |
 | `runtimes` | `name`, `title`, `acp`, `models`, `secrets`, or `python` (core) | an ACP agent (`acp`), or an adapter class of a runtime of the core, which replaces its built-in adapter on the worker (`python`) | an ACP agent (section Runtimes) |
 | `environments` | `name`, `title`, `image`, `network`, `mounts` | a container image a run's agent runs in, chosen by the environment axis of its agent profile | the same (section Environments) |
 | `agent_packs` | `name`, `title`, `description` | a directory `packs/<name>/` of the bundle laid out as a Claude Code plugin, which an agent profile attaches at a version of the plugin; a plugin of the hub's image has no bundle to build it from | the same (section Agent packs) |
@@ -1447,14 +1447,18 @@ is not enabled there, 403 for the backend).
 
 ## Pages
 
-A plugin adds pages to the part of the web of a project that enabled it, at `/p/<project>/x/<id>/<name>`, each with
-an item in the project's menu after the project's own areas (`menu: false` leaves it out; a link then reaches it), its
-`title` (60 characters; the plugin's name when left out) and an `icon` from the hub's set: `puzzle` (the default),
-`file-text`, `list-checks`, `layout-dashboard`, `table`, `kanban`, `book-open`, `chart-column`, `calendar`,
+A plugin adds pages to the part of the web of a project that enabled it, at `/p/<project>/x/<id>/<name>`, each with an
+item in the project's menu after the project's own areas of its fold (`menu: false` leaves it out; a link then reaches
+it), its `title` (60 characters; the plugin's name when left out) and an `icon` from the hub's set: `puzzle` (the
+default), `file-text`, `list-checks`, `layout-dashboard`, `table`, `kanban`, `book-open`, `chart-column`, `calendar`,
 `clipboard-list`, `notebook-pen`, `bug`, `folder-kanban`, `message-square`, `gauge`, `shield-check`, `workflow` and
-`boxes`. A plugin never brings an icon, a script or a style of its own into the hub's web. In a project that has not
-enabled the plugin, where the hub turned it off, or for a page it lacks, the page is a 404, as its routes are. A plugin
-with a page is enabled per project.
+`boxes`. `area` names the fold of the project's menu the item sits in: `business`, the Business cycle (what to deliver,
+to whom and why, beside the project's signals, problems, opportunities and goals), `development`, the Development cycle
+(how it gets built, before the project's plans, runs and Loop), `improvement`, `knowledge` or `apps`; `apps` when left
+out. A release that does not know the key ignores it and lists the item in `apps`, so a plugin may name it without
+asking for a newer release. A plugin never brings an icon, a script or a style of its own into the hub's web. In a
+project that has not enabled the plugin, where the hub turned it off, or for a page it lacks, the page is a 404, as its
+routes are. A plugin with a page is enabled per project.
 
 **A core plugin's page is native unless the plugin has `ui`**, a page of the hub's web itself: a feature folder of its own under
 `web/src/components` (the web's ESLint rules keep it from importing another feature), a route under

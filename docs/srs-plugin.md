@@ -587,12 +587,12 @@ Under `/v1/x/srs/{project}/`:
 | `POST documents/{slug}/findings/{id}/settle` | `{"option", "note"}`: a writer settles an open finding from the review of a use case, by picking one of its `options` (0 for A), which becomes its resolution with the note, or, for a finding with no option, by the note alone; never a run's token |
 | `POST documents/{slug}/findings/{id}/waive` | `{"reason"}`: an admin waives an open finding |
 
-The web shows them on the plugin's pages, at `/p/{project}/x/srs/documents` in the project's menu (SRS): the documents,
-the review queue (`/p/{project}/x/srs/reviews`, SRS reviews: the use cases of every version in review, grouped by
-version, with what holds each and a filter for those waiting for the viewer),
-a document's contents with each section read and edited in place, an item's page with the trace the knowledge graph
-holds, the versions, the comparison of two versions, the review with the document's findings and the comments; the
-import is reached from the documents.
+The web shows them on the plugin's pages, in the Business cycle of the project's menu: at `/p/{project}/x/srs/documents`
+(SRS) the documents, the review queue (`/p/{project}/x/srs/reviews`, SRS reviews: the use cases of every version in
+review, grouped by version, with what holds each and a filter for those waiting for the viewer), a document's contents
+with each section read and edited in place, an item's page with the trace the knowledge graph holds, the versions, the
+comparison of two versions, the review with the document's findings and the comments; the import is reached from the
+documents.
 
 ## The knowledge graph
 

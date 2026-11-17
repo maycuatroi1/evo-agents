@@ -261,7 +261,8 @@
     "org": "Org chart",
     "browser": "Browser",
     "groups": {
-      "delivery": "Delivery",
+      "business": "Business cycle",
+      "development": "Development cycle",
       "improvement": "Improvement",
       "knowledge": "Knowledge",
       "apps": "Apps",
