@@ -12,6 +12,7 @@ event loop beside it (``kg build``, the bench) runs at full speed."""
 
 from __future__ import annotations
 
+import asyncio
 import ctypes
 import heapq
 import logging
@@ -31,22 +32,29 @@ YIELD_SECONDS = 0.002  # the longest stretch ``paced`` runs before it gives the 
 # how long it sleeps then: ``time.sleep(0)`` takes the GIL back before a waiting thread wakes, and on a busy host the
 # loop's thread takes a while to wake; a third of the build's time spent asleep kept the hub's loop turning every 10 ms
 PAUSE_SECONDS = 0.001
+# how long it sleeps instead while ``busy`` says requests are in the middle of their transactions: each of their
+# steps is a turn of the loop that waits for the GIL, and a pause of 1 ms left a heartbeat of ten queries 2 s on the
+# hub's busy host; the build then runs at a fifth of its speed, which only lasts as long as the requests do
+BUSY_PAUSE_SECONDS = 0.008
 RUN = 8192  # items ``paced_sorted`` sorts in one go
 
 _on: ContextVar[bool] = ContextVar(
     "evo_kg_paced", default=False
 )  # within ``pacing()``; a thread of ``asyncio.to_thread`` gets it
 _between: ContextVar[Callable[[], None] | None] = ContextVar("evo_kg_paced_between", default=None)
+_busy: ContextVar[Callable[[], bool] | None] = ContextVar("evo_kg_paced_busy", default=None)
 
 
 @contextmanager
-def pacing(between: Callable[[], None] | None = None):
+def pacing(between: Callable[[], None] | None = None, busy: Callable[[], bool] | None = None):
     """``paced`` and ``paced_sorted`` give the GIL up while the block runs, in the threads it starts too, and call
-    ``between`` each time they took it back."""
-    token, step = _on.set(True), _between.set(between)
+    ``between`` each time they took it back. While ``busy()`` is true they sleep BUSY_PAUSE_SECONDS instead of
+    PAUSE_SECONDS, in a thread that is not running an event loop."""
+    token, step, wait = _on.set(True), _between.set(between), _busy.set(busy)
     try:
         yield
     finally:
+        _busy.reset(wait)
         _between.reset(step)
         _on.reset(token)
 
@@ -60,16 +68,25 @@ def paced(items: Iterable[T]) -> Iterator[T]:
 
 
 def _paced(items: Iterable[T]) -> Iterator[T]:
-    clock, between = time.perf_counter, _between.get()
+    clock, between, busy = time.perf_counter, _between.get(), _busy.get()
     last = clock()
     for item in items:
         yield item
         now = clock()
         if now - last >= YIELD_SECONDS:
-            time.sleep(PAUSE_SECONDS)
+            time.sleep(BUSY_PAUSE_SECONDS if busy is not None and busy() and not _in_loop() else PAUSE_SECONDS)
             if between is not None:
                 between()
             last = clock()
+
+
+def _in_loop() -> bool:
+    """Whether this thread runs an event loop: sleeping in it would stop every request."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
 
 
 def paced_sorted(items: Iterable[T], key: Callable[[T], Any] | None = None) -> list[T]:

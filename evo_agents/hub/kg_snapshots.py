@@ -26,7 +26,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import kg_branches, tables
+from evo_agents.hub import db, kg_branches, tables
 from evo_agents.hub.kg_graph_rows import CHANNEL, MAIN, assemble_graph, fetch_graph
 from evo_agents.kg import pacing as kg_pacing
 from evo_agents.kg import settings as kg_settings
@@ -170,6 +170,15 @@ def tend() -> None:
         serving.pressed()
 
 
+REQUEST_WINDOW = 1.0  # seconds a connection taken counts as a request in the middle of its transaction
+
+
+def requests_waiting() -> bool:
+    """Whether requests of the api are in the middle of their transactions, the load's own connection aside: each step
+    of one is a turn of the loop that needs the GIL a paced thread holds (``evo_agents.kg.pacing``)."""
+    return bool(db.live) and db.live[0].serving(REQUEST_WINDOW, but="task:kg-snapshot")
+
+
 PRESSURE = 0.75  # share of the api's memory limit past which it drops the snapshots it holds (``SnapshotCoordinator``)
 PRESS_EVERY = 1.0  # seconds between two looks at the api's memory while a load runs
 
@@ -241,7 +250,7 @@ async def _rows(conn: AsyncConnection, project_id: int) -> tuple[int | None, tup
     build_id = await conn.scalar(
         select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
     )
-    with pacing(tend):
+    with pacing(tend, requests_waiting):
         rows = await fetch_graph(conn, project_id)
     return None if rows is None else (build_id, rows)
 
@@ -249,7 +258,7 @@ async def _rows(conn: AsyncConnection, project_id: int) -> tuple[int | None, tup
 async def _assembled(fetched: tuple) -> StoreRows:
     """The rows ``_rows`` fetched, put together in a paced thread, with no connection held: it takes minutes on a large
     graph, and a connection held meanwhile, idle in its transaction, is one the heartbeats and claims wait for."""
-    with pacing(tend):
+    with pacing(tend, requests_waiting):
         return await assemble_graph(fetched)
 
 
@@ -259,7 +268,7 @@ async def _made(build_id: int | None, rows: StoreRows) -> Held:
     thread that kept the GIL until forced to switch left the event loop one step every 5 ms meanwhile, every pooled
     connection held in a transaction the loop could not finish, and the workers' heartbeats and claims timed out
     waiting for one."""
-    with pacing(tend):
+    with pacing(tend, requests_waiting):
         return Held(build_id, await asyncio.to_thread(Snapshot.from_stored, *hub_build(rows, build_id)))
 
 
@@ -401,7 +410,7 @@ class SnapshotCoordinator:
         found = self._branches.pop((project_id, name), None)
         if found is None or found[0] != key:
             heads = tables.kg_graph_heads
-            with uncollected(), pacing(tend):
+            with uncollected(), pacing(tend, requests_waiting):
                 async with read_slot(), self.engine.connect() as conn:
                     build_id = await conn.scalar(
                         select(heads.c.build_id).where(heads.c.project_id == project_id, heads.c.branch_id == MAIN)
