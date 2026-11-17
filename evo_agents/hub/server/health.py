@@ -89,9 +89,8 @@ async def health(request: Request, response: Response):
     state = request.app.state
     heartbeat_engine = getattr(state, "heartbeat_engine", None)
     beats = asyncio.ensure_future(_revision(heartbeat_engine, "heartbeat pool")) if heartbeat_engine else None
-    schema = await _revision(state.engine, "database")
-    db = "ok" if schema is not None else "unavailable"
-    heartbeat_db = db if beats is None else "ok" if await beats is not None else "unavailable"
+    schema, db = await _revision(state.engine, "database")
+    heartbeat_db = db if beats is None else (await beats)[1]
     r2_status = "unconfigured" if r2 is None else await r2
     if r2_status == "unavailable":
         log.warning("health check failed: blob store unavailable", extra={"bucket": store.bucket})
@@ -121,13 +120,14 @@ async def health(request: Request, response: Response):
     return body
 
 
-async def _revision(engine, what: str) -> str | None:
-    """The schema revision read through ``engine``, or None when its pool or Postgres does not answer in time."""
+async def _revision(engine, what: str) -> tuple[str | None, Literal["ok", "unavailable"]]:
+    """The schema revision read through ``engine`` and ``ok``, or None and ``unavailable`` when its pool or Postgres
+    does not answer in time."""
     try:
-        return await schema_revision(engine, HEALTH_TIMEOUT)
+        return await schema_revision(engine, HEALTH_TIMEOUT), "ok"
     except (psycopg.Error, sa_exc.DBAPIError, OSError, TimeoutError) as exc:  # PoolTimeout arrives as a DBAPIError
         log.warning(f"health check failed: {what} unavailable", extra={"error": type(exc).__name__})
-        return None
+        return None, "unavailable"
 
 
 def _pools(state) -> dict[str, dict[str, int]]:
