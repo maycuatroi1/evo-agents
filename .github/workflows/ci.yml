@@ -20,12 +20,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Linux runs everything, the hub tests included, against a Postgres service container, in five jobs that run in
+  # Linux runs everything, the hub tests included, against a Postgres service container, in seven jobs that run in
   # parallel: tests/worker in one, where with the worker extra and tmux the daemon runs against a hub end to
-  # end, takeover and handback in tmux included, and the rest of the suite in four parts (EVO_TEST_SHARD, which
-  # tests/conftest.py reads: each part keeps every fourth test of the collection, so the four run each test once).
+  # end, takeover and handback in tmux included, and the rest of the suite in six parts (EVO_TEST_SHARD, which
+  # tests/conftest.py reads: each part keeps every sixth test of the collection, so the six run each test once).
   # Every job prints its 20 slowest tests. A test gets 300 s (pytest-timeout, pyproject.toml) and a job 30 minutes: a
-  # hung test had held four parts of v0.62.0 for five hours.
+  # hung test had held four parts of v0.62.0 for five hours. Four parts had grown to 18-29 minutes each by 2026-11-18,
+  # and two parts of v0.70.5 hit the 30 minutes at 96% with no test failed; six keep each part well under it.
   #
   # The Postgres of a job is thrown away with it, so it keeps its data in memory (tmpfs) and writes nothing through:
   # every hub test creates a database from a template and drops it, and those writes cost more than most tests. It
@@ -35,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: ["1/4", "2/4", "3/4", "4/4", worker]
+        part: ["1/6", "2/6", "3/6", "4/6", "5/6", "6/6", worker]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
