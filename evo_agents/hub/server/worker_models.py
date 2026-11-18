@@ -202,7 +202,7 @@ class Worker(BaseModel):
     health: dict | None = Field(
         None,
         description="what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct, reserve_gb, "
-        "headroom_gb, band}, logins: {<runtime>: ok, leased, unauthorized, missing or unknown}}; null when it said "
+        "headroom_gb, engine_gb, engine_unused_gb, band}, logins: {<runtime>: ok, leased, unauthorized, missing or unknown}}; null when it said "
         "nothing of it, as an older daemon. band is low under its reserve (20 GB when it says none), ok again only over "
         "the reserve and its headroom, and the band it had in between; a worker whose band is low is given no run",
     )

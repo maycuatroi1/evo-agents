@@ -6,8 +6,10 @@ a parked run's worktrees stay."""
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -346,3 +348,156 @@ def test_own_home_cleanup_skips_when_cleanup_lock_stays_held_past_wait(tmp_path,
     finally:
         daemon_cleanup._unlock(fd)
     assert asyncio.run(daemon.cleaner.make_room()) == [1]
+
+
+# The container engine (``stacks``): the Compose stacks runs leave and the engine's caches
+
+
+class _Engine(daemon_cleanup.stacks.Engine):
+    """An engine of Compose stacks ``items``; ``on_prune`` is what a prune of its caches frees."""
+
+    def __init__(self, items, on_prune=None):
+        super().__init__("docker")
+        self.items, self.on_prune = list(items), on_prune
+        self.stopped: list[str] = []
+        self.removed: list[str] = []
+        self.prunes = 0
+
+    def containers(self):
+        return list(self.items)
+
+    def stop(self, found):
+        ids = [item.id for item in found if item.running]
+        self.stopped += ids
+        return len(ids)
+
+    def remove(self, found):
+        ids = {item.id for item in found}
+        self.removed += sorted(ids)
+        self.items = [item for item in self.items if item.id not in ids]
+        return {"containers": len(ids), "images": 0}
+
+    def prune(self):
+        self.prunes += 1
+        if self.on_prune:
+            self.on_prune()
+        return 0.0
+
+    def root(self):
+        return None
+
+    def usage(self):
+        return {"engine_gb": 265.0, "engine_unused_gb": 143.0}
+
+
+def _container(name: str, where: Path, running: bool = True) -> daemon_cleanup.stacks.Container:
+    return daemon_cleanup.stacks.Container(name, f"p{name}", where, running)
+
+
+def test_the_engines_sizes_and_stacks_are_read_from_docker_and_podman_output():
+    stacks = daemon_cleanup.stacks
+    docker = (
+        '{"Type":"Images","Size":"152.2GB","Reclaimable":"119.4GB (78%)"}\n'
+        '{"Type":"Build Cache","Size":"113.2GB","Reclaimable":"23.5GB"}\n'
+        '{"Type":"Local Volumes","Size":"0B","Reclaimable":"0B"}\n'
+    )
+    assert stacks.read_usage(docker) == {"engine_gb": 247.17, "engine_unused_gb": 133.09}
+    podman = '[{"Type":"Images","RawSize":2147483648,"RawReclaimable":1073741824,"Size":"2.1GB"}]'
+    assert stacks.read_usage(podman) == {"engine_gb": 2.0, "engine_unused_gb": 1.0}
+    assert stacks.read_usage("Cannot connect to the Docker daemon") is None
+    pruned = "Deleted build cache objects:\nabc\n\nTotal reclaimed space: 20.16GB\nTotal reclaimed space: 1.54GB\n"
+    assert stacks.reclaimed_gb(pruned) == 20.21
+    assert stacks.reclaimed_gb("Total reclaimed space: 0B") == 0.0
+    lines = "c1\ttrue\tdemo\t/w/run-1/deploy\nc2\tfalse\t<no value>\t/w/run-2\nc3\tfalse\tx\t<no value>\n"
+    found = stacks.read_containers(lines)
+    assert [(item.id, item.project, item.running) for item in found] == [("c1", "demo", True), ("c2", "", False)]
+    assert stacks.within(Path("/w/run-1/deploy"), [Path("/w/run-1")]) and not stacks.within(
+        Path("/w/run-10"), [Path("/w/run-1")]
+    )
+
+
+def test_removing_stacks_takes_their_anonymous_volumes_and_the_images_of_projects_no_container_is_left_of(tmp_path):
+    log = tmp_path / "engine.log"
+    fake = tmp_path / "docker"
+    fake.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "args = sys.argv[1:]\n"
+        "open(os.environ['FAKE_ENGINE_LOG'], 'a').write(json.dumps(args) + '\\n')\n"
+        "if args[:2] == ['ps', '-aq'] and any(a.endswith('project=p2') for a in args): print('c3')\n"
+        "elif args[:2] == ['network', 'ls']: print('n1')\n"
+        "elif args[0] == 'images': print('sha256:i1'); print('sha256:i1')\n",
+        encoding="utf-8",
+    )
+    fake.chmod(0o755)
+    engine = daemon_cleanup.stacks.Engine(str(fake), {"FAKE_ENGINE_LOG": str(log)})
+    found = [
+        daemon_cleanup.stacks.Container("c1", "p1", tmp_path / "w1", True),
+        daemon_cleanup.stacks.Container("c2", "p2", tmp_path / "w2", False),
+    ]
+
+    assert engine.remove(found) == {"containers": 2, "images": 1}
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert calls[0] == ["rm", "-f", "-v", "c1", "c2"]
+    assert ["network", "rm", "n1"] in calls and ["rmi", "sha256:i1"] in calls, "p1 has no container left"
+    assert not any(call[0] == "rmi" and "-f" in call for call in calls), "an image in use stays"
+    assert not any(call[0] == "volume" for call in calls), "named volumes stay"
+    assert sum(1 for call in calls if call[0] == "rmi") == 1, "p2 still has a container: its images stay"
+
+
+def test_under_its_reserve_the_daemon_prunes_the_engines_caches_before_the_worktrees_once_per_interval(
+    tmp_path, monkeypatch
+):
+    checkout, home, daemon = _stack(tmp_path)
+    _run(home, checkout, 1, timedelta(hours=5))
+    drive = _Drive(home, 10.0, 10.0)
+    monkeypatch.setattr(daemon_cleanup.health, "disk", drive.disk)
+
+    def prune():
+        drive.free += 21.0
+
+    engine = daemon.cleaner.engine = _Engine([], on_prune=prune)
+
+    assert asyncio.run(daemon.cleaner.make_room()) == [], "31 GB free after the prune: the ended run's worktree stays"
+    assert engine.prunes == 1 and home.worktree_path("demo", 1).is_dir()
+    drive.free = 10.0
+    assert asyncio.run(daemon.cleaner.make_room()) == [1], "within the interval no second prune: the worktree goes"
+    assert engine.prunes == 1
+
+
+def test_the_cleanup_stops_the_stacks_of_ended_runs_removes_those_of_gone_worktrees_and_keeps_running_runs_stacks(
+    tmp_path,
+):
+    checkout, home, daemon = _stack(tmp_path)
+    ended = _run(home, checkout, 1, timedelta(hours=1))
+    parked = _run(home, checkout, 2, timedelta(hours=1), state="parked")
+    running = _run(home, checkout, 3, None)
+    fresh = _run(home, checkout, 4, timedelta(minutes=1))  # its own daemon may still hold it
+    gone = home.worktrees_dir / "demo" / "run-99"
+    engine = daemon.cleaner.engine = _Engine(
+        [
+            _container("1", ended / "deploy"),
+            _container("2", parked),
+            _container("3", running),
+            _container("4", fresh),
+            _container("99", gone / "deploy", running=False),
+            _container("x", tmp_path / "elsewhere"),
+        ]
+    )
+
+    asyncio.run(daemon.cleaner.tend_stacks())
+    assert engine.stopped == ["1"], "only the ended run's stack stops; it is not removed"
+    assert engine.removed == ["99"], "the stack of a worktree that is gone goes"
+
+    asyncio.run(daemon.cleaner.remove_worktree(home.load_run(1)))
+    assert engine.removed == ["99", "1"], "a worktree removed takes its stacks along"
+    assert {item.id for item in engine.items} == {"2", "3", "4", "x"}
+
+
+def test_the_heartbeat_says_what_the_engine_holds_on_the_worktrees_drive(tmp_path):
+    _checkout_path, _home, daemon = _stack(tmp_path)
+    daemon.cleaner.engine = _Engine([])
+    usage = daemon.cleaner.engine_usage()
+    found = daemon_cleanup.health.report(tmp_path, {}, 20.0, 5.0, usage)["disk"]
+    assert found["engine_gb"] == 265.0 and found["engine_unused_gb"] == 143.0
+    assert "engine_gb" not in daemon_cleanup.health.report(tmp_path, {}, 20.0, 5.0, None)["disk"]

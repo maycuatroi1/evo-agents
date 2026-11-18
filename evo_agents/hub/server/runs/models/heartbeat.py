@@ -111,6 +111,19 @@ class DiskReport(BaseModel):
         "its config): the hub counts its disk ok again only over the reserve and this; null from a daemon that says "
         "none, for which the larger of 5 and a quarter of the reserve holds",
     )
+    engine_gb: float | None = Field(
+        None,
+        ge=0,
+        description="the gigabytes the machine's container engine says it holds on that drive (images, containers, "
+        "volumes and build cache, added up as its system df says them, so layers they share count twice); null from a "
+        "daemon without an engine, or whose engine keeps them elsewhere",
+    )
+    engine_unused_gb: float | None = Field(
+        None,
+        ge=0,
+        description="of engine_gb, the gigabytes nothing uses, as the engine counts them; the daemon itself prunes "
+        "only the build cache and untagged images of it, an unused tagged image staying for its owner",
+    )
 
 
 class HealthReport(BaseModel):

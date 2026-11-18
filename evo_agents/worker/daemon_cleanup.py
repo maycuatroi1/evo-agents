@@ -24,6 +24,13 @@ the worktrees of their ended runs, oldest end first, by the same rules and keepi
 recovery ref and in that home's recovery.jsonl. A run that has not ended, a parked run, one a run went on from, and one
 that ended within ``SIBLING_GRACE`` (which its own daemon may still hold) stay. A daemon takes its own home's lock while
 it sweeps or makes room, so two never remove in one home at once.
+
+The container engine of the machine (``stacks``) is the other thing a run leaves on the drive. Each worktree removed
+takes the Compose stacks started from it along (``remove_worktree``). Each hour (``tend_stacks``), the running stacks
+of this daemon's runs that ended more than ``SIBLING_GRACE`` ago are stopped, and the stacks started from a worktree
+of a worker home on the machine that is gone are removed. Under the reserve and its headroom, ``make_room`` first
+removes those and prunes the engine's caches (at most once every ``ENGINE_PRUNE_EVERY``, and only when the engine keeps
+them on the drive of the worktrees), then goes on with the worktrees.
 """
 
 from __future__ import annotations
@@ -38,7 +45,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evo_agents.worker import gitops, health
+from evo_agents.worker import gitops, health, stacks
 from evo_agents.worker.home import WorkerHome, disk_headroom
 from evo_agents.worker.hubapi import HubProblem, Refused
 
@@ -57,6 +64,7 @@ SIBLING_GRACE = timedelta(minutes=15)  # a sibling's run that ended since may st
 LOCK_NAME = "cleanup.lock"  # in a worker's home: held by whatever removes worktrees there
 LOCK_WAIT = 60.0  # seconds a daemon waits for its own home's lock, which a sibling's making of room may hold
 MAX_MERGED_ASKED = 200  # run ids in one POST /v1/worker/merged, as the hub takes them
+ENGINE_PRUNE_EVERY = 600.0  # seconds between two prunes of the engine's caches while the drive stays short
 # the kinds of run whose record names a directory with a worktree of each repo; a run of one step has one worktree
 DIRECTORY_KINDS = (
     "plan",
@@ -184,11 +192,26 @@ class Cleanup:
         # ``make_room`` found nothing more to remove over the reserve and short of its headroom: the heartbeat says a
         # headroom of 0 while the drive stays there (``reported_headroom_gb``), and the claims do not ask again
         self.stalled = False
+        self._engine: stacks.Engine | None = None
+        self._engine_looked = False  # whether ``engine`` looked for one
+        self._pruned_at: float | None = None  # the loop time of the last prune of the engine's caches
+
+    @property
+    def engine(self) -> stacks.Engine | None:
+        """The container engine the cleanup tends (``stacks.Engine.find``), looked for once; None without one."""
+        if not self._engine_looked:
+            self._engine, self._engine_looked = stacks.Engine.find(self.daemon.env), True
+        return self._engine
+
+    @engine.setter
+    def engine(self, value: stacks.Engine | None) -> None:
+        self._engine, self._engine_looked = value, True
 
     async def loop(self) -> None:
         while True:
             try:
                 await self.sweep()
+                await self.tend_stacks()
                 await self.make_room()
             except Exception:
                 log.exception("cleaning up old worktrees failed")
@@ -242,15 +265,17 @@ class Cleanup:
         """While the drive has less free than the reserve and its headroom (``under_target``), remove the worktrees and
         records of the ended runs whose worktrees may go (``_removable``), the run that ended first first, each one's
         uncommitted changes kept on its recovery ref first (``_recover``); then, while still under, those of the
-        sibling homes on the same drive (``_make_room_in_siblings``); the ids removed. Stalled over the reserve and
-        short of the target, the heartbeat says a headroom of 0 (``_settle``). A parked run, one a run went on from,
-        and a directory a run not ended uses stay, however short the drive."""
+        sibling homes on the same drive (``_make_room_in_siblings``); the ids removed. Before the worktrees, what the
+        container engine holds that nothing needs goes (``_engine_room``). Stalled over the reserve and short of the
+        target, the heartbeat says a headroom of 0 (``_settle``). A parked run, one a run went on from, and a directory
+        a run not ended uses stay, however short the drive."""
         if not self.under_target():
             self.stalled = False
             return []
         home = self.daemon.home
         removed: list[int] = []
         async with self.removing:
+            await self._engine_room()
             async with _home_lock(home.root) as locked:
                 if locked:
                     now = datetime.now(UTC)
@@ -290,6 +315,99 @@ class Cleanup:
                 },
             )
         return removed
+
+    async def _engine_room(self) -> None:
+        """While the drive is under the reserve and its headroom: remove the stacks started from worktrees that are
+        gone (``_gone_stacks``), then prune the engine's caches (``stacks.Engine.prune``) when the engine keeps them on
+        the drive of the worktrees, at most once every ENGINE_PRUNE_EVERY."""
+        engine = self.engine
+        if engine is None or not self.under_target():
+            return
+        found = await asyncio.to_thread(engine.containers)
+        gone = await asyncio.to_thread(self._gone_stacks, found or [])
+        if gone:
+            done = await asyncio.to_thread(engine.remove, gone)
+            log.info("stacks of worktrees that are gone removed to keep the disk reserve", extra=done)
+        now = asyncio.get_running_loop().time()
+        if not self.under_target() or (self._pruned_at is not None and now - self._pruned_at < ENGINE_PRUNE_EVERY):
+            return
+        try:
+            device = self.daemon.home.worktrees_dir.stat().st_dev
+        except OSError:
+            return
+        if not await asyncio.to_thread(stacks.on_drive, engine, device):
+            return
+        self._pruned_at = now
+        freed = await asyncio.to_thread(engine.prune)
+        log.info("the container engine's caches pruned to keep the disk reserve", extra={"freed_gb": freed})
+
+    def _gone_stacks(self, found: list[stacks.Container]) -> list[stacks.Container]:
+        """The containers of ``found`` whose stack was started from a directory under the worktrees of this daemon's
+        home or of a sibling home on its drive, that directory is gone, and no directory or worktree a run of those
+        homes names that is still there holds it."""
+        homes = (self.daemon.home, *self._sibling_homes())
+        roots = [home.worktrees_dir for home in homes]
+        candidates = [
+            item for item in found if stacks.within(item.working_dir, roots) and not item.working_dir.exists()
+        ]
+        if not candidates:
+            return []
+        kept = [path for home in homes for record in home.load_runs() for path in _paths(record) if path.exists()]
+        return [item for item in candidates if not stacks.within(item.working_dir, kept)]
+
+    async def tend_stacks(self) -> dict:
+        """Stop the running stacks started from the worktrees of this daemon's runs that ended more than
+        ``SIBLING_GRACE`` ago and whose worktrees may go once merged (``_removable``, ``_still_ended``), and remove the
+        stacks of worktrees that are gone (``_gone_stacks``); {stopped, containers, images}."""
+        engine = self.engine
+        if engine is None:
+            return {}
+        found = await asyncio.to_thread(engine.containers)
+        if not found:
+            return {}
+        done: dict = {}
+        gone = await asyncio.to_thread(self._gone_stacks, found)
+        if gone:
+            done = await asyncio.to_thread(engine.remove, gone)
+        now = datetime.now(UTC)
+        records = await asyncio.to_thread(self.daemon.home.load_runs)
+        ended = [
+            path
+            for record in records
+            if self._removable(record, records)
+            and now - _finished(record, now) >= SIBLING_GRACE
+            and self._still_ended(record["id"]) is not None
+            for path in _paths(record)
+        ]
+        idle = [item for item in found if item.running and item not in gone and stacks.within(item.working_dir, ended)]
+        if idle:
+            done["stopped"] = await asyncio.to_thread(engine.stop, idle)
+        if done:
+            log.info("stacks of ended runs tended", extra=done)
+        return done
+
+    async def _remove_stacks(self, paths: list[Path]) -> None:
+        """Remove the stacks started from ``paths`` or a directory in them (``stacks.Engine.remove``)."""
+        engine = self.engine
+        if engine is None or not paths:
+            return
+        found = await asyncio.to_thread(engine.containers)
+        mine = [item for item in found or [] if stacks.within(item.working_dir, paths)]
+        if mine:
+            done = await asyncio.to_thread(engine.remove, mine)
+            log.info("stacks of a removed worktree removed", extra={**done, "worktrees": [str(p) for p in paths]})
+
+    def engine_usage(self) -> dict | None:
+        """What the container engine holds and how much of it nothing uses (``stacks.Engine.usage``) when it keeps
+        them on the drive of the worktrees; None without an engine, or one elsewhere. Blocking: for a thread."""
+        engine = self.engine
+        if engine is None:
+            return None
+        try:
+            device = self.daemon.home.worktrees_dir.stat().st_dev
+        except OSError:
+            return None
+        return engine.usage() if stacks.on_drive(engine, device) else None
 
     def _settle(self) -> None:
         """After ``make_room`` removed what it may: stalled when the drive is over the reserve and short of its
@@ -502,9 +620,13 @@ class Cleanup:
 
     async def remove_worktree(self, record: dict, home: WorkerHome | None = None) -> None:
         """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
-        plan run whose worktrees a resumed run took over names none of them any more. ``home`` is the worker home the
-        run is of, this daemon's when None."""
+        plan run whose worktrees a resumed run took over names none of them any more. The Compose stacks started from
+        them go first (``_remove_stacks``). ``home`` is the worker home the run is of, this daemon's when None."""
         home = home or self.daemon.home
+        try:
+            await self._remove_stacks(_paths(record))
+        except Exception:  # the engine never keeps a worktree
+            log.exception("removing the stacks of a worktree failed", extra={"run_id": record.get("id")})
         if record.get("kind") in DIRECTORY_KINDS:
             for item in record.get("repos") or []:
                 if isinstance(item, dict):
