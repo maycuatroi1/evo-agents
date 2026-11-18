@@ -18,6 +18,10 @@ once:
   (``RunCredentials.reach``); a clone git cannot make fails the run, with cause credentials when the remote refused
   the credential, else checkout. A chat run or a task run (``best_effort``) goes on without the repo instead, noted.
 
+A run that waited on that lock while another run cloned the repo, or that finds a checkout another run set up after
+this run read the checkouts for its leases, takes that checkout and hands its origin the run's leases
+(``RunCredentials.reach``), so the run fetches it with them, never with the machine's own credentials.
+
 Each checkout set up is the daemon's from then on (``RunHost.add_checkout``): in its checkouts, which the next
 heartbeat reports, and in ``checkouts`` of config.json.
 """
@@ -44,6 +48,9 @@ async def ensure(run: Run, repos: Iterable, *, best_effort: bool = False) -> Non
     a task run), rather than failing the run."""
     names = list(dict.fromkeys(name for name in repos if isinstance(name, str) and name))
     missing = [name for name in names if run.daemon.checkout_for(run.project, name) is None]
+    late = [name for name in names if name not in missing and not run.credentials.origins.get(name)]
+    if late:  # set up by another run since this one read the checkouts: their origins get this run's leases
+        await parallel.each(run, late, lambda name: _reach(run, name, run.daemon.checkout_for(run.project, name)))
     if not missing:
         return
     run.note(f"No checkout of {', '.join(missing)} on this worker: setting each one up before the run goes on.")
@@ -75,7 +82,10 @@ async def _one(run: Run, name: str) -> None:
     path = source.get("path") if isinstance(source.get("path"), str) else None
     target = await asyncio.to_thread(checkouts.clone_place, daemon.config, run.project, name, path, daemon.home.root)
     async with daemon.repo_lock(target):
-        if daemon.checkout_for(run.project, name) is not None:  # another run set it up meanwhile
+        existing = daemon.checkout_for(run.project, name)
+        if existing is not None:  # another run set it up while this one waited for the lock
+            run.note(f"Another run set up the checkout of {name} at {existing} meanwhile: the run uses it.", repo=name)
+            await _reach(run, name, existing)
             return
         if checkouts.is_work_tree(target):
             run.note(f"Found a checkout of {name} at {target}: the run uses it.", repo=name)
@@ -114,9 +124,17 @@ async def _one(run: Run, name: str) -> None:
 
 async def _adopt(run: Run, name: str, path: Path) -> None:
     """Take the work tree at ``path`` as the worker's checkout of ``name``, its origin handed the run's leases."""
+    await _reach(run, name, path)
+    run.daemon.add_checkout(run.project, name, path)
+
+
+async def _reach(run: Run, name: str, path: Path | None) -> None:
+    """Hand the run's leases to the origin of the work tree at ``path``, the worker's checkout of ``name``, so the
+    run's git fetches it with them rather than with the machine's own credentials."""
+    if path is None:
+        return
     urls: list[str] = []
     with contextlib.suppress(gitops.GitError, OSError):
         urls = await gitops.remote_urls(path)
     if urls:
         run.credentials.reach(name, urls)
-    run.daemon.add_checkout(run.project, name, path)
