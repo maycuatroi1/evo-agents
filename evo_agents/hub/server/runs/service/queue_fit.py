@@ -150,13 +150,18 @@ def _stop_reasons(key: str, row, run, claimer: claim_rules.Claimer) -> tuple[str
     if key == "runtime":
         return "reports no runtime available: install one on its machine (claude-code, codex, ...)", False
     if key == "disk":
-        free = ((row.health or {}).get("disk") or {}).get("free_gb")
+        found = (row.health or {}).get("disk") or {}
         reserve = ops_events.disk_reserve(row.health)
         again = reserve + ops_events.disk_headroom(row.health)
+        engine = ""
+        if isinstance(found.get("engine_gb"), int | float):
+            unused = found.get("engine_unused_gb")
+            engine = f"; its container engine holds {found['engine_gb']:g} GB there"
+            engine += f", {unused:g} GB of it unused" if isinstance(unused, int | float) else ""
         return (
-            f"has {free} GB free on its worktrees' drive, under its reserve of {reserve:g} GB or not yet back over "
-            f"{again:g} GB since: it takes runs again once its daemon removed the worktrees of ended runs or its "
-            "owner freed room",
+            f"has {found.get('free_gb')} GB free on its worktrees' drive, under its reserve of {reserve:g} GB or not "
+            f"yet back over {again:g} GB since{engine}: it takes runs again once its daemon removed the worktrees and "
+            "container stacks of ended runs and pruned the engine's caches, or its owner freed room",
             True,
         )
     return (

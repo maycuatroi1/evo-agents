@@ -73,11 +73,12 @@ def _kg_sync(body: HeartbeatRequest):
 
 def _health(body: HeartbeatRequest) -> dict | None:
     """What a heartbeat sets workers.health to: the report it carries, or None (SQL NULL) when it carries none. A disk
-    without a reserve or a headroom is kept without the key, as an older daemon sent it."""
+    without a reserve, a headroom or what its container engine holds is kept without the key, as an older daemon sent
+    it."""
     if body.health is None:
         return None
     found = body.health.model_dump(mode="json")
-    for key in ("reserve_gb", "headroom_gb"):
+    for key in ("reserve_gb", "headroom_gb", "engine_gb", "engine_unused_gb"):
         if found.get("disk") and found["disk"].get(key) is None:
             del found["disk"][key]
     return found

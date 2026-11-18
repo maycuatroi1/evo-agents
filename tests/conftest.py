@@ -41,6 +41,16 @@ def _no_hub_home_of_this_machine(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_container_engine_of_this_machine(monkeypatch):
+    """A worker daemon of a test never finds the machine's container engine for its cleanup (``stacks.Engine.find``):
+    the cleanup stops and removes stacks and prunes the engine's caches, which must never touch the containers and
+    images of the person running pytest. A test of the cleanup gives its daemon an engine of its own."""
+    from evo_agents.worker import stacks
+
+    monkeypatch.setattr(stacks.Engine, "find", classmethod(lambda cls, env: None))
+
+
+@pytest.fixture(autouse=True)
 def _no_exploration(monkeypatch):
     """Tests never explore the ranking of kg_search (``evo_agents.kg.explore``): a hub agent's search would put a
     random candidate at rank 4 or 5 one time in twenty, and a test of what it finds would fail by chance. A test of

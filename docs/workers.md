@@ -1474,7 +1474,9 @@ characters. Each heartbeat replaces what the hub holds
 (`workers.kg_sync`, schema 0053), and one without it clears it; `GET /v1/workers/{id}` shows it as `kg_sync`.
 `health`, optional, is what the daemon last found of its machine (`evo_agents/worker/health.py`): `disk`, the free
 space of the drive that holds its worktrees (`free_gb`, `free_pct`, `reserve_gb`, the free space it keeps there, and
-`headroom_gb`, what its cleanup frees over that; null when it cannot be read), read at each look;
+`headroom_gb`, what its cleanup frees over that; null when it cannot be read), read at each look, with
+`engine_gb` and `engine_unused_gb`, what the container engine holds on that drive and how much of it nothing uses, as
+its `system df` says (looked at every 300 seconds; left out without an engine, or one that keeps its data elsewhere);
 and `logins`, the login of each runtime, `ok`, `unauthorized`, `missing` (not on PATH) or `unknown` (no answer within
 10 seconds, or one it cannot read), from the runtime's own status command (`claude auth status --json`,
 `codex login status`, `opencode auth list`), run every 300 seconds in a thread; or `leased` when the machine's login
@@ -2047,6 +2049,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | terminal | hello within 10 s, 64 KiB frames, 15 minutes idle, 4 hours, one browser per run, sessions under 12 hours old |
 | daemon spool | 256 MiB |
 | daemon worktrees | removed at the next hourly cleanup once the hub says the run's work merged, at once while the drive has less than `disk_reserve_gb` (20) free, 7 days after the run ends at the latest (30 when parked) |
+| run container stacks | stopped at the hourly cleanup 15 minutes after the run ends, removed with the run's worktree; the engine's build cache and untagged images pruned while the drive is short, at most every 10 minutes |
 
 ## The daemon
 
@@ -2158,10 +2161,33 @@ stays under the reserve, the daemon claims nothing, and
 the hub gives it no run either: its heartbeat's `health.disk` says the reserve, and a worker whose free space is under it
 stops the claim (`disk` of `Claimer.stops`) until its free space is back over the reserve and its headroom, so the
 run waits or goes to another worker instead of failing at its
-checkout. The run's rerun candidates say how much is free and the reserve.
+checkout. The run's rerun candidates say how much is free and the reserve, and what the container engine holds there.
 
 Each removal removes the worktree from its checkout and prunes it, deletes the run's local `evo-run/` branch, and
 keeps every other branch (a plan's, a chat's, a task's and the Curator's), then removes the run's record.
+
+#### Container stacks and the engine's caches
+
+A run whose agent brings up a stack with Docker Compose in its worktree leaves containers, networks and images behind,
+and the engine's build cache grows with each image it builds. On a worker that runs such runs, they fill the drive long
+before the worktrees do. The daemon tends them through the machine's container engine (docker, else podman, as for a
+run's container; `EVO_WORKER_CONTAINER_ENGINE` names another), recognizing a run's stack by the directory Compose ran
+from (the container label `com.docker.compose.project.working_dir`) and its images by the project (`com.docker.compose.project`):
+
+- At each hourly cleanup, the running containers of a stack started from the worktrees of a run that ended more than
+  15 minutes ago, whose worktrees may go once merged (not parked, not one a run went on from), are stopped. They stay:
+  `docker compose up` in the worktree starts them again.
+- A worktree removed, for whatever reason above, takes the stacks started from it along: their containers with their
+  anonymous volumes, then the networks and the images of each project no container is left of. An image another
+  container still uses stays, and named volumes always stay. A stack started from a worktree of a worker home on the
+  machine that is gone, and that no run of those homes still holds, goes at the hourly cleanup.
+- Under the reserve and its headroom, before removing worktrees, the daemon removes those stacks and prunes the
+  engine's build cache and its untagged images (`docker builder prune -f`, `docker image prune -f`), at most once
+  every 10 minutes and only when the engine keeps its data on the drive of the worktrees (or in a virtual machine
+  whose disk lies there, as Docker Desktop). A tagged image no container uses stays: it may be the only copy of a
+  build, and the heartbeat's `engine_unused_gb` tells its owner how much they could free by hand.
+
+`EVO_WORKER_ENGINE_CLEANUP=0` in the daemon's environment leaves the engine alone (`evo_agents/worker/stacks.py`).
 
 ### Repos a run clones
 

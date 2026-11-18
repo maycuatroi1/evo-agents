@@ -86,11 +86,13 @@ def test_a_worker_under_its_disk_reserve_is_given_no_run_which_waits_or_goes_to_
     hub_db,
 ):
     low = add_worker(client, hub["owner"], "mac-mini")
-    beat(client, low, health={"disk": {"free_gb": 4.0, "free_pct": 1.5}, "logins": {}})  # under the hub's own 20
+    disk = {"free_gb": 4.0, "free_pct": 1.5, "engine_gb": 265.0, "engine_unused_gb": 143.0}  # under the hub's own 20
+    beat(client, low, health={"disk": disk, "logins": {}})
     run = dispatched(client, hub["owner"], [2])[0]
     assert claim(client, low) is None, "the run waits instead of failing at its checkout"
     _, fit, reasons = fit_of(client, hub, run["id"], "mac-mini")
     assert fit is True and any("under its reserve of 20 GB" in reason for reason in reasons), reasons
+    assert any("265 GB" in reason and "143 GB" in reason for reason in reasons), "it says what the engine holds"
 
     beat(client, low, health={"disk": {"free_gb": 30.0, "free_pct": 10.0, "reserve_gb": 50}, "logins": {}})
     other = add_worker(client, hub["owner"], "linux-box")

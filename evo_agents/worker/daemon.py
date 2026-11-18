@@ -164,6 +164,9 @@ class Daemon:
         self.logins: dict[str, str] = {}  # each runtime's login, found with the runtimes (``health``)
         self.leased = health.load_leased(home.root)  # runtime -> whether its last agent authenticated with a lease
         self.health: dict | None = None  # the heartbeat's health, from the last look; None before the first
+        # what the container engine holds on the worktrees' drive (``Cleanup.engine_usage``), looked at with the runtimes
+        self.engine_usage: dict | None = None
+        self._engine_look: asyncio.Task | None = None
         self.plugin_runtimes: dict[str, AcpRuntime] = {}  # the declarations the hub sent, by runtime
         self.plugin_adapters: dict[str, type[Adapter]] = {}  # and the adapter of ACP of each
         self.checkouts: dict[str, dict] = {}
@@ -253,6 +256,8 @@ class Daemon:
             found = await asyncio.to_thread(health.logins, path=self.env.get("PATH"))
             self.logins = health.steady(self.logins, found)
             await self.browser.look()
+            if self._engine_look is None or self._engine_look.done():  # a slow engine never holds up a heartbeat
+                self._engine_look = spawn(self._look_at_engine(), "engine-usage")
             self._runtimes_at = now
         self.health = await asyncio.to_thread(
             health.report,
@@ -260,6 +265,7 @@ class Daemon:
             health.with_leases(self.logins, self.leased),
             self.cleaner.reserve_gb,
             self.cleaner.reported_headroom_gb,
+            self.engine_usage,
         )
         if force or now - self._checkouts_at > CHECKOUTS_EVERY:
             found = await asyncio.to_thread(checkouts.discover, self.config)
@@ -268,6 +274,10 @@ class Daemon:
                     found[key] = entry
             self.checkouts = found
             self._checkouts_at = now
+
+    async def _look_at_engine(self) -> None:
+        """What the container engine holds, for the next heartbeats (``engine_usage``)."""
+        self.engine_usage = await asyncio.to_thread(self.cleaner.engine_usage)
 
     def saw_agent(self, runtime: str, *, leased: bool, authenticated: bool) -> None:
         """An agent of ``runtime`` ended: whether it ran on a model credential the hub leased the run, and whether its

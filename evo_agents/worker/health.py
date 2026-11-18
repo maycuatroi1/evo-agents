@@ -140,16 +140,25 @@ def save_leased(root: Path, leased: Mapping[str, bool]) -> None:
 
 
 def report(
-    worktrees: Path, found_logins: dict[str, str], reserve_gb: float | None = None, headroom_gb: float | None = None
+    worktrees: Path,
+    found_logins: dict[str, str],
+    reserve_gb: float | None = None,
+    headroom_gb: float | None = None,
+    engine: Mapping[str, float] | None = None,
 ) -> dict:
     """The heartbeat's ``health``: the free disk of ``worktrees``' drive, with the gigabytes the daemon keeps free
     there (``reserve_gb``, under which the hub gives it no run) and those over it its cleanup frees (``headroom_gb``,
-    over which the hub counts its disk ok again), and the logins last found."""
+    over which the hub counts its disk ok again), what the container engine holds there and how much of it nothing
+    uses (``engine``, ``stacks.Engine.usage``: engine_gb, engine_unused_gb), and the logins last found."""
     found = disk(worktrees)
     if found is not None and reserve_gb is not None:
         found["reserve_gb"] = round(float(reserve_gb), 2)
     if found is not None and headroom_gb is not None:
         found["headroom_gb"] = round(float(headroom_gb), 2)
+    for key in ("engine_gb", "engine_unused_gb"):
+        value = (engine or {}).get(key)
+        if found is not None and isinstance(value, int | float) and not isinstance(value, bool) and value >= 0:
+            found[key] = round(float(value), 2)
     return {"disk": found, "logins": dict(found_logins)}
 
 

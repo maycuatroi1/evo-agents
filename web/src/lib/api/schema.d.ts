@@ -22640,6 +22640,16 @@ export interface components {
              * @description the gigabytes over the reserve its cleanup frees once the drive fell under it (disk_headroom_gb of its config): the hub counts its disk ok again only over the reserve and this; null from a daemon that says none, for which the larger of 5 and a quarter of the reserve holds
              */
             headroom_gb?: number | null;
+            /**
+             * Engine Gb
+             * @description the gigabytes the machine's container engine says it holds on that drive (images, containers, volumes and build cache, added up as its system df says them, so layers they share count twice); null from a daemon without an engine, or whose engine keeps them elsewhere
+             */
+            engine_gb?: number | null;
+            /**
+             * Engine Unused Gb
+             * @description of engine_gb, the gigabytes nothing uses, as the engine counts them; the daemon itself prunes only the build cache and untagged images of it, an unused tagged image staying for its owner
+             */
+            engine_unused_gb?: number | null;
         };
         /** DismissBody */
         DismissBody: {
@@ -25812,6 +25822,12 @@ export interface components {
              */
             db: "ok" | "unavailable";
             /**
+             * Heartbeat Db
+             * @description the same check on the pool of the workers' heartbeats and claims
+             * @enum {string}
+             */
+            heartbeat_db: "ok" | "unavailable";
+            /**
              * R2
              * @description the blob store, by a HeadBucket
              * @enum {string}
@@ -25840,6 +25856,15 @@ export interface components {
              * @description components that did not answer
              */
             failed?: string[];
+            /**
+             * Pools
+             * @description per pool (api, heartbeat): max, size (connections held), available, waiting (requests)
+             */
+            pools?: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
         };
         /**
          * HealthReport
@@ -50854,7 +50879,7 @@ export interface components {
             free_slots: number | null;
             /**
              * Health
-             * @description what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct, reserve_gb, headroom_gb, band}, logins: {<runtime>: ok, leased, unauthorized, missing or unknown}}; null when it said nothing of it, as an older daemon. band is low under its reserve (20 GB when it says none), ok again only over the reserve and its headroom, and the band it had in between; a worker whose band is low is given no run
+             * @description what its last heartbeat said of its machine's health: {disk: {free_gb, free_pct, reserve_gb, headroom_gb, engine_gb, engine_unused_gb, band}, logins: {<runtime>: ok, leased, unauthorized, missing or unknown}}; null when it said nothing of it, as an older daemon. band is low under its reserve (20 GB when it says none), ok again only over the reserve and its headroom, and the band it had in between; a worker whose band is low is given no run
              */
             health?: {
                 [key: string]: unknown;
