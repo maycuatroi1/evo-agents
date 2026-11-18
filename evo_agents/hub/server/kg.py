@@ -80,7 +80,7 @@ from evo_agents.hub import kg_branches, kg_named_graphs, kg_settings, tables
 from evo_agents.hub.access import Refused, has_role
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, Upload, blob_key, sealed_key
 from evo_agents.hub.jobs import kg_lock
-from evo_agents.hub.kg_build import QueueBusy, procrastinate_jobs, queue_build
+from evo_agents.hub.kg_build import QueueBusy, no_graph_reason, procrastinate_jobs, queue_build
 from evo_agents.hub.kg_graph import (
     TOOL_NAMES,
     BuiltGraph,
@@ -817,6 +817,7 @@ async def tool_result(
         access = await project_access(conn, user, project)
         member(access)
         graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
+        why = None if graphs else await no_graph_reason(conn, access.project_id, project)
         if graphs and audience is None:
             audience = await reader_audience(conn, user)
         tuning = await kg_settings.read(conn, access.project_id) if graphs else None
@@ -836,11 +837,7 @@ async def tool_result(
                 arguments, named = {**arguments, "graph": default[0]}, {default[0]: default[1]}
     arguments, on_branch = await _on_branch(state, access.project_id, arguments) if graphs else (arguments, None)
     if not graphs:
-        message = (
-            f"error: project {project} has no graph on the hub yet: push its runs with `evo-agents hub kg push` "
-            "(a build follows)"
-        )
-        return {"content": [{"type": "text", "text": message}], "isError": True}
+        return {"content": [{"type": "text", "text": f"error: {why}"}], "isError": True}
     if named is None:
         message = (
             f"error: project {project} has no knowledge graph named {arguments.get('graph')!r}: "

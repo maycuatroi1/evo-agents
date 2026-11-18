@@ -120,7 +120,13 @@ HALTED = (
 )
 DIED = (STALLED, ORPHANED, HALTED)  # the errors of a build that ended with its worker gone
 DIED_READ = 100  # the newest builds of a project the count of DIED_IN_A_ROW reads at most
-HALTED_NOTICE = "kg_build_halted"  # runs.NOTICE_KINDS: the recovery pass stopped queueing a project's builds
+HALTED_NOTICE = "kg_build_halted"  # runs.NOTICE_KINDS: the hub stopped queueing a project's builds
+# After this many builds of a project in a row failed alike (the same first line of error, config digest and runs), a
+# change of a core plugin's data (``queue_if_configured``) queues no other: a build that fails on its input fails the
+# same way again, and chats and tasks change every few minutes, so it was queued and failed some ten times an hour.
+# A build that succeeds, a push of new runs, a new knowledge config or a build a member queues by hand goes on as before.
+FAILED_IN_A_ROW = 3
+ERROR_HEAD_CHARS = 200  # what of a build's error a notice and a reader with no graph are told: its first line, cut
 IN_FLIGHT = ("queued", "running")
 JOB_ENDED = ("succeeded", "failed", "cancelled", "aborted")  # a procrastinate job in these will not run again
 CHUNK = 1024 * 1024
@@ -885,10 +891,92 @@ async def queue_if_configured(job_queue: JobQueue, conn: AsyncConnection, projec
     found = await conn.execute(select(configs.c.project_id).where(configs.c.project_id == project_id))
     if found.first() is None:
         return
+    if await _halted_by_failures(conn, project_id, project):
+        return
     try:
         await queue_build(job_queue, conn, project_id, project, None)
     except QueueBusy:
         log.warning("kg build not queued after a plugin's change: the queue was busy", extra={"project": project})
+
+
+def error_head(error: str | None) -> str:
+    """The first line of a build's error, at most ERROR_HEAD_CHARS: a SQL error goes on with the statement and its
+    parameters, which can hold content."""
+    line = (error or "").strip().split("\n", 1)[0].strip()
+    return line if len(line) <= ERROR_HEAD_CHARS else line[: ERROR_HEAD_CHARS - 3] + "..."
+
+
+async def _failed_alike(conn: AsyncConnection, project_id: int):
+    """The newest FAILED_IN_A_ROW ended builds of a project when they all failed alike (the same ``error_head``, config
+    digest and runs) and their worker did not die or stop (REPLACED, DIED: ``_died_in_a_row`` counts those), with no
+    build a member queued by hand after the oldest of them; else None."""
+    builds = tables.kg_builds
+    rows = (
+        await conn.execute(
+            select(
+                builds.c.status,
+                builds.c.error,
+                builds.c.config_digest,
+                builds.c.runs,
+                builds.c.requested_by,
+                builds.c.finished_at,
+            )
+            .where(builds.c.project_id == project_id, builds.c.status.not_in(IN_FLIGHT))
+            .order_by(builds.c.id.desc())
+            .limit(FAILED_IN_A_ROW)
+        )
+    ).all()
+    if len(rows) < FAILED_IN_A_ROW:
+        return None
+    newest = rows[0]
+    for i, row in enumerate(rows):
+        if row.status != "failed" or row.error in (*REPLACED, *DIED):
+            return None
+        alike = (error_head(row.error), row.config_digest, row.runs)
+        if alike != (error_head(newest.error), newest.config_digest, newest.runs):
+            return None
+        if row.requested_by is not None and i < len(rows) - 1:  # a member's build starts a new row
+            return None
+    return rows
+
+
+async def _halted_by_failures(conn: AsyncConnection, project_id: int, project: str) -> bool:
+    """Whether a change of a core plugin's data must queue no build of a project, its newest builds having failed
+    alike (``_failed_alike``); the project's admins are told once a row (HALTED_NOTICE)."""
+    rows = await _failed_alike(conn, project_id)
+    if rows is None:
+        return False
+    notes = tables.notifications
+    since = rows[-1].finished_at
+    told = await conn.scalar(
+        select(
+            exists().where(
+                notes.c.project_id == project_id,
+                notes.c.notice_kind == HALTED_NOTICE,
+                *([notes.c.created_at >= since] if since is not None else []),
+            )
+        )
+    )
+    head = error_head(rows[0].error)
+    if not told:
+        await _tell_halted(
+            conn,
+            project_id,
+            project,
+            len(rows),
+            body=(
+                f"The last {len(rows)} builds of {project} failed the same way: {head}. A change of a plugin's data "
+                "(a chat, a task) queues no new build of it until one succeeds, a push brings new runs, its knowledge "
+                f"config changes or a member queues one: `evo-agents hub kg build --project {project}` once the cause "
+                "is fixed."
+            ),
+            error=head,
+        )
+    log.warning(
+        "kg build not queued after a plugin's change: the newest builds failed alike",
+        extra={"project": project, "in_a_row": len(rows)},
+    )
+    return True
 
 
 def _orphaned():
@@ -1027,13 +1115,23 @@ async def _died_in_a_row(conn: AsyncConnection, project_id: int) -> tuple[int, b
     return count, told
 
 
-async def _tell_halted(conn: AsyncConnection, project_id: int, project: str, count: int) -> None:
-    """Tell the admins and the creator of a project that its builds stopped being queued (HALTED_NOTICE)."""
+async def _tell_halted(
+    conn: AsyncConnection,
+    project_id: int,
+    project: str,
+    count: int,
+    *,
+    body: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Tell the admins and the creator of a project that its builds stopped being queued (HALTED_NOTICE): by default
+    because their worker kept dying; ``body`` and ``error`` say otherwise (``_halted_by_failures``)."""
     from evo_agents.hub.server.notifications import notify  # notifications import the claim, which imports the KG
 
     g, p = tables.grants, tables.projects
     admins = await conn.execute(select(g.c.user_id).where(g.c.project_id == project_id, g.c.role == "admin"))
     creator = await conn.scalar(select(p.c.created_by).where(p.c.id == project_id))
+    details = {"project": project, "builds_in_a_row": count, **({"error": error} if error is not None else {})}
     for user_id in sorted({*admins.scalars(), *([creator] if creator is not None else [])}):
         await notify(
             conn,
@@ -1042,15 +1140,43 @@ async def _tell_halted(conn: AsyncConnection, project_id: int, project: str, cou
             notice_kind=HALTED_NOTICE,
             project_id=project_id,
             title=f"Knowledge graph builds of {project} are no longer queued again",
-            body=(
+            body=body
+            or (
                 f"The last {count} builds of {project} ended because the worker running them stopped before they "
                 "finished, which a build over the memory limit of worker-kg (EVO_HUB_WORKER_KG_MEMORY) does. The hub "
                 "queues no new build after such a stop until one succeeds or a member queues one: "
                 f"`evo-agents hub kg build --project {project}` once the cause is fixed."
             ),
-            details={"project": project, "builds_in_a_row": count},
+            details=details,
             link=f"/p/{project}/kg",
         )
+
+
+async def no_graph_reason(conn: AsyncConnection, project_id: int, project: str) -> str:
+    """What a kg tool tells a reader of a project the hub holds no graph of: the newest build's state, and its error
+    when it failed, since pushing runs again does not help a build that fails on its input; the push when the project
+    was never built."""
+    builds = tables.kg_builds
+    newest = (
+        await conn.execute(
+            select(builds.c.id, builds.c.status, builds.c.error)
+            .where(builds.c.project_id == project_id)
+            .order_by(builds.c.id.desc())
+            .limit(1)
+        )
+    ).first()
+    head = f"project {project} has no graph on the hub yet"
+    if newest is None:
+        return f"{head}: push its runs with `evo-agents hub kg push` (a build follows)"
+    listed = f"`evo-agents hub kg builds --project {project}` lists them"
+    if newest.status in IN_FLIGHT:
+        return f"{head}: build {newest.id} is {newest.status}, and the graph is served once a build succeeds"
+    if newest.status == "failed":
+        return (
+            f"{head}: its newest build {newest.id} failed ({error_head(newest.error)}), and the graph is served once "
+            f"a build succeeds; pushing runs again does not fix a build that fails; {listed}"
+        )
+    return f"{head}: its newest build {newest.id} ({newest.status}) holds no graph; {listed}"
 
 
 async def _requeue(
