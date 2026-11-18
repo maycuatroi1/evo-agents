@@ -43,6 +43,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from evo_agents.hub.client import write_atomic
+from evo_agents.worker.memory_room import MEMORY_FLOOR_MB, MEMORY_STALL_MAX
 
 DIR_MODE = 0o700
 FILE_MODE = 0o600
@@ -98,6 +99,10 @@ class WorkerConfig:
     # the gigabytes over the reserve the cleanup frees once the drive fell below it, so free disk does not hover at the
     # reserve; None: ``disk_headroom`` of the reserve
     disk_headroom_gb: float | None = None
+    # no run is claimed while the memory of its cgroup chain or machine stalls at least this percent of a minute, or
+    # has less than memory_floor_mb left and stalls at all (``memory_room``); 0 turns either test off
+    memory_floor_mb: float = MEMORY_FLOOR_MB
+    memory_stall_max: float = MEMORY_STALL_MAX
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -118,6 +123,10 @@ class WorkerConfig:
         headroom = config.disk_headroom_gb
         if isinstance(headroom, bool) or not isinstance(headroom, int | float | None) or (headroom or 0) < 0:
             config.disk_headroom_gb = None
+        for name, default in (("memory_floor_mb", MEMORY_FLOOR_MB), ("memory_stall_max", MEMORY_STALL_MAX)):
+            value = getattr(config, name)
+            if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+                setattr(config, name, default)  # a value set by hand that is not a size: the default holds
         return config
 
 

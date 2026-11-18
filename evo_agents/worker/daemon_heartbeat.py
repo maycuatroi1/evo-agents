@@ -157,7 +157,8 @@ class Heartbeat:
         body = {
             "runtimes": daemon.runtimes,
             "checkouts": daemon.checkouts,
-            "free_slots": min(daemon.free_slots, runs.MAX_SLOTS),
+            # none while the memory holds claims back (``Claims._short_of_memory``): the hub offers it no run then
+            "free_slots": 0 if daemon.claims.held_for_memory else min(daemon.free_slots, runs.MAX_SLOTS),
             "runs": reported,
             "orphans": list(orphans),  # whose agent this daemon stops, whatever the answer: never re-attached
             "agent_version": __version__,

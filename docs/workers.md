@@ -2148,6 +2148,17 @@ and a person who looks. At its start and every hour it cleans up (`Daemon.cleanu
 - Every run that ended more than 7 days ago goes too, merged or not, as a net for what the hub never says merged; a
   parked run's worktrees stay 30 days, for the run that resumes it.
 
+Several daemons on one box often share one memory limit (a systemd slice with `MemoryHigh`), and their slots add
+up to more agents than it fits: a run claimed into a cgroup at its limit stalls, its Claude Code does not start within
+the SDK's 60 seconds, git hangs and the lease runs out. Before each claim the daemon reads its cgroup chain and the
+machine (`memory_room`): the least room of the ancestors with a `memory.high` or `memory.max` and of `MemAvailable`,
+and `full avg60` of `memory.pressure` where that room is least. It claims nothing while that stall is at least
+`memory_stall_max` percent (10 by default), or while the room is under `memory_floor_mb` (1024 by default) and the
+memory stalls at all; page cache counts in `memory.current`, so a cgroup near its limit that does not stall still takes
+runs. 0 turns either test off, and `$EVO_WORKER_MEMORY_STALL_MAX` and `$EVO_WORKER_MEMORY_FLOOR_MB` win over
+`config.json`. The log says when the hold starts and ends, and the heartbeat says no free slot meanwhile, so the hub
+offers the pool's runs to its other nodes. A machine without cgroup v2 or `/proc` (macOS) holds nothing back.
+
 The drive of the worktrees keeps `disk_reserve_gb` of `config.json` free (20 by default; `$EVO_WORKER_DISK_RESERVE_GB`
 wins over it). Under the reserve and its headroom, at each claim and each hourly cleanup, the daemon removes the worktrees of the ended runs it
 may remove once merged (not a run it holds, a parked run, one another run went on from, nor one whose directory a run

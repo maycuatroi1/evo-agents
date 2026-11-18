@@ -3,8 +3,9 @@ stopping, one long poll of up to 25 seconds at a time; each run it gets (``run.R
 
 It claims no new run for a while after the machine slept (``power.WakeWatch``), nor while another daemon of its
 install updates it, nor once it changed under it (``selfupdate``), nor while the drive of its worktrees stays under
-``disk_reserve_gb`` once the cleanup made what room it may (``daemon_cleanup``). A claimed run it cannot even start
-is failed at once, so it does not wait for its lease to run out.
+``disk_reserve_gb`` once the cleanup made what room it may (``daemon_cleanup``), nor while the memory of its cgroup
+chain or machine stalls or has no room for a run (``memory_room``; its heartbeat says no free slot then). A claimed
+run it cannot even start is failed at once, so it does not wait for its lease to run out.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import contextlib
 import logging
 from typing import TYPE_CHECKING
 
+from evo_agents.worker import memory_room
 from evo_agents.worker.background import spawn
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable
 from evo_agents.worker.run import run_class
@@ -32,6 +34,9 @@ class Claims:
         self.claiming = False
         self._held_for_wake = False
         self._held_for_disk = False
+        self.held_for_memory: str | None = (
+            None  # why the memory holds claims back, as the log said it; None: it does not
+        )
 
     async def loop(self) -> None:
         daemon = self.daemon
@@ -81,11 +86,32 @@ class Claims:
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(daemon.stopping.wait(), daemon.heartbeat_s)
             return True
-        if await self._short_of_room():
+        if await self._short_of_room() or await self._short_of_memory():
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(daemon.stopping.wait(), daemon.heartbeat_s)
             return True
         return False
+
+    async def _short_of_memory(self) -> bool:
+        """Whether the memory of the daemon's cgroup chain or machine stalls, or has too little room for a run
+        (``memory_room``): no run is claimed then, so none fails before its agent starts. Said in the log once each
+        time it starts and ends; the heartbeat says no free slot meanwhile."""
+        config = self.daemon.config
+        try:
+            room = await asyncio.to_thread(memory_room.read_room)
+        except Exception:  # a machine that reads oddly must not stop the claims
+            log.exception("reading the memory room failed")
+            return False
+        floor_mb, stall_max = memory_room.limits(config.memory_floor_mb, config.memory_stall_max, self.daemon.env)
+        why = memory_room.short_of(room, floor_mb, stall_max)
+        if (why is None) != (self.held_for_memory is None):
+            extra = {"room_mb": None if room.room_mb is None else round(room.room_mb), "stall": room.stall}
+            if why:
+                log.warning("no claims: %s", why, extra={**extra, "where": room.where})
+            else:
+                log.info("claiming again: the memory has room", extra=extra)
+        self.held_for_memory = why
+        return why is not None
 
     async def _short_of_room(self) -> bool:
         """Whether the drive of the worktrees stays under ``disk_reserve_gb`` once the cleanup removed the worktrees

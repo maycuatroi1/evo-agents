@@ -114,6 +114,7 @@ def test_the_heartbeat_carries_the_health_and_worker_list_shows_it(tmp_path):
         runtimes={},
         checkouts={},
         free_slots=1,
+        claims=SimpleNamespace(held_for_memory=None),
         says=lambda name: False,
         updater=SimpleNamespace(heartbeat_fields=dict),
         graphs=SimpleNamespace(report=lambda: None),
