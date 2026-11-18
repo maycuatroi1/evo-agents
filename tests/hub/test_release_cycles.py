@@ -323,6 +323,16 @@ def test_the_hacking_signs_of_a_fix_spare_importorskip_and_a_platform_skip_with_
     assert signs(patch("tests/test_x.py", '+@pytest.mark.skipif(sys.platform == "win32")', " def test_m():")) == [
         "skip_added"
     ], "a platform skip without its reason"
+    moved = (  # release/0.70.5 (#746): one more run kind, its comment moved to a line of its own
+        '-    assert runs.RUN_KINDS[-4] == releases.RELEASE_KIND == "release"  # question (0100), browser (0118)',
+        "+    # question (0100), browser (0118), command (0244) and evolve (0257) after it",
+        '+    assert runs.RUN_KINDS[-5] == releases.RELEASE_KIND == "release"',
+    )
+    assert signs(patch("tests/test_x.py", *moved)) == [], "a comment says nothing the assertion checks"
+    commented = ("-    assert f() == 1  # why", "+    # assert f() == 1  # why")
+    assert signs(patch("tests/test_x.py", *commented)) == ["assert_removed"], "an assertion commented out"
+    quoted = ('-    assert f() == "#a"', '+    assert f() == "#b"')
+    assert signs(patch("tests/test_x.py", *quoted)) == ["assert_removed"], "a # inside quotes is no comment"
     assert signs(patch("evo_agents/x.py", "-    return a", "+    return b")) == [], "code is no test"
     assert signs(patch(".github/workflows/ci.yml", "-  timeout: 10", "+  timeout: 20")) == []
 
