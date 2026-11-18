@@ -29,7 +29,7 @@ from sqlalchemy import Text, cast, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables, wake
+from evo_agents.hub import runs, tables, wake
 from evo_agents.kg.pacing import paced
 from evo_agents.kg.snapshot import StoreRows, asked_order, cluster_order
 
@@ -107,8 +107,12 @@ def text_row_key(kind: str, key: str, row) -> str:
 
 def _json(row) -> str:
     """A row as the JSON both sides of ``diff`` compare: Postgres keeps a jsonb object's keys in its own order, so a
-    row read back from the tables equals the build's only once both sort their keys."""
-    return json.dumps(row, ensure_ascii=False, sort_keys=True)
+    row read back from the tables equals the build's only once both sort their keys. A NUL character is written as
+    ``runs.NUL_STAND_IN``, since jsonb holds none, so a row read back equals the build's there too."""
+    text = json.dumps(row, ensure_ascii=False, sort_keys=True)
+    if "\\u0000" in text:
+        text = json.dumps(runs.without_nul(row), ensure_ascii=False, sort_keys=True)
+    return text
 
 
 def graph_rows(rows: StoreRows) -> dict[str, dict[str, tuple]]:
@@ -423,7 +427,14 @@ async def merge_corpus(
     upserts = [by_key[k] for k in (*changes.new, *changes.changed)]
     for i in range(0, len(upserts), BATCH):
         values = [
-            {"project_id": project_id, "branch_id": branch_id, **item.__dict__, "audience": list(item.audience)}
+            {
+                "project_id": project_id,
+                "branch_id": branch_id,
+                **item.__dict__,
+                "label": runs.without_nul(item.label),
+                "audience": list(item.audience),
+                "body": runs.without_nul(item.body),
+            }
             for item in upserts[i : i + BATCH]
         ]
         stmt = pg_insert(corpus).values(values)
@@ -460,7 +471,7 @@ async def memo_put(conn: AsyncConnection, project_id: int, extractor: str, resul
     entries = sorted(results.items())
     for i in range(0, len(entries), BATCH):
         values = [
-            {"project_id": project_id, "extractor": extractor, "row_hash": h, "result": r}
+            {"project_id": project_id, "extractor": extractor, "row_hash": h, "result": runs.without_nul(r)}
             for h, r in entries[i : i + BATCH]
         ]
         await conn.execute(pg_insert(memo).values(values).on_conflict_do_nothing())
