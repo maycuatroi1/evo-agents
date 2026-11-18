@@ -21,3 +21,6 @@ def _no_worker_of_this_machine(monkeypatch):
             monkeypatch.delenv(name)
     # the daemons of a test claim on a machine with less free disk than the default reserve (test_worktree_gc tests it)
     monkeypatch.setenv("EVO_WORKER_DISK_RESERVE_GB", "0")
+    # nor while the memory of the machine running pytest is short (test_memory_room tests the gate)
+    monkeypatch.setenv("EVO_WORKER_MEMORY_FLOOR_MB", "0")
+    monkeypatch.setenv("EVO_WORKER_MEMORY_STALL_MAX", "0")
