@@ -443,40 +443,70 @@ def _rewritten(shape: tuple[str, str, frozenset[str]] | None, rewrites: list) ->
     return False
 
 
+def _without_comment(text: str) -> str:
+    """A Python line without its trailing ``# comment``, read outside the quotes the line opens and closes itself: a
+    comment says nothing a test checks, so ``assert x[-4] == y  # why`` rewritten as ``assert x[-5] == y`` under a
+    comment line of its own reads as the same assertion."""
+    quote = ""
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == "\\":
+                index += 2
+                continue
+            if text.startswith(quote, index):
+                index += len(quote)
+                quote = ""
+                continue
+        elif char == "#":
+            return text[:index].rstrip()
+        elif char in "'\"":
+            quote = text[index : index + 3] if text[index : index + 3] in ('"""', "'''") else char
+            index += len(quote)
+            continue
+        index += 1
+    return text
+
+
 def _removed_signs(sign, path: str, diff: FileDiff) -> None:
-    """The signs of the lines ``diff`` of a test file removes, each read against what that same file adds."""
+    """The signs of the lines ``diff`` of a test file removes, each read against what that same file adds; a Python
+    file's lines are read without their comments (``_without_comment``)."""
+    code = _without_comment if path.endswith(".py") else (lambda text: text)
+    added = [(number, code(text)) for number, text in diff.added]
+    removed = [(number, text, code(text)) for number, text in diff.removed]
     # This file's own lines alone: an assertion moved to another file, which may never run, is one removed here.
-    added_texts = {" ".join(text.split()) for _, text in diff.added}
-    added_masked = {_masked(text) for _, text in diff.added}
-    added_literal = {_literal_free(text) for _, text in diff.added}
-    removed_texts = {" ".join(text.split()) for _, text in diff.removed}
+    added_texts = {" ".join(text.split()) for _, text in added}
+    added_masked = {_masked(text) for _, text in added}
+    added_literal = {_literal_free(text) for _, text in added}
+    removed_texts = {" ".join(text.split()) for _, _, text in removed}
     renamed = [  # the definitions this file adds anew, each the rename of at most one it removes
         _definition_shape(text)
-        for _, text in diff.added
+        for _, text in added
         if TEST_DEFINITION.search(text) and " ".join(text.split()) not in removed_texts
     ]
     rewrites = [  # the assertions this file adds anew, each the rewrite of at most one it removes
         shape
-        for _, text in diff.added
+        for _, text in added
         if " ".join(text.split()) not in removed_texts and (shape := _assertion_shape(text)) is not None
     ]
-    for number, text in diff.removed:
+    for number, shown, text in removed:
         flat = " ".join(text.split())
         if not flat or flat in added_texts:
             continue
         asserting = ASSERTION.search(text) is not None
         if (asserting or TOLERANCE.search(text)) and NUMBER.search(text) and _masked(text) in added_masked:
-            sign("threshold_changed", path, number, text)
+            sign("threshold_changed", path, number, shown)
         elif asserting:
             if not _rewritten(_assertion_shape(text), rewrites):
-                sign("assert_removed", path, number, text)
+                sign("assert_removed", path, number, shown)
         elif TEST_DEFINITION.search(text):
             if _definition_shape(text) in renamed:  # a test renamed, once for each definition added
                 renamed.remove(_definition_shape(text))
             else:
-                sign("test_removed", path, number, text)
+                sign("test_removed", path, number, shown)
         elif _has_literal(text) and _literal_free(text) in added_literal:
-            sign("expected_changed", path, number, text)
+            sign("expected_changed", path, number, shown)
 
 
 def _added_signs(sign, path: str, diff: FileDiff, test: bool) -> None:

@@ -223,7 +223,8 @@ def test_ls_refs_asks_for_the_prefixes_and_reads_what_an_annotated_tag_peels_to(
 
 
 def test_release_is_a_run_kind_that_the_release_schedule_alone_dispatches():
-    assert runs.RUN_KINDS[-4] == releases.RELEASE_KIND == "release"  # question (0100), browser (0118), command after it
+    # question (0100), browser (0118), command (0244) and evolve (0257) after it
+    assert runs.RUN_KINDS[-5] == releases.RELEASE_KIND == "release"
     assert "release" in runs.SHOWN_KINDS
 
 
@@ -710,8 +711,17 @@ def test_the_rows_of_0067_hold_together_and_it_goes_down_to_0066_and_up_again(wo
         key: value
         for key, value in copy.items()
         if key
-        not in ("principal_id", "autonomy", "browser", "browser_identities", "selector", "tolerations", "as_owner")
-    }  # of 0113, 0118, 0119, 0149 and 0166
+        not in (
+            "principal_id",
+            "autonomy",
+            "browser",
+            "browser_identities",
+            "selector",
+            "tolerations",
+            "as_owner",
+            "priority",
+        )
+    }  # of 0113, 0118, 0119, 0149, 0166 and 0255
     refused(db, errors.CheckViolation, insert(r).values(**{**at_0066, "state": "cancelled", "finished_at": func.now()}))
     move_to(db, "0067")
     assert sql(db, select(func.count()).select_from(s)) == [(0,)]

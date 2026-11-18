@@ -24,6 +24,11 @@ GB = 1 << 30
 def memory(monkeypatch):
     """The api's resident memory, under a limit of 10 GB, freed at once (no thread frees aside)."""
     used = {"bytes": 0}
+    # an api an earlier test of this process started frees its snapshots aside: until that thread is done, _ease waits
+    deadline = time.monotonic() + 30
+    while pacing.freeing() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not pacing.freeing(), "the thread an earlier test's api started still frees its snapshots"
     monkeypatch.setattr(kg_snapshots, "memory_limit", lambda: 10 * GB)
     monkeypatch.setattr(kg_snapshots, "resident", lambda: used["bytes"])
     monkeypatch.setattr(pacing, "_aside", None)

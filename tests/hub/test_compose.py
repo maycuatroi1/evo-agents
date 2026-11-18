@@ -354,8 +354,11 @@ def test_compose_runs_the_kg_builds_on_two_workers_of_their_own_and_the_rest_on_
     assert kg["command"][:-2] == worker["command"][:-2], "the same worker, another queue"
     assert kg["environment"] == data[BLOCK] and kg["volumes"] == worker["volumes"], "the same environment and cache"
     assert kg["deploy"]["replicas"] == 2
-    for key in ("image", "build", "cpus", "healthcheck", "stop_grace_period", "depends_on"):
+    for key in ("image", "build", "cpus", "healthcheck", "depends_on"):
         assert kg[key] == worker[key], key
+    # worker-kg waits for its running build on a deploy (tests/hub/test_worker_shutdown_grace.py): the longer stop
+    seconds = {name: int(services[name]["stop_grace_period"].removesuffix("s")) for name in ("worker", "worker-kg")}
+    assert seconds["worker-kg"] > seconds["worker"] == 40
     # a build's memory is its own limit: a large project's build peaked at about 4.7 GB, over the worker's 4g
     assert worker["mem_limit"] == "${EVO_HUB_WORKER_MEMORY:-4g}"
     assert kg["mem_limit"] == "${EVO_HUB_WORKER_KG_MEMORY:-6g}"

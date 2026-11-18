@@ -435,7 +435,7 @@
     },
     {
       "name": "plan_handoff",
-      "description": "The handoff of a plan for a new session or a subagent, built by the hub from the plan it holds: its goal, each step done with its title, commits, Decision lines verbatim and evidence cut, and the steps not done with status and depends_on, within budget_tokens. With step, the evidence of the steps it depends on comes first. A note names what was left out; plan_show has it whole. Same revision, same budget, same text as `evo-agents hub plan handoff`.",
+      "description": "The handoff of a plan for a new session or a subagent, built by the hub from the plan it holds: its goal, each step done with its title, commits, Decision lines verbatim and evidence cut, and the steps not done with status and depends_on, within budget_tokens. With step, the evidence of the steps it depends on comes first, and the step's difficulty and the model the project's Token strategy recommends for it end the text. A note names what was left out; plan_show has it whole. Same revision, same budget, same text as `evo-agents hub plan handoff`.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1231,6 +1231,42 @@
             "type": "string",
             "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
             "description": "YYYY-MM-DD, a day of the newest week; default today"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "curator_evolve",
+      "description": "The history of the project's evolutions of a harness (target git) or an agent's configuration (target agent_config): without evolve_id each evolution, the newest first, with its state, rounds and front; with it, its tasks of the select split and probes, each candidate with its origin, parents, scores per task, cost and turns, and the Pareto front with how many tasks each candidate leads. Never a task of the holdout split, nor any task's verify.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "evolve_id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9223372036854775807,
+            "description": "one evolution"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20
           },
           "project": {
             "type": "string",

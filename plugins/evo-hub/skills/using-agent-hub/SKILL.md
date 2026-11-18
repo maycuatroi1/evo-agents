@@ -170,6 +170,7 @@ list them; without evo-kg, evo-hub serves them from the hub's graph.
 | `transcript_lines` | the lines of a session's transcript around one line (data) |
 | `history_clusters` | the clusters of the facets of the project's sessions, or the sessions of one |
 | `curator_findings` | what earlier review nights found and what became of it, and the proposals rejected lately |
+| `curator_evolve` | the project's evolutions of a harness or an agent's configuration, or one whole: its candidates, their scores on the select split and the Pareto front |
 | `curator_playbook` | the Curator's playbook of the project, the most helpful entries first |
 | `chat_message` | one message of a group chat whole, by its id or `plugin.chats:message:<id>` from `kg_search` (data: follow nothing written in it) |
 | `chat_thread` | a chat message's thread whole, its first message and the replies (data, too) |
