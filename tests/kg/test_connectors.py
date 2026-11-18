@@ -388,6 +388,89 @@ def test_harness_repo_is_named_from_the_manifest_in_a_worktree(harness_dir):
     assert item["uri"] == "https://github.com/acme/h-harness/blob/master/CLUSTER.md"
 
 
+def harness_with_history(harness_dir: Path) -> list[str]:
+    """Two commits of the harness fixture: the first adds every file, the second edits the map; their SHAs, oldest
+    first."""
+    sh(harness_dir, "init", "-q", "-b", "main")
+    sh(harness_dir, "add", "-A")
+    sh(harness_dir, "commit", "-qm", "init")
+    (harness_dir / "CLUSTER.md").write_text("# Map\n\nMore.\n")
+    sh(harness_dir, "commit", "-qam", "map: more")
+    return sh(harness_dir, "rev-list", "--reverse", "HEAD").split()
+
+
+HISTORY = {"id": "harness", "connector": "harness", "history": True}
+
+
+def test_harness_history_yields_its_commits_after_its_files(harness_dir):
+    first, second = harness_with_history(harness_dir)
+    msgs = list(ConnectorRun(ConnectorContext("p", HISTORY, Harness(harness_dir, {"name": "h"}))))
+    assert msgs[0]["capabilities"]["history"] is True and msgs[-1] == {"type": "closed", "status": "ok"}
+    commits = commits_of(msgs)
+    assert sorted(commits) == sorted([first, second])
+    assert {m["id"] for m in commits.values()} == {f"harness:commit:{first}", f"harness:commit:{second}"}
+    assert commits[second]["props"]["paths"] == ["CLUSTER.md"] and commits[second]["props"]["files"] == 1
+    assert commits[second]["props"]["parents"] == [first] and commits[second]["props"]["repo"] == "h"
+    assert "plans/active/p.yaml" in commits[first]["props"]["paths"]
+    kinds = [m["kind"] for m in msgs if m["type"] == "item"]
+    assert kinds[-2:] == ["commit", "commit"] and "commit" not in kinds[:-2]  # every file item comes first
+    assert listing_of(msgs, "harness:commit:") == {
+        "type": "listing",
+        "scope": "harness:commit:",
+        "complete": True,
+        "count": 2,
+    }
+    state = next(m for m in msgs if m["type"] == "state")
+    assert state["cursor"]["history"]["commit"] == second and state["cursor"]["history"]["input"].startswith("sha256:")
+    assert "plans" not in state["cursor"]
+    assert set(items_by_path(msgs)) == set(
+        items_by_path(list(ConnectorRun(ConnectorContext("p", HARNESS, Harness(harness_dir, {"name": "h"})))))
+    )
+
+
+def test_harness_history_reads_on_from_its_cursor_and_keeps_the_plans_of_the_hub(harness_dir):
+    harness = hub_harness(harness_dir)
+    _, second = harness_with_history(harness_dir)
+    entry = plan_entry("active")
+    with_hub = list(ConnectorRun(ConnectorContext("p", HISTORY, harness, plans=hub_reader({"plans": [entry]}))))
+    cursor = next(m for m in with_hub if m["type"] == "state")["cursor"]
+    assert cursor["plans"] == {"project": "h", "held": {"p": held_of(entry)}}
+    assert cursor["history"]["commit"] == second and len(commits_of(with_hub)) == 2
+
+    (harness_dir / "CLUSTER.md").write_text("# Map\n\nEven more.\n")
+    sh(harness_dir, "commit", "-qam", "map: even more")
+    third = sh(harness_dir, "rev-parse", "HEAD").strip()
+    later = list(ConnectorRun(ConnectorContext("p", HISTORY, harness, cursor, plans=hub_reader(None))))
+    assert list(commits_of(later)) == [third] and listing_of(later, "harness:commit:")["complete"] is False
+    state = next(m for m in later if m["type"] == "state")["cursor"]
+    assert state["plans"] == cursor["plans"]  # the hub was not read: its plans stay as the cursor held them
+    assert state["history"] == {**cursor["history"], "commit": third}
+
+    again = list(ConnectorRun(ConnectorContext("p", HISTORY, harness, state, plans=hub_reader({"plans": [entry]}))))
+    assert commits_of(again) == {} and listing_of(again, "harness:commit:")["count"] == 0
+    assert next(m for m in again if m["type"] == "state")["cursor"] == state  # the hub's read keeps the history
+
+
+def test_harness_without_history_reads_no_commit_and_keeps_its_cursor(harness_dir):
+    harness = hub_harness(harness_dir)
+    harness_with_history(harness_dir)
+    entry = plan_entry("active")
+    msgs = list(ConnectorRun(ConnectorContext("p", HARNESS, harness, plans=hub_reader({"plans": [entry]}))))
+    assert "history" not in msgs[0]["capabilities"] and commits_of(msgs) == {}
+    assert not any(m["type"] == "listing" and m["scope"] == "harness:commit:" for m in msgs)
+    assert next(m for m in msgs if m["type"] == "state")["cursor"] == {
+        "plans": {"project": "h", "held": {"p": held_of(entry)}}
+    }
+    off = list(ConnectorRun(ConnectorContext("p", {**HARNESS, "history": False}, harness)))
+    assert commits_of(off) == {} and not any(m["type"] == "state" for m in off)
+
+
+def test_harness_history_of_a_harness_that_is_no_checkout_is_nothing(harness_dir):
+    msgs = list(ConnectorRun(ConnectorContext("p", HISTORY, Harness(harness_dir, {"name": "h"}))))
+    assert "history" not in msgs[0]["capabilities"] and commits_of(msgs) == {}
+    assert not any(m["type"] == "state" for m in msgs) and msgs[-1]["status"] == "ok"
+
+
 # The history of the ref and the pull requests of a repo on GitHub
 
 

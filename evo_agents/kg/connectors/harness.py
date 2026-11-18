@@ -12,6 +12,13 @@ In a harness whose harness.yaml names a hub project, the hub holds the plans and
 run reads the plans through ``ctx.plans``, which ``kg sync`` passes, and each plan the hub holds becomes the item of
 its copy at the hub's revision, with the hub's label and a link to its page, whatever the file on disk holds
 (``hub_plans``). A plan the hub does not list is read from disk, and so is every plan when the hub is not read.
+
+With ``history: true`` on the source (default false), a harness that is a git checkout also yields, after its files,
+the commit items of its HEAD's history as the git connector makes them (``git.history_items``): ids
+``<source>:commit:<sha>``, the paths each changed, the message as text. The run's cursor keeps where that history was
+read to under ``history`` next to the hub's ``plans``, and a run carries on the part it did not read itself, so the
+plans the hub held and the commit read survive each other's runs; a run with the same input reads only the commits
+since. A source without ``history`` reads no commit and keeps the cursor as before.
 """
 
 from __future__ import annotations
@@ -21,7 +28,7 @@ from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.harness import Harness, load_yaml
-from evo_agents.kg.connectors import gitcli, hub_plans
+from evo_agents.kg.connectors import git, gitcli, hub_plans
 from evo_agents.kg.connectors._files import (
     DEFAULT_EXCLUDE,
     asset_item,
@@ -123,10 +130,30 @@ def checkout_state(root: Path) -> tuple[set[str], dict[str, str], str]:
         return clean, times, ""
 
 
+def history_head(ctx, root: Path) -> str | None:
+    """The commit whose history the run reads: HEAD of the harness checkout when the source asks for its history
+    (``history: true``); None when it does not, or when the root is no checkout or has no commit yet."""
+    if ctx.source.get("history") is not True or not (root / "harness.yaml").is_file() or not gitcli.is_repo(root):
+        return None
+    try:
+        return gitcli.resolve(root, "HEAD")
+    except gitcli.GitError:
+        return None
+
+
+def prior_history(ctx) -> dict:
+    """The ``history`` part of the cursor of the source's last run when it read with the input this run has, so this
+    run reads only the commits since; {} otherwise."""
+    cursor = ctx.cursor if isinstance(ctx.cursor, dict) else {}
+    held = cursor.get("history")
+    return held if isinstance(held, dict) and held.get("commit") and held.get("input") == git.read_input(ctx) else {}
+
+
 def run(ctx):
     sid = ctx.source_id
-    yield hello("harness", __version__, list_complete=True, rev_exact=True)
     root = Path(ctx.source.get("path") or ctx.harness_root or ".").expanduser()
+    head = history_head(ctx, root)
+    yield hello("harness", __version__, list_complete=True, rev_exact=True, **({"history": True} if head else {}))
     if not (root / "harness.yaml").is_file():
         message = f"{root} is not a harness (no harness.yaml)"
         yield {"type": "error", "failure": "config", "message": message}
@@ -170,6 +197,11 @@ def run(ctx):
         if selected(f"plans/{plan['area']}/{plan_id}.yaml", include or ["*.yaml"], exclude):
             yield hub_plans.item(sid, plan, repo_name)
             count += 1
+    if head is not None:
+        yield from git.history_items(ctx, root, head, repo_name, origin, prior_history(ctx))
+        held = ctx.cursor if isinstance(ctx.cursor, dict) else {}
+        plans = cursor if cursor is not None else {"plans": held["plans"]} if "plans" in held else {}
+        cursor = {**plans, "history": {"commit": head, "input": git.read_input(ctx)}}
     if cursor is not None:
         yield {"type": "state", "cursor": cursor}
     yield {"type": "listing", "scope": f"{sid}:file:", "complete": True, "count": count}

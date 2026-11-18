@@ -9,7 +9,8 @@ from evo_agents.cli import main
 from evo_agents.kg import links
 from evo_agents.kg.bench import compare, links_eval
 from tests.kg.built import sync_build, view_of
-from tests.kg.projects import make_project
+from tests.kg.projects import make_harness_history_project, make_project
+from tests.kg.test_end_to_end import edge_keys
 
 
 def toy_graph(groups: int = 6, size: int = 6) -> links.LinkGraph:
@@ -255,3 +256,14 @@ def test_send_dry_run_and_review_only_read():
     items = kg_links.read_review("demo", hub=hub)
     assert [i["rule"] for i in items] == list(kg_links.REVIEW_RULES)
     assert all(method == "GET" for method, _ in hub.calls)
+
+
+def test_a_steps_evidence_naming_a_harness_commit_links_to_the_commit_the_harness_read(tmp_path, kg_env):
+    project, sha = make_harness_history_project(tmp_path, kg_env)
+    sync_build(project)
+    edges = edge_keys(project)
+    phantom = view_of(project).node(f"commit:demo-harness@{sha[:10]}")
+    commit = f"harness:commit:{sha}"
+    assert ("plan:demo/step:3", "mentions", commit) in edges  # demo-harness@<sha> of its evidence
+    assert phantom is None and not any(dst.startswith("commit:demo-harness@") for _, _, dst in edges)
+    assert {dst for src, rel, dst in edges if src == commit and rel == "changes"} == {"harness:file:CLUSTER.md"}

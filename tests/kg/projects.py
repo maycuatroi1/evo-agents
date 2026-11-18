@@ -154,3 +154,31 @@ identifiers:
 """,
     )
     return load_project_at(root, home)
+
+
+HARNESS_STEP = """  - id: 3
+    title: Map of the cluster
+    repo: {repo}
+    what: Write the cluster map in CLUSTER.md.
+    status: done
+    evidence: {repo}@{sha} on main
+"""
+
+
+def make_harness_history_project(base: Path, home: Path) -> tuple[object, str]:
+    """The demo project with its harness a git checkout whose source reads its history (``history: true``): a first
+    commit of every file, then one that edits CLUSTER.md, which a done step of the plan cites as
+    ``demo-harness@<sha>``. Returns (the loaded Project, the SHA of the CLUSTER.md commit)."""
+    root = make_project(base, home).harness.root
+    knowledge = (root / "knowledge.yaml").read_text(encoding="utf-8")
+    write(root / "knowledge.yaml", knowledge.replace("connector: harness\n", "connector: harness\n    history: true\n"))
+    git(root, "init", "-q", "-b", "main")
+    commit(root, "init")
+    write(root / "CLUSTER.md", "# Demo\n\nRepos: app. Plan demo. The cluster map, edited.\n")
+    commit(root, "map: the cluster")
+    sha = git(root, "rev-parse", "HEAD").strip()
+    plan = root / "plans/active/demo.yaml"
+    step = HARNESS_STEP.format(repo=root.name, sha=sha[:10])
+    write(plan, plan.read_text(encoding="utf-8").replace("seams_touched:", step + "seams_touched:"))
+    commit(root, "plan: step 3 done")
+    return load_project_at(root, home), sha

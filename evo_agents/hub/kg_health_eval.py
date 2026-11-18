@@ -94,9 +94,10 @@ class Skipped:
 
 
 class GraphCommits:
-    """The commits a graph's git sources read, by the first SHA_PREFIX digits of their SHA: each with its node, its
-    repo, its SHA and how many paths it changed; the files it changed are its ``changes`` edges. Also the graph's pull
-    requests, with their branch and the commit each merged as, and whether a path is a file of the graph."""
+    """The commits a graph's git sources, and a harness source with ``history: true``, read, by the first SHA_PREFIX
+    digits of their SHA: each with its node, its repo, its SHA and how many paths it changed; the files it changed
+    are its ``changes`` edges. Also the graph's pull requests, with their branch and the commit each merged as, and
+    whether a path is a file of the graph."""
 
     def __init__(self, store, b: int):
         self.store, self.b = store, b
