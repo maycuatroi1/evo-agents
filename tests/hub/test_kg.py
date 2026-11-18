@@ -1227,6 +1227,7 @@ def test_kg_status_reports_the_vectors_the_hub_recorded_of_a_build_that_embedded
 def test_tools_of_a_project_without_a_build_say_how_to_get_one(hub):
     result = call_tool(hub, "kg_search", {"query": "x"}).json()
     assert result["isError"] and "has no graph on the hub yet" in result["content"][0]["text"]
+    assert "evo-agents hub kg push" in result["content"][0]["text"]  # never built: the push is the way
 
 
 def test_runs_pushed_while_a_build_waits_join_that_build_and_carry_no_content(hub, tmp_path, caplog):
@@ -1526,6 +1527,118 @@ def test_builds_their_worker_stopped_cleanly_do_not_count_in_the_row(hub, tmp_pa
     kill_the_waiting_build(hub)
     recovered = recover(hub, tmp_path / "recover")
     assert (recovered["queued"], recovered["halted"]) == ([PROJECT], []) and halted_notices(hub) == []
+
+
+NUL_ERROR = (
+    "DataError: (psycopg.errors.UntranslatableCharacter) unsupported Unicode escape sequence\n"
+    "DETAIL:  \\u0000 cannot be converted to text.\n(the statement follows, naming kg_text_rows and its parameters)"
+)
+
+
+def fail_the_waiting_build(hub, error: str = NUL_ERROR, digest: str = "sha256:" + "a" * 64, runs: int = 1) -> int:
+    """The project's waiting build runs and fails with ``error``, as a build fails on its input; its build id."""
+    builds = tables.kg_builds
+    ((build_id, job_id),) = query(hub.db, select(builds.c.id, builds.c.job_id).where(builds.c.status == "queued"))
+    set_job_status(hub.db, job_id, "succeeded")
+    ended = {"error": error, "config_digest": digest, "runs": runs, "started_at": func.now(), "finished_at": func.now()}
+    query(hub.db, update(builds).values(status="failed", **ended).where(builds.c.id == build_id))
+    return build_id
+
+
+def plugin_change(hub, data_dir: Path) -> None:
+    """What a core plugin does once the data its kg source gives changed (a chat message, a task): queue a build."""
+    from evo_agents.hub.db import make_engine, open_pool
+    from evo_agents.hub.jobs import JobQueue
+
+    async def main():
+        pool = await open_pool(make_config(hub.db, data_dir, hub.s3))
+        try:
+            job_queue = await JobQueue.open(pool)
+            async with make_engine(pool).begin() as conn:
+                project_id = await conn.scalar(select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))
+                await hub_kg_build.queue_if_configured(job_queue, conn, project_id, PROJECT)
+        finally:
+            await pool.close()
+
+    asyncio.run(main())
+
+
+def waiting_builds(hub) -> list[int]:
+    builds = tables.kg_builds
+    return [row[0] for row in query(hub.db, select(builds.c.id).where(builds.c.status.in_(("queued", "running"))))]
+
+
+def test_builds_that_fail_alike_are_not_queued_again_on_a_plugin_change_and_the_admins_are_told(hub, tmp_path):
+    """A source file holding a NUL failed every build of its project the same way, and each change of a chat or a task
+    queued another: a hundred in half a day. After FAILED_IN_A_ROW builds failed alike a plugin's change queues none and
+    the admins are told once; a build that fails otherwise, or one a member queues by hand, starts a new row."""
+    from evo_agents.hub.kg_build import FAILED_IN_A_ROW
+
+    assert FAILED_IN_A_ROW == 3
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."))
+    assert push(hub, laptop).ok
+    fail_the_waiting_build(hub)
+    for _ in range(FAILED_IN_A_ROW - 1):
+        plugin_change(hub, tmp_path / "queue")
+        assert len(waiting_builds(hub)) == 1  # fewer than FAILED_IN_A_ROW alike: queued as before
+        fail_the_waiting_build(hub)
+    assert halted_notices(hub) == []
+
+    plugin_change(hub, tmp_path / "queue")
+    assert waiting_builds(hub) == []
+    ((user_id, title, details, link),) = halted_notices(hub)
+    assert query(hub.db, select(tables.users.c.login).where(tables.users.c.id == user_id)) == [(live.ADMIN,)]
+    head = NUL_ERROR.split("\n", 1)[0]
+    assert details == {"project": PROJECT, "builds_in_a_row": FAILED_IN_A_ROW, "error": head}
+    assert PROJECT in title and link == f"/p/{PROJECT}/kg" and "kg_text_rows" not in str(details)
+    plugin_change(hub, tmp_path / "queue")  # still halted: nothing queued, nobody told twice
+    assert waiting_builds(hub) == [] and len(halted_notices(hub)) == 1
+
+    # A build a member queues by hand goes on, and starts a new row when it fails alike too.
+    assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
+    fail_the_waiting_build(hub)
+    plugin_change(hub, tmp_path / "queue")
+    assert len(waiting_builds(hub)) == 1
+
+    # A build that fails otherwise breaks the row: the next change queues again.
+    fail_the_waiting_build(hub, error="RuntimeError: the blob store did not answer")
+    plugin_change(hub, tmp_path / "queue")
+    assert len(waiting_builds(hub)) == 1
+    fail_the_waiting_build(hub)
+    plugin_change(hub, tmp_path / "queue")
+    assert len(waiting_builds(hub)) == 1 and len(halted_notices(hub)) == 1
+
+
+def test_builds_that_fail_on_other_runs_or_another_config_are_not_alike(hub, tmp_path):
+    """Builds read different runs or another knowledge config: the input changed, so another try is fair."""
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."))
+    assert push(hub, laptop).ok
+    fail_the_waiting_build(hub, runs=1)
+    plugin_change(hub, tmp_path / "queue")
+    fail_the_waiting_build(hub, runs=2)
+    plugin_change(hub, tmp_path / "queue")
+    fail_the_waiting_build(hub, runs=2, digest="sha256:" + "b" * 64)
+    plugin_change(hub, tmp_path / "queue")
+    assert len(waiting_builds(hub)) == 1 and halted_notices(hub) == []
+
+
+def test_tools_of_a_project_whose_builds_fail_name_the_failed_build_not_a_push(hub, tmp_path):
+    """Agents told to push runs while every build failed on a NUL went on without the graph, and a night's review took
+    the push for the cause. With builds and no graph, a kg tool names the newest build and its error's first line."""
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."))
+    assert push(hub, laptop).ok
+    queued = waiting_builds(hub)[0]
+    text = call_tool(hub, "kg_search", {"query": "x"}).json()["content"][0]["text"]
+    assert f"build {queued} is queued" in text and "kg push" not in text
+    failed = fail_the_waiting_build(hub)
+    result = call_tool(hub, "kg_search", {"query": "x"}).json()
+    text = result["content"][0]["text"]
+    assert result["isError"] and "has no graph on the hub yet" in text
+    assert f"newest build {failed} failed" in text and "UntranslatableCharacter" in text
+    assert "kg_text_rows" not in text and "kg push" not in text and f"hub kg builds --project {PROJECT}" in text
 
 
 def test_three_builds_whose_jobs_ended_unrecorded_stop_the_orphaned_pass_too(hub, tmp_path):

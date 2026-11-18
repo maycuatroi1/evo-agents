@@ -4741,6 +4741,11 @@ The worker runs jobs from a [procrastinate](https://procrastinate.readthedocs.io
 Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 
 - `hub.kg_build`: one build of a project's graph. Builds of one project run one at a time, and at most one waits.
+  A change of a core plugin's data (a chat message, a task) queues one, unless the project's last 3 ended builds
+  (`FAILED_IN_A_ROW`) failed alike, with the same first line of error, config digest and runs: then it queues none and
+  tells the project's admins and creator once (notice `kg_build_halted`, the error's first line in its details). A
+  build that succeeds, a push, a new knowledge config or a build a member queues goes on as before. A kg tool of a
+  project with builds and no graph names the newest build and, when it failed, the first line of its error.
 - `hub.recover_kg_builds`, every 5 minutes: fails builds whose worker stopped sending heartbeats and queues a new one,
   unless the project's last 3 builds in a row (`DIED_IN_A_ROW`, back to the newest a member queued by hand) ended with
   their worker gone: then it queues none, records why on the build and tells the project's admins and creator (notice
