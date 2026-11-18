@@ -707,10 +707,11 @@ def _mended(body: dict, bad: re.Pattern, stand_in: str) -> dict:
     return copy
 
 
-def without_nul(body: dict) -> dict:
+def without_nul(body: dict | list) -> dict | list:
     """``body`` when none of its keys and strings holds a NUL character; else a copy with each NUL as NUL_STAND_IN.
     Postgres refuses a jsonb value with a NUL in it, so one tool's binary output would fail its whole batch, again at
-    each resend."""
+    each resend. The rows of a knowledge graph go through it too (``kg_graph_rows``): one source file holding a NUL
+    byte failed every build of its project."""
     if "\\u0000" not in json.dumps(body):
         return body
     return _mended(body, NUL, NUL_STAND_IN)

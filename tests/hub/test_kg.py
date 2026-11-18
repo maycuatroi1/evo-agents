@@ -1610,6 +1610,34 @@ def test_a_project_built_before_the_graph_tables_gets_a_build_that_fills_them(hu
     assert recover(hub, tmp_path / "recover")["filled"] == []
 
 
+def test_a_graph_row_holding_a_nul_is_stored_with_u_fffd_and_reads_back_equal():
+    """jsonb holds no NUL character: a row holding one is written with U+FFFD, and the row read back compares equal to
+    the build's, so the next build rewrites nothing."""
+    from evo_agents.hub import kg_graph_rows
+
+    row = ["c", "repo:src/cost.ts", {"code": "const key = `${tenant}\x00${account}`", "\x00key": 1}]
+    text = kg_graph_rows._json(row)
+    assert "\\u0000" not in text and "${tenant}�${account}" in text and '"�key"' in text
+    assert kg_graph_rows._json(json.loads(text)) == text
+    plain = ["c", "repo:src/ok.ts", {"code": "a literal \\u0000 escape is text, not a NUL"}]
+    assert kg_graph_rows._json(plain) == json.dumps(plain, ensure_ascii=False, sort_keys=True)
+
+
+def test_a_source_holding_a_nul_character_builds_its_graph(hub, tmp_path):
+    """A source file holding a NUL byte failed every build of its project once the graph moved into the hub's tables
+    (Postgres refused the jsonb row). The build succeeds, its rows hold U+FFFD, and the graph serves the text."""
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("costs", "The allocation key joins tenant\x00account for each rule."))
+    assert push(hub, laptop).ok
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert latest(hub)["status"] == "succeeded", latest(hub)["error"]
+    rows = [text for (text,) in query(hub.db, select(cast(tables.kg_text_rows.c.row, Text)))]
+    assert any("tenant�account" in text for text in rows)
+    assert not any("\\u0000" in text for text in rows)
+    found = call_tool(hub, "kg_search", {"query": "allocation key joins tenant"})
+    assert found.status_code == 200 and "costs" in found.text
+
+
 def test_a_build_the_worker_stops_is_recorded_and_queued_again(hub, tmp_path, monkeypatch):
     from evo_agents.hub.db import open_pool
     from evo_agents.hub.jobs import JobQueue
