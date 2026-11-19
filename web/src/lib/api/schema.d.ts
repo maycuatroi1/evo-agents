@@ -16008,6 +16008,16 @@ export interface components {
             /** Daily Usd */
             daily_usd: number | null;
             /**
+             * Min Run Usd
+             * @description the least cap of one run as set; null: the hub's default
+             */
+            min_run_usd: number | null;
+            /**
+             * Effective Min Run Usd
+             * @description the floor in effect: min_run_usd, else the hub's default, never above daily_usd; null: not enabled
+             */
+            effective_min_run_usd: number | null;
+            /**
              * Spent Usd
              * @description what its task runs cost in the last 24 hours
              */
@@ -16034,6 +16044,11 @@ export interface components {
              * @description what its task runs may cost in 24 hours; a task past it is refused
              */
             daily_usd: number;
+            /**
+             * Min Run Usd
+             * @description the least cap of one task or question run, above 0 and at most daily_usd; a run is refused when less than this is left of daily_usd. None: keep the one set, else the hub's default $1.00
+             */
+            min_run_usd?: number | null;
             /**
              * Handle
              * @description the handle of the profile the first enable makes; none: the template's, or <template's>-<project> when another agent of the hub holds it. A handle never changes, so a later enable names the profile's or none

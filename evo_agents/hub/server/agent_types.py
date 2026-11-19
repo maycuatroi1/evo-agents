@@ -77,6 +77,14 @@ class AgentTypeIn(BaseModel):
         le=task_runs.MAX_DAILY_USD,
         description=f"what its task runs may cost in {task_runs.BUDGET_HOURS} hours; a task past it is refused",
     )
+    min_run_usd: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            f"the least cap of one task or question run, above 0 and at most daily_usd; a run is refused when less "
+            f"than this is left of daily_usd. None: keep the one set, else the hub's default ${task_runs.DEFAULT_MIN_RUN_USD:.2f}"
+        ),
+    )
     handle: str | None = Field(
         default=None,
         pattern=profiles.HANDLE_PATTERN,
@@ -100,6 +108,10 @@ class AgentType(BaseModel):
     enabled: bool = Field(description="enabled in the project and not turned off: the plugin may hand it tasks")
     run_as: str | None
     daily_usd: float | None
+    min_run_usd: float | None = Field(description="the least cap of one run as set; null: the hub's default")
+    effective_min_run_usd: float | None = Field(
+        description="the floor in effect: min_run_usd, else the hub's default, never above daily_usd; null: not enabled"
+    )
     spent_usd: float = Field(description=f"what its task runs cost in the last {task_runs.BUDGET_HOURS} hours")
     enabled_by: str | None
     enabled_at: datetime | None
@@ -137,6 +149,7 @@ def _rows(project_id: int):
             t.c.run_as.label("run_as_id"),
             runner.c.login.label("run_as"),
             t.c.daily_usd,
+            t.c.min_run_usd,
             enabler.c.login.label("enabled_by"),
             t.c.enabled_at,
             t.c.disabled_at,
@@ -170,6 +183,12 @@ def _view(plugin: str, item: dict, row, spent: float) -> AgentType:
         enabled=row is not None and row.disabled_at is None and row.profile_deleted_at is None,
         run_as=row.run_as if row is not None else None,
         daily_usd=row.daily_usd if row is not None else None,
+        min_run_usd=row.min_run_usd if row is not None else None,
+        effective_min_run_usd=(
+            task_runs.run_floor(row.min_run_usd, row.daily_usd)
+            if row is not None and row.daily_usd is not None
+            else None
+        ),
         spent_usd=spent,
         enabled_by=row.enabled_by if row is not None else None,
         enabled_at=row.enabled_at if row is not None else None,
@@ -331,6 +350,10 @@ async def enable_agent_type(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _admin(access, "enabling an agent type")
+        if body.min_run_usd is not None and body.min_run_usd > body.daily_usd:
+            raise HTTPException(
+                422, f"min_run_usd {body.min_run_usd} is above daily_usd {body.daily_usd}: a run could never be handed"
+            )
         enabled, item = await _contribution(conn, access, plugin, name)
         run_as = await _member(conn, access, body.run_as)
         row = await enabled_type(conn, access.project_id, enabled.id, name, lock=True)
@@ -353,11 +376,15 @@ async def enable_agent_type(
             else await _create_profile(conn, user, access, plugin, item, hub, body.handle)
         )
         values = {"profile_id": profile_id, "run_as": run_as, "daily_usd": body.daily_usd}
+        if body.min_run_usd is not None:  # none: keep the floor already set
+            values["min_run_usd"] = body.min_run_usd
         values |= {"enabled_by": user.user_id, "enabled_at": func.now(), "disabled_at": None}
         statement = pg_insert(t).values(project_id=access.project_id, plugin_id=enabled.id, name=name, **values)
         await conn.execute(statement.on_conflict_do_update(constraint="project_agent_types_name_key", set_=values))
         row = await enabled_type(conn, access.project_id, enabled.id, name)
         said = f" @{row.handle} run-as={row.run_as} daily-usd={body.daily_usd}"
+        if body.min_run_usd is not None:
+            said += f" min-run-usd={body.min_run_usd}"
         await _record(conn, user, access, audit.AGENT_TYPE_ENABLE, _target(access, plugin, name) + said)
         view = _view(plugin, item, row, await type_spend(conn, row.id))
     log.info("agent type enabled", extra={"project": project, "plugin": plugin, "agent_type": name})
