@@ -15,8 +15,8 @@ names, or the answer is 401, as GitLab answers. ``queue`` scripts the answers of
 one a request: a status with a body or headers, or an exception the transport raises (a timeout).
 
 It answers what the hub's client calls, as GitLab does: GET /projects/:id and .../protected_branches/:name; GET and POST
-.../merge_requests, GET .../merge_requests/:iid with .../diffs, .../commits and .../resource_label_events (paged by
-x-next-page), GET .../members/all/:user_id, PUT .../rebase (202: the head becomes ``rebase_to``, or a commit of its own
+.../merge_requests (by state, target branch, labels and updated_after, in order of update when asked), GET
+.../merge_requests/:iid with .../diffs, .../commits and .../resource_label_events (paged by x-next-page), GET .../members/all/:user_id, PUT .../rebase (202: the head becomes ``rebase_to``, or a commit of its own
 when the target branch moved, the merge request then sitting on the target branch's head; with ``rebase_error`` the head
 stays and merge_error says why; ``rebase_reads`` reads of it answer rebase_in_progress first; a rebase that keeps its
 head still starts a new pipeline on it, as a live GitLab did, which ``stale_reads`` reads of it do not show yet:
@@ -80,6 +80,9 @@ class FakeMergeRequest:
     stale_reads: int = 0  # how many reads after a rebase that kept its head still show the head pipeline before it
     stale: int = 0  # reads left that show it
     before: dict | None = None  # that head pipeline
+    created_at: str = "2026-01-01T00:00:00Z"  # ISO 8601 with Z, as GitLab writes it
+    updated_at: str | None = None  # when it last changed: when it merged, else when it opened, when None
+    merged_at: str | None = None
 
     def as_json(self, *, behind: bool = False, checks_ci: bool = False) -> dict:
         """As GitLab answers it; ``checks_ci``: its project merges only once the pipeline of its head ends."""
@@ -107,7 +110,13 @@ class FakeMergeRequest:
             "detailed_merge_status": status or ("ci_still_running" if running else "mergeable"),
             "rebase_in_progress": self.rebasing > 0,
             "merge_error": self.merge_error,
+            "created_at": self.created_at,
+            "updated_at": self.updated(),
+            "merged_at": self.merged_at,
         }
+
+    def updated(self) -> str:
+        return self.updated_at or self.merged_at or self.created_at
 
 
 @dataclass
@@ -304,12 +313,17 @@ class FakeGitLab:
 
     def _list_merge_requests(self, project, query, body):
         wanted = set(filter(None, query.get("labels", "").split(",")))
+        state = query.get("state", "all")
+        listed = list(project.merge_requests.values())
+        if query.get("order_by") == "updated_at":
+            listed.sort(key=lambda mr: mr.updated(), reverse=query.get("sort", "desc") == "desc")
         found = [
             self._view(project, mr)
-            for mr in project.merge_requests.values()
-            if mr.state == query.get("state", mr.state)
+            for mr in listed
+            if state in ("all", mr.state)
             and mr.target_branch == query.get("target_branch", mr.target_branch)
             and wanted <= set(mr.labels)
+            and mr.updated() >= query.get("updated_after", "")
         ]
         return self._page(query, found)
 

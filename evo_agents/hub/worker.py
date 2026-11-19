@@ -95,7 +95,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   time per project and at most one waiting, also queued by each event of the project. The tick is the server's
   (``evo_agents.hub.server.loop.tick``): the ``hub worker`` command hands it down (``HubContext.loop_tick``), as it
   does the release pass, and the job calls it with the workers' GitHub App, which reads the pull requests the plan
-  runs of the Loop merged on GitHub.
+  runs of the Loop merged on GitHub, and with the hub's key of secrets, which opens the forge secret that reads their
+  merge requests on GitLab.
 - ``hub.loop_notices``, every 5 minutes: for each project whose Loop is on, the notice goal_review on the first day of
   a month, and the Loop's part of the morning brief (loop_brief) at 07:00 for a project whose Curator sends none, in
   the Loop's zone, each once (``evo_agents.hub.server.loop.notices``, through ``evo_agents.hub.server.brief``).
@@ -605,7 +606,9 @@ async def loop_tick(context: JobContext, project_id: int) -> dict:
     if tick is None:
         log.warning("no loop tick was handed to this worker: no Loop ticks", extra={"project_id": project_id})
         return {"no_loop_tick": 1}
-    return await tick(found.engine, project_id, github_app=getattr(found, "github_app", None))
+    return await tick(
+        found.engine, project_id, github_app=getattr(found, "github_app", None), sealer=getattr(found, "sealer", None)
+    )
 
 
 @queue.periodic(cron="13 4 * * *")

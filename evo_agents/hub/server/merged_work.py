@@ -6,8 +6,8 @@ answers with those whose work it knows merged; the daemon removes them in that t
 A run counts as merged here when:
 
 - it is a plan run or a run of one step whose plan marks every repo of the run released (``status`` merged or
-  not-needed, ``loop.view.RELEASED``): a person marking it, or the Loop once the pull request of a deliver's plan run
-  merged on GitHub (``loop.github_merges``);
+  not-needed, ``loop.view.RELEASED``): a person marking it, or the Loop once the pull requests of a deliver's plan run
+  merged (``loop.github_merges``);
 - it built or judged a change of the Curator the hub merged (``curator_changes.state`` merged);
 - it made, or judged, a merge request the merge queue on GitLab merged (``merge_queue.merged_at``);
 - it is a task run whose every pull request (``runs.pulls``) GitHub says merged, read with the workers' App and a token

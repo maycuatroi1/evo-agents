@@ -2,7 +2,8 @@
 merge settings and protected branches, the head of a branch, the merge base of two commits, a merge request, its diff
 and commits, who labeled it and the role of a member, and the pipelines and jobs of a commit, open and rebase a merge
 request, merge it with the sha the hub checked, comment on it, play or retry a job, retry a pipeline, and revert commits
-onto a branch of their own with a merge request of them (plan gitlab-merge-queue, criteria a3 to a5).
+onto a branch of their own with a merge request of them (plan gitlab-merge-queue, criteria a3 to a5); and list the
+merge requests updated since a time, which the Loop reads for what a plan run merged (``loop.github_merges``).
 
 GitLab's REST API v4 is at ``https://<host>[:port]/api/v4`` of the origin's host (``project_of``), and a project is
 named by its path, URL-encoded (``group%2Frepo``). The token travels in the PRIVATE-TOKEN header of each request alone:
@@ -24,6 +25,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from urllib.parse import quote, urlsplit
 
 import httpx
@@ -238,6 +240,8 @@ class MergeRequest:
     detailed_merge_status: str | None
     rebase_in_progress: bool
     merge_error: str | None
+    created_at: str | None = None  # ISO 8601, as GitLab writes it
+    merged_at: str | None = None
 
     @classmethod
     def read(cls, f: _Fields) -> MergeRequest:
@@ -263,6 +267,8 @@ class MergeRequest:
             detailed_merge_status=f.text("detailed_merge_status"),
             rebase_in_progress=f.flag("rebase_in_progress"),
             merge_error=f.text("merge_error"),
+            created_at=f.text("created_at"),
+            merged_at=f.text("merged_at"),
         )
 
 
@@ -428,11 +434,15 @@ class GitLab:
         response = await self._call(method, path, doing, **kwargs)
         return _Fields(self._json(response, doing), doing)
 
-    async def _pages(self, path: str, doing: str, params: dict | None = None) -> list[_Fields]:
-        """Every item of the list at ``path``, page by page as GitLab's x-next-page header leads."""
+    async def _pages(
+        self, path: str, doing: str, params: dict | None = None, *, pages: int | None = None
+    ) -> list[_Fields]:
+        """Every item of the list at ``path``, page by page as GitLab's x-next-page header leads, over at most
+        ``pages`` pages (MAX_PAGES when None)."""
+        pages = MAX_PAGES if pages is None else pages
         items: list[_Fields] = []
         page = "1"
-        for _ in range(MAX_PAGES):
+        for _ in range(pages):
             response = await self._call(
                 "GET", path, doing, params={**(params or {}), "per_page": PER_PAGE, "page": page}
             )
@@ -443,7 +453,7 @@ class GitLab:
             page = response.headers.get("x-next-page", "").strip()
             if not page:
                 return items
-        raise GitLabUnavailable(f"GitLab lists more than {MAX_PAGES * PER_PAGE} items while {doing}")
+        raise GitLabUnavailable(f"GitLab lists more than {pages * PER_PAGE} items while {doing}")
 
     @staticmethod
     def _project(project: str) -> str:
@@ -484,6 +494,15 @@ class GitLab:
         found = await self._pages(
             f"{self._project(project)}/merge_requests", f"listing merge requests of {project}", params
         )
+        return [MergeRequest.read(item) for item in found]
+
+    async def updated_merge_requests(self, project: str, since: datetime, *, pages: int) -> list[MergeRequest]:
+        """The merge requests of ``project`` in any state updated at or after ``since``, the newest update first; a
+        list longer than ``pages`` pages is GitLabUnavailable."""
+        after = since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        params = {"state": "all", "updated_after": after, "order_by": "updated_at", "sort": "desc"}
+        doing = f"listing the merge requests of {project} updated since {after}"
+        found = await self._pages(f"{self._project(project)}/merge_requests", doing, params, pages=pages)
         return [MergeRequest.read(item) for item in found]
 
     async def merge_request_diffs(self, project: str, iid: int) -> list[FileDiff]:

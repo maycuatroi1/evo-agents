@@ -18,8 +18,9 @@ P-1; in a project whose solutions skip use cases (``loop.use_cases`` never) CL-1
 claim, a claim of the Problem cell a discover, and a claim of another cell no core work item; the routes name the
 problem of each work item and of a chain. rules/2 goes on from the cursor rules/1 left and makes no work item again.
 
-A deliver whose plan run merged the pull request of its branch on GitHub itself goes to done with no person: the tick
-reads the pull request with the workers' App and marks the repo merged in the plan as the run's dispatcher.
+A deliver whose plan run merged the pull request of its branch on GitHub itself, or one for each of its steps, goes to
+done with no person: the tick reads the pull requests with the workers' App and marks the repo merged in the plan as the
+run's dispatcher; a repo on GitLab a person merges is read the same way with the project's forge secret.
 """
 
 from __future__ import annotations
@@ -43,7 +44,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from evo_agents.hub import hub_events, jobs, loop_jobs, plugin_calls, tables
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.loop import rules, srs_ledger, texts
+from evo_agents.hub.server.loop import github_merges, rules, srs_ledger, texts
+from evo_agents.hub.server.loop.github_merges import CLOSED, MERGED, OPEN, Change
 from evo_agents.hub.server.loop.model import ItemView
 from evo_agents.hub.server.loop.tick import fit_key, tick
 from evo_agents.hub.server.loop.view import use_cases
@@ -52,6 +54,7 @@ from evo_agents.hub.worker import queue
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import test_credentials_api as credentials_api
+from tests.hub import test_merge_gate as merge_gate_tests
 from tests.hub.fake_github import APP_PERMISSIONS, FakePull
 from tests.hub.live import sql
 from tests.hub.test_author_runs import HARNESS
@@ -65,6 +68,7 @@ from tests.hub.test_ba_agent import (  # noqa: F401 (members is a fixture)
     review,
     submitted,
 )
+from tests.hub.test_merge_gate import world  # noqa: F401 (a fixture)
 from tests.hub.test_runs import PROJECT
 from tests.hub.test_strategist_agent import BASE, CANVAS, CARD, SLUG, edit
 from tests.hub.test_value_check import NUMBER_KEY, add_key
@@ -687,32 +691,34 @@ def test_loop_tick_a_goal_with_no_srs_document_and_a_project_with_the_loop_off_a
 
 GITHUB_PLAN = "pantry-reorder"
 GITHUB_BRANCH = "loop/pantry-reorder"
+SINCE = datetime(2026, 11, 19, 8, 0, tzinfo=UTC)
 
 
-def merged_pull(github, number: int, at: datetime, sha: str) -> None:
-    """Pull request ``number`` of GITHUB_BRANCH of evo-agents, merged at ``at`` as merge commit ``sha``."""
+def merged_pull(
+    github, number: int, at: datetime | None, sha: str, branch: str = GITHUB_BRANCH, opened: datetime | None = None
+) -> None:
+    """Pull request ``number`` of ``branch`` of evo-agents, opened at ``opened``, merged at ``at`` as merge commit
+    ``sha``; open still when ``at`` is None."""
+    stamp = "%Y-%m-%dT%H:%M:%SZ"
     github.pulls[(credentials_api.MINE, "evo-agents", number)] = FakePull(
         number,
         credentials_api.MINE,
         "evo-agents",
-        GITHUB_BRANCH,
+        branch,
         "a" * 40,
         "main",
-        state="closed",
-        merged=True,
-        merge_sha=sha,
-        merged_at=at.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        merged_by="owner",
+        state="open" if at is None else "closed",
+        merged=at is not None,
+        merge_sha=None if at is None else sha,
+        merged_at=None if at is None else at.strftime(stamp),
+        merged_by=None if at is None else "owner",
+        created_at=opened.strftime(stamp) if opened else None,
     )
 
 
-def test_loop_tick_a_deliver_whose_plan_run_merged_its_pull_request_on_github_is_done_with_no_person(
-    client, hub, hub_db, github
-):
-    """evo-agents is on GitHub, a repo the queue does not merge. A deliver whose plan run is done waits for a person
-    while no pull request of the run's branch merged since the run was queued (one merged before is not the run's); the
-    tick that reads the run's pull request merged marks the repo merged in the plan as the run's dispatcher and moves
-    the deliver to done in the same tick, and the ticks after it read nothing more."""
+def github_deliver(client, hub, hub_db, github) -> tuple[int, datetime, int]:
+    """The Loop on; plan GITHUB_PLAN on evo-agents, a repo on GitHub, whose plan run on GITHUB_BRANCH, queued an hour
+    ago, is done, and its deliver running: (the run's id, now, the dispatcher's id)."""
     policy(client, hub, {"enabled": True})
     body = {
         "id": GITHUB_PLAN,
@@ -739,33 +745,152 @@ def test_loop_tick_a_deliver_whose_plan_run_merged_its_pull_request_on_github_is
     deliver = {"project_id": project_id(hub_db), "kind": "deliver", "cycle": "development", "engine": "rules/2"}
     deliver |= {"key": f"deliver:{GITHUB_PLAN}", "goal_id": goal, "plan_id": GITHUB_PLAN, "run_id": run_id}
     sql(hub_db, insert(i).values(**deliver, state="running"))
+    return run_id, now, owner
+
+
+def tick_with_app(client, db) -> dict:
+    state = client.app.state
+    return client.portal.call(partial(tick, state.engine, project_id(db), dispatch=None, github_app=state.github_app))
+
+
+def plan_repo(client, hub, plan_id: str = GITHUB_PLAN) -> dict:
+    shown = client.get(f"/v1/projects/{PROJECT}/plans/{plan_id}", headers=hub["owner"])
+    assert shown.status_code == 200, shown.text
+    return shown.json()["body"]["repos"][0]
+
+
+def test_loop_tick_a_deliver_whose_plan_run_merged_its_pull_request_on_github_is_done_with_no_person(
+    client, hub, hub_db, github
+):
+    """evo-agents is on GitHub, a repo the queue does not merge. A deliver whose plan run is done waits for a person
+    while no pull request of the run's branch merged since the run was queued (one merged before is not the run's); the
+    tick that reads the run's pull request merged marks the repo merged in the plan as the run's dispatcher and moves
+    the deliver to done in the same tick, and the ticks after it read nothing more."""
+    run_id, now, owner = github_deliver(client, hub, hub_db, github)
     merged_pull(github, 1, now - timedelta(hours=2), "b" * 40)  # an older pull request of the same branch
 
-    def tick_with_app() -> dict:
-        state = client.app.state
-        return client.portal.call(
-            partial(tick, state.engine, project_id(hub_db), dispatch=None, github_app=state.github_app)
-        )
-
-    def plan_repo() -> dict:
-        shown = client.get(f"/v1/projects/{PROJECT}/plans/{GITHUB_PLAN}", headers=hub["owner"])
-        assert shown.status_code == 200, shown.text
-        return shown.json()["body"]["repos"][0]
-
-    assert "merged" not in tick_with_app()
+    assert "merged" not in tick_with_app(client, hub_db)
     found = item(hub_db, f"deliver:{GITHUB_PLAN}")
     assert (found["state"], found["reason"]) == ("waiting_human", "merge_manual"), "no pull request of the run merged"
-    assert "status" not in plan_repo()
+    assert "status" not in plan_repo(client, hub)
 
     merged_pull(github, 2, now, "c" * 40)
-    assert tick_with_app()["merged"] == 1
+    assert tick_with_app(client, hub_db)["merged"] == 1
     found = item(hub_db, f"deliver:{GITHUB_PLAN}")
     assert (found["state"], found["reason"]) == ("done", None)
-    repo = plan_repo()
+    repo = plan_repo(client, hub)
     assert (repo["status"], repo["merged_at"]) == ("merged", now.date().isoformat())
     assert repo["note"].startswith(f"PR {credentials_api.MINE}/evo-agents#2 (ccccccc), merged ")
     assert repo["note"].endswith(f"read on GitHub by the Loop after plan run #{run_id}")
     p = tables.plans
     (updated_by,) = sql(hub_db, select(p.c.updated_by).where(p.c.plan_id == GITHUB_PLAN))[0]
     assert updated_by == owner, "the plan is written as the run's dispatcher"
-    assert "merged" not in tick_with_app(), "a deliver done is read no more"
+    assert "merged" not in tick_with_app(client, hub_db), "a deliver done is read no more"
+
+
+def test_loop_tick_a_deliver_whose_plan_run_merged_a_pull_request_for_each_step_on_github_is_done_once_none_is_open(
+    client, hub, hub_db, github
+):
+    """The plan run shipped its steps on branches of their own (``<branch>-s<n>``, ``<branch>-<n>``), each with its
+    pull request, and none of its own branch. While one step's pull request is open the deliver waits for a person; once
+    it merged, the tick marks the repo merged with the newest one and names each step's. A branch that only starts with
+    the run's, and a step's pull request merged before the run was queued, count for nothing."""
+    run_id, now, _ = github_deliver(client, hub, hub_db, github)
+    merged_pull(github, 1, now - timedelta(minutes=40), "1" * 40, f"{GITHUB_BRANCH}-s1", now - timedelta(minutes=50))
+    merged_pull(github, 2, None, "", f"{GITHUB_BRANCH}-s2", now - timedelta(minutes=30))
+    merged_pull(github, 3, now - timedelta(minutes=20), "3" * 40, f"{GITHUB_BRANCH}-docs", now - timedelta(minutes=25))
+    merged_pull(github, 4, now - timedelta(minutes=20), "4" * 40, f"{GITHUB_BRANCH}x-3", now - timedelta(minutes=25))
+    merged_pull(github, 5, now - timedelta(hours=2), "5" * 40, f"{GITHUB_BRANCH}-s0", now - timedelta(hours=3))
+
+    assert "merged" not in tick_with_app(client, hub_db), "the second step's pull request is open"
+    found = item(hub_db, f"deliver:{GITHUB_PLAN}")
+    assert (found["state"], found["reason"]) == ("waiting_human", "merge_manual")
+
+    merged_pull(github, 2, now, "2" * 40, f"{GITHUB_BRANCH}-s2", now - timedelta(minutes=30))
+    assert tick_with_app(client, hub_db)["merged"] == 1
+    assert item(hub_db, f"deliver:{GITHUB_PLAN}")["state"] == "done"
+    repo = plan_repo(client, hub)
+    assert (repo["status"], repo["merged_at"]) == ("merged", now.date().isoformat())
+    mine = credentials_api.MINE
+    assert repo["note"].startswith(
+        f"PRs {mine}/evo-agents#1, #2 of the steps of {GITHUB_BRANCH}, the last #2 (2222222)"
+    )
+    assert repo["note"].endswith(f"read on GitHub by the Loop after plan run #{run_id}")
+
+
+def step(number: int, branch: str, state: str, opened: float, merged: float | None = None) -> Change:
+    """A change of ``branch``, opened and merged ``opened`` and ``merged`` hours after SINCE."""
+    at = None if merged is None else SINCE + timedelta(hours=merged)
+    return Change(number, branch, state, SINCE + timedelta(hours=opened), at, f"{number:040x}")
+
+
+@pytest.mark.parametrize(
+    ("changes", "number", "steps"),
+    [
+        ([step(1, "b-s1", MERGED, 1, 2), step(2, "b-s2", MERGED, 1, 3), step(3, "b-s3", CLOSED, 1)], 2, (1, 2)),
+        ([step(1, "b-1", MERGED, 1, 2), step(2, "b-2", OPEN, 1)], None, None),
+        ([step(1, "b-s1", MERGED, -3, -2)], None, None),
+        ([step(1, "b-s1", MERGED, -3, -2), step(2, "b-s2", MERGED, 1, 2)], 2, (2,)),
+        (
+            [step(1, "bx-1", MERGED, 1, 2), step(2, "b-docs", MERGED, 1, 2), step(3, "b-s1-fix", MERGED, 1, 2)],
+            None,
+            None,
+        ),
+        ([step(1, "b-s1", MERGED, 1, 2), step(2, "bx-2", OPEN, 1), step(3, "b-s9", OPEN, -5)], 1, (1,)),
+        ([step(7, "b", MERGED, 1, 4), step(1, "b-s1", OPEN, 1)], 7, ()),
+    ],
+    ids=["all-merged", "one-open", "merged-before", "one-before", "prefix-only", "others-open", "own-branch"],
+)
+def test_loop_tick_settled_reads_the_pull_requests_of_a_run_branch_and_of_its_steps(changes, number, steps):
+    """The run on branch b merged when b's own pull request merged since, or else when its step branches (b-<n>,
+    b-s<n>) opened or merged since are merged, at least one since and none open: the newest one, naming each."""
+    found = github_merges.settled(changes, "b", SINCE)
+    assert (found and found.number, found and found.steps) == (number, steps)
+
+
+def test_loop_tick_a_step_merge_request_on_gitlab_marks_a_repo_a_person_merges(world):
+    """lumen-kb-docs is on GitLab in mode off, a repo a person merges. Its merge requests are read with the project's
+    forge secret: a step's merge request still open leaves it, and once every step's merged the repo is marked merged in
+    the plan, the note naming each."""
+    owner_headers = world.headers["owner"]
+    merge_gate_tests.put_policy(world.client, owner_headers, {})
+    body = merge_gate_tests.plan_body(steps_done=True)
+    plan_path = f"/v1/projects/{PROJECT}/plans/{merge_gate_tests.PLAN_ID}"
+    pushed = world.client.put(plan_path, json={"body": body}, headers=owner_headers)
+    assert pushed.status_code == 200, pushed.text
+    now = datetime.now(UTC)
+    owner = sql(world.db, select(tables.users.c.id).where(tables.users.c.login == credentials_api.OWNER))[0][0]
+    branch, kb = merge_gate_tests.BRANCH, merge_gate_tests.REPO
+    r, i = tables.runs, tables.loop_items
+    run = {"project_id": project_id(world.db), "kind": "plan", "plan_id": merge_gate_tests.PLAN_ID, "title": "Report"}
+    run |= {"plan_revision": pushed.json()["revision"], "dispatched_by": owner, "requested_runtime": "claude-code"}
+    run |= {"runtime": "claude-code", "mode": "headless", "approval": "auto", "timeout_s": 3600, "state": "done"}
+    run |= {"queued_at": now - timedelta(hours=1), "finished_at": now, "repos": [{"repo": kb, "branch": branch}]}
+    run |= {"worker_id": world.worker["id"], "leased_at": now}
+    run_id = sql(world.db, insert(r).values(run).returning(r.c.id))[0][0]
+    deliver = {"project_id": project_id(world.db), "kind": "deliver", "cycle": "development", "engine": "rules/2"}
+    deliver |= {"key": "deliver:lumen-report", "plan_id": merge_gate_tests.PLAN_ID, "run_id": run_id}
+    sql(world.db, insert(i).values(**deliver, state="waiting_human", reason="merge_manual"))
+    stamp = "%Y-%m-%dT%H:%M:%SZ"
+    opened = (now - timedelta(minutes=30)).strftime(stamp)
+    world.fake.add_merge_request(
+        world.project, f"{branch}-1", state="merged", created_at=opened, merged_at=opened, merge_commit_sha="d" * 40
+    )
+    second = world.fake.add_merge_request(world.project, f"{branch}-2", created_at=opened)
+
+    def settle() -> int:
+        state = world.client.app.state
+        engine, pid = state.engine, project_id(world.db)
+        return world.client.portal.call(
+            partial(github_merges.settle, engine, pid, None, state.sealer, world.fake.transport())
+        )
+
+    assert settle() == 0, "the second step's merge request is open"
+    second.state, second.merged_at, second.merge_commit_sha = "merged", now.strftime(stamp), "e" * 40
+    assert settle() == 1
+    shown = world.client.get(plan_path, headers=owner_headers).json()["body"]["repos"][0]
+    assert (shown["status"], shown["merged_at"]) == ("merged", now.date().isoformat())
+    assert shown["note"].startswith(
+        f"MRs {merge_gate_tests.PATH}!1, !2 of the steps of {branch}, the last !2 (eeeeeee)"
+    )
+    assert shown["note"].endswith(f"read on GitLab by the Loop after plan run #{run_id}")
