@@ -77,7 +77,7 @@ from evo_agents.worker.browser import logins as browser_logins
 from evo_agents.worker.browser import session as browser_session
 from evo_agents.worker.credentials import config_env, credential_asks
 from evo_agents.worker.runner import authorship
-from evo_agents.worker.runner.common import RunFailed, log
+from evo_agents.worker.runner.common import RunFailed, cut, log
 from evo_agents.worker.runner.limits import Limits
 from evo_agents.worker.runner.terminal import Terminal
 from evo_agents.worker.runner.transitions import running_from, why_stopped
@@ -92,6 +92,8 @@ if TYPE_CHECKING:
 API_KEY = "ANTHROPIC_API_KEY"  # left out of the agent of a run of the Curator on Claude Code (plan decision 14)
 NOTE_GROUP_LOOKS = 20  # events after its start at which an adapter is asked again for its agent's process group
 STOP_GRACE = 30.0  # seconds an interrupted agent has to end its events
+START_TRIES = 2  # starts of an agent that does not start (``Agent.started``)
+START_PAUSE = 20.0  # seconds between them
 TMP_VARS = ("TMPDIR", "TMP", "TEMP")  # set to the run's own temporary directory (``tmp_dir``)
 # What the agent is told when a person hands its session back.
 HANDBACK_PROMPT = (
@@ -635,6 +637,30 @@ class Agent:
         if browser is not None:
             await browser.close(0 if self.run.daemon.hard_stop.is_set() else browser_session.STOP_GRACE)
 
+    async def started(self, cls, context: RunContext):
+        """An adapter of ``cls`` whose agent started; one that did not is started again once, START_PAUSE later, as a
+        loaded machine fails a start now and then (``Control request timeout: initialize``: seven chat runs of
+        evo-worker-01 failed so on 2026-11-15 and 16, none run again). A failed start already closed what it opened.
+        Raises RunFailed with the cause ``runtime`` when the last try failed too, or at once for a refused profile."""
+        run = self.run
+        for attempt in range(1, START_TRIES + 1):
+            adapter = cls(context)
+            self.adapter = adapter
+            try:
+                await adapter.start()
+                return adapter
+            except ProfileRefused as exc:
+                run.note(f"Agent profile: {exc}; the agent did not start.", cause="runtime")
+                raise RunFailed(f"agent profile: {exc}", cause="runtime") from None
+            except Exception as exc:
+                said = f"{type(exc).__name__}: {exc}"
+                log.warning("agent did not start", extra={"run_id": run.id, "attempt": attempt}, exc_info=True)
+                if attempt == START_TRIES or run.daemon.hard_stop.is_set():
+                    raise RunFailed(f"{run.runtime} did not start: {said}", cause="runtime") from None
+                run.note(f"{run.runtime} did not start ({cut(said, 300)}); it starts again in {START_PAUSE:.0f} s.")
+                await asyncio.sleep(START_PAUSE)
+        raise AssertionError("unreachable")
+
     async def headless(self, cls, prompt: str, session_id: str | None) -> Outcome:
         """The agent headless, on a new session or going on with ``session_id``, until its events end."""
         run = self.run
@@ -646,18 +672,9 @@ class Agent:
         lacking = cls.environment_refusal(context)
         if lacking:
             raise RunFailed(lacking, cause="credentials")
-        adapter = cls(context)
-        self.adapter = adapter
         self.phase = "headless"
         run.inbox.waits = False
-        try:
-            await adapter.start()
-        except ProfileRefused as exc:
-            run.note(f"Agent profile: {exc}; the agent did not start.", cause="runtime")
-            raise RunFailed(f"agent profile: {exc}", cause="runtime") from None
-        except Exception as exc:
-            log.warning("agent did not start", extra={"run_id": run.id}, exc_info=True)
-            raise RunFailed(f"{run.runtime} did not start: {type(exc).__name__}: {exc}") from None
+        adapter = await self.started(cls, context)
         self.running = True
         self.model_asked = self.asked_model(context)
         run.agent_starts()
