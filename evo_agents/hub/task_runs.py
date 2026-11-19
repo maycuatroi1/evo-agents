@@ -45,6 +45,8 @@ RESULT_EVENT = "task.result"  # the event a plugin gets when a task run of its a
 RESULT_STATES = ("done", "failed", "cancelled")  # the ends a task has; a lost run's next attempt goes on with it
 MAX_DAILY_USD = 1000.0  # the highest cap of cost per day an admin sets for an agent type
 BUDGET_HOURS = 24  # a rolling window, so no time zone is chosen
+DEFAULT_MIN_RUN_USD = 1.0  # the floor of one run's cap for an agent type whose min_run_usd is NULL
+
 TIMEOUT_MIN = LONGEST_TIMEOUT_MIN  # the agent time of one task run, where a hung agent fails
 MAX_TASK_BYTES = 16 * 1024  # the task's text (runs.request, as schema 0020 bounds it)
 MAX_TITLE_CHARS = 200
@@ -73,6 +75,11 @@ def is_task_branch(name: str | None) -> bool:
 def task_of(branch: str | None) -> int | None:
     """The id of the run the dispatch of the task on ``branch`` made, or None for a branch of no task."""
     return int(branch[len(BRANCH_PREFIX) :]) if is_task_branch(branch) else None
+
+
+def run_floor(min_run_usd: float | None, daily_usd: float) -> float:
+    """The floor in effect for one run of an agent type: its ``min_run_usd``, else the hub's default, never above ``daily_usd``."""
+    return min(DEFAULT_MIN_RUN_USD if min_run_usd is None else min_run_usd, daily_usd)
 
 
 def run_budget(left_usd: float, minutes: int | None = None) -> dict:
