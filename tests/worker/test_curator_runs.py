@@ -384,6 +384,21 @@ def test_watchdog_stops_a_builder_whose_worktree_touches_a_protected_path(machin
     assert machine.origin_rev("alpha", f"refs/heads/{BRANCH}") is None  # nothing pushed
 
 
+def test_a_builder_is_told_the_protected_paths_before_it_starts(machine):  # noqa: F811
+    machine.scenarios({f"plan:{PLAN}": [{"result": {"summary": "Nothing to do."}}]})
+    found = {}
+
+    async def body(hub, daemon):
+        run_id = hub.queue_plan_run(PLAN, [{"repo": "alpha", "branch": BRANCH}], **builder_spec())
+        await hub.wait_state(run_id, "done", "failed", timeout=60)
+        found.update(run=run_id)
+
+    with_daemon(machine, body, plan=curator_plan())
+    (start,) = [item for item in machine.starts() if item["run"] == found["run"]][:1]
+    assert "# Paths the charter protects" in start["prompt"]
+    assert "`curator.yaml`, `.github/workflows/**`" in start["prompt"] and "category scope" in start["prompt"]
+
+
 def test_watchdog_stops_a_run_of_the_curator_past_its_cost_cap(machine):  # noqa: F811
     never = machine.tmp / "never"
     machine.scenarios({"review": [{"samples": True}, {"wait_for": str(never)}]})
