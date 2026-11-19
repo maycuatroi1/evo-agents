@@ -1,5 +1,6 @@
-"""The grace a hub worker gives its running jobs after SIGTERM: worker-kg waits for the build a deploy would otherwise
-throw away, the other workers keep the short one, and the container waits longer than either."""
+"""The grace a hub worker gives its running jobs after SIGTERM: short for every worker, worker-kg too, since a deploy
+starts the recreated api only once every old container stopped (9 minutes of hub down on 2026-11-19 at a grace of
+540 s), and the container waits longer than the grace."""
 
 import asyncio
 import re
@@ -26,7 +27,7 @@ def graces_passed(monkeypatch, queues):
 
 
 def test_shutdown_grace_of_the_kg_worker_is_the_kg_grace_and_the_others_keep_25_s(monkeypatch):
-    assert worker.KG_SHUTDOWN_GRACE > 440  # the median build
+    assert worker.KG_SHUTDOWN_GRACE <= 30  # a deploy's hub downtime, not the median build (about 440 s)
     assert graces_passed(monkeypatch, [jobs.KG_QUEUE]) == [([jobs.KG_QUEUE], worker.KG_SHUTDOWN_GRACE)]
     every = graces_passed(monkeypatch, None)
     assert len(every) == 4 and {grace for _, grace in every} == {worker.SHUTDOWN_GRACE} == {25.0}
@@ -36,4 +37,4 @@ def test_shutdown_grace_of_the_kg_worker_is_the_kg_grace_and_the_others_keep_25_
 def test_shutdown_grace_of_worker_kg_is_below_its_container_stop_grace_period():
     service = re.split(r"\n  [\w-]+:\n", COMPOSE.read_text().split("\n  worker-kg:\n", 1)[1], maxsplit=1)[0]
     period = re.search(r"^    stop_grace_period: (\d+)s$", service, re.MULTILINE)
-    assert period and int(period.group(1)) > worker.KG_SHUTDOWN_GRACE
+    assert period and worker.KG_SHUTDOWN_GRACE < int(period.group(1)) <= 60
