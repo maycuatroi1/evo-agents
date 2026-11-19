@@ -231,3 +231,86 @@ def test_what_a_plan_does_not_deliver_does_not_hold_a_use_case(client, hub, hub_
     assert built(hub_db) == ["UC ORD-1", "UC ORD-2"], "an admin's undelivered wins over the plan that names it"
     (waiting,) = held_on_board(client, hub["owner"])
     assert waiting["refs"] == {"goal": "G-1", "plan": "done-before", "use_cases": "UC RET-1"}
+
+
+@needs_pg
+def test_builds_a_plan_written_after_them_covers_end_with_one_deliver_of_that_plan(client, hub, hub_db):
+    """Hub M1, project m1-msp, work items 200, 201, 211 and 217 (2026-11-19): the Loop made builds, then a member's
+    author run wrote a plan for the same use cases before any build's author run ran. A plan that names only some of a
+    build's use cases, or one abandoned, covers nothing; the plan that names every use case of both builds ends both
+    with its one deliver, and the use cases of both are delivered through it."""
+    from evo_agents.hub.server.loop import covering
+
+    project, document, goal_id = approved(client, hub, hub_db)
+    confirm(hub_db, document, goal_id)
+    policy(client, hub, {"enabled": True})
+    ticked(client, project)
+    assert built(hub_db) == ["UC ORD-1", "UC ORD-2", "UC RET-1"]
+    i = tables.loop_items
+    builds = dict(sql(hub_db, select(i.c.id, i.c.detail).where(i.c.kind == "build")))
+    orders = next(id_ for id_, detail in builds.items() if len(detail["backlog"]["use_cases"]) == 2)
+    returns = next(id_ for id_ in builds if id_ != orders)
+    pushed(client, hub, "partial", what="Place an order: UC ORD-1.")
+    pushed(client, hub, "dropped", what="Return a book: UC RET-1.")
+    gone = client.post(f"/v1/projects/{PROJECT}/plans/dropped/abandon", json={"reason": "no"}, headers=hub["owner"])
+    assert gone.status_code == 200, gone.text
+    assert run(client, covering.covering, project, [orders, returns]) == {}
+    ticked(client, project)
+    assert sql(hub_db, select(i.c.state).where(i.c.kind == "build")) == [("queued",), ("queued",)]
+    pushed(client, hub, what="Orders and returns: UC ORD-1, UC ORD-2 (BR ORD2-1) and UC RET-1.")
+    found = run(client, covering.covering, project, [orders, returns])
+    assert found == {orders: covering.Cover(PLAN), returns: covering.Cover(PLAN)}
+    pushed(client, hub, "twin", what="UC RET-1 again.")
+    assert run(client, covering.covering, project, [returns]) == {}, "two plans cover it: a person adopts one"
+    client.post(f"/v1/projects/{PROJECT}/plans/twin/abandon", json={"reason": "twin"}, headers=hub["owner"])
+    ticked(client, project)
+    rows = sql(hub_db, select(i.c.id, i.c.state, i.c.plan_id).where(i.c.kind == "build").order_by(i.c.id))
+    assert [(state, plan) for _, state, plan in rows] == [("done", PLAN), ("done", PLAN)]
+    row = deliver(hub_db)
+    assert (row.key, row.plan_id, row.state, row.parent_id) == (f"deliver:{PLAN}", PLAN, "queued", min(builds))
+    assert states(client, document) == dict.fromkeys(("uc ord-1", "uc ord-2", "uc ret-1"), "delivering")
+    sql(hub_db, update(i).where(i.c.id == row.id).values(state="done", finished_at=func.now()))
+    ticked(client, project)
+    assert states(client, document) == dict.fromkeys(("uc ord-1", "uc ord-2", "uc ret-1"), "delivered")
+    ledger = run(client, delivery.read, document)
+    assert {ledger[key].evidence["plan"] for key in ledger} == {PLAN}
+    assert ledger["uc ret-1"].evidence["deliver"] == row.id, "the second build is read through the plan's deliver"
+
+
+@needs_pg
+def test_the_loop_ends_an_author_run_that_wrote_no_plan_when_a_plan_covers_its_build(client, hub, hub_db):
+    """The author run of a build whose turn ends with no plan of its own and no decision open: a question while no
+    plan covers the build, ended by the hub (as one that put a plan) once a plan names every use case it holds."""
+    from evo_agents.hub.server.loop import author_mode
+    from evo_agents.hub.server.loop.model import DISPATCHED
+    from evo_agents.hub.server.runs.service.dispatch import insert_run
+
+    project, document, goal_id = approved(client, hub, hub_db)
+    confirm(hub_db, document, goal_id)
+    policy(client, hub, {"enabled": True})
+    ticked(client, project)
+    i, r, e = tables.loop_items, tables.runs, tables.run_events
+    orders = next(
+        id_
+        for id_, detail in sql(hub_db, select(i.c.id, i.c.detail).where(i.c.kind == "build"))
+        if len(detail["backlog"]["use_cases"]) == 2
+    )
+    values = {"kind": "author", "project_id": project, "title": "Loop build", "request": "Write the plan"}
+    values |= {"dispatched_by": sql(hub_db, select(tables.users.c.id).order_by(tables.users.c.id).limit(1))[0][0]}
+    values |= {"requested_runtime": "claude-code", "runtime": "claude-code", "mode": "headless", "approval": "auto"}
+    values |= {"timeout_s": 3900, "repos": [{"repo": "evo-agents-harness", "branch": None}]}
+
+    async def made() -> int:
+        async with client.app.state.engine.begin() as conn:
+            return await insert_run(conn, values)
+
+    run_id = client.portal.call(made)
+    row = {"item_id": orders, "kind": DISPATCHED, "state": "running", "detail": {}, "run_id": run_id}
+    sql(hub_db, tables.loop_item_events.insert().values(**row))
+    assert run(client, author_mode.turn_ended, run_id) is False, "no plan of its own, none covering: a question"
+    assert sql(hub_db, select(r.c.finish_requested_at).where(r.c.id == run_id)) == [(None,)]
+    pushed(client, hub, what="Orders: UC ORD-1 and UC ORD-2.")
+    assert run(client, author_mode.turn_ended, run_id) is True
+    assert sql(hub_db, select(r.c.finish_requested_at).where(r.c.id == run_id))[0][0] is not None
+    texts = [text for (text,) in sql(hub_db, select(e.c.body["text"].astext).where(e.c.run_id == run_id))]
+    assert any(f"plan {PLAN} on the hub names every use case of its build" in text for text in texts), texts

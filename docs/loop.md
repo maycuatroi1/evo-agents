@@ -200,6 +200,16 @@ names the document; the Loop reads what is approved and not yet delivered and ha
   the goal), and `hub.loop_notices` tells the goal's owner (its admins when it has none) once, with the
   `evo-agents hub loop adopt` line for the plan. Adopting it, or an admin's `--set CODE=undelivered`, lets the Loop go
   on.
+- **A plan written after the build.** A build holds its use cases from the tick that made it, so a plan written later
+  for the same use cases (a member's author run, a person) holds no group: the build is made already. Such a plan
+  covers the build when it names every use case the build holds (as a whole word, its `non_goals` left out), it is
+  active or completed and neither abandoned nor superseded, and no work item of the Loop has it but builds and a deliver
+  not cancelled; when several cover a build, the one a deliver of the Loop has wins, and when that leaves more than one,
+  none does. A queued build that a plan covers goes `done` with a deliver of that plan and gets no author run; a build
+  whose author run reused the plan and wrote none ends the same way instead of failing; the hub ends that author run
+  once its turn leaves no decision open, as it ends one that put a plan (`hub/server/loop/covering.py`). Two builds that
+  one plan covers share its one deliver: the ledger reads the second through the deliver of its plan. Before this
+  (hub M1, 2026-11-19) such a build waited for a person with `author_question` and held its use cases with no deliver.
 - **Where they run.** Author and plan runs of the Loop go to a ready node of the pool of the project's default agent (a
   selector `pool=<name>`, no pinned worker); a plan's `worker_labels` narrow its plan run further. A deliver no node
   fits stays queued with the reason `worker`.
@@ -301,8 +311,9 @@ credential and the project's default agent profile, linked to the frame task, an
 that cannot take the run, a harness for which no project of the worker's owner lists an origin (the worker's preflight
 would fail the author run), or a plan that cannot run (a repo of its steps the project lists no origin for, among
 others) leaves the work item queued with `worker` and the hub's why. An author run in Loop mode is ended by the hub once
-its plan is on the hub and its turn left no decision open; one that asks a question waits for its owner as any author
-run does (`author_question`). The merge requests of a plan run go through the merge queue (`docs/merge-queue.md`) as any
+its plan is on the hub and its turn left no decision open, or a plan on the hub covers its build (section SRS là nguồn,
+"A plan written after the build"); one that asks a question waits for its owner as any author run does
+(`author_question`). The merge requests of a plan run go through the merge queue (`docs/merge-queue.md`) as any
 plan run's do: the Loop merges nothing itself. When a repo of the project is in merge mode `auto`, the author run's request
 says so: the queue opens the merge request, runs its pipeline and merges it, so each step ends at its branch pushed with
 its local tests passing and no step waits for a pipeline, and no step edits CI configuration (`.gitlab-ci.yml`,
