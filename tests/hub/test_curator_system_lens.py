@@ -21,6 +21,9 @@ from datetime import date, datetime, timedelta
 from importlib import import_module
 
 import pytest
+
+pytest.importorskip("pydantic", reason="needs the hub-server extra, evo-ak[hub-server]")
+
 from pydantic import ValidationError
 
 from evo_agents.hub import review as review_model
