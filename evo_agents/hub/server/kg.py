@@ -768,7 +768,9 @@ async def snapshot_view(state, project_id: int, graphs: list[BuiltGraph], ceilin
     """(the project's snapshot as ``ceiling``'s audience reads it, the build of ``graphs`` it was made of), for
     ``kg_graph.reading``; None when the app keeps none, or none of a build of ``graphs``."""
     snapshots = getattr(state, "kg_snapshots", None)
-    held = None if snapshots is None else await snapshots.current(project_id, graphs[0].build_id)
+    held = None if snapshots is None else await snapshots.ready(project_id, graphs[0].build_id)
+    if held is None and snapshots is not None and snapshots.loading(project_id) is not None:
+        raise HTTPException(503, snapshots.unready(project_id))
     graph = next((g for g in graphs if held is not None and g.build_id == held.build_id), None)
     if held is None or graph is None:
         return None
