@@ -1051,6 +1051,20 @@ def test_claude_completes_a_run_that_wrote_its_result_when_its_time_cap_ends_a_w
     assert outcome.completed and outcome.summary == "DONE" and outcome.cap is None and outcome.error is None
 
 
+def test_claude_hands_a_command_the_cli_stopped_and_the_sessions_end_to_its_reaper(tmp_path):
+    """A command the CLI stops can leave children in process groups of their own, as turbo's typechecks are
+    (``task_reaper``): the adapter gives the reaper each stopped command once, though the CLI reports the stop twice,
+    and every command at the end of the session."""
+    behaviour = _finished_with_a_server_left(tmp_path / "worktree" / runs.RESULT_FILE)
+    adapter = _claude(tmp_path, behaviour, timers={**SLOW, "background_wait": None, "finished_wait": 0.1})
+    adapter.reaper.enabled = True
+    stopped, ended = [], []
+    adapter._reap_later = stopped.append
+    adapter.reaper.reap_all = lambda: ended.append(True) or 0
+    events, outcome = asyncio.run(_collect(adapter))
+    assert outcome.completed and stopped == [BG_TASK] and ended == [True]
+
+
 def test_claude_with_no_time_cap_ends_a_wait_for_a_background_command_after_the_result_at_the_finished_wait(tmp_path):
     behaviour = _finished_with_a_server_left(tmp_path / "worktree" / runs.RESULT_FILE)
     adapter = _claude(tmp_path, behaviour, timers={**SLOW, "background_wait": None, "finished_wait": 0.3})

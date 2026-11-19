@@ -65,6 +65,10 @@ here.
   cap, ``finished_wait`` does (a server it forgot to stop, say).
   A decision of a plan run left open is the daemon's, not the adapter's: the turn ends, and the daemon waits for the
   answer and hands it to a new adapter in the same session (``evo_agents.worker.adapter``).
+- A command the CLI stops (TaskStop, or ``task_updated`` ``killed``) can leave children that run in process groups of
+  their own, as turbo's are: ``TaskReaper`` (``task_reaper``) notes the processes under each command's shell while it
+  runs and kills what is left of it once the CLI reports it stopped, and what any command left at the end of the
+  session.
 - ``stop_at_turn_boundary`` ends the input stream at once, so the turn in progress finishes and the CLI exits, a
   background command or not; ``interrupt`` sends the SDK's interrupt, which stops the turn and its tools, then ends
   it.
@@ -200,6 +204,7 @@ from evo_agents.worker.runtimes.common import (
     with_peak,
     write_launcher,
 )
+from evo_agents.worker.runtimes.task_reaper import REAP_AFTER, SNAPSHOT_EVERY, TaskReaper
 
 log = logging.getLogger("evo_agents.worker")
 
@@ -448,6 +453,9 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._dir: Path | None = None
         self.options = None
         self.background = Background()
+        self.reaper = TaskReaper(self.group_pid)  # what is left of a command the CLI stopped (task_reaper)
+        self._noting: asyncio.Task | None = None
+        self._reaping: set[asyncio.Task] = set()
         self._turn_open = False  # a turn of the agent runs, or a message is on its way to start one
         self._ended_in_turn = False  # a background command ended during the turn that runs
         self._unseen: list[str] = []  # background tasks that ended while no turn ran
@@ -550,6 +558,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._client = self.make_client(self.options)
         self._input_open = True
         await self._client.connect(prompt=self._input())
+        self._noting = asyncio.create_task(self._note_tasks())
         await self._check_servers()
         self._turn_open = True
         await self._client.query(self.context.prompt)
@@ -591,6 +600,9 @@ class ClaudeCodeAdapter(QueueAdapter):
                 self._peak = larger(self._peak, context_of(message))
                 self._first = self._first or first_request_of(message)
                 ended = self.background.see(message)
+                if isinstance(message, sdk.SystemMessage):
+                    for task in self.reaper.see(message.subtype, message.data):
+                        self._reap_later(task)
                 if isinstance(message, sdk.ResultMessage):
                     self._results.append(message)
                     await self._turn_ended()
@@ -757,9 +769,48 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._disarm()
         self._input_open = False
         self._end_input.set()
+        for job in (self._noting, *self._reaping):
+            if job is not None:
+                job.cancel()
         if self._client is not None:
             await self._client.disconnect()
 
     def _cleanup(self) -> None:
+        with contextlib.suppress(Exception):  # after the CLI and its process group: what left them (task_reaper)
+            killed = self.reaper.reap_all()
+            if killed:
+                log.info("killed what the session's commands left running", extra={"processes": killed})
         if self._dir is not None:
             shutil.rmtree(self._dir, ignore_errors=True)
+
+    async def _note_tasks(self) -> None:
+        """Note the processes of the commands the CLI runs, every SNAPSHOT_EVERY seconds (``task_reaper``)."""
+        while True:
+            await asyncio.sleep(SNAPSHOT_EVERY)
+            if self.reaper.running:
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(self.reaper.note)
+
+    def _reap_later(self, task: str) -> None:
+        job = asyncio.create_task(self._reap(task))
+        self._reaping.add(job)
+        job.add_done_callback(self._reaping.discard)
+
+    async def _reap(self, task: str) -> None:
+        """Kill what is left of the command ``task`` the CLI stopped, REAP_AFTER seconds after (``task_reaper``)."""
+        try:
+            await asyncio.to_thread(self.reaper.note)  # what still runs under its shell, before it goes
+            waited = 0.0
+            for index, after in enumerate(REAP_AFTER):
+                await asyncio.sleep(after - waited)
+                waited = after
+                killed = await asyncio.to_thread(self.reaper.reap, task, index == len(REAP_AFTER) - 1)
+                if killed:
+                    log.info(
+                        "killed what was left of a command the CLI stopped",
+                        extra={"runtime": self.runtime, "task": task, "processes": killed},
+                    )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.warning("killing what was left of a stopped command failed", extra={"task": task}, exc_info=True)
