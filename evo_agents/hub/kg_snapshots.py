@@ -1,7 +1,10 @@
 """The api's in-RAM graphs (plan kg-centralized-on-hub, criterion a4): per project, the snapshot
 (``evo_agents.kg.snapshot.Snapshot``) of the main branch as the hub's tables keep it (``kg_graph_rows.read_graph``).
 
-A project's snapshot is loaded on its first read and kept. A build that writes the tables notifies ``kg_graph``
+A project's snapshot is loaded on its first read and kept; a tool call waits FIRST_WAIT for that first load and is then
+told the graph is loading (``ready``), as a large graph takes minutes and an agent's MCP call gives up after 120 s. Once
+the api opens, it loads the snapshots of the WARM_PROJECTS projects searched most in the last WARM_DAYS (``warm``), so
+the first call after a deploy finds them held. A build that writes the tables notifies ``kg_graph``
 (``kg_graph_rows.notify``); the coordinator, subscribed on the process's listener (``evo_agents.hub.server.listen``),
 then builds the project's new snapshot in a background task and swaps it in with one assignment: a reader holds the
 snapshot it was given until it is done. A reader that found a build newer than the snapshot held waits up to
@@ -21,9 +24,10 @@ import os
 import time
 import weakref
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import db, kg_branches, tables
@@ -319,6 +323,10 @@ async def held_for(conn: AsyncConnection, project_id: int, build_id: int) -> Hel
 HELD_PROJECTS = 16  # projects whose snapshot the api keeps in memory, the most recently read; another is loaded again
 HELD_BRANCHES = 8  # draft branches whose snapshot the api keeps, the most recently read
 FRESH_WAIT = 5.0  # seconds a read that found a newer build waits for its snapshot before the older one answers
+FIRST_WAIT = 20.0  # seconds a tool call waits for the first load of a project's snapshot before it is told to retry
+WARM_DELAY = 30.0  # seconds after the api opens before it loads the snapshots of the projects searched most
+WARM_PROJECTS = 2  # how many: a large graph is gigabytes of the api's memory
+WARM_DAYS = 7  # the searches counted (kg_query_labels)
 
 
 def _over() -> bool:
@@ -345,6 +353,7 @@ class SnapshotCoordinator:
         self._held: dict[int, Held] = {}
         self._loading: dict[int, asyncio.Task] = {}
         self._began: dict[int, float] = {}  # project: when its load in ``_loading`` began, on the loop's clock
+        self._took: dict[int, float] = {}  # project: how many seconds its last finished load took
         self._tasks: set[asyncio.Task] = set()
         self._branches: dict[tuple[int, str], tuple[tuple, Held]] = {}  # (project, branch): (its key, snapshot)
         self._asked: dict[int, int] = {}  # project: the newest build ``current`` loaded again for
@@ -395,6 +404,80 @@ class SnapshotCoordinator:
         with contextlib.suppress(Exception):  # a slow load times out, a failed one is logged by ``_done``
             await asyncio.wait_for(asyncio.shield(task), wait)
         return self._held.get(project_id, held)
+
+    async def ready(self, project_id: int, build_id: int, wait: float | None = None) -> Held | None:
+        """``current`` for a tool call: a project with no snapshot in memory waits up to ``wait`` seconds (FIRST_WAIT)
+        for its first load and then answers None while the load goes on (``loading``, ``unready``), instead of holding
+        the call for the minutes a large graph takes, past the 120 s an agent's MCP call waits."""
+        if project_id in self._held:
+            return await self.current(project_id, build_id)
+        if self._listener is not None:
+            self._listener.start()
+        task = self._load(project_id)
+        if task not in self._tasks:
+            self._tasks.add(task)
+            task.add_done_callback(self._done)
+        with contextlib.suppress(Exception):  # past ``wait`` the load goes on; a failed one is logged by ``_done``
+            await asyncio.wait_for(asyncio.shield(task), FIRST_WAIT if wait is None else wait)
+        return await self.current(project_id, build_id) if project_id in self._held else None
+
+    def loading(self, project_id: int) -> float | None:
+        """Seconds the load of the project's snapshot has run, None when none runs."""
+        if self._loop is None or project_id not in self._began:
+            return None
+        return self._loop.time() - self._began[project_id]
+
+    def unready(self, project_id: int) -> str:
+        """What a tool call is told while the project's first snapshot loads (``ready`` answered None)."""
+        ran = self.loading(project_id) or 0.0
+        took = self._took.get(project_id)
+        left = (
+            f"about {max(10, round(took - ran))} s more, as the last load took {round(took)} s"
+            if took
+            else ("a large graph takes about 3 minutes")
+        )
+        return (
+            f"the hub is loading this project's graph into memory (for {round(ran)} s so far; {left}): "
+            "call this tool again then; the hub's other tools answer meanwhile"
+        )
+
+    def warm(self, delay: float | None = None) -> asyncio.Task:
+        """Load, one at a time, the snapshots of the WARM_PROJECTS projects searched most in the last WARM_DAYS, once
+        ``delay`` (WARM_DELAY) passed: the api opens after each deploy with none held, and the first tool call would
+        otherwise wait for a load of minutes. Stops past PRESSURE of the api's memory; cancelled by ``close``."""
+        task = asyncio.get_running_loop().create_task(
+            self._warm(WARM_DELAY if delay is None else delay), name="kg-warm"
+        )
+        self._tasks.add(task)
+        task.add_done_callback(self._done)
+        return task
+
+    async def _warm(self, delay: float) -> None:
+        await asyncio.sleep(delay)
+        assert self.engine is not None
+        labels, heads = tables.kg_query_labels, tables.kg_graph_heads
+        since = datetime.now(UTC) - timedelta(days=WARM_DAYS)
+        async with self.engine.connect() as conn:
+            searched = (
+                await conn.scalars(
+                    select(labels.c.project_id)
+                    .where(
+                        labels.c.created_at >= since,
+                        select(heads.c.build_id)
+                        .where(heads.c.project_id == labels.c.project_id, heads.c.branch_id == MAIN)
+                        .exists(),
+                    )
+                    .group_by(labels.c.project_id)
+                    .order_by(func.count().desc(), labels.c.project_id)
+                    .limit(WARM_PROJECTS)
+                )
+            ).all()
+        for project_id in searched:
+            if _over():
+                break
+            if project_id not in self._held:
+                await self.get(project_id)
+        log.info("kg snapshots warmed", extra={"projects": list(searched), "held": list(self._held)})
 
     async def held(self, project_id: int, build_id: int) -> Held | None:
         """``current`` for a caller that must not wait for a load: None while the project has no snapshot in memory,
@@ -454,7 +537,9 @@ class SnapshotCoordinator:
         finally:
             if self._loading.get(project_id) is asyncio.current_task():
                 del self._loading[project_id]  # a finished load is not kept; a fresh one queued behind it stays
-                self._began.pop(project_id, None)
+                began = self._began.pop(project_id, None)
+                if began is not None:
+                    self._took[project_id] = asyncio.get_running_loop().time() - began
         if held is None:
             return None
         self._keep(project_id, held)
