@@ -206,7 +206,8 @@ services:
     mem_limit: ${EVO_HUB_WORKER_KG_MEMORY:-6g}
     healthcheck:
       disable: true
-    stop_grace_period: 570s
+    # short: a deploy starts the recreated api only once this old container stopped (evo_agents.hub.worker.KG_SHUTDOWN_GRACE)
+    stop_grace_period: 40s
     depends_on:
       api:
         condition: service_healthy

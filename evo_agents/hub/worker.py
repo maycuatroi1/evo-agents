@@ -7,7 +7,7 @@ at a time, so those run every minute even while long jobs fill the ``concurrency
 ``jobs.HUB_QUEUE``, the turns of the hub runtime, HUB_CONCURRENCY at a time; a fourth only ``jobs.DELIVERY_QUEUE``,
 the deliveries to plugins, DELIVERY_CONCURRENCY at a time, so what a commit queues for a plugin goes out within
 seconds. On the first signal it takes no new job and waits up to SHUTDOWN_GRACE for the running ones (KG_SHUTDOWN_GRACE
-on a worker of the queue kg alone, so a deploy lets the build it runs finish); procrastinate aborts what is still running
+on a worker of the queue kg alone, as short: a deploy starts the new api only once the old worker-kg stopped); procrastinate aborts what is still running
 after that, and a second signal kills the process. Stopped by a signal, it exits 0;
 stopped by anything else, such as losing Postgres, it exits 1, so the container is restarted and the failure shows. It
 needs the blob store: what it builds lives in R2, and it removes the uploads nobody committed. ``--data-dir`` is its
@@ -187,11 +187,13 @@ log = logging.getLogger(__name__)
 
 APPLICATION_NAME = "evo-agents-hub-worker"
 SHUTDOWN_GRACE = 25.0  # seconds running jobs get after SIGTERM; the container needs a longer stop grace period
-# The grace of a worker of the queue kg alone (worker-kg): above the median build (about 440 s), so the deploy each merge
-# to main makes lets the running build finish instead of recording it STOPPED and building again from scratch. A build
-# still running after it is aborted, recorded STOPPED and queued again. worker-kg's stop_grace_period (570 s in
-# deploy/hub/docker-compose.yml) must stay above it, or Docker kills the build first.
-KG_SHUTDOWN_GRACE = 540.0
+# The grace of a worker of the queue kg alone (worker-kg). It was 540 s, above the median build, so a deploy would let
+# the running build finish (#742); but Docker Compose starts none of the containers a deploy recreates until every old
+# one has stopped, so the api stayed down while worker-kg finished its build: 9 minutes on 2026-11-19 18:49, at each
+# merge to main. A build still running after the grace is aborted, recorded STOPPED and queued again, which costs
+# worker-kg time and no one's access to the hub. worker-kg's stop_grace_period in deploy/hub/docker-compose.yml stays
+# above it, or Docker kills the build first.
+KG_SHUTDOWN_GRACE = 25.0
 PING_MAX_SECONDS = 30.0
 JOB_RETENTION = timedelta(days=14)
 STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT)
