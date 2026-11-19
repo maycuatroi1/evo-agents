@@ -30,12 +30,13 @@ from evo_agents.hub.hub_events import BASELINE, SRS_APPROVED
 from evo_agents.hub.merge_gate import GITLAB_STATE, MERGE_SHA
 from evo_agents.hub.plugin_calls import enabled_in
 from evo_agents.hub.server.autonomy_policies import effective_policy, newest, project_repos
-from evo_agents.hub.server.loop import backlog, baseline
+from evo_agents.hub.server.loop import backlog, baseline, covering
 from evo_agents.hub.server.loop.model import (
     ACTIVE,
     ALWAYS,
     AUTO_MODE,
     BRAINSTORM,
+    BUILD,
     DELIVER,
     DISPATCHED,
     DRAFT,
@@ -728,6 +729,7 @@ async def load(conn: AsyncConnection, project_id: int, events: Sequence[Event] =
         use_cases=await use_cases(conn, project_id, policy),
         backlogs=await _backlogs(conn, goals_now),
         srs_keys=await _srs_keys(conn, project_id),
+        covered=await covering.covering(conn, project_id, [i.id for i in items if i.kind == BUILD and not i.finished]),
     )
 
 

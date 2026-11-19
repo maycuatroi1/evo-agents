@@ -378,11 +378,39 @@ def _frame(item: ItemView, view: View) -> Transition | None:
     return None
 
 
+def _covered(item: ItemView, view: View, run_id: int | None = None) -> Transition | None:
+    """A build that a plan on the hub covers (``covering``) done with a deliver of that plan, as if its author run had
+    written it: queued before any author run, or its author run ended with no plan of its own. A plan completed already
+    has a deliver done at once, as ``loop adopt`` makes it; a plan that a deliver of the Loop has already keeps it (the
+    key is taken) and the ledger reads this build through it (``srs_ledger.sync``)."""
+    cover = view.covered.get(item.id)
+    if cover is None:
+        return None
+    deliver = WorkSpec(
+        DELIVER,
+        f"deliver:{cover.plan_id}",
+        item.goal_id,
+        DONE if cover.completed else QUEUED,
+        claim_id=item.claim_id,
+        srs_document_id=item.srs_document_id,
+        use_case=item.use_case,
+        srs_version=item.srs_version,
+        task_id=item.task_id,
+        plan_id=cover.plan_id,
+        parent_id=item.id,
+        detail={"covered": {"build": item.id}},
+    )
+    detail = {"plan": cover.plan_id, "covered": True} | ({} if run_id is None else {"run_id": run_id})
+    return Transition(item.id, DONE, DONE_EVENT, plan_id=cover.plan_id, detail=detail, spawn=(deliver,))
+
+
 def move_build(item: ItemView, view: View) -> Transition | None:
-    """Rows 7 and 9: a build to its frame task; its author run waiting for a person's answer; written and ended, a
-    deliver of its plan."""
+    """Rows 7 and 9: a build to its frame task; queued with a plan that covers it, a deliver of that plan; its author
+    run waiting for a person's answer; written and ended, a deliver of its plan, else of a plan that covers it."""
     if item.state == WATCHING:
         return _frame(item, view)
+    if item.state == QUEUED:
+        return _covered(item, view)
     run = run_of(item, view) if item.state in (RUNNING, WAITING_HUMAN) else None
     if run is None:
         return None
@@ -390,7 +418,7 @@ def move_build(item: ItemView, view: View) -> Transition | None:
     if asking is not None or run.state != "done":
         return asking
     if run.plan_id is None:
-        return failure(item, run_id=run.id, why="the author run ended without a plan")
+        return _covered(item, view, run.id) or failure(item, run_id=run.id, why="the author run ended without a plan")
     deliver = WorkSpec(
         DELIVER,
         f"deliver:{run.plan_id}",

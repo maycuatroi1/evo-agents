@@ -296,6 +296,45 @@ def test_loop_rules_runs_end_a_build_with_its_plan_and_a_deliver_with_its_merge_
     assert engine.reconcile(watching, view(merges={"northwind-reorder": (shop, reverted)})).failed
 
 
+def test_loop_rules_a_build_a_plan_covers_goes_to_a_deliver_of_that_plan_without_a_plan_of_its_own(engine):
+    """Hub M1, m1-msp, work items 200, 201, 211 and 217 (2026-11-19): a plan written after the build was made names
+    every use case it holds; queued, the build skips its author run, and an author run that reused the plan and wrote
+    none ends the build the same way instead of failing it."""
+    covered = {200: model.Cover("northwind-reorder")}
+    queued = build("queued", None, srs_document_id=5, srs_version=2)
+    assert engine.reconcile(queued, view()) is None, "no plan covers it: it waits for admission"
+    done = engine.reconcile(queued, view(covered=covered))
+    assert (done.state, done.event, done.plan_id, done.detail) == (
+        "done",
+        "done",
+        "northwind-reorder",
+        {"plan": "northwind-reorder", "covered": True},
+    )
+    (deliver,) = done.spawn
+    assert (deliver.kind, deliver.key, deliver.state, deliver.parent_id, deliver.plan_id, deliver.task_id) == (
+        "deliver",
+        "deliver:northwind-reorder",
+        "queued",
+        200,
+        "northwind-reorder",
+        None,
+    )
+    finished = engine.reconcile(queued, view(covered={200: model.Cover("northwind-reorder", completed=True)}))
+    assert finished.spawn[0].state == "done", "a completed plan delivers at once, as loop adopt does"
+    running = build("running", None, run_id=700)
+    reused = view(covered=covered, runs={700: RunView(700, "author", "done")})
+    ended = engine.reconcile(running, reused)
+    assert (ended.state, ended.plan_id, ended.detail) == (
+        "done",
+        "northwind-reorder",
+        {"plan": "northwind-reorder", "covered": True, "run_id": 700},
+    )
+    wrote = view(covered=covered, runs={700: RunView(700, "author", "done", "northwind-restock")})
+    assert engine.reconcile(running, wrote).plan_id == "northwind-restock", "a plan of its own wins"
+    asking = engine.reconcile(running, view(covered=covered, runs={700: RunView(700, "author", "waiting")}))
+    assert (asking.state, asking.reason) == ("waiting_human", "author_question"), "a question still waits"
+
+
 def test_loop_rules_a_merge_request_a_person_merged_on_gitlab_counts_as_through(engine):
     """A merge request held at a gate that a person merges by hand on GitLab leaves the queue (closed); the deliver
     counts it through when the queue's ledger says GitLab merged it, and waits on one closed without a merge."""

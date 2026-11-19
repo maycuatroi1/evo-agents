@@ -5,7 +5,9 @@ work item that holds them; a use case an admin or the knowledge graph put in ano
 row that is ``delivering`` is read here.
 
 - ``hold`` puts the use cases of a work item in ``delivering``, in the transaction that made the work item.
-- ``sync`` reads each such row's work item: a ``build`` through its newest ``deliver``, a ``deliver`` itself. A deliver
+- ``sync`` reads each such row's work item: a ``build`` through its newest ``deliver`` (else, for a build done with a
+  plan that a deliver of the Loop had already, as ``covering`` lets one be, the newest deliver of that plan), a
+  ``deliver`` itself. A deliver
   done makes the use case ``delivered`` with the plan and the merge requests of the queue as its evidence
   (``plan``, ``merges``, ``after_sha``, ``build``, ``deliver``); one cancelled, or a build cancelled before it had a
   deliver, puts it back in the backlog. A tick calls it after it reconciled the work items, so a deliver that moved this
@@ -77,6 +79,14 @@ async def sync(conn: AsyncConnection, project_id: int) -> int:
     if builds:
         query = select(*columns).where(i.c.parent_id.in_(builds), i.c.kind == DELIVER).order_by(i.c.id)
         children = {row.parent_id: row for row in await conn.execute(query)}  # the newest of each build wins
+        joined = {row.id: row.plan_id for row in found.values() if row.kind == BUILD and row.id not in children}
+        joined = {build: plan for build, plan in joined.items() if plan}
+        if joined:  # a build done with a plan whose deliver another build or an adopt made
+            query = select(*columns).where(
+                i.c.project_id == project_id, i.c.kind == DELIVER, i.c.plan_id.in_(sorted(set(joined.values())))
+            )
+            by_plan = {row.plan_id: row for row in await conn.execute(query.order_by(i.c.id))}
+            children |= {build: by_plan[plan] for build, plan in joined.items() if plan in by_plan}
     changed = 0
     for row in held:
         item = found.get(row.item_id)

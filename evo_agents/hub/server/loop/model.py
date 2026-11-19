@@ -313,6 +313,15 @@ class MergeView:
 
 
 @dataclass(frozen=True)
+class Cover:
+    """The plan that covers a build (``covering``), and whether it is completed already (its deliver is then done at
+    once)."""
+
+    plan_id: str
+    completed: bool = False
+
+
+@dataclass(frozen=True)
 class View:
     """What one tick reads of a project. ``week`` is the ISO week whose weekly look at goals has come, at ``week_at``
     (None before it comes this week); ``keys`` the keys of the project's brainstorm work items; ``brainstormed`` when
@@ -323,7 +332,8 @@ class View:
     version each use_case work item drafted, by work item; ``manual`` the repos whose merge requests the hub's queue
     does not merge (``repos.<repo>.mode`` off, or on GitHub); ``released`` the repos of each deliver's plan its
     ``repos`` mark merged (or not needed); ``use_cases`` whether a solution goes through use cases of SRS documents in
-    the project (``loop.use_cases``, read by rules/2)."""
+    the project (``loop.use_cases``, read by rules/2); ``covered`` the plan that covers each build not finished, by
+    its id (``covering``)."""
 
     now: datetime
     policy: Mapping
@@ -348,6 +358,7 @@ class View:
     use_cases: bool = True
     backlogs: Mapping[int, tuple[Group, ...]] = field(default_factory=dict)
     srs_keys: frozenset[str] = frozenset()
+    covered: Mapping[int, Cover] = field(default_factory=dict)
 
     def goal_of_canvas(self, canvas_id: int) -> GoalView | None:
         """The active goal with a metric that a claim of canvas ``canvas_id`` serves: the first by rank among those
