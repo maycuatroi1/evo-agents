@@ -1215,13 +1215,26 @@ it routes as before.
 
 - `run_as`: the member whose name its runs go under, a writer or an admin of the project;
 - `daily_usd`: the cap of what its task runs may cost in 24 hours, above 0 and at most 1000;
+- `min_run_usd`, optional: the floor of one run's cap, above 0 and at most `daily_usd` (422 otherwise). The hub
+  hands a task or a question run to the type only while at least the floor is left of `daily_usd`, and gives the
+  run what is left as its cost cap, so no run starts with a cap too small to do its work. Not sent, the enable keeps
+  the floor already set, and a type with none set takes the hub's default, $1.00, never above `daily_usd`;
 - `handle`, optional: the handle of the profile the first enable makes.
+
+What is left is `daily_usd` minus what the runs of the last 24 hours that ended cost, minus what each run still
+unfinished (queued, leased or running) holds back: its cap when that is smaller than the floor, else the floor, and
+never less than the run has spent. Several runs handed in one go therefore each take their share, and the sum of the
+caps cannot pass `daily_usd` by more than the floors. When less than the floor is left, the plugin's call gets
+429 (a plugin's function gets `(None, reason)`), and the reason names what was spent, what unfinished runs hold, the
+floor and the cap. `GET` and the answer of `PUT` give `min_run_usd` (as set, null for the default) and
+`effective_min_run_usd` (the floor in force).
 
 The command line does the same:
 
 ```sh
-evo-agents hub plugin agent-type list --project northwind             # each type of the project's plugins, and how
+evo-agents hub plugin agent-type list --project northwind             # each type of the project's plugins, how, and its floor
 evo-agents hub plugin agent-type enable lumen-qa qa --project northwind --run-as ada --daily-usd 20
+evo-agents hub plugin agent-type enable lumen-qa qa --project northwind --run-as ada --daily-usd 20 --min-run-usd 2
 evo-agents hub plugin agent-type disable lumen-qa qa --project northwind
 ```
 

@@ -36,9 +36,10 @@ it is due, the last error, when it was made and delivered, and when the event bu
 plugins and plugin_versions: signature kind ``image``, published and installed by nobody.
 
 project_agent_types (0042) holds each agent type of a plugin a project enabled (``evo_agents.hub.task_runs``): the
-plugin, the type's name, the agent profile the hub made for it, the member its runs go under (``run_as``), the cap of their cost per day, who enabled it and when, and when it was
-turned off. runs.agent_type_id names the agent type of a task run, and runs.pulls the draft pull requests the hub opened
-of its branch.
+plugin, the type's name, the agent profile the hub made for it, the member its runs go under (``run_as``), the cap of
+their cost per day, the least cap of one of its runs (``min_run_usd``, 0260, NULL for the hub's default), who enabled it
+and when, and when it was turned off. runs.agent_type_id names the agent type of a task run, and runs.pulls the draft
+pull requests the hub opened of its branch.
 
 agent_questions (0100) holds each question a core plugin asked an agent type of its own (``evo_agents.hub
 .question_runs``): the plugin, the project, the type, the run of kind question that answers it (its text is the run's
@@ -336,6 +337,7 @@ def _agent_types(metadata: MetaData, runs: Table) -> Table:
         Column("profile_id", BigInteger, nullable=False),
         Column("run_as", BigInteger, nullable=False),
         Column("daily_usd", Double, nullable=False),
+        Column("min_run_usd", Double),  # the least cap of one run, NULL for the hub's default (0260)
         Column("enabled_by", BigInteger, nullable=False),
         _stamp("enabled_at"),
         Column("disabled_at", DateTime(timezone=True)),

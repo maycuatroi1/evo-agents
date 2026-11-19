@@ -131,14 +131,14 @@ def test_srs_auto_review_not_handed_says_why_in_the_log_and_approval_waits_for_n
     imported(client, hub["chi"])
     spent = {"usd": 5.0}
 
-    async def type_spend(conn, agent_type_id):
-        return spent["usd"]
+    async def type_hold(conn, agent_type_id, daily_usd):
+        return spent["usd"], 0.0, 1.0
 
-    monkeypatch.setattr("evo_agents.hub.server.task_dispatch.type_spend", type_spend)
+    monkeypatch.setattr("evo_agents.hub.server.agent_types.type_hold", type_hold)
     with caplog.at_level(logging.INFO, logger=LOGGER):
         submitted(client, hub["chi"], 1)
     (why,) = [record.why for record in caplog.records if record.getMessage() == "no review by @ba"]
-    assert "the task runs of agent type ba cost $5.00" in why and "reached its cap of $5.00" in why, why
+    assert "the runs of agent type ba cost $5.00" in why and "under the floor of $1.00" in why, why
     assert review_titles(hub_db) == [] and review_run(hub_db, 1) is None
     assert review(client, hub["other"], 1).json()["state"] == "approved", "no run of the round to wait for"
     # turned off: no review either, and the log says so

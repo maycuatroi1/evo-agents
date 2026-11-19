@@ -21,6 +21,8 @@ TRIAGER = {
     "enabled": True,
     "run_as": "ada",
     "daily_usd": 20.0,
+    "min_run_usd": None,
+    "effective_min_run_usd": 1.0,
     "spent_usd": 1.5,
     "enabled_by": "ada",
     "enabled_at": "2026-11-08T08:00:00Z",
@@ -72,6 +74,7 @@ def test_agent_type_list_enable_and_disable_call_the_routes_of_the_project(fake_
     assert run_cli("agent-type", "list", "--project", "northwind") == 0
     printed = capsys.readouterr().out
     assert "lumen-qa  qa    @qa-northwind  enabled" in printed and "$20.00" in printed and "not enabled" in printed
+    assert "MIN RUN" in printed and "$1.00" in printed
     assert run_cli("agent-type", "list", "--project", "northwind", "--json") == 0
     assert [item["name"] for item in json.loads(capsys.readouterr().out)] == ["qa", "dev"]
     argv = ("agent-type", "enable", "lumen-qa", "qa", "--project", "northwind", "--run-as", "@ada", "--daily-usd", "20")
@@ -104,3 +107,13 @@ def test_plugin_enable_sends_the_records_level_even_when_everything_is_granted(f
         {"permissions": ["records:use"], "records_level": "internal"},
     )
     assert [method for method, _, _ in fake_hub.calls] == ["GET", "GET", "POST"]
+
+
+def test_enable_sends_min_run_usd_only_when_given(fake_hub, capsys):
+    base = ("agent-type", "enable", "lumen-qa", "qa", "--project", "northwind", "--run-as", "ada", "--daily-usd", "20")
+    assert run_cli(*base) == 0
+    assert run_cli(*base, "--min-run-usd", "2.5") == 0
+    assert [call[2] for call in fake_hub.calls] == [
+        {"run_as": "ada", "daily_usd": 20.0},
+        {"run_as": "ada", "daily_usd": 20.0, "min_run_usd": 2.5},
+    ]

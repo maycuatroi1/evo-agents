@@ -305,7 +305,7 @@ def test_loop_caps_a_task_run_the_loop_hands_out_keeps_the_daily_cap_of_its_agen
     set_run(hub_db, second.run_id, usage={"total_cost_usd": 1.5})
     spent = client.portal.call(hand)
     assert (spent.run_id, spent.reason) == (None, "type_refused")
-    assert "reached its cap of $5.00" in spent.why
+    assert "leaves $0.00 of its cap of $5.00, under the floor of $1.00" in spent.why
     refused = client.portal.call(partial(hand, "use_case"))
     assert (refused.run_id, refused.reason) == (None, "type_refused")
     assert refused.why.startswith("agent type ba of plugin srs is not enabled")

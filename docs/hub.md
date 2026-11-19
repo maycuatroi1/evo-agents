@@ -4552,6 +4552,12 @@ task runs and their deliveries, and drops the columns and the table. Schema 0224
 `tasks:write` and `docs:write`, with which its backend keeps tasks and documents of the project through the same API
 (`docs/plugins.md`, section Tasks and documents of a plugin); going back to 0223 takes both out of every grant.
 
+The cap of an agent type's runs has a floor, `min_run_usd` (default $1.00, never above `daily_usd`; an admin sets it with
+`--min-run-usd` of `hub plugin agent-type enable`). The hub hands a task or question run to a type only when at least the
+floor is left of `daily_usd` after the runs that ended and the share each unfinished run holds back (its cap when it is
+smaller than the floor, else the floor, never less than it has spent); the run's cost cap is what is left. Otherwise the
+route answers 429 with the amounts spent, held, the floor and the cap (`docs/plugins.md`, Agent types).
+
 The core plugin builder (`docs/plugins.md`, Builder) keeps what its agent proposes until an admin decides it. Schema
 0043 adds the table `builder_proposals` (each proposal's kind, target, change, summary, the setting's version it was
 proposed at, the run, chat and thread it came from, and once decided its state, `applied_version`, `error` or

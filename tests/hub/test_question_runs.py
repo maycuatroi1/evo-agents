@@ -198,7 +198,7 @@ def test_a_question_is_refused_in_the_order_the_design_checks_and_changes_nothin
     first = ask(client)
     set_run(hub_db, first["run_id"], usage={"total_cost_usd": 5})
     said = refused(client, 429, "room-7:msg-2")
-    assert "the runs of agent type triager cost $5.00 in the last 24 hours, which reached its cap of $5.00" in said
+    assert "runs not ended hold $5.00, which leaves $0.00 of its cap of $5.00, under the floor of $1.00" in said
     assert ask(client)["made"] is False  # an asked ref is given back before the cap is checked
     q, r = tables.agent_questions, tables.runs
     assert sql(hub_db, select(func.count()).select_from(q)) == [(1,)]
@@ -211,6 +211,9 @@ def test_task_and_question_runs_share_the_cap_of_their_agent_type(client, asking
     set_run(hub_db, first["run_id"], usage={"total_cost_usd": 3.25})
     second = ask(client, "room-7:msg-2")
     assert of_run(hub_db, second["run_id"], "budget")[0][0]["max_usd"] == 1.75
+    # a run that ended holds nothing
+    ended = {"state": "done", "runtime": "hub", "requested_runtime": "hub", "leased_at": func.now()}
+    set_run(hub_db, second["run_id"], finished_at=func.now(), **ended)
     hand = client.post(
         f"/v1/plugin-api/projects/{PROJECT}/agent-types/triager/tasks",
         json={"task": "Fix it"},
@@ -218,7 +221,7 @@ def test_task_and_question_runs_share_the_cap_of_their_agent_type(client, asking
     )
     assert hand.status_code == 201 and hand.json()["spent_usd"] == 3.25
     set_run(hub_db, second["run_id"], usage={"total_cost_usd": 1.75})
-    assert "reached its cap" in refused(client, 429, "room-7:msg-3")
+    assert "under the floor of $1.00" in refused(client, 429, "room-7:msg-3")
     assert task_runs.BUDGET_HOURS == 24
 
 

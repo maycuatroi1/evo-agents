@@ -10,8 +10,8 @@ agent types and tasks, 404 for any other.
 - POST /v1/plugin-api/projects/{p}/agent-types/{name}/tasks: hand a task to agent type ``name`` of the plugin. 404
   for a type its installed version does not contribute, or that the project did not enable or turned off; 409 when the
   type's profile was deleted or its ``run_as`` no longer holds writer on the project; 403 when the primary seat of
-  ``run_as`` in the org chart ended; 429 once its task runs cost its cap in the last BUDGET_HOURS
-  (``task_runs.spent_problem``). Otherwise a run of kind task, dispatched by ``run_as``
+  ``run_as`` in the org chart ended; 429 once what is left of its cap, after its runs of the last BUDGET_HOURS and
+  what the runs not ended hold, is under the floor of a run (``task_runs.left_problem``). Otherwise a run of kind task, dispatched by ``run_as``
   with the credential kind machine, under the type's profile, on the branch ``task/<run>`` of each repo of the project,
   with what is left of the cap as its cost cap (``task_runs.run_budget``), queued for a worker of ``run_as`` the type
   names (``claims``). Audited as task.dispatch in the project, ``run_as`` its actor. A task that names ``repo`` and
@@ -53,7 +53,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, draft_pulls, pull_trailers, run_access_rules, run_autonomy
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.agent_types import contributed, enabled_type, type_spend
+from evo_agents.hub.server.agent_types import contributed, enabled_type, type_left, type_spend
 from evo_agents.hub.server.chat_runs import project_repos
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
@@ -454,8 +454,7 @@ async def hand_own_task(
     refusal = await type_refusal(conn, enabled, row, name)
     if refusal is not None:
         return None, refusal[1]
-    spent = await type_spend(conn, row.id)
-    problem = task_runs.spent_problem(spent, row.daily_usd, name)
+    left, problem = await type_left(conn, row)
     if problem is not None:
         return None, problem
     try:
@@ -474,7 +473,7 @@ async def hand_own_task(
     refusal = await branch_refusal(conn, project_id, names, body)
     if refusal is not None:
         return None, refusal[1]
-    run_id = await _queue(conn, enabled, row, body, row.daily_usd - spent, names, for_id)
+    run_id = await _queue(conn, enabled, row, body, left, names, for_id)
     await _audited(conn, enabled, row, run_id)
     log.info(
         "task dispatched", extra={"project_id": project_id, "plugin": plugin, "agent_type": name, "run_id": run_id}
@@ -503,10 +502,13 @@ async def hand_again(conn: AsyncConnection, run_id: int, why: str, worker_id: in
     refusal = await type_refusal(conn, enabled, row, found.name)
     if refusal is not None:
         return None, refusal[1]
-    problem = task_runs.spent_problem(await type_spend(conn, row.id), row.daily_usd, found.name)
+    left, problem = await type_left(conn, row)
     if problem is not None:
         return None, problem
     new_id = (await conn.execute(next_attempt(run_id))).scalar_one()
+    budget = (await conn.execute(select(r.c.budget).where(r.c.id == new_id))).scalar_one()
+    budget = (budget if isinstance(budget, dict) else {}) | {"max_usd": max(left, 0.0)}  # the rule's, not the old run's
+    await conn.execute(update(r).values(budget=budget).where(r.c.id == new_id))
     if worker_id is not None:
         pinned = update(r).values(pinned_worker_id=worker_id)
         await conn.execute(pinned.where(r.c.id == new_id, r.c.pinned_worker_id.is_not(None)))
@@ -530,18 +532,18 @@ async def dispatch_task(request: Request, project: ProjectName, name: TypeName, 
         refusal = await type_refusal(conn, enabled, row, name)
         if refusal is not None:
             raise HTTPException(*refusal)
-        spent = await type_spend(conn, row.id)
-        problem = task_runs.spent_problem(spent, row.daily_usd, name)
+        left, problem = await type_left(conn, row)
         if problem is not None:
             raise HTTPException(429, problem)
         names = await project_repos(conn, enabled.project_id)
         refusal = await branch_refusal(conn, enabled.project_id, names, body)
         if refusal is not None:
             raise HTTPException(*refusal)
-        run_id = await _queue(conn, enabled, row, body, row.daily_usd - spent, names)
+        run_id = await _queue(conn, enabled, row, body, left, names)
         await _audited(conn, enabled, row, run_id)
         found = (await conn.execute(_task_select().where(tables.runs.c.id == run_id))).one()
-        budget = task_runs.run_budget(row.daily_usd - spent, body.minutes)
+        budget = task_runs.run_budget(left, body.minutes)
+        spent = await type_spend(conn, row.id)
     log.info(
         "task dispatched", extra={"project": project, "plugin": enabled.name, "agent_type": name, "run_id": run_id}
     )

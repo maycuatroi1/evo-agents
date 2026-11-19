@@ -2,9 +2,9 @@
 contribute (``evo_agents.hub.server.agent_types``; ``docs/plugins.md``, section Agent types).
 
 ``list`` prints each agent type of the plugins P enabled, to any member of P: its handle, whether P enabled it, the
-member its runs go under, its cap of cost for 24 hours and what its task runs cost in them. ``enable PLUGIN NAME``, for
+member its runs go under, its cap of cost for 24 hours, the floor of one run and what its task runs cost in them. ``enable PLUGIN NAME``, for
 an admin of P, enables one or changes how (PUT .../agent-types/{plugin}/{name}): ``--run-as`` the writer or admin of P
-whose name its runs go under, ``--daily-usd`` the cap, and ``--handle`` the handle of the profile its first enable
+whose name its runs go under, ``--daily-usd`` the cap, ``--min-run-usd`` the least cap of one run, and ``--handle`` the handle of the profile its first enable
 makes. ``disable PLUGIN NAME`` turns it off and keeps its profile. ``--json`` prints what the hub answered. Standard
 library only, like the rest of the client.
 """
@@ -28,6 +28,8 @@ AGENT_TYPE_KEYS = (
     "enabled",
     "run_as",
     "daily_usd",
+    "min_run_usd",
+    "effective_min_run_usd",
     "spent_usd",
     "enabled_by",
     "enabled_at",
@@ -70,11 +72,12 @@ def cmd_list(args) -> int:
             _state(item),
             item["run_as"] or "-",
             _usd(item["daily_usd"]),
+            _usd(item["effective_min_run_usd"]),
             _usd(item["spent_usd"]),
         )
         for item in found
     ]
-    table(("PLUGIN", "NAME", "HANDLE", "STATE", "RUN AS", "DAILY CAP", "SPENT 24H"), rows)
+    table(("PLUGIN", "NAME", "HANDLE", "STATE", "RUN AS", "DAILY CAP", "MIN RUN", "SPENT 24H"), rows)
     return 0
 
 
@@ -82,6 +85,8 @@ def cmd_list(args) -> int:
 def cmd_enable(args) -> int:
     hub, _ = signed_in()
     body = {"run_as": args.run_as.removeprefix("@"), "daily_usd": args.daily_usd}
+    if args.min_run_usd is not None:
+        body["min_run_usd"] = args.min_run_usd
     if args.handle:
         body["handle"] = args.handle.removeprefix("@")
     found = call_object(hub, "PUT", _path(args.project, args.plugin, args.name), body)
@@ -134,6 +139,12 @@ def register_agent_type_commands(psub) -> None:
     )
     enabled.add_argument(
         "--daily-usd", metavar="USD", type=float, required=True, help="what its task runs may cost in 24 hours"
+    )
+    enabled.add_argument(
+        "--min-run-usd",
+        metavar="USD",
+        type=float,
+        help="the least cap of one run (default: keep the one set, else $1.00; at most --daily-usd)",
     )
     enabled.add_argument("--handle", metavar="HANDLE", help="the handle of the profile its first enable makes")
     json_option(enabled, output)
