@@ -333,6 +333,24 @@ def test_a_sibling_home_whose_cleanup_lock_is_held_or_that_is_not_a_worker_home_
     assert stranger.worktree_path("demo", 11).is_dir()
 
 
+def test_the_cleanup_deletes_the_temporary_directory_of_runs_that_ended_and_keeps_the_others(tmp_path):
+    """A run's agent writes its scratch files under its own TMPDIR (``WorkerHome.run_tmp``): it goes once the run ended,
+    whatever becomes of its worktree, as nothing cleaned what runs left straight in /tmp (T-5, 2026-11-16)."""
+    checkout, home, daemon = _stack(tmp_path)
+    for run_id, ended, extra in (
+        (1, timedelta(hours=2), {}),
+        (2, None, {}),
+        (3, timedelta(minutes=1), {}),
+        (4, timedelta(hours=2), {"state": "parked"}),
+    ):
+        _run(home, checkout, run_id, ended, **extra)
+        (home.run_tmp(run_id) / "venv").mkdir(parents=True)
+
+    assert asyncio.run(daemon.cleaner.sweep_tmp()) == [1]
+    assert not home.run_tmp(1).exists() and home.worktree_path("demo", 1).is_dir() and home.load_run(1) is not None
+    assert all(home.run_tmp(run_id).is_dir() for run_id in (2, 3, 4)), "running, just ended and parked runs keep it"
+
+
 def test_own_home_cleanup_skips_when_cleanup_lock_stays_held_past_wait(tmp_path, monkeypatch):
     checkout, home, daemon = _stack(tmp_path)
     _run(home, checkout, 1, timedelta(days=8))

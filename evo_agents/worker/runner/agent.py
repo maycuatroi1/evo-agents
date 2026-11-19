@@ -52,6 +52,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -91,6 +92,7 @@ if TYPE_CHECKING:
 API_KEY = "ANTHROPIC_API_KEY"  # left out of the agent of a run of the Curator on Claude Code (plan decision 14)
 NOTE_GROUP_LOOKS = 20  # events after its start at which an adapter is asked again for its agent's process group
 STOP_GRACE = 30.0  # seconds an interrupted agent has to end its events
+TMP_VARS = ("TMPDIR", "TMP", "TEMP")  # set to the run's own temporary directory (``tmp_dir``)
 # What the agent is told when a person hands its session back.
 HANDBACK_PROMPT = (
     "The owner of this run drove this session in a terminal and has handed it back to you. Go on with the task of "
@@ -255,6 +257,17 @@ class Agent:
 
     # The environment
 
+    def tmp_dir(self) -> str:
+        """The run's own temporary directory (``WorkerHome.run_tmp``), made if missing; the system's when it cannot
+        be made."""
+        path = self.run.daemon.home.run_tmp(self.run.id)
+        try:
+            path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        except OSError:
+            log.warning("the run's temporary directory could not be made", extra={"run_id": self.run.id})
+            return tempfile.gettempdir()
+        return str(path)
+
     def env(self) -> dict[str, str]:
         """The environment of the run's agent, and of the commands the daemon runs for the run."""
         run = self.run
@@ -272,6 +285,7 @@ class Agent:
                 "EVO_RUN_STEP": str(run.spec.get("step_key") or ""),
             }
         )
+        env.update(dict.fromkeys(TMP_VARS, self.tmp_dir()))  # its scratch files go where the cleanup finds them
         for key in (HUB_TOKEN_ENV, HUB_URL_ENV):  # the run's token of the hub: from its lease, never the daemon's
             env.pop(key, None)
         env.update(run.credentials.agent_vars)  # env leases, and git's configuration for the leased origins
