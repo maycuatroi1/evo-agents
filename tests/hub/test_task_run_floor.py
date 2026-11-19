@@ -17,11 +17,22 @@ from datetime import timedelta
 
 from sqlalchemy import func, select
 
-from evo_agents.hub import tables
+from evo_agents.hub import tables, task_runs
 from evo_agents.hub.runs import TERMINAL_STATES
 from tests.hub.live import sql
 from tests.hub.test_runs import PROJECT, of_run, set_run
-from tests.hub.test_task_runs import PLUGIN, app_key, client, enabled, hand, handed, hub, plugin_key  # noqa: F401  (fixtures)
+from tests.hub.test_task_runs import (  # noqa: F401  (fixtures)
+    PLUGIN,
+    app_key,
+    client,
+    enabled,
+    hand,
+    handed,
+    hub,
+    listed,
+    plugin_key,
+    put_type,
+)
 
 R = tables.runs
 
@@ -127,3 +138,47 @@ def test_a3_hand_again_counts_the_cap_of_the_attempt_by_the_rule_not_by_the_one_
     third, why = again(client, second)  # 5 - 2 - 2.5 = 0.5, under the floor
     assert third is None and "under the floor of $1.00" in why, why
     assert sql(hub_db, select(func.count()).select_from(R).where(R.c.parent_run_id == second)) == [(0,)]
+
+
+# Setting the floor (step 3)
+
+
+def test_put_without_a_floor_shows_the_hub_default_and_none_set(client, hub):
+    view = enabled(client, hub["owner"], daily_usd=5)
+    assert (view["min_run_usd"], view["effective_min_run_usd"]) == (None, task_runs.DEFAULT_MIN_RUN_USD)
+    item = listed(client, hub["reader"])[(PLUGIN, "triager")]
+    assert (item["min_run_usd"], item["effective_min_run_usd"]) == (None, 1.0)
+
+
+def test_put_with_a_floor_sets_it_and_get_shows_set_and_effective(client, hub):
+    view = enabled(client, hub["owner"], daily_usd=5, min_run_usd=2.5)
+    assert (view["min_run_usd"], view["effective_min_run_usd"]) == (2.5, 2.5)
+    item = listed(client, hub["reader"])[(PLUGIN, "triager")]
+    assert (item["min_run_usd"], item["effective_min_run_usd"]) == (2.5, 2.5)
+
+
+def test_the_default_floor_never_exceeds_the_daily_cap(client, hub):
+    view = enabled(client, hub["owner"], daily_usd=0.5)
+    assert (view["min_run_usd"], view["effective_min_run_usd"]) == (None, 0.5)
+
+
+@pytest.mark.parametrize("floor", [0, -1, 5.01])
+def test_a_floor_not_above_zero_or_above_the_daily_cap_is_422_and_changes_nothing(client, hub, floor):
+    enabled(client, hub["owner"], daily_usd=5, min_run_usd=2)
+    assert put_type(client, hub["owner"], daily_usd=5, min_run_usd=floor).status_code == 422
+    item = listed(client, hub["reader"])[(PLUGIN, "triager")]
+    assert (item["daily_usd"], item["min_run_usd"]) == (5, 2)
+
+
+def test_changing_the_daily_cap_without_a_floor_keeps_the_floor_set(client, hub):
+    enabled(client, hub["owner"], daily_usd=5, min_run_usd=2)
+    view = enabled(client, hub["owner"], daily_usd=10)
+    assert (view["daily_usd"], view["min_run_usd"], view["effective_min_run_usd"]) == (10, 2, 2)
+    view = enabled(client, hub["owner"], daily_usd=1.5)
+    assert (view["min_run_usd"], view["effective_min_run_usd"]) == (2, 1.5)
+
+
+def test_a_new_floor_replaces_the_one_set(client, hub):
+    enabled(client, hub["owner"], daily_usd=5, min_run_usd=2)
+    view = enabled(client, hub["owner"], daily_usd=5, min_run_usd=3)
+    assert (view["min_run_usd"], view["effective_min_run_usd"]) == (3, 3)
