@@ -222,6 +222,12 @@ class WorkerHome:
     def run_dir(self, run_id: int) -> Path:
         return self.runs_dir / str(int(run_id))
 
+    def run_tmp(self, run_id: int) -> Path:
+        """The run's own temporary directory, its agent's TMPDIR: the cleanup deletes it once the run ended
+        (``daemon_cleanup.Cleanup.sweep_tmp``), as nothing cleaned what runs left straight in /tmp (137 GB on one
+        worker on 2026-11-16, which then ran out of memory and hung)."""
+        return self.run_dir(run_id) / "tmp"
+
     def worktree_path(self, project: str, run_id: int) -> Path:
         return self.worktrees_dir / f"{project}-{int(run_id)}"
 

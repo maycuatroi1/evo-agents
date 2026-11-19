@@ -908,7 +908,10 @@ def test_the_agent_gets_the_runs_token_of_the_hub_from_its_lease_never_from_the_
             project="demo",
             curator=None,
             spec={"kind": "step", "plan_id": "p", "step_key": "1"},
-            daemon=SimpleNamespace(env=daemons, home=SimpleNamespace(root=tmp_path / "worker")),
+            daemon=SimpleNamespace(
+                env=daemons,
+                home=SimpleNamespace(root=tmp_path / "worker", run_tmp=lambda run_id: tmp_path / "tmp" / str(run_id)),
+            ),
             credentials=SimpleNamespace(agent_vars=agent_vars, withheld=frozenset(agent_vars), gateway=None),
             venvs={},
             worktree=None,

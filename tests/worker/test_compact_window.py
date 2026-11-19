@@ -39,7 +39,12 @@ def run(tmp_path: Path, runtime: str, env: dict[str, str]) -> SimpleNamespace:
         project="demo",
         curator=None,
         spec={"kind": "step", "plan_id": "p", "step_key": "1"},
-        daemon=SimpleNamespace(env={"PATH": "/usr/bin", **env}, home=SimpleNamespace(root=tmp_path / "worker")),
+        daemon=SimpleNamespace(
+            env={"PATH": "/usr/bin", **env},
+            home=SimpleNamespace(
+                root=tmp_path / "worker", run_tmp=lambda run_id: tmp_path / "worker" / "runs" / str(run_id) / "tmp"
+            ),
+        ),
         credentials=SimpleNamespace(agent_vars={}, withheld=frozenset(), gateway=None),
         venvs={},
         worktree=None,  # no work tree: no hooks of the trailers (autonomy-levels)
@@ -55,6 +60,8 @@ def test_the_agent_of_a_claude_code_run_gets_the_window_headless_and_in_its_term
 
     env = Agent(run(tmp_path, "claude-code", daemon_env)).env()
     assert env[AUTO_COMPACT] == window and env["EVO_RUN_ID"] == "7"
+    scratch = tmp_path / "worker" / "runs" / "7" / "tmp"
+    assert env["TMPDIR"] == env["TMP"] == env["TEMP"] == str(scratch) and scratch.is_dir()  # what the cleanup deletes
     (tmp_path / "worktree").mkdir()
     context = RunContext(run={"id": 7}, worktree=tmp_path / "worktree", prompt="Do the step.", env=env)
     assert ClaudeCodeTui(context, None).environment()[AUTO_COMPACT] == window

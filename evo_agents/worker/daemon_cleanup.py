@@ -25,6 +25,9 @@ recovery ref and in that home's recovery.jsonl. A run that has not ended, a park
 that ended within ``SIBLING_GRACE`` (which its own daemon may still hold) stay. A daemon takes its own home's lock while
 it sweeps or makes room, so two never remove in one home at once.
 
+The temporary directory of each run, its agent's TMPDIR (``WorkerHome.run_tmp``), goes once the run ended more than
+``SIBLING_GRACE`` ago and is not parked (``sweep_tmp``), each hour and before ``make_room``.
+
 The container engine of the machine (``stacks``) is the other thing a run leaves on the drive. Each worktree removed
 takes the Compose stacks started from it along (``remove_worktree``). Each hour (``tend_stacks``), the running stacks
 of this daemon's runs that ended more than ``SIBLING_GRACE`` ago are stopped, and the stacks started from a worktree
@@ -210,12 +213,32 @@ class Cleanup:
     async def loop(self) -> None:
         while True:
             try:
+                await self.sweep_tmp()
                 await self.sweep()
                 await self.tend_stacks()
                 await self.make_room()
             except Exception:
                 log.exception("cleaning up old worktrees failed")
             await asyncio.sleep(CLEANUP_EVERY)
+
+    async def sweep_tmp(self) -> list[int]:
+        """Delete the temporary directory (``WorkerHome.run_tmp``) of each run of this daemon that ended more than
+        ``SIBLING_GRACE`` ago and is not parked, whatever becomes of its worktrees; the ids of those deleted."""
+        home, now = self.daemon.home, datetime.now(UTC)
+        records = await asyncio.to_thread(home.load_runs)
+        done = [
+            record["id"]
+            for record in records
+            if record.get("finished_at")
+            and not _parked(record)
+            and now - _finished(record, now) > SIBLING_GRACE
+            and home.run_tmp(record["id"]).exists()
+        ]
+        for run_id in done:
+            await asyncio.to_thread(shutil.rmtree, home.run_tmp(run_id), True)
+        if done:
+            log.info("temporary directories of ended runs removed", extra={"runs": done})
+        return done
 
     def free_gb(self) -> float | None:
         """The gigabytes free on the drive of the worktrees (``health.disk``); None when they cannot be read."""
@@ -274,6 +297,7 @@ class Cleanup:
             return []
         home = self.daemon.home
         removed: list[int] = []
+        await self.sweep_tmp()
         async with self.removing:
             await self._engine_room()
             async with _home_lock(home.root) as locked:

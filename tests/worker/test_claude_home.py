@@ -81,7 +81,11 @@ def agent(
         project="demo",
         daemon=SimpleNamespace(
             env=env,
-            home=SimpleNamespace(root=tmp_path / "home", run_dir=lambda run_id: tmp_path / "runs" / str(run_id)),
+            home=SimpleNamespace(
+                root=tmp_path / "home",
+                run_dir=lambda run_id: tmp_path / "runs" / str(run_id),
+                run_tmp=lambda run_id: tmp_path / "runs" / str(run_id) / "tmp",
+            ),
         ),
         credentials=SimpleNamespace(
             agent_vars={name: "leased-token" for name in leased}, withheld=frozenset(leased), gateway=gateway
