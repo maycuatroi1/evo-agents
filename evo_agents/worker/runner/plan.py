@@ -304,12 +304,30 @@ class PlanRun:
         path.write_text(header + text, encoding="utf-8")
 
     def prompt(self) -> str:
-        """The run's prompt; built again here when a worktree's folder is not named as its repo."""
+        """The run's prompt; built again here when a worktree's folder is not named as its repo. A Builder's ends with
+        the charter's protected paths (``protected_note``)."""
         folders = {name: workspace.worktree.name for name, workspace in self.directory.workspaces.items()}
         if all(name == folder for name, folder in folders.items()) and self.run.spec.get("prompt"):
-            return self.run.spec["prompt"]
+            return self.run.spec["prompt"] + self.protected_note()
         autonomy = self.run.spec.get("autonomy")  # the card of the run's autonomy, from a hub that sends one
-        return run_prompts.build_plan_prompt(self.plan_body(), self.run.spec.get("repos") or [], folders, autonomy)
+        built = run_prompts.build_plan_prompt(self.plan_body(), self.run.spec.get("repos") or [], folders, autonomy)
+        return built + self.protected_note()
+
+    def protected_note(self) -> str:
+        """For a Builder of the Curator, the charter's protected globs its watchdog stops the run on, and what to do
+        instead of editing one: its agent was not told them, edited deploy/** or knowledge.yaml, and the run was stopped
+        with its work unpushed (runs #6305, #8852, #9123, #9369). Empty for any other run."""
+        globs = [glob for glob in (self.run.curator or {}).get("protected_paths") or [] if isinstance(glob, str)]
+        if not self.builder or not globs:
+            return ""
+        return (
+            "\n# Paths the charter protects\n"
+            "The watchdog stops this run, and nothing it did is pushed, as soon as a file matching one of these globs "
+            f"changes in a worktree: {', '.join(f'`{glob}`' for glob in globs)}. Edit none of them, not even for a "
+            "moment. When a step needs one, do what the other files allow, report the step done or blocked through "
+            "`evo-agents worker step`, and ask the owner with a decision (category scope) that names the file and the "
+            "change it needs: the owner makes that change, or accepts a proposal that lists the file.\n"
+        )
 
     # The end
 
