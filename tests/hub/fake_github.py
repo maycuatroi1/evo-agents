@@ -30,7 +30,8 @@ oldest first, paged, with its merge base; and of a branch's head ``push`` set, w
 head at the push, with the files ``push`` set when it set them); GET .../git/trees/{sha} and GET .../git/blobs/{sha} of a commit ``snapshot`` wrote, its files' bytes
 and modes, which the merge commit of a pull request of that head holds too; GET .../contents/{path}?ref= of the files
 ``put_file`` wrote; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files`` set;
-GET filters on head, state and base) and GET .../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and
+GET filters on head, state and base, and with no head lists the repo's pull requests by update or number, a page at a
+time) and GET .../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and
 .../status (``ci`` sets them); GET .../commits/{sha}/pulls (the pull requests whose head it is); POST .../check-runs;
 POST .../issues/{n}/comments (``comments``); PATCH .../pulls/{n} (its state closed, or its base); a comparison of a
 branch with a commit it holds (its head, one a merge brought, ``hold``) says behind or identical, with no file; and PUT
@@ -138,6 +139,8 @@ class FakePull:
     merged_by: str | None = None
     draft: bool = False  # opened as a draft (a chat run's)
     title: str = ""
+    created_at: str | None = None  # when it opened; when it merged, or now, when None
+    updated_at: str | None = None  # when it last changed; when it merged or opened, or now, when None
 
 
 @dataclass
@@ -708,6 +711,8 @@ class FakeGitHub:
             "merge_commit_sha": pull.merge_sha,
             "merged_at": pull.merged_at,
             "merged_by": {"login": pull.merged_by} if pull.merged_by else None,
+            "created_at": pull.created_at or pull.merged_at or _now(),
+            "updated_at": _updated(pull),
         }
 
     def _upload_pack(self, owner: str, name: str, headers: dict, body: str):
@@ -1006,6 +1011,13 @@ class FakeGitHub:
             _, _, refused = need("pull_requests", "read")
             if refused:
                 return refused
+            if "head" not in query:  # every pull request of the repo, by update or by number, a page of them
+                held = [item for item in self.pulls.values() if (item.owner, item.name) == (repo.owner, repo.name)]
+                key = (lambda item: _updated(item)) if query.get("sort") == "updated" else (lambda item: item.number)
+                held.sort(key=key, reverse=query.get("direction", "desc") == "desc")
+                held = [item for item in held if query.get("state", "open") in ("all", item.state)]
+                size, page = int(query.get("per_page", 30)), int(query.get("page", 1))
+                return 200, [self._pull_answer(item) for item in held[(page - 1) * size : page * size]]
             branch = (query.get("head") or "").partition(":")[2]
             found = [
                 self._pull_answer(item)
@@ -1174,6 +1186,10 @@ def _invalid(*errors: dict) -> dict:
 def _now() -> str:
     """Now as GitHub writes a moment: UTC, to the second, with Z."""
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _updated(pull: FakePull) -> str:
+    return pull.updated_at or pull.merged_at or pull.created_at or _now()
 
 
 def _unb64(text: str) -> bytes:

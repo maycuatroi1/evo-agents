@@ -325,12 +325,19 @@ A work item waits for a person (`waiting_human`) and counts no failure while its
 (`author_question`, `run_decision`), while the version a `use_case` drafted waits for its review (`srs_review`) or for
 the settle chat of an open finding of level decide (`srs_finding`), and while a merge request of its plan is blocked
 or paused (`merge_blocked`) or its repo is one the queue does not merge (`merge_manual`), until the plan marks that
-repo `merged` or `not-needed` in its `repos`. A repo on GitHub is one the queue does not merge, and a plan run's agent
-may merge the pull request of its branch itself: each tick, with the workers' GitHub App, looks up the pull requests of
-the branch the plan run worked in for each repo on GitHub of a deliver whose plan run is done, and the one merged
-since the deliver's run was queued marks the repo merged in the plan (`merged_at`, and a `note` naming the pull
-request), written as the member who dispatched the run (`loop/github_merges.py`). The deliver then goes to done in the
-same tick with no person. A repo with no pull request merged waits for a person as before, and a pull request a
+repo `merged` or `not-needed` in its `repos`. A repo on GitHub, or on GitLab in a merge mode other than `auto`, is one
+the queue does not merge, and a plan run's agent may merge the pull request of its branch itself, or one pull request
+for each step from a branch of its own. Each tick looks up each such repo of a deliver whose plan run is done
+(`loop/github_merges.py`): on GitHub with the workers' GitHub App, the pull requests of the branch the plan run worked
+in, then the repo's pull requests updated since the deliver's run was queued (at most 300); on GitLab with the
+project's forge secret for the repo's origin, its merge requests updated since then (at most 300). The repo is merged
+when the pull request of the run's branch merged since the deliver's run was queued, or else when the step pull
+requests did: those of the repo itself whose head is `<branch>-<n>` or `<branch>-s<n>`, opened or merged since then,
+at least one merged since then and none still open. A branch that only starts with the run's (`<branch>x-1`,
+`<branch>-docs`) is not a step's. The newest one merged marks the repo merged in the plan (`merged_at`, and a `note`
+naming it and every step one), written as the member who dispatched the run. The deliver then goes to done in the same
+tick with no person. A repo with nothing merged, a step pull request still open, a GitLab origin no forge secret of
+the project covers, or a forge listing more than the hub reads waits for a person as before, and a pull request a
 person merges by hand later is read the same way. Changes a reviewer asked of
 its version queue the `use_case` again with no failure, the request kept in its detail (`srs_changes`) for the next
 task run; a version a person withdrew cancels it (`person`).

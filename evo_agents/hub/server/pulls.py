@@ -5,7 +5,8 @@ Curator's App (evo-agents-curator). ``evo_agents.hub.server.changes`` decides wh
 Each call asks the App's installation on the repo for a token of that repo alone, with the permissions the call needs
 and no more (SERVER_PERMISSIONS: open a pull request with pull_requests write and contents read, so the token sees the
 head and base branches of a private repo and compares them first (``compare_files``); read one, its files and its CI with pull_requests, checks and statuses read;
-list the pull requests of a branch with pull_requests read alone (``pulls``, the Loop's ``github_merges``);
+list the pull requests of a branch, or those of a repo updated since a time (``updated_pulls``), with pull_requests
+read alone (``pulls``, the Loop's ``github_merges``);
 write the Judge's check run with checks write; comment on a pull request with pull_requests write (``comment_pull``,
 the merge check's comment, ``evo_agents.hub.server.merge_comments``); merge with contents and pull_requests write; read a branch, a tree and
 a comparison with contents read; read the runs, jobs and logs of a release tag's workflow with actions read, and run
@@ -50,6 +51,7 @@ import base64
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TypeVar
 from urllib.parse import quote
 
@@ -79,6 +81,7 @@ SERVER_PERMISSIONS = {
 }
 PAGE = 100
 MAX_PAGES = 30  # GitHub lists at most 3000 files of a pull request
+UPDATED_PAGES = 3  # of a repo's pull requests by update (``updated_pulls``): the Loop reads 300 at most
 COMPARE_FILES = 300  # the files GitHub lists of a comparison at most
 MERGE_METHOD = "merge"  # a merge commit, which `git revert -m 1` undoes
 HEAD_WAITS = (1.0, 3.0)  # seconds before each new try of a pull request whose head GitHub does not see yet
@@ -454,6 +457,41 @@ async def branch_pulls(app: GitHubApp, token: str, owner: str, repo: str, branch
         raise _refused(response, doing)
     items = response.json()
     return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+
+
+async def updated_pulls(
+    app: GitHubApp, token: str, owner: str, repo: str, since: datetime, *, pages: int = UPDATED_PAGES
+) -> list[dict]:
+    """The pull requests of owner/repo in any state updated at or after ``since``, of every head, the newest update
+    first: GitHub lists them by update PAGE at a time, and the hub stops at the first one updated before ``since``. A
+    list that goes on past ``pages`` pages is ``Truncated``, never read in part."""
+    doing = f"listing the pull requests of {owner}/{repo} updated since {since.astimezone(UTC):%Y-%m-%dT%H:%MZ}"
+    found: list[dict] = []
+    for page in range(1, pages + 1):
+        params = {"state": "all", "sort": "updated", "direction": "desc", "per_page": PAGE, "page": page}
+        response = await _api(app, token, "GET", _path("repos", owner, repo, "pulls"), doing, params=params)
+        if response.status_code != 200:
+            raise _refused(response, doing)
+        items = response.json()
+        if not isinstance(items, list):
+            raise GitHubUnavailable(f"GitHub answered without a list while {doing}")
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            updated = _when(item.get("updated_at"))
+            if updated is not None and updated < since:
+                return found
+            found.append(item)
+        if len(items) < PAGE:
+            return found
+    raise Truncated(f"GitHub lists more than {pages * PAGE} pull requests while {doing}: the hub does not read a part")
+
+
+def _when(text) -> datetime | None:
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")) if isinstance(text, str) and text else None
+    except ValueError:
+        return None
 
 
 async def open_pull(
