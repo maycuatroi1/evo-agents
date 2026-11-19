@@ -80,3 +80,30 @@ def test_the_api_warms_the_projects_searched_most_that_have_a_graph(hub, tmp_pat
 
     held = asyncio.run(run())
     assert list(held) == [pid] and held[pid].build_id == first["id"]
+
+
+def test_the_api_warms_one_project_and_none_once_its_memory_is_past_warm_memory(hub, tmp_path, caplog, monkeypatch):
+    """Two large snapshots, one held and one loading, took the api past its 7 GB limit on 2026-11-19 19:17, and it
+    warmed both again after its restart: it warms one project, and none while its memory is past WARM_MEMORY."""
+    assert kg_snapshots.WARM_PROJECTS == 1
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the kiwi app works."))
+    assert push(hub, laptop).ok
+    build(hub, caplog)
+    row = {"project_id": project_id(hub), "kind": "session", "session_id": "s-1", "seq": 0, "query": "kiwi"}
+    row |= {"results": [], "clicks": [], "grep_after": False, "after_grep": [], "label": {"level": "internal"}}
+    sql(hub.db, insert(tables.kg_query_labels).values(row))
+    monkeypatch.setattr(kg_snapshots, "memory_limit", lambda: 100)
+    monkeypatch.setattr(kg_snapshots, "resident", lambda: 31)
+
+    async def run():
+        engine = make_engine(hub.db)
+        coordinator = kg_snapshots.SnapshotCoordinator(engine)
+        try:
+            await coordinator.warm(delay=0)
+            return dict(coordinator._held)
+        finally:
+            await coordinator.close()
+            await engine.dispose()
+
+    assert asyncio.run(run()) == {}

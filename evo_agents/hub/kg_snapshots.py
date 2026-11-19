@@ -3,8 +3,8 @@
 
 A project's snapshot is loaded on its first read and kept; a tool call waits FIRST_WAIT for that first load and is then
 told the graph is loading (``ready``), as a large graph takes minutes and an agent's MCP call gives up after 120 s. Once
-the api opens, it loads the snapshots of the WARM_PROJECTS projects searched most in the last WARM_DAYS (``warm``), so
-the first call after a deploy finds them held. A build that writes the tables notifies ``kg_graph``
+the api opens, it loads the snapshot of the project searched most in the last WARM_DAYS (``warm``, WARM_PROJECTS), so
+the first call after a deploy finds it held. A build that writes the tables notifies ``kg_graph``
 (``kg_graph_rows.notify``); the coordinator, subscribed on the process's listener (``evo_agents.hub.server.listen``),
 then builds the project's new snapshot in a background task and swaps it in with one assignment: a reader holds the
 snapshot it was given until it is done. A reader that found a build newer than the snapshot held waits up to
@@ -325,7 +325,10 @@ HELD_BRANCHES = 8  # draft branches whose snapshot the api keeps, the most recen
 FRESH_WAIT = 5.0  # seconds a read that found a newer build waits for its snapshot before the older one answers
 FIRST_WAIT = 20.0  # seconds a tool call waits for the first load of a project's snapshot before it is told to retry
 WARM_DELAY = 30.0  # seconds after the api opens before it loads the snapshots of the projects searched most
-WARM_PROJECTS = 2  # how many: a large graph is gigabytes of the api's memory
+# how many: one. A large graph is gigabytes of the api's memory, and with two (evo-lms held, evo-agents loading) the api
+# died at its 7 GB limit on 2026-11-19 19:17, then warmed both again after its restart
+WARM_PROJECTS = 1
+WARM_MEMORY = 0.3  # share of the api's memory limit past which it warms nothing more
 WARM_DAYS = 7  # the searches counted (kg_query_labels)
 
 
@@ -444,7 +447,8 @@ class SnapshotCoordinator:
     def warm(self, delay: float | None = None) -> asyncio.Task:
         """Load, one at a time, the snapshots of the WARM_PROJECTS projects searched most in the last WARM_DAYS, once
         ``delay`` (WARM_DELAY) passed: the api opens after each deploy with none held, and the first tool call would
-        otherwise wait for a load of minutes. Stops past PRESSURE of the api's memory; cancelled by ``close``."""
+        otherwise wait for a load of minutes. Loads nothing more past WARM_MEMORY of the api's memory limit; cancelled by
+        ``close``."""
         task = asyncio.get_running_loop().create_task(
             self._warm(WARM_DELAY if delay is None else delay), name="kg-warm"
         )
@@ -472,8 +476,9 @@ class SnapshotCoordinator:
                     .limit(WARM_PROJECTS)
                 )
             ).all()
+        limit = memory_limit()
         for project_id in searched:
-            if _over():
+            if _over() or (limit is not None and resident() > limit * WARM_MEMORY):
                 break
             if project_id not in self._held:
                 await self.get(project_id)
