@@ -6476,3 +6476,32 @@ def test_0259_keeps_the_channel_an_answer_came_through_and_going_back_drops_it(h
     assert "answered_via" not in columns(hub_db, "decisions")
     assert query(hub_db, select(d.c.state, d.c.answer_text)) == [("answered", "Keep it a week.")]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0259") :]
+
+
+def test_0260_gives_agent_types_a_run_floor_null_for_the_default_and_going_back_drops_it(hub_db):
+    """0260 gives project_agent_types min_run_usd, the least cap of one run of the type: NULL (the hub's default) for
+    every type enabled before it, above 0 when set; going back drops the column and keeps the types."""
+    t = hub_tables
+    agent_types = t.project_agent_types
+    move_to(hub_db, "0259")
+    assert "min_run_usd" not in columns(hub_db, "project_agent_types")
+    axes = ("credential", "tool", "skill", "worker", "project", "model", "runtime", "environment")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="sandbox", publisher="acme").returning(t.plugins.c.id))
+        profile_id = one(conn, _profile_row(ids, "keeper", {axis: {"mode": "all"} for axis in axes}))
+        row = {"project_id": ids["project"], "plugin_id": plugin_id, "name": "keeper", "profile_id": profile_id}
+        row |= {"run_as": ids["user"], "daily_usd": 10.0, "enabled_by": ids["user"]}
+        before = one(conn, insert(agent_types).values(row).returning(agent_types.c.id))
+    move_to(hub_db, "0260")
+    assert query(hub_db, select(agent_types.c.min_run_usd).where(agent_types.c.id == before)) == [(None,)]
+    with live.connect(hub_db) as conn:
+        conn.execute(update(agent_types).values(min_run_usd=1.5).where(agent_types.c.id == before))
+        for bad in (0, -1):  # a floor is above 0
+            with pytest.raises(errors.CheckViolation, match="project_agent_types_min_run_usd_check"):
+                conn.execute(update(agent_types).values(min_run_usd=bad).where(agent_types.c.id == before))
+    assert query(hub_db, select(agent_types.c.min_run_usd)) == [(1.5,)]
+    move_to(hub_db, "0259", down=True)
+    assert "min_run_usd" not in columns(hub_db, "project_agent_types")
+    assert query(hub_db, select(agent_types.c.name, agent_types.c.daily_usd)) == [("keeper", 10.0)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0260") :]
