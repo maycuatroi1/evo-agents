@@ -22258,6 +22258,11 @@ export interface components {
             /** Answered By */
             answered_by: string | null;
             /**
+             * Answered Via
+             * @description the kind of channel of a core plugin the answer came through, such as telegram; null for an answer from the web or the CLI, one the hub gave, one given before schema 0259, and an open decision
+             */
+            answered_via?: string | null;
+            /**
              * Answer Run Id
              * @description the run whose inbox the answer went to: the decision's run, or the run that resumed it
              */

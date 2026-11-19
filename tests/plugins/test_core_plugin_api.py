@@ -46,6 +46,7 @@ from evo_agents.hub.server import notifications, plugin_routes
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_store import insert_message
+from evo_agents.hub.server.core_plugin_api import _acts
 from evo_agents.hub.server.sealing import KEY_BYTES
 from evo_agents.hub.server.security import CSRF_HEADER, SESSION_COOKIE, Principal, csrf_token, hash_token
 from evo_agents.plugins import core
@@ -304,17 +305,33 @@ def test_a_decision_goes_to_the_chat_with_its_buttons_and_a_button_answers_it(no
     assert f"decision {decision_id} is answered, not open" in northwind.fake.last()["text"]
 
 
-def test_a_reply_to_a_decisions_message_answers_it_in_words(northwind):
-    client = northwind.client
+def test_a_reply_to_a_decisions_message_answers_it_in_words(northwind, caplog):
+    client, db = northwind.client, northwind.db
     sent = sent_decision(northwind)
+    url = f"/v1/projects/{PROJECT}/decisions/{sent.decision['id']}"
+    # Words the hub's filter of secrets masks any part of are refused with their own reason, and nothing is kept.
+    leaked = "hunter2-northwind-42"
+    caplog.set_level(logging.DEBUG)
+    assert said(client, text(f"Use PASSWORD={leaked} for it", reply_to=sent.message["id"])) == "refused"
+    told = northwind.fake.last()["text"]
+    assert told == f"The hub did not take that: {_acts.HOLDS_SECRET}" and leaked not in told
+    assert leaked not in caplog.text
+    shown = client.get(url, headers=northwind.headers["owner"]).json()
+    assert (shown["state"], shown["answer_text"], shown["answered_via"]) == ("open", None, None)
+    assert sql(db, select(func.count()).select_from(tables.run_inbox)) == [(0,)]
+    assert audit_rows(db, "decision") == []
+    # Words alone answer it: a free answer, and the decision keeps the channel it came through.
     words = "Postgres, and keep the SQLite file a week."
     assert said(client, text(words, reply_to=sent.message["id"])) == "replied"
     assert (
         northwind.fake.last()["text"]
         == f"Your answer to decision #{sent.decision['id']} went to run #{sent.run['id']}."
     )
-    shown = client.get(f"/v1/projects/{PROJECT}/decisions/{sent.decision['id']}", headers=northwind.headers["owner"])
-    assert (shown.json()["state"], shown.json()["answer_text"]) == ("answered", words)
+    shown = client.get(url, headers=northwind.headers["owner"]).json()
+    answered = (shown["state"], shown["answer_text"], shown["answer_option"], shown["answered_via"])
+    assert answered == ("answered", words, None, KIND)
+    (row,) = audit_rows(db, "decision")
+    assert row[1].endswith(f"via={KIND}")
     assert said(client, text("to nothing", reply_to="msg-424242")) == "replied"
     assert northwind.fake.last()["text"] == "Only a decision takes an answer in words."
 

@@ -799,6 +799,19 @@ button. A reply to the decision's message is its answer in text: the hub finds t
 id it kept (`external_id`, `<chat>:<message>`), since Telegram numbers messages per chat, with the same checks as a
 button. A member who wants an option and text together answers on the web.
 
+An answer through a channel, a button or words, is kept with the channel's kind on the decision itself
+(`decisions.answered_via`, migration 0259; `answered_via` of every view of the decision, null for an answer from the
+web or the CLI and for one given before 0259). Words alone, with no option, are a free answer: `answer_text` keeps them
+as they were sent, `answer_option` is null, and the decision card on the web and `evo-agents hub decision show` say
+"a free answer" with the channel, as in `option  none: a free answer in words through telegram`. They go to the run's
+inbox, or resume the parked run, as any answer does.
+
+Words sent through a channel that the hub's filter of secrets (`evo_agents.hub.redact`) would mask any part of are
+refused before anything is read or written: 422 with the reason `HOLDS_SECRET` of `core_plugin_api._acts`, the same
+words every time and naming no value, so the channel tells it from a 422 for an answer too long. The decision stays
+open, and nothing goes to its run's inbox, the audit log or the hub's log. Only answers through a channel are filtered:
+the web and the CLI are where a member gives a credential (A credential request).
+
 ### Limits
 
 Telegram's Bot FAQ asks bots to stay near one message per second in one chat and about 30 per second overall. The

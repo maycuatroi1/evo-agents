@@ -66,6 +66,7 @@ DECISION_KEYS = (
     "answer_option",
     "answer_text",
     "answered_by",
+    "answered_via",
     "answer_run_id",
     "asked_at",
     "answered_at",
@@ -160,10 +161,14 @@ def _answer_lines(decision: dict) -> list[tuple[str, str]]:
     if decision["state"] != "answered":
         return []
     who = decision["answered_by"] or "the hub, as what it waited for came"
-    lines = [("answered", f"by {who} at {when(decision['answered_at'])} UTC")]
+    via = decision.get("answered_via")  # a hub before schema 0259 has none
+    through = f" through {via}" if via else ""
+    lines = [("answered", f"by {who}{through} at {when(decision['answered_at'])} UTC")]
     if decision["answer_option"]:
         label = _option_label(decision, decision["answer_option"])
         lines.append(("option", decision["answer_option"] + (f", {label}" if label else "")))
+    elif decision["answer_text"] and decision["answered_by"]:
+        lines.append(("option", f"none: a free answer in words{through}"))
     if decision["answer_text"]:
         lines.append(("text", decision["answer_text"]))
     inbox = decision["answer_run_id"]

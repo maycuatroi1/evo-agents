@@ -683,6 +683,7 @@ def test_only_the_runs_owner_answers_and_a_decision_is_answered_once(client, hub
         "answer_run_id": run["id"],
     }
     assert done["answered_at"] is not None and done["delivered_at"] is None
+    assert done["answered_via"] is None  # the web and the CLI are no channel; a core plugin's channel names its kind
     again = answer(client, hub["owner"], decision_id, option="sqlite")
     assert again.status_code == 409 and "answered, not open" in again.json()["message"]
     # the audit row names the decision, its run and the option, never the text

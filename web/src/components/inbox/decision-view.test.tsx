@@ -349,6 +349,16 @@ describe("DecisionCard", () => {
     expect(within(answer).getByTestId("decision-answer-text")).toHaveTextContent("Go ahead.");
     expect(within(answer).getByTestId("decision-delivery")).toHaveAttribute("data-delivered", "false");
     expect(within(answer).getByTestId("decision-resumed").querySelector("a")).toHaveAttribute("href", "/p/demo/runs/15");
+    expect(within(answer).queryByTestId("decision-answer-via")).toBeNull(); // an option from the web: no channel
+  });
+
+  it("shows words with no option as a free answer, with the channel they came through", () => {
+    setup({ ...ANSWERED, answer_option: null, answer_text: "Keep the file a week.", answered_via: "telegram" });
+    const answer = screen.getByTestId("decision-answer");
+    expect(within(answer).queryByTestId("decision-answer-option")).toBeNull();
+    expect(within(answer).getByTestId("decision-answer-via")).toHaveAttribute("data-free", "true");
+    expect(within(answer).getByTestId("decision-answer-via")).toHaveTextContent("Trả lời tự do qua Telegram");
+    expect(within(answer).getByTestId("decision-answer-text")).toHaveTextContent("Keep the file a week.");
   });
 
   it("keeps a decision open on an option that waits: tags it, refuses words with it, and says so in a toast", async () => {
@@ -390,6 +400,7 @@ describe("DecisionCard", () => {
     const head = screen.getByTestId("decision-head");
     expect(within(head).getByTestId("decision-category")).toHaveTextContent("Chờ");
     expect(within(head).getByTestId("decision-answered-by")).toHaveTextContent(/^hub tự đánh thức/);
+    expect(screen.queryByTestId("decision-answer-via")).toBeNull(); // the hub's words are no free answer
   });
 
   it("shows another member the options and why they cannot answer, but no form", () => {
