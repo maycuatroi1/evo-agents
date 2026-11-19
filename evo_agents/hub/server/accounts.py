@@ -66,7 +66,7 @@ from evo_agents.hub.accounts import (
 from evo_agents.hub.credentials import PROVIDER_KIND, SECRET_NAME
 from evo_agents.hub.gateway_runs import PICK_PREFIX
 from evo_agents.hub.server import audit, org_store, route_autonomy
-from evo_agents.hub.server.account_choice import RELOGIN_REASON
+from evo_agents.hub.server.account_choice import RELOGIN_REASON, end_cooldown
 from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, PrincipalCost, account_figures, figured
 from evo_agents.hub.server.admin import LOGIN_NAME, ProjectName
 from evo_agents.hub.server.auth import NO_STORE
@@ -454,7 +454,8 @@ def _paused(change: AccountChange, kept):
 async def change_account(
     request: Request, name: AccountName, body: AccountChange, user: CurrentUser, response: Response
 ) -> Account:
-    """Change the weight, priority or weekly budget of the caller's account ``name``, or pause or resume it."""
+    """Change the weight, priority or weekly budget of the caller's account ``name``, or pause or resume it; a resume
+    also ends its cooldown, save one that needs a new sign-in (``end_cooldown``)."""
     a = tables.accounts
     async with request.app.state.engine.begin() as conn:
         row = (await conn.execute(_accounts(user.user_id, name))).one_or_none()
@@ -465,6 +466,7 @@ async def change_account(
         made = insert(a).values(secret_id=row.id, **values, **_paused(body, None))
         changed = {**values, **_paused(body, a.c.paused_at), "updated_at": func.now()}
         await conn.execute(made.on_conflict_do_update(index_elements=[a.c.secret_id], set_=changed))
+        cooled = body.paused is False and await end_cooldown(conn, row.id)
         figures = await account_figures(conn, user.user_id, [row.id])
         shares = await shares_of(conn, [row.id])
         found = _account(
@@ -477,6 +479,8 @@ async def change_account(
         target = f"{audit_target(row.id)} weight={found.weight} priority={found.priority} paused={paused}"
         if "weekly_budget_usd" in body.model_fields_set:
             target += f" weekly_budget_usd={found.weekly_budget_usd}"
+        if cooled:
+            target += " cooldown=ended"
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.ACCOUNT_SET, target=target)
     log.info("account changed", extra={"secret": name, "login": user.login, "state": found.state})
     response.headers.update(NO_STORE)

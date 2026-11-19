@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { At } from "./account-cells";
 import { budgetable } from "./budget-model";
 import { preloadLogin } from "./login-lazy";
-import { isClaudeAccount } from "./model";
+import { isClaudeAccount, resumable } from "./model";
 import { ProviderLogo } from "./provider-logo";
 import type { Account, AccountFigures } from "./queries";
 
@@ -145,7 +145,7 @@ export function LastUsedCell({ at }: { at: string | null }) {
  */
 export function ActionButtons({ account, onEdit, onPause, onRenew, onKey, onDelete, onBudget }: { account: Account } & Actions) {
   const t = useTranslations("accounts");
-  const paused = account.paused_at !== null;
+  const paused = resumable(account);
   const provider = Boolean(account.gateway);
   return (
     <>

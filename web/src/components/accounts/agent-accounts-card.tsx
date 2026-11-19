@@ -21,6 +21,7 @@ import type { AgentDialogKind } from "./agent-account-dialog";
 import { LazyAgentAccountDialog, preloadAgentAccountDialog } from "./agent-account-lazy";
 import { useAgentAccountFailure, useChangeAgentAccount, useDeleteAgentAccount, useProjectAdmin } from "./agent-hooks";
 import { type AgentAccount, agentAccountsQuery, MAX_ACCOUNTS_PER_AGENT } from "./agent-queries";
+import { resumable } from "./model";
 
 type Dialog = { kind: AgentDialogKind; account: AgentAccount | null; open: boolean };
 
@@ -86,7 +87,7 @@ export function AgentAccountsCard({ project, handle }: { project: string; handle
   );
   const onPause = useCallback(
     async (account: AgentAccount) => {
-      const paused = account.paused_at === null;
+      const paused = !resumable(account);
       const name = account.name;
       try {
         await changeAsync({ name, body: { paused } });

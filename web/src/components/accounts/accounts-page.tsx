@@ -22,7 +22,7 @@ import { AccountDialog } from "./account-dialog";
 import { LazyAccountSharing, LazyModelsTab, LazyPolicies, LazyServicesTab, LazySharedWithYou } from "./account-tabs-lazy";
 import { useChangeAccount, useFailure } from "./hooks";
 import { LazyLoginDialog, preloadLogin } from "./login-lazy";
-import { sharedVariables } from "./model";
+import { resumable, sharedVariables } from "./model";
 import type { ProviderCardData } from "./provider-cards";
 import type { ProviderStart } from "./provider-dialog";
 import { LazyBudgetDialog, LazyProviderDeleteDialog, LazyProviderDialog, LazyProviderKeyDialog, preloadProvider } from "./provider-lazy";
@@ -107,7 +107,7 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
   );
   const pause = useCallback(
     async (account: Account) => {
-      const paused = account.paused_at === null;
+      const paused = !resumable(account);
       const name = account.name;
       try {
         await mutateAsync({ name, body: { paused } });

@@ -332,6 +332,9 @@ def test_a_new_oauth_login_ends_the_relogin_cooldown_and_keeps_the_account(clien
     expire(monkeypatch)
     leased(client, worker, run_id)
     assert cooling(hub_db, "oauth-a") == (True, RELOGIN_REASON)
+    # a resume does not end it: the tokens are dead
+    assert client.patch("/v1/accounts/oauth-a", json={"paused": False}, headers=hub["owner"]).status_code == 200
+    assert cooling(hub_db, "oauth-a") == (True, RELOGIN_REASON)
 
     access, _ = add_account(client, hub, anthropic, timedelta(hours=2), "oauth-a")  # oauth-login again, same name
     assert cooling(hub_db, "oauth-a") == (False, None)

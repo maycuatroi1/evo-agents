@@ -45,6 +45,9 @@ An OAuth account whose refresh the token endpoint refused (``account_refresh``: 
 ended) needs a new sign-in: ``mark_relogin`` puts it in a cooldown that lasts ``RELOGIN_SPAN``, with the reason
 ``RELOGIN_REASON``, and ``fail_over_relogin`` moves the runs that held it to another account as ``fail_over`` does.
 The member ends the cooldown by running ``evo-agents hub account oauth-login`` again (``clear_relogin``).
+
+Any other cooldown ends when the owner resumes the account (``evo-agents hub account resume``, ``end_cooldown``): a
+usage limit that reset early, or a token renewed after a refused one, needs no wait and no new sign-in.
 """
 
 from __future__ import annotations
@@ -53,7 +56,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, not_, null, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -462,6 +465,24 @@ async def clear_relogin(conn: AsyncConnection, secret_id: int) -> None:
         .where(a.c.secret_id == secret_id, a.c.cooldown_reason == RELOGIN_REASON)
         .values(cooldown_until=None, cooldown_reason=None, updated_at=func.now())
     )
+
+
+async def end_cooldown(conn: AsyncConnection, secret_id: int) -> bool:
+    """The owner's resume of account ``secret_id`` ends its cooldown, whatever limit set it, save the one only a new
+    sign-in ends (``mark_relogin``): the owner knows the limit reset before the time its runtime gave. The last usage
+    goes too, since the report that cooled the account no longer holds; the next run reports it again. True when a
+    cooldown ended."""
+    a = tables.accounts
+    ended = await conn.execute(
+        update(a)
+        .where(
+            a.c.secret_id == secret_id,
+            a.c.cooldown_until > func.now(),
+            or_(a.c.cooldown_reason.is_(None), not_(a.c.cooldown_reason.startswith(RELOGIN_REASON, autoescape=True))),
+        )
+        .values(cooldown_until=None, cooldown_reason=None, last_usage=null(), last_usage_at=None, updated_at=func.now())
+    )
+    return ended.rowcount > 0
 
 
 async def fail_over_relogin(conn: AsyncConnection, run: Run, secrets: list[Secret], rejected: set[int]) -> None:
