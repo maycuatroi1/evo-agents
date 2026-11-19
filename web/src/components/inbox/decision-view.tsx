@@ -20,7 +20,7 @@ import { isWait } from "@/lib/waits";
 
 import { AnswerFormView, type AnswerFormState } from "./answer-form";
 import { answerNotice } from "./answer-notice";
-import { AnsweredBy } from "./answered-by";
+import { AnsweredBy, AnswerVia } from "./answered-by";
 import { DecisionCategoryBadge, DecisionStatePill } from "./badges";
 import { ContextFold } from "./context-fold";
 import { useCredentialAnswer } from "./credential-decisions";
@@ -176,7 +176,7 @@ export function FoldedContext({ text, screen = false }: { text: string; screen?:
   );
 }
 
-/** Who answered is in the head; here the option chosen, their words, whether the agent got it, and the run that took it. */
+/** Who answered is in the head; here the option chosen or a free answer, the channel, their words, delivery and the run that took it. */
 export function AnswerSummary({ decision }: { decision: Decision }) {
   const t = useTranslations("inbox.decision");
   const option = chosenOption(decision);
@@ -190,6 +190,7 @@ export function AnswerSummary({ decision }: { decision: Decision }) {
           {option.label}
         </p>
       ) : null}
+      <AnswerVia decision={decision} />
       {decision.answer_text ? (
         <div className="flex flex-col gap-0.5" data-testid="decision-answer-text">
           <span className="text-xs text-muted-foreground">{t("answerText")}</span>

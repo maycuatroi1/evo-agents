@@ -6448,3 +6448,31 @@ def test_0258_takes_quota_pacing_and_weekly_budgets_and_going_back_moves_pacing_
     assert not {"weekly_budget_usd", "weekly_reset_at"} & columns(hub_db, "accounts")
     assert query(hub_db, select(policies.c.strategy)) == [("round-robin",)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0258") :]
+
+
+def test_0259_keeps_the_channel_an_answer_came_through_and_going_back_drops_it(hub_db):
+    """0259 gives decisions answered_via, the kind of channel an answer came through, NULL for the decisions before it
+    and for an answer from the web or the CLI; going back drops the column and keeps the answers."""
+    d = hub_tables.decisions
+    move_to(hub_db, "0258")
+    assert "answered_via" not in columns(hub_db, "decisions")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        before = one(conn, _decision_row(ids, run_id, "wait-helper"))
+    move_to(hub_db, "0259")
+    assert query(hub_db, select(d.c.answered_via).where(d.c.id == before)) == [(None,)]
+    answered = {
+        "state": "answered",
+        "answer_text": "Keep it a week.",
+        "answered_by": ids["user"],
+        "answered_at": func.now(),
+    }
+    with live.connect(hub_db) as conn:
+        conn.execute(update(d).values(answered | {"answered_via": "telegram"}).where(d.c.id == before))
+        with pytest.raises(errors.CheckViolation):  # a channel's kind has 1 to 64 characters
+            conn.execute(update(d).values(answered_via="").where(d.c.id == before))
+    move_to(hub_db, "0258", down=True)
+    assert "answered_via" not in columns(hub_db, "decisions")
+    assert query(hub_db, select(d.c.state, d.c.answer_text)) == [("answered", "Keep it a week.")]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0259") :]

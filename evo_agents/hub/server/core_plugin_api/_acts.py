@@ -5,6 +5,7 @@ the plugin needs. Private to ``core_plugin_api``."""
 
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from sqlalchemy import and_, select
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import access, features, tables, telegram
 from evo_agents.hub.kg_sources import source_id
+from evo_agents.hub.redact import redact
 from evo_agents.hub.server import chat_graph, decisions, hub_settings, member_channels
 from evo_agents.hub.server.chat_access import ChatAccess, chat_access
 from evo_agents.hub.server.chat_direct import direct_chat
@@ -46,6 +48,14 @@ READS, WRITES = "chats:read", "chats:write"
 NOT_GRANTED = "project {project} does not grant plugin {plugin} {permission}: an admin of the project grants it"
 NO_PROJECT = "chat {chat} has no agent of a project, so no project granted plugin {plugin} {permission}"
 KEPT_OFF = "chat {chat} holds the work of project {project}, which keeps it off this channel: read it on the hub"
+# The 422 of an answer in words that ``redact`` would mask in part. A channel tells it from the other 422s by these
+# exact words (``docs/plugins.md``, answer_decision); they name no value.
+HOLDS_SECRET = (
+    "the answer looks like it holds a secret (a token, a key or a password), so the hub kept none of it: "
+    "answer again without it, and give a credential on the hub"
+)
+
+log = logging.getLogger(__name__)
 
 
 def _via(member: Member, via: str | None) -> str:
@@ -95,10 +105,17 @@ async def answer_decision(
     answer route: first 404 without a grant on its project (the same words whether it exists or not) and 403 when the
     project is kept from a channel cleared for ``cleared``; then 422 for a body the route refuses, 403 unless the member
     dispatched its run, 409 for one no longer open, 422 for an option it lacks, 409 for a run that takes no answer, 403
-    for a worker that takes steering from the web only. Audited with ``via=<via>``, the channel's kind by default."""
+    for a worker that takes steering from the web only. Words that ``evo_agents.hub.redact`` masks any part of are
+    422 with ``HOLDS_SECRET`` before anything else, and nothing is kept or logged of them. Audited with
+    ``via=<via>``, the channel's kind by default, which the decision keeps in ``answered_via``."""
     own_member(member)
     own_clearance(cleared)
     said = _via(member, via)
+    if text is not None and redact(text) != text:
+        log.info(
+            "channel answer refused: it looks like it holds a secret", extra={"decision_id": decision_id, "via": said}
+        )
+        raise Refused(422, HOLDS_SECRET)
     user = principal_of(member)
     with refusing():
         project = await member_channels.answerable_project(

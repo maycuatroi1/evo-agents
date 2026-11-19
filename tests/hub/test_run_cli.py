@@ -1389,6 +1389,32 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
     assert left.out == "Marked 0 notification(s) read; 0 left unread.\n"  # answering read the decision's
 
 
+def test_decision_show_says_words_without_an_option_are_a_free_answer_and_names_the_channel():
+    from evo_agents.hub.decision_cli import _answer_lines
+
+    answered = {
+        "state": "answered",
+        "answered_by": "lumen-owner",
+        "answered_at": "2026-11-19T08:00:00Z",
+        "answer_option": None,
+        "answer_text": "Postgres, and keep the file a week.",
+        "answered_via": "telegram",
+        "options": [{"key": "postgres", "label": "Move to Postgres"}],
+        "run_id": 7,
+        "answer_run_id": 7,
+        "delivered_at": None,
+    }
+    lines = dict(_answer_lines(answered))
+    assert lines["answered"].startswith("by lumen-owner through telegram at ")
+    assert lines["option"] == "none: a free answer in words through telegram"
+    assert lines["text"] == answered["answer_text"]
+    # An option from the web: no channel, and no free answer; a hub before schema 0259 sends no answered_via.
+    lines = dict(_answer_lines(answered | {"answer_option": "postgres", "answered_via": None}))
+    assert "through" not in lines["answered"] and lines["option"] == "postgres, Move to Postgres"
+    del answered["answered_via"]
+    assert dict(_answer_lines(answered))["option"] == "none: a free answer in words"
+
+
 @needs_pg
 def test_dispatch_plan_author_and_rerun_send_the_account_picked_by_hand(hub, monkeypatch, capsys):
     """``--account`` goes in the body: a name that is no env secret of the caller's comes back refused, nothing

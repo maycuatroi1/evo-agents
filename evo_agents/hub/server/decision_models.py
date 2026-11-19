@@ -281,6 +281,11 @@ class Decision(BaseModel):
     answer_option: str | None
     answer_text: str | None
     answered_by: str | None
+    answered_via: str | None = Field(
+        None,
+        description="the kind of channel of a core plugin the answer came through, such as telegram; null for an "
+        "answer from the web or the CLI, one the hub gave, one given before schema 0259, and an open decision",
+    )
     answer_run_id: int | None = Field(
         description="the run whose inbox the answer went to: the decision's run, or the run that resumed it"
     )

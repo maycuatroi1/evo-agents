@@ -83,6 +83,8 @@ def decision_tables(metadata: MetaData) -> tuple[Table, Table]:
         # a merge approval: the head and the scope of the request its answer holds for (0184, ``approval_heads``)
         Column("approval", JSONB(none_as_null=True)),
         Column("awaits_run_id", BigInteger),  # the run asked whose end answers this wait of an agent ask (0234)
+        # the kind of channel of a core plugin the answer came through, such as telegram; NULL from the web or the CLI
+        Column("answered_via", Text),  # (0259), 1 to 64 characters
         ForeignKeyConstraint(["answered_by"], ["users.id"], ondelete="RESTRICT", name="decisions_answered_by_fkey"),
         ForeignKeyConstraint(["asked_of"], ["users.id"], ondelete="RESTRICT", name="decisions_asked_of_fkey"),
         ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="decisions_project_id_fkey"),

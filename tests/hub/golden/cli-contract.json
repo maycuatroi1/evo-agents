@@ -8870,6 +8870,7 @@
           "answer_option",
           "answer_text",
           "answered_by",
+          "answered_via",
           "answer_run_id",
           "asked_at",
           "answered_at",
@@ -9016,6 +9017,7 @@
           "answer_option",
           "answer_text",
           "answered_by",
+          "answered_via",
           "answer_run_id",
           "asked_at",
           "answered_at",
@@ -30538,7 +30540,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.70.4"
+      "version": "0.71.0"
     },
     "paths": {
       "/v1/health": {
@@ -131953,6 +131955,18 @@
                 }
               ],
               "title": "Answered By"
+            },
+            "answered_via": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered Via",
+              "description": "the kind of channel of a core plugin the answer came through, such as telegram; null for an answer from the web or the CLI, one the hub gave, one given before schema 0259, and an open decision"
             },
             "answer_run_id": {
               "anyOf": [

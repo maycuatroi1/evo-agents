@@ -42,7 +42,10 @@ agent like any message of the owner's:
   in the parked run's inbox, and the run that resumes it (on the last answer, or on a reply in its chat) takes every
   message of that inbox the worker has not handed to an agent, so the agent reads them all in its first turn.
 
-The audit row decision.answer names the decision, its run and the option, never the text.
+The audit row decision.answer names the decision, its run and the option, never the text. An answer through a
+channel of a core plugin (``core_plugin_api.answer_decision``) adds ``via=<kind>`` to it, and the decision keeps that
+kind in ``answered_via`` (schema 0259), which every view shows: null for an answer from the web or the CLI. Words with no
+option are a free answer, and the web and ``evo-agents hub decision show`` say so with the channel they came through.
 
 A credential request (a decision of category credential that carries ``credential_request``,
 ``evo_agents.hub.credential_requests``) is asked of the run's owner whoever the run's principal reports to, and takes
@@ -167,6 +170,7 @@ def _decisions():
         d.c.answer_option,
         d.c.answer_text,
         answerer.c.login.label("answered_by"),
+        d.c.answered_via,
         answer_run.label("answer_run_id"),
         d.c.asked_at,
         d.c.answered_at,
@@ -704,16 +708,19 @@ def _takes_answer(decision_id: int, run_id: int, run_state: str, kind: str) -> N
 
 
 async def _record_answer(
-    conn: AsyncConnection, user: Principal, decision_id: int, option: str | None, words: str | None
+    conn: AsyncConnection,
+    user: Principal,
+    decision_id: int,
+    option: str | None,
+    words: str | None,
+    via: str | None = None,
 ) -> None:
-    """Mark the decision answered with ``option`` and ``words``, and its notification to ``user`` read."""
+    """Mark the decision answered with ``option`` and ``words``, through the channel ``via`` (None from the web or the
+    CLI), and its notification to ``user`` read."""
     d, n = tables.decisions, tables.notifications
+    answered = {"answer_option": option, "answer_text": words, "answered_by": user.user_id, "answered_via": via}
     await conn.execute(
-        update(d)
-        .values(
-            state="answered", answer_option=option, answer_text=words, answered_by=user.user_id, answered_at=func.now()
-        )
-        .where(d.c.id == decision_id)
+        update(d).values(state="answered", answered_at=func.now(), **answered).where(d.c.id == decision_id)
     )
     await conn.execute(
         update(n)
@@ -760,8 +767,9 @@ async def answer_decision(
     """Answer decision ``decision_id`` of ``project`` as ``user``, in the caller's transaction: the checks, the answer,
     its notification read, the inbox message, a parked run resumed and the audit row, as the module's docstring says;
     for a credential request, what the answer gives the run too (``credential_answers``), its value sealed with
-    ``sealer``. The answer route and the Telegram channel (``via="telegram"``, which the audit row names) both answer
-    through it; it raises the HTTPException the route answers with."""
+    ``sealer``. The answer route and the channels of core plugins (``via="telegram"``, which the audit row names and the
+    decision keeps in ``answered_via``; None from the route) both answer through it; it raises the HTTPException the
+    route answers with."""
     access = await readable_decision(conn, user, project, decision_id, None)
     plan_id, key, behalf = await _asked_of(conn, user, access, decision_id)
     check_dispatcher(access)
@@ -793,7 +801,7 @@ async def answer_decision(
             conn, user, sealer, access, project, decision_id, run_id, request, asked, behalf=behalf
         )
         words = credential_answers.with_sentence(body.text, given)
-    await _record_answer(conn, user, decision_id, asked.option, words)
+    await _record_answer(conn, user, decision_id, asked.option, words, via)
     if kind == "local" and run_state == "waiting":  # the session waited for this: it goes on once none is open
         await _go_on_local(conn, run_id)
     resumes = await resume.resumes(conn, run_id, run_state, kind)
@@ -901,7 +909,12 @@ async def _answer_hub(
         raise HTTPException(422, f"decision {decision_id} of the hub takes one of its options: {keys}")
     await _hub_does(conn, user, decision_id, category, chosen["key"])
     d, n = tables.decisions, tables.notifications
-    answered = {"answer_option": body.option, "answer_text": body.text, "answered_by": user.user_id}
+    answered = {
+        "answer_option": body.option,
+        "answer_text": body.text,
+        "answered_by": user.user_id,
+        "answered_via": via,
+    }
     await conn.execute(
         update(d).values(state="answered", answered_at=func.now(), **answered).where(d.c.id == decision_id)
     )
