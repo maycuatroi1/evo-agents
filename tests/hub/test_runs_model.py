@@ -877,9 +877,12 @@ def test_a_task_dispatch_budget_is_what_is_left_of_the_cap_and_a_spent_cap_refus
 
     assert task_runs.run_budget(1.234567) == {"max_usd": 1.2346}  # no time cap
     assert task_runs.run_budget(-2) == {"max_usd": 0.0}
-    assert task_runs.spent_problem(4.99, 5, "triager") is None
-    said = task_runs.spent_problem(5, 5, "triager")
-    assert said.startswith("the task runs of agent type triager cost $5.00 in the last 24 hours")
+    assert task_runs.left_problem(4.0, 0, 1.0, 5, "triager") is None  # what is left is the floor
+    said = task_runs.left_problem(4.99, 0, 1.0, 5, "triager")
+    assert said.startswith(
+        "the runs of agent type triager cost $4.99 in the last 24 hours and runs not ended hold $0.00"
+    )
+    assert "leaves $0.01 of its cap of $5.00, under the floor of $1.00" in said
     assert (task_runs.branch_of(41), task_runs.task_of("task/41"), task_runs.task_of("chat/41")) == (
         "task/41",
         41,

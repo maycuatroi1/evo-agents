@@ -380,7 +380,7 @@ def test_task_budget_refuses_a_dispatch_once_the_runs_of_a_day_cost_the_cap(clie
     set_run(hub_db, second["run_id"], usage={"total_cost_usd": 1.75})
     refused = hand(client, key)
     said = message(refused, 429)
-    assert "cost $5.00 in the last 24 hours, which reached its cap of $5.00" in said
+    assert "cost $3.25 in the last 24 hours and runs not ended hold $1.75" in said and "under the floor of $1.00" in said
     count = select(func.count()).select_from(tables.runs).where(tables.runs.c.kind == "task")
     assert sql(hub_db, count) == [(2,)]
     enabled(client, hub["owner"], daily_usd=6)  # the cap raised

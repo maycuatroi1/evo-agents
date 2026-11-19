@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import curator, profiles, tables, task_runs
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plugin_calls import enabled_in, enabled_plugins
+from evo_agents.hub.runs import TERMINAL_STATES
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_packs import AgentPackPin, pinned
@@ -122,6 +123,37 @@ async def type_spend(conn: AsyncConnection, agent_type_id: int) -> float:
     r = tables.runs
     query = select(r.c.usage).where(r.c.agent_type_id == agent_type_id, r.c.queued_at > func.now() - WINDOW)
     return round(sum(curator.run_cost(usage) for usage in (await conn.execute(query)).scalars()), 4)
+
+
+async def type_hold(conn: AsyncConnection, agent_type_id: int, daily_usd: float) -> tuple[float, float, float]:
+    """(spent, held, floor) of agent type ``agent_type_id`` whose cap is ``daily_usd``: what its ended runs queued in
+    the last BUDGET_HOURS cost, what each run not ended holds (the floor of the type, or the cap of the run when that
+    is less, and never less than the run spent already), and the floor in effect (``task_runs.run_floor``)."""
+    r, t = tables.runs, tables.project_agent_types
+    set_floor = (await conn.execute(select(t.c.min_run_usd).where(t.c.id == agent_type_id))).scalar_one_or_none()
+    floor = task_runs.run_floor(set_floor, daily_usd)
+    ended = r.c.state.in_(TERMINAL_STATES)
+    query = select(r.c.usage, r.c.budget, ended.label("ended")).where(
+        r.c.agent_type_id == agent_type_id, ~ended | (r.c.queued_at > func.now() - WINDOW)
+    )
+    spent = held = 0.0
+    for usage, budget, over in (await conn.execute(query)).all():
+        cost = curator.run_cost(usage)
+        if over:
+            spent += cost
+            continue
+        cap = (budget or {}).get("max_usd") if isinstance(budget, dict) else None
+        cap = cap if isinstance(cap, int | float) and not isinstance(cap, bool) else floor
+        held += max(min(floor, cap), cost)
+    return round(spent, 4), round(held, 4), floor
+
+
+async def type_left(conn: AsyncConnection, row, *, waits: str = "the task") -> tuple[float, str | None]:
+    """(what is left of the cap of agent type ``row`` for the next run, why that run may not be handed or None): the
+    one rule of every dispatch (``task_runs.left_problem``). The caller holds the row's lock."""
+    spent, held, floor = await type_hold(conn, row.id, row.daily_usd)
+    problem = task_runs.left_problem(spent, held, floor, row.daily_usd, row.name, waits=waits)
+    return task_runs.run_left(spent, held, row.daily_usd), problem
 
 
 def _rows(project_id: int):

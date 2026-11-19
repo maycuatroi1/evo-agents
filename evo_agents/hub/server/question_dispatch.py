@@ -26,10 +26,10 @@ from fastapi import HTTPException
 from sqlalchemy import func, insert, null, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import plugin_calls, plugin_events, profiles, question_runs, tables, task_runs
+from evo_agents.hub import plugin_calls, plugin_events, profiles, question_runs, tables
 from evo_agents.hub.question_runs import MAX_ASKER_CHARS, MAX_REF_CHARS
 from evo_agents.hub.server import agent_placement, audit, member_channels
-from evo_agents.hub.server.agent_types import enabled_type, type_spend
+from evo_agents.hub.server.agent_types import enabled_type, type_left
 from evo_agents.hub.server.chat_runs import project_repos
 from evo_agents.hub.server.plugin_routes import not_enabled
 from evo_agents.hub.server.profile_store import by_id
@@ -158,11 +158,10 @@ async def ask(
             f"project {project} is kept from a place cleared for {_where(*cleared)}: an answer of its agents may not "
             "go there",
         )
-    spent = await type_spend(conn, row.id)
-    problem = question_runs.spent_problem(spent, row.daily_usd, name, task_runs.BUDGET_HOURS)
+    left, problem = await type_left(conn, row, waits="the question")
     if problem is not None:
         raise HTTPException(429, problem)
-    return await _made(conn, enabled, row, question, asker=asker, ref=ref, cleared=cleared, left=row.daily_usd - spent)
+    return await _made(conn, enabled, row, question, asker=asker, ref=ref, cleared=cleared, left=left)
 
 
 async def _made(conn: AsyncConnection, enabled, row, question: str, *, asker, ref, cleared, left: float) -> dict:

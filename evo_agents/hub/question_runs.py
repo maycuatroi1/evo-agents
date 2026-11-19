@@ -70,18 +70,6 @@ def run_budget(left_usd: float) -> dict:
     return {"max_usd": round(max(left_usd, 0.0), 4)}
 
 
-def spent_problem(spent_usd: float, cap_usd: float, agent_type: str, hours: int) -> str | None:
-    """Why a question to ``agent_type`` may not run when its runs cost ``spent_usd`` of ``cap_usd`` in the last
-    ``hours``, or None."""
-    if spent_usd < cap_usd:
-        return None
-    return (
-        f"the runs of agent type {agent_type} cost ${spent_usd:.2f} in the last {hours} hours, which reached its cap of "
-        f"${cap_usd:.2f}: an admin of the project raises the cap, or the question waits for older runs to leave the "
-        "window"
-    )
-
-
 def lowered_level(levels, held: str | None, label: dict | None) -> str | None:
     """The lower of ``held`` (the max level of a grant) and the level of ``label`` (a project's default label) on the
     ladder ``levels``; the lowest rung when either is not on it, so it fails closed."""

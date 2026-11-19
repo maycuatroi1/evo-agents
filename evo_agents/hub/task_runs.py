@@ -11,9 +11,9 @@ them, and the cap of what its runs may cost in BUDGET_HOURS (``daily_usd``, at m
 
 A plugin granted DISPATCH_PERMISSION in the project hands a task to an agent type of its own that the project enabled,
 with its plugin token, through the API of the hub (POST /v1/plugin-api/projects/{p}/agent-types/{name}/tasks). The hub
-refuses the task once what the type's task runs cost in the last BUDGET_HOURS, as their usage says, reached its cap
-(``spent_problem``); otherwise the run gets what is left as its cost cap and no time cap (``run_budget``), as a chat
-run has none. The run is dispatched by ``run_as``: one headless turn of the agent, which asks
+refuses the task once what is left of the cap, after what the type's runs cost in the last BUDGET_HOURS and what
+the runs not ended hold, is under the floor of a run (``left_problem``); otherwise the run gets what is left as its
+cost cap and no time cap (``run_budget``), as a chat run has none. The run is dispatched by ``run_as``: one headless turn of the agent, which asks
 nobody anything, in a writable worktree of each repo of the project its worker has a checkout of, all on the branch
 ``task/<run>`` (``branch_of``, the id of the run the plugin's dispatch made). The worker commits what the agent left,
 pushes that branch of each repo it changed, never a default branch and never forced, and the hub opens a draft pull
@@ -46,7 +46,6 @@ RESULT_STATES = ("done", "failed", "cancelled")  # the ends a task has; a lost r
 MAX_DAILY_USD = 1000.0  # the highest cap of cost per day an admin sets for an agent type
 BUDGET_HOURS = 24  # a rolling window, so no time zone is chosen
 DEFAULT_MIN_RUN_USD = 1.0  # the floor of one run's cap for an agent type whose min_run_usd is NULL
-
 TIMEOUT_MIN = LONGEST_TIMEOUT_MIN  # the agent time of one task run, where a hung agent fails
 MAX_TASK_BYTES = 16 * 1024  # the task's text (runs.request, as schema 0020 bounds it)
 MAX_TITLE_CHARS = 200
@@ -136,15 +135,26 @@ def base_problem(base: str) -> str | None:
     return None
 
 
-def spent_problem(spent_usd: float, cap_usd: float, agent_type: str) -> str | None:
-    """Why a task of ``agent_type`` may not run when its task runs cost ``spent_usd`` of ``cap_usd`` in the last
-    BUDGET_HOURS, or None."""
-    if spent_usd < cap_usd:
+def run_left(spent_usd: float, held_usd: float, cap_usd: float) -> float:
+    """What is left of the cap ``cap_usd`` of an agent type, whose ended runs cost ``spent_usd`` in the last
+    BUDGET_HOURS and whose runs not ended hold ``held_usd``: the cap of the next run."""
+    return round(cap_usd - spent_usd - held_usd, 4)
+
+
+def left_problem(
+    spent_usd: float, held_usd: float, floor_usd: float, cap_usd: float, what: str, *, waits: str = "the task"
+) -> str | None:
+    """Why a run of agent type ``what`` may not be handed when its ended runs cost ``spent_usd`` in the last
+    BUDGET_HOURS, its runs not ended hold ``held_usd`` and what is left of ``cap_usd`` is under ``floor_usd``
+    (``run_floor``), or None. ``waits`` names what waits for older runs to leave the window."""
+    left = run_left(spent_usd, held_usd, cap_usd)
+    if left + 1e-9 >= floor_usd:
         return None
     return (
-        f"the task runs of agent type {agent_type} cost ${spent_usd:.2f} in the last {BUDGET_HOURS} hours, which "
-        f"reached its cap of ${cap_usd:.2f}: an admin of the project raises the cap, or the task waits for older runs "
-        "to leave the window"
+        f"the runs of agent type {what} cost ${spent_usd:.2f} in the last {BUDGET_HOURS} hours and runs not ended hold "
+        f"${held_usd:.2f}, which leaves ${max(left, 0.0):.2f} of its cap of ${cap_usd:.2f}, under the floor of "
+        f"${floor_usd:.2f} for one run: an admin of the project raises the cap or lowers the floor, or {waits} waits "
+        "for older runs to leave the window"
     )
 
 
