@@ -55,6 +55,8 @@ SQL_DROP = re.compile(r"\bdrop\s+(table|database|schema|index|view|materialized\
 SQL_TRUNCATE = re.compile(r"\btruncate\b(\s+table)?\s+[\w.\"]+", re.I)
 SQL_DELETE = re.compile(r"\bdelete\s+from\s+[^;]*", re.I)
 SEPARATORS = frozenset({"&&", "||", ";", "|", "&", "\n", ";;", "|&", "(", ")"})
+# The start of a heredoc (not of a here-string, <<<): its `-`, then the delimiter, quoted or escaped or not
+HEREDOC = re.compile(r"(?<!<)<<(-?)(?!<)\s*(\\?)(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\3")
 MAX_WHAT = 200
 
 
@@ -96,6 +98,47 @@ def simple_commands(command: str) -> list[list[str]]:
     if current:
         found.append(current)
     return [words for words in (_program(words) for words in found) if words]
+
+
+def steps(command: str) -> list[list[str] | str]:
+    """The simple commands of ``command`` as ``simple_commands`` gives them, with ``"("`` and ``")"`` where a
+    subshell opens and closes, so that a reader can tell where a ``cd`` inside one stops counting."""
+    found: list[list[str] | str] = []
+    current: list[str] = []
+    for token in _tokens(command):
+        if token in SEPARATORS or set(token) <= set(";&|()"):
+            if current and (words := _program(current)):
+                found.append(words)
+            current = []
+            found += [char for char in token if char in "()"]
+            continue
+        current.append(token)
+    if current and (words := _program(current)):
+        found.append(words)
+    return found
+
+
+def without_heredocs(command: str) -> str:
+    """``command`` less the bodies of its heredocs, which are text (the body of a pull request, a file written with
+    ``cat``) rather than commands; the body of one a shell reads (``bash <<EOF``, ``cat <<EOF | sh``) is kept."""
+    lines = command.split("\n")
+    kept: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        kept.append(line)
+        index += 1
+        to_shell = any(_base(word) in SHELLS for word in re.split(r"[\s|;&()]+", line))
+        for found in HEREDOC.finditer(line):
+            tabs, delimiter = found.group(1) == "-", found.group(4)
+            while index < len(lines):
+                body = lines[index]
+                index += 1
+                if (body.lstrip("\t") if tabs else body) == delimiter:
+                    break
+                if to_shell:
+                    kept.append(body)
+    return "\n".join(kept)
 
 
 def _program(words: list[str]) -> list[str]:

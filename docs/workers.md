@@ -1276,6 +1276,27 @@ the Judge of the merge check runs the verify of every done step again, and the f
 #1642 of evo-agents spent about 115 of its 173 minutes in tests, and run #1675 ran the whole suite for 28 minutes to
 guess what two hidden checks wanted. Its refusal is a `system` event with `rule` `tests` in its `wait` body.
 
+It refuses the checks of every package of a JavaScript workspace too (`evo_agents.worker.broad_checks`), in the
+foreground or the background: `turbo run TASK` without `--filter` or `--affected`, `pnpm -r` of a script or of a
+typecheck or test tool without `--filter`, `npm` with `--workspaces`, `yarn workspaces foreach`, `nx run-many`,
+`lerna run`, and a script of a package.json that runs one of those, such as `pnpm check` at the root of a workspace
+whose `typecheck` script runs turbo. The script is read from the package.json of the directory the command runs in:
+the session's directory, as the hook's input gives it, then each `cd` of the command. `pnpm --filter PACKAGE
+typecheck`, and the script of a package run from its own directory, pass. A typecheck of thirty packages is three or
+four `tsc` of 1 to 2 GB each: two plan runs that started `pnpm check` in the background on a worker of 14 GB filled
+its swap for close to an hour and stalled every run of the machine. Its refusal has `rule` `workspace`. Both hooks
+read a command less the bodies of its heredocs, which are text: a pull request's body that named a pytest command was
+refused before.
+
+A command Claude Code stops, because the agent asked (TaskStop) or by itself, can leave children behind: the CLI
+signals the process group of the command's shell, and turbo runs the task of each package in a group of its own. The
+claude-code adapter notes the processes under each command's shell while it runs (Linux: the shell writes the
+command's output file, which `/proc/PID/fd/1` names) and, once the CLI reports the command stopped, kills those that
+still run, with what runs under them and their process groups (`evo_agents.worker.runtimes.task_reaper`). At the end
+of the session it does the same for every command, after the CLI's own process tree is killed. It never signals the
+CLI's process group or the daemon's. A cgroup of the run would hold even what left the tree, but the CLI starts each
+command, not the worker, so the worker could only put the whole session in one, which the end of the session covers.
+
 A push or merge into a repo's default branch, a plan finished and a plan run failed are notices: the owner reads them
 in the Inbox and answers nothing. Decisions and notices both reach the owner as notifications, through the channels
 of `docs/notifications.md`.

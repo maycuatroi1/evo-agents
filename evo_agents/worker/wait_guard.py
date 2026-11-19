@@ -18,7 +18,10 @@ worker could not self-update while it was held.
   ``evo-agents hub run watch``).
 
 It refuses too, through ``evo_agents.worker.broad_tests``, a Bash command that runs a broad test selection (the whole
-suite, a directory, more than ``broad_tests.MAX_FILES`` files, or a ``timeout`` over ``broad_tests.MAX_SECONDS``).
+suite, a directory, more than ``broad_tests.MAX_FILES`` files, or a ``timeout`` over ``broad_tests.MAX_SECONDS``), and
+through ``evo_agents.worker.broad_checks`` one that runs the checks of every package of a JavaScript workspace
+(``pnpm check`` of a root whose script runs ``turbo run typecheck``, ``turbo run`` or ``pnpm -r`` without a filter),
+read from the directory the hook says the session is in. Both read the command less the bodies of its heredocs.
 
 The refusal tells the agent to wait with ``evo-agents worker wait`` and end its turn. Work on the machine (tests, a
 build) still runs in the background as before. The thresholds are a reading of the commands such waits use, not a
@@ -33,8 +36,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
-from evo_agents.worker import broad_tests
-from evo_agents.worker.command_classes import SHELLS, shell_script, simple_commands
+from evo_agents.worker import broad_checks, broad_tests
+from evo_agents.worker.command_classes import SHELLS, shell_script, simple_commands, without_heredocs
 
 SLEEP_LIMIT = 120  # seconds one sleep may last before it is a wait
 LOOP_SLEEP = 5  # seconds a sleep inside a loop may last before the loop is a poll
@@ -156,27 +159,39 @@ class WaitGuard:
             return waiting(given["command"])
         return None
 
-    def too_broad(self, tool_name: str, tool_input) -> str | None:
-        """What in the call of ``tool_name`` is a broad test run (``broad_tests.broad``); None otherwise."""
+    def too_broad(self, tool_name: str, tool_input, cwd=None) -> tuple[str, str, str] | None:
+        """What in the call of ``tool_name``, made from directory ``cwd``, is a broad test run (``broad_tests.broad``)
+        or a check of a whole JavaScript workspace (``broad_checks.whole_workspace``): its rule, what it is and the
+        refusal's text; None otherwise."""
         given = tool_input if isinstance(tool_input, Mapping) else {}
-        if tool_name == "Bash" and isinstance(given.get("command"), str):
-            return broad_tests.broad(given["command"])
+        if tool_name != "Bash" or not isinstance(given.get("command"), str):
+            return None
+        command = without_heredocs(given["command"])
+        found = broad_tests.broad(command)
+        if found is not None:
+            return "tests", found, broad_tests.REFUSAL.format(what=found)
+        found = broad_checks.whole_workspace(command, cwd if isinstance(cwd, str) and cwd else None)
+        if found is not None:
+            return "workspace", found, broad_checks.REFUSAL.format(what=found)
         return None
 
-    def check(self, tool_name: str, tool_input) -> str | None:
-        """Why the call is refused, recorded as an event of the run; None when it goes through. A command the guard
-        cannot read goes through: the guard is a second layer, not the boundary."""
+    def check(self, tool_name: str, tool_input, cwd=None) -> str | None:
+        """Why the call is refused, recorded as an event of the run; None when it goes through. ``cwd`` is the
+        directory the session is in, as the hook says it. A command the guard cannot read goes through: the guard is
+        a second layer, not the boundary."""
         try:
             what = self.refused(tool_name, tool_input)
-            broad = self.too_broad(tool_name, tool_input) if what is None else None
+            broad = self.too_broad(tool_name, tool_input, cwd) if what is None else None
         except Exception:
             return None
         if broad is not None:
+            rule, found, refusal = broad
+            kind = "a broad test selection" if rule == "tests" else "the checks of every package of a workspace"
             self.record(
-                f"Refused {tool_name}: the plan run would run a broad test selection ({broad})",
-                {"tool": tool_name, "what": broad, "verdict": "refused", "run": self.run_id, "rule": "tests"},
+                f"Refused {tool_name}: the plan run would run {kind} ({found})",
+                {"tool": tool_name, "what": found, "verdict": "refused", "run": self.run_id, "rule": rule},
             )
-            return broad_tests.REFUSAL.format(what=broad)
+            return refusal
         if what is None:
             return None
         self.record(
@@ -192,7 +207,7 @@ def claude_wait_hook(guard: WaitGuard | None):
         return None
 
     async def wait_guard(data, tool_use_id, context) -> dict:
-        why = guard.check(str(data.get("tool_name") or ""), data.get("tool_input"))
+        why = guard.check(str(data.get("tool_name") or ""), data.get("tool_input"), data.get("cwd"))
         if why is None:
             return {}
         decision = {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": why}

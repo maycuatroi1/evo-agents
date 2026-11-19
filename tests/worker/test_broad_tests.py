@@ -1,12 +1,17 @@
 """The broad test runs a plan run's hook refuses (``evo_agents.worker.broad_tests``), from the commands of runs #1642
-and #1675 of evo-agents, which spent most of their time in tests the Judge and the release CI run again."""
+and #1675 of evo-agents, which spent most of their time in tests the Judge and the release CI run again, and the checks
+of a whole JavaScript workspace it refuses (``evo_agents.worker.broad_checks``)."""
 
 from __future__ import annotations
+
+import asyncio
+import json
 
 import pytest
 
 from evo_agents.hub import record_rule
-from evo_agents.worker import broad_tests
+from evo_agents.worker import broad_checks, broad_tests, wait_guard
+from evo_agents.worker.command_classes import without_heredocs
 from evo_agents.worker.wait_guard import WaitGuard
 
 WT = "/home/evo/.evo/worker-evo-agents/worktrees/evo-agents-1642/evo-agents"
@@ -65,3 +70,106 @@ def test_the_plan_runs_prompt_names_the_same_limits():
     rule = record_rule.record_rule("6", "the step")
     assert f"at most {broad_tests.MAX_FILES} files a command" in rule
     assert f"a `timeout` of at most {broad_tests.MAX_SECONDS} s" in rule
+
+
+# The checks of a whole JavaScript workspace (``evo_agents.worker.broad_checks``), from two plan runs on a worker of
+# 14 GB that started `pnpm check` in the background and stalled every run of the machine for close to an hour; the
+# workspace has the shape of theirs: `check` calls `typecheck`, which runs turbo in every package.
+ROOT_SCRIPTS = {
+    "boundaries": "node tools/boundaries.mjs",
+    "check": "pnpm boundaries && pnpm lint && pnpm typecheck && pnpm test",
+    "lint": "biome check .",
+    "typecheck": "TURBO_TELEMETRY_DISABLED=1 turbo run typecheck --concurrency=4 --output-logs=new-only",
+    "test": "vitest run --root tools && TURBO_TELEMETRY_DISABLED=1 turbo run test --concurrency=4",
+    "verify:all": "run-s boundaries typecheck",
+    "build:ts": "tsc -b",
+}
+WORKSPACE_REFUSED = [
+    # the command of the second run, started with run_in_background
+    "pnpm install --frozen-lockfile > ../.evo-run/logs/check.log 2>&1 && pnpm check >> ../.evo-run/logs/check.log "
+    '2>&1; echo "exit $?" >> ../.evo-run/logs/check.log',
+    "timeout 3000 pnpm check 2>&1 | tail -30",
+    "pnpm typecheck",
+    "pnpm run test",
+    "npm run typecheck",
+    "yarn check",
+    "pnpm verify:all",
+    "pnpm build:ts",
+    "TURBO_TELEMETRY_DISABLED=1 turbo run typecheck --concurrency=4 --output-logs=new-only",
+    "npx turbo typecheck",
+    "pnpm exec turbo run test --filter '!@lumen/web'",
+    "pnpm -r typecheck",
+    "pnpm --recursive run test",
+    "pnpm -r exec tsc --noEmit",
+    "npm test --workspaces",
+    "yarn workspaces foreach -A run typecheck",
+    "nx run-many -t typecheck",
+    "lerna run test",
+    "(cd packages/eval && pnpm typecheck); pnpm check",
+    "cd packages/eval && cd ../.. && pnpm check",
+    "bash -c 'pnpm check'",
+    "bash <<'EOF'\npnpm check\nEOF",
+]
+WORKSPACE_ALLOWED = [
+    "free -g | head -2; (cd packages/eval && timeout 600 pnpm typecheck 2>&1 | tail -3; echo done)",
+    "cd packages/eval && pnpm typecheck && pnpm exec vitest run test/sre.test.ts",
+    "pnpm --filter @lumen/eval typecheck",
+    "pnpm -C packages/eval typecheck",
+    "turbo run typecheck --filter=@lumen/eval",
+    "turbo run typecheck --affected",
+    "pnpm -r --filter ./packages/eval typecheck",
+    "pnpm install --frozen-lockfile && pnpm -r install",
+    "pnpm lint && pnpm boundaries",
+    "nx affected -t typecheck",
+    "turbo --version",
+    "yarn workspace @lumen/eval typecheck",
+    "git commit -qm 'leave pnpm check to CI'",
+    "evo-agents worker step 3 verify --repo lumen --verify 'pnpm check'",
+    # a pull request's body in a heredoc is text: the plan run's hook refused one that named a pytest run
+    "cat > /tmp/pr-body.md <<'EOF'\n- `uv run pytest tests/test_library_import.py tests/test_overlays.py`: 75 passed.\n"
+    "pnpm check\nturbo run typecheck\nEOF\ngh pr create --body-file /tmp/pr-body.md",
+]
+
+
+@pytest.fixture
+def workspace(tmp_path):
+    (tmp_path / "pnpm-workspace.yaml").write_text("packages:\n  - packages/*\n", encoding="utf-8")
+    (tmp_path / "package.json").write_text(json.dumps({"name": "lumen", "scripts": ROOT_SCRIPTS}), encoding="utf-8")
+    package = tmp_path / "packages" / "eval"
+    package.mkdir(parents=True)
+    scripts = {"typecheck": "tsc --noEmit", "test": "vitest run"}
+    (package / "package.json").write_text(json.dumps({"name": "@lumen/eval", "scripts": scripts}), encoding="utf-8")
+    return tmp_path
+
+
+@pytest.mark.parametrize("command", WORKSPACE_REFUSED)
+def test_a_check_of_the_whole_workspace_is_refused(workspace, command):
+    assert broad_checks.whole_workspace(without_heredocs(command), workspace) is not None, command
+
+
+@pytest.mark.parametrize("command", WORKSPACE_ALLOWED)
+def test_a_check_of_the_packages_changed_goes_through(workspace, command):
+    command = without_heredocs(command)
+    assert broad_checks.whole_workspace(command, workspace) is None, command
+    assert broad_tests.broad(command) is None, command
+
+
+def test_a_script_is_read_where_the_command_runs(workspace):
+    package = workspace / "packages" / "eval"
+    assert broad_checks.whole_workspace("pnpm typecheck", package) is None
+    assert broad_checks.whole_workspace("pnpm -w check", package) is not None
+    assert broad_checks.whole_workspace("pnpm check", None) is None  # no directory: nothing to read
+    found = broad_checks.whole_workspace("pnpm check", workspace)
+    assert "script check runs pnpm typecheck" in found and "turbo run typecheck" in found
+
+
+def test_the_plan_runs_hook_refuses_a_workspace_check_from_the_sessions_directory(workspace):
+    recorded = []
+    hook = wait_guard.claude_wait_hook(WaitGuard(record=lambda text, body: recorded.append((text, body)), run_id=7))
+    call = {"tool_name": "Bash", "tool_input": {"command": WORKSPACE_REFUSED[0], "run_in_background": True}}
+    answer = asyncio.run(hook({**call, "cwd": str(workspace)}, "toolu_1", None))
+    why = answer["hookSpecificOutput"]["permissionDecisionReason"]
+    assert answer["hookSpecificOutput"]["permissionDecision"] == "deny" and "--filter" in why
+    ((text, body),) = recorded
+    assert "every package" in text and (body["rule"], body["run"]) == ("workspace", 7)
+    assert asyncio.run(hook({**call, "cwd": str(workspace / "packages" / "eval")}, "toolu_2", None)) == {}
