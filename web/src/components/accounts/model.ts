@@ -132,6 +132,9 @@ export function renewalDue(account: Pick<Account, "expires_at"> & Partial<Pick<A
 /** Whether the account is a Claude account, which the Renew token dialog can give a new token. */
 export const isClaudeAccount = (account: Pick<Account, "env_var">) => account.env_var === CLAUDE_TOKEN_VAR;
 
+/** Whether the account's action is Resume rather than Pause: it is paused, or cools down, and a resume ends both. */
+export const resumable = (account: { paused_at: string | null; state: string }) => account.paused_at !== null || account.state === "cooling";
+
 /**
  * The groups the Accounts page lists, in order, by the category the hub gives each account. A kind of account the
  * page learns later (an agent's own) is one more entry here and one more section in the page, not a new page.

@@ -48,6 +48,7 @@ from evo_agents.hub.accounts import (
 )
 from evo_agents.hub.credentials import MAX_SECRET_BYTES, PROVIDER_KIND, SECRET_NAME, env_name_refusal
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.account_choice import end_cooldown
 from evo_agents.hub.server.account_oauth import drop_tokens
 from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, agent_account_figures, figured
 from evo_agents.hub.server.admin import ProjectName
@@ -482,6 +483,8 @@ async def change_agent_account(
         if worker_ids is not None:
             await bind_agent_account(conn, secret_id, access.project_id, worker_ids)
         await account_settings(conn, secret_id, body.weight, body.priority, body.paused)
+        if body.paused is False and await end_cooldown(conn, secret_id):
+            named.append("cooldown")
         await record_agent(conn, user, access, audit.AGENT_ACCOUNT_SET, agent_target(project, handle, secret_id, named))
         view = await _view(conn, profile_id, name)
     log.info(

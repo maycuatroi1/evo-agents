@@ -10,7 +10,7 @@ import { StateCell } from "./account-cells";
 import { AccountCell, CostCell, HeldByCell, RunsCell } from "./account-columns";
 import { preloadAgentAccountDialog } from "./agent-account-lazy";
 import type { AgentAccount } from "./agent-queries";
-import { isClaudeAccount } from "./model";
+import { isClaudeAccount, resumable } from "./model";
 import { UsageLimits } from "./usage-limits";
 
 /**
@@ -82,7 +82,7 @@ export type AgentActions = {
 /** Renew, Edit, Pause or Resume, and Delete of one of an agent's accounts, for an admin of its project. */
 export function AgentActionButtons({ account, onRenew, onEdit, onPause, onDelete }: { account: AgentAccount } & AgentActions) {
   const t = useTranslations("accounts");
-  const paused = account.paused_at !== null;
+  const paused = resumable(account);
   const button = (label: string, onClick: () => void, testId: string, preload = false) => ({
     type: "button" as const,
     variant: "ghost" as const,

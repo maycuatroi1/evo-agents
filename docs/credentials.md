@@ -401,6 +401,13 @@ cooling, with that reason, and a token renewed with `evo-agents hub account logi
 An OAuth account whose refresh token the endpoint refuses has the state `needs-relogin` (see "Adding and renewing an
 OAuth account").
 
+The owner ends a cooldown at once by resuming the account (`evo-agents hub account resume NAME`, Resume on
+`/accounts` or on the agent's card; PATCH with `paused: false`): a limit that reset before the time the runtime gave, or
+a token renewed after a refused one, needs neither a wait nor a new sign-in. The resume also drops the account's last
+usage, since the report that cooled it no longer holds, so the next run's report sets it again; the audit row
+`account.set` ends with `cooldown=ended`. Only the cooldown of `needs-relogin` stays: its tokens are dead, and a new
+sign-in ends it. If the limit has not reset, the next run's `rejected` cools the account down again.
+
 `run_accounts` records which account each run took for each variable and how (`manual`, `worker`, `charter`, `pool` or
 `cooling`); `accounts` holds each account's weight (0 to 1000, default 1), priority (0 to 1000, default 0), pause,
 cooldown, rotation and the last usage a run reported (`last_usage`, `last_usage_at`); `account_policies` holds a
@@ -617,7 +624,8 @@ evo-agents hub account oauth-login again". `account list|show` and the Accounts 
 left out of the choice for dispatch, candidates and triage, and the runs that held it fail over to another account as
 for a spent limit (a run with none left fails with cause `account_auth`). An account whose access token has lapsed but
 whose refresh token is still good is not in this state: it is usable, and the next lease refreshes it. Running
-`oauth-login NAME` again stores the new tokens and ends the cooldown; a cooldown for a usage limit stays. A transient
+`oauth-login NAME` again stores the new tokens and ends the cooldown; a cooldown for a usage limit stays, and `account
+resume NAME` ends it. A transient
 failure of the endpoint (down, 5xx) does not mark the account.
 
 ### Accounts of an agent

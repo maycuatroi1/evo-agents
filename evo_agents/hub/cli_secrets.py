@@ -22,7 +22,7 @@ the leases one run got of them.
 ``hub account`` sees the caller's env secrets as accounts, one of which a run takes among several for the same
 variable. ``account list`` prints them and the provider accounts, never a value (GET /v1/accounts); ``account set``
 changes the weight or priority of one, ``account pause`` and ``account resume`` keep new runs off it or let them back (PATCH
-/v1/accounts/{name}). ``account policy PROJECT`` prints the caller's policy for a project (GET
+/v1/accounts/{name}); a resume also ends a cooldown, save one that needs a new sign-in. ``account policy PROJECT`` prints the caller's policy for a project (GET
 /v1/account-policies/{project}); with a flag it sets it, the flags given over the policy as it is now (PUT), and
 ``--reset`` drops it, so the defaults hold again (DELETE). ``account list`` and ``account show`` remind the member to
 renew an account that ends within RENEW_WITHIN_DAYS days, or has ended.
@@ -964,7 +964,12 @@ def register_accounts(hsub) -> None:
         help="an ISO 8601 instant (UTC when no zone) its budget weeks start from, every 7 days; default Monday 00:00 UTC",
     )
     _named(asub, "pause", "keep new runs off an account; a run that holds it keeps it", cmd_account_pause)
-    _named(asub, "resume", "let new runs take a paused account again", cmd_account_resume)
+    _named(
+        asub,
+        "resume",
+        "let new runs take the account again: ends a pause, and a cooldown after a usage limit that reset early",
+        cmd_account_resume,
+    )
     _register_login(asub)
     _register_oauth_login(asub)
     cli_shares.register_share_commands(asub, "account")

@@ -192,6 +192,11 @@ def test_a_rejected_report_cools_the_account_revokes_its_lease_and_fails_over(cl
     assert until == RESET and usage["status"] == "rejected"
     # the next run skips the cooling account
     assert account_of(client, worker, run_on(client, hub["owner"], worker, "notes")) == "claude-c"
+    # the owner's resume ends the cooldown at once and drops the usage that set it
+    resumed = client.patch("/v1/accounts/claude-a", json={"paused": False}, headers=hub["owner"])
+    assert resumed.status_code == 200, resumed.text
+    assert resumed.json()["state"] == "ready" and account_row(hub_db, "claude-a") == (None, None, None, None)
+    assert audit_rows(hub_db, "account.set")[-1][0].endswith(" cooldown=ended")
 
 
 def test_a_rejected_report_without_a_reset_cools_for_the_default_policys_cooldown_not_the_owners(client, hub, hub_db):
