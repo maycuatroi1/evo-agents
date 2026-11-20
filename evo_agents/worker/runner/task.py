@@ -103,6 +103,7 @@ class TaskRun:
         run.check()
         await self.work.prepare(held)
         await self.conversation.turns(cls, self.prompt(), None)
+        await self.work.send_back(self.conversation, cls)  # work left on a branch the push cannot take
         run.summary = verify.read_summary(run, self.directory.path)
         await self.conversation.ensure_running()
         await run.reports.report("verifying")

@@ -18,7 +18,11 @@ the messages people wrote to it in the thread while it worked start another turn
 (``chat_runs.REPLY_PROMPT``). When no message is left, the run ends: the daemon commits what the agent left in each
 worktree and pushes the run's branch of each repo whose commits the branch lacks on origin, never a default branch and
 never forced (``gitops.check_push``, kind ``chat``), tells the hub (POST /v1/worker/runs/{id}/chat/pulls), which opens
-the draft pull request and links it in the thread, and reports ``done``. Its agent may ask the owner decisions
+the draft pull request and links it in the thread, and reports ``done``. A worktree the agent left on a branch of its
+own goes back to the run's branch first, moved on to the agent's commits when they hold every commit of it
+(``BranchWork.back_on_branch``); one whose work the run's branch cannot take without forcing gets the agent one more
+turn in its session to bring it there (``BranchWork.send_back``), and fails the run with cause branch_mismatch when it
+is still apart. Its agent may ask the owner decisions
 (``evo-agents worker ask``, category ``triage``); a turn that ends with one open leaves the run ``waiting`` for the
 answers or a message in the thread, as an author run does, and a run the hub parks keeps its session and worktrees for
 the run that resumes it. A run that asked none ends with its turn: the next turn of the session is another run. The
@@ -129,6 +133,7 @@ class ChatRun:
         try:
             prompt, session_id = await self.conversation.first_turn(await self.prompt())
             await self.conversation.turns(cls, prompt, session_id)
+            await self.work.send_back(self.conversation, cls)  # work left on a branch the push cannot take
         finally:
             self.opens = False  # no repo opens once the turns are over
         async with self.opening:  # one being opened is made before the push takes the worktrees
