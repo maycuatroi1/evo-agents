@@ -13,6 +13,9 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+
+pytest.importorskip("pydantic", reason="needs the hub-server extra, evo-ak[hub-server]")
+
 from pydantic import ValidationError
 
 from evo_agents.hub import probes

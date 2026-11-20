@@ -331,7 +331,9 @@ def _step_line(step, index: int) -> str:
     return f"- {key} [{status}] {_line(step.get('title'), LIST_TITLE_BYTES, 'untitled')}{tail}"
 
 
-def _step_list(plan: dict) -> list[str]:
+def _step_list(plan: dict, room: int = STEP_LIST_BYTES) -> list[str]:
+    """The heading of the steps not done yet and a line for each, within ``room`` UTF-8 bytes and STEP_LIST_BYTES,
+    the line saying how many were left out included."""
     steps = plan_steps(plan)
     open_steps = [
         (index, step) for index, step in enumerate(steps) if not isinstance(step, dict) or step_status(step) != "done"
@@ -341,7 +343,9 @@ def _step_list(plan: dict) -> list[str]:
         f"{PLAN_FILE} has each step's what, verify and note; the steps not listed here are done.",
     ]
     listed = [_step_line(step, index) for index, step in open_steps]
-    return lines + _packed(listed, STEP_LIST_BYTES, f"- and {{left}} more steps not done, which {PLAN_FILE} lists")
+    rest = f"- and {{left}} more steps not done, which {PLAN_FILE} lists"
+    budget = room - sum(len(line.encode()) + 1 for line in lines) - len(rest.format(left=len(listed)).encode()) - 1
+    return lines + _packed(listed, min(STEP_LIST_BYTES, max(0, budget)), rest)
 
 
 def build_plan_prompt(plan: dict, repos: list, worktrees: dict | None = None, autonomy=None) -> str:
@@ -368,7 +372,9 @@ def build_plan_prompt(plan: dict, repos: list, worktrees: dict | None = None, au
     ):
         if text_of(value):
             lines += ["", heading, clip(text_of(value), budget)]
-    lines += ["", *_step_list(plan)]
+    # the list takes the room the rest leaves, so that it is never cut in the middle of a line
+    room = MAX_PROMPT_BYTES - len(with_card("\n".join(lines) + "\n\n", autonomy).encode())
+    lines += ["", *_step_list(plan, room)]
     return clip(with_card("\n".join(lines) + "\n", autonomy), MAX_PROMPT_BYTES)
 
 
