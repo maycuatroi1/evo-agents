@@ -101,6 +101,7 @@ class FakeHub:
         self.history_asks: list[dict] = []
         self.history_keys: dict[int, str] = {}
         self.history_batch = 6
+        self.history_next_failures = 0  # asks of .../history/next answered 503 before the hub answers them
         self.last_heartbeat: dict | None = None
         self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
         self.clone_origins: dict[str, str] = {}  # repo -> the origin a project lists for it, which a chat run may clone
@@ -1485,6 +1486,9 @@ class FakeHub:
     async def _history_next(self, request: web.Request) -> web.Response:
         self._held_history(request, "history/next")
         body = await request.json()
+        if self.history_next_failures:
+            self.history_next_failures -= 1
+            return web.json_response({"error": "unavailable", "message": "the hub is busy"}, status=503)
         self.history_asks.append(body)
         clusters = bool(body.get("clusters"))
         answer = {

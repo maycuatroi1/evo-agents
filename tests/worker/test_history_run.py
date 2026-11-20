@@ -15,6 +15,8 @@ import pytest
 
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
+from evo_agents.worker.hubapi import Backoff
+from evo_agents.worker.runner import history as history_runner
 from tests.worker.test_plan_runs import (
     machine,  # noqa: F401 (a fixture)
     with_daemon,
@@ -167,6 +169,22 @@ def test_history_run_with_nothing_to_read_starts_no_agent(machine):  # noqa: F81
     assert history_starts(machine, run_id) == []
     assert [ask["clusters"] for ask in hub.history_asks] == [False, True]
     assert hub.runs[run_id]["summary"].endswith("Nothing waits.")
+
+
+def test_history_run_asks_again_while_the_hub_does_not_answer_its_next(machine, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(history_runner, "Backoff", lambda: Backoff(first=0.01))
+    machine.scenarios({"history": [{"say": "never"}]})
+    found = {}
+
+    async def body(hub, daemon):
+        hub.history_next_failures = 2  # runs #9869, #10219, #10583 of evo-lms failed whole on the first one
+        run_id = hub.queue_history_run(budget=BUDGET)
+        assert await hub.wait_state(run_id, "done", "failed", timeout=60) == "done", hub.texts(run_id)
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, body)
+    assert found["hub"].history_next_failures == 0
+    assert [ask["clusters"] for ask in found["hub"].history_asks] == [False, True]
 
 
 def test_history_runs_agent_command_says_it_answers_its_batch_instead(machine):  # noqa: F811
