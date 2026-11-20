@@ -24,7 +24,13 @@ the project does not list, and the command outside a chat run (a task run among 
 it names) are refused with one ``error:`` line and exit status 1. At the end only the repo opened is pushed and linked,
 and the run that goes on in the session has its worktree alone, fetched, and opens another one in the same
 directory. The socket's side, and that a guarded run's agent gets no credential from a repo opened, are in
-``tests.worker.test_credentials``."""
+``tests.worker.test_credentials``.
+
+Runs 8238, 8645 and 8813 of the hub: an agent that left its work on a branch of its own failed the run with
+branch_mismatch, and the work stayed on the worker. The push takes it on the run's branch when it holds every commit of
+that branch, goes back to the run's branch when the agent only looked at commits origin has, and gives the agent one
+more turn to bring work apart from the run's branch onto it, failing the run with branch_mismatch only when it is still
+apart."""
 
 from __future__ import annotations
 
@@ -39,6 +45,7 @@ from evo_agents.cli import main as cli_main
 from evo_agents.hub import author, chat_runs, runs
 from evo_agents.hub.outputs import CDN_HOSTS
 from evo_agents.worker import gitops
+from evo_agents.worker.runner.branch_work import BRANCH_BACK_PROMPT
 from tests.worker.test_plan_runs import (
     PLAN,
     PROJECT,
@@ -779,3 +786,116 @@ def test_the_prompt_of_a_chat_run_says_when_and_how_to_answer_interactive_and_wh
     assert helper in open_chat and "window.evoAnswer" in open_chat and helper not in restricted
     assert "parent.postMessage(" in restricted and "parent.postMessage(" not in open_chat
     assert prompt() == restricted, "no CDN unless the hub says the chat is not restricted"
+
+
+COMMIT = "git -C alpha add {file} && git -C alpha commit -q -m {file}"
+
+
+@pytest.mark.parametrize("start", ["run-branch", "default-branch"])
+def test_a_chat_run_whose_agent_moved_to_a_branch_of_its_own_pushes_that_work_on_the_run_branch(machine, start):  # noqa: F811
+    """The agent made a branch of its own off the run's branch (run 8645), or off the default branch the run's branch
+    was merged into (runs 8238 and 8813), and left its work there, committed and not; the run's branch moves on to it,
+    and the push takes it there, never under the agent's name for it."""
+    if start == "run-branch":
+        steps = [
+            {"write": {"alpha/one.txt": "one\n"}},
+            {"sh": COMMIT.format(file="one.txt") + " && git -C alpha checkout -q -b fix/own"},
+        ]
+    else:
+        steps = [{"sh": "git -C alpha checkout -q -b fix/own origin/main"}]
+    machine.scenarios(
+        {
+            "chat": [
+                *steps,
+                {"write": {"alpha/two.txt": "two\n"}},
+                {"sh": COMMIT.format(file="two.txt")},
+                {"write": {"alpha/three.txt": "three\n"}},  # left for the worker to commit, as in run 8238
+                {"say": "Fixed it on fix/own."},
+            ]
+        }
+    )
+
+    async def body(hub, daemon):
+        run_id = hub.queue_chat_run(["alpha"])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        branch = f"chat/{run_id}"
+        head = machine.origin_rev("alpha", f"refs/heads/{branch}")
+        files = set(machine.origin("alpha", "ls-tree", "--name-only", branch).split())
+        assert {"two.txt", "three.txt"} <= files and ("one.txt" in files) == (start == "run-branch"), files
+        assert machine.origin_rev("alpha", "refs/heads/fix/own") is None, "the agent's name for it is not pushed"
+        assert machine.origin_rev("alpha", "refs/heads/main") == machine.seeds["alpha"], "never a default branch"
+        assert pulls(hub) == [(run_id, "alpha", branch, head)]
+        assert git("symbolic-ref", "--short", "HEAD", cwd=machine.directory(run_id) / "alpha") == branch
+        moved = f"The agent left alpha on fix/own, whose commits hold every commit of {branch}: {branch} moves on to"
+        assert any(text.startswith(moved) for text in hub.texts(run_id)), hub.texts(run_id)
+        assert len(machine.starts()) == 1, "no turn more"
+
+    with_daemon(machine, body)
+
+
+def test_a_chat_run_whose_agent_left_its_branch_for_commits_origin_has_still_pushes_its_own(machine):  # noqa: F811
+    """The agent committed on the run's branch, then checked out the default branch to look at it: the worktree goes
+    back to the run's branch, whose commit is pushed, where the worker once pushed nothing."""
+    machine.scenarios(
+        {
+            "chat": [
+                {"write": {"alpha/one.txt": "one\n"}},
+                {"sh": COMMIT.format(file="one.txt") + " && git -C alpha checkout -q --detach origin/main"},
+                {"say": "Committed one, then read main."},
+            ]
+        }
+    )
+
+    async def body(hub, daemon):
+        run_id = hub.queue_chat_run(["alpha"])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        branch = f"chat/{run_id}"
+        assert "one.txt" in machine.origin("alpha", "ls-tree", "--name-only", branch).split()
+        assert git("symbolic-ref", "--short", "HEAD", cwd=machine.directory(run_id) / "alpha") == branch
+        back = "The agent left alpha on a detached HEAD, which holds no commit origin lacks: the worktree goes back"
+        assert any(text.startswith(back) for text in hub.texts(run_id)), hub.texts(run_id)
+
+    with_daemon(machine, body)
+
+
+@pytest.mark.parametrize("brings_back", [True, False])
+def test_a_chat_run_whose_agent_left_work_apart_from_the_run_branch_gets_one_turn_to_bring_it_back(  # noqa: F811
+    machine, brings_back
+):
+    """The agent committed on the run's branch, then on a branch it made off the default branch: no push takes both
+    without forcing, so the agent gets one more turn in its session, naming the worktree. Brought back, the run's
+    branch is pushed with both; left apart, the run fails with branch_mismatch and pushes nothing."""
+    second = [{"sh": "git -C alpha checkout -q - && git -C alpha merge -q --no-edit side"}] if brings_back else []
+    machine.scenarios(
+        {
+            "chat": [
+                {"write": {"alpha/one.txt": "one\n"}},
+                {"sh": COMMIT.format(file="one.txt") + " && git -C alpha checkout -q -b side origin/main"},
+                {"write": {"alpha/two.txt": "two\n"}},
+                {"sh": COMMIT.format(file="two.txt")},
+                {"say": "Two is on side."},
+            ],
+            "chat/2": [*second, {"say": "Merged side." if brings_back else "Left it."}],
+        }
+    )
+
+    async def body(hub, daemon):
+        run_id = hub.queue_chat_run(["alpha"])
+        state = await hub.wait_state(run_id, "done", "failed", timeout=WAIT)
+        branch = f"chat/{run_id}"
+        first, again = machine.starts()
+        assert again["resume"] == first["session"]
+        where = f"- alpha: {machine.directory(run_id) / 'alpha'} is on side, which lacks commits of {branch}"
+        assert again["prompt"] == BRANCH_BACK_PROMPT.format(where=where + ", the run's branch there")
+        run = hub.runs[run_id]
+        if brings_back:
+            assert state == "done", hub.texts(run_id)
+            assert {"one.txt", "two.txt"} <= set(machine.origin("alpha", "ls-tree", "--name-only", branch).split())
+        else:
+            assert state == "failed" and run["failure_cause"] == "branch_mismatch", run
+            assert f"is on refs/heads/side, not refs/heads/{branch}: the agent switched" in run["error"]
+            assert f"lacks commits of {branch}" in run["error"], run["error"]
+            assert machine.origin_rev("alpha", f"refs/heads/{branch}") is None, "nothing was pushed"
+            assert machine.origin_rev("alpha", "refs/heads/side") is None
+
+    with_daemon(machine, body)

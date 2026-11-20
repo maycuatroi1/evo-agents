@@ -7,6 +7,15 @@ branch lacks on origin, never a default branch and never forced (``gitops.check_
 hub told of each push (POST /v1/worker/runs/{id}/<kind>/pulls) and the branch it was made from (``base``,
 ``pull_base.pick``), which the hub opens the draft pull request into.
 
+An agent may leave a worktree on a branch of its own (``git checkout -b``) or a detached HEAD. The push takes that work
+on the run's branch, never under the agent's name for it, so the hub opens its draft pull request as for any push, and a
+default branch is never pushed: when HEAD holds every commit of the run's branch (a branch made off it, or off the
+default branch its pull request was merged into), the run's branch moves on to HEAD and the worktree goes back on it;
+when HEAD holds no commit origin lacks, the worktree goes back to the run's branch as it is. Work the run's branch
+cannot take without forcing (HEAD lacks one of its commits) gets the agent one more turn in its session, naming each
+such worktree (``send_back``), and fails the run with cause branch_mismatch when it is still apart at the push; its
+commits stay in the worktree, for the run that goes on in the session.
+
 A task run may work in one repo on a branch its task names (``named``, from the run's repos), which is no default
 branch: that branch from origin when origin has it, else from the default branch, pushed back to it, never forced
 (``gitops.check_push`` takes it as ``named_branch``). Its task may also name a base for each repo (``bases``, from the
@@ -30,9 +39,20 @@ from evo_agents.worker.runner.common import HARD_STOP_TRIES, RunFailed, push_cau
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
+    from evo_agents.worker.runner.conversation import Conversation
     from evo_agents.worker.runner.directory import RunDirectory
 
 NOTHING = {"files": 0, "insertions": 0, "deletions": 0}
+# The turn of an agent whose turns left work on a branch the push cannot take (``BranchWork.send_back``)
+BRANCH_BACK_PROMPT = (
+    "Your turns left work on a branch the worker does not push. At the run's end it commits what you left in each "
+    "worktree and pushes the run's branch alone, never forced; a branch of your own that holds every commit of the "
+    "run's branch goes onto it by itself, but these do not:\n{where}\nBring that work onto the run's branch now: "
+    "check out the run's branch in that worktree, merge or cherry-pick the commits of the branch you left it on, "
+    "commit, and leave the worktree on the run's branch. A tool call that came back refused or cancelled without the "
+    'reason of a hook (such as "The user doesn\'t want to take this action right now") was not refused by your '
+    "owner: run it again, or reach the same end another way."
+)
 
 
 @dataclass(frozen=True)
@@ -47,6 +67,31 @@ class Kind:
 
 
 CHAT = Kind("chat", "chat/pulls", "in the thread", "mention the agent again")
+
+
+@dataclass(frozen=True)
+class Apart:
+    """A worktree on another branch than the run's, as git sees it."""
+
+    head: str | None  # the commit HEAD names
+    tip: str | None  # the commit the run's branch names, None when the agent deleted it
+    work: bool  # HEAD holds a commit origin lacks (or git cannot tell)
+    carries: bool  # HEAD holds every commit of the run's branch, which can move on to it
+
+
+async def _apart(path: Path, local: str) -> Apart:
+    head = await gitops.rev(path, "HEAD")
+    tip = await gitops.rev(path, gitops.branch_ref(local))
+    carries = head is not None and tip is not None and await gitops.is_ancestor(path, tip, head)
+    return Apart(head, tip, await gitops.unpushed(path), carries)
+
+
+def _mismatch(name: str, workspace: gitops.Workspace, head_branch: str | None) -> str:
+    where = gitops.branch_ref(head_branch) if head_branch else "a detached HEAD"
+    return (
+        f"the worktree of {name} is on {where}, not {gitops.branch_ref(workspace.local_branch)}: the agent switched "
+        "branches, and the worker does not push it"
+    )
 
 
 class BranchWork:
@@ -198,20 +243,11 @@ class BranchWork:
             await push.commit(run, path, name)
         except gitops.GitError as exc:
             raise RunFailed(f"committing what the agent left in {name} failed: {exc}") from None
+        head_branch = await gitops.current_branch(path)
+        if head_branch != workspace.local_branch and not await self.back_on_branch(name, workspace, head_branch):
+            return dict(NOTHING)
         if await gitops.rev(path, "HEAD") == workspace.base:
             return dict(NOTHING)  # the agent changed nothing in this repo
-        head_branch = await gitops.current_branch(path)
-        if head_branch != workspace.local_branch:
-            if not await gitops.unpushed(path):  # the agent checked out commits origin has (a review of a PR): no work
-                run.note(f"{name} is left on {head_branch or 'a detached HEAD'} with no commit origin lacks.")
-                return dict(NOTHING)
-            raise RunFailed(
-                f"the worktree of {name} is on "
-                f"{gitops.branch_ref(head_branch) if head_branch else 'a detached HEAD'}, not "
-                f"{gitops.branch_ref(workspace.local_branch)}: the agent switched branches, and the worker does not "
-                "push it",
-                cause="branch_mismatch",
-            )
         run.check()
 
         async def pushed_branch() -> gitops.Pushed:
@@ -241,6 +277,89 @@ class BranchWork:
             )
             await self.tell_hub(name, workspace.branch, pushed.head, await self.pull_base(name, workspace))
         return await gitops.diffstat(path, workspace.base)
+
+    # A worktree the agent left on another branch than the run's
+
+    async def back_on_branch(self, name: str, workspace: gitops.Workspace, head_branch: str | None) -> bool:
+        """Put the worktree of ``name``, which the agent left on ``head_branch`` (None: a detached HEAD), back on the
+        run's branch, so the push takes the agent's work: the run's branch moved on to HEAD when HEAD holds every
+        commit of it (a branch the agent made off it, or off one that has it, such as the default branch its pull
+        request went into), or as it is when HEAD holds no commit origin lacks. False when neither holds one, and
+        nothing is pushed; RunFailed with cause branch_mismatch when both hold work, which no push takes whole
+        without forcing (``strays``, ``send_back``)."""
+        run, path, local = self.run, workspace.worktree, workspace.local_branch
+        where = head_branch or "a detached HEAD"
+        apart = await _apart(path, local)
+        if apart.work and apart.carries:
+            try:
+                message = f"run #{run.id}: the agent's commits on {where}"
+                await gitops.git(path, "update-ref", "-m", message, gitops.branch_ref(local), apart.head, apart.tip)
+                await gitops.git(path, "checkout", "--quiet", local)
+            except gitops.GitError as exc:
+                raise RunFailed(f"{_mismatch(name, workspace, head_branch)}: {exc}", cause="branch_mismatch") from None
+            run.note(
+                f"The agent left {name} on {where}, whose commits hold every commit of {local}: {local} moves on to "
+                f"{apart.head[:12]}, and the worker pushes it to {workspace.branch}.",
+                repo=name,
+            )
+            return True
+        if apart.work:
+            raise RunFailed(
+                f"{_mismatch(name, workspace, head_branch)}, since it lacks commits of {local}; the agent's commits "
+                f"stay in {path}, for the run that goes on in the session",
+                cause="branch_mismatch",
+            )
+        if apart.tip is None or not await gitops.unpushed(path, rev=gitops.branch_ref(local)):
+            run.note(f"{name} is left on {where} with no commit origin lacks.")  # a review of a pull request
+            return False
+        try:
+            await gitops.git(path, "checkout", "--quiet", local)
+        except gitops.GitError as exc:
+            raise RunFailed(f"{_mismatch(name, workspace, head_branch)}: {exc}", cause="branch_mismatch") from None
+        run.note(
+            f"The agent left {name} on {where}, which holds no commit origin lacks: the worktree goes back to {local}, "
+            "whose commits the worker pushes.",
+            repo=name,
+        )
+        return True
+
+    async def strays(self) -> list[str]:
+        """A line for each worktree the agent left on another branch than the run's, or on a detached HEAD, with work
+        the push cannot take (``back_on_branch``): a commit origin lacks, or a change not committed yet, on a HEAD
+        that lacks a commit of the run's branch."""
+        lines = []
+        for name, workspace in self.directory.workspaces.items():
+            path, local = workspace.worktree, workspace.local_branch
+            if not path.is_dir():
+                continue
+            head_branch = await gitops.current_branch(path)
+            if head_branch == local:
+                continue
+            apart = await _apart(path, local)
+            if apart.carries or not (apart.work or await gitops.uncommitted(path)):
+                continue
+            where = head_branch or "a detached HEAD"
+            lines.append(f"- {name}: {path} is on {where}, which lacks commits of {local}, the run's branch there")
+        return lines
+
+    async def send_back(self, conversation: Conversation, cls: type) -> None:
+        """One more turn of the agent in its session when its turns left a worktree with work the push cannot take
+        (``strays``), naming each, so it brings that work onto the run's branch (BRANCH_BACK_PROMPT); none for a run
+        whose owner asked it to finish. The push at the run's end looks again, and fails the run with cause
+        branch_mismatch when the work is still apart."""
+        run = self.run
+        lines = await self.strays()
+        if not lines or run.finish_asked.is_set():
+            return
+        run.check()
+        where = "\n".join(lines)
+        run.note(
+            "The agent left work the run's branch lacks, which the worker does not push: it gets one more turn in its "
+            f"session to bring that work onto the run's branch.\n{where}"
+        )
+        await conversation.turns(cls, BRANCH_BACK_PROMPT.format(where=where), conversation.session_id, more=True)
+
+    # The hub
 
     async def pull_base(self, name: str, workspace: gitops.Workspace) -> str | None:
         """The base of the pull request of the run's branch of ``name`` (``pull_base.pick``): the base the run's task

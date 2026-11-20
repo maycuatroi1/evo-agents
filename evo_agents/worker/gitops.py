@@ -742,6 +742,14 @@ async def changed_paths(cwd: Path, base: str) -> list[str]:
     return sorted(path for path in found if not path.startswith(f"{RESULT_DIR}/"))
 
 
+async def uncommitted(cwd: Path) -> bool:
+    """Whether the work tree at ``cwd`` has a change a run's commit could take: a path staged, changed or untracked,
+    those under RUN_COMMIT_EXCLUDES and the result directory aside."""
+    _, status, _ = await git(cwd, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
+    paths = (entry[3:] for entry in status.split("\0") if len(entry) > 3)
+    return any(not excluded(path) and not path.startswith(f"{RESULT_DIR}/") for path in paths)
+
+
 async def merge_base(cwd: Path, first: str, second: str) -> str | None:
     code, out, _ = await git(cwd, "merge-base", first, second, check=False)
     return out.strip() if code == 0 and out.strip() else None
