@@ -6505,3 +6505,26 @@ def test_0260_gives_agent_types_a_run_floor_null_for_the_default_and_going_back_
     assert "min_run_usd" not in columns(hub_db, "project_agent_types")
     assert query(hub_db, select(agent_types.c.name, agent_types.c.daily_usd)) == [("keeper", 10.0)]
     assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0260") :]
+
+
+def test_0261_lets_the_inbox_hold_a_whole_answer_and_going_back_cuts_the_longer_bodies(hub_db):
+    """0261 bounds run_inbox.body by 32 KiB instead of 8 KiB, an empty body still allowed; going back cuts each longer
+    body to its first 2,000 characters before it puts the 8 KiB bound back."""
+    t = hub_tables
+    inbox = t.run_inbox
+    answer = "é" * 6_000  # 12,000 bytes: an asked agent's answer over the old bound
+    move_to(hub_db, "0260")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        with pytest.raises(errors.CheckViolation, match="run_inbox_body_check"):
+            conn.execute(insert(inbox).values(run_id=run_id, sent_by=ids["user"], body=answer))
+    move_to(hub_db, "0261")
+    with live.connect(hub_db) as conn:
+        for body in (answer, "", "A."):
+            conn.execute(insert(inbox).values(run_id=run_id, sent_by=ids["user"], body=body))
+        with pytest.raises(errors.CheckViolation, match="run_inbox_body_check"):
+            conn.execute(insert(inbox).values(run_id=run_id, sent_by=ids["user"], body="x" * (32 * 1024 + 1)))
+    move_to(hub_db, "0260", down=True)
+    assert query(hub_db, select(inbox.c.body).order_by(inbox.c.id)) == [("é" * 2_000,), ("",), ("A.",)]
+    assert pg.migrate_in_steps(hub_db) == ALL[ALL.index("0261") :]
