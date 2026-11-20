@@ -44,6 +44,9 @@ RETRY_AFTER_MOST = 300.0  # seconds: a longer Retry-After, a proxy's or a broken
 # longer than a deploy of the hub keeps its API down. Run #1766 of evo-agents (2026-11-05) failed on five, about 30
 # seconds, of HTTP 500 while the hub deployed.
 OUTAGE_TRIES = 9
+# Seconds for one call of a history run (its next batch, its report): the hub reads the waiting items and their
+# content in the call, which took longer than TIMEOUT on nights of evo-lms (runs #9869, #10219, #10583).
+HISTORY_TIMEOUT = 120.0
 
 
 class HubProblem(Exception):
@@ -463,14 +466,16 @@ class WorkerHub:
         from evo_agents.hub.history import HISTORY_KEY_HEADER
 
         headers = {HISTORY_KEY_HEADER: key} if key else {}
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/history/next", body, headers=headers)
+        path = f"/v1/worker/runs/{int(run_id)}/history/next"
+        return await self.call("POST", path, body, headers=headers, timeout=HISTORY_TIMEOUT)
 
     async def history_report(self, run_id: int, body: dict, key: str | None) -> dict:
         """POST the facets and the names a history run's model wrote, with the run's own key."""
         from evo_agents.hub.history import HISTORY_KEY_HEADER
 
         headers = {HISTORY_KEY_HEADER: key} if key else {}
-        return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/history/report", body, headers=headers)
+        path = f"/v1/worker/runs/{int(run_id)}/history/report"
+        return await self.call("POST", path, body, headers=headers, timeout=HISTORY_TIMEOUT)
 
     async def uploads(self, run_id: int, items: list[dict]) -> dict:
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/uploads", {"items": items})

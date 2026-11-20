@@ -24,11 +24,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, history
-from evo_agents.worker.hubapi import HubProblem
+from evo_agents.worker.hubapi import OUTAGE_TRIES, Backoff, HubProblem
 from evo_agents.worker.runner import access
-from evo_agents.worker.runner.common import RunFailed, cut
+from evo_agents.worker.runner.common import RunFailed, cut, wait_or
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.sender import transient
 from evo_agents.worker.runner.sessions import LARGEST, add_usage
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
 
@@ -209,10 +210,19 @@ class HistoryRun:
         run = self.run
         hub = run.daemon.hub
         send = hub.history_next if what == "next" else hub.history_report
-        try:
-            return await send(run.id, body, run.history_key)
-        except HubProblem as exc:
-            raise RunFailed(f"the hub did not answer the history run's {what}: {exc}") from None
+        backoff, tried = Backoff(), 0
+        while True:
+            tried += 1
+            try:
+                return await send(run.id, body, run.history_key)
+            except HubProblem as exc:
+                # A slow or redeployed hub fails one call, not the night's run: tried again with the backoff. A report
+                # sent twice is the same: a facet of the same fingerprint is stored again, a named group stays named.
+                if not transient(exc) or tried >= OUTAGE_TRIES:
+                    raise RunFailed(f"the hub did not answer the history run's {what}: {exc}") from None
+                delay = exc.retry_after if exc.retry_after is not None else backoff.next()
+                await wait_or(run.daemon.hard_stop, delay)
+                run.check()
 
     async def report(self, body: dict) -> None:
         found = await self.call("report", body)
