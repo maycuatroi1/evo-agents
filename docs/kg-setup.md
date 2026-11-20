@@ -97,6 +97,7 @@ evo-agents kg sync --build           # run connectors, push their runs, build th
 evo-agents kg status                 # freshness, coverage and held deletions per source
 evo-agents kg build                  # ask the hub for a build of what it holds, and wait for it
 evo-agents kg query kg_search "KB-01"
+evo-agents kg query KB-01            # alone, a word is kg_search's query; search, node, impact... name their kg_ tool
 evo-agents kg query kg_impact --arg 'paths=["app:src/search.py"]'
 evo-agents kg eval questions.jsonl   # Recall@k, MRR and tokens of kg_search, kg_context and grep (docs/kg-eval.md)
 ```
