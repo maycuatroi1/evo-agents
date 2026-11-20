@@ -75,6 +75,7 @@ from evo_agents.hub.outputs import CDN_HOSTS, MAX_INTERACTIVE_BYTES
 from evo_agents.hub.run_prompts import OUTPUTS_RULE
 from evo_agents.hub.runs import (
     LONGEST_TIMEOUT_MIN,
+    MAX_INBOX_BYTES,
     MAX_MESSAGE_BYTES,
     MAX_PROMPT_BYTES,
     RESULT_DIR,
@@ -296,13 +297,13 @@ def reading_rule(login: str) -> str:
 
 
 def inbox_text(author: str, message_id: int, body: str, answers: tuple[int, str, str] | None = None) -> str:
-    """A message of the thread as the agent's inbox takes it, within MAX_MESSAGE_BYTES; with ``answers`` (id, author,
-    text), the message of the thread it answers, quoted after it within QUOTE_BYTES."""
+    """A message of the thread as the agent's inbox takes it, whole (a chat message fits MAX_INBOX_BYTES); with
+    ``answers`` (id, author, text), the message of the thread it answers, quoted after it within QUOTE_BYTES."""
     text = INBOX_TEXT.format(author=author, id=message_id, body=body.strip())
     if answers is not None:
         quoted = "\n".join(f"> {line}" for line in clip(answers[2].strip(), QUOTE_BYTES).splitlines())
         text += INBOX_ANSWERS.format(id=answers[0], author=answers[1], body=quoted)
-    return clip(text, MAX_MESSAGE_BYTES)
+    return clip(text, MAX_INBOX_BYTES)
 
 
 def _when(value) -> str:
@@ -600,14 +601,16 @@ def _files_line(trigger: dict) -> list[str]:
     ]
 
 
-# The message pull_text writes, which the hub posts as the agent's once the worker pushed: never the agent's answer
+# The message pull_text or nothing_text writes, which the hub posts as the agent's once the worker pushed: never the
+# agent's answer
 PULL_TEXT = re.compile(
-    r"(Opened a (draft )?pull request of \S+ from chat/\d+[:,] |Pushed more commits of \S+ to chat/\d+, |Pushed chat/\d+ of \S+[.:] )"
+    r"(Opened a (draft )?pull request of \S+ from chat/\d+[:,] |Pushed more commits of \S+ to chat/\d+, "
+    r"|Pushed chat/\d+ of \S+?([.:] |, but ))"
 )
 
 
 def is_pull_text(body: str) -> bool:
-    """Whether ``body`` is the message ``pull_text`` wrote, not words of the agent."""
+    """Whether ``body`` is the message ``pull_text`` or ``nothing_text`` wrote, not words of the agent."""
     return PULL_TEXT.match(body) is not None and "\n" not in body.strip()
 
 

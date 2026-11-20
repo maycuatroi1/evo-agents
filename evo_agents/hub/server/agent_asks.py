@@ -24,10 +24,11 @@ asked, in which project, and what, in the asking run's thread, or in the work ch
 (``work_chats.say``).
 
 When the run asked ends (``answer_asker``, from ``chat_runs.chat_run_moved``), the hub answers that wait
-(``run_waits.wake``), which resumes the asking run in its session, with ``delegated_answer``: the last message of the
-agent asked in its thread and the refs of its work (its outputs, its branch and repos; the knowledge graph nodes are
-named in its answer, as the question asks), or why it failed or was cancelled. The same text goes where the
-asked line went, once an asker. A run asked that goes on in its session (a parked run resumed, an inbox untaken)
+(``run_waits.wake``), which resumes the asking run in its session, with ``delegated_answer``: the last message the
+run asked, or a run it went on from, wrote in its thread, past the hub's lines of its pushes (``last_reply``), whole,
+and the refs of its work (its outputs, its branch and repos; the knowledge graph nodes are named in its answer, as the
+question asks), or why it failed or was cancelled. The same text goes where the asked line went, once an asker, cut
+to ANSWER_IN_THREAD with the id of the message that holds it whole. A run asked that goes on in its session (a parked run resumed, an inbox untaken)
 carries both columns, and every wait whose ``awaits_run_id`` is in its chain of resumed runs is answered too, so the
 run that really ends answers each ask that reached it. A run lost is no end: its next attempt carries both columns and
 its chain goes back through ``parent_run_id``, and the run lost answers nothing (``chat_runs.chat_run_moved``), since its
@@ -72,7 +73,9 @@ from evo_agents.hub.server.security import CurrentUser
 log = logging.getLogger(__name__)
 
 ANSWER_IN_THREAD = 2048  # bytes of the answer the asking run's thread shows; the agent gets it whole
-LAST_REPLY_SCAN = 8  # the last messages of an agent last_reply reads to step over the lines of its pushes
+THREAD_CUT_MARK = "\n[cut by the hub: {omitted} of {total} bytes left out; message #{message} has the whole answer]"
+LAST_REPLY_SCAN = 200  # the last messages of a run last_reply reads to step over the lines of its pushes, one a repo
+CHAIN_MOST = 50  # the runs of a session last_reply goes back through
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 
@@ -303,16 +306,11 @@ async def ask_agent(
 # The answer
 
 
-async def _last_reply(conn: AsyncConnection, run_id: int) -> str | None:
-    """The last message of the agent of run ``run_id`` in the thread of the message that started it."""
-    found = await last_reply(conn, run_id)
-    return None if found is None else found[1]
-
-
 async def last_reply(conn: AsyncConnection, run_id: int) -> tuple[int, str] | None:
-    """(id, body) of the last message of the agent of run ``run_id`` in the thread of the message that started it,
-    past the hub's lines of its pushes (``is_pull_text``), which come after its answer when the worker pushes at the end
-    of the turn."""
+    """(id, body) of the last message the agent of run ``run_id`` wrote in the thread of the message that started it,
+    as that run or a run it went on from (``_chain``): a later run of the same agent in the thread is another answer.
+    It steps over the hub's lines of its pushes (``is_pull_text``), which come after its answer when the worker pushes
+    at the end of the turn, one a repo."""
     r, m = tables.runs, tables.chat_messages
     row = (
         await conn.execute(
@@ -324,11 +322,26 @@ async def last_reply(conn: AsyncConnection, run_id: int) -> tuple[int, str] | No
     if row is None:
         return None
     in_thread = func.coalesce(m.c.thread_root_id, m.c.id) == row.root
-    query = select(m.c.id, m.c.body).where(in_thread, m.c.author_profile_id == row.profile_id).order_by(m.c.id.desc())
+    mine = (m.c.author_profile_id == row.profile_id, m.c.run_id.in_(await _chain(conn, run_id)))
+    query = select(m.c.id, m.c.body).where(in_thread, *mine).order_by(m.c.id.desc())
     for found in (await conn.execute(query.limit(LAST_REPLY_SCAN))).all():
         if not rules.is_pull_text(found.body):
             return found.id, found.body
     return None
+
+
+async def _chain(conn: AsyncConnection, run_id: int) -> list[int]:
+    """Run ``run_id`` and the runs it went on from, in its session (``resume_of_run_id``) or after a loss
+    (``parent_run_id``), newest first, at most CHAIN_MOST."""
+    r = tables.runs
+    chain: list[int] = []
+    at: int | None = run_id
+    while at is not None and at not in chain and len(chain) < CHAIN_MOST:
+        chain.append(at)
+        query = select(r.c.resume_of_run_id, r.c.parent_run_id).where(r.c.id == at)
+        row = (await conn.execute(query)).one_or_none()
+        at = None if row is None else row.resume_of_run_id or row.parent_run_id
+    return chain
 
 
 async def _refs(conn: AsyncConnection, run_id: int, wait_id: int) -> list[str]:
@@ -402,14 +415,16 @@ async def delegated_answer(conn: AsyncConnection, run_id: int, state: str, wait_
         agent = f"Decision #{wait_id} (wait) woke: {said}. It gave no answer: say so in your reply, or ask again."
         thread = f"@{handle} gave no answer: run #{run_id} ended {state}: {why}"
         return Answer(runs.clip(agent, runs.MAX_ANSWER_BYTES), runs.clip(thread, ANSWER_IN_THREAD))
-    reply = await _last_reply(conn, run_id)
-    lines = [reply.strip() if reply else "(it wrote no message in its thread)"]
+    reply = await last_reply(conn, run_id)
+    lines = [reply[1].strip() if reply else "(it wrote no message in its thread)"]
     refs = await _refs(conn, run_id, wait_id)
     lines += ["", *refs] if refs else []
     body = "\n".join(lines)
     agent = f"Decision #{wait_id} (wait) woke: run #{run_id} of @{handle}, which you asked, answered:\n\n{body}"
     thread = f"@{handle} answered (run #{run_id}):\n\n{body}"
-    return Answer(runs.clip(agent, runs.MAX_ANSWER_BYTES), runs.clip(thread, ANSWER_IN_THREAD))
+    # the agent gets the answer whole, a chat message of at most 16 KiB; the thread shows its start
+    mark = runs.TRUNCATION_MARK if reply is None else THREAD_CUT_MARK.replace("{message}", str(reply[0]))
+    return Answer(runs.clip(agent, runs.MAX_INBOX_BYTES), runs.clip(thread, ANSWER_IN_THREAD, mark))
 
 
 def _waits(run_id: int):

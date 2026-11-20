@@ -140,6 +140,9 @@ MAX_EVENT_BODY_BYTES = 64 * 1024  # one event's body as JSON; a longer one is cu
 MAX_RUN_EVENTS = 20_000  # events the hub keeps for one run
 MAX_RUN_REPOS = 50  # the repos of one run (runs.repos, as schema 0010 bounds it)
 MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
+# One message of a run's inbox (run_inbox.body, as schema 0261 bounds it): a message of its thread or the answer of an
+# agent it asked, whole, with the lines the hub puts around it; a chat message is at most 16 KiB
+MAX_INBOX_BYTES = 32 * 1024
 MAX_PROMPT_BYTES = 32 * 1024  # the prompt each builder of run_prompts returns
 # Turns in a row the worker sends a plan run's agent back to its plan (``RunSpec.keep_going``) when a turn ends with
 # steps to do and no decision open, before the run fails with steps_left; a turn after which fewer are left resets it.
@@ -871,17 +874,17 @@ def plan_repo(plan: dict, step: dict) -> dict | None:
 # Texts cut to a budget
 
 
-def clip(text: str, limit: int) -> str:
+def clip(text: str, limit: int, mark: str = TRUNCATION_MARK) -> str:
     """``text`` in at most ``limit`` UTF-8 bytes: whole when it fits, else its start, cut on a character boundary,
-    and TRUNCATION_MARK saying how much was left out."""
+    and ``mark`` (fields ``omitted`` and ``total``) saying how much was left out and where the whole text is."""
     data = text.encode()
     if len(data) <= limit:
         return text
-    longest_mark = TRUNCATION_MARK.format(omitted=len(data), total=len(data)).encode()
+    longest_mark = mark.format(omitted=len(data), total=len(data)).encode()
     if len(longest_mark) >= limit:
         return data[:limit].decode("utf-8", "ignore")
     head = data[: limit - len(longest_mark)].decode("utf-8", "ignore")
-    return head + TRUNCATION_MARK.format(omitted=len(data) - len(head.encode()), total=len(data))
+    return head + mark.format(omitted=len(data) - len(head.encode()), total=len(data))
 
 
 def text_of(value) -> str:

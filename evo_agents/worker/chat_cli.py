@@ -24,7 +24,8 @@ and ``evo-agents worker repo open``, which only a chat run's agent uses.
 
 Each reads the run from EVO_RUN_ID, EVO_WORKER_HOME and the run's record there, calls the hub with the worker's token
 (POST /v1/worker/runs/{id}/chat/..., ``evo_agents.hub.server.chat_agents``), and refuses outside a run of this worker
-of a kind of ``chat_runs.COMMAND_KINDS``. TEXT ``-`` reads stdin. Each prints one line with the ids it made; they take
+of a kind of ``chat_runs.COMMAND_KINDS``; a call the hub does not answer, or answers with a 5xx while it deploys, is
+sent again for up to OUTAGE_SECONDS (``call``). TEXT ``-`` reads stdin. Each prints one line with the ids it made; they take
 no ``--json``, since this module may not import the hub's contract (the worker reaches no ``hub.server`` module, which
 the contract's modules import). A failure is one ``error:`` line on stderr and exit status 1; without the worker
 extra, status 2.
@@ -43,6 +44,7 @@ import asyncio
 import functools
 import os
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,6 +57,10 @@ EXIT_FAILED = 1
 EXIT_USAGE = 2
 RUN_VARIABLE = "EVO_RUN_ID"
 EXTRA_HINT = "uv tool install 'evo-ak[worker]' (or python -m pip install 'evo-ak[worker]')"
+# How long a command tries again while the hub does not answer: a deploy swaps the hub's api in less, and an agent's
+# shell gives a command about two minutes
+OUTAGE_SECONDS = 90.0
+RETRY_FIRST_DELAY = 1.0  # seconds before the second try, doubling after each
 
 
 class MissingExtra(Exception):
@@ -122,15 +128,28 @@ def agent_run(command: str) -> AgentRun:
 
 def call(run: AgentRun, route: str, body: dict) -> dict:
     """POST ``body`` to the hub's route of the run's agent in chats, with the worker's token; HubError when the hub
-    refuses or does not answer."""
+    refuses, or does not answer for OUTAGE_SECONDS. A call the hub does not answer, or answers with a 5xx or 429 (a
+    deploy swapping its api: run #8743's forward got a 500 of the proxy then), is sent again after a backoff, as the
+    daemon does, each try said on stderr."""
     try:
         from evo_agents.worker import hubapi
     except ImportError as exc:
         raise MissingExtra(f"missing module {exc.name}") from None
 
     async def go() -> dict:
+        backoff = hubapi.Backoff(first=RETRY_FIRST_DELAY)
+        deadline = time.monotonic() + OUTAGE_SECONDS
         async with hubapi.new_session() as session:
-            return await hubapi.WorkerHub(run.config.url, run.token, session).in_chats(run.run_id, route, body)
+            hub = hubapi.WorkerHub(run.config.url, run.token, session)
+            while True:
+                try:
+                    return await hub.in_chats(run.run_id, route, body)
+                except hubapi.Unreachable as exc:
+                    delay = max(backoff.next(), min(exc.retry_after or 0.0, hubapi.RETRY_AFTER_MOST))
+                    if time.monotonic() + delay > deadline:
+                        raise
+                    print(f"the hub did not take it ({exc}): trying again in {delay:.0f}s", file=sys.stderr)
+                    await asyncio.sleep(delay)
 
     try:
         return asyncio.run(go())

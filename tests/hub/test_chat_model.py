@@ -181,7 +181,9 @@ def test_chat_run_rules_of_hops_caps_branches_and_the_inbox():
     assert not any(chat_runs.is_chat_branch(name) for name in ("chat/", "chat/x", "chat/41/a", "main", None))
     text = chat_runs.inbox_text("owner", 9, "  also the retries \n" + "y" * 10_000)
     assert text.startswith("owner wrote in the thread (message #9):\nalso the retries")
-    assert len(text.encode()) <= runs.MAX_MESSAGE_BYTES
+    assert text.endswith("y" * 10_000), "a message of the thread reaches the inbox whole"
+    too_long = chat_runs.inbox_text("owner", 9, "z" * (runs.MAX_INBOX_BYTES + 1))
+    assert len(too_long.encode()) <= runs.MAX_INBOX_BYTES and "[cut by the hub" in too_long
     assert chat_runs.pull_text("evo-agents", "chat/41", "https://x/pull/1", pull=True, opened=True).startswith(
         "Opened a draft pull request of evo-agents from chat/41"
     )

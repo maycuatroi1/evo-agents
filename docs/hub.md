@@ -1834,8 +1834,9 @@ The asking run gets a wait (a decision of category `wait`, as `worker wait` asks
 `runs.spawned_wait_id` of the run asked. The command notes the wait and tells the agent to end its turn: the run waits,
 and the reaper parks it, so it holds no worker. When the run asked ends, the hub answers the wait
 (`agent_asks.answer_asker`, from `chat_runs.chat_run_moved`) and the asking run resumes in its session with a message
-that names the decision. A run that ends `done` sends the last message of its agent in its thread, its outputs, its
-branch and repos; the question asks the agent to name in that message the knowledge graph nodes its answer rests on. A
+that names the decision. A run that ends `done` sends the last message it, or a run it went on from, wrote in its
+thread, past the hub's lines of its pushes (a branch with nothing to merge included), its outputs, its branch and
+repos; the question asks the agent to name in that message the knowledge graph nodes its answer rests on. A
 run that fails, is cancelled or is lost sends why. A run asked that goes on in a new run (a parked run resumed, an
 inbox untaken) carries both columns, so the run that really ends answers. A wait already answered, by its time (7
 days) or by a person's Go on now or Stop waiting, is left as it is.
@@ -1843,7 +1844,11 @@ days) or by a person's Go on now or Stop waiting, is left as it is.
 The asking run's thread, or the work chat of its trace, shows each part as a message of the hub: "@reviewer asked @kb-bot of project lumen-kb (run
 #N): TEXT" when the ask is taken, "@kb-bot: WHY" when it is refused, then "@kb-bot answered (run #N): ..." or "@kb-bot
 gave no answer: run #N ended failed: WHY". The thread shows at most 2 KiB of the answer
-(`agent_asks.ANSWER_IN_THREAD`); the agent gets it whole, within the size of a decision's answer.
+(`agent_asks.ANSWER_IN_THREAD`) and names the message that holds it whole; the agent gets it whole in its inbox, whose
+messages schema 0261 bounds by 32 KiB (`runs.MAX_INBOX_BYTES`), while the decision keeps its first 4 KiB. A message of
+the thread reaches a running agent's inbox whole too. The agent's commands in chats (`worker chat`, `worker agent ask`,
+`worker agent forward`) send a call again for up to 90 s while the hub does not answer or answers 5xx, as during a
+deploy.
 
 The prompt of a chat run names the command, the hop the run is at and its limits (`chat_runs.delegation_rule`).
 Schema 0214 adds `runs.spawned_by_run_id` (a run) and `runs.spawned_wait_id` (a decision), both null for any other run

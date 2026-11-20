@@ -20,8 +20,8 @@ reaper, recording the event when the run completed or a job of it failed.
 
 ``wake_waits``, on each pass of the reaper (``run_reaper.recover_runs``), answers every open wait whose event or time
 came, each in a transaction of its own under the locks an answer takes (``decision_resume.lock_run_of``): the decision
-is answered by nobody (``answered_by`` NULL), its ``answer_text`` the words the agent gets, and those go to the run's
-inbox as a message naming the decision, as an owner's answer does; a parked run is resumed first, by the reaper
+is answered by nobody (``answered_by`` NULL), its ``answer_text`` the words the agent gets (within MAX_ANSWER_BYTES; the
+inbox takes an asked agent's answer whole), and those go to the run's inbox as a message naming the decision, as an owner's answer does; a parked run is resumed first, by the reaper
 (``decision_resume.resume_parked``). A wait of a run that ended was cancelled with the run's other decisions.
 
 A run still waiting when its wait wakes takes the message in its inbox from its worker; but when the reaper ran late,
@@ -236,14 +236,17 @@ async def _event_for(conn: AsyncConnection, project_id: int, wake_on: dict):
 async def wake(conn: AsyncConnection, decision_id: int, project_id: int, plan_id: str | None, text: str) -> int | None:
     """Answer wait ``decision_id`` as the hub with ``text``, in the caller's transaction, under the locks an answer
     takes: the message goes to its run's inbox, or to the inbox of the run that resumes it when it is parked; that
-    run's id, or None when the wait is no longer open or its run takes no answer."""
+    run's id, or None when the wait is no longer open or its run takes no answer. The inbox takes ``text`` whole, up to
+    MAX_INBOX_BYTES (an asked agent's answer); the decision keeps it within MAX_ANSWER_BYTES."""
     d, r, i = tables.decisions, tables.runs, tables.run_inbox
     run_id, run_state, _ = await lock_run_of(conn, project_id, plan_id, decision_id)
     state = (await conn.execute(select(d.c.state).where(d.c.id == decision_id).with_for_update())).scalar_one()
     if state != "open" or (run_state != "parked" and run_state not in runs.MESSAGE_STATES):
         return None
+    text = runs.clip(text, runs.MAX_INBOX_BYTES)
+    kept = runs.clip(text, runs.MAX_ANSWER_BYTES)
     await conn.execute(
-        update(d).values(state="answered", answer_text=text, answered_at=func.now()).where(d.c.id == decision_id)
+        update(d).values(state="answered", answer_text=kept, answered_at=func.now()).where(d.c.id == decision_id)
     )
     inbox_run = run_id
     if run_state == "parked":
