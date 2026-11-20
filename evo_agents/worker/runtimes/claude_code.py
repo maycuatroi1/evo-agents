@@ -38,8 +38,11 @@ here.
   ``output_file``, ``tool_use_id``), then opens a turn by itself while its input is open: a new ``system/init``, the
   agent reads the output file, and a second ``result`` whose ``origin`` is ``{"kind": "task-notification"}``. Nobody
   has to write to it. When its input ends before that, as it did at the first ``result`` before this adapter waited,
-  the CLI kills the command within 5 seconds (``task_updated`` ``killed``, ``task_notification`` ``stopped``) and
-  exits, so the agent never learns how the command ended. A command in the foreground also has ``task_started``
+  Claude Code 2.1.291 killed the command within 5 seconds (``task_updated`` ``killed``, ``task_notification``
+  ``stopped``) and exited, so the agent never learned how the command ended; 2.1.295 and 2.1.310 keep it running, and
+  the turn they open when it ends has every tool call refused, since the run's hooks answer over that input. So the
+  input never ends while a command runs in the background: the adapter first tells the CLI to stop it
+  (``stop_task``, ``_stop_background``). A command in the foreground also has ``task_started``
   (``is_backgrounded: false``) and ``task_notification``, but no ``background_tasks_changed`` and no
   ``backgroundTaskId``.
 - At a ``result``, the adapter ends the input stream (and the CLI exits once it has done what it was given) unless the
@@ -49,12 +52,12 @@ here.
   Should no turn open within ``follow_up_after`` seconds of that end, the adapter writes to the agent itself
   (FOLLOW_UP, with the CLI's summary and output file of each command). After a turn in which a background command
   ended, the CLI has ``turn_grace`` seconds to open a turn for its notification. A command that still runs
-  ``background_wait`` seconds after the turn ended is left: the input ends, and the CLI stops it and exits; by default
-  (None) it is never left, and the run's timeout is the bound. A run with a time cap waits for the command up to that
-  cap instead, where ``QueueAdapter`` interrupts the agent: a shard of the
-  tests on a busy worker ran 46 and 57 minutes in release runs #1072 and #1069 of evo-agents, the input ended at 30,
-  and Claude Code 2.1.310 then kept the command running but refused the agent's next tool call ("The user doesn't
-  want to take this action right now"), so neither run wrote its result. Once the agent has written
+  ``background_wait`` seconds after the turn ended is left: the adapter stops it, the input ends, and the CLI exits; by
+  default (None) it is never left, and the run's timeout is the bound. A run with a time cap waits for the command up
+  to that cap instead, where ``QueueAdapter`` interrupts the agent: a shard of the tests on a busy worker ran 46 and
+  57 minutes in release runs #1072 and #1069 of evo-agents, the input ended at 30, and Claude Code 2.1.310 then kept
+  the command running but refused the agent's next tool call ("The user doesn't want to take this action right
+  now"), so neither run wrote its result. Once the agent has written
   ``.evo-run/result.json`` in a turn and nothing it started runs in the background, it has finished, and that turn's
   ``result`` ends the input. A command still running keeps the input open whatever the file says, and only a file
   written since the turn began counts: a file a chat's previous run wrote ended the input at the first ``result`` of
@@ -62,16 +65,19 @@ here.
   itself did the same in run #8661; each time the turn Claude Code opened when the command ended had every tool call
   refused the same way. When the agent has written the file and only a background command keeps the session open,
   the run's time cap ends the session without an interrupt, and the run completes with its last ``result``; with no
-  cap, ``finished_wait`` does (a server it forgot to stop, say).
+  cap, ``finished_wait`` does (a server it forgot to stop, say). Either way the command is stopped before the input
+  ends: runs #9058, #9099, #9129, #9202 and #9244 of evo-agents, chat runs whose every turn writes the file, ended
+  their input at ``finished_wait`` while a command they waited for still ran, and Claude Code refused every tool call
+  of the turn it opened when the command ended.
   A decision of a plan run left open is the daemon's, not the adapter's: the turn ends, and the daemon waits for the
   answer and hands it to a new adapter in the same session (``evo_agents.worker.adapter``).
 - A command the CLI stops (TaskStop, or ``task_updated`` ``killed``) can leave children that run in process groups of
   their own, as turbo's are: ``TaskReaper`` (``task_reaper``) notes the processes under each command's shell while it
   runs and kills what is left of it once the CLI reports it stopped, and what any command left at the end of the
   session.
-- ``stop_at_turn_boundary`` ends the input stream at once, so the turn in progress finishes and the CLI exits, a
-  background command or not; ``interrupt`` sends the SDK's interrupt, which stops the turn and its tools, then ends
-  it.
+- ``stop_at_turn_boundary`` ends the input stream at once, so the turn in progress finishes and the CLI exits, once
+  the adapter has stopped what still runs in the background; ``interrupt`` sends the SDK's interrupt, which stops the
+  turn and its tools, then ends it.
 - Whether the turn completed comes from the last ``result`` (``subtype`` ``success``, not ``is_error``), never from
   the exit code: Claude Code exits 0 when it is interrupted.
 - A tool's result keeps its text; each image block of it (a browser's screenshot, a Read of an image file, base64
@@ -198,7 +204,10 @@ from evo_agents.worker.runtimes.common import (
     QueueAdapter,
     add_numbers,
     cut,
+    descendants,
     detect_runtime,
+    kill_group,
+    kill_tree,
     larger,
     run_setting,
     with_peak,
@@ -238,6 +247,9 @@ BACKGROUND_WAIT: float | None = None
 # server it forgot to stop would hold the worker until the run's timeout. The longest test command of run #8661 of
 # evo-agents, which wrote an interim result file while it ran, took 7 minutes.
 FINISHED_WAIT = 1800.0
+# Seconds the CLI has to report the end of the background commands the adapter told it to stop (``stop_task``) before
+# the session ends over them; then the adapter kills the CLI's processes instead.
+STOP_GRACE = 10.0
 # Seconds the CLI has to open a turn by itself once a background command ended while no turn ran, before the adapter
 # writes to the agent (FOLLOW_UP). Claude Code 2.1.291 opens it at once.
 FOLLOW_UP_AFTER = 15.0
@@ -254,7 +266,9 @@ CAP_RESULTS = {"error_max_budget_usd": "cost", "error_max_turns": "turns"}
 BACKGROUND_NOTE = (
     "A command you start with run_in_background keeps this session open after your turn ends: you are told when it "
     "ends, in a new turn, and go on from there. Stop a server or watcher you started in the background once you no "
-    "longer need it, or the session waits for it."
+    "longer need it, or the session waits for it. Once you have written .evo-run/result.json in a turn, the session "
+    f"waits for a command still running in the background for at most {FINISHED_WAIT / 60:g} minutes after that turn "
+    "(up to the run's time cap in a run that has one), then stops it and ends."
 )
 # Claude Code's Task tool starts a subagent with its own context; the note keeps that and adds the plan handoff.
 _CLAUDE_FORK = "With the Task tool, start a fresh subagent, not a resumed or forked one."
@@ -399,6 +413,7 @@ class ClaudeCodeAdapter(QueueAdapter):
     finished_wait = FINISHED_WAIT
     follow_up_after = FOLLOW_UP_AFTER
     turn_grace = TURN_GRACE
+    stop_grace = STOP_GRACE
 
     @classmethod
     def detect(cls) -> Detection:
@@ -462,6 +477,8 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._timer: asyncio.Task | None = None
         self._opened: float | None = None  # when the session opened (time.time)
         self._turn_began: float | None = None  # when the last turn began (time.time), which a result file must follow
+        self._settled = asyncio.Event()  # set once nothing the agent started runs in the background
+        self._stopper: asyncio.Task | None = None  # stops the background commands, then ends the input
 
     @property
     def session_id(self) -> str | None:
@@ -600,6 +617,8 @@ class ClaudeCodeAdapter(QueueAdapter):
                 self._peak = larger(self._peak, context_of(message))
                 self._first = self._first or first_request_of(message)
                 ended = self.background.see(message)
+                if not self.background.pending:
+                    self._settled.set()
                 if isinstance(message, sdk.SystemMessage):
                     for task in self.reaper.see(message.subtype, message.data):
                         self._reap_later(task)
@@ -742,11 +761,61 @@ class ClaudeCodeAdapter(QueueAdapter):
             await self._close_input()
 
     async def _close_input(self) -> None:
+        """The agent takes no more input. Between turns, a command it still runs in the background is stopped first
+        (``_stop_background``), in a task of its own, so ``_drive`` reads the CLI's report of the stop meanwhile."""
         self._disarm()
         async with self._lock:
-            if self._input_open:
-                self._input_open = False
-                self._end_input.set()
+            self._input_open = False
+        if not self._turn_open and self.background.pending:
+            if self._stopper is None:
+                self._stopper = asyncio.create_task(self._stop_then_end())
+            return
+        self._end_input.set()
+
+    async def _stop_then_end(self) -> None:
+        try:
+            await self._stop_background()
+        except Exception:
+            log.warning("stopping the background commands failed", extra={"runtime": self.runtime}, exc_info=True)
+        finally:
+            self._end_input.set()
+
+    async def _stop_background(self) -> None:
+        """Stop each command the agent still runs in the background, before the input ends. Claude Code 2.1.295 keeps
+        such a command running once its input ended, and when it ends, opens a turn in which every tool call is
+        refused ("The user doesn't want to take this action right now"): the run's PreToolUse hooks are callbacks the
+        CLI asks over that input. Runs #9058, #9099, #9129, #9202 and #9244 of evo-agents (2026-11-16 and 17) each
+        ended their input at ``finished_wait`` over a command they still waited for, and each had the turn after it
+        refused. A command the CLI does not report ended within ``stop_grace`` seconds has its processes killed with
+        the CLI's, so no turn opens with nobody to answer it."""
+        if self._client is None:
+            return
+        self._settled.clear()
+        for task in list(self.background.running):
+            try:
+                await asyncio.wait_for(self._client.stop_task(task), self.stop_grace)
+            except Exception as exc:  # the CLI is gone, or took no control request
+                log.warning(
+                    "claude-code did not take the stop of a background command",
+                    extra={"runtime": self.runtime, "task": task, "error": f"{type(exc).__name__}: {exc}"},
+                )
+        if self.background.pending:
+            try:
+                await asyncio.wait_for(self._settled.wait(), self.stop_grace)
+                return
+            except TimeoutError:
+                pass
+            log.warning(
+                "claude-code did not report the end of the background commands it was told to stop; killing it",
+                extra={"runtime": self.runtime, "running": ", ".join(self.background.running) or None},
+            )
+            await self._kill_cli()
+
+    async def _kill_cli(self) -> None:
+        """Kill the CLI's process group and every process under it (a test replaces it)."""
+        pid = self.group_pid()
+        kill_tree(await asyncio.to_thread(descendants, pid))
+        kill_group(pid)
 
     async def send(self, text: str) -> None:
         async with self._lock:
@@ -769,7 +838,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._disarm()
         self._input_open = False
         self._end_input.set()
-        for job in (self._noting, *self._reaping):
+        for job in (self._noting, self._stopper, *self._reaping):
             if job is not None:
                 job.cancel()
         if self._client is not None:

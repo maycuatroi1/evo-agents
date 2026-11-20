@@ -335,6 +335,8 @@ class FakeCLI:
         self.out: asyncio.Queue = asyncio.Queue()
         self.input_closed = asyncio.Event()
         self.interrupted = asyncio.Event()
+        self.stopped = asyncio.Event()  # the SDK told it to stop a background task (``stop_task``)
+        self.killed = asyncio.Event()  # the adapter killed its processes (a test sets it)
         self.busy = asyncio.Event()
         self.go = asyncio.Event()  # the test lets the script go on
         self.task = None
@@ -356,6 +358,8 @@ class FakeCLI:
             self.print({"type": "control_response", "response": response})
             if subtype == "interrupt":
                 self.interrupted.set()
+            if subtype == "stop_task":
+                self.stopped.set()
         elif message["type"] == "user":
             text = message["message"]["content"]
             self.log.append(("user", text))
@@ -1034,11 +1038,18 @@ def _finished_with_a_server_left(result_file):
         result_file.write_text('{"summary": "done"}', encoding="utf-8")
         cli.print(_text("DONE"))
         cli.print(_result("DONE"))
-        await cli.input_closed.wait()  # it never ends by itself
-        _print(cli, background_end(status="killed"))
-        cli.exit()
+        await _killed_when_stopped(cli)
 
     return behaviour
+
+
+async def _killed_when_stopped(cli: FakeCLI) -> None:
+    """A command that never ends by itself, a server say: the CLI kills it when told to (``stop_task``), and exits once
+    its input has ended."""
+    await cli.stopped.wait()
+    _print(cli, background_end(status="killed"))
+    await cli.input_closed.wait()
+    cli.exit()
 
 
 def test_claude_completes_a_run_that_wrote_its_result_when_its_time_cap_ends_a_wait_for_a_background_command(tmp_path):
@@ -1047,7 +1058,7 @@ def test_claude_completes_a_run_that_wrote_its_result_when_its_time_cap_ends_a_w
     adapter = _claude(tmp_path, behaviour, timers=SLOW, budget=budget)
     events, outcome = asyncio.run(_collect(adapter))
     assert ("control", "interrupt") not in adapter.cli.log
-    assert adapter.cli.log[-2:] == [("result", "DONE"), ("end_input",)]
+    assert adapter.cli.log[-3:] == [("result", "DONE"), ("control", "stop_task"), ("end_input",)]
     assert outcome.completed and outcome.summary == "DONE" and outcome.cap is None and outcome.error is None
 
 
@@ -1071,8 +1082,77 @@ def test_claude_with_no_time_cap_ends_a_wait_for_a_background_command_after_the_
     began = time.monotonic()
     events, outcome = asyncio.run(_collect(adapter))
     assert time.monotonic() - began >= 0.3, "the session waited for the command first"
-    assert adapter.cli.log[-2:] == [("result", "DONE"), ("end_input",)]
+    assert adapter.cli.log[-3:] == [("result", "DONE"), ("control", "stop_task"), ("end_input",)]
+    assert adapter.cli.requests["stop_task"]["task_id"] == BG_TASK
     assert outcome.completed and outcome.summary == "DONE" and outcome.cap is None
+
+
+REFUSED = (
+    "The user doesn't want to take this action right now. STOP what you are doing and wait for the user to tell you "
+    "how to proceed."
+)
+
+
+def test_claude_stops_a_background_command_before_its_input_ends_so_no_turn_has_its_tool_calls_refused(tmp_path):
+    """Run #9244 of evo-agents (a chat run, 2026-11-17) wrote its result file, as each turn of a chat run does, while a
+    65-minute measurement it waited for ran in the background. 30 minutes later ``finished_wait`` ended the input;
+    Claude Code 2.1.295 kept the command running, and when it ended, the turn it opened had its Bash and Read calls
+    refused: the run's PreToolUse hooks are callbacks the CLI asks over that input. Runs #9058, #9099, #9129 and #9202
+    went the same way. The adapter now stops the command (``stop_task``) before the input ends."""
+    result_file = tmp_path / "worktree" / runs.RESULT_FILE
+
+    async def behaviour(cli: FakeCLI) -> None:  # Claude Code 2.1.295
+        await cli.users.get()
+        cli.print(INIT)
+        _print(cli, background_start())
+        result_file.parent.mkdir(parents=True, exist_ok=True)
+        result_file.write_text('{"summary": "the measurement still runs"}', encoding="utf-8")
+        cli.print(_text("WAITING"))
+        cli.print(_result("WAITING"))
+        stopped = asyncio.ensure_future(cli.stopped.wait())
+        closed = asyncio.ensure_future(cli.input_closed.wait())
+        await asyncio.wait({stopped, closed}, return_when=asyncio.FIRST_COMPLETED)
+        if cli.stopped.is_set():
+            _print(cli, background_end(status="killed"))
+        else:  # its input ended first: the command runs on, ends, and the CLI opens a turn for it
+            await asyncio.sleep(0.05)
+            _print(cli, background_end())
+            cli.print(INIT)
+            cli.print(_tool_use("toolu_read", "cat .evo-run/outputs/after740/t6_reads.txt"))
+            cli.log.append(("refused",))  # the hook's callback cannot be asked over an input that ended
+            cli.print(_tool_result("toolu_read", REFUSED))
+            cli.print(_result("REFUSED"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    adapter = _claude(tmp_path, behaviour, timers={**SLOW, "background_wait": None, "finished_wait": 0.1})
+    events, outcome = asyncio.run(_collect(adapter))
+    assert ("refused",) not in adapter.cli.log, "no turn opens after the input ended"
+    assert adapter.cli.log[-3:] == [("result", "WAITING"), ("control", "stop_task"), ("end_input",)]
+    assert adapter.background.ended[BG_TASK]["status"] == "stopped", "as the CLI's notification says"
+    assert outcome.completed and outcome.summary == "WAITING"
+
+
+def test_claude_kills_the_cli_when_it_does_not_report_a_stopped_background_command(tmp_path):
+    """A CLI that takes the stop but never reports the command's end is killed after ``stop_grace``, input ended:
+    left alive, it would open a turn nobody can answer when the command ends."""
+
+    async def behaviour(cli: FakeCLI) -> None:
+        await _started_in_background(cli)
+        await cli.stopped.wait()  # and says nothing of it
+        await cli.killed.wait()
+        cli.exit()
+
+    adapter = _claude(tmp_path, behaviour, timers={**SLOW, "background_wait": 0.05, "stop_grace": 0.1})
+
+    async def kill() -> None:
+        adapter.cli.log.append(("killed",))
+        adapter.cli.killed.set()
+
+    adapter._kill_cli = kill
+    events, outcome = asyncio.run(_collect(adapter))
+    assert adapter.cli.log[-3:] == [("control", "stop_task"), ("killed",), ("end_input",)]
+    assert outcome.completed and outcome.summary == "STARTED"
 
 
 def test_claude_keeps_the_input_open_for_a_background_command_when_a_previous_run_left_its_result_json(tmp_path):
@@ -1116,15 +1196,13 @@ def test_claude_keeps_the_input_open_for_a_background_command_when_a_previous_ru
 def test_claude_leaves_a_background_command_that_runs_past_the_wait_and_ends_its_input(tmp_path):
     async def behaviour(cli: FakeCLI) -> None:
         await _started_in_background(cli)
-        await cli.input_closed.wait()  # a server, say: it never ends by itself
-        _print(cli, background_end(status="killed"))
-        cli.exit()
+        await _killed_when_stopped(cli)
 
     adapter = _claude(tmp_path, behaviour, timers={**SLOW, "background_wait": 0.2})
     began = time.monotonic()
     events, outcome = asyncio.run(_collect(adapter))
     assert time.monotonic() - began >= 0.2, "the session waited for the command first"
-    assert adapter.cli.log[-2:] == [("result", "STARTED"), ("end_input",)]
+    assert adapter.cli.log[-3:] == [("result", "STARTED"), ("control", "stop_task"), ("end_input",)]
     assert outcome.completed and outcome.summary == "STARTED", "the agent's turn completed; the command was left"
 
 
@@ -1167,16 +1245,19 @@ def test_claude_with_no_time_cap_waits_for_a_background_command_by_default(tmp_p
 def test_claude_with_a_time_cap_ends_a_wait_for_a_background_command_at_the_cap(tmp_path):
     async def behaviour(cli: FakeCLI) -> None:
         await _started_in_background(cli)
-        await cli.input_closed.wait()  # a server, say: it never ends by itself
-        _print(cli, background_end(status="killed"))
-        cli.exit()
+        await _killed_when_stopped(cli)
 
     budget = {"max_usd": None, "max_seconds": 0.3, "spent_usd": 0.0, "spent_seconds": 0}
     adapter = _claude(tmp_path, behaviour, timers={**SLOW, "background_wait": 0.1}, budget=budget)
     began = time.monotonic()
     events, outcome = asyncio.run(_collect(adapter))
     assert time.monotonic() - began >= 0.3, "the session waited for the command up to the time cap"
-    assert adapter.cli.log[-3:] == [("result", "STARTED"), ("control", "interrupt"), ("end_input",)]
+    assert adapter.cli.log[-4:] == [
+        ("result", "STARTED"),
+        ("control", "interrupt"),
+        ("control", "stop_task"),
+        ("end_input",),
+    ]
     assert not outcome.completed and outcome.cap == "time"
 
 
@@ -1217,9 +1298,7 @@ def test_claude_gives_the_cli_a_moment_after_a_turn_in_which_a_background_comman
 def test_stopping_claude_while_it_waits_for_a_background_command_ends_its_input_at_once(tmp_path):
     async def behaviour(cli: FakeCLI) -> None:
         await _started_in_background(cli)
-        await cli.input_closed.wait()
-        _print(cli, background_end(status="killed"))
-        cli.exit()
+        await _killed_when_stopped(cli)
 
     async def during(adapter, events) -> None:
         await _turn_ended(adapter, events)
@@ -1228,7 +1307,7 @@ def test_stopping_claude_while_it_waits_for_a_background_command_ends_its_input_
 
     adapter = _claude(tmp_path, behaviour, timers=SLOW)
     events, outcome = asyncio.run(_collect(adapter, during))
-    assert adapter.cli.log[-2:] == [("result", "STARTED"), ("end_input",)]
+    assert adapter.cli.log[-3:] == [("result", "STARTED"), ("control", "stop_task"), ("end_input",)]
     assert outcome.completed and outcome.summary == "STARTED"
 
 
