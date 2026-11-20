@@ -30554,7 +30554,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.71.0"
+      "version": "0.72.1"
     },
     "paths": {
       "/v1/health": {
@@ -84613,7 +84613,7 @@
             "accounts"
           ],
           "summary": "Change Account",
-          "description": "Change the weight, priority or weekly budget of the caller's account ``name``, or pause or resume it.",
+          "description": "Change the weight, priority or weekly budget of the caller's account ``name``, or pause or resume it; a resume\nalso ends its cooldown, save one that needs a new sign-in (``end_cooldown``).",
           "operationId": "change_account_v1_accounts__name__patch",
           "parameters": [
             {
